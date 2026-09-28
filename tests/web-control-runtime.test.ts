@@ -64,8 +64,13 @@ beforeAll(async () => {
     if (req.url?.startsWith('/repos/newsdayads/tigeriq-ai-lab/issues?')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify([
-        {number:1806,title:'[P0][API HEALTH] Tối ưu màn hình giám sát',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P0\nACTIVE_EXECUTION=true\nMUTATION_OWNER=NV02_CURRENT_CHAT\nCURRENT_STATE=WORKING',updated_at:'2026-09-25T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1806'},
-        {number:1456,title:'[P0][QUẢN TRỊ] Hợp đồng thực thi',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P0',updated_at:'2026-09-24T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1456'}
+        {number:1805,state:'open',title:'[P1] Việc cần xử lý',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCURRENT_STATE=READY_AUTO_EXECUTION',updated_at:'2026-09-25T06:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1805'},
+        {number:1806,state:'open',title:'[P0][API HEALTH] Tối ưu màn hình giám sát',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P0\nACTIVE_EXECUTION=true\nMUTATION_OWNER=NV02_CURRENT_CHAT\nCURRENT_STATE=WORKING',updated_at:'2026-09-25T05:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1806'},
+        {number:1807,state:'open',title:'[P1] Chờ owner',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCURRENT_STATE=OWNER_GATE',updated_at:'2026-09-25T04:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1807'},
+        {number:1808,state:'open',title:'[P1][REVIEW] Exact head',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=review\nCURRENT_STATE=READY_REVIEW',updated_at:'2026-09-25T03:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1808'},
+        {number:1809,state:'open',title:'[P1] Blocked',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCURRENT_STATE=BLOCKED_EXTERNAL',updated_at:'2026-09-25T02:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1809'},
+        {number:1456,state:'open',title:'[P0][QUẢN TRỊ] Hợp đồng thực thi',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P0\nRESOURCE_SCOPE=SYSTEM_POLICY',updated_at:'2026-09-25T01:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1456'},
+        {number:1700,state:'closed',title:'[P2] Hoàn tất gần đây',body:'TIGERIQ_EXECUTABLE=false\nPRIORITY=P2\nCURRENT_STATE=TERMINAL_DONE',updated_at:'2026-09-25T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/1700'}
       ]));
     }
     res.writeHead(404); res.end('not_found');
@@ -120,22 +125,27 @@ describe('Web Control runtime', () => {
     expect(body).toContain('<title>TigerIQ Core 24/7 — Web Control</title>');
     expect(body).toContain('<link rel="stylesheet" href="/web-control-unified.css">');
     expect(body).toContain('<link rel="stylesheet" href="/web-control-mobile.css">');
+    expect(body).toContain('<script src="/web-control-health-model.js"></script>');
     expect(body).toContain('<script src="/web-control-truth.js"></script>');
     expect(body).toContain('<script src="/web-control-unified.js"></script>');
     expect(body).not.toMatch(/<iframe\b/i);
 
-    const [truth, unified, css, mobile] = await Promise.all([
+    const [healthModel, truth, unified, css, mobile] = await Promise.all([
+      fetch(`http://127.0.0.1:${WEB_PORT}/web-control-health-model.js`),
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-truth.js`),
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.js`),
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-unified.css`),
       fetch(`http://127.0.0.1:${WEB_PORT}/web-control-mobile.css`)
     ]);
-    expect(truth.status).toBe(200); expect(unified.status).toBe(200); expect(css.status).toBe(200); expect(mobile.status).toBe(200);
-    const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text(); const mobileStyle = await mobile.text();
+    expect(healthModel.status).toBe(200); expect(truth.status).toBe(200); expect(unified.status).toBe(200); expect(css.status).toBe(200); expect(mobile.status).toBe(200);
+    const healthModelJs = await healthModel.text(); const truthJs = await truth.text(); const unifiedJs = await unified.text(); const unifiedStyle = await css.text(); const mobileStyle = await mobile.text();
+    expect(healthModelJs).toContain('resourceHealthTruth');
     expect(truthJs).toContain('Không bịa %');
     expect(truthJs).toContain("['Review'");
     expect(unifiedJs).toContain('reviewer_employee_id');
-    expect(unifiedJs).toContain('Hiệu suất API');
+    expect(unifiedJs).toContain('Hiệu suất API 24 giờ');
+    expect(unifiedJs).toContain('Cảnh báo hiện tại');
+    expect(unifiedJs).toContain('Hoạt động gần đây');
     expect(unifiedJs).toContain('Hoạt động Core gần nhất');
     expect(unifiedJs).toContain('telemetry');
     expect(unifiedJs).toContain('LIVE · 2s');
@@ -155,8 +165,15 @@ describe('Web Control runtime', () => {
     expect(body.telemetry).toEqual(statusPayload.telemetry);
     expect(body.resources[0].last_latency_ms).toBe(210);
     expect(body.codingLane).toEqual(codingPayload);
-    expect(body.workOrders).toHaveLength(1);
-    expect(body.workOrders[0]).toMatchObject({ issue_number:1806, priority:'P0', state:'ĐANG LÀM', owner:'NV02_CURRENT_CHAT' });
+    expect(body.workOrders).toHaveLength(6);
+    expect(body.workOrders.find((x:any)=>x.issue_number===1805)).toMatchObject({ bucket:'CẦN XỬ LÝ' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1806)).toMatchObject({ priority:'P0', state:'ĐANG LÀM', bucket:'ĐANG LÀM', owner:'NV02_CURRENT_CHAT' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1807)).toMatchObject({ bucket:'CHỜ ANH SƠN' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1808)).toMatchObject({ bucket:'RÀ SOÁT' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1809)).toMatchObject({ bucket:'BLOCKED' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1456)).toMatchObject({ bucket:'HỆ THỐNG' });
+    expect(body.workOrdersRecent).toHaveLength(1);
+    expect(body.workOrdersRecent[0]).toMatchObject({ issue_number:1700, bucket:'HOÀN THÀNH', closed:true });
     expect(body.workOrdersMeta).toMatchObject({ ok:true, source:'github', stale:false });
   });
 
