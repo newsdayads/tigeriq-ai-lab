@@ -423,8 +423,13 @@ async function recordRoutingFault(pool,data){
   await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
 }
 
-async function routingFaultAlreadyRecorded(pool,issueNumber,reason){
+async function routingFaultRecorded(pool,issueNumber,reason){
   const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 limit 1",[String(issueNumber),String(reason)]).catch(()=>({rowCount:0}));
+  return Number(result?.rowCount||0)>0;
+}
+
+async function routingFaultOwnerVisibleRecorded(pool,issueNumber,reason){
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 and data->>'ownerVisible'='true' limit 1",[String(issueNumber),String(reason)]).catch(()=>({rowCount:0}));
   return Number(result?.rowCount||0)>0;
 }
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
@@ -469,10 +474,14 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       }catch(error){
         if(String(error?.message||'')==='OPENCLAW_INSTRUCTION_INVALID'){
           const reason='OPENCLAW_INSTRUCTION_INVALID';
-          const alreadyReported=await routingFaultAlreadyRecorded(pool,spec.number,reason);
-          if(!alreadyReported){
-            await commentIssue(fetchImpl,owner,repo,spec.number,`[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token).catch(()=>false);
-            await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:true});
+          const ownerVisibleAlready=await routingFaultOwnerVisibleRecorded(pool,spec.number,reason);
+          if(!ownerVisibleAlready){
+            const ownerVisible=await commentIssue(fetchImpl,owner,repo,spec.number,`[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token).catch(()=>false);
+            if(ownerVisible){
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:true});
+            }else if(!(await routingFaultRecorded(pool,spec.number,reason))){
+              await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:false});
+            }
           }
           skipped++;
           continue;
