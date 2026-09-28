@@ -442,25 +442,68 @@ async function stop(signal = null) {
   if (down.exitCode !== 0 || down.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_STOP_FAILED');
   return { stopped: true, imageDigest: pin.imageDigest, port3210: await probePort() };
 }
-async function health() {
-  const [port, http, ps] = await Promise.all([
+function mountSourceMatchesLabData(source) {
+  const value = String(source || '').replaceAll('\\', '/').toLowerCase().replace(/\/+$/, '');
+  return [
+    'd:/tigeriq-paperclip-lab/data',
+    '/run/desktop/mnt/host/d/tigeriq-paperclip-lab/data',
+    '/host_mnt/d/tigeriq-paperclip-lab/data',
+    '/mnt/d/tigeriq-paperclip-lab/data',
+  ].includes(value);
+}
+
+async function health(signal = null) {
+  throwIfAborted(signal);
+  let pin;
+  try { pin = await readReleasePin(); }
+  catch { return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'PIN_NOT_READY' }; }
+
+  const [port, http, inspect] = await Promise.all([
     probePort(),
-    httpHealth(),
-    fs.access(COMPOSE_FILE).then(() => runFixed('docker.exe', composeArgs(['ps', '--format', 'json']), { cwd: CONFIG_DIR, timeoutMs: 15000 })).catch(() => null),
+    httpHealth(signal),
+    runFixed('docker.exe', ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
   ]);
-  const output = ps ? clipped(ps.stdout).slice(0, 8000) : '';
-  const identityOk = Boolean(ps && ps.exitCode === 0 && output.includes(PAPERCLIP_LAB_CONTAINER) && output.includes(PAPERCLIP_LAB_IMAGE));
-  const containerSummary = ps ? { ok: ps.exitCode === 0, identityOk, output, error: ps.exitCode === 0 ? null : clipped(ps.stderr).slice(0, 2000) } : { ok: false, identityOk: false, output: '', error: 'NOT_CONFIGURED' };
+
+  let info = null;
+  try { info = inspect?.exitCode === 0 ? JSON.parse(inspect.stdout.trim()) : null; } catch {}
+  const ports = info?.NetworkSettings?.Ports?.['3100/tcp'];
+  const portBindingOk = Array.isArray(ports)
+    && ports.length === 1
+    && String(ports[0]?.HostIp || '') === '127.0.0.1'
+    && String(ports[0]?.HostPort || '') === String(PAPERCLIP_LAB_PORT);
+  const mounts = Array.isArray(info?.Mounts) ? info.Mounts : [];
+  const dataMounts = mounts.filter((m) => String(m?.Destination || '') === '/paperclip');
+  const dataMountOk = dataMounts.length === 1
+    && String(dataMounts[0]?.Type || '') === 'bind'
+    && dataMounts[0]?.RW === true
+    && mountSourceMatchesLabData(dataMounts[0]?.Source);
+  const labels = info?.Config?.Labels || {};
+  const identityOk = Boolean(
+    info?.State?.Running === true
+    && String(info?.Config?.Image || '') === pin.imageDigest
+    && String(labels['com.docker.compose.project'] || '') === 'tigeriq-paperclip-lab'
+    && String(labels['com.docker.compose.service'] || '') === 'paperclip'
+    && String(info?.HostConfig?.RestartPolicy?.Name || '') === 'no'
+    && Number(info?.HostConfig?.PidsLimit) === 2048
+    && portBindingOk
+    && dataMountOk
+  );
+
   return {
-    ok: port.reachable && http.reachable && http.status >= 200 && http.status < 500 && identityOk,
+    ok: port.reachable && http.appOk === true && identityOk,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     port,
     http,
-    container: containerSummary,
-    pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, image: PAPERCLIP_LAB_IMAGE },
+    container: {
+      running: info?.State?.Running === true,
+      identityOk,
+      portBindingOk,
+      dataMountOk,
+      imageDigest: info?.Config?.Image || null,
+    },
+    pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, imageDigest: pin.imageDigest },
   };
 }
-
 export async function executePaperclipLabAction(input = {}) {
   const { action } = assertPaperclipLabRequest(input);
   const started = Date.now();
