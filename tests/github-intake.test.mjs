@@ -55,10 +55,11 @@ function response(data,ok=true,status=200,headerValues={}){
 }
 
 function coreBacklogPool(options={}){
-  const objectives=[]; const events=[]; const jobs=[];
+  const objectives=[]; const events=[]; const jobs=[]; const queries=[];
   let routingFaultInsertFailures=Math.max(0,Number(options.routingFaultInsertFailures||0));
   let routingFaultTerminalQueryFailures=Math.max(0,Number(options.routingFaultTerminalQueryFailures||0));
-  return {objectives,events,jobs,async query(q,params=[]){
+  return {objectives,events,jobs,queries,async query(q,params=[]){
+    queries.push(q);
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active.length,rows:active.map(o=>({metadata:o.metadata}))};
@@ -95,13 +96,21 @@ function coreBacklogPool(options={}){
       jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:'pc_operator',kind:'pc_operator',status:'queued',max_attempts:2});
       return {rowCount:1,rows:[]};
     }
-    if(q.includes("from tigeriq_events where type='ROUTING_FAULT'")){
-      const ownerVisibleOnly=q.includes("data->>'ownerVisible'='true'");
-      const terminalBlockedOnly=q.includes("data->>'terminalBlocked'='true'");
-      if(terminalBlockedOnly&&routingFaultTerminalQueryFailures>0){
+    if(q.includes("select type,data from tigeriq_events")&&q.includes("ROUTING_FAULT_CLEAR")){
+      if(routingFaultTerminalQueryFailures>0){
         routingFaultTerminalQueryFailures--;
         throw new Error('SIMULATED_TERMINAL_ROUTING_QUERY_FAILURE');
       }
+      const reason=String(params[0]||'');
+      const rows=events
+        .filter((e)=>String(e.data?.reason||'')===reason
+          &&((e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true)||e.type==='ROUTING_FAULT_CLEAR'))
+        .map((e)=>({type:e.type,data:e.data}));
+      return {rowCount:rows.length,rows};
+    }
+    if(q.includes("from tigeriq_events where type='ROUTING_FAULT'")){
+      const ownerVisibleOnly=q.includes("data->>'ownerVisible'='true'");
+      const terminalBlockedOnly=q.includes("data->>'terminalBlocked'='true'");
       const sourceRevision=String(params[2]||'');
       const found=events.some((e)=>e.type==='ROUTING_FAULT'
         &&String(e.data?.issueNumber)===String(params[0])
@@ -112,7 +121,9 @@ function coreBacklogPool(options={}){
       return {rowCount:found?1:0,rows:found?[{ok:1}]:[]};
     }
     if(q.includes("insert into tigeriq_events")){
-      if(q.includes("'ROUTING_FAULT'")){
+      if(q.includes("'ROUTING_FAULT_CLEAR'")){
+        events.push({type:'ROUTING_FAULT_CLEAR',data:JSON.parse(params[0])});
+      }else if(q.includes("'ROUTING_FAULT'")){
         if(routingFaultInsertFailures>0){
           routingFaultInsertFailures--;
           throw new Error('SIMULATED_ROUTING_FAULT_INSERT_FAILURE');
@@ -291,6 +302,62 @@ test('pc_operator rearm fails closed until stale terminal label clears',async()=
   assert.strictEqual(comments.length,2);
   assert.strictEqual(labelAdds,2);
   assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,2);
+});
+
+
+test('cleared stale oversized fault is retired for the current revision and does not delete a later blocked-objective label',async()=>{
+  const pool=coreBacklogPool();
+  pool.events.push({type:'ROUTING_FAULT',data:{
+    issueNumber:1616,reason:'OPENCLAW_INSTRUCTION_INVALID',sourceRevision:'older',ownerVisible:true,terminalBlocked:true,
+  }});
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_STALE_CLEAR_RETIRE',
+    'ASSIGNED_ACTION','Use exactly tigeriq_pc action=tcp_probe host="127.0.0.1" port=8798.',
+    'ACCEPTANCE','Return bounded evidence.',
+  ].join('\n');
+  const issue={number:1616,state:'open',title:'stale terminal clear retire',body,labels:['tigeriq:terminal-blocked'],html_url:'https://example/1616'};
+  let labelClears=0;
+  const fetchImpl=async(url,init={})=>{
+    const method=String(init.method||'GET').toUpperCase();
+    if(method==='DELETE'&&url.includes('/issues/1616/labels/')){
+      labelClears++;
+      issue.labels=[];
+      return response({},true,204);
+    }
+    return response({});
+  };
+
+  let out=await materializeGithubIssues({pool,fetchImpl,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(labelClears,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT_CLEAR').length,1);
+
+  pool.objectives[0].status='blocked';
+  issue.labels=['tigeriq:terminal-blocked'];
+  out=await materializeGithubIssues({pool,fetchImpl,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(labelClears,1);
+  assert.deepStrictEqual(issue.labels,['tigeriq:terminal-blocked']);
+});
+
+test('OpenClaw terminal routing state is loaded once per reconciliation, not once per PC issue',async()=>{
+  const pool=coreBacklogPool();
+  const makeIssue=(number)=>({
+    number,state:'open',title:`pc ${number}`,html_url:`https://example/${number}`,
+    body:[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+      'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      `RESOURCE_SCOPE=PC_STATE_LOAD_${number}`,
+      'ASSIGNED_ACTION','Use exactly tigeriq_pc action=tcp_probe host="127.0.0.1" port=8798.',
+      'ACCEPTANCE','Return bounded evidence.',
+    ].join('\n'),
+  });
+  const out=await materializeGithubIssues({pool,openIssues:[makeIssue(1617),makeIssue(1618)],token:'fake'});
+  assert.strictEqual(out.created,2);
+  const stateLoads=pool.queries.filter((q)=>q.includes('select type,data from tigeriq_events')&&q.includes('ROUTING_FAULT_CLEAR'));
+  assert.strictEqual(stateLoads.length,1);
 });
 
 test('oversized pc_operator notification retries after transient comment failure and ignores legacy unreported faults',async()=>{
