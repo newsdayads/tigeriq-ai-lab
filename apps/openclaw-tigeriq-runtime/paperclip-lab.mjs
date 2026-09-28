@@ -33,8 +33,8 @@ const ENV_FILE = win.join(CONFIG_DIR, 'paperclip.env');
 const COMPOSE_FILE = win.join(CONFIG_DIR, 'docker-compose.lab.yml');
 const RELEASE_FILE = win.join(CONFIG_DIR, 'release.json');
 const MAX_OUTPUT_CHARS = 32000;
-const PAPERCLIP_LAB_PULL_TIMEOUT_MS = 600000;
-const PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 610000;
+const PAPERCLIP_LAB_PULL_TIMEOUT_MS = 1200000;
+const PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 1210000;
 export const PAPERCLIP_LAB_WSL_DISTRO = 'Ubuntu';
 export const PAPERCLIP_LAB_WSL_ROOT = '/mnt/d/TigerIQ-Paperclip-Lab';
 const DOCKER_TRANSPORT_WINDOWS = 'windows';
@@ -105,7 +105,12 @@ function clipped(value) {
 }
 
 export function paperclipDockerFailureClass(result = {}) {
-  if (result?.timedOut === true) return 'TIMEOUT';
+  if (result?.timedOut === true) {
+    const timeoutKind = String(result?.timeoutKind || '').toUpperCase();
+    if (timeoutKind === 'IDLE') return 'IDLE_TIMEOUT';
+    if (timeoutKind === 'TOTAL') return 'TOTAL_TIMEOUT';
+    return 'TIMEOUT';
+  }
   const text = `${String(result?.stderr || '')}\n${String(result?.stdout || '')}`.toLowerCase();
   if (/unauthorized|authentication required|access denied|requested access.*denied|forbidden|\b401\b|\b403\b/.test(text)) return 'AUTH';
   if (/manifest unknown|manifest.*not found|name unknown|repository does not exist|\b404\b/.test(text)) return 'IMAGE_NOT_FOUND';
@@ -332,6 +337,7 @@ async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = 
         return {
           exitCode: Number(response?.exitCode ?? -1),
           timedOut: response?.timedOut === true,
+          timeoutKind: response?.timeoutKind || null,
           stdout: clipped(response?.stdout || ''),
           stderr: clipped(response?.ok === true ? (response?.stderr || '') : (response?.stderr || 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_FAILED')),
         };
