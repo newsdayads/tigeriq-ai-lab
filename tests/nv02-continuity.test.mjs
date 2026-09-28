@@ -279,6 +279,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("last?.composerReady===true&&last?.modelControlPresent===true&&Boolean(last?.reasoningEffort)");
     expect(source).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
     expect(source).toContain("'BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED'");
+    expect(source).toContain("if(now<Number(state.modelCheckBlockedUntil||0))return");
+    expect(source).toContain("bootFreshContextPending.add('NV02')");
     expect(source).toContain("chatLoadRecoveryStage:preserveVerifiedProfile?0:state.chatLoadRecoveryStage");
     expect(source).toContain("chatLoadBlockedUntil:preserveVerifiedProfile?0:state.chatLoadBlockedUntil");
     expect(source).toContain("const verified=await ensureNv02ModelProfile(target)");
