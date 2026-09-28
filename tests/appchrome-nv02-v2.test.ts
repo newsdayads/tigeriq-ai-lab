@@ -30,6 +30,12 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(bridge).toContain('NV02_IDLE_WAKE_MAX_MS=10*60*1000');
   });
 
+  it('keeps the approved short continue pool scoped to NV02 only', () => {
+    expect(bridge).toContain('const NV02_CONTINUE_PROMPTS=Object.freeze([');
+    expect(bridge).toContain("workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
+    expect(bridge).toContain("'Làm tiếp, không đổi việc'");
+  });
+
   it('locks NV02 F5 to 5-10 minutes and preserves worker isolation', () => {
     expect(bridge).toContain('const NV02_F5_MIN_MS=5*60*1000');
     expect(bridge).toContain('const NV02_F5_MAX_MS=10*60*1000');
