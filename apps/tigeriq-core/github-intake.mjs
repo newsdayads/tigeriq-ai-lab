@@ -479,7 +479,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       const terminalCurrent=await routingFaultTerminalRecorded(pool,spec.number,reason,spec.sourceRevision);
       if(terminalCurrent){skipped++;continue;}
       if(await routingFaultTerminalRecorded(pool,spec.number,reason)){
-        await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
+        const cleared=await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
+        if(!cleared){skipped++;continue;}
       }
     }
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
