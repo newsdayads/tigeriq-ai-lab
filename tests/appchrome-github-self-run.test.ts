@@ -212,6 +212,9 @@ describe('App Chrome self-run wiring',()=>{
     expect(supervisor).not.toContain("auth token");
     expect(supervisor).not.toContain("github-command-center.token");
     expect(supervisor).toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
+    expect(supervisor).toContain("Remove-Item Env:GITHUB_TOKEN");
+    expect(server).toContain("const selfRunGithubToken='';");
+    expect(server).toContain("const githubTerminalReconcileEnabled=false;");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'");
     expect(supervisor).not.toContain('Set-Acl');
