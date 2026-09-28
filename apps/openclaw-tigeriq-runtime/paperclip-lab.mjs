@@ -247,9 +247,11 @@ async function health() {
     httpHealth(),
     fs.access(COMPOSE_FILE).then(() => runFixed('docker.exe', composeArgs(['ps', '--format', 'json']), { cwd: CONFIG_DIR, timeoutMs: 15000 })).catch(() => null),
   ]);
-  const containerSummary = ps ? { ok: ps.exitCode === 0, output: clipped(ps.stdout).slice(0, 8000), error: ps.exitCode === 0 ? null : clipped(ps.stderr).slice(0, 2000) } : { ok: false, output: '', error: 'NOT_CONFIGURED' };
+  const output = ps ? clipped(ps.stdout).slice(0, 8000) : '';
+  const identityOk = Boolean(ps && ps.exitCode === 0 && output.includes(PAPERCLIP_LAB_CONTAINER) && output.includes(PAPERCLIP_LAB_IMAGE));
+  const containerSummary = ps ? { ok: ps.exitCode === 0, identityOk, output, error: ps.exitCode === 0 ? null : clipped(ps.stderr).slice(0, 2000) } : { ok: false, identityOk: false, output: '', error: 'NOT_CONFIGURED' };
   return {
-    ok: port.reachable && http.reachable && http.status >= 200 && http.status < 500,
+    ok: port.reachable && http.reachable && http.status >= 200 && http.status < 500 && identityOk,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     port,
     http,
