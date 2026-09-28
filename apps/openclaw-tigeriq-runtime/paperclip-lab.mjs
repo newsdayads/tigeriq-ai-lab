@@ -56,6 +56,31 @@ function clipped(value) {
   return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(-MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
 }
 
+function paperclipAbortError() {
+  const error = new Error('TIGERIQ_PAPERCLIP_LAB_ABORTED');
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw paperclipAbortError();
+}
+
+async function sleepWithSignal(ms, signal = null) {
+  throwIfAborted(signal);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(paperclipAbortError());
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
+}
+
 function baseEnv() {
   const env = {};
   for (const key of ['SystemRoot','WINDIR','ComSpec','PATH','PATHEXT','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA']) {
