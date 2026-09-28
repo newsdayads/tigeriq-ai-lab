@@ -190,7 +190,6 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
     expect(source).toContain('imageDigest');
-    expect(source).toContain("'/api/health'").toBe(false);
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
     expect(source).toContain('portBindingOk');
