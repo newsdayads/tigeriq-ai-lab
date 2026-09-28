@@ -5,7 +5,7 @@ $LabRoot='D:\TigerIQ-Paperclip-Lab'
 $BrokerRoot=Join-Path $LabRoot 'broker'
 $Broker=Join-Path $BrokerRoot 'paperclip-wsl-broker.ps1'
 $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
-$ExpectedBrokerVersion='1.1-progress-aware-restart'
+$ExpectedBrokerVersion='1.2-heartbeat-during-op'
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }
