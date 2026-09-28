@@ -132,7 +132,7 @@ a{color:inherit;text-decoration:none}
   </nav>
   <div id="workList" class="work-list"></div>
 </section>
-<footer class="page-foot">STT · Work Order · Tên việc · NV · Trạng thái · tự cập nhật 10 giây</footer>
+<footer class="page-foot">STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái · tự cập nhật 10 giây</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -152,8 +152,9 @@ function workPriority(row){
   return String(row?.title||'').toUpperCase().match(/^\[(P[0-5])\]/)?.[1]||'META';
 }
 function workerFrom(row){
+  if(String(row?.workKind||'').toUpperCase()==='GOAL')return 'OWNER';
   const direct=String(row?.employeeId||row?.targetWorker||'').toUpperCase();
-  if(/^(?:NV\d{2}|VY|CODEX|AUTO)$/.test(direct))return direct;
+  if(/^(?:NV\d{2}|CODEX|AUTO)$/.test(direct))return direct;
   const match=String(row?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);
   return match?.[1]||'—';
 }

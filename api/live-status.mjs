@@ -355,6 +355,44 @@ function bodyFlag(body, key, value = 'true') {
   return bodyValue(body, key).toLowerCase() === String(value).toLowerCase();
 }
 
+function commentField(body, key) {
+  const direct = bodyValue(body, key);
+  if (direct) return direct;
+  const wanted = String(key || '').trim().toUpperCase();
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const parts = line.split('|');
+    if (parts.length < 2) continue;
+    if (String(parts.shift() || '').trim().toUpperCase() !== wanted) continue;
+    return parts.join('|').trim();
+  }
+  return '';
+}
+
+export function parseClearedBlockerLifecycleComment(comment = {}) {
+  const body = String(comment?.body || '');
+  const state = (commentField(body, 'CURRENT_STATE') || commentField(body, 'STATE')).trim();
+  const blocker = commentField(body, 'BLOCKER').trim();
+  if (!state || !/^none(?:\b|\s)/i.test(blocker)) return null;
+  return {
+    state: state.toUpperCase(),
+    blocker,
+    blockerCleared: true,
+    step: commentField(body, 'NEXT') || commentField(body, 'ACTION') || null,
+    createdAt: comment?.created_at || comment?.updated_at || null,
+  };
+}
+
+function statusFromLifecycleState(state = '') {
+  const value = String(state || '').toUpperCase();
+  if (!value) return null;
+  if (/REBOOT_NEXT|WAIT|PENDING|HOLD/.test(value)) return 'WAITING';
+  if (/REVIEW|VERIFY/.test(value)) return 'REVIEW';
+  if (/BLOCKED|ERROR|FAILED/.test(value)) return 'BLOCKED';
+  if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING/.test(value)) return 'WORKING';
+  if (/READY|QUEUED/.test(value)) return 'QUEUED';
+  return 'OPEN';
+}
+
 function issuePriority(issue) {
   const body = String(issue?.body || '');
   return bodyValue(body, 'PRIORITY').match(/^P[0-5]$/i)?.[0]?.toUpperCase()
@@ -656,12 +694,34 @@ function issueCanonicalState(issue) {
   return (bodyValue(body, 'CURRENT_STATE') || bodyValue(body, 'STATE') || '').toUpperCase();
 }
 
+async function clearedBlockerLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
+  const candidates = (Array.isArray(issues) ? issues : [])
+    .filter((issue) => hasTerminalBlockedLabel(issue) || /BLOCKED/.test(issueCanonicalState(issue)))
+    .slice(0, 12);
+  const pairs = await Promise.all(candidates.map(async (issue) => {
+    try {
+      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + Number(issue.number) + '/comments?per_page=100', fetchImpl);
+      const rows = Array.isArray(comments) ? comments : [];
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        const parsed = parseClearedBlockerLifecycleComment(rows[i]);
+        if (parsed) return [Number(issue.number), parsed];
+      }
+    } catch {
+      // Keep canonical body/label truth if comment readback is unavailable.
+    }
+    return [Number(issue.number), null];
+  }));
+  return new Map(pairs.filter(([, value]) => value));
+}
+
 function issueDisplayOwner(issue) {
   const body = String(issue?.body || '');
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind === 'GOAL') return null;
   const employee = issueEmployeeId(issue);
   if (employee) return employee;
   const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ACTIVE_OWNER');
-  if (/^(?:NV\d{2}|VY|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
+  if (/^(?:NV\d{2}|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
   return null;
 }
 
@@ -689,7 +749,8 @@ export function classifyOpenIssue(issue) {
 
 function actionableStatus(issue, overlays = {}) {
   const body = String(issue?.body || '');
-  const phase = issueCanonicalState(issue);
+  const lifecycle = overlays.lifecycle || null;
+  const phase = String(lifecycle?.state || issueCanonicalState(issue)).toUpperCase();
   const classification = classifyOpenIssue(issue);
 
   if (classification.workKind === 'SYSTEM') return 'SYSTEM';
@@ -699,6 +760,7 @@ function actionableStatus(issue, overlays = {}) {
   const queued = overlays.queued || null;
   if (active?.status) return String(active.status).toUpperCase();
   if (queued?.status) return String(queued.status).toUpperCase();
+  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
@@ -745,7 +807,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const active = overlays.active || null;
   const queued = overlays.queued || null;
   const body = String(issue.body || '');
-  const phase = issueCanonicalState(issue);
+  const lifecycle = overlays.lifecycle || null;
+  const phase = String(lifecycle?.state || issueCanonicalState(issue)).toUpperCase();
   const classification = classifyOpenIssue(issue);
   const status = actionableStatus(issue, overlays);
 
@@ -769,6 +832,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     currentState: phase || null,
     currentStep: active?.currentStep
       || queued?.waitReason
+      || lifecycle?.step
       || bodyValue(body, 'CURRENT_STEP')
       || bodyValue(body, 'NEXT_ACTION')
       || (classification.ownerGate ? 'Cần Owner authorization' : null),
@@ -778,7 +842,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     prNumber: active?.prNumber || null,
     prUrl: active?.prUrl || null,
     checks,
-    updatedAt: active?.updatedAt || queued?.updatedAt || issue.updated_at || null,
+    updatedAt: active?.updatedAt || queued?.updatedAt || lifecycle?.createdAt || issue.updated_at || null,
     url: issue.html_url || null,
     meta: !priority,
   };
@@ -862,6 +926,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
+    const lifecycleOverrides = await clearedBlockerLifecycleOverrides(openIssues, owner, repo, fetchImpl);
     const activeRows = [];
     const activeNumbers = new Set();
 
@@ -1002,6 +1067,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const openWork = openIssues.map((issue) => parseOpenWorkIssue(issue, {
       active: activeMap.get(Number(issue.number)) || null,
       queued: queueMap.get(Number(issue.number)) || null,
+      lifecycle: lifecycleOverrides.get(Number(issue.number)) || null,
       hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
     })).filter(Boolean).sort((a, b) => {
       const actionRank = {
