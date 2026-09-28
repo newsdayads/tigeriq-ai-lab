@@ -60,7 +60,10 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_health"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'paperclip_lab_health'},mutating:false
     });
-    for(const action of ['paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']){
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_docker_status"}',false)).toMatchObject({
+      present:true,valid:true,action:{action:'paperclip_lab_docker_status'},mutating:false
+    });
+    for(const action of ['paperclip_lab_docker_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']){
       expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,true)).toMatchObject({present:true,valid:true,action:{action},mutating:true});
       expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
     }
