@@ -1634,11 +1634,18 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   }
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
     bootFreshContextPending.delete('NV02');
-    state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
+    const preserveCurrentChat=hasCurrentNv02Chat(ui?.url);
+    const preserveVerifiedProfile=preserveCurrentChat&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&Boolean(state.modelVerifiedAt);
+    state={...state,resumeChatUrl:'',verifiedChatUrl:preserveVerifiedProfile?state.verifiedChatUrl:'',modelVerifiedAt:preserveVerifiedProfile?state.modelVerifiedAt:'',pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
     saveNv02Continuity(state);
     const boot=await withNv02Mutation(async()=>{
-      const ready=await ensureNv02LocalReadyLocked(target,ui,{forceFresh:true});
+      const ready=await ensureNv02LocalReadyLocked(target,ui,{forceFresh:!preserveCurrentChat});
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
+      if(preserveCurrentChat){
+        const verified=await ensureNv02ModelProfile(target);
+        if(verified?.uiBusy===true||verified?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
+        return{ok:true,status:allowContinue?'BOOT_CURRENT_CHAT_READY':'BOOT_CURRENT_CHAT_READY_NO_CONTINUE'};
+      }
       return{ok:true,status:allowContinue?'BOOT_FRESH_LOCAL_READY':'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'};
     },'BOOT_FRESH_LOCAL_CONTINUE',60000);
     if(boot?.status==='MUTATION_LEASE_BUSY'){
