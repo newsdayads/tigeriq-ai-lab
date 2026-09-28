@@ -291,6 +291,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}');
     expect(source).toContain('PAPERCLIP_LAB_PULL_TIMEOUT_MS = 1200000');
+    expect(source).toContain('PAPERCLIP_LAB_HEALTH_READY_TIMEOUT_MS = 90000');
+    expect(source).toContain('PAPERCLIP_LAB_HEALTH_POLL_MS = 1500');
+    expect(source).toContain('const deadline = Date.now() + PAPERCLIP_LAB_HEALTH_READY_TIMEOUT_MS');
+    expect(source).toContain('await sleepWithSignal(PAPERCLIP_LAB_HEALTH_POLL_MS, signal)');
     expect(source).toContain('PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 1210000');
     expect(source).toContain("timeoutMs: PAPERCLIP_LAB_PULL_TIMEOUT_MS");
     expect(source).toContain('timeoutKind: response?.timeoutKind || null');
