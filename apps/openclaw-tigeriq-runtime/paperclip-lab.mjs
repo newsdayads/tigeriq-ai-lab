@@ -599,14 +599,15 @@ async function preflight(signal = null) {
   };
 }
 
-async function waitForHealth(attempts = 20, signal = null, transport = null) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+async function waitForHealth(signal = null, transport = null) {
+  const deadline = Date.now() + PAPERCLIP_LAB_HEALTH_READY_TIMEOUT_MS;
+  let state = await health(signal, transport);
+  while (!state.ok && Date.now() < deadline) {
     throwIfAborted(signal);
-    const state = await health(signal, transport);
-    if (state.ok) return state;
-    await sleepWithSignal(1500, signal);
+    await sleepWithSignal(PAPERCLIP_LAB_HEALTH_POLL_MS, signal);
+    state = await health(signal, transport);
   }
-  return await health(signal, transport);
+  return state;
 }
 
 
@@ -636,7 +637,7 @@ async function install(signal = null) {
   try {
     const up = await runDocker(transport, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-    const state = await waitForHealth(20, signal, transport);
+    const state = await waitForHealth(signal, transport);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
     return { installed: true, dockerTransport: transport, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
   } catch (error) {
@@ -652,7 +653,7 @@ async function start(signal = null) {
   try {
     const up = await runDocker(docker.kind, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-    const state = await waitForHealth(20, signal, docker.kind);
+    const state = await waitForHealth(signal, docker.kind);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
     return { started: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, health: state };
   } catch (error) {
