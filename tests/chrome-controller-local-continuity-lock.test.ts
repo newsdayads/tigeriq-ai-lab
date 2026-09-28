@@ -48,10 +48,13 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(tick).not.toContain('idleReady');
   });
 
-  it('keeps WORKING-safe F5/restart and anti-spam guards',()=>{
+  it('keeps approved independent NV02 F5/reset and anti-spam guards',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).toContain("PERIODIC_F5_DEFERRED_WORKING");
-    expect(bridge).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    const nv02=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02).toContain("if(now>=Number(state.nextRefreshAt||0))");
+    expect(nv02).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(nv02).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(bridge).toContain('awaitingWorkStart===true');
     expect(bridge).not.toContain('WORK_START_ACK_TIMEOUT_REARMED');
   });
