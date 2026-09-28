@@ -13,7 +13,9 @@
     "pad-ui.mjs",
     "pad-ui-broker.ps1",
     "Install-PadUiBroker.ps1",
-    "Uninstall-PadUiBroker.ps1"
+    "Uninstall-PadUiBroker.ps1",
+    "paperclip-wsl-broker.ps1",
+    "Install-PaperclipWslBroker.ps1"
   ],
   "dependencies": {
     "typebox": "1.3.30"
