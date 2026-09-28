@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
 import { PAD_UI_ACTIONS, executePadUiAction } from './pad-ui.mjs';
+import { PAPERCLIP_LAB_ACTIONS, executePaperclipLabAction } from './paperclip-lab.mjs';
 
 const win = path.win32;
 export const PC_OPERATOR_ROOTS = Object.freeze([
@@ -296,6 +297,9 @@ export async function executePcAction(input) {
     data = await listPath(input?.path);
   } else if (action === 'file_stat') {
     data = await statPath(input?.path);
+  } else if (PAPERCLIP_LAB_ACTIONS.includes(action)) {
+    const result = await executePaperclipLabAction(input || {});
+    data = result.data;
   } else if (PAD_UI_ACTIONS.includes(action)) {
     data = await executePadUiAction(input || {});
   } else {
@@ -321,6 +325,8 @@ export async function executePcAction(input) {
       productionMutationBlocked: true,
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
+      paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
+      paperclipLabScope: PAPERCLIP_LAB_ACTIONS.includes(action) ? 'D:\\TigerIQ-Paperclip-Lab + 127.0.0.1:3210 only' : 'none',
       arbitraryCoordinates: false,
     },
   };
