@@ -154,17 +154,19 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(genericLoop).toContain('awaitingWorkStart');
   });
 
-  it('rechecks WORKING inside F5/restart mutation boundaries and never stops active work for maintenance',()=>{
+  it('keeps generic workers conservative while NV02 alone may checkpoint WORKING for approved maintenance',()=>{
     expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
-    expect(source).toContain("PERIODIC_F5_DEFERRED_WORKING");
     const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
-    expect(prep).not.toContain('stopStalledWorking(target)');
+    expect(prep).toContain("if(w.id!=='NV02')return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'}");
+    expect(prep).toContain('const stopped=await stopStalledWorking(target)');
+    expect(prep).toContain("if(!saveReceipt?.ok)return{ok:false,status:'SAVE_NOT_DURABLE',token}");
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
-    expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
-    expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(generic).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(generic).toContain("if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0))");
     const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
-    expect(nv02).toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(nv02).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
+    expect(nv02).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(nv02).toContain("if(now>=Number(state.nextRefreshAt||0))");
   });
 
   it('uses a lightweight cached control-state endpoint instead of polling full controller state per worker',()=>{

@@ -1480,6 +1480,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           ||purpose.startsWith('WORKER_REOPEN_CLOSE:')
         );
         const periodicF5=workerId==='NV02'&&['PERIODIC_F5_REFRESH','WORKING_UNCHANGED_F5_RECHECK'].includes(purpose);
+        const periodicPrepareRestart=workerId==='NV02'&&purpose==='PERIODIC_PREPARE_RESTART';
         const currentChatRestore=workerId==='NV02'&&purpose==='CURRENT_CHAT_RESTORE';
         const activeNv02Job=uiJobLedger.active('NV02');
         const continuitySameJob=continuityContinue&&continuityResumeIdentityMatches(
@@ -1504,7 +1505,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           && !(nv02NextJob?.workerId==='NV02'&&['QUEUED','READY','RUNNING'].includes(String(nv02NextJob.status||'')));
         const continuityLeaseAllowed=continuitySameJob||continuitySelfRunJob||continuityCurrentChatOnly;
         const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance;
-        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||currentChatRestore||genericUiContinuityMaintenance;
+        const boundedRecovery=staleWorkingRecovery||stalledRecovery||modelProfileRecovery||checkpointRecovery||chatRotation||chatLoadRecovery||periodicF5||periodicPrepareRestart||currentChatRestore||genericUiContinuityMaintenance;
         const chatLoadRecoveryStateAllowed=chatLoadRecovery
           && state.lastHeartbeat?.chatLoadError===true
           && (!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true);
@@ -1515,7 +1516,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         const security=heartbeatStopReason(state.lastHeartbeat);
         if(security)throw new Error(security);
         if(chatLoadRecovery&&!chatLoadRecoveryStateAllowed)throw new Error(`CHAT_LOAD_RECOVERY_STATE_REQUIRED:${workerId}`);
-        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
+        if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicPrepareRestart&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`);
         if(staleWorkingRecovery&&state.lastHeartbeat?.uiBusy!==true)throw new Error(`STALE_WORKING_RECOVERY_REQUIRES_BUSY:${workerId}`);
         if(continuityContinue&&!continuityLeaseAllowed)throw new Error('CONTINUITY_SAME_JOB_IDENTITY_REQUIRED:NV02');
         if(workerHasActiveJob(workerId,{allowWaitingEvidence:continuityContinue,allowContinuable:continuityContinue})&&!boundedRecovery&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`);
