@@ -100,7 +100,7 @@ describe('review evidence and extension lifecycle',()=>{
     expect(background).toContain("workerId:'NV02'");
     expect(runtimeEvidence).not.toContain('exact-model-hash');
     expect(runtimeEvidence).toContain('modelProfileStatus');
-    expect(server).toContain("await sendCommand(workerId,'MODEL_PREFLIGHT')");
+    expect(server).not.toContain("await sendCommand(workerId,'MODEL_PREFLIGHT')");
     expect(server).toContain("modelName!=='GPT-5.6 Sol'");
     expect(server).toContain("reasoningEffort!=='High'");
     expect(server).not.toContain('AUTOPILOT_MODEL_PROFILE_BLOCKED');

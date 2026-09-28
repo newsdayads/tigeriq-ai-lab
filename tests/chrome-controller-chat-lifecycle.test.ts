@@ -44,7 +44,8 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("BOOT_FRESH_LOCAL_COMPLETE");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(bridge).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
-    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(bridge).toContain("waitForNv02Composer(target,30000)||raw");
   });
 
   it('keeps generic WORKING non-mutating while preserving recovery and view-follow',()=>{
