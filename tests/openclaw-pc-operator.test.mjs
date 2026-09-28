@@ -9,6 +9,8 @@ import {
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
   PAPERCLIP_LAB_ACTIONS,
+  PAPERCLIP_DOCKER_CLI_CANDIDATES,
+  PAPERCLIP_DOCKER_DESKTOP_CANDIDATES,
   PAPERCLIP_LAB_IMAGE,
   PAPERCLIP_LAB_PORT,
   PAPERCLIP_LAB_RELEASE,
@@ -131,6 +133,13 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
+    expect(PAPERCLIP_DOCKER_CLI_CANDIDATES).toEqual([
+      'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+      'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe',
+    ]);
+    expect(PAPERCLIP_DOCKER_DESKTOP_CANDIDATES).toEqual([
+      'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe',
+    ]);
     const compose = paperclipLabComposeYaml();
     expect(compose).toContain('127.0.0.1:3210:3100');
     expect(compose).toContain('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -143,6 +152,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(() => resolvePaperclipLabPath('D:\\TigerIQ\\State')).toThrow('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
     expect(PAPERCLIP_LAB_ACTIONS).toEqual([
       'paperclip_lab_preflight',
+      'paperclip_lab_docker_status',
+      'paperclip_lab_docker_start',
       'paperclip_lab_install',
       'paperclip_lab_start',
       'paperclip_lab_stop',
@@ -196,6 +207,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('dataMountOk');
     expect(source).toContain('rollbackContainer');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_DESKTOP_NOT_FOUND');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_START_TIMEOUT');
+    expect(source).not.toContain("runFixed('docker.exe'");
     expect(source).not.toMatch(/shell_exec|powershell|cmd\.exe/i);
   });
 });
