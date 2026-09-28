@@ -487,25 +487,28 @@ describe('Direct-CDP Controller command transport',()=>{
   });
 });
 
-describe('NV02 reboot F5 consolidation #1739',()=>{
-  it('rebases stale F5 timers and opens a fresh project context before periodic F5',()=>{
+describe('NV02 independent F5/reset timers',()=>{
+  it('preserves overdue timer intent across restart and keeps Auto dispatch timer-neutral',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
-    expect(bridge).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    expect(bridge).toContain("'NV02_F5_TIMER_OVERDUE_AFTER_RESTART'");
+    expect(bridge).toContain("'NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART'");
+    expect(bridge).not.toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
+    expect(bridge).not.toContain("'NV02_REFRESH_TIMER_REBASED_AFTER_RESTART'");
     expect(bridge).toContain('if(persistBootSchedule)saveNv02Continuity(state)');
-    expect(bridge).toContain("'DISPATCH_F5_GUARD_ARMED'");
-    const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function maybeNv02Continuity'));
-    expect(dispatchNote).toContain('state.nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
-    expect(dispatchNote).toContain('state.workingRecheckAt=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)');
+    expect(bridge).toContain("'DISPATCH_CONTINUITY_GUARD_ARMED'");
+    const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function reopenNv02PeriodicWorker'));
+    expect(dispatchNote).toContain('const preservedF5At=state.nextPeriodicF5At');
+    expect(dispatchNote).toContain('const preservedRefreshAt=state.nextRefreshAt');
+    expect(dispatchNote).not.toContain('state.nextPeriodicF5At=nextRandomAt');
     expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    const fresh=loop.indexOf("bootFreshContextPending.has('NV02')");
+    expect(loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
+    expect(loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    expect(loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
     const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(fresh).toBeGreaterThan(-1);
     expect(f5).toBeGreaterThan(-1);
-    expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(loop).not.toContain('state.resumeChatUrl');
-    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')"));
+    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')",f5));
     expect(f5Block).toContain('reloadTarget(target)');
   });
 });
