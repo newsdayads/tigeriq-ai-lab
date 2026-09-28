@@ -124,7 +124,8 @@ export function validatePaperclipLabEnvText(text) {
   return true;
 }
 
-async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000 } = {}) {
+async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null } = {}) {
+  throwIfAborted(signal);
   const safeCwd = resolvePaperclipLabPath(cwd);
   await ensureRootIntegrity();
   const realCwd = await ensureContainedDirectory(safeCwd);
@@ -135,13 +136,33 @@ async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 12000
       env: baseEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    let stdout = '', stderr = '', timedOut = false;
+    let stdout = '', stderr = '', timedOut = false, aborted = false, settled = false;
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
-    child.once('error', (error) => { clearTimeout(timer); reject(error); });
-    child.once('close', (code) => {
+    const cleanup = () => signal?.removeEventListener?.('abort', onAbort);
+    const finishReject = (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => {
+      aborted = true;
+      child.kill();
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    child.once('error', finishReject);
+    child.once('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      if (aborted || signal?.aborted) return reject(paperclipAbortError());
       resolve({ exitCode: typeof code === 'number' ? code : -1, timedOut, stdout: clipped(stdout), stderr: clipped(stderr) });
     });
   });
