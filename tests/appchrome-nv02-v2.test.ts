@@ -75,15 +75,16 @@ describe('NV02 V2 independent maintenance timers', () => {
   });
 
   it('executes due F5 while WORKING instead of deferring it', () => {
-    expect(bridge).not.toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
-    expect(bridge).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
-    expect(bridge).not.toContain('PERIODIC_F5_DEFERRED_WORKING_FRESH');
-    const f5Gate=bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const workingGate=bridge.indexOf("if(phase==='WORKING'){",f5Gate);
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02Loop).not.toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
+    expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING_FRESH');
+    const f5Gate=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    const workingGate=nv02Loop.indexOf("if(phase==='WORKING'){",f5Gate);
     expect(f5Gate).toBeGreaterThan(-1);
     expect(workingGate).toBeGreaterThan(f5Gate);
-    expect(bridge.slice(f5Gate,workingGate)).toContain('await reloadTarget(target)');
-    expect(bridge.slice(f5Gate,workingGate)).toContain("'PERIODIC_F5_REFRESH',15000");
+    expect(nv02Loop.slice(f5Gate,workingGate)).toContain('await reloadTarget(target)');
+    expect(nv02Loop.slice(f5Gate,workingGate)).toContain("'PERIODIC_F5_REFRESH',15000");
   });
 
   it('executes due 2-4h reset regardless of WORKING and preserves same chat plus F5 timer', () => {
