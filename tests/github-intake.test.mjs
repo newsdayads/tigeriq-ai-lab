@@ -574,6 +574,32 @@ test('typed direct pc_operator action keeps direct prompt and public evidence co
   assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
 });
 
+test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=TIGERIQ_PAPERCLIP_LAB_PC01_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_broker_install"}',
+    'ASSIGNED_ACTION',
+    'Execute exactly the pre-admitted typed broker install action.',
+    'ACCEPTANCE',
+    'Return structured local-direct evidence.',
+  ].join('\n');
+  const issues=[{number:2048,state:'open',title:'Paperclip broker install',body,html_url:'https://example/2048'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,2048);
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'paperclip_lab_broker_install'});
+  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
+});
+
 test('typed direct pc_operator action remains executable when explanatory prompt exceeds OpenClaw limit',async()=>{
   const pool=coreBacklogPool();
   const assigned='x'.repeat(6500);
