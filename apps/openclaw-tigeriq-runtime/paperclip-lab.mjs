@@ -278,6 +278,36 @@ async function ensureConfig() {
   }, null, 2), 'utf8');
 }
 
+
+async function readReleasePin() {
+  const safeReleaseFile = await assertSafeFileTarget(RELEASE_FILE);
+  const parsed = JSON.parse(await fs.readFile(safeReleaseFile, 'utf8'));
+  const pin = {
+    release: String(parsed?.release || ''),
+    sourceCommit: String(parsed?.sourceCommit || ''),
+    imageDigest: String(parsed?.imageDigest || ''),
+  };
+  if (pin.release !== PAPERCLIP_LAB_RELEASE || pin.sourceCommit !== PAPERCLIP_LAB_RELEASE_SHA || !PAPERCLIP_LAB_IMAGE_DIGEST_RE.test(pin.imageDigest)) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_PIN_INVALID');
+  }
+  return pin;
+}
+
+async function resolvePulledImagePin(signal = null) {
+  throwIfAborted(signal);
+  const revision = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'], { timeoutMs: 15000, signal });
+  if (revision.exitCode !== 0 || revision.timedOut || revision.stdout.trim() !== PAPERCLIP_LAB_RELEASE_SHA) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
+  }
+  const digests = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'], { timeoutMs: 15000, signal });
+  if (digests.exitCode !== 0 || digests.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_DIGEST_MISSING');
+  let values = [];
+  try { values = JSON.parse(digests.stdout.trim()); } catch {}
+  const imageDigest = Array.isArray(values) ? values.find((value) => PAPERCLIP_LAB_IMAGE_DIGEST_RE.test(String(value))) : null;
+  if (!imageDigest) throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_DIGEST_MISSING');
+  return { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, imageDigest: String(imageDigest) };
+}
+
 function composeArgs(command) {
   return ['compose', '-f', COMPOSE_FILE, ...command];
 }
