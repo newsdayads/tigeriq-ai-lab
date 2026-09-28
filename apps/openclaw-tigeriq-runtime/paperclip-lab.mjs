@@ -239,7 +239,7 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
   ].join('\n');
 }
 
-async function ensureConfig() {
+async function ensureConfig(pin = null) {
   await ensureLayout();
   const safeEnvFile = await assertSafeFileTarget(ENV_FILE);
   let envText;
@@ -266,16 +266,22 @@ async function ensureConfig() {
     validatePaperclipLabEnvText(envText);
     await fs.writeFile(safeEnvFile, envText, { encoding: 'utf8', flag: 'wx' });
   }
+  if (!pin) return { envReady: true };
+  if (pin.release !== PAPERCLIP_LAB_RELEASE || pin.sourceCommit !== PAPERCLIP_LAB_RELEASE_SHA || !PAPERCLIP_LAB_IMAGE_DIGEST_RE.test(pin.imageDigest)) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_PIN_INVALID');
+  }
   const safeComposeFile = await assertSafeFileTarget(COMPOSE_FILE);
   const safeReleaseFile = await assertSafeFileTarget(RELEASE_FILE);
-  await fs.writeFile(safeComposeFile, paperclipLabComposeYaml(), 'utf8');
+  await fs.writeFile(safeComposeFile, paperclipLabComposeYaml(pin.imageDigest), 'utf8');
   await fs.writeFile(safeReleaseFile, JSON.stringify({
     release: PAPERCLIP_LAB_RELEASE,
     sourceCommit: PAPERCLIP_LAB_RELEASE_SHA,
-    image: PAPERCLIP_LAB_IMAGE,
+    imageTag: PAPERCLIP_LAB_IMAGE,
+    imageDigest: pin.imageDigest,
     publicUrl: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     exposure: 'loopback-only',
   }, null, 2), 'utf8');
+  return { envReady: true, imageDigest: pin.imageDigest };
 }
 
 
