@@ -121,7 +121,7 @@ let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let githubTerminalReconcileTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
-const selfRunEnabled=['1','true','yes','on'].includes(String(process.env.TIGERIQ_APP_CHROME_SELF_RUN||'').trim().toLowerCase());
+const selfRunEnabled=false; // NV02 V2: App Chrome is UI continuity only; ChatGPT Plus self-selects/claims GitHub work.
 const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
 const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
