@@ -257,10 +257,12 @@ export async function claimNv02WorkOrder({
     throw error;
   }
 }
-export async function releaseNv02WorkOrder({ issueNumber, leaseId, resourceScope = '', state, postComment }) {
-  const workOrder = workOrderRef(issueNumber);
-  if (!workOrder) throw new Error('NV02_RELEASE_WORK_ORDER_REQUIRED');
-  if (!resourceScope) throw new Error('NV02_RELEASE_RESOURCE_SCOPE_REQUIRED');
-  await releaseLocalClaimLock(resourceScope);
-  return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
+export async function releaseNv02WorkOrder({ issue, issueNumber, leaseId, resourceScope = '', state, postComment }) {
+  const number = Number(issue?.number ?? issueNumber);
+  const workOrder = workOrderRef(number);
+  if (!issue || !workOrder || Number(issue.number) !== number) throw new Error('NV02_RELEASE_WORK_ORDER_REQUIRED');
+  const authority = nv02LeaseAuthority(issue, { workOrder, resourceScope });
+  if (!authority.valid) throw new Error(`NV02_RELEASE_AUTHORITY_INVALID:${authority.reason}`);
+  await releaseLocalClaimLock(authority.resourceScope);
+  return postComment(number, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${authority.workOrder}\nLEASE_ID=${leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${authority.resourceScope}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
 }
