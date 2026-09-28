@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
 const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'), 'utf8');
+const healthModel = readFileSync(resolve('apps/tigeriq-core/web-control-health-model.js'), 'utf8');
 const truth = readFileSync(resolve('apps/tigeriq-core/web-control-truth.js'), 'utf8');
 const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js'), 'utf8');
 const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
@@ -24,7 +25,11 @@ describe('TigerIQ Web Control owner dashboard', () => {
   });
 
   it('ports API Health live UI affordances into Web Control', () => {
-    for (const label of ['NV đang làm','NV sẵn sàng','Công việc đang mở','Jobs đang chạy','Cảnh báo','Hết hạn mức','Tỷ lệ thành công','Độ trễ TB','Hiệu suất API','Hoạt động Core gần nhất','Đang làm','Cloud API','Có vấn đề']) expect(unified).toContain(label);
+    for (const label of ['NV đang làm','NV sẵn sàng','Công việc đang mở','Jobs đang chạy','Cảnh báo','Hết hạn mức','Tỷ lệ thành công','Độ trễ TB','Hiệu suất API 24 giờ','Cảnh báo hiện tại','Hoạt động gần đây','Hoạt động Core gần nhất','Đang làm','Cloud API','Có vấn đề']) expect(unified).toContain(label);
+    for (const bucket of ['CẦN XỬ LÝ','CHỜ ANH SƠN','ĐANG LÀM','RÀ SOÁT','BLOCKED','HỆ THỐNG','HOÀN THÀNH']) expect(truth).toContain(bucket);
+    expect(healthModel).toContain('resourceHealthTruth');
+    expect(healthModel).toContain('performanceRows24h');
+    expect(server).toContain('/web-control-health-model.js');
     expect(server).toContain('githubWorkOrders');
     expect(server).toContain('workOrdersMeta');
     expect(truth).toContain('d?.workOrders');
@@ -75,6 +80,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(unified).toContain('last_error');
     expect(unified).toContain('cooldown_until');
     expect(unified).toContain('resourceHealthTruth');
+    expect(healthModel).toContain('currentAlertRows');
     expect(unified).toContain("STALE_ERROR:'LỖI CŨ'");
     expect(unified).toContain('Lỗi trước đó:');
     expect(unified).toContain('Chỉ tính rate-limit hiện hành');
