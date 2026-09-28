@@ -249,13 +249,26 @@ async function probePort(timeoutMs = 2000) {
   });
 }
 
-async function httpHealth() {
+async function httpHealth(signal = null) {
   const started = Date.now();
+  const timeout = AbortSignal.timeout(4000);
+  const signals = signal ? [signal, timeout] : [timeout];
+  const combined = AbortSignal.any(signals);
   try {
-    const response = await fetch(`http://127.0.0.1:${PAPERCLIP_LAB_PORT}/`, { signal: AbortSignal.timeout(4000), redirect: 'manual' });
-    return { reachable: true, status: response.status, elapsedMs: Date.now() - started };
+    const response = await fetch(`http://127.0.0.1:${PAPERCLIP_LAB_PORT}/api/health`, { signal: combined, headers: { accept: 'application/json' } });
+    const body = await response.json().catch(() => null);
+    const appOk = response.ok && body?.status === 'ok';
+    return {
+      reachable: true,
+      status: response.status,
+      appOk,
+      version: typeof body?.version === 'string' ? body.version : null,
+      deploymentMode: body?.deploymentMode || null,
+      deploymentExposure: body?.deploymentExposure || null,
+      elapsedMs: Date.now() - started,
+    };
   } catch (error) {
-    return { reachable: false, status: null, elapsedMs: Date.now() - started, reason: String(error?.cause?.code || error?.name || 'fetch_error') };
+    return { reachable: false, status: null, appOk: false, elapsedMs: Date.now() - started, reason: String(error?.cause?.code || error?.name || 'fetch_error') };
   }
 }
 
