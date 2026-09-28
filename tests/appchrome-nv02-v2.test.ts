@@ -10,6 +10,11 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(server).toContain('const selfRunEnabled=false;');
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
     expect(supervisor).toContain('Remove-Item Env:TIGERIQ_GITHUB_TOKEN');
+    expect(supervisor).toContain('Remove-Item Env:GITHUB_TOKEN');
+    expect(server).toContain("const selfRunGithubToken='';");
+    expect(server).toContain('const githubTerminalReconcileEnabled=false;');
+    expect(server).toContain('if(selfRunEnabled)scheduleSelfRunTick(5000);');
+    expect(server).toContain('if(githubTerminalReconcileEnabled)setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref();');
     expect(supervisor).not.toContain('github-command-center.token');
     expect(supervisor).not.toContain('gh.exe');
   });
@@ -30,5 +35,20 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(bridge).toContain('const NV02_F5_MAX_MS=10*60*1000');
     expect(supervisor).toContain("foreach($id in @('NV03','NV04'))");
     expect(supervisor).toContain('Ensure-UtilityPaused');
+  });
+});
+
+describe('NV02 V2 reviewed race hardening', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('keeps reviewed idle/F5 fixes in the exact head', () => {
+    expect(bridge).toContain('const f5WindowVersion=3;');
+    expect(bridge).toContain("lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')");
+    expect(bridge).toContain("NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN");
+    expect(bridge).toContain('nextIdleWakeAt:now+60_000');
+    const f5Gate=bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    const idleGate=bridge.indexOf("if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true)");
+    expect(f5Gate).toBeGreaterThan(-1);
+    expect(idleGate).toBeGreaterThan(f5Gate);
   });
 });
