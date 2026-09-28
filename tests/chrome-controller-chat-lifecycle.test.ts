@@ -27,7 +27,7 @@ describe('App Chrome chat lifecycle',()=>{
   });
 
 
-  it('never restores stale conversation URLs and opens a fresh context on boot/manual new chat',()=>{
+  it('never restores stale conversation URLs and preserves a valid current chat on boot',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("const bootFreshContextPending=new Set(CONTINUITY_WORKERS)");
     expect(bridge).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
@@ -43,7 +43,9 @@ describe('App Chrome chat lifecycle',()=>{
     expect(nv02Loop).toContain("dispatchNaturalContinue(target,state,now)");
     expect(bridge).toContain("BOOT_FRESH_LOCAL_COMPLETE");
     expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
-    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
+    expect(bridge).toContain("const preserveCurrentChat=hasCurrentNv02Chat(ui?.url)");
+    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:!preserveCurrentChat})");
+    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(bridge).toContain("waitForNv02Composer(target,30000)||raw");
   });

@@ -264,7 +264,12 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("MODEL_PROFILE_RECOVERY_FAILED");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
-    expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
+    expect(source).toContain("const preserveCurrentChat=hasCurrentNv02Chat(ui?.url)");
+    expect(source).toContain("const preserveVerifiedProfile=preserveCurrentChat&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&Boolean(state.modelVerifiedAt)");
+    expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:!preserveCurrentChat})");
+    expect(source).toContain("const verified=await ensureNv02ModelProfile(target)");
+    expect(source).toContain("'BOOT_CURRENT_CHAT_READY'");
+    expect(source).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
     expect(source).toContain("'BOOT_FRESH_LOCAL_READY'");
