@@ -268,9 +268,16 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("const preserveCurrentChat=hasCurrentNv02Chat(ui?.url)");
-    expect(source).toContain("const preserveVerifiedProfile=preserveCurrentChat&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&Boolean(state.modelVerifiedAt)");
-    expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:!preserveCurrentChat})");
+    expect(source).toContain("state.idleState!=='READY_NO_ELIGIBLE_WORK'");
+    expect(source).toContain("hasCurrentNv02Chat(state.verifiedChatUrl)");
+    expect(source).toContain("const preserveVerifiedProfile=(");
+    expect(source).toContain("preserveCurrentChat&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&Boolean(state.modelVerifiedAt)");
+    expect(source).toContain("await navigate(target,restoreVerifiedChatUrl)");
+    expect(source).toContain("NV02_BOOT_VERIFIED_CHAT_RESTORE_FAILED");
+    expect(source).toContain("'BOOT_VERIFIED_CHAT_RESTORED'");
+    expect(source).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
     expect(source).toContain("const verified=await ensureNv02ModelProfile(target)");
+    expect(source).toContain("'BOOT_VERIFIED_CHAT_READY'");
     expect(source).toContain("'BOOT_CURRENT_CHAT_READY'");
     expect(source).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
