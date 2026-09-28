@@ -65,6 +65,40 @@ function baseEnv() {
   return env;
 }
 
+const LAB_ENV_FIXED = Object.freeze({
+  HOST: '0.0.0.0',
+  PAPERCLIP_HOME: '/paperclip',
+  PAPERCLIP_DEPLOYMENT_MODE: 'authenticated',
+  PAPERCLIP_DEPLOYMENT_EXPOSURE: 'private',
+  PAPERCLIP_PUBLIC_URL: `http://localhost:${PAPERCLIP_LAB_PORT}`,
+  PAPERCLIP_ALLOWED_HOSTNAMES: 'localhost,127.0.0.1',
+  OPENAI_API_KEY: '',
+  ANTHROPIC_API_KEY: '',
+});
+const LAB_ENV_SECRET_KEYS = new Set(['BETTER_AUTH_SECRET','PAPERCLIP_TOOL_ACTION_SIGNING_SECRET']);
+const LAB_ENV_KEYS = new Set([...Object.keys(LAB_ENV_FIXED), ...LAB_ENV_SECRET_KEYS]);
+
+export function validatePaperclipLabEnvText(text) {
+  const values = new Map();
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    if (!raw) continue;
+    const index = raw.indexOf('=');
+    if (index <= 0) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_INVALID');
+    const key = raw.slice(0, index);
+    const value = raw.slice(index + 1);
+    if (!LAB_ENV_KEYS.has(key) || values.has(key)) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_NOT_ALLOWLISTED');
+    values.set(key, value);
+  }
+  if (values.size !== LAB_ENV_KEYS.size) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_INCOMPLETE');
+  for (const [key, expected] of Object.entries(LAB_ENV_FIXED)) {
+    if (values.get(key) !== expected) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_UNSAFE');
+  }
+  for (const key of LAB_ENV_SECRET_KEYS) {
+    if (!/^[a-f0-9]{64}$/.test(values.get(key) || '')) throw new Error('TIGERIQ_PAPERCLIP_LAB_ENV_SECRET_INVALID');
+  }
+  return true;
+}
+
 async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000 } = {}) {
   const safeCwd = resolvePaperclipLabPath(cwd);
   await ensureRootIntegrity();
