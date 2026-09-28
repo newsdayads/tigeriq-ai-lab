@@ -22,12 +22,28 @@ describe('App Chrome NV02 V2 boundary', () => {
   it('uses one bounded idle wake while NV02 chooses and claims its own work', () => {
     expect(bridge).toContain('NV02_SELF_PULL_WAKE_PROMPT');
     expect(bridge).toContain('App Chrome không chọn việc');
+    expect(bridge).toContain('toàn bộ Work Order P1-P5');
+    expect(bridge).toContain('CAPABILITY không phải tiêu chí loại việc khỏi tầm nhìn');
+    expect(bridge).toContain('điều phối/handoff đúng resource');
+    expect(bridge).toContain('không chiếm mutation/review ownership của specialist');
+    expect(bridge).toContain('Review độc lập không được tự duyệt phần NV02 đã thực thi');
+    expect(bridge).toContain('App Chrome self-maintenance');
+    expect(bridge).toContain('owner/lease/resource-scope conflict');
+    expect(bridge).toContain('không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ');
     expect(bridge).toContain('P0 tuyệt đối không đọc hoặc claim');
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
     expect(bridge).toContain("assistantTerminal=assistantText.includes('READY_NO_ELIGIBLE_WORK')");
     expect(bridge).toContain('lastIdleMarkerSignature');
     expect(bridge).toContain('NV02_IDLE_WAKE_MIN_MS=5*60*1000');
     expect(bridge).toContain('NV02_IDLE_WAKE_MAX_MS=10*60*1000');
+  });
+
+  it('treats capability as execution routing rather than self-pull visibility filtering', () => {
+    const doc = readFileSync('docs/app-chrome/APP_CHROME_NV02_V2.md', 'utf8');
+    expect(doc).toContain('`CAPABILITY` is routing metadata, not a pre-filter that hides work from NV02');
+    expect(doc).toContain('`coding`, `pc_operator`/device work, and `review` remain visible to NV02');
+    expect(doc).toContain('NV02 must not self-review work it implemented');
+    expect(doc).toContain('no P1-P5 Work Order can be directly executed or validly coordinated/handoff by NV02');
   });
 
   it('keeps the approved short continue pool scoped to NV02 only', () => {
