@@ -14,6 +14,8 @@ export const PAPERCLIP_LAB_IMAGE = 'ghcr.io/paperclipai/paperclip:2026.916.1';
 const PAPERCLIP_LAB_IMAGE_DIGEST_RE = /^ghcr\.io\/paperclipai\/paperclip@sha256:[a-f0-9]{64}$/;
 export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
+  'paperclip_lab_docker_status',
+  'paperclip_lab_docker_start',
   'paperclip_lab_preflight',
   'paperclip_lab_install',
   'paperclip_lab_start',
@@ -30,6 +32,14 @@ const ENV_FILE = win.join(CONFIG_DIR, 'paperclip.env');
 const COMPOSE_FILE = win.join(CONFIG_DIR, 'docker-compose.lab.yml');
 const RELEASE_FILE = win.join(CONFIG_DIR, 'release.json');
 const MAX_OUTPUT_CHARS = 32000;
+const DOCKER_CLI_CANDIDATES = Object.freeze([
+  win.join(process.env.ProgramFiles || 'C:\\Program Files', 'Docker', 'Docker', 'resources', 'bin', 'docker.exe'),
+  win.join(process.env.LOCALAPPDATA || '', 'Docker', 'resources', 'bin', 'docker.exe'),
+].filter(Boolean));
+const DOCKER_DESKTOP_CANDIDATES = Object.freeze([
+  win.join(process.env.ProgramFiles || 'C:\\Program Files', 'Docker', 'Docker', 'Docker Desktop.exe'),
+  win.join(process.env.LOCALAPPDATA || '', 'Docker', 'Docker Desktop.exe'),
+].filter(Boolean));
 
 function normalizeWinPath(value) {
   return win.resolve(String(value || PAPERCLIP_LAB_ROOT).replaceAll('/', '\\'));
