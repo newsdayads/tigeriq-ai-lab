@@ -7,6 +7,7 @@ $Responses = Join-Path $BrokerRoot 'responses'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
+$BrokerVersion = '1.1-progress-aware-restart'
 $Image = 'ghcr.io/paperclipai/paperclip:2026.916.1'
 $Container = 'tigeriq-paperclip-lab'
 $Compose = '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml'
@@ -137,7 +138,7 @@ try {
     if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge 2) {
       Write-JsonAtomic $Heartbeat ([pscustomobject]@{
         schema='TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
-        version='1.0'
+        version=$BrokerVersion
         at=(Get-Date).ToUniversalTime().ToString('o')
         sessionId=(Get-Process -Id $PID).SessionId
         user=[Environment]::UserName

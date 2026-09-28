@@ -44,6 +44,7 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
+const BROKER_EXPECTED_VERSION = '1.1-progress-aware-restart';
 const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
 const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
 const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
@@ -246,6 +247,7 @@ async function brokerStatus() {
     const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
     const ready = heartbeat?.schema === 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
       && String(heartbeat?.distro || '') === PAPERCLIP_LAB_WSL_DISTRO
+      && String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION
       && Number(heartbeat?.sessionId || 0) > 0
       && Boolean(String(heartbeat?.user || '').trim())
       && ageMs <= 15000;
@@ -308,6 +310,7 @@ async function installInteractiveWslBroker(signal = null) {
     task: 'TigerIQ Paperclip WSL Broker',
     user: status.user,
     sessionId: status.sessionId,
+    brokerVersion: status.version,
     dockerVersion: probe.stdout.trim(),
   };
 }
