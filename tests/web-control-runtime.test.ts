@@ -175,7 +175,7 @@ describe('Web Control runtime', () => {
     expect(body.workOrders.find((x:any)=>x.issue_number===1808)).toMatchObject({ bucket:'RÀ SOÁT' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1809)).toMatchObject({ bucket:'BLOCKED' });
     expect(body.workOrders.find((x:any)=>x.issue_number===2048)).toMatchObject({ bucket:'BLOCKED', state:'BỊ CHẶN' });
-    expect(body.workOrders.find((x:any)=>x.issue_number===1900)).toMatchObject({ bucket:'HỆ THỐNG' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1900)).toMatchObject({ bucket:'HỆ THỐNG', owner:'OWNER' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1456)).toMatchObject({ bucket:'HỆ THỐNG' });
     expect(body.workOrdersRecent).toHaveLength(1);
     expect(body.workOrdersRecent[0]).toMatchObject({ issue_number:1700, bucket:'HOÀN THÀNH', closed:true });
