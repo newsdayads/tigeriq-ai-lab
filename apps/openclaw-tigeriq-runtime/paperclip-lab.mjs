@@ -601,6 +601,22 @@ async function preflight(signal = null) {
   };
 }
 
+export function paperclipHealthFailureClass(state = {}) {
+  if (state?.ok === true) return 'OK';
+  const reason = String(state?.reason || '').toUpperCase();
+  if (reason === 'PIN_NOT_READY') return 'PIN_NOT_READY';
+  if (reason === 'DOCKER_UNAVAILABLE') return 'DOCKER_UNAVAILABLE';
+  if (state?.container?.running !== true) return 'CONTAINER_NOT_RUNNING';
+  if (state?.container?.portBindingOk !== true) return 'PORT_BINDING_MISMATCH';
+  if (state?.container?.dataMountOk !== true) return 'DATA_MOUNT_MISMATCH';
+  if (state?.port?.reachable !== true) return 'PORT_UNREACHABLE';
+  if (state?.http?.reachable !== true) return 'HTTP_UNREACHABLE';
+  if (state?.http?.status != null && Number(state.http.status) >= 400) return `HTTP_${Number(state.http.status)}`;
+  if (state?.http?.appOk !== true) return 'HTTP_STATUS_NOT_OK';
+  if (state?.container?.identityOk !== true) return 'IDENTITY_MISMATCH';
+  return 'UNKNOWN';
+}
+
 async function waitForHealth(signal = null, transport = null) {
   const deadline = Date.now() + PAPERCLIP_LAB_HEALTH_READY_TIMEOUT_MS;
   let state = await health(signal, transport);
@@ -640,7 +656,7 @@ async function install(signal = null) {
     const up = await runDocker(transport, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(signal, transport);
-    if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+    if (!state.ok) throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(state)}`);
     return { installed: true, dockerTransport: transport, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
   } catch (error) {
     await rollbackContainer(transport);
@@ -656,7 +672,7 @@ async function start(signal = null) {
     const up = await runDocker(docker.kind, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
     const state = await waitForHealth(signal, docker.kind);
-    if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
+    if (!state.ok) throw new Error(`TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT_${paperclipHealthFailureClass(state)}`);
     return { started: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, health: state };
   } catch (error) {
     await rollbackContainer(docker.kind);
