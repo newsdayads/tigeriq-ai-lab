@@ -13,7 +13,6 @@ $runtime=Join-Path $InstallRoot 'Runtime'
 $activePath=Join-Path $runtime 'active-deploy.json'
 $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
-$githubTokenFile='D:\TigerIQ\Secrets\github-command-center.token'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
 $supervisorMutex=[Threading.Mutex]::new($false,'Global\TigerIQ.AppChrome.Unified.Supervisor')
@@ -61,18 +60,10 @@ function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_WINDOWS_SESSION_ID=$env:TIGERIQ_SESSION_ID
   $env:SESSIONNAME='Console'
   if(Test-Path -LiteralPath $tokenFile){$env:TIGERIQ_NV02_WORKER_TOKEN=(Get-Content -LiteralPath $tokenFile -Raw).Trim()}
-  # Owner-authorized local self-pull: GitHub is used only for bounded P1-P5
-  # self-claim/evidence; Core/queue assignment remains disabled.
-  try{
-    if(Test-Path -LiteralPath $githubTokenFile){$env:TIGERIQ_GITHUB_TOKEN=(Get-Content -LiteralPath $githubTokenFile -Raw).Trim()}
-  }catch{}
-  if([string]::IsNullOrWhiteSpace($env:TIGERIQ_GITHUB_TOKEN)){
-    try{
-      $gh=Get-Command gh.exe -ErrorAction Stop
-      $env:TIGERIQ_GITHUB_TOKEN=(& $gh.Source auth token 2>$null | Out-String).Trim()
-    }catch{}
-  }
-  $env:TIGERIQ_APP_CHROME_SELF_RUN='1'
+  # NV02 V2: controller is UI/continuity only. It must never receive a GitHub
+  # credential or select/claim/dispatch backlog work.
+  Remove-Item Env:TIGERIQ_GITHUB_TOKEN -ErrorAction SilentlyContinue
+  $env:TIGERIQ_APP_CHROME_SELF_RUN='0'
   $env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'
 }
 
