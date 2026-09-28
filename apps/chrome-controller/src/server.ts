@@ -483,11 +483,6 @@ async function dispatch(
     try{
       assertWorkerEnabled(workerId);
       if(navigate)await runWithRetry(`navigate:${workerId}`,()=>sendCommand(workerId,'NAVIGATE',{url:worker.homeUrl}));
-      if(workerId==='NV02'){
-        const profile=await sendCommand(workerId,'MODEL_PREFLIGHT');
-        const exact=(profile as any)?.exact===true||(profile as any)?.modelExact===true;
-        if(!exact||(profile as any)?.modelName!=='GPT-5.6 Sol'||(profile as any)?.reasoningEffort!=='High')throw new Error(`MODEL_PROFILE_BLOCKED:${(profile as any)?.blockedReason||'UNVERIFIED'}`);
-      }
       const result=await sendCommand(workerId,'DISPATCH',{text});
       states.get(workerId)!.status='SUBMITTED';
       states.get(workerId)!.lastError=undefined;

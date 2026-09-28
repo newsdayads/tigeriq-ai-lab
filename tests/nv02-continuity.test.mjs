@@ -211,8 +211,8 @@ describe('NV02 continuity policy', () => {
       source.indexOf('async function dispatchNaturalContinueLocked'),
       source.indexOf('async function dispatchNaturalContinue(target'),
     );
-    expect(continueDispatch).toContain('ensureNv02ModelProfile');
-    expect(continueDispatch).toContain("MODEL_PROFILE_BLOCKED");
+    expect(continueDispatch).not.toContain('ensureNv02ModelProfile');
+    expect(continueDispatch).not.toContain("MODEL_PROFILE_BLOCKED");
     expect(continueDispatch).not.toContain('getControllerState()');
     expect(continueDispatch).not.toContain('hasContinuableNv02Work(controllerState)');
     expect(continueDispatch).not.toContain('findContinuableNv02Work(controllerState)');
@@ -221,8 +221,7 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_CURRENT_WORK_VERIFIED');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
-    expect(source).toContain("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&(ui?.composerReady===true||ui?.modelControlPresent===true))");
-    expect(source).toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
+    expect(source).not.toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
     expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
     expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
@@ -258,18 +257,18 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
     expect(source).toContain("nextPeriodicF5At:nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("modelCheckBlockedUntil:now+30000");
-    expect(source).toContain("modelCheckBlockedUntil:now+60_000");
-    expect(source).toContain("MODEL_PROFILE_RECOVERY_FAILED");
+    expect(source).not.toContain("modelCheckBlockedUntil:now+60_000");
+    expect(source).not.toContain("MODEL_PROFILE_RECOVERY_FAILED");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
-    expect(source).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(source).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
     expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
     expect(source).toContain("'BOOT_FRESH_LOCAL_READY'");
     expect(source).toContain("'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'");
     const handleCommandSource=source.slice(source.indexOf('async function handleCommand'),source.indexOf('async function postWorkerHeartbeat'));
     const localRunCommand=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
-    expect(localRunCommand).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRunCommand).toContain("waitForNv02Composer(target,30000)||raw");
     expect(localRunCommand).not.toContain("withNv02Mutation(");
     expect(localRunCommand).not.toContain("workerRunGraceUntil.delete('NV02')");
     expect(source).toContain("const workerRunGraceUntil=new Map()");
@@ -294,7 +293,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
     expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='High'");
-    expect(source).toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
+    expect(source).not.toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw))");
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
     expect(tickWorker).toContain('const rawUi=await uiState(target)');
@@ -305,16 +304,12 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'BOOT_FRESH_LOCAL_COMPLETE'");
     expect(source).not.toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
 
-    expect(source).toContain("sameNv02Chat(state.verifiedChatUrl,ui?.url)");
-    expect(source).toContain("const modelCheckRequired=now>=Number(state.modelCheckBlockedUntil||0)&&(ui?.modelExact!==true||!state.verifiedChatUrl||!sameNv02Chat(state.verifiedChatUrl,ui?.url))");
-    expect(source).toContain("(phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired");
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
     const periodicF5Gate=continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const modelRecoveryGate=continuityLoop.indexOf("if((phase==='READY'||phase==='STALLED')&&ui?.modelExact!==true&&modelCheckRequired&&");
     expect(bootFreshGate).toBeGreaterThan(-1);
     expect(periodicF5Gate).toBeGreaterThan(-1);
-    expect(modelRecoveryGate).toBeGreaterThan(bootFreshGate);
-    expect(modelRecoveryGate).toBeLessThan(continuityLoop.indexOf("if(phase==='READY')"));
+    expect(continuityLoop).not.toContain("const modelCheckRequired=");
+    expect(continuityLoop).not.toContain("MODEL_PROFILE_RECOVERY");
     expect(continuityLoop).not.toContain("if(phase==='WORKING'&&ui?.modelExact!==true&&modelCheckRequired");
 
     expect(source).not.toContain("state.verifiedChatUrl===ui?.url");
@@ -329,7 +324,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=source.slice(source.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),source.indexOf("const modelCheckRequired="));
+    const f5Block=continuityLoop.slice(continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),continuityLoop.indexOf("if(phase==='WORKING')"));
     expect(f5Block).toContain("reloadTarget(target)");
     expect(f5Block).toContain("PERIODIC_F5_FAILED");
     expect(f5Block).not.toContain("ensureNv02ModelProfile");
@@ -454,7 +449,7 @@ describe('NV02 continuity policy', () => {
     expect(continuity).not.toContain('currentWorkerAssignmentStatus');
     expect(continuity).not.toContain('READY_UNASSIGNED');
     expect(continuity).not.toContain('autoModelRecoverySuppressed:true');
-    expect(continuity).toContain("const modelCheckRequired=");
+    expect(continuity).not.toContain("const modelCheckRequired=");
     expect(continuity).toContain("if(phase==='READY')");
     expect(continuity).toContain('dispatchNaturalContinue(target,state,now)');
     expect(continuity).toContain('awaitingWorkStart');

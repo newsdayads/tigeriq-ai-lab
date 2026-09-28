@@ -382,7 +382,7 @@ describe('App Chrome local-only coordination',()=>{
     const handleCommandSource=bridge.slice(bridge.indexOf('async function handleCommand'),bridge.indexOf('async function postWorkerHeartbeat'));
     const localRun=handleCommandSource.slice(handleCommandSource.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),handleCommandSource.indexOf("if(action==='DISPATCH')"));
     expect(localRun).not.toContain("withNv02Mutation(");
-    expect(localRun).toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(localRun).toContain("waitForNv02Composer(target,30000)||raw");
     expect(localRun).toContain("rearmWorkerRunGrace(workerRunGraceUntil.get('NV02'),submittedAt,LOCAL_RUN_GRACE_MS)");
     expect(localRun).toContain("LOCAL_RUN_SUBMISSION_GRACE_REARMED");
     expect(localRun.indexOf('dispatchNaturalContinueLocked')).toBeLessThan(localRun.indexOf('LOCAL_RUN_SUBMISSION_GRACE_REARMED'));
@@ -505,7 +505,7 @@ describe('NV02 reboot F5 consolidation #1739',()=>{
     expect(f5).toBeGreaterThan(-1);
     expect(loop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain('state.resumeChatUrl');
-    const f5Block=loop.slice(f5,loop.indexOf('const modelCheckRequired='));
+    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')"));
     expect(f5Block).toContain('reloadTarget(target)');
   });
 });
@@ -544,7 +544,7 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
     expect(nv02Loop).not.toContain('currentWorkerAssignmentStatus');
     expect(nv02Loop).not.toContain('READY_UNASSIGNED');
     expect(nv02Loop).not.toContain('autoModelRecoverySuppressed:true');
-    expect(nv02Loop).toContain("const modelCheckRequired=");
+    expect(nv02Loop).not.toContain("const modelCheckRequired=");
     expect(nv02Loop).toContain("if(phase==='READY')");
   });
 });
