@@ -27,6 +27,7 @@ test('updater is path aware for core, web control, coding lane, and OpenClaw',()
   assert.match(script,/webRestarted=\$impact\.web/);
   assert.match(script,/codingRestarted=\$impact\.coding/);
   assert.match(script,/apps\/openclaw-tigeriq-runtime\//);
+  assert.match(script,/\$core=\[bool\]\(@\(\$paths\|Where-Object\{[\s\S]*\}\)\.Count -or \$openclaw\)/);
   assert.match(script,/\$openclawTask='TigerIQ OpenClaw Gateway'/);
   assert.match(script,/function Restart-OpenClawGateway/);
   assert.match(script,/Test-TcpPort '127\.0\.0\.1' 18789/);
@@ -304,4 +305,13 @@ test('runtime watchdog includes OpenClaw and App Chrome transport but does not m
   assert.match(watchdog,/8798/);
   assert.match(watchdog,/8799/);
   assert.match(watchdog,/18789/);
+});
+
+test('OpenClaw runtime changes restart Core because direct PC actions import the shared runtime in-process',()=>{
+  const impact=script.slice(script.indexOf('function Get-Impact'),script.indexOf('function Restart-UpdaterAfterExit'));
+  const openclaw=impact.indexOf("$openclaw=[bool]");
+  const core=impact.indexOf("$core=[bool]");
+  assert.ok(openclaw>=0 && core>openclaw,'OpenClaw impact must be computed before Core impact');
+  assert.match(impact,/\$core=\[bool\]\([\s\S]*-or \$openclaw\)/);
+  assert.match(script,/if\(\$impact\.core\)\{\$coreHealth=Restart-Core/);
 });
