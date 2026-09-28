@@ -30,6 +30,10 @@ const ENV_FILE = win.join(CONFIG_DIR, 'paperclip.env');
 const COMPOSE_FILE = win.join(CONFIG_DIR, 'docker-compose.lab.yml');
 const RELEASE_FILE = win.join(CONFIG_DIR, 'release.json');
 const MAX_OUTPUT_CHARS = 32000;
+export const PAPERCLIP_LAB_WSL_DISTRO = 'Ubuntu';
+export const PAPERCLIP_LAB_WSL_ROOT = '/mnt/d/TigerIQ-Paperclip-Lab';
+const DOCKER_TRANSPORT_WINDOWS = 'windows';
+const DOCKER_TRANSPORT_WSL = 'wsl-ubuntu';
 
 function normalizeWinPath(value) {
   return win.resolve(String(value || PAPERCLIP_LAB_ROOT).replaceAll('/', '\\'));
@@ -43,6 +47,34 @@ export function resolvePaperclipLabPath(value = PAPERCLIP_LAB_ROOT) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_PATH_NOT_ALLOWED');
   }
   return candidate;
+}
+
+export function paperclipLabWslPath(value = PAPERCLIP_LAB_ROOT) {
+  const candidate = resolvePaperclipLabPath(value);
+  const relative = win.relative(PAPERCLIP_LAB_ROOT, candidate);
+  return relative
+    ? PAPERCLIP_LAB_WSL_ROOT + '/' + relative.split('\\').filter(Boolean).join('/')
+    : PAPERCLIP_LAB_WSL_ROOT;
+}
+
+function translateDockerArgForWsl(value) {
+  const text = String(value);
+  if (/^[A-Za-z]:[\\/]/.test(text)) {
+    const normalized = text.replaceAll('/', '\\');
+    const root = PAPERCLIP_LAB_ROOT.toLowerCase();
+    const lower = normalized.toLowerCase();
+    if (lower !== root && !lower.startsWith(root + '\\')) {
+      throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
+    }
+    return paperclipLabWslPath(normalized);
+  }
+  if (/^\\\\/.test(text)) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
+  return text;
+}
+
+export function paperclipLabWslDockerArgs(args = []) {
+  if (!Array.isArray(args)) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_ARGS_INVALID');
+  return ['--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker', ...args.map(translateDockerArgForWsl)];
 }
 
 export function assertPaperclipLabRequest(input = {}) {
@@ -168,6 +200,30 @@ async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 12000
       resolve({ exitCode: typeof code === 'number' ? code : -1, timedOut, stdout: clipped(stdout), stderr: clipped(stderr) });
     });
   });
+}
+
+async function runDocker(transport, args, options = {}) {
+  if (transport === DOCKER_TRANSPORT_WINDOWS) return await runFixed('docker.exe', args, options);
+  if (transport === DOCKER_TRANSPORT_WSL) return await runFixed('wsl.exe', paperclipLabWslDockerArgs(args), options);
+  throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_TRANSPORT_INVALID');
+}
+
+async function resolveDockerTransport(signal = null) {
+  const windows = await runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
+    .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
+  if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
+    return { kind: DOCKER_TRANSPORT_WINDOWS, version: windows.stdout.trim(), error: null };
+  }
+  const wsl = await runFixed('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal })
+    .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
+  if (wsl.exitCode === 0 && !wsl.timedOut && wsl.stdout.trim()) {
+    return { kind: DOCKER_TRANSPORT_WSL, version: wsl.stdout.trim(), error: null };
+  }
+  return {
+    kind: null,
+    version: null,
+    error: clipped([windows.stderr, wsl.stderr].filter(Boolean).join('\n')),
+  };
 }
 
 function pathInsideLab(value) {
@@ -299,13 +355,15 @@ async function readReleasePin() {
   return pin;
 }
 
-async function resolvePulledImagePin(signal = null) {
+async function resolvePulledImagePin(signal = null, transport = null) {
   throwIfAborted(signal);
-  const revision = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'], { timeoutMs: 15000, signal });
+  const resolved = transport || (await resolveDockerTransport(signal)).kind;
+  if (!resolved) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
+  const revision = await runDocker(resolved, ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'], { timeoutMs: 15000, signal });
   if (revision.exitCode !== 0 || revision.timedOut || revision.stdout.trim() !== PAPERCLIP_LAB_RELEASE_SHA) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
   }
-  const digests = await runFixed('docker.exe', ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'], { timeoutMs: 15000, signal });
+  const digests = await runDocker(resolved, ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'], { timeoutMs: 15000, signal });
   if (digests.exitCode !== 0 || digests.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_IMAGE_DIGEST_MISSING');
   let values = [];
   try { values = JSON.parse(digests.stdout.trim()); } catch {}
@@ -362,17 +420,14 @@ async function httpHealth(signal = null) {
 async function preflight(signal = null) {
   throwIfAborted(signal);
   await ensureRootIntegrity();
-  const [docker, port] = await Promise.all([
-    runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal }).catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) })),
-    probePort(),
-  ]);
+  const [docker, port] = await Promise.all([resolveDockerTransport(signal), probePort()]);
   let disk = null;
   try {
     const stat = await fs.statfs(PAPERCLIP_LAB_ROOT);
     disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
   } catch {}
   return {
-    docker: { ok: docker.exitCode === 0 && !docker.timedOut, version: docker.stdout.trim() || null, error: docker.exitCode === 0 ? null : clipped(docker.stderr) },
+    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error },
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,
     disk,
@@ -380,67 +435,73 @@ async function preflight(signal = null) {
   };
 }
 
-async function waitForHealth(attempts = 20, signal = null) {
+async function waitForHealth(attempts = 20, signal = null, transport = null) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     throwIfAborted(signal);
-    const state = await health(signal);
+    const state = await health(signal, transport);
     if (state.ok) return state;
     await sleepWithSignal(1500, signal);
   }
-  return await health(signal);
+  return await health(signal, transport);
 }
 
 
-async function rollbackContainer() {
+async function rollbackContainer(transport = null) {
   try {
-    await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
+    const resolved = transport || (await resolveDockerTransport()).kind;
+    if (resolved) await runDocker(resolved, ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
   } catch {}
 }
 
 async function install(signal = null) {
   const before = await preflight(signal);
-  if (!before.docker.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
+  if (!before.docker.ok || !before.docker.transport) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
+  const transport = before.docker.transport;
   if (before.port3210.reachable) {
-    const existing = await health(signal);
+    const existing = await health(signal, transport);
     if (existing.ok) return { alreadyInstalled: true, preflight: before, health: existing };
     throw new Error('TIGERIQ_PAPERCLIP_LAB_PORT_3210_OCCUPIED');
   }
   await ensureConfig();
-  const pull = await runFixed('docker.exe', ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
+  const pull = await runDocker(transport, ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
   if (pull.exitCode !== 0 || pull.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED');
-  const pin = await resolvePulledImagePin(signal);
+  const pin = await resolvePulledImagePin(signal, transport);
   await ensureConfig(pin);
   try {
-    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    const up = await runDocker(transport, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-    const state = await waitForHealth(20, signal);
+    const state = await waitForHealth(20, signal, transport);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
-    return { installed: true, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
+    return { installed: true, dockerTransport: transport, imageDigest: pin.imageDigest, pull: { exitCode: pull.exitCode }, start: { exitCode: up.exitCode }, health: state };
   } catch (error) {
-    await rollbackContainer();
+    await rollbackContainer(transport);
     throw error;
   }
 }
 async function start(signal = null) {
   const pin = await readReleasePin();
+  const docker = await resolveDockerTransport(signal);
+  if (!docker.kind) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
   await ensureConfig(pin);
   try {
-    const up = await runFixed('docker.exe', composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
+    const up = await runDocker(docker.kind, composeArgs(['up', '-d']), { cwd: CONFIG_DIR, timeoutMs: 120000, signal });
     if (up.exitCode !== 0 || up.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_START_FAILED');
-    const state = await waitForHealth(20, signal);
+    const state = await waitForHealth(20, signal, docker.kind);
     if (!state.ok) throw new Error('TIGERIQ_PAPERCLIP_LAB_HEALTH_TIMEOUT');
-    return { started: true, imageDigest: pin.imageDigest, health: state };
+    return { started: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, health: state };
   } catch (error) {
-    await rollbackContainer();
+    await rollbackContainer(docker.kind);
     throw error;
   }
 }
 async function stop(signal = null) {
   const pin = await readReleasePin();
   throwIfAborted(signal);
-  const down = await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
+  const docker = await resolveDockerTransport(signal);
+  if (!docker.kind) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
+  const down = await runDocker(docker.kind, ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
   if (down.exitCode !== 0 || down.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_STOP_FAILED');
-  return { stopped: true, imageDigest: pin.imageDigest, port3210: await probePort() };
+  return { stopped: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, port3210: await probePort() };
 }
 function mountSourceMatchesLabData(source) {
   const value = String(source || '').replaceAll('\\', '/').toLowerCase().replace(/\/+$/, '');
@@ -452,16 +513,18 @@ function mountSourceMatchesLabData(source) {
   ].includes(value);
 }
 
-async function health(signal = null) {
+async function health(signal = null, transport = null) {
   throwIfAborted(signal);
   let pin;
   try { pin = await readReleasePin(); }
   catch { return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'PIN_NOT_READY' }; }
 
+  const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal);
+  if (!docker.kind) return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'DOCKER_UNAVAILABLE', docker };
   const [port, http, inspect] = await Promise.all([
     probePort(),
     httpHealth(signal),
-    runFixed('docker.exe', ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
+    runDocker(docker.kind, ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
   ]);
 
   let info = null;
@@ -501,6 +564,7 @@ async function health(signal = null) {
       dataMountOk,
       imageDigest: info?.Config?.Image || null,
     },
+    docker: { transport: docker.kind, version: docker.version || null },
     pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, imageDigest: pin.imageDigest },
   };
 }
@@ -530,6 +594,7 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
       pinnedSourceCommit: PAPERCLIP_LAB_RELEASE_SHA,
       pinnedImageTag: PAPERCLIP_LAB_IMAGE,
       pinnedImageDigest: data?.imageDigest || data?.health?.pinned?.imageDigest || data?.pinned?.imageDigest || null,
+      dockerTransport: data?.dockerTransport || data?.docker?.transport || data?.health?.docker?.transport || data?.preflight?.docker?.transport || null,
       elapsedMs: Date.now() - started,
     },
   };
