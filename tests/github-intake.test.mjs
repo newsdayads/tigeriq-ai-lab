@@ -93,7 +93,11 @@ function coreBacklogPool(){
       return {rowCount:1,rows:[]};
     }
     if(q.includes("from tigeriq_events where type='ROUTING_FAULT'")){
-      const found=events.some((e)=>e.type==='ROUTING_FAULT'&&String(e.data?.issueNumber)===String(params[0])&&String(e.data?.reason)===String(params[1]));
+      const ownerVisibleOnly=q.includes("data->>'ownerVisible'='true'");
+      const found=events.some((e)=>e.type==='ROUTING_FAULT'
+        &&String(e.data?.issueNumber)===String(params[0])
+        &&String(e.data?.reason)===String(params[1])
+        &&(!ownerVisibleOnly||e.data?.ownerVisible===true));
       return {rowCount:found?1:0,rows:found?[{ok:1}]:[]};
     }
     if(q.includes("insert into tigeriq_events")){
@@ -169,6 +173,41 @@ Return requested public evidence only.`;
   assert.strictEqual(out.created,0);
   assert.strictEqual(comments.length,1);
   assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,1);
+});
+
+test('oversized pc_operator notification retries after transient comment failure and ignores legacy unreported faults',async()=>{
+  const pool=coreBacklogPool();
+  pool.events.push({type:'ROUTING_FAULT',data:{issueNumber:1611,reason:'OPENCLAW_INSTRUCTION_INVALID'}});
+  const assigned='x'.repeat(5700);
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_OVERSIZE_RETRY','PUBLIC_EVIDENCE_KEYS=installedSha',
+    'ASSIGNED_ACTION',assigned,'ACCEPTANCE','Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1611,state:'open',title:'oversized OpenClaw retry',body,html_url:'https://example/1611'}];
+  let attempts=0;
+  const comments=[];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/issues?'))return response(issues);
+    if(String(init.method||'GET').toUpperCase()==='POST'&&url.endsWith('/issues/1611/comments')){
+      attempts++;
+      if(attempts===1)return response({message:'temporary'},false,503);
+      comments.push(JSON.parse(init.body).body);
+      return response({id:2});
+    }
+    return response({});
+  };
+  let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,0);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,1);
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(comments.length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.ownerVisible===true).length,1);
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(comments.length,1);
 });
 
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
