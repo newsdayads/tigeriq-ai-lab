@@ -87,6 +87,12 @@ async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 12000
   });
 }
 
+function pathInsideLab(value) {
+  const candidate = normalizeWinPath(value).toLowerCase();
+  const base = normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase();
+  return candidate === base || candidate.startsWith(base + '\\');
+}
+
 async function ensureRootIntegrity() {
   await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
   const stat = await fs.lstat(PAPERCLIP_LAB_ROOT);
@@ -98,9 +104,19 @@ async function ensureRootIntegrity() {
   return real;
 }
 
+async function ensureContainedDirectory(value) {
+  const candidate = resolvePaperclipLabPath(value);
+  await fs.mkdir(candidate, { recursive: true });
+  const stat = await fs.lstat(candidate);
+  if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+  const real = normalizeWinPath(await fs.realpath(candidate));
+  if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+  return real;
+}
+
 async function ensureLayout() {
   await ensureRootIntegrity();
-  for (const dir of [CONFIG_DIR, DATA_DIR, EVIDENCE_DIR, RESEARCH_DIR, BACKUP_DIR]) await fs.mkdir(dir, { recursive: true });
+  for (const dir of [CONFIG_DIR, DATA_DIR, EVIDENCE_DIR, RESEARCH_DIR, BACKUP_DIR]) await ensureContainedDirectory(dir);
 }
 
 export function paperclipLabComposeYaml() {
