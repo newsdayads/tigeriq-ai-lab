@@ -223,7 +223,7 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
     expect(source).not.toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
     expect(source).toContain("modelName==='GPT-5.6 Sol'");
-    expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
+    expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
     expect(source).toContain("const UI_STABILITY_PACING_MAX_MS=8000");
     expect(source).toContain("VIEW_FOLLOW_BOTTOM");
@@ -250,7 +250,7 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
     expect(source).toContain("const NV02_F5_MIN_MS=5*60*1000");
-    expect(source).toContain("const NV02_F5_MAX_MS=20*60*1000");
+    expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("'PERIODIC_F5_REFRESH'");
     expect(source).toContain("let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS)");
     expect(source).toContain("let workingRecheckAt=Number(raw.workingRecheckAt)||0");

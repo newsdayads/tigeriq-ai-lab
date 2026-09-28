@@ -16,6 +16,9 @@ const LOG='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\direct-cdp-bridge.jsonl
 const SEND_BUTTON_WAIT_MS=10000;
 const NV02_CONTINUITY_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-continuity-state.json';
 const NV02_IDLE_MARKER='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-ready-no-eligible-work.marker';
+const NV02_IDLE_WAKE_MIN_MS=5*60*1000;
+const NV02_IDLE_WAKE_MAX_MS=10*60*1000;
+const NV02_SELF_PULL_WAKE_PROMPT='02 - Tự kiểm tra GitHub canonical. Trước tiên resume đúng lease NV02 còn active; nếu không có, tự đánh giá và claim đúng 1 Work Order P1-P5 hợp lệ theo role/scope/dependency/HOLD/ownership. P0 tuyệt đối không đọc hoặc claim. App Chrome không chọn việc. Nếu không có việc hợp lệ, trả đúng READY_NO_ELIGIBLE_WORK.';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
@@ -41,7 +44,35 @@ let nv02BootF5ScheduleInitialized=false;
 let nv02BootRefreshScheduleInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
-const NV02_F5_MAX_MS=20*60*1000;
+const NV02_F5_MAX_MS=10*60*1000;
+const NV02_CONTINUE_PROMPTS=Object.freeze([
+  'Tiếp tục',
+  'Làm tiếp',
+  'Tiếp đi',
+  'Xử lý tiếp',
+  'Thực hiện tiếp',
+  'Tiếp tục công việc hiện tại',
+  'Làm tiếp công việc hiện tại',
+  'Tiếp tục việc đang làm',
+  'Làm tiếp phần đang dở',
+  'Tiếp tục từ chỗ hiện tại',
+  'Tiếp tục đúng việc này',
+  'Xử lý tiếp việc hiện tại',
+  'Thực hiện tiếp việc đang làm',
+  'Tiếp tục phần còn dở',
+  'Tiếp tục từ trạng thái hiện tại',
+  'Tiếp tục xử lý việc đang dở',
+  'Tiếp tục công việc đang dang dở',
+  'Thực thi tiếp việc hiện tại',
+  'Làm tiếp nhiệm vụ đang thực hiện',
+  'Tiếp tục đúng việc đang được giao',
+  'Làm tiếp, không đổi việc',
+]);
+function pickNv02ContinuePrompt(previous='',random=Math.random){
+  const prior=String(previous||'').replace(/^02\s*-\s*/,'');
+  const candidates=NV02_CONTINUE_PROMPTS.filter((text)=>text!==prior);
+  return candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
+}
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
@@ -145,6 +176,9 @@ function loadWorkerContinuity(workerId){
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
     idleState:fs.existsSync(NV02_IDLE_MARKER)?'READY_NO_ELIGIBLE_WORK':String(raw.idleState||''),
+    nextIdleWakeAt:Number(raw.nextIdleWakeAt)||0,
+    lastIdleMarkerSignature:String(raw.lastIdleMarkerSignature||''),
+    idleWakeBaselineSignature:String(raw.idleWakeBaselineSignature||''),
   };
 }
 function saveWorkerContinuity(workerId,state){
@@ -513,7 +547,7 @@ function loadNv02Continuity(){
   const now=Date.now();
   let raw={};
   try{raw=JSON.parse(fs.readFileSync(NV02_CONTINUITY_STATE,'utf8'));}catch{}
-  const f5WindowVersion=2;
+  const f5WindowVersion=3;
   let nextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   let nextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
   let workingRecheckAt=Number(raw.workingRecheckAt)||0;
@@ -570,6 +604,9 @@ function loadNv02Continuity(){
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
     idleState:fs.existsSync(NV02_IDLE_MARKER)?'READY_NO_ELIGIBLE_WORK':String(raw.idleState||''),
+    nextIdleWakeAt:Number(raw.nextIdleWakeAt)||0,
+    lastIdleMarkerSignature:String(raw.lastIdleMarkerSignature||''),
+    idleWakeBaselineSignature:String(raw.idleWakeBaselineSignature||''),
   };
   if(persistBootSchedule)saveNv02Continuity(state);
   return state;
@@ -752,12 +789,14 @@ const UI_EXPR=`(()=>{
   const progressText=(assistantText+'|'+activityText).trim();
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
+  const assistantSignature=String(assistantNodes.length)+':'+String(assistantText.length)+':'+String(activityHash);
+  const assistantTerminal=assistantText.includes('READY_NO_ELIGIBLE_WORK')?'READY_NO_ELIGIBLE_WORK':'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,connectionPending,chatRetryReady:Boolean(chatRetry),responseInterrupted,responseContinueReady:Boolean(responseContinue),
-    modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,projectDraftReady,
+    modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,assistantSignature,assistantTerminal,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
@@ -1026,7 +1065,7 @@ async function getControllerState(){
 async function chooseLocalContinuePrompt(workerId,state={}){
   return {
     source:'LOCAL_CONTINUE',
-    prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt),
+    prompt:workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt),
     jobId:'',
     issueRef:null,
     priority:null,
@@ -1418,7 +1457,14 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const phase=deriveNv02Phase(ui||{});
   const currentChat=hasCurrentNv02Chat(ui?.url);
   const currentTrackedWork=currentChat;
-  if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&phase!=='WORKING'&&state.awaitingWorkStart!==true)return;
+  if(phase==='READY'&&ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')&&String(ui?.assistantSignature||'')!==String(state.idleWakeBaselineSignature||'')){
+    try{fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);}catch{}
+    state={...state,idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0,nextIdleWakeAt:nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS),lastIdleMarkerSignature:String(ui?.assistantSignature||''),idleWakeBaselineSignature:''};
+    saveNv02Continuity(state);
+    await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,nextIdleWakeAt:state.nextIdleWakeAt});
+    return;
+  }
+
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
     const locallyBusy=nv02MutationBusy||workerMutationBusy.has('NV02');
@@ -1534,6 +1580,35 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const chatLoadRecoveryHandled=await maybeRecoverChatLoadError(w,target,ui,now);
   if(chatLoadRecoveryHandled)return;
   state=loadNv02Continuity();
+  if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true){
+    if(phase==='READY'){
+      const wakeAt=Number(state.nextIdleWakeAt)||now;
+      if(now<wakeAt)return;
+      state={...state,nextIdleWakeAt:now+60_000};
+      saveNv02Continuity(state);
+      let woke;
+      try{
+        woke=await withNv02Mutation(async()=>{
+          const result=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
+          if(!result?.ok)throw new Error(result?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
+          return result;
+        },'NV02_IDLE_SELF_PULL_WAKE');
+      }catch(error){
+        state={...loadNv02Continuity(),nextIdleWakeAt:now+60_000};
+        saveNv02Continuity(state);
+        await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN',{error:String(error?.message||error),nextIdleWakeAt:state.nextIdleWakeAt});
+        return;
+      }
+      if(woke?.status==='MUTATION_LEASE_BUSY'){
+        state={...loadNv02Continuity(),nextIdleWakeAt:now+5000};saveNv02Continuity(state);return;
+      }
+      try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
+      state={...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:Number(state.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')};
+      saveNv02Continuity(state);
+      await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED',{nextIdleWakeAt:null,evidence:woke?.evidence||null});
+      return;
+    }
+  }
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
     bootFreshContextPending.delete('NV02');
     state={...state,resumeChatUrl:'',verifiedChatUrl:'',modelVerifiedAt:'',pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
@@ -1623,7 +1698,7 @@ async function handleCommand(w,target,command){
     await genericWorkerEvent(w.id,'LOCAL_CONTINUE_DISPATCHED',{prompt});
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
-  if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK\n`);saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
+  if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};const now=Date.now();fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);const nextIdleWakeAt=nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS);saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0,nextIdleWakeAt});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,nextIdleWakeAt});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
   if(action==='DISPATCH'){const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02'){try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});}if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);

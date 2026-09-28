@@ -121,9 +121,10 @@ let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let githubTerminalReconcileTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
-const selfRunEnabled=['1','true','yes','on'].includes(String(process.env.TIGERIQ_APP_CHROME_SELF_RUN||'').trim().toLowerCase());
+const selfRunEnabled=false; // NV02 V2: App Chrome is UI continuity only; ChatGPT Plus self-selects/claims GitHub work.
 const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
-const selfRunGithubToken=String(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+const githubTerminalReconcileEnabled=false; // NV02 V2: App Chrome must not poll GitHub for terminal state.
+const selfRunGithubToken=''; // NV02 V2: App Chrome runtime is intentionally GitHub-credential-free.
 const selfRunGithubOwner=String(process.env.TIGERIQ_GITHUB_OWNER||'newsdayads').trim();
 const selfRunGithubRepo=String(process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab').trim();
 const selfRunCoreStatusUrl=String(process.env.TIGERIQ_CORE_STATUS_URL||'http://100.97.23.87:8795/api/status').trim();
@@ -660,6 +661,7 @@ async function reconcileSelfRunWorker(workerId:WorkerId){
   return true;
 }
 async function reconcileGithubTerminalUiJobs(){
+  if(!githubTerminalReconcileEnabled)return;
   if(githubTerminalReconcileTicking||killed)return;
   githubTerminalReconcileTicking=true;
   try{
@@ -1715,9 +1717,9 @@ server.listen(config.port,config.host,()=>{
   });
   persistEvidence();
   void startupRecovery();
-  void reconcileGithubTerminalUiJobs();
-  scheduleSelfRunTick(5000);
+  if(githubTerminalReconcileEnabled)void reconcileGithubTerminalUiJobs();
+  if(selfRunEnabled)scheduleSelfRunTick(5000);
 });
 setInterval(()=>void autopilotTick(),config.autopilot.pollIntervalMs).unref();
 setInterval(()=>void recoveryTick(),config.recovery.checkIntervalMs).unref();
-setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref();
+if(githubTerminalReconcileEnabled)setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref();
