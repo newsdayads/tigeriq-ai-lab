@@ -19,6 +19,7 @@ import {
   PAPERCLIP_LAB_WSL_ROOT,
   assertPaperclipLabRequest,
   paperclipDockerFailureClass,
+  paperclipContainerLogClass,
   paperclipHealthFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
@@ -167,12 +168,26 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('classifies health timeout causes before rollback', () => {
     expect(paperclipHealthFailureClass({ reason: 'PIN_NOT_READY' })).toBe('PIN_NOT_READY');
     expect(paperclipHealthFailureClass({ container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
+    expect(paperclipHealthFailureClass({ container: { running: false, logClass: 'PERMISSION' } })).toBe('CONTAINER_NOT_RUNNING_PERMISSION');
+    expect(paperclipHealthFailureClass({ container: { running: false, stateErrorClass: 'MOUNT' } })).toBe('CONTAINER_NOT_RUNNING_STATE_MOUNT');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: false } })).toBe('PORT_BINDING_MISMATCH');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: false } })).toBe('DATA_MOUNT_MISMATCH');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: false } })).toBe('PORT_UNREACHABLE');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
+  });
+
+  it('classifies bounded container logs without exposing raw log text', () => {
+    expect(paperclipContainerLogClass('Error: EACCES permission denied /paperclip')).toBe('PERMISSION');
+    expect(paperclipContainerLogClass('BETTER_AUTH_SECRET must be set')).toBe('CONFIG');
+    expect(paperclipContainerLogClass('database migration failed')).toBe('DATABASE');
+    expect(paperclipContainerLogClass('EADDRINUSE address already in use')).toBe('PORT_CONFLICT');
+    expect(paperclipContainerLogClass('heap out of memory')).toBe('OOM');
+    expect(paperclipContainerLogClass('Cannot find module x')).toBe('ENTRYPOINT_OR_FILE');
+    expect(paperclipContainerLogClass('fatal: startup failed')).toBe('APP_ERROR');
+    expect(paperclipContainerLogClass('')).toBe('NO_LOGS');
+    expect(paperclipContainerLogClass('normal startup banner')).toBe('UNCLASSIFIED');
   });
 
   it('uses only the fixed Ubuntu WSL Docker transport and lab-root path translation', () => {
@@ -209,6 +224,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
       'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'up', '-d',
     ])).toBe('compose_up');
     expect(paperclipLabBrokerOperationForDockerArgs(['stop', 'tigeriq-paperclip-lab'])).toBe('stop_container');
+    expect(paperclipLabBrokerOperationForDockerArgs(['logs', '--tail', '160', 'tigeriq-paperclip-lab'])).toBe('container_logs_tail');
     expect(paperclipLabBrokerOperationForDockerArgs(['ps'])).toBeNull();
     expect(paperclipLabBrokerOperationForDockerArgs(['compose', '-f', 'C:\\Temp\\evil.yml', 'up', '-d'])).toBeNull();
   });
@@ -217,7 +233,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("$Distro = 'Ubuntu'");
-    expect(broker).toContain("$BrokerVersion = '1.2-heartbeat-during-op'");
+    expect(broker).toContain("$BrokerVersion = '1.3-container-exit-diagnostic'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
     expect(broker).toContain("TimeoutSec=1200; IdleTimeoutSec=300");
@@ -230,11 +246,13 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("'compose_up'");
     expect(broker).toContain("'stop_container'");
     expect(broker).toContain("'inspect_container'");
+    expect(broker).toContain("'container_logs_tail'");
+    expect(broker).toContain("'docker','logs','--tail','160',$Container");
     expect(broker).not.toContain('$Request.args');
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.2-heartbeat-during-op'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.3-container-exit-diagnostic'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
@@ -294,7 +312,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.2-heartbeat-during-op'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.3-container-exit-diagnostic'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
@@ -316,6 +334,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('portBindingOk');
     expect(source).toContain('dataMountOk');
     expect(source).toContain('rollbackContainer');
+    expect(source).toContain("['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER]");
+    expect(source).toContain('paperclipContainerLogClass');
+    expect(source).toContain('state.result = {');
+    expect(source).toContain('healthFailureClass: paperclipHealthFailureClass(state)');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
     expect(source).not.toMatch(/shell_exec|cmd\.exe/i);
     expect((source.match(/WindowsPowerShell\\\\v1\.0\\\\powershell\.exe/g) ?? []).length).toBe(1);
