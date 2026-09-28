@@ -435,13 +435,13 @@ async function start(signal = null) {
     throw error;
   }
 }
-async function stop() {
-  await ensureConfig();
-  const down = await runFixed('docker.exe', composeArgs(['stop']), { cwd: CONFIG_DIR, timeoutMs: 60000 });
+async function stop(signal = null) {
+  const pin = await readReleasePin();
+  throwIfAborted(signal);
+  const down = await runFixed('docker.exe', ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
   if (down.exitCode !== 0 || down.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_STOP_FAILED');
-  return { stopped: true, port3210: await probePort() };
+  return { stopped: true, imageDigest: pin.imageDigest, port3210: await probePort() };
 }
-
 async function health() {
   const [port, http, ps] = await Promise.all([
     probePort(),
