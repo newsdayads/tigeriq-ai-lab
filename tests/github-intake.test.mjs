@@ -57,6 +57,7 @@ function response(data,ok=true,status=200,headerValues={}){
 function coreBacklogPool(options={}){
   const objectives=[]; const events=[]; const jobs=[];
   let routingFaultInsertFailures=Math.max(0,Number(options.routingFaultInsertFailures||0));
+  let routingFaultTerminalQueryFailures=Math.max(0,Number(options.routingFaultTerminalQueryFailures||0));
   return {objectives,events,jobs,async query(q,params=[]){
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
@@ -97,6 +98,10 @@ function coreBacklogPool(options={}){
     if(q.includes("from tigeriq_events where type='ROUTING_FAULT'")){
       const ownerVisibleOnly=q.includes("data->>'ownerVisible'='true'");
       const terminalBlockedOnly=q.includes("data->>'terminalBlocked'='true'");
+      if(terminalBlockedOnly&&routingFaultTerminalQueryFailures>0){
+        routingFaultTerminalQueryFailures--;
+        throw new Error('SIMULATED_TERMINAL_ROUTING_QUERY_FAILURE');
+      }
       const sourceRevision=String(params[2]||'');
       const found=events.some((e)=>e.type==='ROUTING_FAULT'
         &&String(e.data?.issueNumber)===String(params[0])
@@ -212,6 +217,24 @@ Return requested public evidence only.`;
   terminalFaults=pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true);
   assert.strictEqual(terminalFaults.length,2);
   assert.notStrictEqual(terminalFaults[1].data.sourceRevision,firstRevision);
+});
+
+test('pc_operator intake fails closed when terminal routing state cannot be read',async()=>{
+  const pool=coreBacklogPool({routingFaultTerminalQueryFailures:1});
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=OPENCLAW_TERMINAL_QUERY_FAIL_CLOSED',
+    'ASSIGNED_ACTION','Use exactly tigeriq_pc action=tcp_probe host="127.0.0.1" port=8798.',
+    'ACCEPTANCE','Return bounded evidence.',
+  ].join('\n');
+  const issues=[{number:1608,state:'open',title:'terminal state query fail closed',body,html_url:'https://example/1608'}];
+  await assert.rejects(
+    ()=>materializeGithubIssues({pool,openIssues:issues,token:'fake'}),
+    /SIMULATED_TERMINAL_ROUTING_QUERY_FAILURE/,
+  );
+  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(pool.jobs.length,0);
 });
 
 test('pc_operator rearm fails closed until stale terminal label clears',async()=>{
