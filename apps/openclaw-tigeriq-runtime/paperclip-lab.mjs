@@ -786,7 +786,7 @@ async function health(signal = null, transport = null, options = {}) {
   }
   const containerDiagnostic = {
     status: typeof info?.State?.Status === 'string' ? info.State.Status : null,
-    exitCode: Number.isInteger(Number(info?.State?.ExitCode)) ? Number(info.State.ExitCode) : null,
+    exitCode: Number.isInteger(info?.State?.ExitCode) ? info.State.ExitCode : null,
     oomKilled: info?.State?.OOMKilled === true,
     stateErrorClass: paperclipContainerStateErrorClass(info?.State?.Error),
     logClass,
