@@ -536,6 +536,18 @@ describe('APP Chrome UI-only continuity regression #1525',()=>{
 });
 
 
+describe('NV02 periodic reset lease scope',()=>{
+  it('permits only the approved periodic close/resume mutations while WORKING or heartbeat-stale',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const periodicReset=workerId==='NV02'&&['NV02_PERIODIC_REOPEN_CLOSE','NV02_PERIODIC_RESUME_URL'].includes(purpose)");
+    expect(server).toContain('||periodicF5||periodicReset||currentChatRestore');
+    expect(server).toContain("if(!recentHeartbeat(workerId)&&!periodicF5&&!periodicReset)throw new Error(`WORKER_HEARTBEAT_NOT_READY:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(paused&&!periodicF5)throw new Error('OWNER_INTERACTION_READ_ONLY')");
+    expect(server).toContain("if(utilityPausedWorkers.has(workerId)&&!periodicF5)throw new Error(`UTILITY_WORKER_PAUSED:${workerId}`)");
+  });
+});
+
 describe('NV03/NV04 UI continuity lease regression #1525',()=>{
   it('allows only bounded generic UI maintenance to coexist with a stale active UI ledger record',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
@@ -552,7 +564,7 @@ describe('NV03/NV04 UI continuity lease regression #1525',()=>{
     expect(server).toContain('const uiContinuityLeaseAllowed=continuityLeaseAllowed||genericUiContinuityMaintenance');
     expect(server).toContain('||genericUiContinuityMaintenance;');
     expect(server).toContain('&&!uiContinuityLeaseAllowed)throw new Error(`WORKER_ACTIVE_JOB:${workerId}`)');
-    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain("if(state.lastHeartbeat?.uiBusy!==false&&!staleWorkingRecovery&&!periodicF5&&!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
     expect(server).toContain("if(commandQueues.get(workerId)!.length>0||[...waiters.values()].some((w)=>w.workerId===workerId))");
   });
 });
@@ -566,8 +578,8 @@ describe('NV02 chat-load recovery lease #1567',()=>{
     expect(server).toContain("state.lastHeartbeat?.chatLoadError===true");
     expect(server).toContain("!chatLoadRetryRecovery||state.lastHeartbeat?.chatRetryReady===true");
     expect(server).toContain("CHAT_LOAD_RECOVERY_STATE_REQUIRED:");
-    expect(server).toContain("!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
-    expect(server).toContain('||chatLoadRecovery||periodicF5');
+    expect(server).toContain("!periodicReset&&!chatLoadRecoveryStateAllowed)throw new Error(`WORKER_UI_BUSY_OR_UNKNOWN:${workerId}`)");
+    expect(server).toContain('||chatLoadRecovery||periodicF5||periodicReset');
   });
 });
 
