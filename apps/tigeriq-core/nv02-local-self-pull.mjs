@@ -58,6 +58,23 @@ export function nv02PrioritySummary(issue) {
 }
 export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
 
+function workOrderRef(issueOrNumber) {
+  const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
+  return Number.isInteger(number) && number > 0 ? `#${number}` : '';
+}
+
+export function nv02LeaseAuthority(issue, leaseMeta = {}) {
+  const expectedWorkOrder = workOrderRef(issue);
+  const expectedScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
+  if (!expectedWorkOrder) return { valid: false, reason: 'WORK_ORDER_REQUIRED', workOrder: '', resourceScope: expectedScope };
+  if (!expectedScope) return { valid: false, reason: 'RESOURCE_SCOPE_REQUIRED', workOrder: expectedWorkOrder, resourceScope: '' };
+  const actualWorkOrder = String(leaseMeta?.workOrder || leaseMeta?.WORK_ORDER || '').trim();
+  const actualScope = String(leaseMeta?.resourceScope || leaseMeta?.RESOURCE_SCOPE || '').trim();
+  if (actualWorkOrder !== expectedWorkOrder) return { valid: false, reason: 'WORK_ORDER_MISMATCH', workOrder: expectedWorkOrder, resourceScope: expectedScope };
+  if (actualScope !== expectedScope) return { valid: false, reason: 'RESOURCE_SCOPE_MISMATCH', workOrder: expectedWorkOrder, resourceScope: expectedScope };
+  return { valid: true, reason: 'WORK_ORDER_AUTHORITY_VALID', workOrder: expectedWorkOrder, resourceScope: expectedScope };
+}
+
 function explicitTarget(meta) {
   const targets = LOCKED_WORKER_FIELDS.map((key) => String(meta[key] || '').trim()).filter(Boolean);
   return targets.find((target) => !/^NV02$/i.test(target)) || targets[0] || '';
@@ -126,9 +143,10 @@ export function noEligibleNv02Work() { return { state: NV02_READY_NO_ELIGIBLE_WO
 export function buildNv02LocalSelfPullPrompt(issue, lease) {
   return [
     'LÀM — NO YAPPING.', `NV02_LOCAL_GITHUB_SELF_PULL=${NV02_LOCAL_GITHUB_SELF_PULL}`,
-    `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`,
+    `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `WORK_ORDER=#${issue.number}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`,
     'Core không assign/route NV02. App Chrome chỉ là UI continuity/transport.',
     'P0 tuyệt đối không đọc, nhận, claim hoặc execute. Làm đúng một Work Order này đến DONE hoặc BLOCKED.',
+    'Không tự tạo, mở rộng, claim hoặc allocate scope/resource ngoài Work Order này. Chỉ dùng đúng WORK_ORDER, RESOURCE_SCOPE và LEASE_ID đã cấp.',
     'Ghi evidence vào GitHub trước khi release lease; terminal xong mới tự lấy việc P1-P5 kế tiếp.', String(issue.body || ''),
   ].join('\n');
 }
@@ -206,9 +224,10 @@ export async function claimNv02WorkOrder({
   nowMs = Date.now(),
 }) {
   const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
+  const workOrder = workOrderRef(issue);
   const lockKey = resourceScope;
   const before = refreshAllComments ? await refreshAllComments() : allComments;
-  if (!resourceScope || resourceOwnershipConflict(issue, before, { nowMs }) || localClaimLocks.has(lockKey)
+  if (!workOrder || !resourceScope || resourceOwnershipConflict(issue, before, { nowMs }) || localClaimLocks.has(lockKey)
       || !(await acquireLocalClaimLock(lockKey, ttlMs)) || activeNv02Lease(comments, nowMs)) {
     await releaseLocalClaimLock(lockKey);
     return null;
@@ -219,15 +238,16 @@ export async function claimNv02WorkOrder({
       await releaseLocalClaimLock(lockKey);
       return null;
     }
-    const lease = { leaseId: `NV02-${issue.number}-${randomUUID()}`, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
-    await postComment(issue.number, `${NV02_LEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
+    const lease = { leaseId: `NV02-${issue.number}-${randomUUID()}`, workOrder, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
+    await postComment(issue.number, `${NV02_LEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
     // GitHub comment creation is not a transaction. Let concurrent cross-issue
     // claims become visible, then elect the earliest still-live lease per scope.
     await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
     const afterGlobal = refreshAllComments ? await refreshAllComments() : await postComment(issue.number, null);
     const winner = activeResourceClaims(afterGlobal, nowMs).find((claim) => claim.resourceScope === resourceScope);
-    if (winner?.identity !== lease.leaseId) {
-      await postComment(issue.number, `${NV02_RELEASE_MARKER}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSTATE=CLAIM_LOST\nRELEASED_AT=${new Date().toISOString()}`);
+    const winnerAuthority = nv02LeaseAuthority(issue, winner?.meta || {});
+    if (winner?.identity !== lease.leaseId || !winnerAuthority.valid) {
+      await postComment(issue.number, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSTATE=CLAIM_LOST\nRELEASED_AT=${new Date().toISOString()}`);
       await releaseLocalClaimLock(lockKey);
       return null;
     }
@@ -238,7 +258,9 @@ export async function claimNv02WorkOrder({
   }
 }
 export async function releaseNv02WorkOrder({ issueNumber, leaseId, resourceScope = '', state, postComment }) {
-  if (resourceScope) await releaseLocalClaimLock(resourceScope);
-  else for (const key of [...localClaimLocks]) await releaseLocalClaimLock(key);
-  return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nLEASE_ID=${leaseId}\nWORKER=NV02${resourceScope ? `\nRESOURCE_SCOPE=${resourceScope}` : ''}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
+  const workOrder = workOrderRef(issueNumber);
+  if (!workOrder) throw new Error('NV02_RELEASE_WORK_ORDER_REQUIRED');
+  if (!resourceScope) throw new Error('NV02_RELEASE_RESOURCE_SCOPE_REQUIRED');
+  await releaseLocalClaimLock(resourceScope);
+  return postComment(issueNumber, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
 }
