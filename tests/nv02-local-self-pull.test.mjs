@@ -99,7 +99,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(await claimNv02WorkOrder({ issue: work, comments, postComment, claimSettleMs: 0, nowMs: Date.parse('2026-09-27T00:01:00Z') })).toBeNull();
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z')).LEASE_ID).toBe(first.leaseId);
     await postComment(work.number, `EVIDENCE\nSTATE=DONE\nLEASE_ID=${first.leaseId}`);
-    await releaseNv02WorkOrder({ issueNumber: work.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment });
+    await releaseNv02WorkOrder({ issue: work, issueNumber: work.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment });
     expect(activeNv02Lease(comments, Date.parse('2026-09-27T00:01:00Z'))).toBeNull();
     expect(comments.at(-1).body).toContain('WORK_ORDER=#20');
     const prompt = buildNv02LocalSelfPullPrompt(work, first);
@@ -160,7 +160,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(await claimNv02WorkOrder({ issue: secondIssue, comments: secondComments, postComment: secondPost, claimSettleMs: 0, nowMs: now })).toBeNull();
     expect(secondComments).toEqual([]);
     await releaseNv02WorkOrder({
-      issueNumber: firstIssue.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment: firstPost,
+      issue: firstIssue, issueNumber: firstIssue.number, leaseId: first.leaseId, resourceScope: first.resourceScope, state: 'DONE', postComment: firstPost,
     });
   });
 
@@ -214,8 +214,19 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(nv02LeaseAuthority(work, { workOrder: '#81', resourceScope: 'BOUND_SCOPE' })).toMatchObject({ valid: true });
 
     await expect(releaseNv02WorkOrder({
-      issueNumber: 81, leaseId: 'L81', resourceScope: '', state: 'DONE', postComment: async () => null,
-    })).rejects.toThrow('NV02_RELEASE_RESOURCE_SCOPE_REQUIRED');
+      issue: work, issueNumber: 81, leaseId: 'L81', resourceScope: '', state: 'DONE', postComment: async () => null,
+    })).rejects.toThrow('NV02_RELEASE_AUTHORITY_INVALID:RESOURCE_SCOPE_MISMATCH');
+
+    const releaseWrites = [];
+    await expect(releaseNv02WorkOrder({
+      issue: work, issueNumber: 81, leaseId: 'L81', resourceScope: 'OTHER_SCOPE', state: 'DONE',
+      postComment: async (_number, body) => releaseWrites.push(body),
+    })).rejects.toThrow('NV02_RELEASE_AUTHORITY_INVALID:RESOURCE_SCOPE_MISMATCH');
+    expect(releaseWrites).toEqual([]);
+
+    await expect(releaseNv02WorkOrder({
+      issueNumber: 81, leaseId: 'L81', resourceScope: 'BOUND_SCOPE', state: 'DONE', postComment: async () => null,
+    })).rejects.toThrow('NV02_RELEASE_WORK_ORDER_REQUIRED');
   });
 
   it('blocks only live leases and lets released/stale coding work fall back to NV02', () => {
