@@ -404,7 +404,7 @@ export function buildGithubPcOperatorPrompt(assignedAction,publicEvidenceKeys=[]
     );
   }
   const prompt=lines.join('\n');
-  if(prompt.length>6000)throw new Error('OPENCLAW_INSTRUCTION_INVALID');
+  if(!directAction&&prompt.length>6000)throw new Error('OPENCLAW_INSTRUCTION_INVALID');
   return prompt;
 }
 
@@ -421,6 +421,11 @@ async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
 
 async function recordRoutingFault(pool,data){
   await pool.query("insert into tigeriq_events(type,data) values('ROUTING_FAULT',$1)",[JSON.stringify(data)]).catch(()=>{});
+}
+
+async function routingFaultAlreadyRecorded(pool,issueNumber,reason){
+  const result=await pool.query("select 1 from tigeriq_events where type='ROUTING_FAULT' and data->>'issueNumber'=$1 and data->>'reason'=$2 limit 1",[String(issueNumber),String(reason)]).catch(()=>({rowCount:0}));
+  return Number(result?.rowCount||0)>0;
 }
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
@@ -463,7 +468,12 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         );
       }catch(error){
         if(String(error?.message||'')==='OPENCLAW_INSTRUCTION_INVALID'){
-          await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason:'OPENCLAW_INSTRUCTION_INVALID'});
+          const reason='OPENCLAW_INSTRUCTION_INVALID';
+          const alreadyReported=await routingFaultAlreadyRecorded(pool,spec.number,reason);
+          if(!alreadyReported){
+            await commentIssue(fetchImpl,owner,repo,spec.number,`[BLOCKED] TigerIQ Core rejected this Work Order before objective/job materialization because the fully built OpenClaw pc_operator instruction exceeds the 6000-character limit. Shorten ASSIGNED_ACTION/public-evidence instructions, then update the issue to rearm. Reason: ${reason}.`,token).catch(()=>false);
+            await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,ownerVisible:true});
+          }
           skipped++;
           continue;
         }
