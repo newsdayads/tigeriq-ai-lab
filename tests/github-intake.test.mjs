@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -103,6 +103,20 @@ NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
 
+test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw content',()=>{
+  const assigned='Use exactly tigeriq_pc action=file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json".';
+  const plain=buildGithubPcOperatorPrompt(assigned,[]);
+  assert.match(plain,/ASSIGNED ACTION:/);
+  assert.doesNotMatch(plain,/PUBLIC EVIDENCE CONTRACT/);
+  const prompt=buildGithubPcOperatorPrompt(assigned,['installedSha','result','notAllowed'],{directAction:true});
+  assert.match(prompt,/pre-admitted typed local PC action/);
+  assert.match(prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result/);
+  assert.doesNotMatch(prompt,/notAllowed/);
+  assert.match(prompt,/copy ONLY the requested keys/);
+  assert.match(prompt,/Do not echo raw file content/);
+  assert.match(prompt,/never invent a value/);
+});
+
 test('owner-direct pc_operator GitHub intake materializes bounded OpenClaw objective',async()=>{
   const pool=coreBacklogPool();
   const body=`TIGERIQ_EXECUTABLE=true
@@ -113,6 +127,7 @@ CAPABILITY=pc_operator
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 RESOURCE_SCOPE=OPENCLAW_TEST_SCOPE
+PUBLIC_EVIDENCE_KEYS=installedSha,result
 ASSIGNED_ACTION
 1. tigeriq_pc tcp_probe host=127.0.0.1 port=18789
 2. tigeriq_pc file_write path=D:\\TigerIQ\\State\\canary.txt content=PASS
@@ -130,7 +145,36 @@ Return structured PASS evidence.`;
   assert.strictEqual(pool.jobs[0].id,'JOB-GH-1608-PC');
   assert.strictEqual(pool.jobs[0].capability,'pc_operator');
   assert.match(pool.jobs[0].prompt,/tcp_probe host=127.0.0.1 port=18789/);
+  assert.match(pool.jobs[0].prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result/);
+  assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
   assert.doesNotMatch(pool.jobs[0].prompt,/Production\/main/);
+});
+
+test('typed direct pc_operator action keeps direct prompt and public evidence contract',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=RDC_RECOVERY_STATE_READBACK',
+    'PUBLIC_EVIDENCE_KEYS=installedSha,result',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"file_read","path":"D:\\\\TigerIQ\\\\State\\\\core-runtime-updater.json"}',
+    'ASSIGNED_ACTION',
+    'Use exactly tigeriq_pc action=file_read path="D:\\\\TigerIQ\\\\State\\\\core-runtime-updater.json".',
+    'ACCEPTANCE',
+    'Return requested public evidence only.',
+  ].join('\n');
+  const issues=[{number:1935,state:'open',title:'readback',body,html_url:'https://example/1935'}];
+  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
+  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.issueNumber,1935);
+  assert.strictEqual(pool.jobs.length,1);
+  assert.match(pool.jobs[0].prompt,/pre-admitted typed local PC action/);
+  assert.match(pool.jobs[0].prompt,/REQUESTED_PUBLIC_EVIDENCE_KEYS=installedSha,result/);
+  assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
 });
 
 test('Core manager excludes deterministic CORE_OPENCLAW_BOUNDED objectives',()=>{
