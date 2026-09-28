@@ -504,7 +504,9 @@ async function health(signal = null) {
     pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, imageDigest: pin.imageDigest },
   };
 }
-export async function executePaperclipLabAction(input = {}) {
+export async function executePaperclipLabAction(input = {}, options = {}) {
+  const signal = options?.signal || null;
+  throwIfAborted(signal);
   const { action } = assertPaperclipLabRequest(input);
   const started = Date.now();
   let data;
