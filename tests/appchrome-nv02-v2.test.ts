@@ -63,6 +63,20 @@ describe('App Chrome NV02 V2 boundary', () => {
 describe('NV02 V2 reviewed race hardening', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
+  it('keeps periodic reset lease valid and does not starve Auto wake on reset backoff', () => {
+    const resetGate=bridge.indexOf("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+    const f5Gate=bridge.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(resetGate).toBeGreaterThan(-1);
+    expect(f5Gate).toBeGreaterThan(resetGate);
+    const resetBlock=bridge.slice(resetGate,f5Gate);
+    expect(resetBlock).toContain("'PERIODIC_PREPARE_RESTART',120000");
+    expect(resetBlock).not.toContain("'PERIODIC_PREPARE_RESTART',240000");
+    expect(resetBlock).toContain('PERIODIC_RESTART_PREPARE_BACKOFF');
+    expect(resetBlock).toContain('PERIODIC_RESTART_LEASE_BUSY_BACKOFF');
+    expect(resetBlock).toContain('skipPeriodicReset=true');
+    expect(resetBlock).toContain('state=loadNv02Continuity();');
+  });
+
   it('keeps reviewed idle/F5 fixes in the exact head', () => {
     expect(bridge).toContain('const f5WindowVersion=3;');
     expect(bridge).toContain("lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')");
