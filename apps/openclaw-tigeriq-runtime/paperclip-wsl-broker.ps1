@@ -63,6 +63,9 @@ function Get-OperationSpec([string]$Operation) {
     'inspect_container' {
       return [pscustomobject]@{ TimeoutSec=30; Args=@('--distribution',$Distro,'--exec','docker','inspect',$Container,'--format','{{json .}}') }
     }
+    'container_logs_tail' {
+      return [pscustomobject]@{ TimeoutSec=20; Args=@('--distribution',$Distro,'--exec','docker','logs','--tail','160',$Container) }
+    }
     default { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_OPERATION_NOT_ALLOWED' }
   }
 }
