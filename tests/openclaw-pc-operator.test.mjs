@@ -11,6 +11,7 @@ import {
   PAPERCLIP_LAB_ACTIONS,
   PAPERCLIP_LAB_IMAGE,
   PAPERCLIP_LAB_PORT,
+  PAPERCLIP_LAB_RUNTIME_REVISION,
   PAPERCLIP_LAB_RELEASE,
   PAPERCLIP_LAB_RELEASE_SHA,
   PAPERCLIP_LAB_ROOT,
@@ -134,6 +135,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260929_PULL_CLASS_RCA_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -260,6 +262,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
 
   it('keeps the implementation fail-closed against shell/path escapes and false health', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    expect(source).toContain('runtimeRevision: PAPERCLIP_LAB_RUNTIME_REVISION');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_IMAGE_REVISION_MISMATCH');
