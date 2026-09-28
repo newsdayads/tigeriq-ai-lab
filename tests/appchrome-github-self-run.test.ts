@@ -198,20 +198,21 @@ describe('App Chrome self-run wiring',()=>{
   });
 
   it('keeps self-run explicitly runtime-configured and claim-safe',()=>{
-    expect(server).toContain("TIGERIQ_APP_CHROME_SELF_RUN");
+    expect(server).toContain('const selfRunEnabled=false;');
     expect(server).toContain('listOpenGithubIssues');
     expect(server).toContain('claimGithubIssue');
     expect(server).toContain('new DurableSelfRunClaimStore');
     expect(server).toContain('scheduleSelfRunTick(5000)');
-    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='1'");
+    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
     expect(supervisor).not.toContain("APPCHROME_GITHUB_CREDENTIAL_UNAVAILABLE");
   });
 
-  it('loads only the bounded Owner-authorized GitHub token for self-run',()=>{
-    expect(supervisor).toContain("Get-Command gh.exe");
-    expect(supervisor).toContain("auth token");
-    expect(supervisor).toContain("github-command-center.token");
-    expect(supervisor).not.toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
+  it('keeps the App Chrome runtime credential-free and UI-only for NV02 V2',()=>{
+    expect(supervisor).not.toContain("Get-Command gh.exe");
+    expect(supervisor).not.toContain("auth token");
+    expect(supervisor).not.toContain("github-command-center.token");
+    expect(supervisor).toContain("Remove-Item Env:TIGERIQ_GITHUB_TOKEN");
+    expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_SELF_RUN='0'");
     expect(supervisor).toContain("$env:TIGERIQ_APP_CHROME_LOCAL_ONLY='1'");
     expect(supervisor).not.toContain('Set-Acl');
   });
