@@ -142,7 +142,7 @@ describe('Web Control runtime', () => {
     expect(healthModelJs).toContain('resourceHealthTruth');
     expect(truthJs).toContain('Không bịa %');
     expect(truthJs).toContain("['Review'");
-    expect(unifiedJs).toContain('reviewer_employee_id');
+    expect(unifiedJs).toContain('Work Order');\n    expect(unifiedJs).toContain('Thời lượng');
     expect(unifiedJs).toContain('Hiệu suất API 24 giờ');
     expect(unifiedJs).toContain('Cảnh báo hiện tại');
     expect(unifiedJs).toContain('Hoạt động gần đây');
