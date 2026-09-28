@@ -33,6 +33,8 @@ const ENV_FILE = win.join(CONFIG_DIR, 'paperclip.env');
 const COMPOSE_FILE = win.join(CONFIG_DIR, 'docker-compose.lab.yml');
 const RELEASE_FILE = win.join(CONFIG_DIR, 'release.json');
 const MAX_OUTPUT_CHARS = 32000;
+const PAPERCLIP_LAB_PULL_TIMEOUT_MS = 600000;
+const PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 610000;
 export const PAPERCLIP_LAB_WSL_DISTRO = 'Ubuntu';
 export const PAPERCLIP_LAB_WSL_ROOT = '/mnt/d/TigerIQ-Paperclip-Lab';
 const DOCKER_TRANSPORT_WINDOWS = 'windows';
@@ -317,7 +319,7 @@ async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = 
   const requestFile = await assertSafeFileTarget(win.join(BROKER_REQUESTS_DIR, `request-${id}.json`));
   const responseFile = await assertSafeFileTarget(win.join(BROKER_RESPONSES_DIR, `response-${id}.json`));
   await fs.writeFile(requestFile, JSON.stringify({ schema: 'TIGERIQ_PAPERCLIP_WSL_REQUEST_V1', id, operation }), { encoding: 'utf8', flag: 'wx' });
-  const deadline = Date.now() + Math.max(5000, Math.min(190000, Number(timeoutMs) + 10000));
+  const deadline = Date.now() + Math.max(5000, Math.min(PAPERCLIP_LAB_BROKER_MAX_WAIT_MS, Number(timeoutMs) + 10000));
   try {
     while (Date.now() < deadline) {
       throwIfAborted(signal);
@@ -616,7 +618,7 @@ async function install(signal = null) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_PORT_3210_OCCUPIED');
   }
   await ensureConfig();
-  const pull = await runDocker(transport, ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: 180000, signal });
+  const pull = await runDocker(transport, ['pull', PAPERCLIP_LAB_IMAGE], { timeoutMs: PAPERCLIP_LAB_PULL_TIMEOUT_MS, signal });
   if (pull.exitCode !== 0 || pull.timedOut) {
     throw new Error(`TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}`);
   }

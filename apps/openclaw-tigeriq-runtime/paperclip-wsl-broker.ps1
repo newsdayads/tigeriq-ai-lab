@@ -33,7 +33,7 @@ function Get-OperationSpec([string]$Operation) {
       return [pscustomobject]@{ TimeoutSec=20; Args=@('--distribution',$Distro,'--exec','docker','version','--format','{{.Server.Version}}') }
     }
     'pull_pinned_image' {
-      return [pscustomobject]@{ TimeoutSec=180; Args=@('--distribution',$Distro,'--exec','docker','pull',$Image) }
+      return [pscustomobject]@{ TimeoutSec=600; Args=@('--distribution',$Distro,'--exec','docker','pull',$Image) }
     }
     'inspect_revision' {
       return [pscustomobject]@{ TimeoutSec=30; Args=@('--distribution',$Distro,'--exec','docker','image','inspect',$Image,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}') }

@@ -207,6 +207,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("$Distro = 'Ubuntu'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
+    expect(broker).toContain("TimeoutSec=600");
     expect(broker).toContain("'inspect_revision'");
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
@@ -275,6 +276,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_DOCKER_PATH_NOT_ALLOWED');
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_PULL_FAILED_${paperclipDockerFailureClass(pull)}');
+    expect(source).toContain('PAPERCLIP_LAB_PULL_TIMEOUT_MS = 600000');
+    expect(source).toContain('PAPERCLIP_LAB_BROKER_MAX_WAIT_MS = 610000');
+    expect(source).toContain("timeoutMs: PAPERCLIP_LAB_PULL_TIMEOUT_MS");
     expect(source).toContain('imageDigest');
     expect(source).toContain('/api/health');
     expect(source).toContain('identityOk');
