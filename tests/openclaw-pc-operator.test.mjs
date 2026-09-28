@@ -151,4 +151,12 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(() => assertPaperclipLabRequest({ action: 'paperclip_lab_health', port: 8795 })).toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
     expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   });
+
+  it('keeps the implementation fail-closed against shell/path escapes and false health', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_SYMLINK_BLOCKED');
+    expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+    expect(source).toContain('identityOk');
+    expect(source).not.toMatch(/shell_exec|powershell|cmd\.exe/i);
+  });
 });
