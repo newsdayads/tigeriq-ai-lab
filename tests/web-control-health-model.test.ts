@@ -17,7 +17,8 @@ describe('Web Control live health model',()=>{
 
   it('expires stale rate limits and preserves only current 429/cooldown as RATE_LIMITED',()=>{
     expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'rate_limit',last_seen_at:ago(120),cooldown_until:ago(60)},NOW).status).toBe('STALE_ERROR');
-    expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'HTTP_429',last_seen_at:ago(2),cooldown_until:future(10)},NOW).status).toBe('RATE_LIMITED');
+    expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'rate_limit',last_seen_at:ago(1),last_429_at:ago(120),cooldown_until:ago(60)},NOW).status).toBe('STALE_ERROR');
+    expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'HTTP_429',last_seen_at:ago(2),last_429_at:ago(2),cooldown_until:future(10)},NOW).status).toBe('RATE_LIMITED');
   });
 
   it('classifies current auth/config/response-contract errors distinctly',()=>{
