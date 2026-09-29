@@ -98,12 +98,32 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');
   });
 
-  it('backs off exhausted GitHub REST quota and throttles App Chrome discovery',()=>{
+  it('persists GitHub REST cooldown across updater loops/restarts and covers direct gh bypasses',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain("$githubApiBackoffState='D:\\TigerIQ\\State\\github-api-rate-limit-backoff.json'");
+    expect(src).toContain('function Load-GithubApiBackoff');
+    expect(src).toContain('function Save-GithubApiBackoff');
+    expect(src).toContain("schema='TIGERIQ_GITHUB_API_BACKOFF_V1'");
     expect(src).toContain('function Test-GithubApiBackoff');
+    expect(src).toContain('if($script:githubApiBackoffUntil -le $now){Load-GithubApiBackoff}');
+    expect(src).toContain("Save-GithubApiBackoff ((Get-Date).ToUniversalTime().AddMinutes(15)) 'rate_limit_text'");
     expect(src).toContain('function Set-GithubApiBackoffFromText');
     expect(src).toContain('function Invoke-GithubApiJson');
-    expect(src).toContain("result='WAIT_GITHUB_API_RATE_LIMIT'");
+    expect(src).toContain('$null=Set-GithubApiBackoffFromText $raw');
+    const appReport=src.slice(src.indexOf('function Report-AppChromeResume'),src.indexOf('function Invoke-AppChromeOwnerResume'));
+    expect(appReport).toContain('if(Test-GithubApiBackoff){return $false}');
+    expect(appReport).toContain('$null=Set-GithubApiBackoffFromText $raw');
+    const openclawReport=src.slice(src.indexOf('function Report-OpenClawCanary'),src.indexOf('function Invoke-OpenClawCanary'));
+    expect(openclawReport).toContain('if(Test-GithubApiBackoff){return $false}');
+    expect(openclawReport).toContain('$null=Set-GithubApiBackoffFromText $raw');
+    const helper=src.slice(src.indexOf('function Invoke-AppChromeZeroTouchHelper'),src.indexOf('function Task-Exists'));
+    expect(helper).toContain('$null=Set-GithubApiBackoffFromText $raw');
+    const wait=src.indexOf("result='WAIT_GITHUB_API_RATE_LIMIT'");
+    const noChange=src.indexOf("result='NO_CHANGE'",wait);
+    expect(wait).toBeGreaterThan(-1);
+    expect(noChange).toBeGreaterThan(wait);
+    expect(src.slice(wait,noChange)).toContain('$remoteDesktopGuard=Reconcile-RemoteDesktopGuard');
+    expect(src.slice(wait,noChange)).toContain('Start-Sleep -Seconds $IntervalSeconds;continue');
     expect(src).toContain('$appChromeInstallPollIntervalSec=900');
     expect(src).toContain('$appChromeResumePollIntervalSec=900');
     expect(src).toContain('Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"');
