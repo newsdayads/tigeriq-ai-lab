@@ -58,6 +58,7 @@ test('success verifies private limited Actor without leaking private profile dat
   assert.equal(evidence.actor.expectedVersionPresent, true);
   assert.equal(evidence.permissions.buildPermission, 'UNVERIFIED_UNTIL_E2E');
   assert.equal(evidence.permissions.runPermission, 'UNVERIFIED_UNTIL_E2E');
+  assert.equal(evidence.permissions.outputStorageReadPermission, 'UNVERIFIED_UNTIL_E2E');
   assert.deepEqual(evidence.safety.methodsUsed, ['GET']);
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.options.method === 'GET'));
