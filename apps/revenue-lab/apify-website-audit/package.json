@@ -6,7 +6,8 @@
   "main": "actor.mjs",
   "scripts": {
     "start": "node actor.mjs",
-    "test": "node --test audit.test.mjs"
+    "test": "node --test audit.test.mjs",
+    "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"
