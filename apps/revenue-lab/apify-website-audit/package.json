@@ -1,0 +1,15 @@
+{
+  "name": "apify-website-audit",
+  "version": "1.0.0",
+  "description": "Zero-cost standalone Apify website audit PoC for TigerIQ Revenue Lab",
+  "type": "module",
+  "main": "actor.mjs",
+  "scripts": {
+    "start": "node actor.mjs",
+    "test": "node --test audit.test.mjs"
+  },
+  "dependencies": {
+    "apify": "^3.2.0"
+  },
+  "devDependencies": {}
+}
