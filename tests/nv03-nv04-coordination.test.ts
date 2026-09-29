@@ -131,6 +131,8 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain('reconcileNv03Results');
     expect(source).toContain("REVIEW\\s*=\\s*(?:PASS|CHANGES_REQUIRED)");
     expect(source).toContain('closeGithubIssueCompleted');
+    expect(source).toContain('nv03SidecarRelease');
+    expect(source).toContain("${nv03SidecarBase}/release");
     expect(source).not.toContain('/api/workers/NV03/dispatch');
     expect(source).toContain('/api/workers/NV04/dispatch');
     expect(source).not.toContain('/api/workers/NV02/');
