@@ -7,6 +7,8 @@ import {
   eligibleNv04Issue,
   renderNv04GithubComment,
   renderNv04Request,
+  inputRevision,
+  resourceScope,
   type GithubIssueLike,
 } from './nv03-nv04-coordination.js';
 import { Nv04DriveTransport } from './nv04-drive-transport.js';
@@ -24,6 +26,7 @@ type GithubIssueApi = CanonicalGithubIssue;
 
 const OWNER_SCOPE = 'APP_CHROME_NV03_NV04_COORDINATION_V1';
 const controllerBase = String(process.env.TIGERIQ_CONTROLLER_URL || 'http://127.0.0.1:8798').replace(/\/$/, '');
+const nv03SidecarBase = String(process.env.TIGERIQ_NV03_SIDECAR_URL || 'http://127.0.0.1:8823').replace(/\/$/, '');
 const driveRoot = String(process.env.TIGERIQ_NV04_DRIVE_ROOT || 'G:\\Drive của tôi\\TigerIQ AI Lab\\03_GEMINI_REVIEW');
 const repoFullName = String(process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab');
 const githubToken = String(process.env.TIGERIQ_GITHUB_TOKEN || process.env.GITHUB_TOKEN || '');
@@ -98,13 +101,29 @@ function targetCompatible(issue: GithubIssueApi, worker: 'NV03' | 'NV04') {
   return values.length === 0 || values.every((value) => value === worker);
 }
 
-async function controllerDispatch(worker: 'NV03' | 'NV04', text: string, job: Record<string, string>) {
-  const response = await fetch(`${controllerBase}/api/workers/${worker}/dispatch`, {
+async function nv03SidecarAssign(issue: GithubIssueApi, jobId: string) {
+  const response = await fetch(`${nv03SidecarBase}/assign`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({
+      jobId,
+      workOrder: `#${issue.number} - ${issue.title}`,
+      issueUrl: issue.html_url,
+      resourceScope: resourceScope(issue),
+      inputRevision: inputRevision(issue),
+      prompt: buildNv03ReviewPrompt(issue),
+    }),
+  });
+  if (!response.ok) throw new Error(`NV03_SIDECAR_HTTP_${response.status}:${await response.text()}`);
+}
+
+async function controllerDispatchNv04(text: string, job: Record<string, string>) {
+  const response = await fetch(`${controllerBase}/api/workers/NV04/dispatch`, {
     method: 'POST',
     headers: { 'content-type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ text, navigate: true, job }),
   });
-  if (!response.ok) throw new Error(`CONTROLLER_${worker}_HTTP_${response.status}:${await response.text()}`);
+  if (!response.ok) throw new Error(`CONTROLLER_NV04_HTTP_${response.status}:${await response.text()}`);
 }
 
 async function reconcileNv04Results(issues: GithubIssueApi[], transport: Nv04DriveTransport) {
@@ -134,12 +153,7 @@ async function dispatchOneNv03(issues: GithubIssueApi[]) {
     if (!claim) continue;
     const jobId = `APP-GH-${issue.number}-NV03-${claim.claimId.slice(0, 8)}`;
     try {
-      await controllerDispatch('NV03', buildNv03ReviewPrompt(issue), {
-        jobId,
-        issueRef: issue.html_url,
-        title: `#${issue.number} - ${issue.title}`,
-        source: 'NV03_GITHUB_REVIEW',
-      });
+      await nv03SidecarAssign(issue, jobId);
     } catch (error) {
       await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV03', issueNumber: issue.number, state: 'DISPATCH_ERROR', owner, repo, token: githubToken });
       throw error;
@@ -161,7 +175,7 @@ async function dispatchOneNv04(issues: GithubIssueApi[], transport: Nv04DriveTra
     transport.writeNewRequest(request);
     transport.claimRequest(request);
     try {
-      await controllerDispatch('NV04', renderNv04Request(request), {
+      await controllerDispatchNv04(renderNv04Request(request), {
         jobId: request.jobId,
         issueRef: issue.html_url,
         title: `#${issue.number} - ${issue.title}`,
