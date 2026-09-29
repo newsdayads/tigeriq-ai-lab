@@ -42,7 +42,7 @@ describe('coding lane AI JSON transport',()=>{
       'PATCH_CONTRACT_V2_COMPACT_REPAIR=true',
       'CURRENT FILES:',
       'FILE tests/a.test.mjs',
-      `const embedded = ${JSON.stringify(schema)};`,
+      `const embedded = '${schema}';`,
       schema,
       'Do not touch paths outside ALLOWED PATHS.'
     ].join('\n');
@@ -51,6 +51,8 @@ describe('coding lane AI JSON transport',()=>{
     expect(expectedSchemaFromPrompt(compact)).toBe('edits');
     expect(finalContract).toContain('Return ONLY compact JSON {"summary":"short","edits"');
     expect(finalContract).not.toContain('"changes":[{"path"');
+    expect(compact).toContain(`const embedded = '${schema}';`);
+    expect(compact).toContain('the content field is FORBIDDEN');
   });
 
   it('detects a final review contract even when the diff contains other schema examples',()=>{
