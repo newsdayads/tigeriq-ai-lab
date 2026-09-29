@@ -54,8 +54,13 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
     expect(bridge).toContain("'BOOT_VERIFIED_CHAT_READY'");
     const bootBlock=bridge.slice(bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')"),bridge.indexOf("if(phase==='READY')"));
+    const verifiedStart=bootBlock.indexOf("if(verifiedChatCandidate){");
+    const unverifiedStart=bootBlock.indexOf("if(keepChat){",verifiedStart);
+    const verifiedBranch=bootBlock.slice(verifiedStart,unverifiedStart);
+    expect(verifiedBranch).not.toContain("ensureNv02ModelProfile");
+    expect(bootBlock).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:false})");
+    expect(bootBlock).toContain("const verified=await ensureNv02ModelProfile(target)");
     expect(bootBlock).not.toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
-    expect(bootBlock).not.toContain("const verified=await ensureNv02ModelProfile(target)");
     expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
