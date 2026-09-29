@@ -136,10 +136,12 @@ export function looksLikeJsonObject(text){return !!parseModelJson(text)}
 
 export function expectedSchemaFromPrompt(prompt){
   const p=String(prompt||'');
-  if(p.includes('"decision":"approve|changes_requested"'))return 'review';
-  if(p.includes('"edits":[{"path"'))return 'edits';
-  if(p.includes('"changes":[{"path"'))return 'changes';
-  if(p.includes('"status":"continue|blocked"'))return 'manager';
+  const returnOnly=p.lastIndexOf('Return ONLY');
+  const contract=returnOnly>=0?p.slice(returnOnly):p;
+  if(contract.includes('"decision":"approve|changes_requested"'))return 'review';
+  if(contract.includes('"edits":[{"path"'))return 'edits';
+  if(contract.includes('"changes":[{"path"'))return 'changes';
+  if(contract.includes('"status":"continue|blocked"'))return 'manager';
   return 'json';
 }
 

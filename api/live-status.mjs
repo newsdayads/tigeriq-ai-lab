@@ -366,6 +366,13 @@ function safeEvidenceUrl(value = '') {
   }
 }
 
+function safeEvidenceTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function commentField(body, key) {
   const direct = bodyValue(body, key);
   if (direct) return direct;
@@ -856,11 +863,16 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
-  const evidenceUrl = safeEvidenceUrl(active?.evidenceUrl)
+  const activeEvidenceUrl = safeEvidenceUrl(active?.evidenceUrl)
     || safeEvidenceUrl(active?.prUrl)
-    || safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'))
     || null;
-  const evidenceAt = active?.updatedAt || lifecycle?.createdAt || null;
+  const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
+  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || null;
+  const evidenceAt = activeEvidenceUrl
+    ? safeEvidenceTimestamp(active?.updatedAt)
+    : bodyEvidenceUrl
+      ? safeEvidenceTimestamp(bodyValue(body, 'EVIDENCE_AT') || bodyValue(body, 'EVIDENCE_TIMESTAMP'))
+      : null;
 
   return {
     number,
