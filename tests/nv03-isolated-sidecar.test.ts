@@ -27,6 +27,11 @@ describe('NV03 isolated runtime', () => {
     expect(source).toContain('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
     expect(source).toContain('NV03_TERMINAL');
     expect(source).toContain('CLAIM_ID=${a.claimId}');
+    expect(source).toContain("preferredId=''");
+    expect(source).toContain("preferredUrl=''");
+    expect(source).toContain("targetId:String(target.id||'')");
+    expect(source).toContain('current&&current.jobId===String(data.jobId)');
+    expect(source).toContain('Không dùng GitHub PR Approve/Review action');
     expect(source).toContain('Không tự đóng issue; router sẽ reconcile/release claim.');
     expect(source).toContain("req.url==='/release'");
   });
