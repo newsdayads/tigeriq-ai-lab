@@ -431,6 +431,37 @@ describe('coding lane AI JSON transport',()=>{
     expect(classifyAiFailure(Object.assign(new Error('HTTP_400:bad request'),{status:400}))).toBe('provider_request_rejected');
   });
 
+  it('fails over to another eligible coder after repeated output-contract failures',async()=>{
+    const pool=[
+      {id:'NV09',provider:'ollama'},
+      {id:'NV12',provider:'gemini'},
+    ];
+    const calls=[];
+    const result=await invokeJsonWithFailover(pool[0],'{"request":"compact-edit"}',{
+      resourcePool:pool,
+      maxResources:2,
+      invokeFn:async resource=>{
+        calls.push(resource.id);
+        if(resource.id==='NV09') throw new Error('COMPACT_EDIT_PATH_UNKNOWN:apps/tigeriq-coding-lane/coding-lane.mjs');
+        return '{"ok":true}';
+      },
+      parseData:JSON.parse,
+    });
+    expect(result.resource.id).toBe('NV12');
+    expect(calls).toEqual(['NV09','NV09','NV12']);
+    expect(result.failureLedger).toHaveLength(2);
+    expect(result.failureLedger.every(item=>item.resourceId==='NV09'&&item.class==='output_contract'&&item.retryable===true)).toBe(true);
+  });
+
+  it('keeps the current reviewer eligible for repair failover and reselects review independence after handoff',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    expect(src).toContain("generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth");
+    expect(src).toContain("generateAndWriteRepair(worker,j,branch,review.issues,cooldownExcludes,mutationAuth");
+    expect(src).not.toContain("[reviewer.id,...cooldownExcludes],mutationAuth");
+    expect(src).toContain("if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes])");
+    expect(src).toContain("if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes])");
+  });
+
   it('keeps credential HTTP failures terminal instead of failing over',async()=>{
     const pool=[
       {id:'NV11',provider:'groq'},
