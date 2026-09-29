@@ -28,13 +28,16 @@ function envConfig(env = process.env) {
   const actorId = String(env.APIFY_ACTOR_ID || '').trim();
   if (!token) throw new ApifyE2EError('AUTH_MISSING', 'APIFY_TOKEN is required in the authorized execution environment.');
   if (!actorId) throw new ApifyE2EError('ACTOR_ID_MISSING', 'APIFY_ACTOR_ID is required after Owner bootstrap.');
+  if (String(env.APIFY_E2E_EXECUTE || '').trim() !== 'OWNER_APPROVED_PRIVATE_TEST') {
+    throw new ApifyE2EError('EXECUTION_GATE_REQUIRED', 'Set APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST only in the authorized execution environment.');
+  }
 
   return {
     token,
     actorId,
     version: String(env.APIFY_ACTOR_VERSION || '0.1').trim(),
     buildTag: String(env.APIFY_BUILD_TAG || 'latest').trim(),
-    apiBase: String(env.APIFY_API_BASE || 'https://api.apify.com/v2').replace(/\/$/, ''),
+    apiBase: 'https://api.apify.com/v2',
     evidencePath: String(env.APIFY_EVIDENCE_PATH || '').trim() || null,
   };
 }
@@ -118,9 +121,11 @@ export async function runPrivateApifyE2E({
   fetchFn = globalThis.fetch,
   writeFileFn = fs.writeFile,
   now = () => new Date().toISOString(),
+  apiBaseOverride = null,
 } = {}) {
   if (typeof fetchFn !== 'function') throw new ApifyE2EError('FETCH_UNAVAILABLE', 'A fetch implementation is required.');
   const config = envConfig(env);
+  if (apiBaseOverride) config.apiBase = String(apiBaseOverride).replace(/\/$/, '');
 
   const buildParams = new URLSearchParams({
     version: config.version,
