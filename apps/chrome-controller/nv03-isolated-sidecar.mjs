@@ -140,11 +140,12 @@ function assignmentPrompt(a){
     'ROLE=INDEPENDENT_REVIEW_QA',
     `CURRENT_WORK_ORDER=${a.workOrder}`,
     `SOURCE_ISSUE=${a.issueUrl}`,
+    `CLAIM_ID=${a.claimId}`,
     `RESOURCE_SCOPE=${a.resourceScope}`,
     `INPUT_REVISION=${a.inputRevision}`,
     'MUTATION_ALLOWED=false',
     'YÊU_CẦU=Đọc GitHub trực tiếp, review/QA độc lập đúng Work Order đã bind. Không tự chọn backlog khác. Không sửa code, không merge, không deploy, không mutation runtime.',
-    'KẾT_QUẢ=Ghi trực tiếp về GitHub issue/PR nguồn với exact head/input revision, findings và evidence.',
+    `KẾT_QUẢ=Ghi COMMENT trực tiếp về GitHub issue nguồn, bắt buộc có CLAIM_ID=${a.claimId}, REVIEW=PASS|CHANGES_REQUIRED hoặc STATE=BLOCKED|EXTERNAL_WAIT, exact head/input revision, findings và evidence. Không tự đóng issue; router sẽ reconcile/release claim.`,
     'KHI_KẾT_THÚC=Trong chat trả đúng một dòng cuối NV03_TERMINAL=PASS hoặc NV03_TERMINAL=CHANGES_REQUIRED hoặc NV03_TERMINAL=BLOCKED.',
     String(a.prompt||''),
   ].join('\n');
@@ -258,7 +259,7 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/health'){
     const state=readState();
     const assignment=readAssignment();
-    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
+    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,claimId:assignment.claimId,workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
     return;
   }
   if(req.method==='POST'&&(req.url==='/assign'||req.url==='/release')){
@@ -268,12 +269,12 @@ const server=http.createServer((req,res)=>{
       try{
         const data=JSON.parse(body||'{}');
         if(req.url==='/assign'){
-          for(const key of ['jobId','workOrder','issueUrl','resourceScope','inputRevision']){
+          for(const key of ['jobId','claimId','workOrder','issueUrl','resourceScope','inputRevision']){
             if(!String(data[key]||'').trim())throw new Error(`ASSIGN_${key.toUpperCase()}_REQUIRED`);
           }
           const current=readAssignment();
           if(current&&current.jobId!==data.jobId&&!current.terminal)throw new Error('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
-          const assignment={jobId:String(data.jobId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null};
+          const assignment={jobId:String(data.jobId),claimId:String(data.claimId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null};
           await saveAssignment(assignment);
           const state=readState();
           await saveState({...state,phase:'ASSIGNED',activeJobId:assignment.jobId,nextContinueAt:0,terminal:''});
