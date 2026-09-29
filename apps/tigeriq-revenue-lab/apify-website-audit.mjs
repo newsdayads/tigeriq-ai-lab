@@ -3,6 +3,14 @@ export async function auditWebsite(url, options = {}) {
   if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
     throw new Error('Invalid or missing URL provided for audit');
   }
+  const parsedUrl = new URL(url);
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error('Unsupported protocol');
+  }
+  const startTime = Date.now();
+  if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    throw new Error('Invalid or missing URL provided for audit');
+  }
   
   const maxPages = options.maxPages || 10;
   const timeoutMs = options.timeoutMs || 5000;
