@@ -44,6 +44,11 @@ $healthFailures=@{core=0;web=0;coding=0;openclaw=0;appchrome=0}
 $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]::MinValue;openclaw=[DateTime]::MinValue;appchrome=[DateTime]::MinValue}
 $healCooldownSec=300
 $watchdog=$null
+$githubApiBackoffUntil=[DateTime]::MinValue
+$appChromeInstallPollIntervalSec=900
+$appChromeResumePollIntervalSec=900
+$lastAppChromeInstallPoll=[DateTime]::MinValue
+$lastAppChromeResumePoll=[DateTime]::MinValue
 function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToString('o');$tmp="$state.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $state}
 function Head([string]$repoPath,[string]$ref){(& git -C $repoPath rev-parse $ref 2>$null|Out-String).Trim()}
 function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[string]$gateSha){
@@ -193,6 +198,26 @@ function Retire-LegacyOpenClawLifecycleOwner(){
   }
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
+function Test-GithubApiBackoff(){return ((Get-Date).ToUniversalTime() -lt $script:githubApiBackoffUntil)}
+function Set-GithubApiBackoffFromText([string]$raw){
+  if([string]::IsNullOrWhiteSpace($raw)){return $false}
+  if($raw -notmatch '(?i)(API rate limit exceeded|rate limit exceeded)'){return $false}
+  $script:githubApiBackoffUntil=(Get-Date).ToUniversalTime().AddMinutes(15)
+  return $true
+}
+function Invoke-GithubApiJson([string]$endpoint,[string[]]$headers=@()){
+  if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
+  $args=@('api')
+  foreach($header in @($headers)){if($header){$args+=@('-H',$header)}}
+  $args+=$endpoint
+  $raw=(& gh @args 2>&1|Out-String)
+  if($LASTEXITCODE -ne 0){
+    if(Set-GithubApiBackoffFromText $raw){throw 'GITHUB_API_RATE_LIMIT'}
+    $detail=([string]$raw).Trim();if($detail.Length -gt 300){$detail=$detail.Substring(0,300)}
+    throw ('GITHUB_API_FAILED:'+ $detail)
+  }
+  return ($raw|ConvertFrom-Json -ErrorAction Stop)
+}
 function Owner-AppChromeResumeRequested(){
   try{
     $body=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>$null|Out-String)
