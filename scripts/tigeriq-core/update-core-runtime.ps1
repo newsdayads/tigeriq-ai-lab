@@ -356,7 +356,7 @@ function Save-RemoteDesktopLifecycleGeneration(){
   [IO.File]::WriteAllText($tmp,$remoteDesktopLifecycleGeneration,(New-Object Text.UTF8Encoding($false)))
   Move-Item -Force $tmp $remoteDesktopLifecycleState
 }
-function Restart-RemoteDesktopTaskClean([string]$reason,$result){
+function Restart-RemoteDesktopTaskClean([string]$reason,$result,[string]$authorizer){
   Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
   $stopped=@(Stop-ExactRemoteDesktopProcesses)
@@ -369,7 +369,7 @@ function Restart-RemoteDesktopTaskClean([string]$reason,$result){
     $remoteCount=@(Get-ExactRemoteDesktopProcesses).Count
     if($task -and [string]$task.State -eq 'Running' -and $remoteCount -eq 1){
       Save-RemoteDesktopLifecycleGeneration
-      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';remoteProcessCount=$remoteCount;stoppedPids=$stopped;version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@($result.changes)}
+      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';remoteProcessCount=$remoteCount;stoppedPids=$stopped;version=[string]$result.version;authorizer=$authorizer;changes=@($result.changes)}
     }
   }while((Get-Date)-lt$deadline)
   return @{action='blocked';reason='rdc_single_process_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-ExactRemoteDesktopProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
@@ -395,7 +395,7 @@ function Reconcile-RemoteDesktopGuard(){
       return @{action='verified';reason='guard_current_single_process';version=[string]$result.version;authorizer=$authorizer;changes=@();remoteProcessCount=$remoteCount;lifecycleGeneration=$remoteDesktopLifecycleGeneration}
     }
     $reason=if([bool]$result.changed){'guard_updated_clean_restart'}elseif(-not $lifecycleCurrent){'lifecycle_generation_repair'}else{('remote_process_count_'+$remoteCount)}
-    return Restart-RemoteDesktopTaskClean $reason $result
+    return Restart-RemoteDesktopTaskClean $reason $result $authorizer
   }catch{
     return @{action='blocked';reason=('RDC_GUARD_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}
   }
