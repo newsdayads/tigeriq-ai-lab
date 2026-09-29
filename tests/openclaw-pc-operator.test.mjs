@@ -254,6 +254,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipContainerLogClass('Failed to initialize embedded PostgreSQL cluster')).toBe('DB_INIT');
     expect(paperclipContainerLogClass('Failed to start embedded PostgreSQL on port 54329')).toBe('DB_START');
     expect(paperclipContainerLogClass('Embedded PostgreSQL has pending migrations; refusing stale schema')).toBe('DB_MIGRATION');
+    expect(paperclipContainerLogClass('DrizzleQueryError: migration failed while applying schema')).toBe('DB_MIGRATION');
+    expect(paperclipContainerLogClass('drizzle query select * from heartbeat_runs')).not.toBe('DB_MIGRATION');
     expect(paperclipContainerLogClass('database connection refused')).toBe('DB_CONNECTION');
     expect(paperclipContainerLogClass('database checksum failed: corrupt page')).toBe('DB_CORRUPT');
     expect(paperclipContainerLogClass('database startup failed')).toBe('DATABASE');
