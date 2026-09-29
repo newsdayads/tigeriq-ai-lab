@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
 
@@ -232,7 +234,9 @@ function safeError(error, env = process.env) {
   };
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMain) {
   runPrivateApifyE2E()
     .then(evidence => console.log(JSON.stringify(evidence)))
     .catch(error => {
