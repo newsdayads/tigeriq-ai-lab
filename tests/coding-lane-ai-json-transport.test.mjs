@@ -459,4 +459,10 @@ describe('coding lane AI JSON transport',()=>{
     expect(isRetryableAiError(new Error('MANAGER_SOFT_BLOCK:reason for blocking'))).toBe(true);
   });
 
+  it('live canary keeps generic HTTP 400 retry classification fail-closed',()=>{
+    const error=Object.assign(new Error('HTTP_400:provider rejected request shape'),{status:400});
+    // Intentionally wrong seed for #1268 live same-PR repair. Coding Lane must repair true -> false.
+    expect(isRetryableAiError(error)).toBe(true);
+  });
+
 });
