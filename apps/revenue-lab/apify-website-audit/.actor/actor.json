@@ -2,12 +2,15 @@
   "actorSpecification": 1,
   "name": "tigeriq-website-audit",
   "title": "TigerIQ Evidence-First Website Audit",
+  "description": "Evidence-first bounded website technical, SEO, and content audit.",
   "version": "0.1",
   "buildTag": "latest",
+  "dockerfile": "../Dockerfile",
   "dockerContextDir": "..",
-  "dockerfile": "./Dockerfile",
   "readme": "../README.md",
   "input": "./input_schema.json",
   "output": "./output_schema.json",
+  "minMemoryMbytes": 256,
+  "maxMemoryMbytes": 1024,
   "usesStandbyMode": false
 }
