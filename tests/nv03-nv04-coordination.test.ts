@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildNv03ReviewPrompt,
   buildNv04Request,
+  inputRevision,
   eligibleNv03ReviewIssue,
   eligibleNv04Issue,
   parseNv04Result,
@@ -55,6 +56,12 @@ describe('NV03/NV04 isolated coordination', () => {
     expect(prompt).toContain('INPUT_REVISION=abc123');
     expect(prompt).toContain('MUTATION_ALLOWED=false');
     expect(prompt).toContain('Ghi kết quả trực tiếp về GitHub');
+  });
+
+  it('binds NV03 input revision to TARGET_HEAD when exact-head review work uses that field', () => {
+    const src = issue('PRIORITY=P0\nOWNER_DIRECT=true\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_RELEASE_CANARY_V1\nTARGET_HEAD=18c0c630');
+    expect(inputRevision(src)).toBe('18c0c630');
+    expect(buildNv03ReviewPrompt(src)).toContain('INPUT_REVISION=18c0c630');
   });
 
   it('creates a deterministic NV04 Drive request contract', () => {
@@ -129,6 +136,9 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain("${nv03SidecarBase}/assign");
     expect(source).toContain('claimId,');
     expect(source).toContain('reconcileNv03Results');
+    expect(source).toContain('nv03ResultRevisionMatches(issue, body)');
+    expect(source).toContain("lineFieldMatches(body, 'INPUT_REVISION', expectedRevision)");
+    expect(source).toContain("lineFieldMatches(body, 'TARGET_HEAD', targetHead)");
     expect(source).toContain("REVIEW\\s*=\\s*(?:PASS|CHANGES_REQUIRED)");
     expect(source).toContain('closeGithubIssueCompleted');
     expect(source).toContain('nv03SidecarRelease');
