@@ -1,0 +1,68 @@
+{
+  "title": "TigerIQ Website Audit input",
+  "description": "Audit one website with bounded same-origin crawling and evidence-derived SEO/content checks.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "url": {
+      "title": "Website URL",
+      "type": "string",
+      "description": "Public HTTP or HTTPS URL to audit.",
+      "editor": "textfield",
+      "prefill": "https://example.com",
+      "pattern": "^https?:\\/\\/[^\\s]+$"
+    },
+    "maxPages": {
+      "title": "Maximum pages",
+      "type": "integer",
+      "description": "Maximum same-origin pages to audit.",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 1
+    },
+    "timeoutMs": {
+      "title": "Request timeout",
+      "type": "integer",
+      "description": "Per-request timeout in milliseconds.",
+      "editor": "number",
+      "minimum": 250,
+      "maximum": 30000,
+      "default": 8000,
+      "unit": "ms"
+    },
+    "maxBytes": {
+      "title": "Maximum response bytes",
+      "type": "integer",
+      "description": "Maximum HTML bytes accepted per response.",
+      "editor": "number",
+      "minimum": 1024,
+      "maximum": 5242880,
+      "default": 1048576,
+      "unit": "bytes"
+    },
+    "maxRedirects": {
+      "title": "Maximum redirects",
+      "type": "integer",
+      "description": "Maximum redirects followed per page; every target is revalidated.",
+      "editor": "number",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 3
+    },
+    "requestDelayMs": {
+      "title": "Delay between pages",
+      "type": "integer",
+      "description": "Delay between same-origin page requests in milliseconds.",
+      "editor": "number",
+      "minimum": 0,
+      "maximum": 2000,
+      "default": 0,
+      "unit": "ms"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node actor.mjs",
     "test": "node --test audit.test.mjs",
-    "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs"
+    "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
+    "validate:actor": "node validate-package.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"
