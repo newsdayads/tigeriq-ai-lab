@@ -470,9 +470,16 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
 function Gates-Pass([string]$sha){
-  $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
+  try{
+    $raw=(& gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30" 2>$null|Out-String).Trim()
+    if($LASTEXITCODE -ne 0 -or -not $raw){return $false}
+    $runs=$raw|ConvertFrom-Json
+  }catch{return $false}
+  if($null -eq $runs -or -not($runs.PSObject.Properties.Name -contains 'workflow_runs')){return $false}
+  $workflowRuns=@($runs.workflow_runs)
+  if(-not $workflowRuns.Count){return $false}
   $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
-  foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
+  foreach($n in $need){if(-not(@($workflowRuns|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
   return $true
 }
 function Resolve-GateSha([string]$remote){
