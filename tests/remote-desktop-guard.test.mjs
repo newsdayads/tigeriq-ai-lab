@@ -395,7 +395,7 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(verifyRemoteLauncherPatched(patched)).toBe(true);
     expect(patchRemoteLauncher(patched)).toBe(patched);
 
-    const legacyV3=patched.replace('$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"\\n','');
+    const legacyV3=patched.replace('$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"\n','');
     expect(legacyV3).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V3/);
     expect(verifyRemoteLauncherPatched(legacyV3)).toBe(false);
     const migrated=patchRemoteLauncher(legacyV3);
