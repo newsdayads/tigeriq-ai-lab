@@ -1,0 +1,41 @@
+<#
+.SYNOPSIS
+    NV03 Interactive Session Restore Script
+.DESCRIPTION
+    Ensures NV03 sidecar and Chrome run in the active user interactive session (Session 1+), avoiding Session 0 background confinement.
+#}
+
+[CmdletBinding()]
+param(
+    [switch]\$CheckOnly,
+    [switch]\$Force
+)
+
+function Get-ActiveInteractiveSessionId {
+    try {
+        \$explorer = Get-Process explorer -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (\$explorer) {
+            return \$explorer.SessionId
+        }
+    } catch {}
+    return 1
+}
+
+function Test-NV03InteractiveHealth {
+    param([int]\$TargetSessionId)
+    
+    \$chromeProcs = Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '*nv03*' -or \$_.CommandLine -like '*--user-data-dir=*nv03*' }
+    if (-not \$chromeProcs) {
+        return [PSCustomObject]@{ Status = 'DOWN'; Reason = 'No NV03 Chrome process found' }
+    }
+    
+    foreach (\$p in \$chromeProcs) {
+        if (\$p.SessionId -ne \$TargetSessionId) {
+            return [PSCustomObject]@{ Status = 'WRONG_WINDOWS_SESSION'; Reason = "Chrome PID \$(\$p.Id) in Session \$(\$p.SessionId), expected \$TargetSessionId" }
+        }
+    }
+    
+    return [PSCustomObject]@{ Status = 'PASS'; Reason = 'NV03 running in active interactive session' }
+}
+
+Export-ModuleMember -Function Get-ActiveInteractiveSessionId, Test-NV03InteractiveHealth
