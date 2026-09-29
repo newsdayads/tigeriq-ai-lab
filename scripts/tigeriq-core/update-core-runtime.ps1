@@ -226,7 +226,9 @@ function Owner-AppChromeResumeRequested(){
   try{
     $raw=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>&1|Out-String)
     if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
-    return [bool]($raw -match '(?m)^OWNER_RUNTIME_RESUME=true\s*
+    return [bool](@($raw -split [Environment]::NewLine)|Where-Object{$_.Trim() -eq 'OWNER_RUNTIME_RESUME=true'})
+  }catch{return $false}
+}
 function Get-AppChromeResumeState(){
   try{if(Test-Path -LiteralPath $appChromeResumeState){return (Get-Content -LiteralPath $appChromeResumeState -Raw|ConvertFrom-Json)}}catch{}
   return $null
