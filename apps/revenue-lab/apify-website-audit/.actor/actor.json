@@ -1,0 +1,13 @@
+{
+  "actorSpecification": 1,
+  "name": "tigeriq-website-audit",
+  "title": "TigerIQ Evidence-First Website Audit",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerContextDir": "..",
+  "dockerfile": "./Dockerfile",
+  "readme": "../README.md",
+  "input": "./input_schema.json",
+  "output": "./output_schema.json",
+  "usesStandbyMode": false
+}
