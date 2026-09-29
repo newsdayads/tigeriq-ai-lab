@@ -137,15 +137,35 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260929_PULL_CLASS_RCA_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260929_POSTGRES_SIDECAR_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
     const compose = paperclipLabComposeYaml();
     expect(compose).toContain('127.0.0.1:3210:3100');
     expect(compose).toContain('ghcr.io/paperclipai/paperclip:2026.916.1');
+    expect(compose).toContain('image: postgres:17-alpine');
+    expect(compose).toContain('DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip');
+    expect(compose).toContain('condition: service_healthy');
+    expect(compose).toContain('paperclip-db:/var/lib/postgresql/data');
+    expect(compose).toContain('paperclip-db:');
     expect(compose).not.toMatch(/:latest\b/);
     expect(compose).not.toContain('0.0.0.0:3210');
+    expect(compose).not.toMatch(/- ["']?5432:5432/);
+    expect(compose).not.toMatch(/127\.0\.0\.1:5432:5432/);
+  });
+
+  it('uses an isolated PostgreSQL sidecar without deleting or exposing database data', () => {
+    const compose = paperclipLabComposeYaml();
+    expect(compose).toContain('  db:');
+    expect(compose).toContain('POSTGRES_USER: paperclip');
+    expect(compose).toContain('POSTGRES_DB: paperclip');
+    expect(compose).toContain('pg_isready -U paperclip -d paperclip');
+    expect(compose).toContain('DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip');
+    expect(compose).toContain('      - ../data:/paperclip');
+    expect(compose).toContain('      - paperclip-db:/var/lib/postgresql/data');
+    expect(compose).not.toContain('down -v');
+    expect(compose).not.toContain('volume rm');
   });
 
   it('allows only the Paperclip Lab root and exact typed actions', () => {
@@ -235,6 +255,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipLabBrokerOperationForDockerArgs([
       'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'up', '-d',
     ])).toBe('compose_up');
+    expect(paperclipLabBrokerOperationForDockerArgs([
+      'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'stop',
+    ])).toBe('compose_stop');
     expect(paperclipLabBrokerOperationForDockerArgs(['stop', 'tigeriq-paperclip-lab'])).toBe('stop_container');
     expect(paperclipLabBrokerOperationForDockerArgs(['logs', '--tail', '160', 'tigeriq-paperclip-lab'])).toBe('container_logs_tail');
     expect(paperclipLabBrokerOperationForDockerArgs(['ps'])).toBeNull();
@@ -245,7 +268,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("$Distro = 'Ubuntu'");
-    expect(broker).toContain("$BrokerVersion = '1.3-container-exit-diagnostic'");
+    expect(broker).toContain("$BrokerVersion = '1.4-postgres-sidecar'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
     expect(broker).toContain("TimeoutSec=1200; IdleTimeoutSec=300");
@@ -256,6 +279,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("'inspect_revision'");
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
+    expect(broker).toContain("'compose_stop'");
     expect(broker).toContain("'stop_container'");
     expect(broker).toContain("'inspect_container'");
     expect(broker).toContain("'container_logs_tail'");
@@ -264,7 +288,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.3-container-exit-diagnostic'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.4-postgres-sidecar'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
@@ -324,7 +348,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.3-container-exit-diagnostic'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.4-postgres-sidecar'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
@@ -346,6 +370,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('portBindingOk');
     expect(source).toContain('dataMountOk');
     expect(source).toContain('rollbackContainer');
+    expect(source).toContain("composeArgs(['stop'])");
     expect(source).toContain("['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER]");
     expect(source).toContain('paperclipContainerLogClass');
     expect(source).toContain('state.result = {');
