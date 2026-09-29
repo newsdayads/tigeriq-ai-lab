@@ -43,3 +43,15 @@ Required execution gate: `APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST`. Option
 The harness builds the existing private Actor, runs one bounded `https://example.com` audit with `LIMITED_PERMISSIONS`, waits for terminal success, then waits 10 seconds and refetches the exact build/run before recording authenticated `usageTotalUsd` plus compute units. This avoids preliminary eventually-consistent usage values. It then reads the `OUTPUT` record and fails closed if finalized cost evidence is absent.
 
 Secrets are sent only in the `Authorization: Bearer` header and are never placed in URLs or evidence. Actor creation/update, public publication, paid enablement, KYC/payout, and Production remain outside scope.
+
+## Private Apify preflight
+
+After the Owner creates or links the **private** Actor and injects credentials outside chat, run the read-only preflight first:
+
+`APIFY_TOKEN=... APIFY_ACTOR_ID=... APIFY_PREFLIGHT_EXECUTE=OWNER_APPROVED_PRIVATE_PREFLIGHT npm run apify:preflight`
+
+The preflight performs only authenticated `GET https://api.apify.com/v2/users/me` and `GET https://api.apify.com/v2/actors/:actorId`. The API origin is fixed and cannot be overridden from the environment. If a resource-scoped token returns `403` for `/users/me`, the account-profile check is recorded as `SKIPPED_SCOPED_FORBIDDEN` and Actor access remains the authoritative read-access proof; this avoids requiring broader account permissions.
+
+It fails closed unless the Actor is private (`isPublic=false`), requests `LIMITED_PERMISSIONS`, and contains the expected Actor version (default `0.1`). Evidence contains only account ID/username plus minimal Actor identity and never includes email, profile data, or tokens.
+
+Read access does **not** prove Build/Run permission. Preflight evidence explicitly records both as `UNVERIFIED_UNTIL_E2E`. Only the separate E2E harness can prove build/run authorization and measured platform cost.
