@@ -58,9 +58,11 @@ async function listTargets(){
   return Array.isArray(data)?data:Array.isArray(data?.value)?data.value:[];
 }
 
-function pickTarget(rows){
+function pickTarget(rows,preferredId='',preferredUrl=''){
   const pages=rows.filter((row)=>row?.type==='page'&&/^https:\/\/chatgpt\.com\//i.test(String(row?.url||'')));
-  return pages.find((row)=>/tigeriq-worker=NV03/i.test(String(row.url||'')))||pages[0]||null;
+  if(preferredId){const byId=pages.find((row)=>String(row.id||'')===String(preferredId));if(byId)return byId;}
+  if(preferredUrl){const byUrl=pages.find((row)=>String(row.url||'')===String(preferredUrl));if(byUrl)return byUrl;}
+  return pages.find((row)=>/\/c\//i.test(String(row.url||'')))||pages.find((row)=>/tigeriq-worker=NV03/i.test(String(row.url||'')))||pages[0]||null;
 }
 
 function launchChrome(){
@@ -145,7 +147,7 @@ function assignmentPrompt(a){
     `INPUT_REVISION=${a.inputRevision}`,
     'MUTATION_ALLOWED=false',
     'YÊU_CẦU=Đọc GitHub trực tiếp, review/QA độc lập đúng Work Order đã bind. Không tự chọn backlog khác. Không sửa code, không merge, không deploy, không mutation runtime.',
-    `KẾT_QUẢ=Ghi COMMENT trực tiếp về GitHub issue nguồn, bắt buộc có CLAIM_ID=${a.claimId}, REVIEW=PASS|CHANGES_REQUIRED hoặc STATE=BLOCKED|EXTERNAL_WAIT, exact head/input revision, findings và evidence. Không tự đóng issue; router sẽ reconcile/release claim.`,
+    `KẾT_QUẢ=Ghi COMMENT trực tiếp về GitHub issue nguồn, bắt buộc có CLAIM_ID=${a.claimId}, REVIEW=PASS|CHANGES_REQUIRED hoặc STATE=BLOCKED|EXTERNAL_WAIT, exact head/input revision, findings và evidence. Không dùng GitHub PR Approve/Review action trừ khi Work Order yêu cầu rõ; không coi việc cùng GitHub account là blocker cho worker-review evidence. Không tự đóng issue; router sẽ reconcile/release claim.`,
     'KHI_KẾT_THÚC=Trong chat trả đúng một dòng cuối NV03_TERMINAL=PASS hoặc NV03_TERMINAL=CHANGES_REQUIRED hoặc NV03_TERMINAL=BLOCKED.',
     String(a.prompt||''),
   ].join('\n');
@@ -164,14 +166,16 @@ async function ensureTarget(){
     }
     throw error;
   }
-  let target=pickTarget(rows);
+  const currentAssignment=readAssignment();
+  const currentState=readState();
+  let target=pickTarget(rows,currentAssignment?.targetId||'',currentAssignment?String(currentState.lastUrl||''):'');
   if(!target)return null;
   let ui=await uiState(target);
   if(!ui.authRequired&&!/\/g\/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab\/(?:project|c\/)/i.test(String(ui.url||''))){
     await navigate(target,HOME_URL);
     await new Promise((resolve)=>setTimeout(resolve,1500));
     const refreshed=await listTargets();
-    target=pickTarget(refreshed)||target;
+    target=pickTarget(refreshed,currentAssignment?.targetId||'',currentAssignment?String(currentState.lastUrl||''):'')||target;
     ui=await uiState(target);
   }
   return {target,ui};
@@ -222,7 +226,7 @@ async function cycle(){
     if(!assignment.dispatchedAt){
       const sent=await submit(target,assignmentPrompt(assignment));
       if(sent?.ok){
-        const updated={...assignment,dispatchedAt:now(),dispatchStatus:sent.status};
+        const updated={...assignment,dispatchedAt:now(),dispatchStatus:sent.status,targetId:String(target.id||'')};
         await saveAssignment(updated);
         state={...state,phase:'DISPATCHED',dispatches:Number(state.dispatches||0)+1,nextContinueAt:randomContinueAt()};
         await saveState(state);
@@ -259,7 +263,7 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/health'){
     const state=readState();
     const assignment=readAssignment();
-    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,claimId:assignment.claimId,workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
+    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,claimId:assignment.claimId,targetId:assignment.targetId||null,workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
     return;
   }
   if(req.method==='POST'&&(req.url==='/assign'||req.url==='/release')){
@@ -274,7 +278,7 @@ const server=http.createServer((req,res)=>{
           }
           const current=readAssignment();
           if(current&&current.jobId!==data.jobId&&!current.terminal)throw new Error('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
-          const assignment={jobId:String(data.jobId),claimId:String(data.claimId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null};
+          const assignment={jobId:String(data.jobId),claimId:String(data.claimId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null,targetId:current&&current.jobId===String(data.jobId)?String(current.targetId||''):''};
           await saveAssignment(assignment);
           const state=readState();
           await saveState({...state,phase:'ASSIGNED',activeJobId:assignment.jobId,nextContinueAt:0,terminal:''});
