@@ -125,7 +125,10 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain("if (selected.has('NV03'))");
     expect(source).toContain("if (selected.has('NV04'))");
     expect(source).toContain('APP_CHROME_NV03_NV04_COORDINATION_V1');
-    expect(source).toContain('/api/workers/${worker}/dispatch');
+    expect(source).toContain("TIGERIQ_NV03_SIDECAR_URL");
+    expect(source).toContain("${nv03SidecarBase}/assign");
+    expect(source).not.toContain('/api/workers/NV03/dispatch');
+    expect(source).toContain('/api/workers/NV04/dispatch');
     expect(source).not.toContain('/api/workers/NV02/');
     expect(source).not.toContain('/api/start-all');
     expect(source).not.toContain('/api/workers/NV03/start');
