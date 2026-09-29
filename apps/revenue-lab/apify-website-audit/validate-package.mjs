@@ -9,6 +9,7 @@ const actor = await readJson('.actor/actor.json');
 const input = await readJson('.actor/input_schema.json');
 const output = await readJson('.actor/output_schema.json');
 const pkg = await readJson('package.json');
+const dockerfile = await fs.readFile(path.join(root, 'Dockerfile'), 'utf8');
 
 const failures = [];
 const check = (ok, code) => { if (!ok) failures.push(code); };
@@ -32,6 +33,8 @@ check(input.properties?.requestDelayMs?.minimum === 0 && input.properties?.reque
 check(output.actorOutputSchemaVersion === 1, 'output_schema_version');
 check(output.properties?.result?.template === '{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT', 'output_record');
 check(pkg.scripts?.start === 'node actor.mjs', 'start_script');
+check(/^FROM apify\/actor-node:22$/m.test(dockerfile), 'docker_base');
+check(/CMD \["node", "actor\.mjs"\]/.test(dockerfile), 'docker_cmd');
 
 if (failures.length) {
   console.error('APIFY_PACKAGE_INVALID=' + failures.join(','));
