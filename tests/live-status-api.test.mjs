@@ -327,6 +327,20 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('timestamps issue-backed evidence so Owner can verify freshness', () => {
+    const row = parseOpenWorkIssue(issue(3209, '[P1] Evidence freshness', [
+      'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
+      'EVIDENCE_AT=2026-09-29T05:20:00Z',
+    ].join('\n')));
+    expect(row).toMatchObject({
+      status: 'OWNER_GATE',
+      evidenceAt: '2026-09-29T05:20:00Z',
+      evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
+    });
+  });
+
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
     const unsafe = parseOpenWorkIssue(issue(3207, '[P1] Planned step', [
       'CURRENT_STATE=READY',
