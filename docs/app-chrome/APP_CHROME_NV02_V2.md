@@ -33,6 +33,7 @@ Resource scope: APP_CHROME_NV02_V2
 - Legacy APP_CHROME_SELF_RUN backlog scanning/claiming is disabled.
 - Source engineering is GitHub branch to PR to exact-head CI and independent review.
 - PC01 is limited to verified backup, runtime deployment, restart and live acceptance.
+- On bridge/PC boot, an already verified NV02 chat is restored/preserved without forcing model-selector mutation while the UI is still settling; stale chat-load recovery state is cleared, the exact chat + durable GPT-5.6 Sol/High gate must remain stable before normal continuation is re-armed, and bounded retry is used on slow/heavy chat load.
 - No PC01 reboot, credential/security change, paid action, destructive action, Core mutation, or NV03/NV04 activation is authorized.
 
 ## Completion
