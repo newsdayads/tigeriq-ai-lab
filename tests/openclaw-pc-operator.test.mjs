@@ -138,7 +138,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260929_POSTGRES_SIDECAR_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_SECRETS_VOLUME_0700_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -150,10 +150,28 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(compose).toContain('condition: service_healthy');
     expect(compose).toContain('paperclip-db:/var/lib/postgresql/data');
     expect(compose).toContain('paperclip-db:');
+    expect(compose).toContain('  secrets-init:');
+    expect(compose).toContain('command: ["sh", "-c", "chmod 0700 /secrets"]');
+    expect(compose).toContain('paperclip-secrets:/secrets');
+    expect(compose).toContain('condition: service_completed_successfully');
+    expect(compose).toContain('paperclip-secrets:/paperclip/instances/default/secrets');
+    expect(compose).toContain('paperclip-secrets:');
     expect(compose).not.toMatch(/:latest\b/);
     expect(compose).not.toContain('0.0.0.0:3210');
     expect(compose).not.toMatch(/- ["']?5432:5432/);
     expect(compose).not.toMatch(/127\.0\.0\.1:5432:5432/);
+  });
+
+  it('keeps permission-sensitive Paperclip secrets off the Windows bind mount without deleting lab data', () => {
+    const compose = paperclipLabComposeYaml();
+    expect(compose).toContain('      - ../data:/paperclip');
+    expect(compose).toContain('  secrets-init:');
+    expect(compose).toContain('command: ["sh", "-c", "chmod 0700 /secrets"]');
+    expect(compose).toContain('      - paperclip-secrets:/secrets');
+    expect(compose).toContain('      - paperclip-secrets:/paperclip/instances/default/secrets');
+    expect(compose).toContain('        condition: service_completed_successfully');
+    expect(compose).not.toContain('rm -rf');
+    expect(compose).not.toContain('down -v');
   });
 
   it('uses an isolated PostgreSQL sidecar without deleting or exposing database data', () => {
@@ -165,6 +183,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(compose).toContain('DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip');
     expect(compose).toContain('      - ../data:/paperclip');
     expect(compose).toContain('      - paperclip-db:/var/lib/postgresql/data');
+    expect(compose).toContain('      - paperclip-secrets:/paperclip/instances/default/secrets');
+    expect(compose).toContain('      - paperclip-secrets:/secrets');
     expect(compose).not.toContain('down -v');
     expect(compose).not.toContain('volume rm');
   });
@@ -222,6 +242,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
 
   it('classifies bounded container logs without exposing raw log text', () => {
     expect(paperclipContainerLogClass('Error: EACCES permission denied /paperclip')).toBe('PERMISSION');
+    expect(paperclipContainerLogClass('Decision signing secrets directory at /paperclip/instances/default/secrets must have permissions 0700')).toBe('PERMISSION');
     expect(paperclipContainerLogClass('BETTER_AUTH_SECRET must be set')).toBe('CONFIG');
     expect(paperclipContainerLogClass('could not create shared memory segment')).toBe('DB_SHARED_MEMORY');
     expect(paperclipContainerLogClass('data directory has invalid permissions; Permissions should be u=rwx (0700)')).toBe('DB_DATA_PERMISSIONS');

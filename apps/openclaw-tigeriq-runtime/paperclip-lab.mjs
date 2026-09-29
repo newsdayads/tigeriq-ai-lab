@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260929_POSTGRES_SIDECAR_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_SECRETS_VOLUME_0700_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -462,6 +462,12 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     '      retries: 30',
     '    volumes:',
     '      - paperclip-db:/var/lib/postgresql/data',
+    '  secrets-init:',
+    '    image: postgres:17-alpine',
+    '    restart: "no"',
+    '    command: ["sh", "-c", "chmod 0700 /secrets"]',
+    '    volumes:',
+    '      - paperclip-secrets:/secrets',
     '  paperclip:',
     `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
@@ -476,10 +482,14 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     '    depends_on:',
     '      db:',
     '        condition: service_healthy',
+    '      secrets-init:',
+    '        condition: service_completed_successfully',
     '    volumes:',
     '      - ../data:/paperclip',
+    '      - paperclip-secrets:/paperclip/instances/default/secrets',
     'volumes:',
     '  paperclip-db:',
+    '  paperclip-secrets:',
     '',
   ].join('\n');
 }
@@ -644,7 +654,7 @@ export function paperclipContainerLogDiagnostic(value = '') {
 export function paperclipContainerLogClass(value = '') {
   const text = String(value || '').toLowerCase();
   if (!text.trim()) return 'NO_LOGS';
-  if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system/.test(text)) return 'PERMISSION';
+  if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system|must have permissions\s+0?700|secrets directory.*permissions/.test(text)) return 'PERMISSION';
   if (/better_auth_secret|tool_action_signing_secret|required env|must be set|invalid configuration|configuration error/.test(text)) return 'CONFIG';
   if (/could not create shared memory segment|shared memory.*(?:failed|error|could not)/.test(text)) return 'DB_SHARED_MEMORY';
   if (/invalid permissions|permissions should be|wrong ownership|must be owned by|not owned by.*postgres/.test(text)) return 'DB_DATA_PERMISSIONS';
@@ -812,6 +822,11 @@ async function health(signal = null, transport = null, options = {}) {
     && String(dataMounts[0]?.Type || '') === 'bind'
     && dataMounts[0]?.RW === true
     && mountSourceMatchesLabData(dataMounts[0]?.Source);
+  const secretsMounts = mounts.filter((m) => String(m?.Destination || '') === '/paperclip/instances/default/secrets');
+  const secretsMountOk = secretsMounts.length === 1
+    && String(secretsMounts[0]?.Type || '') === 'volume'
+    && secretsMounts[0]?.RW === true
+    && String(secretsMounts[0]?.Name || '') === 'tigeriq-paperclip-lab_paperclip-secrets';
   const labels = info?.Config?.Labels || {};
   const identityOk = Boolean(
     info?.State?.Running === true
@@ -822,6 +837,7 @@ async function health(signal = null, transport = null, options = {}) {
     && Number(info?.HostConfig?.PidsLimit) === 2048
     && portBindingOk
     && dataMountOk
+    && secretsMountOk
   );
 
   let logClass = null;
@@ -860,6 +876,7 @@ async function health(signal = null, transport = null, options = {}) {
       identityOk,
       portBindingOk,
       dataMountOk,
+      secretsMountOk,
       imageDigest: info?.Config?.Image || null,
       ...containerDiagnostic,
     },
@@ -883,6 +900,7 @@ async function health(signal = null, transport = null, options = {}) {
       logExcerpt: state.container?.logExcerpt || null,
       portBindingOk: state.container?.portBindingOk === true,
       dataMountOk: state.container?.dataMountOk === true,
+      secretsMountOk: state.container?.secretsMountOk === true,
       identityOk: state.container?.identityOk === true,
     },
   };
