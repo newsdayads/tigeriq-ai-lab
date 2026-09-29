@@ -1,4 +1,5 @@
 export const LAUNCHER_MARKER = 'TIGERIQ_REMOTE_GUARD_LAUNCHER_V3';
+const PASS_THROUGH_LINE = '$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"';
 const ANCHOR = 'Set-Location $app';
 const BLOCK = [
   '$guardDir=Join-Path $app "node_modules\\@wonderwhy-er\\desktop-commander\\dist\\tigeriq-remote-guard"',
@@ -14,14 +15,20 @@ const BLOCK = [
   '  Add-Content $log "$(Get-Date -Format o) TIGERIQ_REMOTE_GUARD_VERIFY_FAIL markers=true"',
   '  exit 86',
   '}',
-  '$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"',
+  PASS_THROUGH_LINE,
   '# ' + LAUNCHER_MARKER,
   ANCHOR
 ].join('\n');
 
 export function patchRemoteLauncher(source) {
   if (typeof source !== 'string') throw new Error('REMOTE_LAUNCHER_SOURCE_INVALID');
-  if (source.includes(LAUNCHER_MARKER)) return source;
+  if (source.includes(LAUNCHER_MARKER)) {
+    if (source.includes(PASS_THROUGH_LINE)) return source;
+    const marker='# '+LAUNCHER_MARKER;
+    const first=source.indexOf(marker);
+    if (first < 0 || source.indexOf(marker,first+marker.length) >= 0) throw new Error('REMOTE_LAUNCHER_MARKER_MISMATCH');
+    return source.slice(0,first)+PASS_THROUGH_LINE+'\n'+source.slice(first);
+  }
   const first=source.indexOf(ANCHOR);
   if (first < 0 || source.indexOf(ANCHOR,first+ANCHOR.length) >= 0) throw new Error('REMOTE_LAUNCHER_ANCHOR_MISMATCH');
   return source.slice(0,first)+BLOCK+source.slice(first+ANCHOR.length);
@@ -33,5 +40,6 @@ export function verifyRemoteLauncherPatched(source) {
     && source.includes('TIGERIQ_REMOTE_GUARD_IMPORT_V3')
     && source.includes('TIGERIQ_REMOTE_GUARD_LIST_V3')
     && source.includes('TIGERIQ_REMOTE_GUARD_CALL_V3')
+    && source.includes(PASS_THROUGH_LINE)
     && source.includes('exit 86');
 }
