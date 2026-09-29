@@ -329,6 +329,29 @@ function Invoke-AppChromeZeroTouchHelper(){
   }catch{return @{action='blocked';reason=('helper_exception_'+$_.Exception.GetType().Name)}}
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
+function Test-RemoteDesktopRuntimeProcess(){
+  try{
+    $root='D:\TigerIQ\Runtime\desktop-commander-remote'.ToLowerInvariant()
+    $process=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($root) -and $_.CommandLine -match '(?i)\\bremote\\b' } |
+      Select-Object -First 1
+    return [bool]$process
+  }catch{return $false}
+}
+function Restart-RemoteDesktopTask([string]$reason,[string]$version,[object[]]$changes){
+  Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
+  $deadline=(Get-Date).AddSeconds(45)
+  do{
+    Start-Sleep -Milliseconds 500
+    $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+    if($task -and [string]$task.State -eq 'Running' -and (Test-RemoteDesktopRuntimeProcess)){
+      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';runtimeProcess=$true;version=$version;changes=$changes}
+    }
+  }while((Get-Date)-lt$deadline)
+  return @{action='blocked';reason='rdc_runtime_not_healthy_after_restart';task=$remoteDesktopTask;version=$version;changes=$changes}
+}
 function Reconcile-RemoteDesktopGuard(){
   if(-not(Test-Path -LiteralPath $remoteDesktopGuardInstaller)){return @{action='skip';reason='installer_missing'}}
   if(-not(Task-Exists $remoteDesktopTask)){return @{action='blocked';reason='task_missing';task=$remoteDesktopTask}}
@@ -342,22 +365,21 @@ function Reconcile-RemoteDesktopGuard(){
     if(-not $last){return @{action='blocked';reason='installer_no_output'}}
     $result=(($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop)
     if(-not [bool]$result.ok){return @{action='blocked';reason='installer_not_ok';detail=$result}}
-    if(-not [bool]$result.changed){
-      $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
-      return @{action='verified';reason='guard_current';version=[string]$result.version;authorizer=$authorizer;changes=@()}
+    $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
+    if([bool]$result.changed){
+      return Restart-RemoteDesktopTask 'guard_updated' ([string]$result.version) @($result.changes)
     }
-    Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
-    $deadline=(Get-Date).AddSeconds(30)
-    do{
-      Start-Sleep -Milliseconds 500
-      $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
-      if($task -and [string]$task.State -eq 'Running'){
-        return @{action='restarted';reason='guard_updated';task=$remoteDesktopTask;taskState='Running';version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@($result.changes)}
+    $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+    if(-not $task -or [string]$task.State -ne 'Running'){
+      return Restart-RemoteDesktopTask 'task_not_running_self_heal' ([string]$result.version) @()
+    }
+    if(-not(Test-RemoteDesktopRuntimeProcess)){
+      if(Test-TcpPort 'mcp.desktopcommander.app' 443){
+        return Restart-RemoteDesktopTask 'runtime_process_missing_self_heal' ([string]$result.version) @()
       }
-    }while((Get-Date)-lt$deadline)
-    return @{action='blocked';reason='rdc_task_not_running_after_restart';task=$remoteDesktopTask;version=[string]$result.version;changes=@($result.changes)}
+      return @{action='observing';reason='transport_endpoint_unreachable';task=$remoteDesktopTask;taskState=[string]$task.State;runtimeProcess=$false;version=[string]$result.version;authorizer=$authorizer;changes=@()}
+    }
+    return @{action='verified';reason='guard_current_runtime_healthy';task=$remoteDesktopTask;taskState=[string]$task.State;runtimeProcess=$true;version=[string]$result.version;authorizer=$authorizer;changes=@()}
   }catch{
     return @{action='blocked';reason=('RDC_GUARD_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}
   }
