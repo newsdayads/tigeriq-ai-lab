@@ -327,7 +327,7 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
-  it('timestamps issue-backed evidence so Owner can verify freshness', () => {
+  it('timestamps issue-backed evidence only from a valid explicit evidence timestamp', () => {
     const row = parseOpenWorkIssue(issue(3209, '[P1] Evidence freshness', [
       'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
       'OWNER_ACCEPTANCE_REQUIRED=true',
@@ -336,8 +336,34 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')));
     expect(row).toMatchObject({
       status: 'OWNER_GATE',
-      evidenceAt: '2026-09-29T05:20:00Z',
+      evidenceAt: '2026-09-29T05:20:00.000Z',
       evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
+    });
+
+    const invalid = parseOpenWorkIssue(issue(3210, '[P1] Invalid evidence time', [
+      'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
+      'EVIDENCE_AT=not-a-date',
+    ].join('\n')));
+    expect(invalid.evidenceAt).toBe(null);
+  });
+
+  it('pairs active evidence with the active evidence timestamp instead of a stale body timestamp', () => {
+    const row = parseOpenWorkIssue(issue(3211, '[P1] Active evidence wins', [
+      'CURRENT_STATE=REVIEW',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/pull/2000',
+      'EVIDENCE_AT=2026-09-28T00:00:00Z',
+    ].join('\n')), {
+      active: {
+        status: 'REVIEW',
+        evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2381',
+        updatedAt: '2026-09-29T05:25:00Z',
+      },
+    });
+    expect(row).toMatchObject({
+      evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2381',
+      evidenceAt: '2026-09-29T05:25:00.000Z',
     });
   });
 
