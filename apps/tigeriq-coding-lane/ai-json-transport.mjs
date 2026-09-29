@@ -224,7 +224,8 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
   const schema='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
   const noopRule=/^BATCH_NOOP_ALLOWED=true$/m.test(p)?' If this batch needs no mutation, return exactly {"summary":"no changes needed in this batch","noop":true,"edits":[]}.' :'';
   const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.${noopRule} For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
-  const rewritten=p.includes(schema)?p.replace(schema,compact):`${p}\n\nIMPORTANT: ${compact}`;
+  const schemaIndex=p.lastIndexOf(schema);
+  const rewritten=schemaIndex>=0?`${p.slice(0,schemaIndex)}${compact}${p.slice(schemaIndex+schema.length)}`:`${p}\n\nIMPORTANT: ${compact}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
 
