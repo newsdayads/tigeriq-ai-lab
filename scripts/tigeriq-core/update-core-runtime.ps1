@@ -45,6 +45,7 @@ $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]
 $healCooldownSec=300
 $watchdog=$null
 $githubApiBackoffUntil=[DateTime]::MinValue
+$githubApiBackoffState='D:\TigerIQ\State\github-api-rate-limit-backoff.json'
 $appChromeInstallPollIntervalSec=900
 $appChromeResumePollIntervalSec=900
 $lastAppChromeInstallPoll=[DateTime]::MinValue
@@ -198,11 +199,31 @@ function Retire-LegacyOpenClawLifecycleOwner(){
   }
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
-function Test-GithubApiBackoff(){return ((Get-Date).ToUniversalTime() -lt $script:githubApiBackoffUntil)}
+function Load-GithubApiBackoff(){
+  $script:githubApiBackoffUntil=[DateTime]::MinValue
+  try{
+    if(-not(Test-Path -LiteralPath $githubApiBackoffState)){return}
+    $saved=Get-Content -LiteralPath $githubApiBackoffState -Raw|ConvertFrom-Json -ErrorAction Stop
+    $until=[DateTime]::Parse([string]$saved.untilUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    if($until -gt (Get-Date).ToUniversalTime()){$script:githubApiBackoffUntil=$until}
+  }catch{$script:githubApiBackoffUntil=[DateTime]::MinValue}
+}
+function Save-GithubApiBackoff([DateTime]$until,[string]$reason){
+  $script:githubApiBackoffUntil=$until.ToUniversalTime()
+  $d=[ordered]@{schema='TIGERIQ_GITHUB_API_BACKOFF_V1';untilUtc=$script:githubApiBackoffUntil.ToString('o');reason=$reason;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp="$githubApiBackoffState.tmp"
+  [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
+  Move-Item -Force $tmp $githubApiBackoffState
+}
+function Test-GithubApiBackoff(){
+  $now=(Get-Date).ToUniversalTime()
+  if($script:githubApiBackoffUntil -le $now){Load-GithubApiBackoff}
+  return ($now -lt $script:githubApiBackoffUntil)
+}
 function Set-GithubApiBackoffFromText([string]$raw){
   if([string]::IsNullOrWhiteSpace($raw)){return $false}
   if($raw -notmatch '(?i)(API rate limit exceeded|rate limit exceeded)'){return $false}
-  $script:githubApiBackoffUntil=(Get-Date).ToUniversalTime().AddMinutes(15)
+  Save-GithubApiBackoff ((Get-Date).ToUniversalTime().AddMinutes(15)) 'rate_limit_text'
   return $true
 }
 function Invoke-GithubApiJson([string]$endpoint,[string[]]$headers=@()){
@@ -254,8 +275,10 @@ function Report-AppChromeResume([string]$installedSha,[string]$result,[string]$r
     ('nv02Blocked='+[string][bool]$nv02.blocked),
     'rawOutputPublished=false'
   ) -join [Environment]::NewLine
-  & gh issue comment $appChromeIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>$null|Out-Null
-  return ($LASTEXITCODE -eq 0)
+  if(Test-GithubApiBackoff){return $false}
+  $raw=(& gh issue comment $appChromeIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>&1|Out-String)
+  if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
+  return $true
 }
 function Invoke-AppChromeOwnerResume([string]$installedSha){
   if(-not(Owner-AppChromeResumeRequested)){return @{action='none';reason='not_requested'}}
@@ -296,6 +319,7 @@ function Invoke-AppChromeZeroTouchHelper(){
   try{
     $raw=(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $appChromeZeroTouchScript 2>$null|Out-String).Trim()
     $exitCode=$LASTEXITCODE
+    $null=Set-GithubApiBackoffFromText $raw
     if($raw){
       $last=@($raw -split "`r?`n"|Where-Object{$_ -and $_.Trim()}|Select-Object -Last 1)
       try{$parsed=($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop;return $parsed}catch{}
@@ -462,8 +486,10 @@ function Report-OpenClawCanary([string]$installedSha,[string]$treeSha,[string]$r
     'pcCanaryFile=D:\TigerIQ\State\openclaw-pc-operator-canary.txt',
     'rawOutputPublished=false'
   ) -join [Environment]::NewLine
-  & gh issue comment $openclawCanaryIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>$null|Out-Null
-  return ($LASTEXITCODE -eq 0)
+  if(Test-GithubApiBackoff){return $false}
+  $raw=(& gh issue comment $openclawCanaryIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>&1|Out-String)
+  if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
+  return $true
 }
 function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   if(-not $installedSha -or -not $treeSha){return @{action='skip';reason='identity_missing'}}
@@ -673,8 +699,8 @@ while($true){
         $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
       }
     }
+    if(Test-GithubApiBackoff){Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
-    if(Test-GithubApiBackoff){Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
