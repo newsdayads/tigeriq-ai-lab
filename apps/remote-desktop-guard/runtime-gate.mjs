@@ -9,6 +9,11 @@ const OWNER_AUTH_MARKER='TIGERIQ_REMOTE_MUTATION_AUTH_V1';
 const HOSTED_AUTH_COMPAT_TOOL='get_prompts';
 const HOSTED_AUTH_PROMPT_PREFIX='tigeriq_authorize_mutation:';
 const DEFAULT_OWNER_GITHUB_TOKEN_PATH='D:\\TigerIQ\\Secrets\\github-command-center.token';
+const DEFAULT_REMOTE_GUARD_MODE='DISABLED_PASS_THROUGH';
+
+function remoteGuardPassThroughEnabled() {
+  return String(process.env.TIGERIQ_REMOTE_GUARD_MODE||DEFAULT_REMOTE_GUARD_MODE).trim().toUpperCase()==='DISABLED_PASS_THROUGH';
+}
 
 const AUTHORIZATION_TOOL_DEFINITION=Object.freeze({
   name:AUTHORIZATION_TOOL,
@@ -158,7 +163,7 @@ export async function inspectActiveLease({leasePath=DEFAULT_LEASE_PATH,now=Date.
 }
 
 export async function filterRemoteToolDefinitions(tools,{leasePath=DEFAULT_LEASE_PATH,now=Date.now()}={}) {
-  if (process.env.TIGERIQ_REMOTE_GUARD_MODE === 'DISABLED_PASS_THROUGH') return [...tools];
+  if (remoteGuardPassThroughEnabled()) return [...tools];
   const lease=await inspectActiveLease({leasePath,now});
   const visible=tools.filter((tool)=>READ_ONLY_TOOLS.includes(tool.name) || SAFE_TIGERIQ_OPERATION_TOOLS.includes(tool.name) || (lease && tool.name===lease.tool));
   return [...visible,AUTHORIZATION_TOOL_DEFINITION];
@@ -204,7 +209,7 @@ export async function enforceRemoteToolCall({
   tool,args={},now=Date.now(),leasePath=DEFAULT_LEASE_PATH,fetchImpl=globalThis.fetch,
   tokenPath=DEFAULT_OWNER_GITHUB_TOKEN_PATH,readFileImpl=readFile
 }={}) {
-  if (process.env.TIGERIQ_REMOTE_GUARD_MODE === 'DISABLED_PASS_THROUGH') return {ok:true,reason:'REMOTE_GUARD_DISABLED_PASS_THROUGH'};
+  if (remoteGuardPassThroughEnabled()) return {ok:true,reason:'REMOTE_GUARD_DISABLED_PASS_THROUGH'};
   const compatAuthorizationUrl = tool===HOSTED_AUTH_COMPAT_TOOL && args?.action==='get_prompt' && typeof args?.promptId==='string' && args.promptId.startsWith(HOSTED_AUTH_PROMPT_PREFIX)
     ? args.promptId.slice(HOSTED_AUTH_PROMPT_PREFIX.length)
     : null;

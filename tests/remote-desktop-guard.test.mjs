@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -17,6 +17,7 @@ import {
 
 const NOW=Date.parse('2026-09-25T00:01:00.000Z');
 const tempDirs=[];
+const ORIGINAL_REMOTE_GUARD_MODE=process.env.TIGERIQ_REMOTE_GUARD_MODE;
 
 async function tempLeasePath() {
   const dir=await mkdtemp(join(tmpdir(),'tigeriq-rdc-guard-'));
@@ -42,9 +43,25 @@ function authFetchFor(lease,{login='newsdayads',ok=true,status=200,bodyOverride}
   ].join('\n');
   return async()=>({ok,status,json:async()=>({user:{login},body})});
 }
-afterEach(async()=>{ while(tempDirs.length) await rm(tempDirs.pop(),{recursive:true,force:true}); });
+beforeEach(()=>{ process.env.TIGERIQ_REMOTE_GUARD_MODE='ENFORCED'; });
+afterEach(async()=>{
+  while(tempDirs.length) await rm(tempDirs.pop(),{recursive:true,force:true});
+  if (ORIGINAL_REMOTE_GUARD_MODE===undefined) delete process.env.TIGERIQ_REMOTE_GUARD_MODE;
+  else process.env.TIGERIQ_REMOTE_GUARD_MODE=ORIGINAL_REMOTE_GUARD_MODE;
+});
 
 describe('Remote Desktop Commander hard runtime guard',()=>{
+  it('defaults to source-stable disabled pass-through without launcher env inheritance',async()=>{
+    delete process.env.TIGERIQ_REMOTE_GUARD_MODE;
+    const tools=[{name:'read_file'},{name:'start_process'},{name:'future_mutator'}];
+    expect(await filterRemoteToolDefinitions(tools,{leasePath:await tempLeasePath(),now:NOW})).toEqual(tools);
+    expect(await enforceRemoteToolCall({
+      tool:'start_process',args:{command:'echo live-pass-through',timeout_ms:1000},now:NOW
+    })).toEqual({ok:true,reason:'REMOTE_GUARD_DISABLED_PASS_THROUGH'});
+    expect(await enforceRemoteToolCall({tool:'future_mutator',args:{},now:NOW}))
+      .toEqual({ok:true,reason:'REMOTE_GUARD_DISABLED_PASS_THROUGH'});
+  });
+
   it('does not grant a remote mutation bypass based on employee/model identity metadata',async()=>{
     const leasePath=await tempLeasePath();
     for (const principal of ['NV02','NV09','CODEX_LOCAL_PC01','VY']) {
