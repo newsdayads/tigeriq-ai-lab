@@ -1,0 +1,130 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  buildNv03ReviewPrompt,
+  buildNv04Request,
+  eligibleNv03ReviewIssue,
+  eligibleNv04Issue,
+  parseNv04Result,
+  renderNv04GithubComment,
+  renderNv04Request,
+  validateNv04Result,
+  type GithubIssueLike,
+} from '../apps/chrome-controller/src/nv03-nv04-coordination.js';
+import { Nv04DriveTransport } from '../apps/chrome-controller/src/nv04-drive-transport.js';
+
+const roots: string[] = [];
+afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }); });
+
+function issue(body: string, title = '[P1][REVIEW] Check PR', number = 100): GithubIssueLike {
+  return {
+    number,
+    title,
+    body,
+    html_url: `https://github.com/newsdayads/tigeriq-ai-lab/issues/${number}`,
+    state: 'open',
+  };
+}
+
+describe('NV03/NV04 isolated coordination', () => {
+  it('keeps P0 fail-closed unless Owner marked direct/control', () => {
+    const base = 'PRIORITY=P0\nRESOURCE_SCOPE=R\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03';
+    expect(eligibleNv03ReviewIssue(issue(base, '[P0][REVIEW] review'))).toBe(false);
+    expect(eligibleNv03ReviewIssue(issue(base + '\nOWNER_DIRECT=true', '[P0][REVIEW] review'))).toBe(true);
+
+    const nv04Base = 'PRIORITY=P0\nRESOURCE_SCOPE=R\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH';
+    expect(eligibleNv04Issue(issue(nv04Base, '[P0][RESEARCH] research'))).toBe(false);
+    expect(eligibleNv04Issue(issue(nv04Base + '\nOWNER_CONTROLLED=true', '[P0][RESEARCH] research'))).toBe(true);
+  });
+
+  it('rejects code/mutation work for both support workers', () => {
+    const nv03 = issue('PRIORITY=P1\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=R\nMUTATION_ALLOWED=true');
+    expect(eligibleNv03ReviewIssue(nv03)).toBe(false);
+
+    const nv04 = issue('PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=INDEPENDENT_REVIEW\nRESOURCE_SCOPE=R\nCAPABILITY=code');
+    expect(eligibleNv04Issue(nv04)).toBe(false);
+  });
+
+  it('builds NV03 direct-GitHub review prompt with no mutation', () => {
+    const src = issue('PRIORITY=P1\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=REVIEW_PR_X\nEXACT_HEAD=abc123');
+    const prompt = buildNv03ReviewPrompt(src);
+    expect(prompt).toContain('WORKER=NV03');
+    expect(prompt).toContain('ROLE=INDEPENDENT_REVIEW_QA');
+    expect(prompt).toContain('INPUT_REVISION=abc123');
+    expect(prompt).toContain('MUTATION_ALLOWED=false');
+    expect(prompt).toContain('Ghi kết quả trực tiếp về GitHub');
+  });
+
+  it('creates a deterministic NV04 Drive request contract', () => {
+    const src = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH\nRESOURCE_SCOPE=RESEARCH_ARCH\nEXACT_INPUT=rev-7\nCHECKLIST=Compare A/B\nOUTPUT=KẾT LUẬN / BẰNG CHỨNG',
+      '[P1][RESEARCH] compare architecture',
+      204,
+    );
+    const requestA = buildNv04Request(src);
+    const requestB = buildNv04Request(src);
+    expect(requestA.jobId).toBe(requestB.jobId);
+    expect(requestA.inputRevision).toBe('rev-7');
+    expect(renderNv04Request(requestA)).toContain('MUTATION_ALLOWED=false');
+    expect(renderNv04Request(requestA)).toContain('EVIDENCE_DESTINATION=https://github.com/');
+  });
+
+  it('rejects stale NV04 results and accepts exact JOB_ID + INPUT_REVISION only', () => {
+    const src = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=SECOND_OPINION\nRESOURCE_SCOPE=ARCH\nEXACT_INPUT=rev-10',
+      '[P1][SECOND_OPINION] architecture',
+      205,
+    );
+    const request = buildNv04Request(src);
+    const stale = parseNv04Result(`JOB_ID=${request.jobId}\nINPUT_REVISION=rev-9\nRESULT=PASS`);
+    expect(() => validateNv04Result(request, stale)).toThrow(/STALE_INPUT_REVISION/);
+
+    const exact = parseNv04Result(
+      `JOB_ID=${request.jobId}\nINPUT_REVISION=${request.inputRevision}\nRESULT=CHANGES_REQUIRED\nFINDINGS=Missing evidence\nEVIDENCE=https://example.invalid/e\nRECOMMENDATION=Fix minimum scope`,
+    );
+    expect(validateNv04Result(request, exact)).toBe(true);
+    expect(renderNv04GithubComment(request, exact)).toContain('RESULT=CHANGES_REQUIRED');
+  });
+
+  it('implements Drive lifecycle INBOX -> CLAIMED -> PROCESSED without duplicate request creation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tigeriq-nv04-drive-'));
+    roots.push(root);
+    const transport = new Nv04DriveTransport(root);
+    const request = buildNv04Request(issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=INDEPENDENT_REVIEW\nRESOURCE_SCOPE=R\nEXACT_INPUT=rev-1',
+      '[P1][REVIEW] independent review',
+      206,
+    ));
+    const first = transport.writeNewRequest(request);
+    const second = transport.writeNewRequest(request);
+    expect(first).toBe(second);
+    const claimed = transport.claimRequest(request);
+    expect(existsSync(claimed)).toBe(true);
+
+    const resultPath = join(root, transport.resultFileName(request));
+    writeFileSync(resultPath, `JOB_ID=${request.jobId}\nINPUT_REVISION=${request.inputRevision}\nRESULT=PASS\nFINDINGS=OK`, 'utf8');
+    const found = transport.readValidatedResult(request);
+    expect(found?.result.terminal).toBe('PASS');
+
+    const archived = transport.archiveCompleted(request, found!.path);
+    expect(existsSync(archived.requestProcessed)).toBe(true);
+    expect(existsSync(archived.resultProcessed)).toBe(true);
+    expect(readFileSync(archived.resultProcessed, 'utf8')).toContain('RESULT=PASS');
+  });
+});
+
+
+describe('owner-directed sidecar isolation', () => {
+  it('requires explicit Owner arm and never calls NV02 worker endpoints', () => {
+    const source = readFileSync(join(process.cwd(), 'apps/chrome-controller/src/nv03-nv04-owner-sidecar.ts'), 'utf8');
+    expect(source).toContain('TIGERIQ_NV0304_OWNER_DIRECT');
+    expect(source).toContain('APP_CHROME_NV03_NV04_COORDINATION_V1');
+    expect(source).toContain('/api/workers/${worker}/dispatch');
+    expect(source).not.toContain('/api/workers/NV02/');
+    expect(source).not.toContain('/api/start-all');
+    expect(source).not.toContain('/api/workers/NV03/start');
+    expect(source).not.toContain('/api/workers/NV04/start');
+  });
+});
