@@ -212,7 +212,7 @@ async function cycle(){
       await saveState(state);return;
     }
     state.activeJobId=assignment.jobId;
-    if(ui.terminal){
+    if(assignment.dispatchedAt&&ui.terminal){
       state={...state,phase:'TERMINAL',terminal:String(ui.terminal).toUpperCase(),nextContinueAt:0};
       await saveState(state);
       if(!assignment.terminalObservedAt){

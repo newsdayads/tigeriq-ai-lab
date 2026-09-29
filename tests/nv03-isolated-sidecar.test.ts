@@ -26,6 +26,7 @@ describe('NV03 isolated runtime', () => {
     for (const key of ['jobId','claimId','workOrder','issueUrl','resourceScope','inputRevision']) expect(source).toContain(key);
     expect(source).toContain('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
     expect(source).toContain('NV03_TERMINAL');
+    expect(source).toContain('if(assignment.dispatchedAt&&ui.terminal)');
     expect(source).toContain('[data-message-author-role="assistant"]');
     expect(source).toContain('assistantText.match(/NV03_TERMINAL');
     expect(source).toContain(".filter(vis);const lastAssistant=assistants.at(-1)");
