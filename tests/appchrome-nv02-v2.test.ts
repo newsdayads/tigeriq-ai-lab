@@ -144,6 +144,26 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(recovery.slice(graceGate,terminalGate)).toContain('return true;');
   });
 
+  it('does not arm the 15m terminal backoff for a valid active NV02 chat after post-reboot F5', () => {
+    const recoveryStart=bridge.indexOf('async function maybeRecoverChatLoadError');
+    const recoveryEnd=bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR',recoveryStart);
+    const recovery=bridge.slice(recoveryStart,recoveryEnd);
+    const stage2=recovery.indexOf('if(stage===2)');
+    const genericBlock=recovery.indexOf('const blockedUntil=now+15*60*1000',stage2);
+    expect(stage2).toBeGreaterThan(-1);
+    expect(genericBlock).toBeGreaterThan(stage2);
+    const activeChatPath=recovery.slice(stage2,genericBlock);
+    expect(activeChatPath).toContain("w.id==='NV02'&&hasCurrentNv02Chat(ui?.url)");
+    expect(activeChatPath).toContain('const retryAt=now+30_000');
+    expect(activeChatPath).toContain('chatLoadRecoveryStage:0');
+    expect(activeChatPath).toContain('chatLoadBlockedUntil:retryAt');
+    expect(activeChatPath).toContain('CHAT_LOAD_ACTIVE_CHAT_BOUNDED_BACKOFF');
+    expect(activeChatPath).toContain('return false;');
+    const nv02ActiveStart=activeChatPath.indexOf("w.id==='NV02'&&hasCurrentNv02Chat(ui?.url)");
+    const terminalStart=activeChatPath.indexOf('chatLoadRecoveryStage:3');
+    expect(terminalStart).toBeGreaterThan(nv02ActiveStart);
+  });
+
   it('keeps reviewed self-pull and idle behavior in the exact head', () => {
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN');
     expect(bridge).toContain('nextIdleWakeAt:now+60_000');
