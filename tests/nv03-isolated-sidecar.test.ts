@@ -40,9 +40,11 @@ describe('NV03 isolated runtime', () => {
     expect(source).toContain("preferredUrl=''");
     expect(source).toContain("targetId:String(target.id||'')");
     expect(source).toContain('current&&current.jobId===String(data.jobId)');
-    expect(source).toContain('freshContext:!sameJob');
+    expect(source).toContain('freshContext:sameJob?Boolean(current.freshContext):true');
     expect(source).toContain('currentAssignment?.freshContext');
     expect(source).toContain('freshContext:false');
+    expect(source).toContain('freshContextPreparedAt');
+    expect(source).toContain('!currentAssignment?.freshContextPreparedAt');
     expect(source).toContain('Không dùng GitHub PR Approve/Review action');
     expect(source).toContain('Không tự đóng issue; router sẽ reconcile/release claim.');
     expect(source).toContain("req.url==='/release'");

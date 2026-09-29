@@ -171,11 +171,12 @@ async function ensureTarget(){
   let target=pickTarget(rows,currentAssignment?.targetId||'',currentAssignment?String(currentState.lastUrl||''):'');
   if(!target)return null;
   let ui=await uiState(target);
-  if(currentAssignment?.freshContext&&!currentAssignment?.dispatchedAt&&!ui.authRequired){
+  if(currentAssignment?.freshContext&&!currentAssignment?.dispatchedAt&&!currentAssignment?.freshContextPreparedAt&&!ui.authRequired){
     await navigate(target,HOME_URL);
     await new Promise((resolve)=>setTimeout(resolve,1500));
     const refreshed=await listTargets();
     target=refreshed.find((row)=>String(row.id||'')===String(target.id||''))||pickTarget(refreshed)||target;
+    await saveAssignment({...currentAssignment,targetId:String(target.id||''),freshContextPreparedAt:now()});
     ui=await uiState(target);
   }else if(!ui.authRequired&&!/\/g\/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab\/(?:project|c\/)/i.test(String(ui.url||''))){
     await navigate(target,HOME_URL);
@@ -269,7 +270,7 @@ const server=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/health'){
     const state=readState();
     const assignment=readAssignment();
-    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,claimId:assignment.claimId,targetId:assignment.targetId||null,freshContext:Boolean(assignment.freshContext),workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
+    sendJson(res,200,{ok:true,workerId:WORKER_ID,ownerScope:OWNER_SCOPE,debugPort:CDP_PORT,controlPort:CONTROL_PORT,state,assignment:assignment?{jobId:assignment.jobId,claimId:assignment.claimId,targetId:assignment.targetId||null,freshContext:Boolean(assignment.freshContext),freshContextPreparedAt:assignment.freshContextPreparedAt||null,workOrder:assignment.workOrder,issueUrl:assignment.issueUrl,inputRevision:assignment.inputRevision,dispatchedAt:assignment.dispatchedAt||null,terminal:assignment.terminal||null}:null});
     return;
   }
   if(req.method==='POST'&&(req.url==='/assign'||req.url==='/release')){
@@ -285,7 +286,7 @@ const server=http.createServer((req,res)=>{
           const current=readAssignment();
           if(current&&current.jobId!==data.jobId&&!current.terminal)throw new Error('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
           const sameJob=Boolean(current&&current.jobId===String(data.jobId));
-          const assignment={jobId:String(data.jobId),claimId:String(data.claimId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null,targetId:sameJob?String(current.targetId||''):'',freshContext:!sameJob};
+          const assignment={jobId:String(data.jobId),claimId:String(data.claimId),workOrder:String(data.workOrder),issueUrl:String(data.issueUrl),resourceScope:String(data.resourceScope),inputRevision:String(data.inputRevision),prompt:String(data.prompt||''),assignedAt:now(),dispatchedAt:null,terminal:null,targetId:sameJob?String(current.targetId||''):'',freshContext:sameJob?Boolean(current.freshContext):true,freshContextPreparedAt:sameJob?String(current.freshContextPreparedAt||''):''};
           await saveAssignment(assignment);
           const state=readState();
           await saveState({...state,phase:'ASSIGNED',activeJobId:assignment.jobId,nextContinueAt:0,terminal:''});
