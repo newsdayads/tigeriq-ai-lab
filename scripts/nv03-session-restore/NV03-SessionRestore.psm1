@@ -34,14 +34,14 @@ function Get-Nv03PortOwner {
 }
 
 function Get-Nv03ProcessSnapshot {
-  param([int]$Pid,[ValidateSet('chrome','sidecar')][string]$Kind)
-  if ($Pid -le 0) {
+  param([int]$ProcessId,[ValidateSet('chrome','sidecar')][string]$Kind)
+  if ($ProcessId -le 0) {
     return [pscustomobject]@{ listening=$false; pid=0; sessionId=$null; scopeMatched=$true; commandLine='' }
   }
-  $p=Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $Pid) -ErrorAction SilentlyContinue
-  $gp=Get-Process -Id $Pid -ErrorAction SilentlyContinue
+  $p=Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $ProcessId) -ErrorAction SilentlyContinue
+  $gp=Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
   if (-not $p -or -not $gp) {
-    return [pscustomobject]@{ listening=$false; pid=$Pid; sessionId=$null; scopeMatched=$false; commandLine='' }
+    return [pscustomobject]@{ listening=$false; pid=$ProcessId; sessionId=$null; scopeMatched=$false; commandLine='' }
   }
   $cmd=[string]$p.CommandLine
   $matched=$false
@@ -56,7 +56,7 @@ function Get-Nv03ProcessSnapshot {
   }
   return [pscustomobject]@{
     listening=$true
-    pid=[int]$Pid
+    pid=[int]$ProcessId
     sessionId=[int]$gp.SessionId
     scopeMatched=[bool]$matched
     commandLine=$cmd
@@ -69,8 +69,8 @@ function Get-Nv03RuntimeSnapshot {
   $sidecarPid=Get-Nv03PortOwner -Port 8823
   [pscustomobject]@{
     activeSessionId=$active
-    chrome=Get-Nv03ProcessSnapshot -Pid $chromePid -Kind chrome
-    sidecar=Get-Nv03ProcessSnapshot -Pid $sidecarPid -Kind sidecar
+    chrome=Get-Nv03ProcessSnapshot -ProcessId $chromePid -Kind chrome
+    sidecar=Get-Nv03ProcessSnapshot -ProcessId $sidecarPid -Kind sidecar
   }
 }
 
@@ -106,8 +106,8 @@ function Wait-Nv03Port {
   param([Parameter(Mandatory=$true)][int]$Port,[int]$Seconds=20)
   $deadline=(Get-Date).AddSeconds($Seconds)
   do {
-    $pid=Get-Nv03PortOwner -Port $Port
-    if ($pid -gt 0) { return $pid }
+    $ownerProcessId=Get-Nv03PortOwner -Port $Port
+    if ($ownerProcessId -gt 0) { return $ownerProcessId }
     Start-Sleep -Milliseconds 400
   } while ((Get-Date) -lt $deadline)
   throw ('NV03_PORT_TIMEOUT:'+$Port)
