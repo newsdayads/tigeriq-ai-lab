@@ -130,7 +130,9 @@ export function eligibleNv04Issue(issue: GithubIssueLike) {
 }
 
 export function buildNv03ReviewPrompt(issue: GithubIssueLike) {
+  const fields = parseControlFields(issue.body || '');
   const revision = inputRevision(issue);
+  const targetHead = fields.TARGET_HEAD || fields.EXACT_HEAD || '';
   return [
     'LÀM — NO YAPPING.',
     'WORKER=NV03',
@@ -138,6 +140,7 @@ export function buildNv03ReviewPrompt(issue: GithubIssueLike) {
     `CURRENT_WORK_ORDER=#${issue.number}`,
     `SOURCE_ISSUE=${issue.html_url}`,
     `RESOURCE_SCOPE=${resourceScope(issue)}`,
+    ...(targetHead ? [`TARGET_HEAD=${targetHead}`] : []),
     `INPUT_REVISION=${revision}`,
     'MUTATION_ALLOWED=false',
     'YÊU_CẦU=Đọc trực tiếp GitHub issue/PR/evidence liên quan; review độc lập; không sửa code, không merge, không deploy.',
