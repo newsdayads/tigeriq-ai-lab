@@ -110,13 +110,16 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(nv02Loop).toContain("const bootVerifiedChatRestorePending=bootFreshContextPending.has('NV02')");
     expect(nv02Loop).toContain("&&hasCurrentNv02Chat(state.verifiedChatUrl);");
     expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CHAT_RESTORE'");
-    expect(nv02Loop).toContain("if(!bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
-    const deferStart=nv02Loop.indexOf("if(bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
-    const gatedF5=nv02Loop.indexOf("if(!bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
-    expect(deferStart).toBeGreaterThan(-1);
-    expect(gatedF5).toBeGreaterThan(deferStart);
-    expect(nv02Loop.slice(deferStart,gatedF5)).not.toContain('return;');
-    expect(nv02Loop.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")).toBeGreaterThan(gatedF5);
+    expect(nv02Loop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02Loop).toContain("if(bootVerifiedChatRestorePending)");
+    const gatedF5=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    const deferStart=nv02Loop.indexOf("if(bootVerifiedChatRestorePending)",gatedF5);
+    const elseStart=nv02Loop.indexOf("}else{",deferStart);
+    expect(gatedF5).toBeGreaterThan(-1);
+    expect(deferStart).toBeGreaterThan(gatedF5);
+    expect(elseStart).toBeGreaterThan(deferStart);
+    expect(nv02Loop.slice(deferStart,elseStart)).not.toContain('return;');
+    expect(nv02Loop.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")).toBeGreaterThan(elseStart);
   });
 
   it('executes due 2-4h reset regardless of WORKING and preserves same chat plus F5 timer', () => {
