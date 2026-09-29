@@ -951,12 +951,17 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     return true;
   }
   if(stage===2){
+    if(w.id==='NV02'&&hasCurrentNv02Chat(ui?.url)){
+      const retryAt=now+30_000;
+      state={...state,chatLoadRecoveryStage:0,chatLoadBlockedUntil:retryAt,chatLoadClearCandidateAt:0};
+      saveContinuityFor(w,state);
+      await continuityEventFor(w,'CHAT_LOAD_ACTIVE_CHAT_BOUNDED_BACKOFF',{url:ui?.url||null,blockedUntil:retryAt});
+      return false;
+    }
     state={...state,chatLoadRecoveryStage:3};
     saveContinuityFor(w,state);
     if(w.id==='NV02'){
       await continuityEventFor(w,'CHAT_LOAD_TERMINAL_FAILURE_REACHED',{url:ui?.url||null});
-      const hasWork=hasCurrentNv02Chat(ui?.url);
-      if(hasWork) return false;
     }else{
       await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR');
     }
