@@ -46,7 +46,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeDir|Out-Null
 $chromeArgs=@(
   '--remote-debugging-port=9223',
   "--user-data-dir=$UserDataDir",
-  "--profile-directory=$ProfileDirectory",
+  "--profile-directory=`"$ProfileDirectory`"",
   "--window-position=$WindowLeft,$WindowTop",
   "--window-size=$WindowWidth,$WindowHeight",
   '--no-first-run',
