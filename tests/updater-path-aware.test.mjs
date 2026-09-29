@@ -315,3 +315,14 @@ test('OpenClaw runtime changes restart Core because direct PC actions import the
   assert.match(impact,/\$core=\[bool\]\([\s\S]*-or \$openclaw\)/);
   assert.match(script,/if\(\$impact\.core\)\{\$coreHealth=Restart-Core/);
 });
+
+
+test('GitHub REST hygiene keeps updater from hammering exhausted quota',()=>{
+  assert.match(script,/\$githubApiBackoffUntil=\[DateTime\]::MinValue/);
+  assert.match(script,/API rate limit exceeded\|rate limit exceeded/);
+  assert.match(script,/AddMinutes\(15\)/);
+  assert.match(script,/WAIT_GITHUB_API_RATE_LIMIT/);
+  assert.match(script,/\$appChromeInstallPollIntervalSec=900/);
+  assert.match(script,/\$appChromeResumePollIntervalSec=900/);
+  assert.match(script,/reason='poll_interval'/);
+});
