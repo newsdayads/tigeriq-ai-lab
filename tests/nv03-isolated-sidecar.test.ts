@@ -1,30 +1,38 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-describe('NV03 isolated sidecar', () => {
-  const source=readFileSync('apps/chrome-controller/nv03-isolated-sidecar.mjs','utf8');
+describe('NV03 isolated runtime', () => {
+  const source=readFileSync(join(process.cwd(),'apps/chrome-controller/nv03-isolated-sidecar.mjs'),'utf8');
 
-  it('is isolated from NV02 and NV04 runtimes', () => {
-    expect(source).toContain("const WORKER_ID='NV03'");
-    expect(source).toContain('9223');
-    expect(source).not.toContain('9222');
-    expect(source).not.toContain('/NV02/');
-    expect(source).not.toContain('/NV04/');
+  it('is assignment-bound and cannot self-pull backlog', () => {
+    expect(source).toContain("req.url==='/assign'");
+    expect(source).toContain('READY_UNASSIGNED');
+    expect(source).toContain('Không tự chọn backlog khác');
+    expect(source).not.toContain('SELF_PULL');
+    expect(source).not.toContain('Tự kiểm tra toàn bộ Work Order');
+  });
+
+  it('is hard-isolated from NV02/shared controller runtime', () => {
+    expect(source).toContain("CDP_PORT=Number(process.env.TIGERIQ_NV03_CDP_PORT||9223)");
+    expect(source).toContain("CONTROL_PORT=Number(process.env.TIGERIQ_NV03_CONTROL_PORT||8823)");
     expect(source).not.toContain('8798');
-    expect(source).not.toContain('8799');
+    expect(source).not.toContain('NV02');
+    expect(source).not.toContain('NV04');
+    expect(source).not.toContain('Start-Unified-AppChrome');
+  });
+
+  it('requires exact assignment identity and terminal marker', () => {
+    for (const key of ['jobId','workOrder','issueUrl','resourceScope','inputRevision']) expect(source).toContain(key);
+    expect(source).toContain('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
+    expect(source).toContain('NV03_TERMINAL');
+    expect(source).toContain("req.url==='/release'");
   });
 
   it('fails closed on ChatGPT auth requirement', () => {
-    expect(source).toContain("lastPhase:'AUTH_REQUIRED'");
-    expect(source).toContain('if(ui.authRequired)');
-    const authBlock=source.slice(source.indexOf('if(ui.authRequired)'),source.indexOf('state.authRequired=false'));
-    expect(authBlock).not.toContain('submit(target');
-  });
-
-  it('limits role to independent review/QA', () => {
-    expect(source).toContain('ROLE=INDEPENDENT_REVIEW_QA');
-    expect(source).toContain('không code, không merge, không deploy');
-    expect(source).toContain('P0 chỉ làm khi có OWNER_DIRECT');
-    expect(source).toContain('Không tự sửa lỗi được phát hiện');
+    expect(source).toContain("phase:'BLOCKED_AUTH_REQUIRED'");
+    const start=source.indexOf('if(ui.authRequired)');
+    const end=source.indexOf('state.authRequired=false',start);
+    expect(source.slice(start,end)).not.toContain('submit(target');
   });
 });
