@@ -793,11 +793,29 @@ export function restartRecoveryDecision(job,pr){
   return{action:'defer',code:'CODING_RESTART_PR_STATE_UNVERIFIED',prNumber};
 }
 
+export function restartWaitingResourceDecision(job){
+  if(String(job?.status||'').toLowerCase()!=='waiting_resource')return{action:'ignore',code:'CODING_RESTART_NOT_WAITING_RESOURCE'};
+  let failure=job?.failure;
+  if(typeof failure==='string'){try{failure=JSON.parse(failure)}catch{failure=null}}
+  if(String(failure?.code||'')==='AI_RESOURCES_BUSY')return{action:'queue',code:'CODING_RESTART_REQUEUE_STALE_AI_BUSY'};
+  return{action:'ignore',code:'CODING_RESTART_PRESERVE_RESOURCE_WAIT'};
+}
+
 export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>gh(`/pulls/${number}`)}={}){
   if(!db)return{requeued:0,completed:0,failed:0,deferred:0};
-  const rows=(await db.query("select * from tigeriq_coding_jobs where status in ('running','waiting_ci','review') order by created_at")).rows||[];
+  const rows=(await db.query("select * from tigeriq_coding_jobs where status in ('running','waiting_ci','review','waiting_resource') order by created_at")).rows||[];
   const out={requeued:0,completed:0,failed:0,deferred:0};
   for(const job of rows){
+    const waitingDecision=restartWaitingResourceDecision(job);
+    if(waitingDecision.action==='queue'){
+      const changed=await db.query("update tigeriq_coding_jobs set status='queued',started_at=null,completed_at=null,next_attempt_at=null where id=$1 and status='waiting_resource'",[job.id]);
+      if(changed.rowCount){
+        await db.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,'Restart recovery rearmed stale in-memory AI_RESOURCES_BUSY wait.']);
+        out.requeued++;
+      }
+      continue;
+    }
+    if(String(job?.status||'').toLowerCase()==='waiting_resource')continue;
     let pr=null;
     const prNumber=Number(job?.pr_number||0);
     if(Number.isInteger(prNumber)&&prNumber>0){
