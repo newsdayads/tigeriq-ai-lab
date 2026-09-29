@@ -1,0 +1,27 @@
+{
+  "schema": "TIGERIQ_REVENUE_LAB_BENCHMARK_V1",
+  "verifiedAt": "2026-09-29T09:11:48.741262Z",
+  "verificationMode": "isolated_local_exact_branch_files",
+  "sourceHead": "a96ec3dd982e482177a32cb699b82def9301e95a",
+  "nodeVersion": "v22.16.0",
+  "command": "node --test audit.test.mjs",
+  "tests": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0
+  },
+  "benchmark": {
+    "runCount": 20,
+    "successCount": 20,
+    "successRate": 1,
+    "minDurationMs": 0,
+    "maxDurationMs": 1,
+    "avgDurationMs": 1
+  },
+  "cost": {
+    "externalApiCostUSD": 0,
+    "platformCostUSD": null,
+    "platformCostStatus": "pending_private_apify_run"
+  },
+  "notes": "Apify platform cost intentionally not estimated; requires private Apify execution."
+}
