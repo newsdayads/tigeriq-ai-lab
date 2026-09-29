@@ -27,6 +27,10 @@ describe('NV03 isolated runtime', () => {
     expect(source).toContain('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
     expect(source).toContain('NV03_TERMINAL');
     expect(source).toContain('if(assignment.dispatchedAt&&ui.terminal)');
+    expect(source).toContain('SUBMIT_EVIDENCE_MISSING');
+    expect(source).toContain("evidence:'USER_MESSAGE_VISIBLE'");
+    expect(source).toContain("evidence:'COMPOSER_CLEARED'");
+    expect(source).toContain('awaitPromise:true');
     expect(source).toContain('[data-message-author-role="assistant"]');
     expect(source).toContain('assistantText.match(/NV03_TERMINAL');
     expect(source).toContain(".filter(vis);const lastAssistant=assistants.at(-1)");
