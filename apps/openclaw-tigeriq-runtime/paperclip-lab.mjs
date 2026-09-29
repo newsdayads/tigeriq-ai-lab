@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260929_PULL_CLASS_RCA_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260929_POSTGRES_SIDECAR_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -46,7 +46,7 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
-const BROKER_EXPECTED_VERSION = '1.3-container-exit-diagnostic';
+const BROKER_EXPECTED_VERSION = '1.4-postgres-sidecar';
 const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
 const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
 const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
@@ -267,6 +267,7 @@ export function paperclipLabBrokerOperationForDockerArgs(args = []) {
     { operation: 'inspect_revision', args: ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{ index .Config.Labels "org.opencontainers.image.revision" }}'] },
     { operation: 'inspect_repo_digests', args: ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'] },
     { operation: 'compose_up', args: ['compose','-f',COMPOSE_FILE,'up','-d'] },
+    { operation: 'compose_stop', args: ['compose','-f',COMPOSE_FILE,'stop'] },
     { operation: 'stop_container', args: ['stop', PAPERCLIP_LAB_CONTAINER] },
     { operation: 'inspect_container', args: ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'] },
     { operation: 'container_logs_tail', args: ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER] },
@@ -447,6 +448,20 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
   return [
     'name: tigeriq-paperclip-lab',
     'services:',
+    '  db:',
+    '    image: postgres:17-alpine',
+    '    restart: "no"',
+    '    environment:',
+    '      POSTGRES_USER: paperclip',
+    '      POSTGRES_PASSWORD: paperclip',
+    '      POSTGRES_DB: paperclip',
+    '    healthcheck:',
+    '      test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]',
+    '      interval: 2s',
+    '      timeout: 5s',
+    '      retries: 30',
+    '    volumes:',
+    '      - paperclip-db:/var/lib/postgresql/data',
     '  paperclip:',
     `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
@@ -456,8 +471,15 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     `      - "127.0.0.1:${PAPERCLIP_LAB_PORT}:3100"`,
     '    env_file:',
     '      - ./paperclip.env',
+    '    environment:',
+    '      DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip',
+    '    depends_on:',
+    '      db:',
+    '        condition: service_healthy',
     '    volumes:',
     '      - ../data:/paperclip',
+    'volumes:',
+    '  paperclip-db:',
     '',
   ].join('\n');
 }
@@ -503,6 +525,7 @@ async function ensureConfig(pin = null) {
     imageDigest: pin.imageDigest,
     publicUrl: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     exposure: 'loopback-only',
+    databaseMode: 'postgres-17-sidecar',
   }, null, 2), 'utf8');
   return { envReady: true, imageDigest: pin.imageDigest };
 }
@@ -674,7 +697,7 @@ async function waitForHealth(signal = null, transport = null) {
 async function rollbackContainer(transport = null) {
   try {
     const resolved = transport || (await resolveDockerTransport()).kind;
-    if (resolved) await runDocker(resolved, ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 30000 });
+    if (resolved) await runDocker(resolved, composeArgs(['stop']), { cwd: CONFIG_DIR, timeoutMs: 30000 });
   } catch {}
 }
 
@@ -732,7 +755,7 @@ async function stop(signal = null) {
   throwIfAborted(signal);
   const docker = await resolveDockerTransport(signal);
   if (!docker.kind) throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_UNAVAILABLE');
-  const down = await runDocker(docker.kind, ['stop', PAPERCLIP_LAB_CONTAINER], { timeoutMs: 60000, signal });
+  const down = await runDocker(docker.kind, composeArgs(['stop']), { cwd: CONFIG_DIR, timeoutMs: 60000, signal });
   if (down.exitCode !== 0 || down.timedOut) throw new Error('TIGERIQ_PAPERCLIP_LAB_STOP_FAILED');
   return { stopped: true, dockerTransport: docker.kind, imageDigest: pin.imageDigest, port3210: await probePort() };
 }
