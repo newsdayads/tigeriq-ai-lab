@@ -87,6 +87,24 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(nv02Loop.slice(f5Gate,workingGate)).toContain("'PERIODIC_F5_REFRESH',15000");
   });
 
+  it('requires a stable renderer grace before an overdue follow-up F5', () => {
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(bridge).toContain('const NV02_POST_F5_STABLE_GRACE_MS=30*1000');
+    expect(bridge).toContain('postF5RecoveryPending:Boolean(raw.postF5RecoveryPending)');
+    expect(bridge).toContain('postF5StableSince:Number(raw.postF5StableSince)||0');
+    expect(nv02Loop).toContain("if(state.postF5RecoveryPending===true)");
+    expect(nv02Loop).toContain("'POST_F5_STABLE_GRACE_ARMED'");
+    expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_WAITING_STABLE_GRACE'");
+    expect(nv02Loop).toContain("postF5RecoveryPending:true,postF5StableSince:0");
+    const waitStart=nv02Loop.indexOf("if(state.postF5RecoveryPending===true)",nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"));
+    const waitEnd=nv02Loop.indexOf('let refreshed;',waitStart);
+    expect(waitStart).toBeGreaterThan(-1);
+    expect(waitEnd).toBeGreaterThan(waitStart);
+    expect(nv02Loop.slice(waitStart,waitEnd)).not.toContain('nextPeriodicF5At:nextRandomAt');
+    expect(bridge).toContain("'NV02_POST_F5_STABLE_GRACE_RESET'");
+    expect(bridge).toContain("reason:'CONNECTIVITY_FAILURE'");
+  });
+
   it('executes due 2-4h reset regardless of WORKING and preserves same chat plus F5 timer', () => {
     expect(bridge).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(bridge).toContain("if(now>=Number(state.nextRefreshAt||0))");
