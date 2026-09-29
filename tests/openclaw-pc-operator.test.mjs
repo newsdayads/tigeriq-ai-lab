@@ -240,6 +240,34 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(out).toEqual(paperclipContainerLogDiagnostic(input));
   });
 
+  it('prioritizes structured nested DB error fields over long SQL query tails', () => {
+    const line = JSON.stringify({
+      level: 50,
+      err: {
+        type: 'DrizzleQueryError',
+        message: 'Failed query: select many columns from heartbeat_runs inner join agents',
+        cause: {
+          severity: 'ERROR',
+          code: '42703',
+          message: 'column agents.runtime_state does not exist',
+          detail: 'database password=secret-value',
+          hint: 'Apply the pending migration',
+        },
+      },
+      msg: 'query failed',
+    });
+    const out = paperclipContainerLogDiagnostic([
+      line,
+      'select a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z from heartbeat_runs inner join agents on heartbeat_runs.agent_id = agents.id',
+    ].join('\n'));
+    expect(out.excerpt).toContain('code=42703');
+    expect(out.excerpt).toContain('message=column agents.runtime_state does not exist');
+    expect(out.excerpt).toContain('hint=Apply the pending migration');
+    expect(out.excerpt).toContain('[REDACTED]');
+    expect(out.excerpt).not.toContain('secret-value');
+    expect(out.excerpt.length).toBeLessThanOrEqual(900);
+  });
+
   it('classifies bounded container logs without exposing raw log text', () => {
     expect(paperclipContainerLogClass('Error: EACCES permission denied /paperclip')).toBe('PERMISSION');
     expect(paperclipContainerLogClass('Decision signing secrets directory at /paperclip/instances/default/secrets must have permissions 0700')).toBe('PERMISSION');
@@ -253,6 +281,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipContainerLogClass('password authentication failed for user paperclip')).toBe('DB_AUTH');
     expect(paperclipContainerLogClass('Failed to initialize embedded PostgreSQL cluster')).toBe('DB_INIT');
     expect(paperclipContainerLogClass('Failed to start embedded PostgreSQL on port 54329')).toBe('DB_START');
+    expect(paperclipContainerLogClass('PostgreSQL error 42703: column agents.runtime_state does not exist')).toBe('DB_SCHEMA_MISSING');
+    expect(paperclipContainerLogClass('PostgreSQL error 42P01: relation heartbeat_runs does not exist')).toBe('DB_SCHEMA_MISSING');
     expect(paperclipContainerLogClass('Embedded PostgreSQL has pending migrations; refusing stale schema')).toBe('DB_MIGRATION');
     expect(paperclipContainerLogClass('database connection refused')).toBe('DB_CONNECTION');
     expect(paperclipContainerLogClass('database checksum failed: corrupt page')).toBe('DB_CORRUPT');
