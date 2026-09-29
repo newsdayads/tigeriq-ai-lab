@@ -23,9 +23,11 @@ describe('NV03 isolated runtime', () => {
   });
 
   it('requires exact assignment identity and terminal marker', () => {
-    for (const key of ['jobId','workOrder','issueUrl','resourceScope','inputRevision']) expect(source).toContain(key);
+    for (const key of ['jobId','claimId','workOrder','issueUrl','resourceScope','inputRevision']) expect(source).toContain(key);
     expect(source).toContain('NV03_ACTIVE_ASSIGNMENT_CONFLICT');
     expect(source).toContain('NV03_TERMINAL');
+    expect(source).toContain('CLAIM_ID=${a.claimId}');
+    expect(source).toContain('Không tự đóng issue; router sẽ reconcile/release claim.');
     expect(source).toContain("req.url==='/release'");
   });
 
