@@ -159,8 +159,8 @@ describe('NV02 verified-chat boot settle', () => {
     const bootStart=bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')");
     const bootEnd=bridge.indexOf("if(phase==='READY')",bootStart);
     const bootBlock=bridge.slice(bootStart,bootEnd);
-    expect(bootBlock).toContain('chatLoadRecoveryStage:keepChat?0:state.chatLoadRecoveryStage');
-    expect(bootBlock).toContain('chatLoadBlockedUntil:keepChat?0:state.chatLoadBlockedUntil');
+    expect(bootBlock).toContain('chatLoadRecoveryStage:verifiedChatCandidate?0:state.chatLoadRecoveryStage');
+    expect(bootBlock).toContain('chatLoadBlockedUntil:verifiedChatCandidate?0:state.chatLoadBlockedUntil');
     expect(bootBlock).toContain('pendingContinue:keepChat?false:true');
     expect(bootBlock).toContain('await waitForNv02VerifiedChatSettle(target,expectedChatUrl)');
     expect(bootBlock).toContain("BOOT_VERIFIED_CHAT_SETTLE_DEFERRED");
