@@ -61,6 +61,7 @@ describe('NV03/NV04 isolated coordination', () => {
   it('binds NV03 input revision to TARGET_HEAD when exact-head review work uses that field', () => {
     const src = issue('PRIORITY=P0\nOWNER_DIRECT=true\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_RELEASE_CANARY_V1\nTARGET_HEAD=18c0c630');
     expect(inputRevision(src)).toBe('18c0c630');
+    expect(buildNv03ReviewPrompt(src)).toContain('TARGET_HEAD=18c0c630');
     expect(buildNv03ReviewPrompt(src)).toContain('INPUT_REVISION=18c0c630');
   });
 
@@ -139,6 +140,11 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain('nv03ResultRevisionMatches(issue, body)');
     expect(source).toContain("lineFieldValue(body, 'INPUT_REVISION') !== expectedRevision");
     expect(source).toContain("lineFieldValue(body, 'TARGET_HEAD') !== targetHead");
+    const reconcileStart = source.indexOf('async function reconcileNv03Results');
+    const revisionGuard = source.indexOf('nv03ResultRevisionMatches(issue, body)', reconcileStart);
+    const releaseCall = source.indexOf('await nv03SidecarRelease(jobId)', reconcileStart);
+    expect(revisionGuard).toBeGreaterThan(reconcileStart);
+    expect(releaseCall).toBeGreaterThan(revisionGuard);
     expect(source).toContain("REVIEW\\s*=\\s*(?:PASS|CHANGES_REQUIRED)");
     expect(source).toContain('closeGithubIssueCompleted');
     expect(source).toContain('nv03SidecarRelease');
