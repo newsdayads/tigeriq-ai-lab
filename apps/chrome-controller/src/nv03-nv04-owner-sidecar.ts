@@ -108,17 +108,19 @@ async function controllerDispatch(worker: 'NV03' | 'NV04', text: string, job: Re
 }
 
 async function reconcileNv04Results(issues: GithubIssueApi[], transport: Nv04DriveTransport) {
+  const { owner, repo } = repoParts();
   for (const issue of issues) {
     if (!eligibleNv04Issue(issue)) continue;
     const comments = await issueComments(issue.number);
-    if (!hasActiveClaim(comments, 'NV04')) continue;
+    const claim = activeAppChromeClaims(comments).find((item) => item.workerId === 'NV04');
+    if (!claim) continue;
     const request = buildNv04Request(issue);
     const found = transport.readValidatedResult(request);
     if (!found) continue;
     const comment = renderNv04GithubComment(request, found.result);
     await addIssueComment(issue.number, comment);
     transport.archiveCompleted(request, found.path);
-    await addIssueComment(issue.number, releaseBody('NV04', request.jobId, found.result.terminal));
+    await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV04', issueNumber: issue.number, state: found.result.terminal, owner, repo, token: githubToken });
   }
 }
 
