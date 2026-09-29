@@ -501,14 +501,15 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
 function Gates-Pass([string]$sha){
-  $runs=gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"|ConvertFrom-Json
+  $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
   $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
   foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
   return $true
 }
 function Resolve-GateSha([string]$remote){
+  if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
   if(Gates-Pass $remote){return $remote}
-  try{$prs=gh api -H 'Accept: application/vnd.github+json' "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls"|ConvertFrom-Json}catch{return $null}
+  try{$prs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls" @('Accept: application/vnd.github+json')}catch{if($_.Exception.Message -match '^GITHUB_API_RATE_LIMIT'){throw};return $null}
   foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
   return $null
 }
@@ -669,6 +670,7 @@ while($true){
       }
     }
     if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if(Test-GithubApiBackoff){Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
