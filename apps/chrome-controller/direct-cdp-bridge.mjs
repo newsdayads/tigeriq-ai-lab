@@ -1636,11 +1636,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     state=loadNv02Continuity();
   }
   const bootGatePending=bootFreshContextPending.has('NV02');
-  if(now>=Number(state.nextPeriodicF5At||0)&&bootGatePending){
-    await continuityEvent('PERIODIC_F5_DEFERRED_FOR_BOOT_GATE',{nextPeriodicF5At:state.nextPeriodicF5At,verifiedChatUrl:state.verifiedChatUrl||null,currentUrl:ui?.url||null});
-  }
-  if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending){
-    if(state.postF5RecoveryPending===true){
+  if(now>=Number(state.nextPeriodicF5At||0)){
+    if(bootGatePending){
+      await continuityEvent('PERIODIC_F5_DEFERRED_FOR_BOOT_GATE',{nextPeriodicF5At:state.nextPeriodicF5At,verifiedChatUrl:state.verifiedChatUrl||null,currentUrl:ui?.url||null});
+    }else{
+      if(state.postF5RecoveryPending===true){
       const stableSince=Number(state.postF5StableSince||0);
       const stableForMs=stableSince?Math.max(0,now-stableSince):0;
       if(!stableSince||stableForMs<NV02_POST_F5_STABLE_GRACE_MS){
@@ -1687,6 +1687,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     saveNv02Continuity(state);
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At,nextRefreshAt:state.nextRefreshAt,awaitingWorkStartPreserved:state.awaitingWorkStart===true});
     return;
+    }
   }
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
