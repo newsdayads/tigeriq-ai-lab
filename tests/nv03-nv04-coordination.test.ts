@@ -6,6 +6,7 @@ import {
   buildNv03ReviewPrompt,
   buildNv04Request,
   inputRevision,
+  nv03InputRevision,
   eligibleNv03ReviewIssue,
   eligibleNv04Issue,
   parseNv04Result,
@@ -60,9 +61,28 @@ describe('NV03/NV04 isolated coordination', () => {
 
   it('binds NV03 input revision to TARGET_HEAD when exact-head review work uses that field', () => {
     const src = issue('PRIORITY=P0\nOWNER_DIRECT=true\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_RELEASE_CANARY_V1\nTARGET_HEAD=18c0c630');
-    expect(inputRevision(src)).toBe('18c0c630');
+    expect(nv03InputRevision(src)).toBe('18c0c630');
     expect(buildNv03ReviewPrompt(src)).toContain('TARGET_HEAD=18c0c630');
     expect(buildNv03ReviewPrompt(src)).toContain('INPUT_REVISION=18c0c630');
+  });
+
+  it('preserves legacy NV04 revision semantics when NV03-only revision fields are present', () => {
+    const withExactInput = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH\nRESOURCE_SCOPE=R\nTARGET_HEAD=nv03-head\nINPUT_REVISION=nv03-revision\nEXACT_INPUT=nv04-rev',
+      '[P1][RESEARCH] preserve NV04 revision',
+      203,
+    );
+    expect(inputRevision(withExactInput)).toBe('nv04-rev');
+    expect(buildNv04Request(withExactInput).inputRevision).toBe('nv04-rev');
+
+    const nv03OnlyFields = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH\nRESOURCE_SCOPE=R\nTARGET_HEAD=nv03-head\nINPUT_REVISION=nv03-revision',
+      '[P1][RESEARCH] ignore NV03-only revision fields',
+      202,
+    );
+    expect(inputRevision(nv03OnlyFields)).not.toBe('nv03-head');
+    expect(inputRevision(nv03OnlyFields)).not.toBe('nv03-revision');
+    expect(buildNv04Request(nv03OnlyFields).inputRevision).toBe(inputRevision(nv03OnlyFields));
   });
 
   it('creates a deterministic NV04 Drive request contract', () => {
