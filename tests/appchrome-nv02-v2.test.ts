@@ -166,6 +166,12 @@ describe('NV02 verified-chat boot settle', () => {
     expect(bootBlock).toContain("BOOT_VERIFIED_CHAT_SETTLE_DEFERRED");
     expect(bootBlock).toContain("bootFreshContextPending.add('NV02')");
     expect(bootBlock).toContain("bootModelRetryAt.set('NV02',now+NV02_VERIFIED_CHAT_RETRY_MS)");
-    expect(bootBlock).not.toContain('const verified=await ensureNv02ModelProfile(target)');
+    const verifiedStart=bootBlock.indexOf('if(verifiedChatCandidate){');
+    const unverifiedStart=bootBlock.indexOf('if(keepChat){',verifiedStart);
+    const verifiedBranch=bootBlock.slice(verifiedStart,unverifiedStart);
+    expect(verifiedBranch).not.toContain('ensureNv02ModelProfile');
+    expect(verifiedBranch).not.toContain('openNv02ModelSelector');
+    expect(bootBlock).toContain('ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:false})');
+    expect(bootBlock).toContain('const verified=await ensureNv02ModelProfile(target)');
   });
 });
