@@ -654,7 +654,7 @@ export function paperclipContainerLogDiagnostic(value = '') {
     .replace(/[A-Za-z]:\\[^\s"'<>]+/g, '[PATH_REDACTED]')
     .replace(/\/(?:home|root|mnt|var|etc|opt|srv|tmp)\/[^\s"'<>]+/g, '[PATH_REDACTED]')
     .replace(/\b([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASS|KEY))\s*=\s*[^\s]+/g, '$1=[REDACTED]')
-    .replace(/\b(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, 'export function paperclipContainerLogClass(value = '') {'.replace(/[:=].*$/, '=[REDACTED]'))
+    .replace(/\b(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, (match) => match.replace(/[:=].*$/, '=[REDACTED]'))
     .replace(/\b[A-Fa-f0-9]{32,}\b/g, '[TOKEN_REDACTED]')
     .replace(/\b[A-Za-z0-9+/_=-]{40,}\b/g, '[TOKEN_REDACTED]')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[IP_REDACTED]')
