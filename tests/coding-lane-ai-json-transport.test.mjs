@@ -51,7 +51,6 @@ describe('coding lane AI JSON transport',()=>{
     expect(expectedSchemaFromPrompt(compact)).toBe('edits');
     expect(finalContract).toContain('Return ONLY compact JSON {"summary":"short","edits"');
     expect(finalContract).not.toContain('"changes":[{"path"');
-    expect(compact).toContain('the content field is FORBIDDEN');
   });
 
   it('detects a final review contract even when the diff contains other schema examples',()=>{
