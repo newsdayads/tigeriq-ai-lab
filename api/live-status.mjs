@@ -956,7 +956,7 @@ function skillPromotionSnapshot() {
   }
 }
 
-async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
+export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   const { owner, repo } = repoParts();
   let projectionStale = false;
   let projectionReason = null;
