@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -18,6 +18,48 @@ test('Vietnamese title guard rejects English manager titles without canonical Wo
   assert.strictEqual(canonicalCodingJobTitle('manual objective','Sửa lỗi API'),'Sửa lỗi API');
   assert.strictEqual(codingMergeCommitTitle(1800,'Fix Core bug'),'PR #1800 - Công việc Coding');
   assert.strictEqual(classifyAiFailure(new Error('MANAGER_TITLE_NOT_VI')),'output_contract');
+});
+
+test('GitHub API rate-limit backoff honors reset and ignores unrelated HTTP errors',()=>{
+  const now=1_790_000_000_000;
+  const resetSeconds=Math.floor((now+120_000)/1000);
+  const limited=Object.assign(new Error('HTTP_403:API rate limit exceeded'),{
+    status:403,
+    url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/pulls/1',
+    rateLimitRemaining:'0',
+    rateLimitReset:String(resetSeconds),
+    retryAfter:null,
+  });
+  assert.strictEqual(githubApiRateLimitBackoffUntil(limited,now),resetSeconds*1000+1000);
+  const secondary=Object.assign(new Error('HTTP_403:You have exceeded a secondary rate limit.'),{
+    status:403,
+    url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/check-runs',
+    rateLimitRemaining:'42',
+    retryAfter:'90',
+  });
+  assert.strictEqual(githubApiRateLimitBackoffUntil(secondary,now),now+91_000);
+  const unrelated=Object.assign(new Error('HTTP_403:forbidden'),{
+    status:403,
+    url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues',
+    rateLimitRemaining:'42',
+  });
+  assert.strictEqual(githubApiRateLimitBackoffUntil(unrelated,now),0);
+  const provider=Object.assign(new Error('HTTP_429:rate limit'),{
+    status:429,
+    url:'https://generativelanguage.googleapis.com/v1beta/models/x',
+    retryAfter:'120',
+  });
+  assert.strictEqual(githubApiRateLimitBackoffUntil(provider,now),0);
+});
+
+test('Coding Lane loop waits during GitHub API rate-limit backoff instead of hammering every tick',()=>{
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes("let githubApiBackoffUntil=0"));
+  assert.ok(src.includes("if(githubApiBackoffUntil>nowLoop)"));
+  assert.ok(src.includes("await sleep(Math.min(60_000,githubApiBackoffUntil-nowLoop))"));
+  assert.ok(src.includes("event:'CODING_GITHUB_RATE_LIMIT_BACKOFF'"));
+  assert.ok(src.includes("e.rateLimitReset=res.headers.get('x-ratelimit-reset')"));
+  assert.ok(src.includes("e.retryAfter=res.headers.get('retry-after')"));
 });
 
 test('canonical Vietnamese title inheritance',()=>{

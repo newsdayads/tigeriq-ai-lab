@@ -370,7 +370,21 @@ function selectableResources(exclude=[]){
 
 function pickResource(exclude=[]){const available=selectableResources(exclude);if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
 
-async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;throw e;}return body;}finally{clearTimeout(t)}}
+async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;e.url=String(url||'');e.retryAfter=res.headers.get('retry-after');e.rateLimitRemaining=res.headers.get('x-ratelimit-remaining');e.rateLimitReset=res.headers.get('x-ratelimit-reset');throw e;}return body;}finally{clearTimeout(t)}}
+
+export function githubApiRateLimitBackoffUntil(error,nowMs=Date.now()){
+  const url=String(error?.url||'');
+  const status=Number(error?.status||0);
+  const message=String(error?.message||'');
+  const github=url.startsWith('https://api.github.com/');
+  const limited=github&&[403,429].includes(status)&&(String(error?.rateLimitRemaining||'')==='0'||/rate limit exceeded|secondary rate limit/i.test(message));
+  if(!limited)return 0;
+  const retryAfterSeconds=Number(error?.retryAfter||0);
+  const resetSeconds=Number(error?.rateLimitReset||0);
+  const retryAt=Number.isFinite(retryAfterSeconds)&&retryAfterSeconds>0?nowMs+retryAfterSeconds*1000:0;
+  const resetAt=Number.isFinite(resetSeconds)&&resetSeconds>0?resetSeconds*1000:0;
+  return Math.max(nowMs+60_000,retryAt,resetAt)+1_000;
+}
 export function normalizeLocalOllamaBaseUrl(value='http://127.0.0.1:11434'){
   const url=new URL(String(value||'').trim());
   if(url.protocol!=='http:'||!['127.0.0.1','localhost','::1','[::1]'].includes(url.hostname))throw new Error('OLLAMA_LOOPBACK_ONLY');
@@ -1304,6 +1318,7 @@ if(process.env.NODE_ENV!=='test'){
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
+  let githubApiBackoffUntil=0;
   const active=new Set();
   let lastStaleRecoveryScanAt=0;
   let staleRuntimeCanaryDone=false;
@@ -1325,6 +1340,11 @@ if(process.env.NODE_ENV!=='test'){
   process.on('SIGINT',()=>{stop=true;server.close()});
   process.on('SIGTERM',()=>{stop=true;server.close()});
   while(!stop){
+    const nowLoop=Date.now();
+    if(githubApiBackoffUntil>nowLoop){
+      await sleep(Math.min(60_000,githubApiBackoffUntil-nowLoop));
+      continue;
+    }
     try{
       await refreshCoreResourceHealth();
       const nowMs=Date.now();
@@ -1348,7 +1368,15 @@ if(process.env.NODE_ENV!=='test'){
         active.add(j.id);
         void runJob(j).catch(e=>failJob(j,e)).finally(()=>active.delete(j.id));
       }
-    }catch(e){console.error(JSON.stringify({event:'CODING_LANE_LOOP_ERROR',error:String(e?.message||e)}))}
+    }catch(e){
+      const rateLimitUntil=githubApiRateLimitBackoffUntil(e,Date.now());
+      if(rateLimitUntil>Date.now()){
+        githubApiBackoffUntil=rateLimitUntil;
+        console.error(JSON.stringify({event:'CODING_GITHUB_RATE_LIMIT_BACKOFF',status:Number(e?.status||0),remaining:e?.rateLimitRemaining??null,retryAfter:e?.retryAfter??null,rateLimitReset:e?.rateLimitReset??null,backoffUntil:new Date(githubApiBackoffUntil).toISOString(),error:String(e?.message||e)}));
+      }else{
+        console.error(JSON.stringify({event:'CODING_LANE_LOOP_ERROR',error:String(e?.message||e)}));
+      }
+    }
     await sleep(1500);
   }
   if(pool)await pool.end();
