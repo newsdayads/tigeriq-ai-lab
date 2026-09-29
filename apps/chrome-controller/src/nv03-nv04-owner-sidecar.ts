@@ -16,6 +16,7 @@ import {
   activeAppChromeClaims,
   claimGithubIssue,
   releaseGithubClaim,
+  closeGithubIssueCompleted,
   workerEligibleForIssue,
   type GithubComment as CanonicalGithubComment,
   type GithubIssue as CanonicalGithubIssue,
@@ -101,12 +102,13 @@ function targetCompatible(issue: GithubIssueApi, worker: 'NV03' | 'NV04') {
   return values.length === 0 || values.every((value) => value === worker);
 }
 
-async function nv03SidecarAssign(issue: GithubIssueApi, jobId: string) {
+async function nv03SidecarAssign(issue: GithubIssueApi, jobId: string, claimId: string) {
   const response = await fetch(`${nv03SidecarBase}/assign`, {
     method: 'POST',
     headers: { 'content-type': 'application/json; charset=utf-8' },
     body: JSON.stringify({
       jobId,
+      claimId,
       workOrder: `#${issue.number} - ${issue.title}`,
       issueUrl: issue.html_url,
       resourceScope: resourceScope(issue),
@@ -143,6 +145,32 @@ async function reconcileNv04Results(issues: GithubIssueApi[], transport: Nv04Dri
   }
 }
 
+async function reconcileNv03Results(issues: GithubIssueApi[]) {
+  const { owner, repo } = repoParts();
+  for (const issue of issues) {
+    const comments = await issueComments(issue.number);
+    const claim = activeAppChromeClaims(comments).find((item) => item.workerId === 'NV03');
+    if (!claim) continue;
+    const claimIndex = comments.findIndex((comment) => String(comment.body || '').includes('claim_id=' + claim.claimId));
+    const later = claimIndex >= 0 ? comments.slice(claimIndex + 1) : comments;
+    const resultComment = [...later].reverse().find((comment) => {
+      const body = String(comment.body || '');
+      if (!new RegExp('^CLAIM_ID\\s*=\\s*' + claim.claimId.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\$&') + '$', 'mi').test(body)) return false;
+      return /^(?:REVIEW\s*=\s*(?:PASS|CHANGES_REQUIRED)|STATE\s*=\s*(?:BLOCKED|EXTERNAL_WAIT))$/mi.test(body);
+    });
+    if (!resultComment) continue;
+    const body = String(resultComment.body || '');
+    let state = 'DONE';
+    if (/^STATE\s*=\s*BLOCKED$/mi.test(body)) state = 'BLOCKED';
+    else if (/^STATE\s*=\s*EXTERNAL_WAIT$/mi.test(body)) state = 'EXTERNAL_WAIT';
+    else if (/^REVIEW\s*=\s*CHANGES_REQUIRED$/mi.test(body)) state = 'CHANGES_REQUIRED';
+    await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV03', issueNumber: issue.number, state, owner, repo, token: githubToken });
+    if (state === 'DONE' || state === 'CHANGES_REQUIRED') {
+      await closeGithubIssueCompleted({ issueNumber: issue.number, owner, repo, token: githubToken });
+    }
+  }
+}
+
 async function dispatchOneNv03(issues: GithubIssueApi[]) {
   const { owner, repo } = repoParts();
   const candidates = issues.filter((issue) => workerEligibleForIssue('NV03', issue) && targetCompatible(issue, 'NV03'));
@@ -153,7 +181,7 @@ async function dispatchOneNv03(issues: GithubIssueApi[]) {
     if (!claim) continue;
     const jobId = `APP-GH-${issue.number}-NV03-${claim.claimId.slice(0, 8)}`;
     try {
-      await nv03SidecarAssign(issue, jobId);
+      await nv03SidecarAssign(issue, jobId, claim.claimId);
     } catch (error) {
       await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV03', issueNumber: issue.number, state: 'DISPATCH_ERROR', owner, repo, token: githubToken });
       throw error;
@@ -196,7 +224,10 @@ export async function runOwnerDirectedCycle() {
   let nv03Issue = 0;
   let nv04Issue = 0;
 
-  if (selected.has('NV03')) nv03Issue = await dispatchOneNv03(issues);
+  if (selected.has('NV03')) {
+    await reconcileNv03Results(issues);
+    nv03Issue = await dispatchOneNv03(issues);
+  }
   if (selected.has('NV04')) {
     const transport = new Nv04DriveTransport(driveRoot);
     transport.ensureLayout();
