@@ -66,12 +66,19 @@ export function resourceScope(issue: GithubIssueLike) {
 export function inputRevision(issue: GithubIssueLike) {
   const fields = parseControlFields(issue.body || '');
   if (fields.EXACT_HEAD) return fields.EXACT_HEAD;
-  if (fields.TARGET_HEAD) return fields.TARGET_HEAD;
   if (fields.EXACT_INPUT) return fields.EXACT_INPUT;
-  if (fields.INPUT_REVISION) return fields.INPUT_REVISION;
   return createHash('sha256')
     .update(`${issue.number}\n${issue.title}\n${issue.body || ''}`)
     .digest('hex');
+}
+
+export function nv03InputRevision(issue: GithubIssueLike) {
+  const fields = parseControlFields(issue.body || '');
+  if (fields.TARGET_HEAD) return fields.TARGET_HEAD;
+  if (fields.EXACT_HEAD) return fields.EXACT_HEAD;
+  if (fields.INPUT_REVISION) return fields.INPUT_REVISION;
+  if (fields.EXACT_INPUT) return fields.EXACT_INPUT;
+  return inputRevision(issue);
 }
 
 function ownerAllowsP0(issue: GithubIssueLike) {
@@ -131,7 +138,7 @@ export function eligibleNv04Issue(issue: GithubIssueLike) {
 
 export function buildNv03ReviewPrompt(issue: GithubIssueLike) {
   const fields = parseControlFields(issue.body || '');
-  const revision = inputRevision(issue);
+  const revision = nv03InputRevision(issue);
   const targetHead = fields.TARGET_HEAD || fields.EXACT_HEAD || '';
   return [
     'LÀM — NO YAPPING.',
