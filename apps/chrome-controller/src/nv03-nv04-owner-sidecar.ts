@@ -119,6 +119,15 @@ async function nv03SidecarAssign(issue: GithubIssueApi, jobId: string, claimId: 
   if (!response.ok) throw new Error(`NV03_SIDECAR_HTTP_${response.status}:${await response.text()}`);
 }
 
+async function nv03SidecarRelease(jobId: string) {
+  const response = await fetch(`${nv03SidecarBase}/release`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ jobId }),
+  });
+  if (!response.ok) throw new Error(`NV03_SIDECAR_RELEASE_HTTP_${response.status}:${await response.text()}`);
+}
+
 async function controllerDispatchNv04(text: string, job: Record<string, string>) {
   const response = await fetch(`${controllerBase}/api/workers/NV04/dispatch`, {
     method: 'POST',
@@ -164,6 +173,8 @@ async function reconcileNv03Results(issues: GithubIssueApi[]) {
     if (/^STATE\s*=\s*BLOCKED$/mi.test(body)) state = 'BLOCKED';
     else if (/^STATE\s*=\s*EXTERNAL_WAIT$/mi.test(body)) state = 'EXTERNAL_WAIT';
     else if (/^REVIEW\s*=\s*CHANGES_REQUIRED$/mi.test(body)) state = 'CHANGES_REQUIRED';
+    const jobId = `APP-GH-${issue.number}-NV03-${claim.claimId.slice(0, 8)}`;
+    await nv03SidecarRelease(jobId);
     await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV03', issueNumber: issue.number, state, owner, repo, token: githubToken });
     if (state === 'DONE' || state === 'CHANGES_REQUIRED') {
       await closeGithubIssueCompleted({ issueNumber: issue.number, owner, repo, token: githubToken });
