@@ -20,9 +20,18 @@ const driveRoot = String(process.env.TIGERIQ_NV04_DRIVE_ROOT || 'G:\\Drive của
 const repoFullName = String(process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab');
 const githubToken = String(process.env.TIGERIQ_GITHUB_TOKEN || process.env.GITHUB_TOKEN || '');
 
+function selectedWorkers() {
+  const raw = String(process.env.TIGERIQ_NV0304_WORKERS || '').toUpperCase().split(',').map((x) => x.trim()).filter(Boolean);
+  const selected = new Set(raw);
+  if (!selected.size) throw new Error('OWNER_WORKER_SELECTION_REQUIRED');
+  for (const id of selected) if (!['NV03','NV04'].includes(id)) throw new Error(`OWNER_WORKER_SELECTION_INVALID:${id}`);
+  return selected;
+}
+
 function requireOwnerDirectArm() {
   if (process.env.TIGERIQ_NV0304_OWNER_DIRECT !== '1') throw new Error('OWNER_DIRECT_ARM_REQUIRED');
   if (process.env.TIGERIQ_NV0304_SCOPE !== OWNER_SCOPE) throw new Error('OWNER_SCOPE_MISMATCH');
+  return selectedWorkers();
 }
 
 function githubHeaders() {
@@ -170,16 +179,20 @@ async function dispatchOneNv04(issues: GithubIssueApi[], transport: Nv04DriveTra
 }
 
 export async function runOwnerDirectedCycle() {
-  requireOwnerDirectArm();
+  const selected = requireOwnerDirectArm();
   const issues = await listOpenIssues();
-  const transport = new Nv04DriveTransport(driveRoot);
-  transport.ensureLayout();
+  let nv03Issue = 0;
+  let nv04Issue = 0;
 
-  await reconcileNv04Results(issues, transport);
-  const nv03Issue = await dispatchOneNv03(issues);
-  const nv04Issue = await dispatchOneNv04(issues, transport);
+  if (selected.has('NV03')) nv03Issue = await dispatchOneNv03(issues);
+  if (selected.has('NV04')) {
+    const transport = new Nv04DriveTransport(driveRoot);
+    transport.ensureLayout();
+    await reconcileNv04Results(issues, transport);
+    nv04Issue = await dispatchOneNv04(issues, transport);
+  }
 
-  return { ownerScope: OWNER_SCOPE, nv03Issue, nv04Issue, driveRoot };
+  return { ownerScope: OWNER_SCOPE, selectedWorkers: [...selected], nv03Issue, nv04Issue, driveRoot: selected.has('NV04') ? driveRoot : null };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
