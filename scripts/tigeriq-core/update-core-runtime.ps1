@@ -27,9 +27,9 @@ $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
 $remoteDesktopTask='TigerIQ Desktop Commander Remote'
-$remoteDesktopRuntime='D:\\TigerIQ\\Runtime\\desktop-commander-remote'
-$remoteDesktopLifecycleGeneration='20260930_SINGLE_REMOTE_1'
-$remoteDesktopLifecycleState='D:\\TigerIQ\\State\\rdc-lifecycle-generation.txt'
+$remoteDesktopRuntime='D:\TigerIQ\Runtime\desktop-commander-remote'
+$remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
+$remoteDesktopLifecycleState='D:\TigerIQ\State\rdc-lifecycle-generation.txt'
 $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
@@ -336,7 +336,8 @@ function Get-RemoteDesktopRuntimeProcesses(){
   try{
     $needle=(Join-Path $remoteDesktopRuntime 'app-0.2.51').ToLowerInvariant()
     return @(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object{
-      [string]$_.Name -ieq 'node.exe' -and $_.CommandLine -and [string]$_.CommandLine.ToLowerInvariant().Contains($needle)
+      $cmd=[string]$_.CommandLine
+      [string]$_.Name -ieq 'node.exe' -and $cmd -and $cmd.ToLowerInvariant().Contains($needle)
     })
   }catch{return @()}
 }

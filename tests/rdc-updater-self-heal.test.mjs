@@ -30,8 +30,11 @@ describe('RDC updater post-reboot self-heal', () => {
   });
   it('reconciles RDC lifecycle to one launcher plus one local MCP child with a one-shot generation marker', async () => {
     const source = await readFile(updaterUrl, 'utf8');
-    expect(source).toContain("remoteDesktopLifecycleGeneration='20260930_SINGLE_REMOTE_1'");
+    expect(source).toContain("remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'");
     expect(source).toContain('function Get-RemoteDesktopRuntimeProcesses()');
+    expect(source).toContain("$cmd=[string]$_.CommandLine");
+    expect(source).toContain("$cmd.ToLowerInvariant().Contains($needle)");
+    expect(source).not.toContain("[string]$_.CommandLine.ToLowerInvariant().Contains($needle)");
     expect(source).toContain('function Get-RemoteDesktopLauncherProcesses()');
     expect(source).toContain('function Stop-RemoteDesktopRuntimeProcesses()');
     expect(source).toContain('function Restart-RemoteDesktopTaskClean');
