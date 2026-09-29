@@ -240,6 +240,24 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(out).toEqual(paperclipContainerLogDiagnostic(input));
   });
 
+  it('preserves the DB_MIGRATION trigger in a bounded diagnostic even when later noise exceeds the cap', () => {
+    const trigger = 'ERROR migration failed while applying pending migrations to stale schema';
+    const input = [
+      ...Array.from({ length: 20 }, (_, i) => 'noise-before-' + i),
+      trigger,
+      ...Array.from({ length: 40 }, (_, i) => 'ERROR database generic tail line ' + i + ' '.repeat(30)),
+      'message=Failed query: select many columns from heartbeat_runs inner join agents',
+      'generic database shutdown error tail',
+    ].join('\n');
+    expect(paperclipContainerLogClass(input)).toBe('DB_MIGRATION');
+    const out = paperclipContainerLogDiagnostic(input);
+    expect(out.excerpt.length).toBeLessThanOrEqual(900);
+    expect(out.excerpt).toContain('migration failed');
+    expect(out.excerpt).toContain('pending migrations');
+    expect(out.excerpt).toContain('stale schema');
+    expect(out).toEqual(paperclipContainerLogDiagnostic(input));
+  });
+
   it('prioritizes structured nested DB error fields over long SQL query tails', () => {
     const line = JSON.stringify({
       level: 50,
