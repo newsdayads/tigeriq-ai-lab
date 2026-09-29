@@ -20,6 +20,7 @@ import {
   assertPaperclipLabRequest,
   paperclipDockerFailureClass,
   paperclipContainerLogClass,
+  paperclipContainerLogDiagnostic,
   paperclipHealthFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
@@ -137,7 +138,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260929_POSTGRES_SIDECAR_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_REDACTED_DB_DIAGNOSTIC_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -220,6 +221,31 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipContainerLogClass('fatal: startup failed')).toBe('APP_ERROR');
     expect(paperclipContainerLogClass('')).toBe('NO_LOGS');
     expect(paperclipContainerLogClass('normal startup banner')).toBe('UNCLASSIFIED');
+  });
+
+  it('publishes only bounded redacted database log diagnostics', () => {
+    const input = [
+      'DATABASE_URL=postgres://paperclip:super-secret@10.1.2.3:5432/paperclip',
+      'password=do-not-leak token=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN',
+      'Error: connect ECONNREFUSED 10.1.2.3:5432 while opening C:\\private\\paperclip\\db',
+      'Database migration failed for user admin@example.com',
+    ].join('\n');
+    const diagnostic = paperclipContainerLogDiagnostic(input);
+    expect(diagnostic.signals).toContain('DATABASE_URL');
+    expect(diagnostic.signals).toContain('POSTGRES');
+    expect(diagnostic.signals).toContain('CONNECTION_REFUSED');
+    expect(diagnostic.signals).toContain('MIGRATION');
+    expect(diagnostic.fingerprint).toMatch(/^[a-f0-9]{16}$/);
+    expect(diagnostic.excerptChars).toBeLessThanOrEqual(640);
+    expect(diagnostic.excerpt).not.toContain('super-secret');
+    expect(diagnostic.excerpt).not.toContain('do-not-leak');
+    expect(diagnostic.excerpt).not.toContain('10.1.2.3');
+    expect(diagnostic.excerpt).not.toContain('admin@example.com');
+    expect(diagnostic.excerpt).not.toContain('C:\\private');
+    expect(diagnostic.excerpt).toContain('[DB_URL_REDACTED]');
+    expect(diagnostic.excerpt).toContain('[IP_REDACTED]');
+    expect(diagnostic.excerpt).toContain('[EMAIL_REDACTED]');
+    expect(paperclipContainerLogDiagnostic(input).fingerprint).toBe(diagnostic.fingerprint);
   });
 
   it('uses only the fixed Ubuntu WSL Docker transport and lab-root path translation', () => {
