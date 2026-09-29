@@ -1376,6 +1376,31 @@ async function waitForNv02Composer(target,timeoutMs=30000){
   }
   return last;
 }
+const NV02_VERIFIED_CHAT_SETTLE_TIMEOUT_MS=90_000;
+const NV02_VERIFIED_CHAT_STABLE_MS=3_000;
+const NV02_VERIFIED_CHAT_RETRY_MS=15_000;
+async function waitForNv02VerifiedChatSettle(target,expectedUrl,timeoutMs=NV02_VERIFIED_CHAT_SETTLE_TIMEOUT_MS){
+  const deadline=Date.now()+timeoutMs;let last=null,stableSince=0;
+  while(Date.now()<deadline){
+    await sleep(1000);
+    const raw=await uiStateRaw(target).catch(()=>null);
+    if(!raw){stableSince=0;continue;}
+    last=applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw));
+    if(last?.securityBlock)return{ok:false,status:String(last.securityBlock),ui:last};
+    if(last?.authRequired)return{ok:false,status:'NV02_VERIFIED_CHAT_AUTH_REQUIRED',ui:last};
+    if(!sameNv02Chat(last?.url,expectedUrl))return{ok:false,status:'NV02_VERIFIED_CHAT_URL_DRIFT',ui:last};
+    const stable=last?.chatLoadError!==true
+      &&last?.connectionPending!==true
+      &&last?.modelExact===true
+      &&last?.reasoningEffort==='High'
+      &&(last?.uiBusy===true||last?.composerReady===true);
+    if(stable){
+      if(!stableSince)stableSince=Date.now();
+      if(Date.now()-stableSince>=NV02_VERIFIED_CHAT_STABLE_MS)return{ok:true,status:'NV02_VERIFIED_CHAT_SETTLED',ui:last};
+    }else stableSince=0;
+  }
+  return{ok:false,status:'NV02_VERIFIED_CHAT_SETTLE_TIMEOUT',ui:last};
+}
 async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={}){
   let ui=initialUi||await uiState(target);
   if(ui?.securityBlock)throw new Error(ui.securityBlock);
@@ -1678,6 +1703,8 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
   }
   if(bootFreshContextPending.has('NV02')&&phase!=='WORKING'){
+    const retryAt=Number(bootModelRetryAt.get('NV02')||0);
+    if(retryAt>now)return;
     bootFreshContextPending.delete('NV02');
     const preserveCurrentChat=hasCurrentNv02Chat(ui?.url);
     const restoreVerifiedChatUrl=!preserveCurrentChat
@@ -1686,36 +1713,64 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       &&hasCurrentNv02Chat(state.verifiedChatUrl)
       ?String(state.verifiedChatUrl)
       :'';
+    const keepChat=preserveCurrentChat||Boolean(restoreVerifiedChatUrl);
     const preserveVerifiedProfile=(
       preserveCurrentChat&&sameNv02Chat(state.verifiedChatUrl,ui?.url)&&Boolean(state.modelVerifiedAt)
     )||Boolean(restoreVerifiedChatUrl);
-    state={...state,resumeChatUrl:'',verifiedChatUrl:preserveVerifiedProfile?state.verifiedChatUrl:'',modelVerifiedAt:preserveVerifiedProfile?state.modelVerifiedAt:'',pendingContinue:true,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),stalledChecks:0};
+    state={
+      ...state,
+      resumeChatUrl:'',
+      verifiedChatUrl:preserveVerifiedProfile?state.verifiedChatUrl:'',
+      modelVerifiedAt:preserveVerifiedProfile?state.modelVerifiedAt:'',
+      pendingContinue:keepChat?false:true,
+      nextContinueAt:keepChat?0:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
+      stalledChecks:0,
+      chatLoadRecoveryStage:keepChat?0:state.chatLoadRecoveryStage,
+      chatLoadBlockedUntil:keepChat?0:state.chatLoadBlockedUntil,
+      chatLoadClearCandidateAt:keepChat?0:state.chatLoadClearCandidateAt,
+      chatConnectingSince:keepChat?0:state.chatConnectingSince,
+      modelCheckBlockedUntil:keepChat?0:state.modelCheckBlockedUntil
+    };
     saveNv02Continuity(state);
-    const boot=await withNv02Mutation(async()=>{
-      let bootUi=ui;
-      if(restoreVerifiedChatUrl){
-        await navigate(target,restoreVerifiedChatUrl);
-        await sleep(1200);
-        bootUi=await waitForNv02Composer(target,30000)||await uiState(target);
-        if(!sameNv02Chat(bootUi?.url,restoreVerifiedChatUrl))throw new Error('NV02_BOOT_VERIFIED_CHAT_RESTORE_FAILED');
-        await continuityEvent('BOOT_VERIFIED_CHAT_RESTORED',{url:restoreVerifiedChatUrl});
-      }
-      const keepChat=preserveCurrentChat||Boolean(restoreVerifiedChatUrl);
-      const ready=await ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat});
-      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
-      if(keepChat){
-        const verified=await ensureNv02ModelProfile(target);
-        if(verified?.uiBusy===true||verified?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING'};
-        return{ok:true,status:restoreVerifiedChatUrl?(allowContinue?'BOOT_VERIFIED_CHAT_READY':'BOOT_VERIFIED_CHAT_READY_NO_CONTINUE'):(allowContinue?'BOOT_CURRENT_CHAT_READY':'BOOT_CURRENT_CHAT_READY_NO_CONTINUE')};
-      }
-      return{ok:true,status:allowContinue?'BOOT_FRESH_LOCAL_READY':'BOOT_FRESH_LOCAL_READY_NO_CONTINUE'};
-    },'BOOT_FRESH_LOCAL_CONTINUE',60000);
-    if(boot?.status==='MUTATION_LEASE_BUSY'){
+    let boot;
+    try{
+      boot=await withNv02Mutation(async()=>{
+        let bootUi=ui;
+        let expectedChatUrl=preserveCurrentChat?String(ui?.url||''):restoreVerifiedChatUrl;
+        if(restoreVerifiedChatUrl){
+          await navigate(target,restoreVerifiedChatUrl);
+          await sleep(1200);
+          bootUi=await uiState(target).catch(()=>null);
+          if(!sameNv02Chat(bootUi?.url,restoreVerifiedChatUrl))return{ok:false,status:'NV02_BOOT_VERIFIED_CHAT_RESTORE_FAILED',ui:bootUi};
+          await continuityEvent('BOOT_VERIFIED_CHAT_RESTORED',{url:restoreVerifiedChatUrl});
+        }
+        if(keepChat){
+          const settled=await waitForNv02VerifiedChatSettle(target,expectedChatUrl);
+          if(!settled?.ok)return settled;
+          return{
+            ok:true,
+            status:restoreVerifiedChatUrl?(settled.ui?.uiBusy?'BOOT_VERIFIED_CHAT_WORKING':'BOOT_VERIFIED_CHAT_READY'):(settled.ui?.uiBusy?'BOOT_CURRENT_CHAT_WORKING':'BOOT_CURRENT_CHAT_READY'),
+            ui:settled.ui
+          };
+        }
+        const ready=await ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:true});
+        if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{ok:true,status:'BOOT_ALREADY_WORKING',ui:ready};
+        return{ok:true,status:allowContinue?'BOOT_FRESH_LOCAL_READY':'BOOT_FRESH_LOCAL_READY_NO_CONTINUE',ui:ready};
+      },'BOOT_FRESH_LOCAL_CONTINUE',120000);
+    }catch(error){
+      boot={ok:false,status:String(error?.message||error)};
+    }
+    if(boot?.status==='MUTATION_LEASE_BUSY'||boot?.ok!==true){
       bootFreshContextPending.add('NV02');
-      await continuityEvent('BOOT_FRESH_CONTEXT_DEFERRED',{status:boot.status,homeUrl:NV02_HOME_URL});
+      bootModelRetryAt.set('NV02',now+NV02_VERIFIED_CHAT_RETRY_MS);
+      state=loadNv02Continuity();
+      state={...state,pendingContinue:false,nextContinueAt:0,stalledChecks:0};
+      saveNv02Continuity(state);
+      await continuityEvent(keepChat?'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED':'BOOT_FRESH_CONTEXT_DEFERRED',{status:boot?.status||'BOOT_UNKNOWN_FAILURE',retryAt:now+NV02_VERIFIED_CHAT_RETRY_MS,homeUrl:NV02_HOME_URL,url:boot?.ui?.url||ui?.url||null});
       return;
     }
-    await continuityEvent('BOOT_FRESH_LOCAL_COMPLETE',{status:boot?.status||null,prompt:boot?.prompt||null,homeUrl:NV02_HOME_URL});
+    bootModelRetryAt.delete('NV02');
+    await continuityEvent('BOOT_FRESH_LOCAL_COMPLETE',{status:boot?.status||null,prompt:boot?.prompt||null,homeUrl:NV02_HOME_URL,url:boot?.ui?.url||null});
     return;
   }
   if(phase==='READY'){
