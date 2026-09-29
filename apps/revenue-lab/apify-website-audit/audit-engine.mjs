@@ -3,6 +3,11 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 
+import http from 'node:http';
+import https from 'node:https';
+import dns from 'node:dns/promises';
+import { URL } from 'node:url';
+
 function isPrivateIP(ip) {
   if (!ip) return true;
   if (ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0') return true;
