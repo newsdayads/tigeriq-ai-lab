@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
-import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
+import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,expectedSchemaFromPrompt,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
 import {assertCanonicalSourceWorkOrderExecutable,assertIndependentReviewApproval,assertSourceWorkOrderExecutable,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson,sourceWorkOrderNumber} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
@@ -13,6 +13,33 @@ describe('coding lane AI JSON transport',()=>{
     expect(prompt).toContain('"changes":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
     expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
+  });
+
+  it('detects the final output contract instead of JSON schema examples inside CURRENT FILES',()=>{
+    const prompt=[
+      'PATCH_CONTRACT_V2_COMPACT_REPAIR=true',
+      'CURRENT FILES:',
+      'FILE tests/a.test.mjs',
+      'const reviewExample = \'"decision":"approve|changes_requested"\';',
+      'const editExample = \'"edits":[{"path"\';',
+      'const managerExample = \'"status":"continue|blocked"\';',
+      'Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.'
+    ].join('\n');
+    expect(expectedSchemaFromPrompt(prompt)).toBe('changes');
+    const compact=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
+    expect(compact).toContain('Return ONLY compact JSON {"summary":"short","edits"');
+    expect(compact).toContain('under 3200 characters');
+    expect(compact).not.toContain('Return ONLY JSON {"summary":"short","changes"');
+  });
+
+  it('detects a final review contract even when the diff contains other schema examples',()=>{
+    const prompt=[
+      'DIFF:',
+      '+ Return ONLY JSON {"summary":"short","changes":[{"path":"x","content":"y"}]}.',
+      '+ Return ONLY compact JSON {"summary":"short","edits":[{"path":"x","search":"a","replace":"b"}]}.',
+      'Return ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}.'
+    ].join('\n');
+    expect(expectedSchemaFromPrompt(prompt)).toBe('review');
   });
 
   it('parses the first complete JSON object when a provider appends another object',()=>{
