@@ -634,9 +634,9 @@ test('runJob wires authoritative GitHub context into generation, review, and rep
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
   assert.ok(run.includes("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)"));
-  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,[\`CI gate failure on same PR #\${pr.number}\`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,freshContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,[\`CI gate failure on same PR #\${pr.number}\`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)"));
   assert.ok(run.includes("reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext)"));
-  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,repairGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)"));
 });
 
 test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{
