@@ -36,6 +36,24 @@ describe('coding lane AI JSON transport',()=>{
     expect(compact).not.toContain('Return ONLY JSON {"summary":"short","changes"');
   });
 
+  it('rewrites only the final full-content contract when the same schema appears inside CURRENT FILES',()=>{
+    const schema='Return ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const prompt=[
+      'PATCH_CONTRACT_V2_COMPACT_REPAIR=true',
+      'CURRENT FILES:',
+      'FILE tests/a.test.mjs',
+      `const embedded = ${JSON.stringify(schema)};`,
+      schema,
+      'Do not touch paths outside ALLOWED PATHS.'
+    ].join('\\n');
+    const compact=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
+    const finalContract=compact.slice(compact.lastIndexOf('Return ONLY'));
+    expect(expectedSchemaFromPrompt(compact)).toBe('edits');
+    expect(finalContract).toContain('Return ONLY compact JSON {"summary":"short","edits"');
+    expect(finalContract).not.toContain('"changes":[{"path"');
+    expect(compact).toContain('the content field is FORBIDDEN');
+  });
+
   it('detects a final review contract even when the diff contains other schema examples',()=>{
     const prompt=[
       'DIFF:',
