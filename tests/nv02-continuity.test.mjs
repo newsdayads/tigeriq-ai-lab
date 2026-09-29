@@ -280,7 +280,8 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
     expect(source).toContain("'BOOT_VERIFIED_CHAT_READY'");
     expect(source).toContain("'BOOT_CURRENT_CHAT_READY'");
-    const bootBlock=source.slice(source.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')"),source.indexOf("if(phase==='READY')"));
+    const bootStart=source.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')");
+    const bootBlock=source.slice(bootStart,source.indexOf("if(phase==='READY')",bootStart));
     const verifiedStart=bootBlock.indexOf("if(verifiedChatCandidate){");
     const unverifiedStart=bootBlock.indexOf("if(keepChat){",verifiedStart);
     const verifiedBranch=bootBlock.slice(verifiedStart,unverifiedStart);
