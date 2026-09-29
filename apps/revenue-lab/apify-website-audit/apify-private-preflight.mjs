@@ -158,6 +158,7 @@ export async function runPrivateApifyPreflight({
       readAccess: 'VERIFIED_BY_GET',
       buildPermission: 'UNVERIFIED_UNTIL_E2E',
       runPermission: 'UNVERIFIED_UNTIL_E2E',
+      outputStorageReadPermission: 'UNVERIFIED_UNTIL_E2E',
     },
     safety: {
       apiOrigin: API_BASE,
