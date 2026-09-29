@@ -54,4 +54,4 @@ The preflight performs only authenticated `GET https://api.apify.com/v2/users/me
 
 It fails closed unless the Actor is private (`isPublic=false`), requests `LIMITED_PERMISSIONS`, and contains the expected Actor version (default `0.1`). Evidence contains only account ID/username plus minimal Actor identity and never includes email, profile data, or tokens.
 
-Read access does **not** prove Build/Run permission. Preflight evidence explicitly records both as `UNVERIFIED_UNTIL_E2E`. Only the separate E2E harness can prove build/run authorization and measured platform cost.
+Read access does **not** prove Build/Run permission or permission to read the run's default storage. Preflight evidence records Build, Run, and default-output-storage read as `UNVERIFIED_UNTIL_E2E`. For the scoped token used by the private E2E, enable access to default run storages so the harness can read the `OUTPUT` record; the E2E then proves those permissions and measured platform cost.
