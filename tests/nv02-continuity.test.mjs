@@ -281,7 +281,12 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("'BOOT_VERIFIED_CHAT_READY'");
     expect(source).toContain("'BOOT_CURRENT_CHAT_READY'");
     const bootBlock=source.slice(source.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')"),source.indexOf("if(phase==='READY')"));
-    expect(bootBlock).not.toContain("const verified=await ensureNv02ModelProfile(target)");
+    const verifiedStart=bootBlock.indexOf("if(verifiedChatCandidate){");
+    const unverifiedStart=bootBlock.indexOf("if(keepChat){",verifiedStart);
+    const verifiedBranch=bootBlock.slice(verifiedStart,unverifiedStart);
+    expect(verifiedBranch).not.toContain("ensureNv02ModelProfile");
+    expect(bootBlock).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:false})");
+    expect(bootBlock).toContain("const verified=await ensureNv02ModelProfile(target)");
     expect(bootBlock).not.toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
     expect(source).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
     expect(source).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
