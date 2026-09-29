@@ -1,10 +1,9 @@
 FROM apify/actor-node:22
 
-WORKDIR /usr/src/app
+COPY --chown=myuser:myuser package*.json ./
+RUN npm --quiet set progress=false \
+    && npm install --omit=dev --no-audit --no-fund
 
-COPY package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
-
-COPY . ./
+COPY --chown=myuser:myuser . ./
 
 CMD ["node", "actor.mjs"]
