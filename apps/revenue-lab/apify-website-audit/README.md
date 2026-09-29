@@ -40,6 +40,6 @@ After the Owner creates or links the **private** Actor in Apify and injects cred
 
 Required execution gate: `APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST`. Optional environment variables: `APIFY_ACTOR_VERSION` (default `0.1`), `APIFY_BUILD_TAG` (default `latest`), and `APIFY_EVIDENCE_PATH` to persist redacted evidence. The production API origin is pinned to `https://api.apify.com/v2` and cannot be overridden from the environment.
 
-The harness builds the existing private Actor, runs one bounded `https://example.com` audit with `LIMITED_PERMISSIONS`, reads the `OUTPUT` record, and records authenticated `usageTotalUsd` plus compute units for build and run. It fails closed if build/run is not `SUCCEEDED` or cost evidence is absent.
+The harness builds the existing private Actor, runs one bounded `https://example.com` audit with `LIMITED_PERMISSIONS`, waits for terminal success, then waits 10 seconds and refetches the exact build/run before recording authenticated `usageTotalUsd` plus compute units. This avoids preliminary eventually-consistent usage values. It then reads the `OUTPUT` record and fails closed if finalized cost evidence is absent.
 
 Secrets are sent only in the `Authorization: Bearer` header and are never placed in URLs or evidence. Actor creation/update, public publication, paid enablement, KYC/payout, and Production remain outside scope.

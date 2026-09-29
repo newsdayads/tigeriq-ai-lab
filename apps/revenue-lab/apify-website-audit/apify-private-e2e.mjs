@@ -121,6 +121,8 @@ export async function runPrivateApifyE2E({
   fetchFn = globalThis.fetch,
   writeFileFn = fs.writeFile,
   now = () => new Date().toISOString(),
+  sleepFn = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  settleDelayMs = 10000,
 } = {}) {
   if (typeof fetchFn !== 'function') throw new ApifyE2EError('FETCH_UNAVAILABLE', 'A fetch implementation is required.');
   const config = envConfig(env);
@@ -142,7 +144,19 @@ export async function runPrivateApifyE2E({
       status: build.status ?? null,
     });
   }
-  const buildCost = usageCost(build, 'build');
+  await sleepFn(settleDelayMs);
+  const finalizedBuild = dataOf(await requestJson(
+    fetchFn,
+    `${config.apiBase}/actor-builds/${encode(build.id)}`,
+    { token: config.token },
+  ));
+  if (finalizedBuild?.status !== 'SUCCEEDED') {
+    throw new ApifyE2EError('BUILD_FINAL_STATE_INVALID', 'Finalized build no longer reports SUCCEEDED.', {
+      buildId: build.id ?? null,
+      status: finalizedBuild?.status ?? null,
+    });
+  }
+  const buildCost = usageCost(finalizedBuild, 'build');
 
   const runParams = new URLSearchParams({
     build: config.buildTag,
@@ -172,7 +186,19 @@ export async function runPrivateApifyE2E({
       status: run.status ?? null,
     });
   }
-  const runCost = usageCost(run, 'run');
+  await sleepFn(settleDelayMs);
+  const finalizedRun = dataOf(await requestJson(
+    fetchFn,
+    `${config.apiBase}/actor-runs/${encode(run.id)}`,
+    { token: config.token },
+  ));
+  if (finalizedRun?.status !== 'SUCCEEDED') {
+    throw new ApifyE2EError('RUN_FINAL_STATE_INVALID', 'Finalized run no longer reports SUCCEEDED.', {
+      runId: run.id ?? null,
+      status: finalizedRun?.status ?? null,
+    });
+  }
+  const runCost = usageCost(finalizedRun, 'run');
 
   const output = await requestJson(
     fetchFn,
@@ -192,13 +218,13 @@ export async function runPrivateApifyE2E({
     build: {
       id: build.id ?? null,
       status: build.status,
-      computeUnits: computeUnits(build),
+      computeUnits: computeUnits(finalizedBuild),
       usageTotalUsd: buildCost,
     },
     run: {
       id: run.id ?? null,
       status: run.status,
-      computeUnits: computeUnits(run),
+      computeUnits: computeUnits(finalizedRun),
       usageTotalUsd: runCost,
     },
     output: {
