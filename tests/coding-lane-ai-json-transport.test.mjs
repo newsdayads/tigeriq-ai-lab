@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {compactCurrentFilesForModel,compactPromptForChanges,compactPromptForEdits,currentFilesFromPrompt,expandCompactChanges,extractModelText,firstBalancedJsonObject,isAiUrl,looksLikeJsonObject,matchesExpectedSchema,parseModelJson,prepareAiJsonRequest,installAiJsonTransport,salvageTruncatedCompactEdits} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {assertCanonicalSourceWorkOrderExecutable,assertIndependentReviewApproval,assertSourceWorkOrderExecutable,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson,sourceWorkOrderNumber} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertCanonicalSourceWorkOrderExecutable,assertIndependentReviewApproval,assertSourceWorkOrderExecutable,buildRepairGenerationPrompt,canonicalWorkContext,classifyAiFailure,formatIndependentReviewArtifact,invokeJsonWithFailover,managerBlockKind,parseCompactEditJson,repairFailoverExcludeIds,repairReviewerNeedsReselection,sourceWorkOrderNumber} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 describe('coding lane AI JSON transport',()=>{
@@ -399,6 +399,37 @@ describe('coding lane AI JSON transport',()=>{
     const manager=src.indexOf('await managerTick()');
     expect(install).toBeGreaterThanOrEqual(0);
     expect(manager).toBeGreaterThan(install);
+  });
+
+  it('keeps the reserved reviewer eligible as bounded same-PR repair failover and reselects review independence',async()=>{
+    const pool=[
+      {id:'NV09',provider:'ollama'},
+      {id:'NV12',provider:'gemini'},
+    ];
+    const reviewer=pool[1];
+    const excludes=repairFailoverExcludeIds([]);
+    expect(excludes).toEqual([]);
+    expect(repairReviewerNeedsReselection(reviewer,pool[0])).toBe(false);
+    const calls=[];
+    const result=await invokeJsonWithFailover(pool[0],'{"request":"repair"}',{
+      resourcePool:pool,
+      exclude:excludes,
+      maxResources:2,
+      invokeFn:async resource=>{
+        calls.push(resource.id);
+        if(resource.id==='NV09') throw new Error('COMPACT_EDIT_PATH_UNKNOWN:apps/tigeriq-coding-lane/coding-lane.mjs');
+        return '{"ok":true}';
+      },
+      parseData:JSON.parse,
+    });
+    expect(result.resource.id).toBe('NV12');
+    expect(calls).toEqual(['NV09','NV09','NV12']);
+    expect(result.failureLedger.map(x=>x.resourceId)).toEqual(['NV09','NV09']);
+    expect(result.failureLedger.every(x=>x.class==='output_contract'&&x.retryable===true)).toBe(true);
+    expect(repairReviewerNeedsReselection(reviewer,result.resource)).toBe(true);
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    expect(src).not.toContain('[reviewer.id,...cooldownExcludes]');
+    expect(src).toContain('repairFailoverExcludeIds(cooldownExcludes)');
   });
 
   it('fails over to the next provider after one provider rejects the request with HTTP 400',async()=>{
