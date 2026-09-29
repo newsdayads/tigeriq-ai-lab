@@ -28,6 +28,7 @@ describe('NV03 isolated runtime', () => {
     expect(source).toContain('NV03_TERMINAL');
     expect(source).toContain('[data-message-author-role="assistant"]');
     expect(source).toContain('assistantText.match(/NV03_TERMINAL');
+    expect(source).toContain(".filter(vis);const lastAssistant=assistants.at(-1)");
     expect(source).not.toContain('const terminal=(text.match(/NV03_TERMINAL');
     expect(source).toContain('CLAIM_ID=${a.claimId}');
     expect(source).toContain("preferredId=''");
