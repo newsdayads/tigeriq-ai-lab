@@ -841,21 +841,24 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const queued = overlays.queued || null;
   const body = String(issue.body || '');
   const lifecycle = overlays.lifecycle || null;
-  const phase = String(lifecycle?.state || issueCanonicalState(issue)).toUpperCase();
   const classification = classifyOpenIssue(issue);
+  const canonicalPhase = issueCanonicalState(issue);
+  const phase = String(classification.ownerGate ? canonicalPhase : lifecycle?.state || canonicalPhase).toUpperCase();
   const status = actionableStatus(issue, overlays);
 
-  const checks = active?.checks || null;
-  const hasPull = Boolean(active?.prNumber || overlays.hasPull);
+  const checks = classification.ownerGate ? null : active?.checks || null;
+  const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
   const progress = classification.workKind === 'SYSTEM'
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
-  const currentStep = active?.currentStep
-    || queued?.waitReason
-    || lifecycle?.step
-    || bodyValue(body, 'CURRENT_STEP')
-    || (classification.ownerGate ? 'Chờ anh Sơn duyệt' : null);
+  const currentStep = classification.ownerGate
+    ? bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
+    : active?.currentStep
+      || queued?.waitReason
+      || lifecycle?.step
+      || bodyValue(body, 'CURRENT_STEP')
+      || null;
   const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
     || bodyValue(body, 'LATEST_COMPLETED_STEP')
     || bodyValue(body, 'LAST_DONE')
@@ -863,9 +866,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
-  const activeEvidenceUrl = safeEvidenceUrl(active?.evidenceUrl)
-    || safeEvidenceUrl(active?.prUrl)
-    || null;
+  const activeEvidenceUrl = classification.ownerGate
+    ? null
+    : safeEvidenceUrl(active?.evidenceUrl)
+      || safeEvidenceUrl(active?.prUrl)
+      || null;
   const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
   const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || null;
   const evidenceAt = activeEvidenceUrl
@@ -880,7 +885,9 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     priority,
     effectivePriority: priority,
     sourcePriority: priority,
-    employeeId: active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+    employeeId: classification.ownerGate
+      ? issueDisplayOwner(issue)
+      : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
     workKind: classification.workKind,
     ownerGate: classification.ownerGate,
@@ -896,10 +903,12 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
-    prNumber: active?.prNumber || null,
-    prUrl: active?.prUrl || null,
+    prNumber: classification.ownerGate ? null : active?.prNumber || null,
+    prUrl: classification.ownerGate ? null : active?.prUrl || null,
     checks,
-    updatedAt: active?.updatedAt || queued?.updatedAt || lifecycle?.createdAt || issue.updated_at || null,
+    updatedAt: classification.ownerGate
+      ? issue.updated_at || null
+      : active?.updatedAt || queued?.updatedAt || lifecycle?.createdAt || issue.updated_at || null,
     url: issue.html_url || null,
     meta: !priority,
   };
