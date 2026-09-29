@@ -11,8 +11,12 @@ describe('coding lane AI JSON transport',()=>{
     expect(prompt).toContain('PATCH_CONTRACT_V2_COMPACT_REPAIR=true');
     expect(prompt).toContain('Every edit.path MUST exactly equal one ALLOWED PATH');
     expect(prompt).toContain('"changes":[{"path"');
-    expect(compactPromptForChanges(prompt)).toContain('"edits":[{"path"');
-    expect(compactPromptForChanges(prompt)).toContain('CURRENT FILES:');
+    const compact=compactPromptForChanges(prompt);
+    expect(compact).toContain('"edits":[{"path"');
+    expect(compact).toContain('CURRENT FILES:');
+    expect(compact).toContain('the content field is FORBIDDEN');
+    expect(compact).toContain('Every edit MUST use search + replace');
+    expect(compact).not.toContain('For a new or empty small file you may use');
   });
 
   it('detects the final output contract instead of JSON schema examples inside CURRENT FILES',()=>{
