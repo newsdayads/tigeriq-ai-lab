@@ -156,6 +156,7 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain("TIGERIQ_NV03_SIDECAR_URL");
     expect(source).toContain("${nv03SidecarBase}/assign");
     expect(source).toContain('claimId,');
+    expect(source).toContain('inputRevision: nv03InputRevision(issue)');
     expect(source).toContain('reconcileNv03Results');
     expect(source).toContain('nv03ResultRevisionMatches(issue, body)');
     expect(source).toContain("lineFieldValue(body, 'INPUT_REVISION') !== expectedRevision");
