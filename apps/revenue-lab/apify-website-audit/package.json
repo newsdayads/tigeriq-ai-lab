@@ -12,4 +12,8 @@
     "apify": "^3.2.0"
   },
   "devDependencies": {}
+  ,"scripts": {
+    "start": "node actor.mjs",
+    "test": "node --test audit.test.mjs"
+  }
 }
