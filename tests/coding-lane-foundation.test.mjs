@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -183,6 +183,25 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(restartRecoveryDecision({status:'running',pr_number:null,branch:'tigeriq/nv12/job'},null).code,'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE');
     assert.strictEqual(restartRecoveryDecision({...job,pr_number:null},null).code,'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE');
     assert.strictEqual(restartRecoveryDecision({...job,status:'done'},{state:'closed'}).action,'ignore');
+  });
+
+  await t.test('restart recovery rearms stale AI_RESOURCES_BUSY wait but preserves other resource waits',async()=>{
+    assert.deepStrictEqual(restartWaitingResourceDecision({status:'waiting_resource',failure:{code:'AI_RESOURCES_BUSY'}}),{action:'queue',code:'CODING_RESTART_REQUEUE_STALE_AI_BUSY'});
+    assert.deepStrictEqual(restartWaitingResourceDecision({status:'waiting_resource',failure:JSON.stringify({code:'AI_RESOURCES_BUSY'})}),{action:'queue',code:'CODING_RESTART_REQUEUE_STALE_AI_BUSY'});
+    assert.deepStrictEqual(restartWaitingResourceDecision({status:'waiting_resource',failure:{code:'AI_RESOURCES_UNAVAILABLE'}}),{action:'ignore',code:'CODING_RESTART_PRESERVE_RESOURCE_WAIT'});
+    assert.deepStrictEqual(restartWaitingResourceDecision({status:'waiting_resource',failure:{code:'NO_IMPLEMENTER_AVAILABLE'}}),{action:'ignore',code:'CODING_RESTART_PRESERVE_RESOURCE_WAIT'});
+    const job={id:'job-busy',objective_id:'obj-busy',status:'waiting_resource',failure:{code:'AI_RESOURCES_BUSY'},next_attempt_at:'2099-01-01T00:00:00Z'};
+    const calls=[];
+    const db={async query(sql,params=[]){
+      calls.push({sql,params});
+      if(sql.startsWith('select * from tigeriq_coding_jobs'))return{rows:[job],rowCount:1};
+      if(sql.includes("status='queued'"))return{rows:[],rowCount:1};
+      return{rows:[],rowCount:1};
+    }};
+    const out=await recoverAfterCodingRestart({db,fetchPr:async()=>{throw new Error('PR_FETCH_NOT_EXPECTED')}});
+    assert.deepStrictEqual(out,{requeued:1,completed:0,failed:0,deferred:0});
+    assert.ok(calls.some(x=>x.sql.includes("status='queued'")&&x.sql.includes("waiting_resource")));
+    assert.ok(calls.some(x=>x.sql.includes('Restart recovery')===false&&x.sql.includes("tigeriq_coding_objectives set status='active'")));
   });
 
   await t.test('restart recovery terminalizes a stale waiting_ci closed PR and frees the lane',async()=>{
