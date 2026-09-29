@@ -27,6 +27,9 @@ $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
 $remoteDesktopTask='TigerIQ Desktop Commander Remote'
+$remoteDesktopRuntime='D:\\TigerIQ\\Runtime\\desktop-commander-remote'
+$remoteDesktopLifecycleGeneration='20260930_SINGLE_REMOTE_1'
+$remoteDesktopLifecycleState='D:\\TigerIQ\\State\\rdc-lifecycle-generation.txt'
 $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
@@ -329,6 +332,48 @@ function Invoke-AppChromeZeroTouchHelper(){
   }catch{return @{action='blocked';reason=('helper_exception_'+$_.Exception.GetType().Name)}}
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
+function Get-ExactRemoteDesktopProcesses(){
+  try{
+    $needle=(Join-Path $remoteDesktopRuntime 'app-0.2.51').ToLowerInvariant()
+    return @(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object{
+      [string]$_.Name -ieq 'node.exe' -and $_.CommandLine -and [string]$_.CommandLine.ToLowerInvariant().Contains($needle)
+    })
+  }catch{return @()}
+}
+function Stop-ExactRemoteDesktopProcesses(){
+  $stopped=@()
+  foreach($p in @(Get-ExactRemoteDesktopProcesses)){
+    try{Stop-Process -Id ([int]$p.ProcessId) -Force -ErrorAction Stop;$stopped+=([int]$p.ProcessId)}catch{}
+  }
+  return @($stopped)
+}
+function Get-RemoteDesktopLifecycleGeneration(){
+  try{if(Test-Path -LiteralPath $remoteDesktopLifecycleState){return (Get-Content -LiteralPath $remoteDesktopLifecycleState -Raw).Trim()}}catch{}
+  return ''
+}
+function Save-RemoteDesktopLifecycleGeneration(){
+  $tmp=$remoteDesktopLifecycleState+'.tmp'
+  [IO.File]::WriteAllText($tmp,$remoteDesktopLifecycleGeneration,(New-Object Text.UTF8Encoding($false)))
+  Move-Item -Force $tmp $remoteDesktopLifecycleState
+}
+function Restart-RemoteDesktopTaskClean([string]$reason,$result){
+  Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  $stopped=@(Stop-ExactRemoteDesktopProcesses)
+  Start-Sleep -Seconds 1
+  Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
+  $deadline=(Get-Date).AddSeconds(30)
+  do{
+    Start-Sleep -Milliseconds 500
+    $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
+    $remoteCount=@(Get-ExactRemoteDesktopProcesses).Count
+    if($task -and [string]$task.State -eq 'Running' -and $remoteCount -eq 1){
+      Save-RemoteDesktopLifecycleGeneration
+      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';remoteProcessCount=$remoteCount;stoppedPids=$stopped;version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@($result.changes)}
+    }
+  }while((Get-Date)-lt$deadline)
+  return @{action='blocked';reason='rdc_single_process_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-ExactRemoteDesktopProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
+}
 function Reconcile-RemoteDesktopGuard(){
   if(-not(Test-Path -LiteralPath $remoteDesktopGuardInstaller)){return @{action='skip';reason='installer_missing'}}
   if(-not(Task-Exists $remoteDesktopTask)){return @{action='blocked';reason='task_missing';task=$remoteDesktopTask}}
@@ -342,22 +387,15 @@ function Reconcile-RemoteDesktopGuard(){
     if(-not $last){return @{action='blocked';reason='installer_no_output'}}
     $result=(($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop)
     if(-not [bool]$result.ok){return @{action='blocked';reason='installer_not_ok';detail=$result}}
-    if(-not [bool]$result.changed){
-      $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
-      return @{action='verified';reason='guard_current';version=[string]$result.version;authorizer=$authorizer;changes=@()}
+    $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
+    $lifecycleCurrent=(Get-RemoteDesktopLifecycleGeneration) -eq $remoteDesktopLifecycleGeneration
+    $remoteCount=@(Get-ExactRemoteDesktopProcesses).Count
+    $needsLifecycleRepair=(-not $lifecycleCurrent) -or ($remoteCount -ne 1)
+    if(-not [bool]$result.changed -and -not $needsLifecycleRepair){
+      return @{action='verified';reason='guard_current_single_process';version=[string]$result.version;authorizer=$authorizer;changes=@();remoteProcessCount=$remoteCount;lifecycleGeneration=$remoteDesktopLifecycleGeneration}
     }
-    Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
-    $deadline=(Get-Date).AddSeconds(30)
-    do{
-      Start-Sleep -Milliseconds 500
-      $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
-      if($task -and [string]$task.State -eq 'Running'){
-        return @{action='restarted';reason='guard_updated';task=$remoteDesktopTask;taskState='Running';version=[string]$result.version;authorizer=[string]$result.authorizer;changes=@($result.changes)}
-      }
-    }while((Get-Date)-lt$deadline)
-    return @{action='blocked';reason='rdc_task_not_running_after_restart';task=$remoteDesktopTask;version=[string]$result.version;changes=@($result.changes)}
+    $reason=if([bool]$result.changed){'guard_updated_clean_restart'}elseif(-not $lifecycleCurrent){'lifecycle_generation_repair'}else{('remote_process_count_'+$remoteCount)}
+    return Restart-RemoteDesktopTaskClean $reason $result
   }catch{
     return @{action='blocked';reason=('RDC_GUARD_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}
   }
