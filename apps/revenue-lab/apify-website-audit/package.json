@@ -10,7 +10,9 @@
     "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
     "validate:actor": "node validate-package.mjs",
     "test:apify-e2e": "node --test apify-private-e2e.test.mjs",
-    "apify:e2e": "node apify-private-e2e.mjs"
+    "apify:e2e": "node apify-private-e2e.mjs",
+    "test:apify-preflight": "node --test apify-private-preflight.test.mjs",
+    "apify:preflight": "node apify-private-preflight.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"
