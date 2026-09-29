@@ -121,11 +121,9 @@ export async function runPrivateApifyE2E({
   fetchFn = globalThis.fetch,
   writeFileFn = fs.writeFile,
   now = () => new Date().toISOString(),
-  apiBaseOverride = null,
 } = {}) {
   if (typeof fetchFn !== 'function') throw new ApifyE2EError('FETCH_UNAVAILABLE', 'A fetch implementation is required.');
   const config = envConfig(env);
-  if (apiBaseOverride) config.apiBase = String(apiBaseOverride).replace(/\/$/, '');
 
   const buildParams = new URLSearchParams({
     version: config.version,
