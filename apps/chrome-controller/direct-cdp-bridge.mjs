@@ -904,9 +904,16 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     await clearChatLoadRecovery(w,state,'CHAT_LOAD_RECOVERED_STABLE',{url:ui?.url||null,stableMs:now-candidateAt});
     return false;
   }
-  if(Number(state.chatLoadClearCandidateAt||0)>0){
+  const candidateAtDuringError=Number(state.chatLoadClearCandidateAt||0);
+  if(candidateAtDuringError>0){
+    const candidateAgeMs=Math.max(0,now-candidateAtDuringError);
+    if(candidateAgeMs<15_000){
+      await continuityEventFor(w,'CHAT_LOAD_STABLE_CANDIDATE_TRANSIENT_ERROR',{url:ui?.url||null,candidateAgeMs,confirmWindowMs:15_000});
+      return true;
+    }
     state={...state,chatLoadClearCandidateAt:0};
     saveContinuityFor(w,state);
+    await continuityEventFor(w,'CHAT_LOAD_STABLE_CANDIDATE_EXPIRED',{url:ui?.url||null,candidateAgeMs});
   }
   if(now<Number(state.chatLoadBlockedUntil||0)){
     await continuityEventFor(w,'CHAT_UNLOADABLE_BACKOFF',{url:ui?.url||null,blockedUntil:state.chatLoadBlockedUntil});
