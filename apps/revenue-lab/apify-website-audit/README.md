@@ -31,3 +31,15 @@ Local/CI audit logic uses no paid external API, so `externalApiCostUSD=0`.
 `npm test` runs safety/error/integration coverage plus a deterministic 20-run benchmark. The benchmark must achieve at least 95% successful completion and prints a `TIGERIQ_BENCHMARK_EVIDENCE` record for CI evidence.
 
 Private Apify deployment, paid publication, KYC/payout, x402, and Production remain outside this work order.
+
+## Private Apify E2E harness
+
+After the Owner creates or links the **private** Actor in Apify and injects credentials outside chat, run:
+
+`APIFY_TOKEN=... APIFY_ACTOR_ID=... npm run apify:e2e`
+
+Optional environment variables: `APIFY_ACTOR_VERSION` (default `0.1`), `APIFY_BUILD_TAG` (default `latest`), and `APIFY_EVIDENCE_PATH` to persist redacted evidence.
+
+The harness builds the existing private Actor, runs one bounded `https://example.com` audit with `LIMITED_PERMISSIONS`, reads the `OUTPUT` record, and records authenticated `usageTotalUsd` plus compute units for build and run. It fails closed if build/run is not `SUCCEEDED` or cost evidence is absent.
+
+Secrets are sent only in the `Authorization: Bearer` header and are never placed in URLs or evidence. Actor creation/update, public publication, paid enablement, KYC/payout, and Production remain outside scope.
