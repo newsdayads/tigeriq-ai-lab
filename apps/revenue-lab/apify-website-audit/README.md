@@ -36,9 +36,9 @@ Private Apify deployment, paid publication, KYC/payout, x402, and Production rem
 
 After the Owner creates or links the **private** Actor in Apify and injects credentials outside chat, run:
 
-`APIFY_TOKEN=... APIFY_ACTOR_ID=... npm run apify:e2e`
+`APIFY_TOKEN=... APIFY_ACTOR_ID=... APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST npm run apify:e2e`
 
-Optional environment variables: `APIFY_ACTOR_VERSION` (default `0.1`), `APIFY_BUILD_TAG` (default `latest`), and `APIFY_EVIDENCE_PATH` to persist redacted evidence.
+Required execution gate: `APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST`. Optional environment variables: `APIFY_ACTOR_VERSION` (default `0.1`), `APIFY_BUILD_TAG` (default `latest`), and `APIFY_EVIDENCE_PATH` to persist redacted evidence. The production API origin is pinned to `https://api.apify.com/v2` and cannot be overridden from the environment.
 
 The harness builds the existing private Actor, runs one bounded `https://example.com` audit with `LIMITED_PERMISSIONS`, reads the `OUTPUT` record, and records authenticated `usageTotalUsd` plus compute units for build and run. It fails closed if build/run is not `SUCCEEDED` or cost evidence is absent.
 
