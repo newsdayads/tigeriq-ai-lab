@@ -654,7 +654,7 @@ export function paperclipContainerLogDiagnostic(value = '') {
 export function paperclipContainerLogClass(value = '') {
   const text = String(value || '').toLowerCase();
   if (!text.trim()) return 'NO_LOGS';
-  if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system/.test(text)) return 'PERMISSION';
+  if (/permission denied|operation not permitted|\beacces\b|\beperm\b|read-only file system|must have permissions\s+0?700|secrets directory.*permissions/.test(text)) return 'PERMISSION';
   if (/better_auth_secret|tool_action_signing_secret|required env|must be set|invalid configuration|configuration error/.test(text)) return 'CONFIG';
   if (/could not create shared memory segment|shared memory.*(?:failed|error|could not)/.test(text)) return 'DB_SHARED_MEMORY';
   if (/invalid permissions|permissions should be|wrong ownership|must be owned by|not owned by.*postgres/.test(text)) return 'DB_DATA_PERMISSIONS';
