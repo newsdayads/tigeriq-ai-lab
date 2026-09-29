@@ -19,6 +19,7 @@ const NV02_MAINTENANCE_TIMER_STATE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime
 const NV02_IDLE_MARKER='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\nv02-ready-no-eligible-work.marker';
 const NV02_IDLE_WAKE_MIN_MS=5*60*1000;
 const NV02_IDLE_WAKE_MAX_MS=10*60*1000;
+const NV02_POST_F5_STABLE_GRACE_MS=30*1000;
 const NV02_SELF_PULL_WAKE_PROMPT='02 - Tự kiểm tra toàn bộ Work Order P1-P5 trên GitHub canonical. Trước tiên resume đúng lease NV02 còn active; nếu không có, phải đánh giá toàn bộ P1-P5 trước khi kết luận. CAPABILITY không phải tiêu chí loại việc khỏi tầm nhìn: nếu NV02 được phép và có đường thực thi trực tiếp thì claim đúng 1 scope và làm; nếu cần specialist thì điều phối/handoff đúng resource nhưng không chiếm mutation/review ownership của specialist. Review độc lập không được tự duyệt phần NV02 đã thực thi. Loại P0/hard-gate, App Chrome self-maintenance, HOLD, dependency chưa đạt, owner/lease/resource-scope conflict hoặc không có execution/handoff hợp lệ. App Chrome không chọn việc. Chỉ trả READY_NO_ELIGIBLE_WORK khi không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ.';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
@@ -620,6 +621,8 @@ function loadNv02Continuity(){
     resumeChatUrl:'', // legacy conversation pointers are intentionally discarded
     modelVerifiedAt:String(raw.modelVerifiedAt||''),
     modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0,
+    postF5RecoveryPending:Boolean(raw.postF5RecoveryPending),
+    postF5StableSince:Number(raw.postF5StableSince)||0,
     rotationRetryAt:Number(raw.rotationRetryAt)||0,
     chatLoadRecoveryStage:Number(raw.chatLoadRecoveryStage)||0,
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
@@ -1578,6 +1581,18 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const phase=deriveNv02Phase(ui||{});
   const currentChat=hasCurrentNv02Chat(ui?.url);
   const currentTrackedWork=currentChat;
+  if(state.postF5RecoveryPending===true){
+    const postF5StableUi=currentChat&&ui?.composerReady===true&&!ui?.chatLoadError&&!ui?.connectionPending&&!ui?.securityBlock;
+    if(postF5StableUi&&Number(state.postF5StableSince||0)<=0){
+      state={...state,postF5StableSince:now};
+      saveNv02Continuity(state);
+      await continuityEvent('POST_F5_STABLE_GRACE_ARMED',{postF5StableSince:state.postF5StableSince,stableGraceMs:NV02_POST_F5_STABLE_GRACE_MS});
+    }else if(!postF5StableUi&&Number(state.postF5StableSince||0)>0){
+      state={...state,postF5StableSince:0};
+      saveNv02Continuity(state);
+      await continuityEvent('POST_F5_STABLE_GRACE_RESET',{reason:'UI_NOT_STABLE'});
+    }
+  }
   if(phase==='READY'&&ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')&&String(ui?.assistantSignature||'')!==String(state.idleWakeBaselineSignature||'')){
     try{fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);}catch{}
     state={...state,idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0,nextIdleWakeAt:nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS),lastIdleMarkerSignature:String(ui?.assistantSignature||''),idleWakeBaselineSignature:''};
@@ -1621,6 +1636,17 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     state=loadNv02Continuity();
   }
   if(now>=Number(state.nextPeriodicF5At||0)){
+    if(state.postF5RecoveryPending===true){
+      const stableSince=Number(state.postF5StableSince||0);
+      const stableForMs=stableSince?Math.max(0,now-stableSince):0;
+      if(!stableSince||stableForMs<NV02_POST_F5_STABLE_GRACE_MS){
+        await continuityEvent('PERIODIC_F5_OVERDUE_WAITING_STABLE_GRACE',{nextPeriodicF5At:state.nextPeriodicF5At,postF5StableSince:stableSince,stableForMs,stableGraceMs:NV02_POST_F5_STABLE_GRACE_MS});
+        return;
+      }
+      state={...state,postF5RecoveryPending:false,postF5StableSince:0};
+      saveNv02Continuity(state);
+      await continuityEvent('POST_F5_STABLE_GRACE_SATISFIED',{stableForMs,overdueByMs:Math.max(0,now-Number(state.nextPeriodicF5At||0))});
+    }
     let refreshed;
     try{
       refreshed=await withNv02Mutation(async()=>{
@@ -1651,7 +1677,8 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       pendingContinue:awaitingBeforeF5?false:true,
       awaitingWorkStart:awaitingBeforeF5,
       nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-      workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,stalledChecks:0,modelCheckBlockedUntil:now+30000
+      workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,stalledChecks:0,modelCheckBlockedUntil:now+30000,
+      postF5RecoveryPending:true,postF5StableSince:0
     };
     saveNv02Continuity(state);
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At,nextRefreshAt:state.nextRefreshAt,awaitingWorkStartPreserved:state.awaitingWorkStart===true});
@@ -1925,6 +1952,13 @@ async function tickWorker(w){
     const msg=String(error?.message||error);
     const connectivityFailure=/fetch failed|ECONNREFUSED|ECONNRESET|CDP_LIST|CDP_OPEN|CDP_TIMEOUT|AbortError|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg);
     if(connectivityFailure){
+      if(w.id==='NV02'){
+        const continuity=loadNv02Continuity();
+        if(continuity.postF5RecoveryPending===true&&Number(continuity.postF5StableSince||0)>0){
+          saveNv02Continuity({...continuity,postF5StableSince:0});
+          log('NV02_POST_F5_STABLE_GRACE_RESET',{reason:'CONNECTIVITY_FAILURE',error:msg});
+        }
+      }
       const prior=workerConnectivityBackoff.get(w.id);
       const maxAttempts=Number(prior?.maxAttempts)||Math.floor(2+Math.random()*4);
       const attempt=Number(prior?.attempt||0)+1;
