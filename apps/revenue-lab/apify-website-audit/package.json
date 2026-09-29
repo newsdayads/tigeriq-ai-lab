@@ -8,7 +8,9 @@
     "start": "node actor.mjs",
     "test": "node --test audit.test.mjs",
     "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
-    "validate:actor": "node validate-package.mjs"
+    "validate:actor": "node validate-package.mjs",
+    "test:apify-e2e": "node --test apify-private-e2e.test.mjs",
+    "apify:e2e": "node apify-private-e2e.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"
