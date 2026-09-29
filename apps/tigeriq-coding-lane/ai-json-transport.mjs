@@ -323,9 +323,10 @@ function localizedRepairContent(existing,proposed,path){
     const matched=prefix+suffix;
     const ratio=limit?matched/limit:0;
     const minRatio=patchLines.length===1?0.82:0.75;
+    const minMatched=patchLines.length===1?12:24;
     const oldChanged=current.length-prefix-suffix;
     const newChanged=patch.length-prefix-suffix;
-    if(matched>=24&&ratio>=minRatio&&oldChanged>0&&newChanged>=0&&oldChanged<=512&&newChanged<=512){
+    if(matched>=minMatched&&ratio>=minRatio&&oldChanged>0&&newChanged>=0&&oldChanged<=512&&newChanged<=512){
       candidates.push({start});
     }
   }
