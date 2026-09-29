@@ -83,13 +83,22 @@ describe('coding lane AI JSON transport',()=>{
     expect(JSON.parse(init.body).max_tokens).toBe(2200);
   });
 
-  it('hard-caps Patch Contract V2 repair responses at 800 tokens',()=>{
+  it('hard-caps Patch Contract V2 repair responses and gives Gemini an edits-only structured schema',()=>{
     const prompt=buildRepairGenerationPrompt({id:'NV09'},{instruction:'fix CI',paths:['tests/a.test.mjs']},'FILE tests/a.test.mjs\nconst x=1;',['CI Verify: failure']);
     const gemini=prepareAiJsonRequest('https://generativelanguage.googleapis.com/v1beta/models/x:generateContent',{
       method:'POST',
-      body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:8000}})
+      body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:8000,responseMimeType:'text/plain'}})
     });
-    expect(JSON.parse(gemini.body).generationConfig.maxOutputTokens).toBe(800);
+    const generationConfig=JSON.parse(gemini.body).generationConfig;
+    expect(generationConfig.maxOutputTokens).toBe(800);
+    expect(generationConfig.responseMimeType).toBeUndefined();
+    expect(generationConfig.responseFormat.text.mimeType).toBe('application/json');
+    expect(generationConfig.responseFormat.text.schema.required).toEqual(['summary','edits']);
+    expect(generationConfig.responseFormat.text.schema.additionalProperties).toBe(false);
+    expect(generationConfig.responseFormat.text.schema.properties.edits.maxItems).toBe(4);
+    expect(generationConfig.responseFormat.text.schema.properties.edits.items.required).toEqual(['path','search','replace']);
+    expect(generationConfig.responseFormat.text.schema.properties.edits.items.additionalProperties).toBe(false);
+    expect(generationConfig.responseFormat.text.schema.properties.edits.items.properties.content).toBeUndefined();
     const groq=prepareAiJsonRequest('https://api.groq.com/openai/v1/chat/completions',{
       method:'POST',
       body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:8000})
