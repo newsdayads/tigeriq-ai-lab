@@ -175,8 +175,11 @@ export function prepareAiJsonRequest(input,init={}){
   if(!isAiUrl(input)||String(init?.method||'GET').toUpperCase()!=='POST'||!init?.body)return init;
   let body;try{body=JSON.parse(String(init.body))}catch{return init}
   const host=new URL(String(input)).hostname;
-  const schema=expectedSchemaFromPrompt(promptFromRequest(input,init));
-  const compactMaxTokens=schema==='changes'?2600:schema==='edits'?2200:null;
+  const requestPrompt=promptFromRequest(input,init);
+  const schema=expectedSchemaFromPrompt(requestPrompt);
+  const baseCompactMaxTokens=schema==='changes'?2600:schema==='edits'?2200:null;
+  const retryMaxTokens=compactRetryMaxTokens(requestPrompt);
+  const compactMaxTokens=baseCompactMaxTokens&&retryMaxTokens?Math.min(baseCompactMaxTokens,retryMaxTokens):baseCompactMaxTokens;
   if(host==='generativelanguage.googleapis.com'){
     body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
     if(compactMaxTokens)body.generationConfig.maxOutputTokens=Math.min(Number(body.generationConfig.maxOutputTokens||compactMaxTokens),compactMaxTokens);
@@ -222,6 +225,19 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
   const compact=`Return ONLY compact JSON {"summary":"short","edits":[{"path":"exact allowed path","search":"exact existing UTF-8 snippet","replace":"replacement UTF-8 snippet"}]}.${noopRule} For a new or empty small file you may use {"path":"exact allowed path","content":"complete UTF-8 file content"}. Keep the ENTIRE JSON response under ${maxOutputChars} characters. For existing files, each search snippet must be <=1200 characters and each replacement <=2400 characters; prefer several small exact edits over one large edit. Each search must match exactly once. Do not return full existing files or copy omitted context blocks. Never output secrets. Keep edits minimal and testable.`;
   const rewritten=p.includes(schema)?p.replace(schema,compact):`${p}\n\nIMPORTANT: ${compact}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
+}
+
+export function strictCompactRetryPrompt(prompt,{maxContextChars=3600,maxOutputChars=2200,maxTokens=800}={}){
+  const p=compactCurrentFilesForModel(String(prompt||''),maxContextChars);
+  const tokenCap=Math.max(256,Math.min(1200,Number(maxTokens)||800));
+  const outputCap=Math.max(900,Math.min(3200,Number(maxOutputChars)||2200));
+  return `${p}\n\nSTRICT_COMPACT_RETRY=true\nSTRICT_COMPACT_RETRY_MAX_TOKENS=${tokenCap}\nSTRICT COMPACT RETRY: Return at most TWO minimal exact edits and no commentary. Keep the ENTIRE JSON response under ${outputCap} characters. Each search snippet must be <=500 characters and each replacement <=900 characters. Never return a full existing file. Prefer the smallest unique search around the requested change.`;
+}
+
+export function compactRetryMaxTokens(prompt){
+  const match=String(prompt||'').match(/^STRICT_COMPACT_RETRY_MAX_TOKENS=(\d+)$/m);
+  if(!match)return null;
+  return Math.max(256,Math.min(1200,Number(match[1])||800));
 }
 
 export function compactPromptForEdits(prompt,{maxContextChars=7000,maxOutputChars=3500}={}){
