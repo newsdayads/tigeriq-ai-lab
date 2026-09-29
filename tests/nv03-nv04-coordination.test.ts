@@ -114,3 +114,17 @@ describe('NV03/NV04 isolated coordination', () => {
     expect(readFileSync(archived.resultProcessed, 'utf8')).toContain('RESULT=PASS');
   });
 });
+
+
+describe('owner-directed sidecar isolation', () => {
+  it('requires explicit Owner arm and never calls NV02 worker endpoints', () => {
+    const source = readFileSync(join(process.cwd(), 'apps/chrome-controller/src/nv03-nv04-owner-sidecar.ts'), 'utf8');
+    expect(source).toContain('TIGERIQ_NV0304_OWNER_DIRECT');
+    expect(source).toContain('APP_CHROME_NV03_NV04_COORDINATION_V1');
+    expect(source).toContain('/api/workers/${worker}/dispatch');
+    expect(source).not.toContain('/api/workers/NV02/');
+    expect(source).not.toContain('/api/start-all');
+    expect(source).not.toContain('/api/workers/NV03/start');
+    expect(source).not.toContain('/api/workers/NV04/start');
+  });
+});
