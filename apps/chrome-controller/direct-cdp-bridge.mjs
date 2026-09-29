@@ -1640,10 +1640,10 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     &&state.idleState!=='READY_NO_ELIGIBLE_WORK'
     &&Boolean(state.modelVerifiedAt)
     &&hasCurrentNv02Chat(state.verifiedChatUrl);
-  if(bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0)){
-    await continuityEvent('PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CHAT_RESTORE',{nextPeriodicF5At:state.nextPeriodicF5At,verifiedChatUrl:state.verifiedChatUrl});
-  }
-  if(!bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0)){
+  if(now>=Number(state.nextPeriodicF5At||0)){
+    if(bootVerifiedChatRestorePending){
+      await continuityEvent('PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CHAT_RESTORE',{nextPeriodicF5At:state.nextPeriodicF5At,verifiedChatUrl:state.verifiedChatUrl});
+    }else{
     if(state.postF5RecoveryPending===true){
       const stableSince=Number(state.postF5StableSince||0);
       const stableForMs=stableSince?Math.max(0,now-stableSince):0;
@@ -1691,6 +1691,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     saveNv02Continuity(state);
     await continuityEvent('PERIODIC_F5_REFRESH',{beforeUrl:refreshed?.beforeUrl||null,beforePhase:refreshed?.beforePhase||phase,afterUrl:refreshed?.afterUrl||null,afterPhase:refreshed?.afterPhase||null,nextPeriodicF5At:state.nextPeriodicF5At,nextRefreshAt:state.nextRefreshAt,awaitingWorkStartPreserved:state.awaitingWorkStart===true});
     return;
+    }
   }
   if(phase==='WORKING'){
     if(now<Number(state.nextProgressCheckAt||0))return;
