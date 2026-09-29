@@ -6,6 +6,7 @@ import {
   buildNv03ReviewPrompt,
   buildNv04Request,
   inputRevision,
+  nv03InputRevision,
   eligibleNv03ReviewIssue,
   eligibleNv04Issue,
   parseNv04Result,
@@ -60,7 +61,7 @@ describe('NV03/NV04 isolated coordination', () => {
 
   it('binds NV03 input revision to TARGET_HEAD when exact-head review work uses that field', () => {
     const src = issue('PRIORITY=P0\nOWNER_DIRECT=true\nREVIEW_ONLY=true\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_RELEASE_CANARY_V1\nTARGET_HEAD=18c0c630');
-    expect(inputRevision(src)).toBe('18c0c630');
+    expect(nv03InputRevision(src)).toBe('18c0c630');
     expect(buildNv03ReviewPrompt(src)).toContain('TARGET_HEAD=18c0c630');
     expect(buildNv03ReviewPrompt(src)).toContain('INPUT_REVISION=18c0c630');
   });
@@ -77,6 +78,25 @@ describe('NV03/NV04 isolated coordination', () => {
     expect(requestA.inputRevision).toBe('rev-7');
     expect(renderNv04Request(requestA)).toContain('MUTATION_ALLOWED=false');
     expect(renderNv04Request(requestA)).toContain('EVIDENCE_DESTINATION=https://github.com/');
+  });
+
+  it('keeps NV04 revision and job identity unchanged when NV03-only fields are present', () => {
+    const baseline = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH\nRESOURCE_SCOPE=RESEARCH_ARCH\nEXACT_INPUT=rev-7',
+      '[P1][RESEARCH] compare architecture',
+      207,
+    );
+    const withNv03Fields = issue(
+      'PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nNV04_ROLE=DEEP_RESEARCH\nRESOURCE_SCOPE=RESEARCH_ARCH\nEXACT_INPUT=rev-7\nTARGET_HEAD=nv03-head-only\nINPUT_REVISION=nv03-revision-only',
+      '[P1][RESEARCH] compare architecture',
+      207,
+    );
+    const requestA = buildNv04Request(baseline);
+    const requestB = buildNv04Request(withNv03Fields);
+    expect(inputRevision(withNv03Fields)).toBe('rev-7');
+    expect(requestB.inputRevision).toBe(requestA.inputRevision);
+    expect(requestB.jobId).toBe(requestA.jobId);
+    expect(requestB.exactInput).toBe(requestA.exactInput);
   });
 
   it('rejects stale NV04 results and accepts exact JOB_ID + INPUT_REVISION only', () => {
