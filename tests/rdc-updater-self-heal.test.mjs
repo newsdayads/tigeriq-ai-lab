@@ -28,14 +28,16 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain("-MultipleInstances StopExisting");
     expect(source).toContain("UPDATER_TASK_RECREATED");
   });
-  it('reconciles RDC lifecycle to exactly one child process with a one-shot generation marker', async () => {
+  it('reconciles RDC lifecycle to one launcher plus one local MCP child with a one-shot generation marker', async () => {
     const source = await readFile(updaterUrl, 'utf8');
     expect(source).toContain("remoteDesktopLifecycleGeneration='20260930_SINGLE_REMOTE_1'");
-    expect(source).toContain('function Get-ExactRemoteDesktopProcesses()');
-    expect(source).toContain('function Stop-ExactRemoteDesktopProcesses()');
+    expect(source).toContain('function Get-RemoteDesktopRuntimeProcesses()');
+    expect(source).toContain('function Get-RemoteDesktopLauncherProcesses()');
+    expect(source).toContain('function Stop-RemoteDesktopRuntimeProcesses()');
     expect(source).toContain('function Restart-RemoteDesktopTaskClean');
-    expect(source).toContain("$needsLifecycleRepair=(-not $lifecycleCurrent) -or ($remoteCount -ne 1)");
-    expect(source).toContain("reason='guard_current_single_process'");
+    expect(source).toContain("$topologyHealthy=($launcherCount -eq 1 -and $runtimeCount -eq 2)");
+    expect(source).toContain("$needsLifecycleRepair=(-not $lifecycleCurrent) -or (-not $topologyHealthy)");
+    expect(source).toContain("reason='guard_current_topology_healthy'");
     expect(source).toContain('Save-RemoteDesktopLifecycleGeneration');
   });
 

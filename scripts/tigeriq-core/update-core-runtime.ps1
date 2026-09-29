@@ -332,7 +332,7 @@ function Invoke-AppChromeZeroTouchHelper(){
   }catch{return @{action='blocked';reason=('helper_exception_'+$_.Exception.GetType().Name)}}
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
-function Get-ExactRemoteDesktopProcesses(){
+function Get-RemoteDesktopRuntimeProcesses(){
   try{
     $needle=(Join-Path $remoteDesktopRuntime 'app-0.2.51').ToLowerInvariant()
     return @(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object{
@@ -340,9 +340,12 @@ function Get-ExactRemoteDesktopProcesses(){
     })
   }catch{return @()}
 }
-function Stop-ExactRemoteDesktopProcesses(){
+function Get-RemoteDesktopLauncherProcesses(){
+  return @(Get-RemoteDesktopRuntimeProcesses|Where-Object{[string]$_.CommandLine -match '(?i)\sremote(?:\s|$)'})
+}
+function Stop-RemoteDesktopRuntimeProcesses(){
   $stopped=@()
-  foreach($p in @(Get-ExactRemoteDesktopProcesses)){
+  foreach($p in @(Get-RemoteDesktopRuntimeProcesses)){
     try{Stop-Process -Id ([int]$p.ProcessId) -Force -ErrorAction Stop;$stopped+=([int]$p.ProcessId)}catch{}
   }
   return @($stopped)
@@ -359,20 +362,21 @@ function Save-RemoteDesktopLifecycleGeneration(){
 function Restart-RemoteDesktopTaskClean([string]$reason,$result,[string]$authorizer){
   Stop-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
-  $stopped=@(Stop-ExactRemoteDesktopProcesses)
+  $stopped=@(Stop-RemoteDesktopRuntimeProcesses)
   Start-Sleep -Seconds 1
   Start-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(30)
   do{
     Start-Sleep -Milliseconds 500
     $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction SilentlyContinue
-    $remoteCount=@(Get-ExactRemoteDesktopProcesses).Count
-    if($task -and [string]$task.State -eq 'Running' -and $remoteCount -eq 1){
+    $runtimeCount=@(Get-RemoteDesktopRuntimeProcesses).Count
+    $launcherCount=@(Get-RemoteDesktopLauncherProcesses).Count
+    if($task -and [string]$task.State -eq 'Running' -and $launcherCount -eq 1 -and $runtimeCount -eq 2){
       Save-RemoteDesktopLifecycleGeneration
-      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';remoteProcessCount=$remoteCount;stoppedPids=$stopped;version=[string]$result.version;authorizer=$authorizer;changes=@($result.changes)}
+      return @{action='restarted';reason=$reason;task=$remoteDesktopTask;taskState='Running';remoteProcessCount=$runtimeCount;remoteLauncherCount=$launcherCount;stoppedPids=$stopped;version=[string]$result.version;authorizer=$authorizer;changes=@($result.changes)}
     }
   }while((Get-Date)-lt$deadline)
-  return @{action='blocked';reason='rdc_single_process_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-ExactRemoteDesktopProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
+  return @{action='blocked';reason='rdc_topology_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-RemoteDesktopRuntimeProcesses).Count;remoteLauncherCount=@(Get-RemoteDesktopLauncherProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
 }
 function Reconcile-RemoteDesktopGuard(){
   if(-not(Test-Path -LiteralPath $remoteDesktopGuardInstaller)){return @{action='skip';reason='installer_missing'}}
@@ -389,12 +393,14 @@ function Reconcile-RemoteDesktopGuard(){
     if(-not [bool]$result.ok){return @{action='blocked';reason='installer_not_ok';detail=$result}}
     $authorizer=if($result.PSObject.Properties.Name -contains 'authorizer'){[string]$result.authorizer}else{'tigeriq_authorize_mutation'}
     $lifecycleCurrent=(Get-RemoteDesktopLifecycleGeneration) -eq $remoteDesktopLifecycleGeneration
-    $remoteCount=@(Get-ExactRemoteDesktopProcesses).Count
-    $needsLifecycleRepair=(-not $lifecycleCurrent) -or ($remoteCount -ne 1)
+    $runtimeCount=@(Get-RemoteDesktopRuntimeProcesses).Count
+    $launcherCount=@(Get-RemoteDesktopLauncherProcesses).Count
+    $topologyHealthy=($launcherCount -eq 1 -and $runtimeCount -eq 2)
+    $needsLifecycleRepair=(-not $lifecycleCurrent) -or (-not $topologyHealthy)
     if(-not [bool]$result.changed -and -not $needsLifecycleRepair){
-      return @{action='verified';reason='guard_current_single_process';version=[string]$result.version;authorizer=$authorizer;changes=@();remoteProcessCount=$remoteCount;lifecycleGeneration=$remoteDesktopLifecycleGeneration}
+      return @{action='verified';reason='guard_current_topology_healthy';version=[string]$result.version;authorizer=$authorizer;changes=@();remoteProcessCount=$runtimeCount;remoteLauncherCount=$launcherCount;lifecycleGeneration=$remoteDesktopLifecycleGeneration}
     }
-    $reason=if([bool]$result.changed){'guard_updated_clean_restart'}elseif(-not $lifecycleCurrent){'lifecycle_generation_repair'}else{('remote_process_count_'+$remoteCount)}
+    $reason=if([bool]$result.changed){'guard_updated_clean_restart'}elseif(-not $lifecycleCurrent){'lifecycle_generation_repair'}else{('remote_topology_'+$launcherCount+'_'+$runtimeCount)}
     return Restart-RemoteDesktopTaskClean $reason $result $authorizer
   }catch{
     return @{action='blocked';reason=('RDC_GUARD_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}
