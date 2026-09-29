@@ -2,6 +2,7 @@ import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
+import { githubRequestJson } from '../apps/tigeriq-core/github-shared-client.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -31,7 +32,7 @@ const STALE_RESPONSE_MS = 30 * 60 * 1000;
 const RUNTIME_POINTER_ISSUE = 1402;
 const RUNTIME_FETCH_TIMEOUT_MS = 4500;
 const POINTER_CACHE_MS = 10 * 60 * 1000;
-const GITHUB_PROJECTION_CACHE_MS = 30 * 1000;
+const GITHUB_PROJECTION_CACHE_MS = Math.max(30 * 1000, Number(process.env.TIGERIQ_GITHUB_PROJECTION_CACHE_MS || 30 * 1000));
 const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
 const RECENT_WORK_LIMIT = 50;
@@ -60,21 +61,7 @@ function repoParts() {
 
 async function gh(path, fetchImpl = fetch) {
   const token = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
-  const headers = {
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-    'user-agent': 'tigeriq-live-status',
-  };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetchImpl(`https://api.github.com${path}`, { headers, signal: controller.signal });
-    if (!response.ok) throw new Error(`github_${response.status}`);
-    return response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
+  return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000)});
 }
 
 function cell(value = '') {

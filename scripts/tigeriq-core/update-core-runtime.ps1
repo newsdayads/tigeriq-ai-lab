@@ -44,6 +44,11 @@ $healthFailures=@{core=0;web=0;coding=0;openclaw=0;appchrome=0}
 $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]::MinValue;openclaw=[DateTime]::MinValue;appchrome=[DateTime]::MinValue}
 $healCooldownSec=300
 $watchdog=$null
+$githubApiBackoffUntil=[DateTime]::MinValue
+$appChromeInstallPollIntervalSec=900
+$appChromeResumePollIntervalSec=900
+$lastAppChromeInstallPoll=[DateTime]::MinValue
+$lastAppChromeResumePoll=[DateTime]::MinValue
 function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToString('o');$tmp="$state.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 10),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $state}
 function Head([string]$repoPath,[string]$ref){(& git -C $repoPath rev-parse $ref 2>$null|Out-String).Trim()}
 function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[string]$gateSha){
@@ -193,11 +198,37 @@ function Retire-LegacyOpenClawLifecycleOwner(){
   }
 }
 function HealthInfo([string]$url){try{$r=Invoke-RestMethod -Uri $url -TimeoutSec 5;if($r.ok){return $r}}catch{};return $null}
+function Test-GithubApiBackoff(){return ((Get-Date).ToUniversalTime() -lt $script:githubApiBackoffUntil)}
+function Set-GithubApiBackoffFromText([string]$raw){
+  if([string]::IsNullOrWhiteSpace($raw)){return $false}
+  if($raw -notmatch '(?i)(API rate limit exceeded|rate limit exceeded)'){return $false}
+  $script:githubApiBackoffUntil=(Get-Date).ToUniversalTime().AddMinutes(15)
+  return $true
+}
+function Invoke-GithubApiJson([string]$endpoint,[string[]]$headers=@()){
+  if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
+  $args=@('api')
+  foreach($header in @($headers)){if($header){$args+=@('-H',$header)}}
+  $args+=$endpoint
+  $raw=(& gh @args 2>&1|Out-String)
+  if($LASTEXITCODE -ne 0){
+    if(Set-GithubApiBackoffFromText $raw){throw 'GITHUB_API_RATE_LIMIT'}
+    $detail=([string]$raw).Trim()
+    if($detail.Length -gt 300){$detail=$detail.Substring(0,300)}
+    throw ('GITHUB_API_FAILED:'+ $detail)
+  }
+  return ($raw|ConvertFrom-Json -ErrorAction Stop)
+}
 function Owner-AppChromeResumeRequested(){
+  $now=(Get-Date).ToUniversalTime()
+  if(Test-GithubApiBackoff){return $false}
+  if((($now-$script:lastAppChromeResumePoll).TotalSeconds) -lt $appChromeResumePollIntervalSec){return $false}
+  $script:lastAppChromeResumePoll=$now
   try{
-    $body=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>$null|Out-String)
-    if($LASTEXITCODE -ne 0){return $false}
-    return [bool]($body -match '(?m)^OWNER_RUNTIME_RESUME=true\s*$')
+    $raw=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>&1|Out-String)
+    if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
+    $lines=@($raw -split [Environment]::NewLine|ForEach-Object{$_.Trim()})
+    return [bool]($lines -contains 'OWNER_RUNTIME_RESUME=true')
   }catch{return $false}
 }
 function Get-AppChromeResumeState(){
@@ -258,6 +289,10 @@ function Invoke-AppChromeOwnerResume([string]$installedSha){
 }
 function Invoke-AppChromeZeroTouchHelper(){
   if(-not(Test-Path -LiteralPath $appChromeZeroTouchScript)){return @{action='none';reason='helper_missing'}}
+  if(Test-GithubApiBackoff){return @{action='deferred';reason='github_rate_limit_backoff'}}
+  $now=(Get-Date).ToUniversalTime()
+  if((($now-$script:lastAppChromeInstallPoll).TotalSeconds) -lt $appChromeInstallPollIntervalSec){return @{action='deferred';reason='poll_interval'}}
+  $script:lastAppChromeInstallPoll=$now
   try{
     $raw=(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $appChromeZeroTouchScript 2>$null|Out-String).Trim()
     $exitCode=$LASTEXITCODE
@@ -470,21 +505,15 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
 function Gates-Pass([string]$sha){
-  try{
-    $raw=(& gh api "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30" 2>$null|Out-String).Trim()
-    if($LASTEXITCODE -ne 0 -or -not $raw){return $false}
-    $runs=$raw|ConvertFrom-Json
-  }catch{return $false}
-  if($null -eq $runs -or -not($runs.PSObject.Properties.Name -contains 'workflow_runs')){return $false}
-  $workflowRuns=@($runs.workflow_runs)
-  if(-not $workflowRuns.Count){return $false}
+  $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
   $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
-  foreach($n in $need){if(-not(@($workflowRuns|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
+  foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
   return $true
 }
 function Resolve-GateSha([string]$remote){
+  if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
   if(Gates-Pass $remote){return $remote}
-  try{$prs=gh api -H 'Accept: application/vnd.github+json' "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls"|ConvertFrom-Json}catch{return $null}
+  try{$prs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls" @('Accept: application/vnd.github+json')}catch{if($_.Exception.Message -match '^GITHUB_API_RATE_LIMIT'){throw};return $null}
   foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
   return $null
 }
@@ -645,6 +674,7 @@ while($true){
       }
     }
     if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if(Test-GithubApiBackoff){Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
