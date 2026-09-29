@@ -1,0 +1,11 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "TigerIQ Website Audit output",
+  "properties": {
+    "result": {
+      "type": "string",
+      "title": "Audit result",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}
