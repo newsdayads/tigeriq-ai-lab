@@ -8,6 +8,7 @@ import {
   renderNv04GithubComment,
   renderNv04Request,
   inputRevision,
+  nv03InputRevision,
   resourceScope,
   type GithubIssueLike,
 } from './nv03-nv04-coordination.js';
@@ -107,7 +108,7 @@ function lineFieldValue(body: string, field: string) {
 }
 
 function nv03ResultRevisionMatches(issue: GithubIssueApi, body: string) {
-  const expectedRevision = inputRevision(issue);
+  const expectedRevision = nv03InputRevision(issue);
   if (lineFieldValue(body, 'INPUT_REVISION') !== expectedRevision) return false;
   const targetHead = lineFieldValue(String(issue.body || ''), 'TARGET_HEAD');
   if (targetHead && lineFieldValue(body, 'TARGET_HEAD') !== targetHead) return false;
