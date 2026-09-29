@@ -133,7 +133,7 @@ async function nv03SidecarAssign(issue: GithubIssueApi, jobId: string, claimId: 
       workOrder: `#${issue.number} - ${issue.title}`,
       issueUrl: issue.html_url,
       resourceScope: resourceScope(issue),
-      inputRevision: inputRevision(issue),
+      inputRevision: nv03InputRevision(issue),
       prompt: buildNv03ReviewPrompt(issue),
     }),
   });
