@@ -98,4 +98,16 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');
   });
 
+  it('backs off exhausted GitHub REST quota and throttles App Chrome discovery',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('function Test-GithubApiBackoff');
+    expect(src).toContain('function Set-GithubApiBackoffFromText');
+    expect(src).toContain('function Invoke-GithubApiJson');
+    expect(src).toContain("result='WAIT_GITHUB_API_RATE_LIMIT'");
+    expect(src).toContain('$appChromeInstallPollIntervalSec=900');
+    expect(src).toContain('$appChromeResumePollIntervalSec=900');
+    expect(src).toContain('Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"');
+    expect(src).toContain('Gates-Pass $head');
+  });
+
 });
