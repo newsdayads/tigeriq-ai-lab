@@ -18,7 +18,8 @@
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
     "chrome-controller": "node dist/apps/chrome-controller/src/server.js",
     "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build",
-    "test:chrome-mcp": "node scripts/chrome-devtools-mcp-smoke.mjs"
+    "test:chrome-mcp": "node scripts/chrome-devtools-mcp-smoke.mjs",
+    "nv0304:owner-cycle": "node dist/apps/chrome-controller/src/nv03-nv04-owner-sidecar.js"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5",
