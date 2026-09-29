@@ -304,21 +304,56 @@ function resolveCompactEditPath(files,edit){
   throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
 }
 
+function localizedRepairContent(existing,proposed,path){
+  const source=String(existing??'').replace(/\r\n/g,'\n');
+  const patch=String(proposed??'').replace(/\r\n/g,'\n').replace(/\n+$/,'');
+  const fail=()=>{throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`)};
+  if(!source||!patch||patch.length>4000||/full file retained locally|chars omitted from model context/i.test(patch))return fail();
+  const sourceLines=source.split('\n'),patchLines=patch.split('\n');
+  if(!patchLines.length||patchLines.length>40||patchLines.length>sourceLines.length)return fail();
+  const candidates=[];
+  for(let start=0;start+patchLines.length<=sourceLines.length;start++){
+    const current=sourceLines.slice(start,start+patchLines.length).join('\n');
+    if(current===patch)continue;
+    let prefix=0;
+    const limit=Math.min(current.length,patch.length);
+    while(prefix<limit&&current[prefix]===patch[prefix])prefix++;
+    let suffix=0;
+    while(suffix<limit-prefix&&current[current.length-1-suffix]===patch[patch.length-1-suffix])suffix++;
+    const matched=prefix+suffix;
+    const ratio=limit?matched/limit:0;
+    const minRatio=patchLines.length===1?0.82:0.75;
+    const oldChanged=current.length-prefix-suffix;
+    const newChanged=patch.length-prefix-suffix;
+    if(matched>=24&&ratio>=minRatio&&oldChanged>0&&newChanged>=0&&oldChanged<=512&&newChanged<=512){
+      candidates.push({start});
+    }
+  }
+  if(candidates.length!==1)return fail();
+  const hit=candidates[0];
+  return [...sourceLines.slice(0,hit.start),...patchLines,...sourceLines.slice(hit.start+patchLines.length)].join('\n');
+}
+
 export function expandCompactChanges(prompt,text){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
   const files=currentFilesFromPrompt(prompt);
+  const repairCompact=/^PATCH_CONTRACT_V2_COMPACT_REPAIR=true$/m.test(String(prompt||''));
   const batchNoopAllowed=/^BATCH_NOOP_ALLOWED=true$/m.test(String(prompt||''));
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.changes)&&d.changes.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.edits)&&d.edits.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
   if(Array.isArray(d.changes)&&d.changes.length>0){
+    const changes=[];
     for(const change of d.changes){
       const path=String(change?.path||'').trim();
       if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
       const existing=files.get(path);
-      if(String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
+      if(String(existing||'').length>0){
+        if(!repairCompact)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
+        changes.push({...change,content:localizedRepairContent(existing,change?.content,path)});
+      }else changes.push(change);
     }
-    return d;
+    return {...d,changes};
   }
   if(typeof d.summary!=='string'||!Array.isArray(d.edits)||!d.edits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
   const changed=new Map();
@@ -329,8 +364,10 @@ export function expandCompactChanges(prompt,text){
       :resolveCompactEditPath(files,edit);
     let content=changed.has(path)?changed.get(path):files.get(path);
     if(typeof edit?.content==='string'){
-      if(content&&content.length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
-      content=edit.content;
+      if(content&&content.length>0){
+        if(!repairCompact)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
+        content=localizedRepairContent(content,edit.content,path);
+      }else content=edit.content;
     }else{
       const search=String(edit?.search??'');
       const replace=String(edit?.replace??'');
