@@ -671,15 +671,40 @@ function paperclipStructuredLogSignals(raw = '') {
   return [...new Set(signals.map(redactPaperclipDiagnosticText))];
 }
 
+function paperclipDiagnosticClassTriggerSignals(logClass, lines = [], structured = []) {
+  if (logClass !== 'DB_MIGRATION') return [];
+  const triggerPattern = /pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration/i;
+  const candidates = [...lines, ...structured].filter(line => triggerPattern.test(String(line || '')));
+  return [...new Set(candidates.map((line) => {
+    const text = String(line || '').trim();
+    const anchor = text.search(/pending migrations|stale schema|migration|failed|error/i);
+    const start = Math.max(0, anchor - 120);
+    return text.slice(start, start + 520).trim();
+  }).filter(Boolean))].slice(0, 4);
+}
+
+function paperclipBoundedDiagnosticExcerpt(selected = [], preserved = [], limit = 900) {
+  const compact = selected.join('\n');
+  if (compact.length <= limit) return compact;
+  if (!preserved.length) return compact.slice(compact.length - limit);
+  const preservedText = [...new Set(preserved)].join('\n').slice(0, Math.min(450, limit));
+  const preservedSet = new Set(preserved);
+  const remainder = selected.filter(line => !preservedSet.has(line)).join('\n');
+  const budget = Math.max(0, limit - preservedText.length - (remainder ? 1 : 0));
+  const tail = budget > 0 ? remainder.slice(Math.max(0, remainder.length - budget)) : '';
+  return tail ? `${preservedText}\n${tail}` : preservedText;
+}
+
 export function paperclipContainerLogDiagnostic(value = '') {
   const raw = String(value || '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '');
   const structured = paperclipStructuredLogSignals(raw);
   const redacted = redactPaperclipDiagnosticText(raw);
   const lines = redacted.split('\n').map(line => line.trim()).filter(Boolean);
+  const logClass = paperclipContainerLogClass(raw);
+  const classTrigger = paperclipDiagnosticClassTriggerSignals(logClass, lines, structured);
   const relevant = lines.filter(line => /(?:error|fail|fatal|panic|exception|database|postgres|sql|migration|permission|auth|refused|corrupt|locale|no space|out of memory|secret|token|password|authorization|does not exist|undefined table|undefined column|42p01|42703)/i.test(line));
-  const selected = [...new Set([...relevant.slice(-6), ...lines.slice(-2), ...structured.slice(-8)])];
-  const compact = selected.join('\n');
-  const excerpt = compact.length <= 900 ? compact : compact.slice(compact.length - 900);
+  const selected = [...new Set([...classTrigger, ...relevant.slice(-6), ...lines.slice(-2), ...structured.slice(-8)])];
+  const excerpt = paperclipBoundedDiagnosticExcerpt(selected, classTrigger, 900);
   const fingerprint = createHash('sha256').update(excerpt).digest('hex').slice(0, 24);
   return { fingerprint, excerpt };
 }
