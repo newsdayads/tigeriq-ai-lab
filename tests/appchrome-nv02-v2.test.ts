@@ -79,12 +79,26 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(nv02Loop).not.toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
     expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
     expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING_FRESH');
-    const f5Gate=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
+    const f5Gate=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending)");
     const workingGate=nv02Loop.indexOf("if(phase==='WORKING'){",f5Gate);
     expect(f5Gate).toBeGreaterThan(-1);
     expect(workingGate).toBeGreaterThan(f5Gate);
     expect(nv02Loop.slice(f5Gate,workingGate)).toContain('await reloadTarget(target)');
     expect(nv02Loop.slice(f5Gate,workingGate)).toContain("'PERIODIC_F5_REFRESH',15000");
+  });
+
+  it('lets verified-chat boot restore run before an overdue F5', () => {
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    const f5Guard=nv02Loop.indexOf("const bootGatePending=bootFreshContextPending.has('NV02')");
+    const bootRestore=nv02Loop.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')");
+    expect(f5Guard).toBeGreaterThan(-1);
+    expect(bootRestore).toBeGreaterThan(f5Guard);
+    expect(nv02Loop).toContain("if(now>=Number(state.nextPeriodicF5At||0)&&bootGatePending)");
+    expect(nv02Loop).toContain("'PERIODIC_F5_DEFERRED_FOR_BOOT_GATE'");
+    expect(nv02Loop).toContain("if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending)");
+    const deferBlock=nv02Loop.slice(f5Guard,nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending)",f5Guard));
+    expect(deferBlock).not.toContain('return;');
+    expect(deferBlock).not.toContain('nextPeriodicF5At:nextRandomAt');
   });
 
   it('requires a stable renderer grace before an overdue follow-up F5', () => {
