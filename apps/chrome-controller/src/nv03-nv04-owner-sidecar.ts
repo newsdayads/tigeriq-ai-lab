@@ -148,13 +148,15 @@ async function dispatchOneNv03(issues: GithubIssueApi[]) {
 }
 
 async function dispatchOneNv04(issues: GithubIssueApi[], transport: Nv04DriveTransport) {
+  const { owner, repo } = repoParts();
   for (const issue of issues) {
-    if (!eligibleNv04Issue(issue)) continue;
+    if (!eligibleNv04Issue(issue) || !targetCompatible(issue, 'NV04')) continue;
     const comments = await issueComments(issue.number);
     if (activeAppChromeClaims(comments).length || markerIndex(comments, 'NV04_RESULT_BEGIN') >= 0) continue;
+    const claim = await claimGithubIssue({ workerId: 'NV04', issue, owner, repo, token: githubToken });
+    if (!claim) continue;
     const request = buildNv04Request(issue);
     transport.writeNewRequest(request);
-    await addIssueComment(issue.number, claimBody('NV04', issue, request.jobId, request.inputRevision));
     transport.claimRequest(request);
     try {
       await controllerDispatch('NV04', renderNv04Request(request), {
@@ -164,7 +166,7 @@ async function dispatchOneNv04(issues: GithubIssueApi[], transport: Nv04DriveTra
         source: 'NV04_DRIVE_BRIDGE',
       });
     } catch (error) {
-      await addIssueComment(issue.number, releaseBody('NV04', request.jobId, 'DISPATCH_ERROR'));
+      await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV04', issueNumber: issue.number, state: 'DISPATCH_ERROR', owner, repo, token: githubToken });
       throw error;
     }
     return issue.number;
