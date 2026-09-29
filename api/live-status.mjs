@@ -860,7 +860,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || safeEvidenceUrl(active?.prUrl)
     || safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'))
     || null;
-  const evidenceAt = active?.updatedAt || lifecycle?.createdAt || null;
+  const evidenceAt = bodyValue(body, 'EVIDENCE_AT')
+    || bodyValue(body, 'EVIDENCE_TIMESTAMP')
+    || active?.updatedAt
+    || lifecycle?.createdAt
+    || (evidenceUrl ? issue.updated_at || null : null);
 
   return {
     number,
