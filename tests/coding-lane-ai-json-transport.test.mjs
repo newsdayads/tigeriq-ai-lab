@@ -320,6 +320,29 @@ describe('coding lane AI JSON transport',()=>{
     expect(()=>expandCompactChanges(prompt,model)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:apps/a.mjs');
   });
 
+  it('salvages a unique localized content fallback during compact repair',()=>{
+    const prompt='PATCH_CONTRACT_V2_COMPACT_REPAIR=true\nTASK: fix\nCURRENT FILES:\nFILE tests/a.test.mjs\nit(\'canary\',()=>{\n  const error={status:400};\n  expect(isRetryable(error)).toBe(true);\n});\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'fix one assertion',changes:[{path:'tests/a.test.mjs',content:"it('canary',()=>{\n  const error={status:400};\n  expect(isRetryable(error)).toBe(false);\n});"}]});
+    expect(expandCompactChanges(prompt,model)).toEqual({summary:'fix one assertion',changes:[{path:'tests/a.test.mjs',content:"it('canary',()=>{\n  const error={status:400};\n  expect(isRetryable(error)).toBe(false);\n});"}]});
+  });
+
+  it('salvages content-shaped repair edits but only when localization is unique',()=>{
+    const prompt='PATCH_CONTRACT_V2_COMPACT_REPAIR=true\nCURRENT FILES:\nFILE tests/a.test.mjs\nconst before=1;\nexpect(value).toBe(true);\nconst after=2;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const model=JSON.stringify({summary:'fix assertion',edits:[{path:'tests/a.test.mjs',content:'expect(value).toBe(false);'}]});
+    expect(expandCompactChanges(prompt,model).changes).toEqual([{path:'tests/a.test.mjs',content:'const before=1;\nexpect(value).toBe(false);\nconst after=2;'}]);
+
+    const ambiguous='PATCH_CONTRACT_V2_COMPACT_REPAIR=true\nCURRENT FILES:\nFILE tests/a.test.mjs\nexpect(value).toBe(true);\nexpect(value).toBe(true);\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    expect(()=>expandCompactChanges(ambiguous,model)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:tests/a.test.mjs');
+  });
+
+  it('keeps unsafe or broad existing-file content fallbacks fail-closed',()=>{
+    const prompt='PATCH_CONTRACT_V2_COMPACT_REPAIR=true\nCURRENT FILES:\nFILE tests/a.test.mjs\nconst alpha=1;\nconst beta=2;\nconst gamma=3;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
+    const unrelated=JSON.stringify({summary:'bad',changes:[{path:'tests/a.test.mjs',content:'totally unrelated replacement'}]});
+    expect(()=>expandCompactChanges(prompt,unrelated)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:tests/a.test.mjs');
+    const omitted=JSON.stringify({summary:'bad',changes:[{path:'tests/a.test.mjs',content:'/* ... 9000 chars omitted from model context ... */'}]});
+    expect(()=>expandCompactChanges(prompt,omitted)).toThrow('COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:tests/a.test.mjs');
+  });
+
   it('still allows complete content for a new empty file',()=>{
     const prompt='TASK: x\nCURRENT FILES:\nFILE tests/new.test.mjs\n\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}.';
     const model=JSON.stringify({summary:'new file',changes:[{path:'tests/new.test.mjs',content:'export const ok=true;\\n'}]});
