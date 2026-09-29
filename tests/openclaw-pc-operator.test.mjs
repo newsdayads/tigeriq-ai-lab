@@ -20,6 +20,7 @@ import {
   assertPaperclipLabRequest,
   paperclipDockerFailureClass,
   paperclipContainerLogClass,
+  paperclipContainerLogDiagnostic,
   paperclipHealthFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
@@ -196,6 +197,27 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
+  });
+
+  it('returns only bounded redacted container log diagnostics while preserving relevant root-cause lines', () => {
+    const secret = 'super-secret-value';
+    const input = [
+      ...Array.from({ length: 40 }, (_, i) => 'noise-before-' + i),
+      'ERROR database connect postgres://paperclip:' + secret + '@db:5432/paperclip refused',
+      'FATAL BETTER_AUTH_SECRET=' + secret + ' database startup failed',
+      'Authorization: Bearer abc.def.ghi database auth failed',
+      ...Array.from({ length: 80 }, (_, i) => 'noise-after-' + i),
+    ].join('\n');
+    const out = paperclipContainerLogDiagnostic(input);
+    expect(out.fingerprint).toMatch(/^[a-f0-9]{24}$/);
+    expect(out.excerpt.length).toBeLessThanOrEqual(900);
+    expect(out.excerpt).toContain('ERROR database connect');
+    expect(out.excerpt).toContain('database startup failed');
+    expect(out.excerpt).toContain('[REDACTED]');
+    expect(out.excerpt).not.toContain(secret);
+    expect(out.excerpt).not.toContain('abc.def.ghi');
+    expect(out.excerpt).not.toContain('noise-before-0');
+    expect(out).toEqual(paperclipContainerLogDiagnostic(input));
   });
 
   it('classifies bounded container logs without exposing raw log text', () => {

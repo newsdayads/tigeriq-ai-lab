@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
@@ -625,6 +625,22 @@ async function preflight(signal = null) {
   };
 }
 
+export function paperclipContainerLogDiagnostic(value = '') {
+  const raw = String(value || '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '');
+  const redacted = raw
+    .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, '$1[REDACTED]$2')
+    .replace(/\b(authorization)\s*:\s*bearer\s+[^\s]+/gi, '$1: Bearer [REDACTED]')
+    .replace(/\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|COOKIE|SESSION)[A-Z0-9_]*)\s*=\s*[^\s]+/gi, '$1=[REDACTED]')
+    .replace(/\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
+  const lines = redacted.split('\n').map(line => line.trim()).filter(Boolean);
+  const relevant = lines.filter(line => /(?:error|fail|fatal|panic|exception|database|postgres|sql|migration|permission|auth|refused|corrupt|locale|no space|out of memory|secret|token|password|authorization)/i.test(line));
+  const selected = [...new Set([...relevant.slice(-12), ...lines.slice(-4)])];
+  const compact = selected.join('\n');
+  const excerpt = compact.length <= 900 ? compact : compact.slice(compact.length - 900);
+  const fingerprint = createHash('sha256').update(excerpt).digest('hex').slice(0, 24);
+  return { fingerprint, excerpt };
+}
+
 export function paperclipContainerLogClass(value = '') {
   const text = String(value || '').toLowerCase();
   if (!text.trim()) return 'NO_LOGS';
@@ -809,15 +825,20 @@ async function health(signal = null, transport = null, options = {}) {
   );
 
   let logClass = null;
+  let logDiagnostic = null;
   if (options?.diagnostics === true && info && info?.State?.Running !== true) {
     const logs = await runDocker(
       docker.kind,
       ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER],
       { timeoutMs: 20000, signal },
     ).catch(() => null);
-    logClass = logs?.exitCode === 0
-      ? paperclipContainerLogClass(`${logs.stdout || ''}\n${logs.stderr || ''}`)
-      : 'LOGS_UNAVAILABLE';
+    if (logs?.exitCode === 0) {
+      const combinedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
+      logClass = paperclipContainerLogClass(combinedLogs);
+      logDiagnostic = paperclipContainerLogDiagnostic(combinedLogs);
+    } else {
+      logClass = 'LOGS_UNAVAILABLE';
+    }
   }
   const containerDiagnostic = {
     status: typeof info?.State?.Status === 'string' ? info.State.Status : null,
@@ -825,6 +846,8 @@ async function health(signal = null, transport = null, options = {}) {
     oomKilled: info?.State?.OOMKilled === true,
     stateErrorClass: paperclipContainerStateErrorClass(info?.State?.Error),
     logClass,
+    logFingerprint: logDiagnostic?.fingerprint || null,
+    logExcerpt: logDiagnostic?.excerpt || null,
   };
 
   const state = {
@@ -856,6 +879,8 @@ async function health(signal = null, transport = null, options = {}) {
       oomKilled: state.container?.oomKilled === true,
       stateErrorClass: state.container?.stateErrorClass || null,
       logClass: state.container?.logClass || null,
+      logFingerprint: state.container?.logFingerprint || null,
+      logExcerpt: state.container?.logExcerpt || null,
       portBindingOk: state.container?.portBindingOk === true,
       dataMountOk: state.container?.dataMountOk === true,
       identityOk: state.container?.identityOk === true,
