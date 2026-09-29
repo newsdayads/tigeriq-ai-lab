@@ -105,6 +105,20 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain("reason:'CONNECTIVITY_FAILURE'");
   });
 
+  it('prioritizes verified boot-chat restore over overdue F5 grace', () => {
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02Loop).toContain("const bootVerifiedChatRestorePending=bootFreshContextPending.has('NV02')");
+    expect(nv02Loop).toContain("&&hasCurrentNv02Chat(state.verifiedChatUrl);");
+    expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CHAT_RESTORE'");
+    expect(nv02Loop).toContain("if(!bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
+    const deferStart=nv02Loop.indexOf("if(bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
+    const gatedF5=nv02Loop.indexOf("if(!bootVerifiedChatRestorePending&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(deferStart).toBeGreaterThan(-1);
+    expect(gatedF5).toBeGreaterThan(deferStart);
+    expect(nv02Loop.slice(deferStart,gatedF5)).not.toContain('return;');
+    expect(nv02Loop.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")).toBeGreaterThan(gatedF5);
+  });
+
   it('executes due 2-4h reset regardless of WORKING and preserves same chat plus F5 timer', () => {
     expect(bridge).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(bridge).toContain("if(now>=Number(state.nextRefreshAt||0))");
