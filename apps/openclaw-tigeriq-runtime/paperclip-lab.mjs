@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260929_POSTGRES_SIDECAR_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_REDACTED_DB_DIAGNOSTIC_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -625,6 +625,51 @@ async function preflight(signal = null) {
   };
 }
 
+export function paperclipContainerLogDiagnostic(value = '') {
+  const raw = String(value || '');
+  const signalRules = [
+    ['DATABASE_URL', /\bdatabase_url\b/i],
+    ['POSTGRES', /\bpostgres(?:ql)?\b/i],
+    ['SQLITE', /\bsqlite\b/i],
+    ['DRIZZLE', /\bdrizzle\b/i],
+    ['MIGRATION', /\bmigrat(?:e|ion|ions|ing)\b/i],
+    ['CONNECTION_REFUSED', /connection refused|econnrefused/i],
+    ['DNS', /getaddrinfo|enotfound|name or service not known|could not translate host name/i],
+    ['AUTH', /password authentication failed|authentication failed for user|role .* does not exist/i],
+    ['SCHEMA', /relation .* does not exist|schema .* does not exist|table .* does not exist/i],
+    ['TLS_SSL', /\b(?:tls|ssl)\b/i],
+    ['CONNECTION_STRING', /connection string|invalid .*url|invalid .*uri/i],
+    ['TIMEOUT', /timed? out|timeout/i],
+  ];
+  const signals = signalRules.filter(([, re]) => re.test(raw)).map(([name]) => name).slice(0, 8);
+  const interesting = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => /database|postgres|sqlite|sql|migration|drizzle|connection|schema|relation|fatal|error|failed|exception|timeout/i.test(line))
+    .slice(-6);
+  const redact = (line) => String(line)
+    .replace(/\b(?:postgres(?:ql)?|mysql|mariadb|mongodb|redis):\/\/[^\s"'<>]+/gi, '[DB_URL_REDACTED]')
+    .replace(/https?:\/\/[^\s"'<>]+/gi, '[URL_REDACTED]')
+    .replace(/[A-Za-z]:\\[^\s"'<>]+/g, '[PATH_REDACTED]')
+    .replace(/\/(?:home|root|mnt|var|etc|opt|srv|tmp)\/[^\s"'<>]+/g, '[PATH_REDACTED]')
+    .replace(/\b([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASS|KEY))\s*=\s*[^\s]+/g, '$1=[REDACTED]')
+    .replace(/\b(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, 'export function paperclipContainerLogClass(value = '') {'.replace(/[:=].*$/, '=[REDACTED]'))
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, '[TOKEN_REDACTED]')
+    .replace(/\b[A-Za-z0-9+/_=-]{40,}\b/g, '[TOKEN_REDACTED]')
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[IP_REDACTED]')
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[EMAIL_REDACTED]')
+    .slice(0, 220);
+  const excerpt = interesting.map(redact).join(' | ').slice(0, 640);
+  const fingerprint = createHash('sha256').update(excerpt || raw.slice(0, 2048)).digest('hex').slice(0, 16);
+  return {
+    signals,
+    fingerprint,
+    excerpt: excerpt || null,
+    excerptChars: excerpt.length,
+  };
+}
+
 export function paperclipContainerLogClass(value = '') {
   const text = String(value || '').toLowerCase();
   if (!text.trim()) return 'NO_LOGS';
@@ -809,15 +854,20 @@ async function health(signal = null, transport = null, options = {}) {
   );
 
   let logClass = null;
+  let logDiagnostic = null;
   if (options?.diagnostics === true && info && info?.State?.Running !== true) {
     const logs = await runDocker(
       docker.kind,
       ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER],
       { timeoutMs: 20000, signal },
     ).catch(() => null);
-    logClass = logs?.exitCode === 0
-      ? paperclipContainerLogClass(`${logs.stdout || ''}\n${logs.stderr || ''}`)
-      : 'LOGS_UNAVAILABLE';
+    if (logs?.exitCode === 0) {
+      const boundedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
+      logClass = paperclipContainerLogClass(boundedLogs);
+      logDiagnostic = paperclipContainerLogDiagnostic(boundedLogs);
+    } else {
+      logClass = 'LOGS_UNAVAILABLE';
+    }
   }
   const containerDiagnostic = {
     status: typeof info?.State?.Status === 'string' ? info.State.Status : null,
@@ -825,6 +875,7 @@ async function health(signal = null, transport = null, options = {}) {
     oomKilled: info?.State?.OOMKilled === true,
     stateErrorClass: paperclipContainerStateErrorClass(info?.State?.Error),
     logClass,
+    logDiagnostic,
   };
 
   const state = {
@@ -856,6 +907,7 @@ async function health(signal = null, transport = null, options = {}) {
       oomKilled: state.container?.oomKilled === true,
       stateErrorClass: state.container?.stateErrorClass || null,
       logClass: state.container?.logClass || null,
+      logDiagnostic: state.container?.logDiagnostic || null,
       portBindingOk: state.container?.portBindingOk === true,
       dataMountOk: state.container?.dataMountOk === true,
       identityOk: state.container?.identityOk === true,
