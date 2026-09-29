@@ -178,6 +178,14 @@ export function activeProviderCooldownIds(failure,nowMs=Date.now()){
   const ledger=Array.isArray(failure?.detail?.failureLedger)?failure.detail.failureLedger:[];
   return [...new Set(ledger.filter(x=>x?.class==='rate_limit'&&Date.parse(x?.cooldownUntil||0)>nowMs).map(x=>x.resourceId).filter(Boolean))];
 }
+export function repairFailoverExcludeIds(cooldownExcludes=[]){
+  return [...new Set((Array.isArray(cooldownExcludes)?cooldownExcludes:[]).map(x=>String(x||'').trim()).filter(Boolean))];
+}
+export function repairReviewerNeedsReselection(reviewer,worker){
+  const reviewerId=String(reviewer?.id||reviewer||'').trim();
+  const workerId=String(worker?.id||worker||'').trim();
+  return Boolean(reviewerId&&workerId&&reviewerId===workerId);
+}
 export function providerCooldownPollPlan(failure,nowMs=Date.now(),maxPollMs=RESOURCE_WAIT_MAX_DELAY_MS){
   const ledger=Array.isArray(failure?.detail?.failureLedger)?failure.detail.failureLedger:[];
   const active=ledger.filter(x=>x?.class==='rate_limit')
@@ -1215,9 +1223,9 @@ async function runJob(j){
       repairFn:async({evidence})=>{
         const freshContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,freshContext);j.liveGithubContext=freshContext;
         await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,freshContext);
+        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],repairFailoverExcludeIds(cooldownExcludes),mutationAuth,canonicalObjective,freshContext);
         worker=repaired.worker;gen=repaired.payload;
-        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+        if(repairReviewerNeedsReselection(reviewer,worker)){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
       },
       maxRepairCycles:3,
@@ -1235,8 +1243,8 @@ async function runJob(j){
     if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
     const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,repairGithubContext);j.liveGithubContext=repairGithubContext;
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,[reviewer.id,...cooldownExcludes],mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
-    if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,repairFailoverExcludeIds(cooldownExcludes),mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
+    if(repairReviewerNeedsReselection(reviewer,worker)){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
