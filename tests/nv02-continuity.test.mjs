@@ -246,7 +246,10 @@ describe('NV02 continuity policy', () => {
     expect(continuityLoop).not.toContain('checkpointNv02(');
     expect(source).toContain("nextProgressCheckAt:now+WORKING_PROGRESS_CHECK_MS");
     expect(source).toContain("unchanged>=MAX_WORKING_UNCHANGED_CHECKS");
-    expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
+    expect(continuityLoop).toContain("const bootGatePending=bootFreshContextPending.has('NV02')");
+    expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0)&&bootGatePending)");
+    expect(continuityLoop).toContain("'PERIODIC_F5_DEFERRED_FOR_BOOT_GATE'");
+    expect(continuityLoop).toContain("if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending)");
     expect(continuityLoop).toContain("if(now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
     expect(continuityLoop.indexOf("if(phase==='WORKING')")).toBeLessThan(continuityLoop.indexOf("if(now<Number(state.nextContinueAt||0))return"));
