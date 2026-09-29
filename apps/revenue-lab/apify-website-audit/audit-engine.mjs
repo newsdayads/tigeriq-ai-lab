@@ -129,7 +129,10 @@ async function requestOnce(url, options) {
         'user-agent': 'TigerIQ-RevenueLab-Audit/1.0',
         accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
       },
-      lookup: (_hostname, _opts, callback) => callback(null, resolved.address, resolved.family),
+      lookup: (_hostname, lookupOptions, callback) => {
+        if (lookupOptions?.all) return callback(null, [{ address: resolved.address, family: resolved.family }]);
+        return callback(null, resolved.address, resolved.family);
+      },
       servername: parsed.hostname,
     }, res => {
       const statusCode = Number(res.statusCode || 0);
