@@ -45,7 +45,7 @@ describe('coding lane AI JSON transport',()=>{
       `const embedded = ${JSON.stringify(schema)};`,
       schema,
       'Do not touch paths outside ALLOWED PATHS.'
-    ].join('\\n');
+    ].join('\n');
     const compact=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
     const finalContract=compact.slice(compact.lastIndexOf('Return ONLY'));
     expect(expectedSchemaFromPrompt(compact)).toBe('edits');
