@@ -10,9 +10,17 @@ import {
   type GithubIssueLike,
 } from './nv03-nv04-coordination.js';
 import { Nv04DriveTransport } from './nv04-drive-transport.js';
+import {
+  activeAppChromeClaims,
+  claimGithubIssue,
+  releaseGithubClaim,
+  workerEligibleForIssue,
+  type GithubComment as CanonicalGithubComment,
+  type GithubIssue as CanonicalGithubIssue,
+} from './github-self-run.js';
 
-type GithubComment = { body?: string | null };
-type GithubIssueApi = GithubIssueLike & { pull_request?: unknown };
+type GithubComment = CanonicalGithubComment;
+type GithubIssueApi = CanonicalGithubIssue;
 
 const OWNER_SCOPE = 'APP_CHROME_NV03_NV04_COORDINATION_V1';
 const controllerBase = String(process.env.TIGERIQ_CONTROLLER_URL || 'http://127.0.0.1:8798').replace(/\/$/, '');
@@ -82,27 +90,12 @@ function markerIndex(comments: GithubComment[], marker: string) {
   return -1;
 }
 
-function hasActiveClaim(comments: GithubComment[], worker: 'NV03' | 'NV04') {
-  const claim = markerIndex(comments, `[${worker}_CLAIM]`);
-  if (claim < 0) return false;
-  const release = markerIndex(comments, `[${worker}_RELEASE]`);
-  const result = markerIndex(comments, `${worker}_RESULT_BEGIN`);
-  return claim > Math.max(release, result);
-}
-
-function claimBody(worker: 'NV03' | 'NV04', issue: GithubIssueLike, jobId: string, revision: string) {
-  return [
-    `[${worker}_CLAIM]`,
-    `worker=${worker}`,
-    `job_id=${jobId}`,
-    `input_revision=${revision}`,
-    `resource_scope=${String((issue.body || '').match(/(?:^|\\n)RESOURCE_SCOPE=([^\\n\\r]+)/i)?.[1] || `ISSUE_${issue.number}`).trim()}`,
-    `owner_scope=${OWNER_SCOPE}`,
-  ].join('\n');
-}
-
-function releaseBody(worker: 'NV03' | 'NV04', jobId: string, state: string) {
-  return [`[${worker}_RELEASE]`, `worker=${worker}`, `job_id=${jobId}`, `state=${state}`].join('\n');
+function targetCompatible(issue: GithubIssueApi, worker: 'NV03' | 'NV04') {
+  const body = String(issue.body || '');
+  const values = [...body.matchAll(/^(?:TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE)\s*=\s*([^\n\r]+)/gmi)]
+    .map((match) => String(match[1] || '').trim().toUpperCase())
+    .filter(Boolean);
+  return values.length === 0 || values.every((value) => value === worker);
 }
 
 async function controllerDispatch(worker: 'NV03' | 'NV04', text: string, job: Record<string, string>) {
@@ -130,13 +123,14 @@ async function reconcileNv04Results(issues: GithubIssueApi[], transport: Nv04Dri
 }
 
 async function dispatchOneNv03(issues: GithubIssueApi[]) {
-  for (const issue of issues) {
-    if (!eligibleNv03ReviewIssue(issue)) continue;
+  const { owner, repo } = repoParts();
+  const candidates = issues.filter((issue) => workerEligibleForIssue('NV03', issue) && targetCompatible(issue, 'NV03'));
+  for (const issue of candidates) {
     const comments = await issueComments(issue.number);
-    if (hasActiveClaim(comments, 'NV03') || markerIndex(comments, 'NV03_RESULT_BEGIN') >= 0) continue;
-    const revision = String((issue.body || '').match(/(?:^|\n)(?:EXACT_HEAD|EXACT_INPUT)=([^\n\r]+)/i)?.[1] || `ISSUE-${issue.number}`).trim();
-    const jobId = `NV03-${issue.number}-${revision.slice(0, 12).replace(/[^A-Za-z0-9_-]/g, '_')}`;
-    await addIssueComment(issue.number, claimBody('NV03', issue, jobId, revision));
+    if (activeAppChromeClaims(comments).length || markerIndex(comments, 'NV03_RESULT_BEGIN') >= 0) continue;
+    const claim = await claimGithubIssue({ workerId: 'NV03', issue, owner, repo, token: githubToken });
+    if (!claim) continue;
+    const jobId = `APP-GH-${issue.number}-NV03-${claim.claimId.slice(0, 8)}`;
     try {
       await controllerDispatch('NV03', buildNv03ReviewPrompt(issue), {
         jobId,
@@ -145,7 +139,7 @@ async function dispatchOneNv03(issues: GithubIssueApi[]) {
         source: 'NV03_GITHUB_REVIEW',
       });
     } catch (error) {
-      await addIssueComment(issue.number, releaseBody('NV03', jobId, 'DISPATCH_ERROR'));
+      await releaseGithubClaim({ claimId: claim.claimId, workerId: 'NV03', issueNumber: issue.number, state: 'DISPATCH_ERROR', owner, repo, token: githubToken });
       throw error;
     }
     return issue.number;
@@ -157,7 +151,7 @@ async function dispatchOneNv04(issues: GithubIssueApi[], transport: Nv04DriveTra
   for (const issue of issues) {
     if (!eligibleNv04Issue(issue)) continue;
     const comments = await issueComments(issue.number);
-    if (hasActiveClaim(comments, 'NV04') || markerIndex(comments, 'NV04_RESULT_BEGIN') >= 0) continue;
+    if (activeAppChromeClaims(comments).length || markerIndex(comments, 'NV04_RESULT_BEGIN') >= 0) continue;
     const request = buildNv04Request(issue);
     transport.writeNewRequest(request);
     await addIssueComment(issue.number, claimBody('NV04', issue, request.jobId, request.inputRevision));
