@@ -184,10 +184,8 @@ export function prepareAiJsonRequest(input,init={}){
   if(host==='generativelanguage.googleapis.com'){
     body.generationConfig={...(body.generationConfig||{})};
     if(repairCompact&&['changes','edits'].includes(schema)){
-      body.generationConfig.responseFormat={
-        text:{
-          mimeType:'application/json',
-          schema:{
+      body.generationConfig.responseMimeType='application/json';
+      body.generationConfig.responseJsonSchema={
             type:'object',
             properties:{
               summary:{type:'string'},
@@ -210,12 +208,9 @@ export function prepareAiJsonRequest(input,init={}){
             },
             required:['summary','edits'],
             additionalProperties:false,
-          },
-        },
       };
-      delete body.generationConfig.responseMimeType;
+      delete body.generationConfig.responseFormat;
       delete body.generationConfig.responseSchema;
-      delete body.generationConfig.responseJsonSchema;
     }else{
       body.generationConfig.responseMimeType='application/json';
     }
