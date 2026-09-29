@@ -14,6 +14,7 @@ const BLOCK = [
   '  Add-Content $log "$(Get-Date -Format o) TIGERIQ_REMOTE_GUARD_VERIFY_FAIL markers=true"',
   '  exit 86',
   '}',
+  '$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"',
   '# ' + LAUNCHER_MARKER,
   ANCHOR
 ].join('\n');

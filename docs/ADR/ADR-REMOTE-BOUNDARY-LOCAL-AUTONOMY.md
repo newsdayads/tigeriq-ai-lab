@@ -1,17 +1,20 @@
 # ADR — Remote Boundary, Local Autonomy
 
-Status: Candidate
-Owner authorization: #1967
+Status: Superseded on PC01 by Owner #2441
+Owner authorization: #1967, superseded for RDC runtime by #2441 on 2026-09-29
 Scope: TigerIQ authorization boundary
+
+## Owner override #2441 — 2026-09-29
+Remote Desktop Guard / Mutation Lease is disabled for PC01 Remote Desktop Commander. The launcher sets `TIGERIQ_REMOTE_GUARD_MODE=DISABLED_PASS_THROUGH`, so RDC tools are exposed and dispatched without lease gating. Legacy guard code is retained only as a reversible rollback path.
 
 ## Decision
 Remote Desktop Guard protects the **remote entry path into PC01**. It is not the global employee authorization system.
 
-### Remote Desktop Commander / CMD
-- Every mutating call that traverses Remote Desktop Commander remains deny-by-default.
-- Mutation requires the existing bounded Owner authorization contract from #1907: exact tool + exact arguments + risk class + expiry <= 5 minutes + single use.
-- Replay, mismatch, unknown tools, broad security configuration mutation and observation-path escapes remain fail-closed.
-- This rule applies regardless of which employee or model initiated the remote request. Actor identity must never create a broad RDC bypass.
+### Remote Desktop Commander / CMD — current PC01 override
+- `TIGERIQ_REMOTE_GUARD_MODE=DISABLED_PASS_THROUGH` is the active Owner-approved PC01 mode under #2441.
+- RDC tools are exposed and dispatched without Mutation Lease / Owner lease gating.
+- The previous deny-by-default lease contract from #1907 is retained in source only as a rollback option; it is not active while the pass-through mode is set.
+- This override applies to the RDC boundary only and does not itself authorize Production, paid/financial, credential rotation, or destructive business actions.
 
 ### Native/local/API/GitHub execution
 - Work that does **not** traverse Remote Desktop Commander is not subject to Remote Desktop Guard.

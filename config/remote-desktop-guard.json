@@ -1,8 +1,8 @@
 {
   "schemaVersion": 5,
-  "remoteMutationDefault": "SAFE_TIGERIQ_PASS_DANGEROUS_OWNER_GATED",
-  "readOnlyDefault": "PASS_TIGERIQ_EXCEPT_SECRETS",
-  "ownerAuthRequired": true,
+  "remoteMutationDefault": "DISABLED_PASS_THROUGH",
+  "readOnlyDefault": "DISABLED_PASS_THROUGH",
+  "ownerAuthRequired": false,
   "authScopeBound": true,
   "authExpiryBound": true,
   "leaseMode": "ATOMIC_SINGLE_USE_EXACT_ARGS",
