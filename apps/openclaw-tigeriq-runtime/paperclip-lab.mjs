@@ -635,16 +635,49 @@ async function preflight(signal = null) {
   };
 }
 
-export function paperclipContainerLogDiagnostic(value = '') {
-  const raw = String(value || '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '');
-  const redacted = raw
+function redactPaperclipDiagnosticText(value = '') {
+  return String(value || '')
     .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, '$1[REDACTED]$2')
     .replace(/\b(authorization)\s*:\s*bearer\s+[^\s]+/gi, '$1: Bearer [REDACTED]')
     .replace(/\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|COOKIE|SESSION)[A-Z0-9_]*)\s*=\s*[^\s]+/gi, '$1=[REDACTED]')
     .replace(/\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
+}
+
+function paperclipStructuredLogSignals(raw = '') {
+  const signals = [];
+  const fields = ['message','code','detail','hint','severity','constraint','table','column'];
+  for (const line of String(raw || '').split('\n')) {
+    let parsed;
+    try { parsed = JSON.parse(line.trim()); } catch { continue; }
+    const queue = [parsed?.err, parsed?.error, parsed?.cause, parsed].filter((value) => value && typeof value === 'object');
+    const seen = new Set();
+    while (queue.length && seen.size < 12) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || seen.has(current)) continue;
+      seen.add(current);
+      for (const field of fields) {
+        const value = current?.[field];
+        if (typeof value === 'string' || typeof value === 'number') {
+          const clippedValue = String(value).replace(/\s+/g, ' ').trim().slice(0, 520);
+          if (clippedValue) signals.push(`${field}=${clippedValue}`);
+        }
+      }
+      for (const field of ['cause','error','err']) {
+        const nested = current?.[field];
+        if (nested && typeof nested === 'object') queue.push(nested);
+      }
+    }
+  }
+  return [...new Set(signals.map(redactPaperclipDiagnosticText))];
+}
+
+export function paperclipContainerLogDiagnostic(value = '') {
+  const raw = String(value || '').replace(/\x1b\[[0-9;]*m/g, '').replace(/\r/g, '');
+  const structured = paperclipStructuredLogSignals(raw);
+  const redacted = redactPaperclipDiagnosticText(raw);
   const lines = redacted.split('\n').map(line => line.trim()).filter(Boolean);
-  const relevant = lines.filter(line => /(?:error|fail|fatal|panic|exception|database|postgres|sql|migration|permission|auth|refused|corrupt|locale|no space|out of memory|secret|token|password|authorization)/i.test(line));
-  const selected = [...new Set([...relevant.slice(-12), ...lines.slice(-4)])];
+  const relevant = lines.filter(line => /(?:error|fail|fatal|panic|exception|database|postgres|sql|migration|permission|auth|refused|corrupt|locale|no space|out of memory|secret|token|password|authorization|does not exist|undefined table|undefined column|42p01|42703)/i.test(line));
+  const selected = [...new Set([...relevant.slice(-6), ...lines.slice(-2), ...structured.slice(-8)])];
   const compact = selected.join('\n');
   const excerpt = compact.length <= 900 ? compact : compact.slice(compact.length - 900);
   const fingerprint = createHash('sha256').update(excerpt).digest('hex').slice(0, 24);
@@ -665,6 +698,7 @@ export function paperclipContainerLogClass(value = '') {
   if (/password authentication failed|authentication failed for user|role .* does not exist/.test(text)) return 'DB_AUTH';
   if (/failed to initialize embedded postgresql|failed to initialise embedded postgresql|\binitdb\b|initiali[sz]e.*postgres/.test(text)) return 'DB_INIT';
   if (/failed to start embedded postgresql|embedded postgresql.*(?:failed|exited)|postmaster\.pid|stale embedded postgresql lock file/.test(text)) return 'DB_START';
+  if (/relation .* does not exist|column .* does not exist|undefined table|undefined column|\b42p01\b|\b42703\b/.test(text)) return 'DB_SCHEMA_MISSING';
   if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration|drizzle/.test(text)) return 'DB_MIGRATION';
   if (/connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/.test(text)) return 'DB_CONNECTION';
   if (/corrupt|invalid page|checksum.*(?:failed|error)|wal.*(?:corrupt|invalid)/.test(text)) return 'DB_CORRUPT';
