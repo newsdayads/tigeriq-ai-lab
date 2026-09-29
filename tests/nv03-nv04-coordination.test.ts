@@ -120,6 +120,10 @@ describe('owner-directed sidecar isolation', () => {
   it('requires explicit Owner arm and never calls NV02 worker endpoints', () => {
     const source = readFileSync(join(process.cwd(), 'apps/chrome-controller/src/nv03-nv04-owner-sidecar.ts'), 'utf8');
     expect(source).toContain('TIGERIQ_NV0304_OWNER_DIRECT');
+    expect(source).toContain('TIGERIQ_NV0304_WORKERS');
+    expect(source).toContain('OWNER_WORKER_SELECTION_REQUIRED');
+    expect(source).toContain("if (selected.has('NV03'))");
+    expect(source).toContain("if (selected.has('NV04'))");
     expect(source).toContain('APP_CHROME_NV03_NV04_COORDINATION_V1');
     expect(source).toContain('/api/workers/${worker}/dispatch');
     expect(source).not.toContain('/api/workers/NV02/');
