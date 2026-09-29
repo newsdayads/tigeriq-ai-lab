@@ -34,6 +34,9 @@ check(output.actorOutputSchemaVersion === 1, 'output_schema_version');
 check(output.properties?.result?.template === '{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT', 'output_record');
 check(pkg.scripts?.start === 'node actor.mjs', 'start_script');
 check(/^FROM apify\/actor-node:22$/m.test(dockerfile), 'docker_base');
+check(/COPY --chown=myuser:myuser package\*\.json \.\//.test(dockerfile), 'docker_package_owner');
+check(/COPY --chown=myuser:myuser \. \.\//.test(dockerfile), 'docker_source_owner');
+check(!/^WORKDIR \/usr\/src\/app$/m.test(dockerfile), 'docker_nonroot_workdir');
 check(/CMD \["node", "actor\.mjs"\]/.test(dockerfile), 'docker_cmd');
 
 if (failures.length) {
