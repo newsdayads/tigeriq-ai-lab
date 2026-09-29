@@ -386,13 +386,22 @@ describe('Remote Desktop Commander hard runtime guard',()=>{
     expect(result).toEqual({ok:false,reason:'OWNER_AUTH_REF_INVALID'});
     await expect(readFile(leasePath,'utf8')).rejects.toMatchObject({code:'ENOENT'});
   });
-  it('patches the launcher with fail-closed guard preflight for restart safety',()=>{
+  it('patches and migrates the launcher with reboot-persistent pass-through mode',()=>{
     const launcher='$log="x"\\nSet-Location $app\\nwhile($true){}';
     const patched=patchRemoteLauncher(launcher);
     expect(patched).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V3/);
+    expect(patched).toContain('$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"');
     expect(patched).toMatch(/exit 86/);
     expect(verifyRemoteLauncherPatched(patched)).toBe(true);
     expect(patchRemoteLauncher(patched)).toBe(patched);
+
+    const legacyV3=patched.replace('$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"\\n','');
+    expect(legacyV3).toMatch(/TIGERIQ_REMOTE_GUARD_LAUNCHER_V3/);
+    expect(verifyRemoteLauncherPatched(legacyV3)).toBe(false);
+    const migrated=patchRemoteLauncher(legacyV3);
+    expect(migrated).toContain('$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"');
+    expect(verifyRemoteLauncherPatched(migrated)).toBe(true);
+    expect(patchRemoteLauncher(migrated)).toBe(migrated);
   });
 
 
