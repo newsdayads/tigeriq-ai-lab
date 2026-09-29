@@ -45,4 +45,14 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source.indexOf('$webTaskTarget=Ensure-WebTaskRuntimeTarget')).toBeLessThan(source.indexOf('$watchdog=Runtime-Watchdog'));
   });
 
+  it('self-heals the RDC task when the scheduled task or remote node process is missing', async () => {
+    const source = await readFile(updaterUrl, 'utf8');
+    expect(source).toContain('function Test-RemoteDesktopRuntimeProcess()');
+    expect(source).toContain('function Restart-RemoteDesktopTask');
+    expect(source).toContain("'task_not_running_self_heal'");
+    expect(source).toContain("'runtime_process_missing_self_heal'");
+    expect(source).toContain("Test-TcpPort 'mcp.desktopcommander.app' 443");
+    expect(source).toContain("'guard_current_runtime_healthy'");
+  });
+
 });
