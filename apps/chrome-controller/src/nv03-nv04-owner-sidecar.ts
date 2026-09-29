@@ -94,6 +94,26 @@ function markerIndex(comments: GithubComment[], marker: string) {
   return -1;
 }
 
+function lineFieldValue(body: string, field: string) {
+  const wanted = String(field || '').trim().toUpperCase();
+  for (const raw of String(body || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    const index = line.indexOf('=');
+    if (index <= 0) continue;
+    if (line.slice(0, index).trim().toUpperCase() !== wanted) continue;
+    return line.slice(index + 1).trim();
+  }
+  return '';
+}
+
+function nv03ResultRevisionMatches(issue: GithubIssueApi, body: string) {
+  const expectedRevision = inputRevision(issue);
+  if (lineFieldValue(body, 'INPUT_REVISION') !== expectedRevision) return false;
+  const targetHead = lineFieldValue(String(issue.body || ''), 'TARGET_HEAD');
+  if (targetHead && lineFieldValue(body, 'TARGET_HEAD') !== targetHead) return false;
+  return true;
+}
+
 function targetCompatible(issue: GithubIssueApi, worker: 'NV03' | 'NV04') {
   const body = String(issue.body || '');
   const values = [...body.matchAll(/^(?:TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE)\s*=\s*([^\n\r]+)/gmi)]
@@ -165,6 +185,7 @@ async function reconcileNv03Results(issues: GithubIssueApi[]) {
     const resultComment = [...later].reverse().find((comment) => {
       const body = String(comment.body || '');
       if (!new RegExp('^CLAIM_ID\\s*=\\s*' + claim.claimId.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\$&') + '$', 'mi').test(body)) return false;
+      if (!nv03ResultRevisionMatches(issue, body)) return false;
       return /^(?:REVIEW\s*=\s*(?:PASS|CHANGES_REQUIRED)|STATE\s*=\s*(?:BLOCKED|EXTERNAL_WAIT))$/mi.test(body);
     });
     if (!resultComment) continue;
