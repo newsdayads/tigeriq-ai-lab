@@ -20,6 +20,7 @@ import {
   assertPaperclipLabRequest,
   paperclipDockerFailureClass,
   paperclipContainerLogClass,
+  paperclipContainerLogDiagnostic,
   paperclipHealthFailureClass,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
@@ -196,6 +197,24 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
+  });
+
+  it('returns only bounded redacted container log diagnostics', () => {
+    const secret = 'super-secret-value';
+    const input = [
+      'postgres://paperclip:' + secret + '@db:5432/paperclip',
+      'BETTER_AUTH_SECRET=' + secret,
+      'Authorization: Bearer abc.def.ghi',
+      'database startup failed after sidecar wait',
+      ...Array.from({ length: 80 }, (_, i) => 'diagnostic-line-' + i),
+    ].join('\n');
+    const out = paperclipContainerLogDiagnostic(input);
+    expect(out.fingerprint).toMatch(/^[a-f0-9]{24}$/);
+    expect(out.excerpt.length).toBeLessThanOrEqual(900);
+    expect(out.excerpt).toContain('[REDACTED]');
+    expect(out.excerpt).not.toContain(secret);
+    expect(out.excerpt).not.toContain('abc.def.ghi');
+    expect(out).toEqual(paperclipContainerLogDiagnostic(input));
   });
 
   it('classifies bounded container logs without exposing raw log text', () => {
