@@ -66,7 +66,9 @@ export function resourceScope(issue: GithubIssueLike) {
 export function inputRevision(issue: GithubIssueLike) {
   const fields = parseControlFields(issue.body || '');
   if (fields.EXACT_HEAD) return fields.EXACT_HEAD;
+  if (fields.TARGET_HEAD) return fields.TARGET_HEAD;
   if (fields.EXACT_INPUT) return fields.EXACT_INPUT;
+  if (fields.INPUT_REVISION) return fields.INPUT_REVISION;
   return createHash('sha256')
     .update(`${issue.number}\n${issue.title}\n${issue.body || ''}`)
     .digest('hex');
