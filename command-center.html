@@ -46,7 +46,7 @@ a{color:inherit;text-decoration:none}
 .work-row.status-queued::before{background:var(--blue)}
 .work-row.status-blocked::before{background:var(--red)}
 .work-row.status-done::before{background:var(--teal)}
-.work-row.status-open::before{background:#71849a}
+.work-row.status-open::before,.work-row.status-unknown::before{background:#71849a}
 .work-row.status-owner_gate::before{background:var(--red)}
 .work-row.status-verify::before{background:#d9a84f}
 .work-row.status-goal::before{background:var(--violet)}
@@ -65,14 +65,18 @@ a{color:inherit;text-decoration:none}
 .priority.meta{border-color:#3d4b59;background:#18212b;color:#9aa8b6}
 .work-nv{font-size:10px;color:#a7b8cb;font-weight:780}
 .work-title{font-size:13.5px;font-weight:780;line-height:1.38;margin-top:7px;overflow-wrap:anywhere;color:#f3f7fc;letter-spacing:.002em}
-.work-summary{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.work-summary{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px}
+.work-facts{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid #1c344d;font-size:10.5px;line-height:1.35;color:#8fa5bc}
+.work-facts b{color:#d7e5f3;font-weight:760}
+.work-facts .proof{color:#8fc8ff}
+.work-facts .owner-pending{color:#ffc0c7;font-weight:800}
 .state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 7px;font-weight:850;font-size:9px;white-space:nowrap;margin-left:auto}
 .state.working{border-color:#2b7655;background:#113b2a;color:#9af0bc}
 .state.review,.state.waiting{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f}
 .state.queued{border-color:#37699f;background:#112f50;color:#b5dcff}
 .state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
 .state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
-.state.open{border-color:#455d76;background:#132234;color:#b0c1d3}
+.state.open,.state.unknown{border-color:#455d76;background:#132234;color:#b0c1d3}
 .state.owner_gate{border-color:#914652;background:#421f27;color:#ffc0c7}
 .state.verify{border-color:#816126;background:#3b2d18;color:#ffda92}
 .state.goal{border-color:#68529a;background:#281f42;color:#d9c9ff}
@@ -141,10 +145,10 @@ const LAST_GOOD_MAX_MS=30*60*1000;
 let snapshot=null;
 let currentFilter='action';
 const lastVisualState=new Map();
-const stateLabel={OPEN:'CHƯA LÀM',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
-function statusRank(v){return ({WORKING:0,REVIEW:1,QUEUED:2,WAITING:3,BLOCKED:4,DONE:9})[String(v||'').toUpperCase()]??8}
+function statusRank(v){return ({OWNER_GATE:0,WORKING:1,REVIEW:2,VERIFY:3,QUEUED:4,BLOCKED:5,WAITING:6,UNKNOWN:7,OPEN:8,DONE:9})[String(v||'').toUpperCase()]??8}
 function workStatus(row){return String(row?.status||'WAITING').toUpperCase()}
 function workPriority(row){
   const direct=String(row?.effectivePriority||row?.priority||'').toUpperCase();
@@ -156,7 +160,7 @@ function workerFrom(row){
   const direct=String(row?.employeeId||row?.targetWorker||'').toUpperCase();
   if(/^(?:NV\d{2}|CODEX|AUTO)$/.test(direct))return direct;
   const match=String(row?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);
-  return match?.[1]||'—';
+  return match?.[1]||'CHƯA CÓ NGƯỜI LÀM';
 }
 function displayTitle(value){
   let title=String(value||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();
@@ -175,7 +179,7 @@ function normalizeRows(value){
   if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
   if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
   if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
-  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x)));
+  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
   return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
 }
@@ -195,7 +199,7 @@ function updateCounts(){
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
   $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
-  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED'].includes(workStatus(x))).length;
+  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x))).length;
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
@@ -208,24 +212,36 @@ function render(){
   const box=$('workList');box.innerHTML='';
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
-    const el=document.createElement(row.url?'a':'article');
+    const targetUrl=row?.evidenceUrl||row?.url||null;
+    const el=document.createElement(targetUrl?'a':'article');
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
-    if(row.url){el.href=row.url;el.target='_blank';el.rel='noopener'}
+    if(targetUrl){el.href=targetUrl;el.target='_blank';el.rel='noopener'}
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
     const pct=Number(row?.progressPercent);
-    const progress=Number.isFinite(pct)&&pct>=0&&pct<=100
-      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ gate')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+    const verifiedProgress=['explicit_verified','checklist_verified'].includes(String(row?.progressSource||''));
+    const progress=verifiedProgress&&Number.isFinite(pct)&&pct>=0&&pct<=100
+      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ checklist đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'';
     const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
-    const summary=summaryText?'<div class="work-summary">'+esc(summaryText)+'</div>':'';
-    const signature=status+'|'+(Number.isFinite(pct)?pct:'')+'|'+summaryText;
+    const summary=summaryText?'<div class="work-summary"><b>Đang:</b> '+esc(summaryText)+'</div>':'<div class="work-summary"><b>Đang:</b> CHƯA CÓ BẰNG CHỨNG</div>';
+    const doneText=String(row?.latestCompletedStep||'').trim();
+    const nextText=String(row?.nextStep||'').trim();
+    const proofTime=row?.evidenceAt?new Date(row.evidenceAt).toLocaleString('vi-VN',{hour12:false}):'CHƯA CÓ';
+    const approval=row?.ownerAccepted?'ĐÃ DUYỆT':row?.ownerApprovalPending?'ĐANG CHỜ ANH SƠN':row?.ownerApprovalRequired?'CÓ · sau khi live verify':'KHÔNG';
+    const facts='<div class="work-facts">'
+      +'<div><b>Vừa xong:</b> '+esc(doneText||'CHƯA CÓ BẰNG CHỨNG')+'</div>'
+      +'<div><b>Tiếp:</b> '+esc(nextText||'CHƯA XÁC ĐỊNH')+'</div>'
+      +'<div class="proof"><b>Bằng chứng:</b> '+esc(proofTime)+(row?.evidenceUrl?' · chạm thẻ để mở':'')+'</div>'
+      +'<div class="'+(row?.ownerApprovalPending?'owner-pending':'')+'"><b>Duyệt anh Sơn:</b> '+esc(approval)+'</div>'
+      +'</div>';
+    const signature=status+'|'+(verifiedProgress&&Number.isFinite(pct)?pct:'')+'|'+summaryText+'|'+doneText+'|'+nextText+'|'+proofTime+'|'+approval;
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+summary+progress+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+summary+facts+progress+'</div>';
     box.append(el);
     if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
   });

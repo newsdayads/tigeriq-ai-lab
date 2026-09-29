@@ -297,7 +297,7 @@ describe('TigerIQ Live Work Order projection', () => {
   });
 
   it('separates policy/reference, owner gates, goals and live acceptance without treating P0 as approval', () => {
-    expect(classifyOpenIssue(issue(3200, '[P0][QUẢN TRỊ] Policy', 'STATE=CANONICAL'))).toEqual({ workKind: 'SYSTEM', ownerGate: false });
+    expect(classifyOpenIssue(issue(3200, '[P0][QUẢN TRỊ] Policy', 'STATE=CANONICAL'))).toMatchObject({ workKind: 'SYSTEM', ownerGate: false, ownerApprovalRequired: false });
     expect(parseOpenWorkIssue(issue(3201, '[P2][CODING] Owner gate', 'CURRENT_STATE=BLOCKED_OWNER_MAINTENANCE_AUTH'))).toMatchObject({
       status: 'OWNER_GATE', ownerGate: true, workKind: 'WORK',
     });
@@ -308,15 +308,50 @@ describe('TigerIQ Live Work Order projection', () => {
       status: 'VERIFY', ownerGate: false, workKind: 'WORK',
     });
     expect(parseOpenWorkIssue(issue(3204, '[P0][APP-CHROME] Working', 'STATE=WORKING\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
-      status: 'WORKING', ownerGate: false, workKind: 'WORK',
+      status: 'UNKNOWN', ownerGate: false, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3205, '[P1] New capability', [
+      'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'TIGERIQ_EXECUTABLE=false',
+    ].join('\n')))).toMatchObject({
+      status: 'OWNER_GATE', ownerGate: true, ownerApprovalRequired: true, ownerAccepted: false,
+    });
+    expect(parseOpenWorkIssue(issue(3206, '[P1] New capability accepted', [
+      'CURRENT_STATE=DONE',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'OWNER_ACCEPTED=true',
+      'TIGERIQ_EXECUTABLE=false',
+    ].join('\n')))).toMatchObject({
+      ownerGate: false, ownerApprovalRequired: false, ownerAccepted: true,
     });
   });
 
-  it('computes progress only from explicit percent, checklist, or canonical lifecycle evidence', () => {
-    expect(progressForIssue(issue(3100, '[P1] Explicit', 'PROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit' });
-    expect(progressForIssue(issue(3101, '[P1] Checklist', '- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist' });
-    expect(progressForIssue(issue(3102, '[P1] Review', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: 60, source: 'lifecycle' });
-    expect(progressForIssue(issue(3103, '[P1] Unknown', 'STATE=OPEN'), 'OPEN')).toMatchObject({ percent: null, source: 'none' });
+  it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
+    const unsafe = parseOpenWorkIssue(issue(3207, '[P1] Planned step', [
+      'CURRENT_STATE=READY',
+      'NEXT_ACTION=Deploy next',
+      'EVIDENCE_URL=javascript:alert(1)',
+    ].join('\n')));
+    expect(unsafe).toMatchObject({
+      currentStep: null,
+      nextStep: 'Deploy next',
+      evidenceUrl: null,
+    });
+
+    const safe = parseOpenWorkIssue(issue(3208, '[P1] Safe evidence', [
+      'CURRENT_STATE=READY',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
+    ].join('\n')));
+    expect(safe.evidenceUrl).toBe('https://github.com/newsdayads/tigeriq-ai-lab/pull/2367');
+  });
+
+  it('shows progress only when an explicit checklist/percent is marked verified', () => {
+    expect(progressForIssue(issue(3100, '[P1] Explicit unverified', 'PROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: null, source: 'none' });
+    expect(progressForIssue(issue(3101, '[P1] Checklist unverified', '- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: null, source: 'none' });
+    expect(progressForIssue(issue(3102, '[P1] Lifecycle guess forbidden', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: null, source: 'none' });
+    expect(progressForIssue(issue(3103, '[P1] Verified checklist', 'PROGRESS_VERIFIED=true\n- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist_verified' });
+    expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
   });
 
   it('marks completed history as 100 percent', () => {
@@ -328,6 +363,25 @@ describe('TigerIQ Live Work Order projection', () => {
       closed_at: '2026-09-24T23:30:00Z',
     }, Date.parse('2026-09-25T00:00:00Z'));
     expect(row).toMatchObject({ status: 'DONE', progressPercent: 100, progressDetail: '5/5 gate' });
+  });
+
+  it('does not present a closed new capability as DONE before explicit Owner acceptance', () => {
+    const now = Date.parse('2026-09-25T00:00:00Z');
+    expect(parseRecentCompletedIssue({
+      number: 3105,
+      title: '[P1] New capability pending Owner',
+      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true',
+      state: 'closed',
+      closed_at: '2026-09-24T23:30:00Z',
+    }, now)).toBe(null);
+
+    expect(parseRecentCompletedIssue({
+      number: 3106,
+      title: '[P1] New capability accepted',
+      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true\nOWNER_ACCEPTED=true',
+      state: 'closed',
+      closed_at: '2026-09-24T23:30:00Z',
+    }, now)).toMatchObject({ status: 'DONE', number: 3106 });
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
