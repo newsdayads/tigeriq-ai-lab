@@ -665,7 +665,7 @@ export function paperclipContainerLogClass(value = '') {
   if (/password authentication failed|authentication failed for user|role .* does not exist/.test(text)) return 'DB_AUTH';
   if (/failed to initialize embedded postgresql|failed to initialise embedded postgresql|\binitdb\b|initiali[sz]e.*postgres/.test(text)) return 'DB_INIT';
   if (/failed to start embedded postgresql|embedded postgresql.*(?:failed|exited)|postmaster\.pid|stale embedded postgresql lock file/.test(text)) return 'DB_START';
-  if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration|drizzle.*(?:failed|error)|(?:failed|error).*drizzle/.test(text)) return 'DB_MIGRATION';
+  if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration/.test(text)) return 'DB_MIGRATION';
   if (/connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/.test(text)) return 'DB_CONNECTION';
   if (/corrupt|invalid page|checksum.*(?:failed|error)|wal.*(?:corrupt|invalid)/.test(text)) return 'DB_CORRUPT';
   if (/database|sqlite|migration|postgres|\bsql\b/.test(text)) return 'DATABASE';
