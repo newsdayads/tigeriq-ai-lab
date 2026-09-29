@@ -159,7 +159,10 @@ async function requestOnce(url, options) {
       res.on('data', chunk => {
         bytes += chunk.length;
         if (bytes > options.maxBytes) {
-          req.destroy(new AuditError('OVERSIZED_RESPONSE', 'Response exceeded the configured byte limit.', { maxBytes: options.maxBytes }));
+          const error = new AuditError('OVERSIZED_RESPONSE', 'Response exceeded the configured byte limit.', { maxBytes: options.maxBytes });
+          res.destroy();
+          req.destroy();
+          done(reject, error);
           return;
         }
         chunks.push(chunk);
