@@ -91,14 +91,15 @@ describe('coding lane AI JSON transport',()=>{
     });
     const generationConfig=JSON.parse(gemini.body).generationConfig;
     expect(generationConfig.maxOutputTokens).toBe(800);
-    expect(generationConfig.responseMimeType).toBeUndefined();
-    expect(generationConfig.responseFormat.text.mimeType).toBe('application/json');
-    expect(generationConfig.responseFormat.text.schema.required).toEqual(['summary','edits']);
-    expect(generationConfig.responseFormat.text.schema.additionalProperties).toBe(false);
-    expect(generationConfig.responseFormat.text.schema.properties.edits.maxItems).toBe(4);
-    expect(generationConfig.responseFormat.text.schema.properties.edits.items.required).toEqual(['path','search','replace']);
-    expect(generationConfig.responseFormat.text.schema.properties.edits.items.additionalProperties).toBe(false);
-    expect(generationConfig.responseFormat.text.schema.properties.edits.items.properties.content).toBeUndefined();
+    expect(generationConfig.responseMimeType).toBe('application/json');
+    expect(generationConfig.responseFormat).toBeUndefined();
+    const responseSchema=generationConfig.responseJsonSchema;
+    expect(responseSchema.required).toEqual(['summary','edits']);
+    expect(responseSchema.additionalProperties).toBe(false);
+    expect(responseSchema.properties.edits.maxItems).toBe(4);
+    expect(responseSchema.properties.edits.items.required).toEqual(['path','search','replace']);
+    expect(responseSchema.properties.edits.items.additionalProperties).toBe(false);
+    expect(responseSchema.properties.edits.items.properties.content).toBeUndefined();
     const groq=prepareAiJsonRequest('https://api.groq.com/openai/v1/chat/completions',{
       method:'POST',
       body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:8000})
