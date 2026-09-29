@@ -327,6 +327,49 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('keeps an Owner gate canonical when stale runtime overlays still claim review or blocked work', () => {
+    const row = parseOpenWorkIssue(issue(3212, '[P1] Owner final review', [
+      'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
+      'CURRENT_STEP=Production live đã xác minh; chờ anh Sơn kiểm tra và duyệt',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'EVIDENCE_URL=https://tigeriq-ai-lab.vercel.app/command-center',
+      'EVIDENCE_AT=2026-09-29T05:36:30Z',
+    ].join('\n')), {
+      active: {
+        status: 'BLOCKED',
+        employeeId: 'NV17',
+        currentStep: 'Kiểm tra PR đang lỗi',
+        prNumber: 2374,
+        prUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2374',
+        evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2374',
+        updatedAt: '2026-09-29T05:22:04Z',
+        checks: { state: 'LỖI', passed: 1, total: 3, failed: 2 },
+      },
+      queued: {
+        targetWorker: 'NV17',
+        waitReason: 'TigerIQ terminal BLOCKED',
+        updatedAt: '2026-09-29T05:35:00Z',
+      },
+      lifecycle: {
+        state: 'WAIT_INDEPENDENT_REVIEW',
+        step: 'Old lifecycle review',
+        createdAt: '2026-09-29T05:35:30Z',
+      },
+    });
+    expect(row).toMatchObject({
+      status: 'OWNER_GATE',
+      currentState: 'OWNER_REVIEW_REQUIRED',
+      currentStep: 'Production live đã xác minh; chờ anh Sơn kiểm tra và duyệt',
+      evidenceUrl: 'https://tigeriq-ai-lab.vercel.app/command-center',
+      evidenceAt: '2026-09-29T05:36:30.000Z',
+      employeeId: null,
+      prNumber: null,
+      prUrl: null,
+      checks: null,
+      ownerApprovalPending: true,
+    });
+  });
+
   it('timestamps issue-backed evidence only from a valid explicit evidence timestamp', () => {
     const row = parseOpenWorkIssue(issue(3209, '[P1] Evidence freshness', [
       'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
