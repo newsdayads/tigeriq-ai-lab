@@ -1,4 +1,5 @@
-export const LAUNCHER_MARKER = 'TIGERIQ_REMOTE_GUARD_LAUNCHER_V3';
+export const LAUNCHER_MARKER = 'TIGERIQ_REMOTE_GUARD_LAUNCHER_V4';
+const LEGACY_LAUNCHER_MARKER = 'TIGERIQ_REMOTE_GUARD_LAUNCHER_V3';
 const PASS_THROUGH_LINE = '$env:TIGERIQ_REMOTE_GUARD_MODE="DISABLED_PASS_THROUGH"';
 const ANCHOR = 'Set-Location $app';
 const BLOCK = [
@@ -28,6 +29,14 @@ export function patchRemoteLauncher(source) {
     const first=source.indexOf(marker);
     if (first < 0 || source.indexOf(marker,first+marker.length) >= 0) throw new Error('REMOTE_LAUNCHER_MARKER_MISMATCH');
     return source.slice(0,first)+PASS_THROUGH_LINE+'\n'+source.slice(first);
+  }
+  if (source.includes(LEGACY_LAUNCHER_MARKER)) {
+    const legacy='# '+LEGACY_LAUNCHER_MARKER;
+    const first=source.indexOf(legacy);
+    if (first < 0 || source.indexOf(legacy,first+legacy.length) >= 0) throw new Error('REMOTE_LAUNCHER_MARKER_MISMATCH');
+    let migrated=source;
+    if (!migrated.includes(PASS_THROUGH_LINE)) migrated=migrated.slice(0,first)+PASS_THROUGH_LINE+'\n'+migrated.slice(first);
+    return migrated.replace(legacy,'# '+LAUNCHER_MARKER);
   }
   const first=source.indexOf(ANCHOR);
   if (first < 0 || source.indexOf(ANCHOR,first+ANCHOR.length) >= 0) throw new Error('REMOTE_LAUNCHER_ANCHOR_MISMATCH');
