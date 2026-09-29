@@ -1635,7 +1635,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     state=loadNv02Continuity();
   }
-  if(now>=Number(state.nextPeriodicF5At||0)){
+  const bootGatePending=bootFreshContextPending.has('NV02');
+  if(now>=Number(state.nextPeriodicF5At||0)&&bootGatePending){
+    await continuityEvent('PERIODIC_F5_DEFERRED_FOR_BOOT_GATE',{nextPeriodicF5At:state.nextPeriodicF5At,verifiedChatUrl:state.verifiedChatUrl||null,currentUrl:ui?.url||null});
+  }
+  if(now>=Number(state.nextPeriodicF5At||0)&&!bootGatePending){
     if(state.postF5RecoveryPending===true){
       const stableSince=Number(state.postF5StableSince||0);
       const stableForMs=stableSince?Math.max(0,now-stableSince):0;
