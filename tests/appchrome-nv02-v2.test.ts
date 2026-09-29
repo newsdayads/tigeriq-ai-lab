@@ -129,6 +129,21 @@ describe('NV02 V2 independent maintenance timers', () => {
   });
 
 
+  it('does not terminal-escalate a transient load-error immediately after an F5 stable candidate', () => {
+    const recoveryStart=bridge.indexOf('async function maybeRecoverChatLoadError');
+    const recoveryEnd=bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR',recoveryStart);
+    const recovery=bridge.slice(recoveryStart,recoveryEnd);
+    expect(recovery).toContain('const candidateAtDuringError=Number(state.chatLoadClearCandidateAt||0)');
+    expect(recovery).toContain('if(candidateAgeMs<15_000)');
+    expect(recovery).toContain('CHAT_LOAD_STABLE_CANDIDATE_TRANSIENT_ERROR');
+    expect(recovery).toContain('CHAT_LOAD_STABLE_CANDIDATE_EXPIRED');
+    const graceGate=recovery.indexOf('if(candidateAgeMs<15_000)');
+    const terminalGate=recovery.indexOf("if(stage===2)");
+    expect(graceGate).toBeGreaterThan(-1);
+    expect(terminalGate).toBeGreaterThan(graceGate);
+    expect(recovery.slice(graceGate,terminalGate)).toContain('return true;');
+  });
+
   it('keeps reviewed self-pull and idle behavior in the exact head', () => {
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN');
     expect(bridge).toContain('nextIdleWakeAt:now+60_000');
