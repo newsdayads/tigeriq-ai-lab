@@ -182,7 +182,43 @@ export function prepareAiJsonRequest(input,init={}){
   const repairCompact=/^PATCH_CONTRACT_V2_COMPACT_REPAIR=true$/m.test(requestPrompt);
   const compactMaxTokens=repairCompact&&['changes','edits'].includes(schema)?800:schema==='changes'?2600:schema==='edits'?2200:null;
   if(host==='generativelanguage.googleapis.com'){
-    body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
+    body.generationConfig={...(body.generationConfig||{})};
+    if(repairCompact&&['changes','edits'].includes(schema)){
+      body.generationConfig.responseFormat={
+        text:{
+          mimeType:'application/json',
+          schema:{
+            type:'object',
+            properties:{
+              summary:{type:'string'},
+              edits:{
+                type:'array',
+                minItems:0,
+                maxItems:4,
+                items:{
+                  type:'object',
+                  properties:{
+                    path:{type:'string'},
+                    search:{type:'string'},
+                    replace:{type:'string'},
+                  },
+                  required:['path','search','replace'],
+                  additionalProperties:false,
+                },
+              },
+              noop:{type:'boolean'},
+            },
+            required:['summary','edits'],
+            additionalProperties:false,
+          },
+        },
+      };
+      delete body.generationConfig.responseMimeType;
+      delete body.generationConfig.responseSchema;
+      delete body.generationConfig.responseJsonSchema;
+    }else{
+      body.generationConfig.responseMimeType='application/json';
+    }
     if(compactMaxTokens)body.generationConfig.maxOutputTokens=Math.min(Number(body.generationConfig.maxOutputTokens||compactMaxTokens),compactMaxTokens);
   }else if(['api.groq.com','openrouter.ai','api.cohere.com','integrate.api.nvidia.com','api.inceptionlabs.ai'].includes(host)){
     body.response_format={type:'json_object'};
