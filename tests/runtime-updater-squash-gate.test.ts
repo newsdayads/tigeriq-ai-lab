@@ -122,6 +122,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     const noChange=src.indexOf("result='NO_CHANGE'",wait);
     expect(wait).toBeGreaterThan(-1);
     expect(noChange).toBeGreaterThan(wait);
+    expect(src.slice(wait,noChange)).toContain('$remoteDesktopGuard=Reconcile-RemoteDesktopGuard');
     expect(src.slice(wait,noChange)).toContain('Start-Sleep -Seconds $IntervalSeconds;continue');
     expect(src).toContain('$appChromeInstallPollIntervalSec=900');
     expect(src).toContain('$appChromeResumePollIntervalSec=900');
