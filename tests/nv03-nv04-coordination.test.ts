@@ -137,8 +137,8 @@ describe('owner-directed sidecar isolation', () => {
     expect(source).toContain('claimId,');
     expect(source).toContain('reconcileNv03Results');
     expect(source).toContain('nv03ResultRevisionMatches(issue, body)');
-    expect(source).toContain("lineFieldMatches(body, 'INPUT_REVISION', expectedRevision)");
-    expect(source).toContain("lineFieldMatches(body, 'TARGET_HEAD', targetHead)");
+    expect(source).toContain("lineFieldValue(body, 'INPUT_REVISION') !== expectedRevision");
+    expect(source).toContain("lineFieldValue(body, 'TARGET_HEAD') !== targetHead");
     expect(source).toContain("REVIEW\\s*=\\s*(?:PASS|CHANGES_REQUIRED)");
     expect(source).toContain('closeGithubIssueCompleted');
     expect(source).toContain('nv03SidecarRelease');
