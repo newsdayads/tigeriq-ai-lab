@@ -355,6 +355,17 @@ function bodyFlag(body, key, value = 'true') {
   return bodyValue(body, key).toLowerCase() === String(value).toLowerCase();
 }
 
+function safeEvidenceUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function commentField(body, key) {
   const direct = bodyValue(body, key);
   if (direct) return direct;
@@ -429,6 +440,8 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
   if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
   const body = String(issue.body || '');
+  const acceptance = ownerAcceptancePolicy(body);
+  if (acceptance.required && !acceptance.accepted) return null;
   const terminalState = bodyValue(body, 'STATE').toUpperCase();
   if (['CANCELLED', 'CANCELED', 'SUPERSEDED', 'NOT_PLANNED'].includes(terminalState)) return null;
   if (/^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
@@ -714,6 +727,18 @@ async function clearedBlockerLifecycleOverrides(issues, owner, repo, fetchImpl =
   return new Map(pairs.filter(([, value]) => value));
 }
 
+function ownerAcceptancePolicy(body = '') {
+  const required = bodyFlag(body, 'OWNER_ACCEPTANCE_REQUIRED')
+    || bodyFlag(body, 'NEW_CAPABILITY_OWNER_ACCEPTANCE_REQUIRED');
+  const accepted = bodyFlag(body, 'OWNER_ACCEPTED')
+    || bodyFlag(body, 'OWNER_ACCEPTANCE_ACCEPTED');
+  return { required, accepted };
+}
+
+function ownerAcceptancePhase(phase = '') {
+  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW)?|LIVE_VERIFIED|LIVE_ACCEPTANCE_PASS|READY_LIVE_ACCEPTANCE)/.test(String(phase || '').toUpperCase());
+}
+
 function issueDisplayOwner(issue) {
   const body = String(issue?.body || '');
   const classification = classifyOpenIssue(issue);
@@ -729,6 +754,8 @@ export function classifyOpenIssue(issue) {
   const title = String(issue?.title || '');
   const body = String(issue?.body || '');
   const phase = issueCanonicalState(issue);
+  const acceptance = ownerAcceptancePolicy(body);
+  const ownerAcceptancePending = acceptance.required && !acceptance.accepted && ownerAcceptancePhase(phase);
 
   const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
     || bodyFlag(body, 'CANONICAL_POLICY')
@@ -737,13 +764,16 @@ export function classifyOpenIssue(issue) {
   const ownerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE)(?:_|$)/.test(phase)
     || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
     || bodyFlag(body, 'OWNER_GATE')
-    || bodyFlag(body, 'OWNER_HOLD');
+    || bodyFlag(body, 'OWNER_HOLD')
+    || ownerAcceptancePending;
 
   const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
 
   return {
     workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
     ownerGate,
+    ownerApprovalRequired: acceptance.required && !acceptance.accepted,
+    ownerAccepted: acceptance.accepted,
   };
 }
 
@@ -764,40 +794,36 @@ function actionableStatus(issue, overlays = {}) {
 
   if (classification.workKind === 'GOAL') return 'GOAL';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
-  if (/BLOCKED/.test(phase)) return 'BLOCKED';
+  if (/BLOCKED/.test(phase)) {
+    return (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON')) ? 'BLOCKED' : 'UNKNOWN';
+  }
   if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
-  if (/(?:REVIEW|VERIFY)/.test(phase)) return 'REVIEW';
-  if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'WORKING';
-  if (/(?:READY|QUEUED)/.test(phase) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'true')) return 'QUEUED';
+  if (/(?:REVIEW|VERIFY)/.test(phase)) return overlays.hasPull ? 'REVIEW' : 'UNKNOWN';
+  if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'UNKNOWN';
   return 'OPEN';
 }
 
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
+  const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
+  const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
+    || source === 'VERIFIED'
+    || source === 'VERIFIED_CHECKLIST';
+  if (!verified) return { percent: null, source: 'none', detail: null };
+
   const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
   if (/^\d{1,3}$/.test(explicitRaw)) {
     const explicit = Number(explicitRaw);
-    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit', detail: 'PROGRESS_PERCENT' };
+    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit_verified', detail: 'PROGRESS_PERCENT · verified' };
   }
 
   const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
   if (boxes.length >= 2) {
     const done = boxes.filter((match) => /x/i.test(match[1])).length;
-    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist', detail: done + '/' + boxes.length + ' checklist' };
+    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist_verified', detail: done + '/' + boxes.length + ' checklist verified' };
   }
 
-  const phase = issueCanonicalState(issue);
-  const normalized = String(status || 'OPEN').toUpperCase();
-  let gates = null;
-  if (issue?.state === 'closed' || /(?:^|_)(?:DONE|COMPLETED)(?:_|$)/.test(phase)) gates = 5;
-  else if (/(?:DEPLOY|RUNTIME_VERIFY|LIVE_VERIFY|MERGED)/.test(phase)) gates = 4;
-  else if (normalized === 'REVIEW' || /(?:REVIEW|VERIFY)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 4 : 3;
-  else if (hasPull || /(?:PR_OPEN|IMPLEMENTED|IMPLEMENTING|CODE_COMPLETE)/.test(phase)) gates = checks?.state === 'ĐẠT' ? 3 : 2;
-  else if (normalized === 'WORKING' || /(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENTING|CLAIMED)/.test(phase)) gates = 1;
-  else if (normalized === 'QUEUED' || /(?:READY|QUEUED)/.test(phase)) gates = 0;
-
-  if (gates === null) return { percent: null, source: 'none', detail: null };
-  return { percent: gates * 20, source: 'lifecycle', detail: gates + '/5 gate' };
+  return { percent: null, source: 'none', detail: null };
 }
 
 export function parseOpenWorkIssue(issue, overlays = {}) {
@@ -818,6 +844,23 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
+  const currentStep = active?.currentStep
+    || queued?.waitReason
+    || lifecycle?.step
+    || bodyValue(body, 'CURRENT_STEP')
+    || (classification.ownerGate ? 'Chờ anh Sơn duyệt' : null);
+  const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
+    || bodyValue(body, 'LATEST_COMPLETED_STEP')
+    || bodyValue(body, 'LAST_DONE')
+    || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
+  const nextStep = bodyValue(body, 'NEXT')
+    || bodyValue(body, 'NEXT_ACTION')
+    || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
+  const evidenceUrl = safeEvidenceUrl(active?.evidenceUrl)
+    || safeEvidenceUrl(active?.prUrl)
+    || safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'))
+    || null;
+  const evidenceAt = active?.updatedAt || lifecycle?.createdAt || null;
 
   return {
     number,
@@ -829,13 +872,15 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     workKind: classification.workKind,
     ownerGate: classification.ownerGate,
+    ownerApprovalRequired: classification.ownerApprovalRequired,
+    ownerApprovalPending: classification.ownerGate,
+    ownerAccepted: classification.ownerAccepted,
     currentState: phase || null,
-    currentStep: active?.currentStep
-      || queued?.waitReason
-      || lifecycle?.step
-      || bodyValue(body, 'CURRENT_STEP')
-      || bodyValue(body, 'NEXT_ACTION')
-      || (classification.ownerGate ? 'Cần Owner authorization' : null),
+    currentStep,
+    latestCompletedStep,
+    nextStep,
+    evidenceUrl,
+    evidenceAt,
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
@@ -989,8 +1034,9 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         const explicit = githubActiveState(issue);
         if (!explicit) continue;
         const pull = openPulls.find((item) => pullMentionsIssue(item, issueNumber));
+        if (!pull) continue;
         const checks = summarizeChecks(runs, pull);
-        const status = checks?.state === 'LỖI' ? 'BLOCKED' : pull && explicit.status === 'WAITING' ? 'REVIEW' : explicit.status;
+        const status = checks?.state === 'LỖI' ? 'BLOCKED' : 'REVIEW';
         activeNumbers.add(issueNumber);
         activeRows.push({
           number: issueNumber,
@@ -998,14 +1044,14 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
           priority: issuePriority(issue),
           employeeId: explicit.owner,
           status,
-          currentStep: bodyValue(issue.body || '', 'CURRENT_STEP')
-            || bodyValue(issue.body || '', 'NEXT_ACTION')
-            || 'GitHub STATE=' + bodyValue(issue.body || '', 'STATE'),
+          currentStep: checks?.state === 'LỖI' ? 'Kiểm tra PR đang lỗi'
+            : checks?.state === 'ĐANG CHẠY' ? 'Đang chạy kiểm tra PR'
+              : 'PR đang mở · chờ hoàn tất kiểm tra/rà soát',
           prNumber: pull?.number || null,
           prUrl: pull?.html_url || null,
           checks,
           evidenceUrl: pull?.html_url || issue.html_url || null,
-          updatedAt: issue.updated_at || null,
+          updatedAt: pull?.updated_at || issue.updated_at || null,
           url: issue.html_url || null,
           live: false,
         });
@@ -1099,7 +1145,7 @@ async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
       running: actionable.filter((row) => row.status === 'WORKING').length,
       review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
-      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED'].includes(row.status)).length,
+      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
       done: recentWork.length,
     };

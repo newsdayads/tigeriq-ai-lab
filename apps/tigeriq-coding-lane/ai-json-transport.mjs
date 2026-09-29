@@ -175,8 +175,10 @@ export function prepareAiJsonRequest(input,init={}){
   if(!isAiUrl(input)||String(init?.method||'GET').toUpperCase()!=='POST'||!init?.body)return init;
   let body;try{body=JSON.parse(String(init.body))}catch{return init}
   const host=new URL(String(input)).hostname;
-  const schema=expectedSchemaFromPrompt(promptFromRequest(input,init));
-  const compactMaxTokens=schema==='changes'?2600:schema==='edits'?2200:null;
+  const requestPrompt=promptFromRequest(input,init);
+  const schema=expectedSchemaFromPrompt(requestPrompt);
+  const repairCompact=/^PATCH_CONTRACT_V2_COMPACT_REPAIR=true$/m.test(requestPrompt);
+  const compactMaxTokens=repairCompact&&['changes','edits'].includes(schema)?800:schema==='changes'?2600:schema==='edits'?2200:null;
   if(host==='generativelanguage.googleapis.com'){
     body.generationConfig={...(body.generationConfig||{}),responseMimeType:'application/json'};
     if(compactMaxTokens)body.generationConfig.maxOutputTokens=Math.min(Number(body.generationConfig.maxOutputTokens||compactMaxTokens),compactMaxTokens);
@@ -227,7 +229,9 @@ export function compactPromptForChanges(prompt,{maxContextChars=12000,maxOutputC
 export function compactPromptForEdits(prompt,{maxContextChars=7000,maxOutputChars=3500}={}){
   const p=String(prompt||'');
   if(expectedSchemaFromPrompt(p)!=='edits')return p;
-  const guard=`Keep the ENTIRE JSON response under ${maxOutputChars} characters. Each old snippet must be exact, unique and <=800 characters; each new snippet must be <=1600 characters. Prefer multiple small edits over copying large functions or files. Never include omitted context blocks.`;
+  const repairCompact=/^PATCH_CONTRACT_V2_COMPACT_REPAIR=true$/m.test(p);
+  const repairGuard=repairCompact?' For PATCH_CONTRACT_V2_COMPACT_REPAIR, emit at most 4 small edits; every path must exactly match an ALLOWED PATH; for a one-line fix emit one search/replace only.':'';
+  const guard=`Keep the ENTIRE JSON response under ${maxOutputChars} characters. Each old snippet must be exact, unique and <=800 characters; each new snippet must be <=1600 characters. Prefer multiple small edits over copying large functions or files. Never include omitted context blocks.${repairGuard}`;
   const rewritten=p.includes(guard)?p:`${p}\n\nREPAIR PATCH LIMITS: ${guard}`;
   return compactCurrentFilesForModel(rewritten,maxContextChars);
 }
@@ -251,6 +255,18 @@ export function currentFilesFromPrompt(prompt){
   return files;
 }
 
+function resolveCompactEditPath(files,edit){
+  const path=String(edit?.path||'').trim();
+  if(path&&files.has(path))return path;
+  const search=typeof edit?.search==='string'?edit.search:'';
+  if(files.size===1&&search){
+    const [[onlyPath,content]]=[...files.entries()];
+    const source=String(content??''),first=source.indexOf(search);
+    if(first>=0&&source.indexOf(search,first+search.length)<0)return onlyPath;
+  }
+  throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
+}
+
 export function expandCompactChanges(prompt,text){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
@@ -270,8 +286,10 @@ export function expandCompactChanges(prompt,text){
   if(typeof d.summary!=='string'||!Array.isArray(d.edits)||!d.edits.length)throw new Error('COMPACT_EDIT_SCHEMA_INVALID');
   const changed=new Map();
   for(const edit of d.edits){
-    const path=String(edit?.path||'').trim();
-    if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
+    const rawPath=String(edit?.path||'').trim();
+    const path=typeof edit?.content==='string'
+      ?(rawPath&&files.has(rawPath)?rawPath:(()=>{throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${rawPath}`)})())
+      :resolveCompactEditPath(files,edit);
     let content=changed.has(path)?changed.get(path):files.get(path);
     if(typeof edit?.content==='string'){
       if(content&&content.length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
