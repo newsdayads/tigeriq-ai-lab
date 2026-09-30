@@ -277,13 +277,13 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
     expect(source).toContain("const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
-    expect(source).toContain("const NV02_MAX_DISPATCHES_PER_CHAT=60");
-    expect(source).toContain("const NV02_MAX_CHAT_AGE_MS=6*60*60*1000");
+    expect(source).not.toContain("NV02_MAX_DISPATCHES_PER_CHAT");
+    expect(source).not.toContain("NV02_MAX_CHAT_AGE_MS");
     expect(source).toContain("async function rotateNv02ToFreshChat");
     expect(source).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
     expect(source).toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
     expect(source).toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
-    expect(source).toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
+    expect(source).not.toContain("SAFETY_CONTEXT_LIMIT");
     expect(source).toContain("crashResumePending:Boolean(raw.crashResumePending)");
     expect(source).toContain("crashResumeUrl:String(raw.crashResumeUrl||'')");
     expect(source).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
