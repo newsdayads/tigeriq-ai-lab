@@ -85,11 +85,20 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(nv02Loop).toContain('awaitingWorkStart===true');
     expect(nv02Loop).not.toContain('WORK_START_ACK_TIMEOUT_REARMED');
   });
-  it('fails closed on ChatGPT auth routes for generic workers',()=>{
+  it('fails closed on ChatGPT auth routes and keeps the generated UI expression syntactically valid',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("const authRouteRequired=location.hostname==='chatgpt.com'");
-    expect(bridge).toContain("/^\\/auth\\/(?:login|signin)(?:\\/|$)/i.test(location.pathname)");
+    expect(bridge).toContain("/^\\\\/auth\\\\/(?:login|signin)(?:\\\\/|$)/i.test(location.pathname)");
     expect(bridge).toContain("if(!securityBlock&&authRouteRequired) securityBlock='BLOCKED_REAUTH'");
+
+    const marker='const UI_EXPR=`';
+    const start=bridge.indexOf(marker);
+    const end=bridge.indexOf('`;',start+marker.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const body=bridge.slice(start+marker.length,end);
+    const runtimeExpression=new Function('ASSISTANT_TERMINAL_DETECTOR',`return \`${body}\`;`)('()=>null');
+    expect(()=>new Function(`return ${runtimeExpression};`)).not.toThrow();
   });
 
 });

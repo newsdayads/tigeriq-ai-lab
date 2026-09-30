@@ -815,7 +815,7 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   const composer=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;
   const projectDraftLabels=['thay đổi dự án: tigeriq ai lab','change project: tigeriq ai lab'];
   const projectDraftReady=location.hostname==='chatgpt.com'&&[...document.querySelectorAll('button,[role="button"]')].some(e=>vis(e)&&projectDraftLabels.includes((e.getAttribute('aria-label')||'').trim().toLowerCase()));
-  const authRouteRequired=location.hostname==='chatgpt.com'&&/^\/auth\/(?:login|signin)(?:\/|$)/i.test(location.pathname);
+  const authRouteRequired=location.hostname==='chatgpt.com'&&/^\\/auth\\/(?:login|signin)(?:\\/|$)/i.test(location.pathname);
   const authRequired=authRouteRequired||[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
   const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
