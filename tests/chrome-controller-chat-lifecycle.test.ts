@@ -27,7 +27,7 @@ describe('App Chrome chat lifecycle',()=>{
   });
 
 
-  it('never restores stale conversation URLs and preserves a valid current chat on boot',()=>{
+  it('handles fresh-chat normal boot and crash-only restore correctly',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("const bootFreshContextPending=new Set(CONTINUITY_WORKERS)");
     expect(bridge).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
