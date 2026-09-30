@@ -217,9 +217,20 @@ try{
   Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
   $live=Wait-ExactHead ([string]$req.exactHead)
   try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{};$paused=$false
-  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
+  $wakeStatus='NOT_ATTEMPTED'
+  $wakeDeadline=(Get-Date).AddSeconds(120)
+  while((Get-Date)-lt$wakeDeadline){
+    try{
+      $wake=Invoke-RestMethod -Method Post -Uri ($controller+'/api/utility/workers/NV02/resume') -TimeoutSec 15
+      $wakeStatus=[string]$wake.status
+      if($wakeStatus -in @('NV02_IDLE_SELF_PULL_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){break}
+    }catch{$wakeStatus='RETRY:'+[string]$_.Exception.GetType().Name}
+    Start-Sleep -Seconds 3
+  }
+  if($wakeStatus -notin @('NV02_IDLE_SELF_PULL_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){throw ('APPCHROME_NV02_WAKE_TIMEOUT:'+ $wakeStatus)}
+  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;nv02WakeStatus=$wakeStatus;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
   Save-Result 'PASS' 'APPCHROME_EXACT_HEAD_LIVE' $req $details
-  $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
+  $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('NV02_WAKE_STATUS='+$wakeStatus),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
   & gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null
   [pscustomobject]@{action='installed';result='PASS';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId;issueNumber=[int]$req.issueNumber;runId=[long]$verified.runId}|ConvertTo-Json -Compress
   exit 0
