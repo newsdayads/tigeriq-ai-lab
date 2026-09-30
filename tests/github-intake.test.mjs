@@ -145,8 +145,7 @@ NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
 
-const SAFE_AUTO_POLICY_BASE=`OWNER_POLICY=AUTO
-PRIORITY=P1
+const SAFE_AUTO_POLICY_BASE=`PRIORITY=P1
 ZERO_COST=true
 NO_PC01_SHELL=true
 NO_PAID_COST=true
@@ -170,6 +169,7 @@ test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_
   assert.strictEqual(spec.capability,'reasoning');
   assert.strictEqual(spec.dispatchLane,'CORE_REASONING');
   assert.strictEqual(spec.requiresCodingHandoff,true);
+  assert.strictEqual(spec.targetWorker,null);
 });
 
 test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, UI owner, hard gate, active owner, and terminal-blocked',()=>{
@@ -177,6 +177,7 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
   const cases=[
     [{...base,title:'[P0][CORE] p0',body:SAFE_AUTO_POLICY_BASE.replace('PRIORITY=P1','PRIORITY=P0')},'P0_OR_INVALID_PRIORITY'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nOWNER_HOLD=true'},'OWNER_OR_HOLD_GATE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nOWNER_POLICY=MANUAL'},'OWNER_POLICY_NOT_AUTO'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nCURRENT_STATE=WAITING_PARENT_GATE'},'DEPENDENCY_BLOCKED'],
     [{...base,title:'[P1][APP-CHROME] excluded'},'APP_CHROME_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nASSIGNED_EXECUTOR=NV02'},'OWNER_OR_UI_ROUTE'],
