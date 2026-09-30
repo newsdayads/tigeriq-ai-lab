@@ -2064,7 +2064,26 @@ async function handleCommand(w,target,command){
   if(action==='LOCAL_CONTINUE_NOW'){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
-    if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true)return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};
+    if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true){
+      const raw=await uiState(target);
+      const phase=deriveNv02Phase(raw||{});
+      if(phase==='BLOCKED')throw new Error(raw?.securityBlock||'LOCAL_CONTINUE_BLOCKED');
+      if(phase==='WORKING')return{status:'ALREADY_WORKING'};
+      const ready=await waitForNv02Composer(target,30000)||raw;
+      if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
+      const now=Date.now();
+      const woke=await withNv02Mutation(async()=>{
+        const result=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
+        if(!result?.ok)throw new Error(result?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
+        return result;
+      },'NV02_IDLE_SELF_PULL_WAKE');
+      if(woke?.status==='MUTATION_LEASE_BUSY')return{status:'LOCAL_CONTINUE_DEFERRED'};
+      try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
+      saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:Number(stateBefore.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ready?.assistantSignature||'')});
+      await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED',{trigger:'LOCAL_CONTINUE_NOW',evidence:woke?.evidence||null});
+      await noteNv02CommandDispatch();
+      return{status:'NV02_IDLE_SELF_PULL_WAKE_SUBMITTED',prompt:NV02_SELF_PULL_WAKE_PROMPT};
+    }
     if(w.id!=='NV02'){
       let controller=null;
       try{controller=await getControllerState();}
