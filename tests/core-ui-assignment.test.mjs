@@ -11,9 +11,24 @@ const issue=(number,body,title='Core UI canary')=>({number,title,state:'open',st
 function response(value,status=200){return{ok:status>=200&&status<300,status,json:async()=>value};}
 
 function fakePool(){
-  const objectives=[],jobs=[],events=[];
+  const objectives=[],jobs=[],events=[];let terminalLock=Promise.resolve();
   const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
-  return {objectives,jobs,events,async query(sql,params=[]){
+  const pool={objectives,jobs,events,async connect(){
+    let unlock=()=>{};
+    return {
+      async query(sql,params=[]){
+        if(sql==='begin')return{rowCount:0,rows:[]};
+        if(sql.startsWith('select pg_advisory_xact_lock')){
+          const previous=terminalLock;let release;
+          terminalLock=new Promise(resolve=>{release=resolve;});
+          await previous;unlock=()=>release();return{rowCount:1,rows:[{locked:true}]};
+        }
+        if(sql==='commit'||sql==='rollback'){unlock();unlock=()=>{};return{rowCount:0,rows:[]};}
+        return pool.query(sql,params);
+      },
+      release(){},
+    };
+  },async query(sql,params=[]){
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.id=$1')){const j=jobs.find(x=>x.id===params[0]);return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.employee_id=$1')){const j=jobs.find(x=>x.employee_id===params[0]&&['ui_assigned','ui_running'].includes(x.status)&&objectives.find(o=>o.id===x.objective_id)?.status==='active');return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
     if(sql.startsWith('select 1 from tigeriq_objectives where id=$1')){const found=objectives.some(x=>x.id===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
@@ -29,6 +44,7 @@ function fakePool(){
     if(sql.startsWith('update tigeriq_objectives set status=$2')){const o=objectives.find(x=>x.id===params[0]);if(o){o.status=params[1];o.summary=params[2];}return{rowCount:o?1:0,rows:[]};}
     throw new Error('UNHANDLED_SQL:'+sql);
   }};
+  return pool;
 }
 
 test('Core routes only review/research UI work to NV03/NV04',()=>{
@@ -110,7 +126,8 @@ test('Core UI terminal evidence closes DONE issue and frees the worker durably',
   const pool=fakePool();
   let current=issue(2603,safe(['CAPABILITY=review']),'Terminal canary');
   const fetchImpl=async(url,init={})=>{
-    if(url.endsWith('/comments')&&init.method==='POST')return response({html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2603#issuecomment-1'});
+    if(url.endsWith('/comments')&&init.method==='POST')return response({html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2603#issuecomment-1',body:JSON.parse(init.body).body});
+    if(url.includes('/comments?'))return response([]);
     if(url.endsWith('/issues/2603')&&init.method==='PATCH'){current={...current,state:'closed',state_reason:'completed',closed_at:'2026-09-30T00:03:00Z'};return response(current);}
     if(url.endsWith('/issues/2603'))return response(current);
     return response([current]);
@@ -123,4 +140,34 @@ test('Core UI terminal evidence closes DONE issue and frees the worker durably',
   assert.equal(pool.jobs[0].status,'done');
   assert.equal(pool.objectives[0].status,'completed');
   assert.equal(pool.events.at(-1).type,'CORE_UI_ASSIGNMENT_TERMINAL');
+});
+
+
+test('concurrent terminal replay creates one evidence comment and one terminal transition',async()=>{
+  const pool=fakePool();let current=issue(2604,safe(['CAPABILITY=review']),'Concurrent terminal canary');
+  let postCount=0;const comments=[];
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/comments?'))return response(comments);
+    if(url.endsWith('/comments')&&init.method==='POST'){
+      postCount+=1;
+      const body=JSON.parse(init.body).body;
+      const comment={html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2604#issuecomment-'+postCount,body};
+      comments.push(comment);
+      await new Promise(resolve=>setTimeout(resolve,5));
+      return response(comment);
+    }
+    if(url.endsWith('/issues/2604')&&init.method==='PATCH'){current={...current,state:'closed',state_reason:'completed',closed_at:'2026-09-30T00:04:00Z'};return response(current);}
+    if(url.endsWith('/issues/2604'))return response(current);
+    return response([current]);
+  };
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  const [a,b]=await Promise.all([
+    completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-2604',workerId:'NV03',terminal:'DONE',result:'PASS A\nDONE'}),
+    completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-2604',workerId:'NV03',terminal:'DONE',result:'PASS B\nDONE'}),
+  ]);
+  assert.equal(postCount,1);
+  assert.equal(pool.events.filter(x=>x.type==='CORE_UI_ASSIGNMENT_TERMINAL').length,1);
+  assert.equal(pool.jobs[0].status,'done');
+  assert.equal(a.evidenceRef,b.evidenceRef);
+  assert.equal(b.alreadyTerminal,true);
 });
