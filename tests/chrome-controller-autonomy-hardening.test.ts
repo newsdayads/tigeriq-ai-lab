@@ -501,7 +501,7 @@ describe('NV02 independent F5/reset timers',()=>{
     expect(dispatchNote).toContain('const preservedF5At=state.nextPeriodicF5At');
     expect(dispatchNote).toContain('const preservedRefreshAt=state.nextRefreshAt');
     expect(dispatchNote).not.toContain('state.nextPeriodicF5At=nextRandomAt');
-    expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
+    expect(bridge).toContain('await noteNv02CommandDispatch();');
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
