@@ -12,6 +12,8 @@ import {
   selectNv02WorkOrder,
   nv02LeaseAuthority,
   nv02TakeoverStatus,
+  nv02WorkOrderMeta,
+  nv02HasTerminalEvidence,
   releaseStaleAssigneeLease,
   releaseNv02WorkOrder,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
@@ -85,6 +87,54 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(resolveNv02Command02State({ currentWorkOrder: '#10', currentCheckpoint: 'cp' })).toMatchObject({ state: 'ACTIVE_RESUME' });
     expect(resolveNv02Command02State({ currentWorkOrder: null })).toMatchObject({ state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL });
     expect(noEligibleNv02Work().state).toBe('READY_NO_ELIGIBLE_WORK');
+  });
+
+  it('uses the prepended current authority block instead of stale duplicate metadata below it', () => {
+    const work = issue(2475, '[P1] rearmed', [
+      'CURRENT_STATE=READY_FOR_NV02_SELF_PULL',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'TARGET_EMPLOYEE=NV02',
+      'RESOURCE_SCOPE=REARMED_SCOPE',
+      'REARMED_AT=2026-09-30T13:30:00Z',
+      '',
+      'CURRENT_STATE=TERMINAL_BLOCKED_RUNTIME_INVENTORY',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED',
+      'TARGET_EMPLOYEE=NV17',
+      'RESOURCE_SCOPE=STALE_SCOPE',
+    ].join('\n'));
+    expect(nv02WorkOrderMeta(work)).toMatchObject({
+      CURRENT_STATE: 'READY_FOR_NV02_SELF_PULL',
+      TIGERIQ_EXECUTABLE: 'true',
+      AUTO_QUEUE: 'INCLUDED',
+      TARGET_EMPLOYEE: 'NV02',
+      RESOURCE_SCOPE: 'REARMED_SCOPE',
+    });
+    expect(selectNv02WorkOrder([work])?.issue.number).toBe(2475);
+  });
+
+  it('ignores terminal evidence before an explicit rearm epoch but honors terminal evidence after it', () => {
+    const work = issue(2475, '[P1] rearmed', [
+      'CURRENT_STATE=READY_FOR_NV02_SELF_PULL',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'TARGET_EMPLOYEE=NV02',
+      'RESOURCE_SCOPE=REARMED_SCOPE',
+      'REARMED_AT=2026-09-30T13:30:00Z',
+    ].join('\n'));
+    const oldBlocked = [{
+      id: 1,
+      created_at: '2026-09-30T13:00:00Z',
+      body: '[TIGERIQ_NV02_RELEASE_V1]\nWORKER=NV02\nSTATE=BLOCKED',
+    }];
+    expect(nv02HasTerminalEvidence(work, oldBlocked)).toBe(false);
+    const newDone = [...oldBlocked, {
+      id: 2,
+      created_at: '2026-09-30T13:31:00Z',
+      body: '[TIGERIQ_NV02_RELEASE_V1]\nWORKER=NV02\nSTATE=DONE',
+    }];
+    expect(nv02HasTerminalEvidence(work, newDone)).toBe(true);
   });
 
   it('claims once, rejects a second lease, and releases after evidence', async () => {
