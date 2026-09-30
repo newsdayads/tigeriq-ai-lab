@@ -52,6 +52,11 @@ try{
   $taskName='TigerIQ APP Chrome Unified'
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
   $taskActivation=if($task){'TASK_PRESENT_NEXT_REBOOT'}else{'TASK_ABSENT'}
+  try{
+    $installedBootId=([DateTime](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime).ToUniversalTime().ToString('o')
+  }catch{
+    throw "INSTALL_BOOT_ID_UNAVAILABLE:$($_.Exception.Message)"
+  }
 
   $active=[ordered]@{
     schemaVersion='tigeriq.appchrome.active-deploy.v1'
@@ -60,6 +65,7 @@ try{
     deploy=$deploy
     bridgeSha256=$bridgeHash
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
+    installedBootId=$installedBootId
     activation='NEXT_REBOOT_PENDING'
   }
   $activeTmp=Join-Path $runtime 'active-deploy.json.tmp'
@@ -78,6 +84,7 @@ try{
     activation='NEXT_REBOOT_PENDING'
     taskActivation=$taskActivation
     installedAt=$active.installedAt
+    installedBootId=$active.installedBootId
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
