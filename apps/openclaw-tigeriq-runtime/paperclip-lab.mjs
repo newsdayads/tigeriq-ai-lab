@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_HTTP_DIAGNOSTIC_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_WSL_KEEPALIVE_2';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -46,7 +46,7 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
-const BROKER_EXPECTED_VERSION = '1.5-db-sidecar-diagnostic';
+const BROKER_EXPECTED_VERSION = '1.6-wsl-keepalive';
 const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
 const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
 const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
@@ -252,8 +252,18 @@ async function brokerStatus() {
       && String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION
       && Number(heartbeat?.sessionId || 0) > 0
       && Boolean(String(heartbeat?.user || '').trim())
+      && heartbeat?.wslKeepaliveRunning === true
+      && Number(heartbeat?.wslKeepalivePid || 0) > 0
       && ageMs <= 15000;
-    return { ready, user: ready ? String(heartbeat.user) : null, sessionId: ready ? Number(heartbeat.sessionId) : null, ageMs: Number.isFinite(ageMs) ? ageMs : null };
+    return {
+      ready,
+      user: ready ? String(heartbeat.user) : null,
+      sessionId: ready ? Number(heartbeat.sessionId) : null,
+      version: ready ? String(heartbeat.version) : null,
+      wslKeepaliveRunning: ready,
+      wslKeepalivePid: ready ? Number(heartbeat.wslKeepalivePid) : null,
+      ageMs: Number.isFinite(ageMs) ? ageMs : null,
+    };
   } catch (error) {
     return { ready: false, user: null, sessionId: null, ageMs: null, reason: String(error?.code || error?.message || 'BROKER_NOT_READY') };
   }
@@ -289,7 +299,10 @@ async function installInteractiveWslBroker(signal = null) {
   ]);
   if (!brokerSource.includes("$Distro = 'Ubuntu'")
     || !brokerSource.includes("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'")
+    || !brokerSource.includes("$KeepaliveExecutable = '/usr/bin/sleep'")
+    || !brokerSource.includes("$KeepaliveArgument = 'infinity'")
     || !installerSource.includes("$TaskName='TigerIQ Paperclip WSL Broker'")
+    || !installerSource.includes("$ExpectedBrokerVersion='1.6-wsl-keepalive'")
     || !installerSource.includes("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited")) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID');
   }

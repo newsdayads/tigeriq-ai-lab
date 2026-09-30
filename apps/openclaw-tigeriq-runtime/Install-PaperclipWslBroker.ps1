@@ -5,7 +5,7 @@ $LabRoot='D:\TigerIQ-Paperclip-Lab'
 $BrokerRoot=Join-Path $LabRoot 'broker'
 $Broker=Join-Path $BrokerRoot 'paperclip-wsl-broker.ps1'
 $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
-$ExpectedBrokerVersion='1.5-db-sidecar-diagnostic'
+$ExpectedBrokerVersion='1.6-wsl-keepalive'
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }
@@ -44,6 +44,8 @@ for($i=0;$i -lt 80;$i++){
          [string]$h.version -eq $ExpectedBrokerVersion -and
          [string]$h.user -and
          [int]$h.pid -gt 0 -and
+         [bool]$h.wslKeepaliveRunning -eq $true -and
+         [int]$h.wslKeepalivePid -gt 0 -and
          $heartbeatAt -ge $InstallStartedAt){
         $ready=$true
         break
@@ -57,3 +59,4 @@ Write-Output ('USER='+$user)
 Write-Output ('BROKER='+$Broker)
 Write-Output ('BROKER_VERSION='+$ExpectedBrokerVersion)
 Write-Output ('BROKER_PID='+[string]$h.pid)
+Write-Output ('WSL_KEEPALIVE_PID='+[string]$h.wslKeepalivePid)
