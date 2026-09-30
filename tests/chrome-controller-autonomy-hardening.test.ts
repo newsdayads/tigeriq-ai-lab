@@ -732,3 +732,16 @@ describe('NV03/NV04 Core UI transport loop',()=>{
     expect(bridge).toContain('assistantTerminal,assistantResultTail');
   });
 });
+
+
+describe('Core UI terminal heartbeat telemetry',()=>{
+  it('forwards assistant terminal marker, signature, and bounded result tail from bridge to Controller',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const start=bridge.indexOf('async function postWorkerHeartbeat');
+    const end=bridge.indexOf('\nasync function tickWorker',start);
+    const heartbeat=bridge.slice(start,end);
+    expect(heartbeat).toContain('assistantTerminal:ui.assistantTerminal??null');
+    expect(heartbeat).toContain('assistantSignature:ui.assistantSignature??null');
+    expect(heartbeat).toContain('assistantResultTail:ui.assistantResultTail??null');
+  });
+});
