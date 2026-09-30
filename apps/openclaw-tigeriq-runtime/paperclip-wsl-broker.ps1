@@ -7,7 +7,7 @@ $Responses = Join-Path $BrokerRoot 'responses'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
-$BrokerVersion = '1.4-postgres-sidecar'
+$BrokerVersion = '1.5-db-sidecar-diagnostic'
 $Image = 'ghcr.io/paperclipai/paperclip:2026.916.1'
 $Container = 'tigeriq-paperclip-lab'
 $Compose = '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml'
@@ -59,6 +59,12 @@ function Get-OperationSpec([string]$Operation) {
     }
     'compose_stop' {
       return [pscustomobject]@{ TimeoutSec=60; Args=@('--distribution',$Distro,'--exec','docker','compose','-f',$Compose,'stop') }
+    }
+    'compose_ps_all_db_json' {
+      return [pscustomobject]@{ TimeoutSec=30; Args=@('--distribution',$Distro,'--exec','docker','compose','-f',$Compose,'ps','--all','--format','json','db') }
+    }
+    'compose_db_logs_tail' {
+      return [pscustomobject]@{ TimeoutSec=30; Args=@('--distribution',$Distro,'--exec','docker','compose','-f',$Compose,'logs','--no-color','--tail','120','db') }
     }
     'stop_container' {
       return [pscustomobject]@{ TimeoutSec=60; Args=@('--distribution',$Distro,'--exec','docker','stop',$Container) }

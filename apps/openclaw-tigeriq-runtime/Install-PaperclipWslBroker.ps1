@@ -5,7 +5,7 @@ $LabRoot='D:\TigerIQ-Paperclip-Lab'
 $BrokerRoot=Join-Path $LabRoot 'broker'
 $Broker=Join-Path $BrokerRoot 'paperclip-wsl-broker.ps1'
 $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
-$ExpectedBrokerVersion='1.4-postgres-sidecar'
+$ExpectedBrokerVersion='1.5-db-sidecar-diagnostic'
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }

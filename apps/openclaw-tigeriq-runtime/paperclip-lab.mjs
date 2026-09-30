@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_SIDECAR_DIAGNOSTIC_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_BROKER_DB_DIAGNOSTIC_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -46,7 +46,7 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
-const BROKER_EXPECTED_VERSION = '1.4-postgres-sidecar';
+const BROKER_EXPECTED_VERSION = '1.5-db-sidecar-diagnostic';
 const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
 const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
 const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
@@ -268,6 +268,8 @@ export function paperclipLabBrokerOperationForDockerArgs(args = []) {
     { operation: 'inspect_repo_digests', args: ['image','inspect',PAPERCLIP_LAB_IMAGE,'--format','{{json .RepoDigests}}'] },
     { operation: 'compose_up', args: ['compose','-f',COMPOSE_FILE,'up','-d'] },
     { operation: 'compose_stop', args: ['compose','-f',COMPOSE_FILE,'stop'] },
+    { operation: 'compose_ps_all_db_json', args: ['compose','-f',COMPOSE_FILE,'ps','--all','--format','json','db'] },
+    { operation: 'compose_db_logs_tail', args: ['compose','-f',COMPOSE_FILE,'logs','--no-color','--tail','120','db'] },
     { operation: 'stop_container', args: ['stop', PAPERCLIP_LAB_CONTAINER] },
     { operation: 'inspect_container', args: ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'] },
     { operation: 'container_logs_tail', args: ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER] },
@@ -875,24 +877,47 @@ function mountSourceMatchesLabData(source) {
   ].includes(value);
 }
 
+export function parsePaperclipComposePsRows(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.filter((row) => row && typeof row === 'object');
+    if (parsed && typeof parsed === 'object') return [parsed];
+  } catch {}
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) rows.push(...parsed.filter((row) => row && typeof row === 'object'));
+      else if (parsed && typeof parsed === 'object') rows.push(parsed);
+    } catch {}
+  }
+  return rows;
+}
+
 async function inspectComposeService(dockerKind, service, signal = null, diagnostics = false) {
-  const idResult = await runDocker(
+  if (service !== 'db') throw new Error('TIGERIQ_PAPERCLIP_LAB_DIAGNOSTIC_SERVICE_NOT_ALLOWED');
+  const psResult = await runDocker(
     dockerKind,
-    composeArgs(['ps', '--all', '-q', service]),
+    composeArgs(['ps', '--all', '--format', 'json', 'db']),
     { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
   ).catch(() => null);
-  const containerId = idResult?.exitCode === 0
-    ? String(idResult.stdout || '').trim().split(/\s+/).filter(Boolean)[0] || null
-    : null;
-  if (!containerId) {
+  const rows = psResult?.exitCode === 0 ? parsePaperclipComposePsRows(psResult.stdout) : [];
+  const row = rows.find((item) => String(item?.Service || '').toLowerCase() === 'db') || rows[0] || null;
+  if (!row) {
     return {
       present: false,
       running: false,
       status: null,
       exitCode: null,
-      oomKilled: false,
+      oomKilled: null,
       healthStatus: null,
       restartCount: null,
+      startedAt: null,
+      finishedAt: null,
       stateErrorClass: 'NONE',
       logClass: diagnostics ? 'LOGS_UNAVAILABLE' : null,
       logFingerprint: null,
@@ -900,21 +925,13 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
     };
   }
 
-  const inspect = await runDocker(
-    dockerKind,
-    ['inspect', containerId, '--format', '{{json .}}'],
-    { timeoutMs: 15000, signal },
-  ).catch(() => null);
-  let info = null;
-  try { info = inspect?.exitCode === 0 ? JSON.parse(String(inspect.stdout || '').trim()) : null; } catch {}
-  const state = info?.State || {};
   let logClass = null;
   let logDiagnostic = null;
   if (diagnostics) {
     const logs = await runDocker(
       dockerKind,
-      ['logs', '--tail', '120', containerId],
-      { timeoutMs: 20000, signal },
+      composeArgs(['logs', '--no-color', '--tail', '120', 'db']),
+      { cwd: CONFIG_DIR, timeoutMs: 20000, signal },
     ).catch(() => null);
     if (logs?.exitCode === 0) {
       const combinedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
@@ -924,17 +941,19 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
       logClass = 'LOGS_UNAVAILABLE';
     }
   }
+  const state = String(row?.State || row?.Status || '').trim();
+  const exitCode = Number(row?.ExitCode);
   return {
-    present: Boolean(info),
-    running: state?.Running === true,
-    status: typeof state?.Status === 'string' ? state.Status : null,
-    exitCode: Number.isInteger(state?.ExitCode) ? state.ExitCode : null,
-    oomKilled: state?.OOMKilled === true,
-    healthStatus: typeof state?.Health?.Status === 'string' ? state.Health.Status : null,
-    restartCount: Number.isInteger(info?.RestartCount) ? info.RestartCount : null,
-    startedAt: typeof state?.StartedAt === 'string' ? state.StartedAt : null,
-    finishedAt: typeof state?.FinishedAt === 'string' ? state.FinishedAt : null,
-    stateErrorClass: paperclipContainerStateErrorClass(state?.Error),
+    present: true,
+    running: /^running$/i.test(state),
+    status: state || null,
+    exitCode: Number.isInteger(exitCode) ? exitCode : null,
+    oomKilled: null,
+    healthStatus: String(row?.Health || '').trim() || null,
+    restartCount: null,
+    startedAt: null,
+    finishedAt: null,
+    stateErrorClass: 'NONE',
     logClass,
     logFingerprint: logDiagnostic?.fingerprint || null,
     logExcerpt: logDiagnostic?.excerpt || null,
@@ -1055,7 +1074,7 @@ async function health(signal = null, transport = null, options = {}) {
       running: database?.running === true,
       status: database?.status || null,
       exitCode: database?.exitCode ?? null,
-      oomKilled: database?.oomKilled === true,
+      oomKilled: database?.oomKilled ?? null,
       healthStatus: database?.healthStatus || null,
       restartCount: database?.restartCount ?? null,
       startedAt: database?.startedAt || null,

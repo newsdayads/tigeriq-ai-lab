@@ -22,6 +22,7 @@ import {
   paperclipContainerLogClass,
   paperclipContainerLogDiagnostic,
   paperclipHealthFailureClass,
+  parsePaperclipComposePsRows,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
   paperclipLabWslDockerArgs,
@@ -138,7 +139,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_SIDECAR_DIAGNOSTIC_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_BROKER_DB_DIAGNOSTIC_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -310,9 +311,24 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(out.excerpt.length).toBeLessThanOrEqual(900);
   });
 
+  it('parses Docker Compose ps JSON for an exited Postgres sidecar', () => {
+    const rows = parsePaperclipComposePsRows(JSON.stringify([{
+      ID: 'abc123',
+      Service: 'db',
+      State: 'exited',
+      Health: '',
+      ExitCode: 137,
+    }]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].Service).toBe('db');
+    expect(rows[0].State).toBe('exited');
+    expect(rows[0].ExitCode).toBe(137);
+  });
+
   it('includes bounded PostgreSQL sidecar diagnostics in typed health source', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
-    expect(source).toContain("composeArgs(['ps', '--all', '-q', service])");
+    expect(source).toContain("composeArgs(['ps', '--all', '--format', 'json', 'db'])");
+    expect(source).toContain("composeArgs(['logs', '--no-color', '--tail', '120', 'db'])");
     expect(source).toContain("inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true)");
     expect(source).toContain('healthStatus: database?.healthStatus || null');
     expect(source).toContain('restartCount: database?.restartCount ?? null');
@@ -386,6 +402,12 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipLabBrokerOperationForDockerArgs([
       'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'stop',
     ])).toBe('compose_stop');
+    expect(paperclipLabBrokerOperationForDockerArgs([
+      'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'ps', '--all', '--format', 'json', 'db',
+    ])).toBe('compose_ps_all_db_json');
+    expect(paperclipLabBrokerOperationForDockerArgs([
+      'compose', '-f', 'D:\\TigerIQ-Paperclip-Lab\\config\\docker-compose.lab.yml', 'logs', '--no-color', '--tail', '120', 'db',
+    ])).toBe('compose_db_logs_tail');
     expect(paperclipLabBrokerOperationForDockerArgs(['stop', 'tigeriq-paperclip-lab'])).toBe('stop_container');
     expect(paperclipLabBrokerOperationForDockerArgs(['logs', '--tail', '160', 'tigeriq-paperclip-lab'])).toBe('container_logs_tail');
     expect(paperclipLabBrokerOperationForDockerArgs(['ps'])).toBeNull();
@@ -408,6 +430,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
     expect(broker).toContain("'compose_stop'");
+    expect(broker).toContain("'compose_ps_all_db_json'");
+    expect(broker).toContain("'compose_db_logs_tail'");
+    expect(broker).toContain("$BrokerVersion = '1.5-db-sidecar-diagnostic'");
     expect(broker).toContain("'stop_container'");
     expect(broker).toContain("'inspect_container'");
     expect(broker).toContain("'container_logs_tail'");
@@ -416,7 +441,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.4-postgres-sidecar'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.5-db-sidecar-diagnostic'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
@@ -476,7 +501,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.4-postgres-sidecar'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.5-db-sidecar-diagnostic'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
