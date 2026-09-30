@@ -815,7 +815,8 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   const composer=sels.flatMap(s=>[...document.querySelectorAll(s)]).find(vis)||null;
   const projectDraftLabels=['thay đổi dự án: tigeriq ai lab','change project: tigeriq ai lab'];
   const projectDraftReady=location.hostname==='chatgpt.com'&&[...document.querySelectorAll('button,[role="button"]')].some(e=>vis(e)&&projectDraftLabels.includes((e.getAttribute('aria-label')||'').trim().toLowerCase()));
-  const authRequired=[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
+  const authRouteRequired=location.hostname==='chatgpt.com'&&/^\/auth\/(?:login|signin)(?:\/|$)/i.test(location.pathname);
+  const authRequired=authRouteRequired||[...document.querySelectorAll('button,a')].some(e=>vis(e)&&/^(đăng nhập|sign in|log in)$/i.test((e.textContent||'').trim()));
   const stop=[...document.querySelectorAll('button[data-testid="stop-button"],button[aria-label*="Stop" i],button[aria-label*="Dừng" i],button[aria-label*="Ngừng" i]')].find(vis)||null;
   const activityBusy=[...document.querySelectorAll('button,[role="button"],[aria-live]')].find(e=>vis(e)&&/(^|\\s)(đang suy nghĩ|thinking|generating|đang tạo)(\\s|$)/i.test((e.getAttribute('aria-label')||e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()))||null;
   const send=composer?[...document.querySelectorAll('button[data-testid="send-button"],button[data-testid="composer-submit-button"],button[type="submit"],button[aria-label*="Gửi" i],button[aria-label*="Send" i]')].find(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')||null:null;
@@ -824,6 +825,7 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   if(document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]')) securityBlock='BLOCKED_CAPTCHA';
   const txt=[...document.querySelectorAll('[role="alert"],[role="dialog"],[data-testid*="toast" i]')].slice(0,30).map(e=>(e.textContent||'').toLowerCase()).join(' ');
   const checks=[['rate limit','BLOCKED_RATE_LIMIT'],['too many requests','BLOCKED_RATE_LIMIT'],['suspicious activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['unusual activity','BLOCKED_SUSPICIOUS_ACTIVITY'],['verify your identity','BLOCKED_REAUTH'],['verify it’s you','BLOCKED_REAUTH'],['xác minh danh tính','BLOCKED_REAUTH']];
+  if(!securityBlock&&authRouteRequired) securityBlock='BLOCKED_REAUTH';
   if(!securityBlock) for(const [n,s] of checks){if(txt.includes(n)){securityBlock=s;break;}}
   const pageText=String(document.body?.innerText||'').replace(/\s+/g,' ').trim();
   const chatRetry=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/^(retry|thử lại)$/i.test((e.innerText||e.textContent||e.getAttribute('aria-label')||'').trim()))||null;
