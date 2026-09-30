@@ -419,10 +419,25 @@ async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = 
   return await runBrokerRequest(operation, {}, { timeoutMs, signal });
 }
 
+export function paperclipOpenAiDeviceAuthFailureClass(stderr = '', timedOut = false) {
+  if (timedOut) return 'BROKER_TIMEOUT';
+  const text = String(stderr || '');
+  if (text.includes('TIGERIQ_PAPERCLIP_OPENAI_SESSION_NOT_FOUND')) return 'SESSION_NOT_FOUND';
+  if (text.includes('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_ALREADY_RUNNING')) return 'ALREADY_RUNNING';
+  if (text.includes('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_EARLY_EXIT')) return 'CODEX_EARLY_EXIT';
+  if (text.includes('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_PROMPT_TIMEOUT')) return 'PROMPT_TIMEOUT';
+  if (text.includes('TIGERIQ_PAPERCLIP_OPENAI_SESSION_INVALID')) return 'SESSION_INVALID';
+  if (text.includes('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_UNAVAILABLE')) return 'BROKER_UNAVAILABLE';
+  return 'BROKER_EXECUTION_FAILED';
+}
+
 async function startOpenAiDeviceAuth(sessionId, signal = null) {
   const safe = assertPaperclipLabRequest({ action: 'paperclip_openai_device_auth_start', sessionId });
   const result = await runBrokerRequest('openai_device_auth_start', { sessionId: safe.sessionId }, { timeoutMs: 45000, signal });
-  if (result.exitCode !== 0 || result.timedOut) throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_START_FAILED');
+  if (result.exitCode !== 0 || result.timedOut) {
+    const failureClass = paperclipOpenAiDeviceAuthFailureClass(result.stderr, result.timedOut);
+    throw new Error(`TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_${failureClass}`);
+  }
   let data;
   try { data = JSON.parse(result.stdout.trim()); } catch { throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_RESPONSE_INVALID'); }
   if (data?.started !== true || data?.browserOpened !== true || data?.codeCopied !== true || data?.sessionId !== safe.sessionId) throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_RESPONSE_INVALID');
