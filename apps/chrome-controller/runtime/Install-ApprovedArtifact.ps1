@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory=$true)][string]$ExpectedHead,
   [Parameter(Mandatory=$true)][string]$ArtifactRoot,
   [switch]$Nv02Only,
+  [switch]$ActivateNow,
   [string]$InstallRoot='D:\TigerIQ\Apps\ChromeController'
 )
 
@@ -58,21 +59,44 @@ try{
     throw "INSTALL_BOOT_ID_UNAVAILABLE:$($_.Exception.Message)"
   }
 
-  $pending=[ordered]@{
-    schemaVersion='tigeriq.appchrome.pending-deploy.v1'
-    exactHead=$ExpectedHead
-    nv02Only=[bool]$Nv02Only
-    deploy=$deploy
-    bridgeSha256=$bridgeHash
-    installedAt=(Get-Date).ToUniversalTime().ToString('o')
-    installedBootId=$installedBootId
-    activation='NEXT_REBOOT_PENDING'
-  }
-  $pendingTmp=Join-Path $runtime 'pending-deploy.json.tmp'
+  $installedAt=(Get-Date).ToUniversalTime().ToString('o')
   $pendingPath=Join-Path $runtime 'pending-deploy.json'
   $activePath=Join-Path $runtime 'active-deploy.json'
-  [IO.File]::WriteAllText($pendingTmp,($pending|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-  Move-Item $pendingTmp $pendingPath -Force
+  if($ActivateNow){
+    $active=[ordered]@{
+      schemaVersion='tigeriq.appchrome.active-deploy.v1'
+      exactHead=$ExpectedHead
+      nv02Only=[bool]$Nv02Only
+      deploy=$deploy
+      bridgeSha256=$bridgeHash
+      installedAt=$installedAt
+      installedBootId=$installedBootId
+      activatedAt=$installedAt
+      activatedBootId=$installedBootId
+      activation='OWNER_ZERO_TOUCH_ACTIVATED'
+    }
+    $activeTmp=$activePath+'.tmp'
+    [IO.File]::WriteAllText($activeTmp,($active|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+    Move-Item $activeTmp $activePath -Force
+    Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue
+    $activation='OWNER_ZERO_TOUCH_ACTIVATED'
+    $taskActivation=if($task){'TASK_PRESENT_RESTART_REQUIRED'}else{'TASK_ABSENT'}
+  }else{
+    $pending=[ordered]@{
+      schemaVersion='tigeriq.appchrome.pending-deploy.v1'
+      exactHead=$ExpectedHead
+      nv02Only=[bool]$Nv02Only
+      deploy=$deploy
+      bridgeSha256=$bridgeHash
+      installedAt=$installedAt
+      installedBootId=$installedBootId
+      activation='NEXT_REBOOT_PENDING'
+    }
+    $pendingTmp=$pendingPath+'.tmp'
+    [IO.File]::WriteAllText($pendingTmp,($pending|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+    Move-Item $pendingTmp $pendingPath -Force
+    $activation='NEXT_REBOOT_PENDING'
+  }
 
   $manifest=[ordered]@{
     ok=$true
@@ -83,15 +107,15 @@ try{
     activeDeploy=$activePath
     pendingDeploy=$pendingPath
     launcher=$launcherLegacy
-    activation='NEXT_REBOOT_PENDING'
+    activation=$activation
     taskActivation=$taskActivation
-    installedAt=$pending.installedAt
-    installedBootId=$pending.installedBootId
+    installedAt=$installedAt
+    installedBootId=$installedBootId
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-  # Owner policy #504: install/stage only. Runtime activation occurs on the next machine reboot.
-  # Do not stop/start the scheduled task here; that would activate the new deploy immediately.
+  # Default stays reboot-gated. -ActivateNow is only consumed by the separately
+  # Owner-authorized zero-touch helper, which owns quiesce/restart/rollback.
   $manifest|ConvertTo-Json -Compress
 }finally{
   if($lock){$lock.Close();$lock.Dispose()}

@@ -124,7 +124,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(noChange).toBeGreaterThan(wait);
     expect(src.slice(wait,noChange)).toContain('$remoteDesktopGuard=Reconcile-RemoteDesktopGuard');
     expect(src.slice(wait,noChange)).toContain('Start-Sleep -Seconds $IntervalSeconds;continue');
-    expect(src).toContain('$appChromeInstallPollIntervalSec=900');
+    expect(src).toContain('$appChromeInstallPollIntervalSec=120');
     expect(src).toContain('$appChromeResumePollIntervalSec=900');
     expect(src).toContain('Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"');
     expect(src).toContain('Gates-Pass $head');
