@@ -94,7 +94,7 @@ function structuredBridgeEvidenceSources(bridgeCalls){
     if(result&&typeof result==='object'){
       const trustedPcReceipt=result.ok===true
         && String(result.target||'').toLowerCase()==='pc01-local'
-        && typeof result.action==='string'
+        && String(result.action||'').startsWith('paperclip_lab_')
         && result.data&&typeof result.data==='object'&&!Array.isArray(result.data);
       if(trustedPcReceipt)sources.push({result:result.data});
       if(result.data&&typeof result.data==='object')sources.push(result.data);
