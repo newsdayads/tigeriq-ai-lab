@@ -414,7 +414,7 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 
 
 describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
-  it('keeps the explicit NV04 contract while continuity ignores assignment state',()=>{
+  it('keeps the explicit NV04 contract and gates generic continuity on the local durable job only',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('function validateNv04AssignmentContract(text:string)');
     expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
@@ -425,6 +425,8 @@ describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
     expect(server).toContain("'NV04_OUTPUT_REQUIRED'");
     expect(server).toContain("'NV04_EVIDENCE_DESTINATION_REQUIRED'");
     expect(server).toContain("'NV04_MUTATION_ASSIGNMENT_FORBIDDEN'");
+    expect(server).toContain("if(workerId==='NV03')");
+    expect(server).toContain("'NV03_ASSIGNMENT_FRESH_CONTEXT_REQUIRED'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
@@ -432,8 +434,10 @@ describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
     expect(bridge).not.toContain('function workerAssignmentStatus(controller,workerId)');
     expect(bridge).not.toContain('currentWorkerAssignmentStatus(');
     expect(bridge).not.toContain('READY_UNASSIGNED');
+    expect(generic).toContain('activeLocalAssignment(controller,w.id)');
+    expect(generic).toContain("'NO_ACTIVE_ASSIGNMENT_IDLE'");
+    expect(generic).toContain("'ASSISTANT_TERMINAL_WAIT'");
     expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
-    expect(generic).not.toContain('assignment.status');
     expect(command).not.toContain('assignment.status');
   });
 });
