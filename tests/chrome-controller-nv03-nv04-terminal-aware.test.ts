@@ -38,4 +38,14 @@ describe('NV03/NV04 terminal-aware continuity #2549',()=>{
     expect(generic).toContain("'ASSISTANT_TERMINAL_WAIT'");
     expect(generic).toContain("'DONE','BLOCKED','EXTERNAL_WAIT'");
   });
+  it('retries transient Runtime.evaluate gaps and fails closed instead of cascading undefined UI state',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('for(let attempt=1;attempt<=3;attempt+=1)');
+    expect(bridge).toContain('UI_STATE_EVALUATE_EXCEPTION:');
+    expect(bridge).toContain('UI_STATE_VALUE_UNAVAILABLE:');
+    expect(bridge).toContain("'UI_STATE_READ_RETRY'");
+    expect(bridge).toContain("'UI_STATE_RECOVERED_AFTER_RETRY'");
+    expect(bridge).toContain("'UI_STATE_UNAVAILABLE_FAIL_CLOSED'");
+  });
+
 });
