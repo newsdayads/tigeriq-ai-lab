@@ -1282,11 +1282,7 @@ async function prepareWorkerForPlannedRestart(w,target,initialUi){
   if(!ui)return{ok:false,status:'MAINTENANCE_UI_UNAVAILABLE'};
   if(ui.securityBlock)return{ok:false,status:ui.securityBlock};
   if(ui.uiBusy===true||ui.stopVisible===true)return{ok:false,status:'MAINTENANCE_DEFERRED_WORKING'};
-  let ready=await waitWorkerReadyForMaintenance(target);
-  if(!ready?.ok)return ready;
-  const saved=await dispatch(target,'Lưu');
-  if(!saved?.ok)return{ok:false,status:saved?.status||'MAINTENANCE_SAVE_FAILED'};
-  ready=await waitWorkerReadyForMaintenance(target,180000);
+  const ready=await waitWorkerReadyForMaintenance(target);
   if(!ready?.ok)return ready;
   const currentUrl=String(ready.ui?.url||'');
   if(expectedHost(w)==='chatgpt.com'&&/\/c\//.test(currentUrl)){
