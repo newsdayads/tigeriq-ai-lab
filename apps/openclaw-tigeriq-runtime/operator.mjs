@@ -193,6 +193,101 @@ export function assertTigerIQTaskName(value) {
   return taskName;
 }
 
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  const input = String(text || '');
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (input[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      quoted = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n') {
+      row.push(field.replace(/\r$/, ''));
+      if (row.some((value) => String(value).length > 0)) rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.replace(/\r$/, ''));
+    if (row.some((value) => String(value).length > 0)) rows.push(row);
+  }
+  if (quoted) throw new Error('TIGERIQ_PC_TASK_LIST_CSV_INVALID');
+  return rows;
+}
+
+function nullableCell(row, index) {
+  const value = String(row[index] ?? '').trim();
+  return value || null;
+}
+
+export function parseTaskListCsv(text) {
+  const tasks = [];
+  for (const row of parseCsvRows(text)) {
+    if (row.length < 9) continue;
+    const rawName = String(row[1] ?? '').trim();
+    const taskName = rawName.replace(/^\\+/, '');
+    if (!taskName.startsWith('TigerIQ ')) continue;
+
+    assertTigerIQTaskName(taskName);
+    const triggerParts = row
+      .slice(17)
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean);
+
+    tasks.push({
+      taskName,
+      state: nullableCell(row, 3),
+      lastRun: nullableCell(row, 5),
+      lastResult: nullableCell(row, 6),
+      action: nullableCell(row, 8),
+      trigger: triggerParts.length > 0 ? triggerParts.join(' | ') : null,
+    });
+  }
+  return tasks;
+}
+
+async function listTigerIQTasks() {
+  const result = await spawnBounded(
+    'schtasks.exe',
+    ['/Query', '/FO', 'CSV', '/V', '/NH'],
+    { timeoutSec: 30 },
+  );
+  if (result.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
+  if (result.exitCode !== 0) throw new Error('TIGERIQ_PC_TASK_LIST_FAILED');
+  if (result.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_LIST_TRUNCATED');
+  const tasks = parseTaskListCsv(result.stdout);
+  return {
+    readOnly: true,
+    scope: 'TigerIQ',
+    count: tasks.length,
+    tasks,
+  };
+}
+
 async function runTaskAction(action, taskName) {
   const name = assertTigerIQTaskName(taskName);
   if (action === 'task_status') {
@@ -284,6 +379,8 @@ export async function executePcAction(input, options = {}) {
   let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
+  } else if (action === 'task_list') {
+    data = await listTigerIQTasks();
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
     data = await runTaskAction(action, input?.taskName);
   } else if (action === 'process_list') {
@@ -321,6 +418,8 @@ export async function executePcAction(input, options = {}) {
       allowedRoots: PC_OPERATOR_ROOTS,
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
+      taskListReadOnly: action === 'task_list',
+      taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
