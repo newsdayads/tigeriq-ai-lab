@@ -132,120 +132,9 @@ function workerMentioned(body, worker) {
   const text = String(body || '');
   const id = String(worker || '').toUpperCase();
   return [
-    new RegExp(`^(?:WORKER|TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE|IMPLEMENTER)=${id}import { createHash, randomUUID } from 'node:crypto';
-import { open, stat, unlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
-export const NV02_LOCAL_GITHUB_SELF_PULL = 'P1_P5_ONLY';
-export const NV02_READY_NO_ELIGIBLE_WORK = 'READY_NO_ELIGIBLE_WORK';
-export const NV02_LEASE_MARKER = '[TIGERIQ_NV02_LEASE_V1]';
-export const NV02_RELEASE_MARKER = '[TIGERIQ_NV02_RELEASE_V1]';
-export const NV02_TAKEOVER_STALE_MS = 15 * 60 * 1000;
-export const NV02_TAKEOVER_NO_PROGRESS_ROUNDS = 3;
-
-const PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4', 'P5']);
-export const NV02_PRIMARY_CAPABILITIES = new Set(['general', 'reasoning', 'ui']);
-export const NV02_FALLBACK_CAPABILITIES = new Set(['analysis', 'research', 'documentation', 'evidence', 'read_only', 'coding', 'knowledge', 'audit', 'maintenance', 'review']);
-const HARD_GATE_MARKERS = /(?:production|paid|credential|security|destructive|irreversible|app[._-]?chrome)/i;
-const DIRECT_PATH_CAPABILITIES = new Set(['pc_operator', 'device_bound']);
-const LOCKED_WORKER_FIELDS = ['TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE'];
-const localClaimLocks = new Set();
-const localClaimFiles = new Map();
-
-async function acquireLocalClaimLock(lockKey, ttlMs) {
-  const path = join(tmpdir(), `tigeriq-nv02-${createHash('sha256').update(lockKey).digest('hex')}.lock`);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const handle = await open(path, 'wx');
-      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString(), lockKey }));
-      localClaimFiles.set(lockKey, { handle, path });
-      localClaimLocks.add(lockKey);
-      return true;
-    } catch (error) {
-      if (error?.code !== 'EEXIST' || attempt) return false;
-      try {
-        if (Date.now() - (await stat(path)).mtimeMs <= ttlMs) return false;
-        await unlink(path);
-      } catch { return false; }
-    }
-  }
-  return false;
-}
-
-async function releaseLocalClaimLock(lockKey) {
-  const lock = localClaimFiles.get(lockKey);
-  localClaimFiles.delete(lockKey);
-  localClaimLocks.delete(lockKey);
-  if (!lock) return;
-  await lock.handle.close().catch(() => {});
-  await unlink(lock.path).catch(() => {});
-}
-
-function fields(body) {
-  return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
-    const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
-    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
-  }));
-}
-
-export function nv02PrioritySummary(issue) {
-  const m = String(issue?.title || '').match(/\b(P[0-5])\b/i) || String(issue?.priority || '').match(/^P[0-5]$/i);
-  return m ? m[1].toUpperCase() : '';
-}
-export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
-
-function workOrderRef(issueOrNumber) {
-  const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
-  return Number.isInteger(number) && number > 0 ? `#${number}` : '';
-}
-
-export function nv02LeaseAuthority(issue, leaseMeta = {}) {
-  const expectedWorkOrder = workOrderRef(issue);
-  const expectedScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
-  if (!expectedWorkOrder) return { valid: false, reason: 'WORK_ORDER_REQUIRED', workOrder: '', resourceScope: expectedScope };
-  if (!expectedScope) return { valid: false, reason: 'RESOURCE_SCOPE_REQUIRED', workOrder: expectedWorkOrder, resourceScope: '' };
-  const actualWorkOrder = String(leaseMeta?.workOrder || leaseMeta?.WORK_ORDER || '').trim();
-  const actualScope = String(leaseMeta?.resourceScope || leaseMeta?.RESOURCE_SCOPE || '').trim();
-  if (actualWorkOrder !== expectedWorkOrder) return { valid: false, reason: 'WORK_ORDER_MISMATCH', workOrder: expectedWorkOrder, resourceScope: expectedScope };
-  if (actualScope !== expectedScope) return { valid: false, reason: 'RESOURCE_SCOPE_MISMATCH', workOrder: expectedWorkOrder, resourceScope: expectedScope };
-  return { valid: true, reason: 'WORK_ORDER_AUTHORITY_VALID', workOrder: expectedWorkOrder, resourceScope: expectedScope };
-}
-
-function explicitTarget(meta) {
-  const targets = LOCKED_WORKER_FIELDS.map((key) => String(meta[key] || '').trim()).filter(Boolean);
-  return targets.find((target) => !/^NV02$/i.test(target)) || targets[0] || '';
-}
-
-export function nv02AssignedWorker(issue) {
-  return String(explicitTarget(nv02WorkOrderMeta(issue)) || '').trim().toUpperCase();
-}
-
-function capabilityDirectPath(meta, capability) {
-  if (!DIRECT_PATH_CAPABILITIES.has(capability)) return true;
-  return meta.NV02_DIRECT_EXECUTION === 'true'
-    || /^DIRECT$/i.test(String(meta.NV02_EXECUTION_PATH || ''))
-    || /^DIRECT_/i.test(String(meta.NV02_EXECUTION_PATH || ''));
-}
-
-function selfReviewConflict(meta, capability) {
-  const reviewWork = capability === 'review' || meta.REVIEW_ONLY === 'true' || meta.REVIEW_INDEPENDENT === 'true';
-  const implementer = String(meta.IMPLEMENTER || meta.IMPLEMENTATION_OWNER || '').trim().toUpperCase();
-  return reviewWork && implementer === 'NV02';
-}
-
-function hardGate(meta) {
-  const values = Object.entries(meta)
-    .filter(([key]) => !['CAPABILITY', 'MUTATION_OWNER', 'TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE', 'PREFERRED_REVIEWER'].includes(key))
-    .map(([, value]) => String(value));
-  return values.some((value) => HARD_GATE_MARKERS.test(value))
-    || meta.APP_CHROME_MUTATION === 'true'
-    || meta.APP_CHROME_SELF_MAINTENANCE === 'true';
-}
-
-, 'mi'),
-    new RegExp(`\\bImplementer:\\s*${id}\\b`, 'i'),
-    new RegExp(`\\bworker[=:]\\s*${id}\\b`, 'i'),
+    new RegExp(\`^(?:WORKER|TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE|IMPLEMENTER)=\${id}$\`, 'mi'),
+    new RegExp(\`\\bImplementer:\\s*\${id}\\b\`, 'i'),
+    new RegExp(\`\\bworker[=:]\\s*\${id}\\b\`, 'i'),
   ].some((pattern) => pattern.test(text));
 }
 
@@ -268,7 +157,7 @@ function takeoverWorkerBlocked(issue, comments, target) {
   const texts = [String(issue?.body || ''), ...(Array.isArray(comments) ? comments.map((x) => String(x?.body || '')) : [])];
   for (const text of texts) {
     if (!/(?:STATE|CURRENT_STATE)=BLOCKED/i.test(text)) continue;
-    if (target && !workerMentioned(text, target) && !new RegExp(`\\b${target}\\b`, 'i').test(text)) continue;
+    if (target && !workerMentioned(text, target) && !new RegExp(\`\\b\${target}\\b\`, 'i').test(text)) continue;
     const reason = String(text.match(/^(?:BLOCKER|BLOCKED_REASON|REASON)=(.+)$/mi)?.[1] || text);
     if (/owner|hold|dependency|production|paid|credential|security|destructive|irreversible|external[_ -]?wait/i.test(reason)) continue;
     if (/worker|transport|timeout|stall|retry|offline|unavailable|no[_ -]?heartbeat|capabil/i.test(reason)) return true;
@@ -336,7 +225,7 @@ export async function releaseStaleAssigneeLease({ issue, takeover, postComment, 
   if (!resourceScope || claim.resourceScope !== resourceScope || !claim.worker || claim.worker === 'NV02') {
     throw new Error('NV02_TAKEOVER_RELEASE_INVALID');
   }
-  await postComment(issue.number, `[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=${claim.worker}\nRESOURCE_SCOPE=${resourceScope}\nSTATE=STALE_TAKEOVER_BY_NV02\nTAKEOVER_REASON=${takeover.reason}\nRELEASED_AT=${new Date(nowMs).toISOString()}`);
+  await postComment(issue.number, \`[TIGERIQ_ROLE_RELEASE_V1]\\nWORKER=\${claim.worker}\\nRESOURCE_SCOPE=\${resourceScope}\\nSTATE=STALE_TAKEOVER_BY_NV02\\nTAKEOVER_REASON=\${takeover.reason}\\nRELEASED_AT=\${new Date(nowMs).toISOString()}\`);
   return { released: true, worker: claim.worker, resourceScope, reason: takeover.reason };
 }
 
