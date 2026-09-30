@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_RESTART_IDENTITY_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_HTTP_DIAGNOSTIC_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -1023,7 +1023,7 @@ async function health(signal = null, transport = null, options = {}) {
 
   let logClass = null;
   let logDiagnostic = null;
-  if (options?.diagnostics === true && info && info?.State?.Running !== true) {
+  if (options?.diagnostics === true && info && (info?.State?.Running !== true || http?.reachable !== true || http?.appOk !== true)) {
     const logs = await runDocker(
       docker.kind,
       ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER],
