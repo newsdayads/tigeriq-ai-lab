@@ -150,7 +150,10 @@ export function safeAutoWorkAdmission(issue){
   const priority=bodyValue(body,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
   if(!hasExactFlag(body,'OWNER_POLICY','AUTO'))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
-  if(backlogOwnerControlled(body))return {eligible:false,reason:'OWNER_OR_HOLD_GATE'};
+  if(backlogOwnerControlled(body)
+    ||hasExactFlag(body,'OWNER_ACCEPTANCE_REQUIRED')
+    ||hasExactFlag(body,'OWNER_REVIEW_REQUIRED')
+    ||hasExactFlag(body,'MANUAL_GATE'))return {eligible:false,reason:'OWNER_OR_HOLD_GATE'};
   if(isManualOnlyAppChromeMaintenance(title,body))return {eligible:false,reason:'APP_CHROME_EXCLUDED'};
   if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
