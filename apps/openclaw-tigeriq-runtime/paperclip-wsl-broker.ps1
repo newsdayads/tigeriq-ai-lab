@@ -61,8 +61,8 @@ function Quote-FixedArg([string]$Value) {
 function Start-WslKeepalive {
   if (Test-WslKeepaliveRunning) { return }
   if (-not (Test-Path -LiteralPath $Wsl -PathType Leaf)) { throw 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_WSL_NOT_FOUND' }
-  $args = @('--distribution',$Distro,'--exec',$KeepaliveExecutable,$KeepaliveArgument)
-  $argLine = (($args | ForEach-Object { Quote-FixedArg ([string]$_) }) -join ' ')
+  $keepaliveArgs = @('--distribution',$Distro,'--exec',$KeepaliveExecutable,$KeepaliveArgument)
+  $argLine = (($keepaliveArgs | ForEach-Object { Quote-FixedArg ([string]$_) }) -join ' ')
   $script:WslKeepaliveProcess = Start-Process -FilePath $Wsl -ArgumentList $argLine -PassThru -WindowStyle Hidden
   $script:WslKeepaliveStartedAt = (Get-Date).ToUniversalTime()
   Start-Sleep -Milliseconds 250
