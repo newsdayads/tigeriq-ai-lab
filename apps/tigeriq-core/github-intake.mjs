@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
-import { applyChatMutationOwnerHandoff, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -129,32 +129,82 @@ export function isManualOnlyAppChromeMaintenance(title,body){
     || /apps\/chrome-controller\//i.test(b);
 }
 
+const SAFE_AUTO_WORK_PRIORITIES=new Set(['P1','P2','P3','P4','P5']);
+const SAFE_AUTO_RELEASED_OWNERS=new Set(['','NONE','NONE_TERMINAL','RELEASED','UNASSIGNED','CORE_DYNAMIC_LEASE']);
+
+export function githubDependencyAdmissionBlocked(body){
+  const text=String(body||'');
+  const state=bodyValue(text,'CURRENT_STATE').toUpperCase();
+  if(/(?:WAITING|WAIT|BLOCKED).*?(?:DEPENDENCY|PARENT_GATE)|(?:DEPENDENCY|PARENT_GATE).*?(?:WAITING|WAIT|BLOCKED)/.test(state))return true;
+  const blockedBy=bodyValue(text,'BLOCKED_BY').trim().toUpperCase();
+  if(blockedBy&&!['NONE','NO','CLEAR','CLEARED'].includes(blockedBy))return true;
+  const dependency=bodyValue(text,'DEPENDENCY_STATUS').trim().toUpperCase();
+  if(dependency&&!['PASS','DONE','COMPLETED','SATISFIED','CLEAR','CLEARED'].includes(dependency))return true;
+  return false;
+}
+
+export function safeAutoWorkAdmission(issue){
+  if(!issue||issue.pull_request||issue.state!=='open')return {eligible:false,reason:'NOT_OPEN_ISSUE'};
+  const body=String(issue.body||'');
+  const title=String(issue.title||'');
+  const priority=bodyValue(body,'PRIORITY').toUpperCase();
+  if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
+  if(!hasExactFlag(body,'OWNER_POLICY','AUTO'))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
+  if(backlogOwnerControlled(body))return {eligible:false,reason:'OWNER_OR_HOLD_GATE'};
+  if(isManualOnlyAppChromeMaintenance(title,body))return {eligible:false,reason:'APP_CHROME_EXCLUDED'};
+  if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
+  const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
+  if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state))return {eligible:false,reason:'OWNER_WAIT_STATE'};
+  if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
+  const classification=classifyWorkOrder(body);
+  if(['HOLD_OWNER','UI'].includes(classification.route))return {eligible:false,reason:'OWNER_OR_UI_ROUTE'};
+  if(classification.route==='OPENCLAW')return {eligible:false,reason:'SPECIALIST_CONTRACT_REQUIRED'};
+  const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
+  if(!resourceScope)return {eligible:false,reason:'RESOURCE_SCOPE_REQUIRED'};
+  const mutationOwner=bodyValue(body,'MUTATION_OWNER').toUpperCase();
+  const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
+  if(!ownerReleased)return {eligible:false,reason:'MUTATION_OWNER_CONFLICT'};
+  const safeFlags=['NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
+  if(safeFlags.some((key)=>!hasExactFlag(body,key)))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  const requiresCodingHandoff=classification.route==='CODING';
+  if(requiresCodingHandoff&&!hasExactFlag(body,'NO_DIRECT_MAIN'))return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
+  return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
+}
+
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   const title=String(issue.title||'');
   if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,title))return null;
-  if(!hasExactFlag(body,'TIGERIQ_EXECUTABLE')||!hasExactFlag(body,'OWNER_POLICY','AUTO'))return null;
-  if(!hasExactFlag(body,'NO_CODE_CHANGE')||!hasExactFlag(body,'NO_PC01_SHELL'))return null;
+  const legacyExecutable=hasExactFlag(body,'TIGERIQ_EXECUTABLE')
+    &&hasExactFlag(body,'OWNER_POLICY','AUTO')
+    &&hasExactFlag(body,'NO_CODE_CHANGE')
+    &&hasExactFlag(body,'NO_PC01_SHELL');
+  const policyAdmission=safeAutoWorkAdmission(issue);
+  if(!legacyExecutable&&!policyAdmission.eligible)return null;
   if(isManualOnlyAppChromeMaintenance(issue.title,body))return null;
-  const classification=classifyWorkOrder(body);
-  if(['HOLD_OWNER','UI','CODING'].includes(classification.route))return null;
-  const capability=classification.route==='OPENCLAW'?'pc_operator':classification.capability;
+  const classification=policyAdmission.classification||classifyWorkOrder(body);
+  if(['HOLD_OWNER','UI'].includes(classification.route))return null;
+  if(classification.route==='CODING'&&!policyAdmission.eligible)return null;
+  const requiresCodingHandoff=classification.route==='CODING'&&policyAdmission.eligible;
+  const capability=classification.route==='OPENCLAW'?'pc_operator':requiresCodingHandoff?'reasoning':classification.capability;
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
   if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
   const sourceRevision=createHash('sha256').update(title).update('\n').update(body).update('\n').update(String(issue.state_reason||'')).digest('hex').slice(0,12);
-  const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':classification.route;
+  const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
   if(directAction.present&&!directAction.valid)return null;
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
-    capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
+    capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE'),
+    admissionMode:legacyExecutable?'LEGACY_EXECUTION_FLAGS':'SAFE_P1_P5_POLICY',
+    requiresCodingHandoff,
   };
 }
 
@@ -595,14 +645,18 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       ? (spec.pcOperatorDirectAction
           ? `GitHub bounded PC operator work item #${spec.number}. Core must execute only the pre-admitted typed local action from PC_OPERATOR_DIRECT_ACTION_JSON. Do not invoke model reasoning or infer any different action. NO arbitrary shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when that exact action is satisfied.\n\n${context}`
           : `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`)
-      : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
+      : spec.requiresCodingHandoff
+        ? `GitHub autonomous CORE_REASONING coordination work item #${spec.number}. Analyze and coordinate only. Repository/source mutation must be handed off to the bounded coding executor lane; this API worker must not mutate source or claim coding/review ownership. Do not use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Preserve one-resource-one-writer and require independent review after implementation.\n\n${context}`
+        : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
-      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
+      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):'READ_ONLY',publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY'),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
-      keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true
+      keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
+      admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
+      requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
@@ -610,6 +664,13 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       const prompt=pcOperatorPrompt;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
+    }else if(spec.admissionMode==='SAFE_P1_P5_POLICY'&&spec.dispatchLane==='CORE_REASONING'){
+      const jobId=`JOB-GH-${spec.number}-API-AUTOWORK`;
+      const prompt=spec.requiresCodingHandoff
+        ? `Coordinate GitHub Work Order #${spec.number} without repository mutation. Determine the bounded implementation handoff needed, preserve RESOURCE_SCOPE=${spec.resourceScope}, and return concrete acceptance/evidence requirements for the coding executor. Do not perform independent review of implementation produced under this Work Order.`
+        : `Execute the safe P1-P5 GitHub Work Order #${spec.number} using only the supplied objective context. Remain read-only with respect to repository source and all hard-gated surfaces.`;
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'reasoning','github_api_autowork','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} API auto-work`,prompt]);
+      await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_API_AUTOWORK_JOB_MATERIALIZED',$1,$2,'github_api_autowork',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_REASONING_COORDINATION',requiresCodingHandoff:spec.requiresCodingHandoff===true})]);
     }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})]);
     return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
