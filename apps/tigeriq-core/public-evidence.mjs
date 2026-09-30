@@ -129,6 +129,27 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   return out;
 }
 
+export function buildPublicJobEvidenceRecord(row={}){
+  const metadata=row?.objective_metadata&&typeof row.objective_metadata==='object'&&!Array.isArray(row.objective_metadata)?row.objective_metadata:{};
+  const requested=Array.isArray(metadata.publicEvidenceKeys)?metadata.publicEvidenceKeys:[];
+  const evidence=extractPublicEvidence(row?.result,requested);
+  const out={
+    ok:true,
+    jobId:String(row?.id||''),
+    objectiveId:row?.objective_id==null?null:String(row.objective_id),
+    status:String(row?.status||''),
+    requestedKeys:[...new Set(requested.filter(key=>SUPPORTED_SET.has(String(key))).map(String))],
+    evidence,
+  };
+  if(metadata.publicEvidenceDiagnostic===true&&out.requestedKeys.length&&!Object.keys(evidence).length){
+    out.diagnostic=buildPublicEvidenceDiagnostic(row?.result,out.requestedKeys,{
+      metadataPublicEvidenceKeysPresent:true,
+      metadataPublicEvidenceKeyCount:out.requestedKeys.length,
+    });
+  }
+  return out;
+}
+
 export function formatPublicEvidenceBlock(evidence={}){
   const safe={};
   for(const key of SUPPORTED_PUBLIC_EVIDENCE_KEYS){

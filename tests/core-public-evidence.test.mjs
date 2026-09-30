@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendPublicEvidenceToSummary,
+  buildPublicJobEvidenceRecord,
   extractPublicEvidence,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
@@ -58,4 +59,27 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(evidence.result).toEqual({healthFailureClass:'OK'});
     expect(JSON.stringify(evidence)).not.toContain('must-not-publish');
   });
+  it('builds stored-job evidence only from metadata allowlisted keys', () => {
+    const row={
+      id:'JOB-GH-2476-PC-c5e0cd999080',
+      objective_id:'OBJ-GH-2476-Rae019c13e5f4-20260930043617',
+      status:'done',
+      objective_metadata:{publicEvidenceKeys:['result'],publicEvidenceDiagnostic:true},
+      result:{evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+        ok:true,
+        action:'paperclip_lab_health',
+        target:'pc01-local',
+        data:{healthFailureClass:'HTTP_UNREACHABLE',token:'hidden'},
+      }}]}},
+    };
+    expect(buildPublicJobEvidenceRecord(row)).toEqual({
+      ok:true,
+      jobId:row.id,
+      objectiveId:row.objective_id,
+      status:'done',
+      requestedKeys:['result'],
+      evidence:{result:{healthFailureClass:'HTTP_UNREACHABLE'}},
+    });
+  });
+
 });
