@@ -12,6 +12,7 @@ import {
   resourceOwnershipConflict,
   nv02LeaseAuthority,
   nv02TakeoverStatus,
+  nv02HasTerminalEvidence,
   releaseStaleAssigneeLease,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
@@ -95,12 +96,7 @@ function terminal(issue, comments) {
   return null;
 }
 function hasTerminalEvidence(issue) {
-  const comments = issueComments(issue.number);
-  const nv02Comments = comments.filter((comment) => {
-    const body = String(comment.body || '');
-    return body.includes('[TIGERIQ_NV02_LEASE_V1]') || body.includes('[TIGERIQ_NV02_RELEASE_V1]') || /WORKER=NV02/i.test(body);
-  });
-  return terminal(issue, nv02Comments) !== null;
+  return nv02HasTerminalEvidence(issue, issueComments(issue.number));
 }
 
 async function setIdle() {
