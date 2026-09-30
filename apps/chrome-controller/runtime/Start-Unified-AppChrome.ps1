@@ -128,6 +128,7 @@ function Set-RuntimeEnvironment($Active){
   $env:TIGERIQ_CHROME_CONFIG=$ConfigPath
   $env:TIGERIQ_APPROVED_HEAD=$Active.head
   $env:TIGERIQ_DEPLOY_ROOT=$Active.deploy
+  $env:TIGERIQ_BOOT_ID=$currentBootId
   $env:TIGERIQ_NV02_BRIDGE_SHA256=$Active.bridgeHash
   $env:TIGERIQ_INTERACTIVE_SESSION='1'
   $env:TIGERIQ_SESSION_ID=[string](Get-Process -Id $PID).SessionId
