@@ -51,7 +51,7 @@ try{
 
   $taskName='TigerIQ APP Chrome Unified'
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  $taskActivation=if($task){'TASK_PRESENT'}else{'TASK_ABSENT'}
+  $taskActivation=if($task){'TASK_PRESENT_NEXT_REBOOT'}else{'TASK_ABSENT'}
 
   $active=[ordered]@{
     schemaVersion='tigeriq.appchrome.active-deploy.v1'
@@ -60,7 +60,7 @@ try{
     deploy=$deploy
     bridgeSha256=$bridgeHash
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
-    activation='SUPERVISOR_PENDING'
+    activation='NEXT_REBOOT_PENDING'
   }
   $activeTmp=Join-Path $runtime 'active-deploy.json.tmp'
   $activePath=Join-Path $runtime 'active-deploy.json'
@@ -75,19 +75,14 @@ try{
     bridgeSha256=$bridgeHash
     activeDeploy=$activePath
     launcher=$launcherLegacy
-    activation='SUPERVISOR_PENDING'
+    activation='NEXT_REBOOT_PENDING'
     taskActivation=$taskActivation
     installedAt=$active.installedAt
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-  if($task){
-    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-    Start-ScheduledTask -TaskName $taskName
-    $taskActivation='TASK_RESTARTED'
-    $manifest.taskActivation=$taskActivation
-    [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-  }
+  # Owner policy #504: install/stage only. Runtime activation occurs on the next machine reboot.
+  # Do not stop/start the scheduled task here; that would activate the new deploy immediately.
   $manifest|ConvertTo-Json -Compress
 }finally{
   if($lock){$lock.Close();$lock.Dispose()}
