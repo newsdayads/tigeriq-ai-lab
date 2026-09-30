@@ -489,6 +489,22 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase==='READY'){
+    let binding=null;
+    try{binding=await getWorkerJobBinding(w.id);}
+    catch(error){
+      const stopped={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0};
+      saveWorkerContinuity(w.id,stopped);
+      await genericWorkerEvent(w.id,'JOB_BINDING_UNAVAILABLE_FAIL_CLOSED',{error:String(error?.message||error)});
+      return;
+    }
+    const activeJob=binding?.active||null;
+    if(!genericWorkerJobContinuable(activeJob)){
+      const jobStage=String(activeJob?.stage||'READY_UNASSIGNED').toUpperCase();
+      const stopped={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0};
+      saveWorkerContinuity(w.id,stopped);
+      await genericWorkerEvent(w.id,'LOCAL_CONTINUITY_STOPPED_JOB_STATE',{jobId:activeJob?.jobId||null,jobStage});
+      return;
+    }
     if(state.stalledChecks||state.recoveryAttempts||state.recoveryBlockedUntil){
       state={...state,stalledChecks:0,recoveryAttempts:0,recoveryBlockedUntil:0};
       saveWorkerContinuity(w.id,state);
@@ -1094,6 +1110,15 @@ async function getCommand(workerId){
   const r=await fetch(`${CONTROLLER}/api/commands/${encodeURIComponent(workerId)}`,{headers:auth(workerId),signal:AbortSignal.timeout(4000)});
   if(!r.ok) throw new Error(`HTTP_${r.status}:commands`);return (await r.json()).command||null;
 }
+async function getWorkerJobBinding(workerId){
+  const r=await fetch(`${CONTROLLER}/api/utility/workers/${encodeURIComponent(workerId)}/job`,{headers:auth(workerId),signal:AbortSignal.timeout(4000)});
+  if(!r.ok)throw new Error(`HTTP_${r.status}:worker-job-binding`);
+  const value=await r.json();
+  return {active:value?.active||null,latest:value?.latest||null};
+}
+function genericWorkerJobContinuable(job){
+  return Boolean(job&&['SUBMITTED','WORKING'].includes(String(job.stage||'').toUpperCase()));
+}
 const CONTROLLER_STATE_CACHE_MS=2000;
 let controllerStateCache=null;
 let controllerStateCacheAt=0;
@@ -1151,6 +1176,18 @@ async function releaseBridgeMutationLease(workerId,lease){
 async function navigate(target,url){
   const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'NAVIGATE',delayMs:pacingMs});
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
+}
+async function waitForWorkerFreshContext(w,target,timeoutMs=30000){
+  const deadline=Date.now()+timeoutMs;
+  let last=null;
+  while(Date.now()<deadline){
+    await sleep(250);
+    last=await uiStateRaw(target).catch(()=>null);
+    if(last&&isWorkerFreshContext(w,last.url)&&last.composerReady===true&&!last.authRequired&&!last.chatLoadError&&!last.connectionPending){
+      return last;
+    }
+  }
+  throw new Error(`FRESH_CONTEXT_NOT_READY:${w.id}:${String(last?.url||'UNKNOWN')}`);
 }
 function projectNewChatExpr(){
   return `(()=>{const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
@@ -1933,12 +1970,36 @@ async function handleCommand(w,target,command){
   if(action==='FOCUS') return focus(target).then(()=>({status:'FOCUSED'}));
   if(action==='LAYOUT') return layout(w,target,payload).then(()=>({status:'LAYOUT_APPLIED'}));
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
-  if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
+  if(action==='NAVIGATE'){
+    const u=new URL(String(payload.url||''));
+    if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');
+    await navigate(target,u.toString());
+    if(u.toString()===String(w.homeUrl||'')){
+      const fresh=await waitForWorkerFreshContext(w,target,30000);
+      return{status:'FRESH_CONTEXT_READY',url:fresh?.url||u.toString()};
+    }
+    return{status:'NAVIGATED'};
+  }
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
   if(action==='LOCAL_CONTINUE_NOW'){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
     if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true)return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};
+    if(w.id!=='NV02'){
+      let binding=null;
+      try{binding=await getWorkerJobBinding(w.id);}
+      catch(error){
+        saveWorkerContinuity(w.id,{...stateBefore,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0});
+        await genericWorkerEvent(w.id,'JOB_BINDING_UNAVAILABLE_FAIL_CLOSED',{error:String(error?.message||error),trigger:'LOCAL_CONTINUE_NOW'});
+        return{status:'LOCAL_CONTINUE_JOB_BINDING_UNAVAILABLE'};
+      }
+      if(!genericWorkerJobContinuable(binding?.active)){
+        const active=binding?.active||null;
+        saveWorkerContinuity(w.id,{...stateBefore,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0});
+        await genericWorkerEvent(w.id,'LOCAL_CONTINUITY_STOPPED_JOB_STATE',{jobId:active?.jobId||null,jobStage:String(active?.stage||'READY_UNASSIGNED').toUpperCase(),trigger:'LOCAL_CONTINUE_NOW'});
+        return{status:'READY_UNASSIGNED',jobId:active?.jobId||null,jobStage:String(active?.stage||'READY_UNASSIGNED').toUpperCase()};
+      }
+    }
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
     const raw=await uiState(target);
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
@@ -1964,7 +2025,20 @@ async function handleCommand(w,target,command){
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
   if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};const now=Date.now();fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);const nextIdleWakeAt=nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS);saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0,nextIdleWakeAt});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,nextIdleWakeAt});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
-  if(action==='DISPATCH'){const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02'){try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});}if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
+  if(action==='DISPATCH'){
+    const r=await dispatch(target,String(payload.text||''));
+    if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');
+    if(w.id==='NV02'){
+      try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
+      saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});
+      await noteNv02CommandDispatch();
+    }else{
+      const state=loadWorkerContinuity(w.id);
+      saveWorkerContinuity(w.id,{...state,pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now(),lastPhase:'WORKING',stalledChecks:0,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+      await genericWorkerEvent(w.id,'ASSIGNED_WORK_DISPATCHED_GUARD_ARMED');
+    }
+    return r;
+  }
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }
