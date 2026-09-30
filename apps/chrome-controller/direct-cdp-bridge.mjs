@@ -273,7 +273,7 @@ async function periodicReopenOrRearm(w,target,state,now,reason,status){
     return deferred;
   }
 }
-async function reopenWorker(w,target,state,now,reason){
+async function reopenWorker(w,target,state,now,reason,resumeUrl=''){
   if(Number(state.recoveryBlockedUntil)>now)return state;
   if(state.recoveryAttempts>=WORKER_RESET_MAX_ATTEMPTS){
     const blocked={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,lastPhase:'STALLED'};
@@ -281,10 +281,12 @@ async function reopenWorker(w,target,state,now,reason){
     await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
     return blocked;
   }
-  const freshUrl=String(w.homeUrl||'').trim();
-  const checkpointed={...state,resumeUrl:'',recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
+  const resumeCandidate=String(resumeUrl||'').trim();
+  const preserveAssignedChat=isAssignedWorkerChat(w,resumeCandidate);
+  const freshUrl=preserveAssignedChat?resumeCandidate:String(w.homeUrl||'').trim();
+  const checkpointed={...state,resumeUrl:preserveAssignedChat?freshUrl:'',recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
-  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,freshUrl,recoveryAttempt:checkpointed.recoveryAttempts});
+  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,freshUrl,preserveAssignedChat,recoveryAttempt:checkpointed.recoveryAttempts});
   const closeResult=await withWorkerMutation(w.id,async(lease)=>{
     await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
     await closeWorker(w,target);
@@ -329,8 +331,8 @@ async function reopenWorker(w,target,state,now,reason){
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,pendingContinue:true,awaitingWorkStart:false,modelCheckAttempted:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
-  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,nextResetAt:recovered.nextResetAt});
-  return recovered;
+  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,preserveAssignedChat,nextResetAt:recovered.nextResetAt});
+  return {...recovered,preserveAssignedChat};
 }
 async function maybeWorkerContinuity(w,target,ui){
   const runGraceUntil=Number(workerRunGraceUntil.get(w.id)||0);
@@ -419,6 +421,12 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
+    if(activeAssignment){
+      const deferred={...state,nextResetAt:nextWorkerResetAt(w.id,now)};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT',{jobId:activeAssignment.jobId,nextResetAt:deferred.nextResetAt});
+      return;
+    }
     let prepared;
     try{
       prepared=await withWorkerMutation(w.id,()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',120000);
@@ -556,7 +564,7 @@ async function maybeWorkerContinuity(w,target,ui){
     saveWorkerContinuity(w.id,guarded);
     await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null,confirmAfter});
   }else if(stalledChecks>=MAX_STALLED_CHECKS){
-    await reopenWorker(w,target,next,now,'STALLED_3_CHECKS');
+    await reopenWorker(w,target,next,now,'STALLED_3_CHECKS',isAssignedWorkerChat(w,ui?.url)?ui.url:'');
   }
 }
 
@@ -994,7 +1002,7 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     if(w.id==='NV02'){
       await continuityEventFor(w,'CHAT_LOAD_TERMINAL_FAILURE_REACHED',{url:ui?.url||null});
     }else{
-      await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR');
+      await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR',isAssignedWorkerChat(w,ui?.url)?ui.url:'');
     }
     await continuityEventFor(w,'CHAT_LOAD_REOPEN_REQUESTED',{url:ui?.url||null});
     return true;
