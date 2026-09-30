@@ -258,6 +258,9 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("let nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0)");
     expect(source).toContain("let nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0)");
     expect(source).toContain("const workingRecheckAt=Number(raw.workingRecheckAt)||0");
+    expect(source).toContain("const BOOT_ID=String(process.env.TIGERIQ_BOOT_ID||'').trim()");
+    expect(source).toContain("const bootChanged=Boolean(BOOT_ID&&String(raw.bootId||'')!==BOOT_ID)");
+    expect(source).toContain("bootId:BOOT_ID||String(raw.bootId||'')");
     expect(source).toContain("'NV02_F5_TIMER_REBASED_AFTER_OS_REBOOT'");
     expect(source).toContain("'NV02_REFRESH_TIMER_REBASED_AFTER_OS_REBOOT'");
     expect(source).not.toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
