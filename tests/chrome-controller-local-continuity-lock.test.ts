@@ -35,7 +35,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(sidecar).toContain('pickContinuePrompt(state.lastContinuePrompt)');
   });
 
-  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{
+  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     for(const forbidden of [
       'CORE_UI_ASSIGNMENT',
