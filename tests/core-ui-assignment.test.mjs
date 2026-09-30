@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildCoreUiAssignmentSnapshot,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -82,4 +82,24 @@ test('READY_UNASSIGNED keeps mixed authority explicit',()=>{
   assert.equal(snap.workerBindings.NV02.state,'EXTERNAL_TO_CORE');
   assert.equal(snap.workerBindings.NV03.state,'READY_UNASSIGNED');
   assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+});
+
+
+test('Core UI prompt is self-contained and NV04 satisfies explicit assignment contract',()=>{
+  const review=parseCoreUiIssue(issue(2601,safe(['CAPABILITY=review']),'Review contract'));
+  const research=parseCoreUiIssue(issue(2602,safe(['CAPABILITY=research']),'Research contract'));
+  const p3=buildCoreUiPrompt(review);
+  const p4=buildCoreUiPrompt(research);
+  assert.match(p3,/ROLE=INDEPENDENT_REVIEW_QA/);
+  assert.match(p3,/WORK_ORDER_BODY_BEGIN/);
+  assert.match(p3,/DONE hoặc BLOCKED hoặc EXTERNAL_WAIT/);
+  assert.match(p4,/NV04_ROLE=DEEP_RESEARCH/);
+  assert.match(p4,/CURRENT_WORK_ORDER=#2602/);
+  assert.match(p4,/EXACT_INPUT=https:\/\/github\.com\//);
+  assert.match(p4,/RESOURCE_SCOPE=UI_CANARY/);
+  assert.match(p4,/CHECKLIST=/);
+  assert.match(p4,/OUTPUT=/);
+  assert.match(p4,/EVIDENCE_DESTINATION=/);
+  assert.match(p4,/MUTATION_ALLOWED=false/);
+  assert.match(p4,/WORK_ORDER_BODY_BEGIN/);
 });
