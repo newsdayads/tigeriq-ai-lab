@@ -281,7 +281,10 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("crashResumePending:Boolean(raw.crashResumePending)");
     expect(source).toContain("crashResumeUrl:String(raw.crashResumeUrl||'')");
     expect(source).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
-    expect(source).toContain("state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)");
+    expect(source).toContain("state.crashResumePending===true&&isRestorableNv02Chat(state.crashResumeUrl)");
+    expect(source).toContain("function isRestorableNv02Chat(url)");
+    expect(source).toContain("!/^local-chatgpt:/i.test(conversationId)");
+    expect(source).toContain("'NV02_CRASH_CHAT_RESUME_SKIPPED_NON_DURABLE'");
     expect(source).toContain("await navigate(target,crashResumeUrl)");
     expect(source).toContain("'NV02_CRASH_CHAT_RESTORED'");
     expect(source).not.toContain("restoreVerifiedChatUrl");
