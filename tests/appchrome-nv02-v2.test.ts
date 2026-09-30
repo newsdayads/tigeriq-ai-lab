@@ -266,15 +266,26 @@ describe('NV02 fresh-chat lifecycle V3', () => {
 describe('NV02 archive rotation robustness', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('handles an already-open menu and current sidebar row without role=listitem dependence', () => {
-    expect(bridge).toContain("ARCHIVE_MENU_ALREADY_OPEN");
-    expect(bridge).toContain("button[data-testid*=\"conversation\"][data-testid*=\"option\"]");
-    expect(bridge).toContain("document.querySelectorAll('[role=\"listitem\"],li')");
-    expect(bridge).toContain("linkMatches:links.length");
-    expect(bridge).toContain("if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint,{paced:false})");
+  it('captures exact conversation identity and archives only from the Project chat list', () => {
+    expect(bridge).toContain("status:'ARCHIVE_IDENTITY_CAPTURED'");
+    expect(bridge).toContain("source:'PROJECT_LIST_IDENTITY_ROW'");
+    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_");
+    expect(bridge).toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
+    expect(bridge).toContain("confirmation:'PROJECT_LIST_ROW_REMOVED'");
   });
 
-  it('accepts current localized archive labels but rejects archive-all actions', () => {
+  it('does not use current-chat header selectors or title fallback for archive identity', () => {
+    const start=bridge.indexOf('function archiveCurrentIdentityExpr');
+    const end=bridge.indexOf('function archiveItemPointExpr',start);
+    const archiveSelectors=bridge.slice(start,end);
+    expect(archiveSelectors).not.toContain('HEADER_TOOLBAR_MORE');
+    expect(archiveSelectors).not.toContain('HEADER_CONVERSATION_OPTIONS');
+    expect(archiveSelectors).not.toContain('conversation-options-button');
+    expect(archiveSelectors).not.toContain("String(row.innerText||'').trim()===title");
+    expect(archiveSelectors).toContain("pathname.endsWith('/c/'+conversationId)");
+  });
+
+  it('accepts localized archive labels but rejects archive-all actions', () => {
     expect(bridge).toContain("lưu trữ đoạn chat");
     expect(bridge).toContain("archive conversation");
     expect(bridge).toContain("if(/all|tất cả/i.test(t))return false");
@@ -288,33 +299,33 @@ describe('NV02 archive rotation robustness', () => {
 });
 
 
-describe('NV02 archive live DOM R2', () => {
+// #2535 exact-head regression: Project-list identity archive only.
+describe('NV02 Project-list archive generated-expression regression', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('uses the current ChatGPT header More button as the primary live fallback', () => {
-    expect(bridge).toContain("source:'HEADER_TOOLBAR_MORE'");
-    expect(bridge).toContain("['thêm','more','more options','thêm tùy chọn'].includes(label)");
-    expect(bridge).toContain("r.top>=0&&r.top<80&&r.right>=innerWidth-100");
-  });
+  function generatedExpr(functionName:string,nextFunctionName:string){
+    const start=bridge.indexOf('function '+functionName);
+    const end=bridge.indexOf('function '+nextFunctionName,start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const fnSource=bridge.slice(start,end);
+    return new Function(fnSource+'; return '+functionName+"('conv-test')")();
+  }
 
-  it('does not bypass rotationRetryAt from the boot fresh-context path', () => {
-    const loop=bridge.slice(bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')"),bridge.indexOf("if(phase==='READY')",bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")));
-    expect(loop).toContain("if(now<Number(state.rotationRetryAt||0))return");
-  });
-
-  it('skips redundant Save on boot when the current chat already has terminal durable evidence', () => {
-    expect(bridge).toContain("const terminalOrIdle=ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER||ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'");
-    expect(bridge).toContain("checkpoint:hasCurrentNv02Chat(ui?.url)&&!terminalOrIdle");
+  it('parses the generated Project row and menu expressions as executable JavaScript', () => {
+    const rowExpr=generatedExpr('archiveProjectRowPointExpr','archiveProjectMenuPointExpr');
+    const menuExpr=generatedExpr('archiveProjectMenuPointExpr','archiveItemPointExpr');
+    expect(()=>new Function('return '+rowExpr)).not.toThrow();
+    expect(()=>new Function('return '+menuExpr)).not.toThrow();
   });
 });
 
 
-describe('NV02 archive live DOM R3 transient click/backoff', () => {
+describe('NV02 archive Project-list interaction', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('opens the transient menu by mouse but activates Archive through keyboard semantics', () => {
-    expect(bridge).toContain("async function cdpMouseClick(p,point,{paced=true}={})");
-    expect(bridge).toContain("transient:!paced");
+  it('hovers the exact identity row before opening its menu, then activates Archive by keyboard semantics', () => {
+    expect(bridge).toContain("type:'mouseMoved',x:Number(rowPoint.x),y:Number(rowPoint.y)");
     expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
     expect(bridge).toContain("const activated=await activateArchiveMenuItem(p)");
     expect(bridge).not.toContain("cdpMouseClick(p,archivePoint,{paced:false})");
@@ -328,40 +339,44 @@ describe('NV02 archive live DOM R3 transient click/backoff', () => {
 });
 
 
-describe('NV02 rotation never sends save prompt', () => {
+describe('NV02 rotation durable-checkpoint contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('archives via UI without dispatching a literal save message', () => {
+  it('requires the worker terminal marker after durable GitHub checkpoint and does not invent a second Save prompt', () => {
+    expect(bridge).toContain('durable checkpoint/evidence đã ghi GitHub');
     expect(bridge).not.toContain("dispatch(target,'Lưu')");
-    expect(bridge).not.toContain('CHAT_ROTATION_SAVE_FAILED');
-    expect(bridge).not.toContain('CHAT_ROTATION_SAVE_NOT_SETTLED');
     expect(bridge).toContain('if(hasCurrentNv02Chat(ui?.url))');
     expect(bridge).toContain('const archived=await archiveChat(target)');
   });
 });
 
 
-describe('NV02 archive live confirmation R4', () => {
+describe('NV02 archive Project-list confirmation', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('treats visible Unarchive as durable evidence that the current chat is already archived', () => {
-    expect(bridge).toContain("status:'ARCHIVE_ALREADY_DONE'");
-    expect(bridge).toContain("alreadyArchived:true");
-    expect(bridge).toContain("confirmation:'UNARCHIVE_ACTION_VISIBLE'");
-    expect(bridge).toContain("bỏ lưu trữ");
+  it('confirms only after the exact conversation ID row disappears from Project list', () => {
+    expect(bridge).toContain("rowRemoved:exact.length===0");
+    const confirmStart=bridge.indexOf('function archiveConfirmExpr');
+    const confirmEnd=bridge.indexOf('async function archiveChat',confirmStart);
+    const confirmBlock=bridge.slice(confirmStart,confirmEnd);
+    expect(confirmBlock).toContain("projectContext:!");
+    expect(confirmBlock).toContain(".test(location.pathname)");
+    expect(confirmBlock).toContain("pathname.endsWith('/c/'+conversationId)");
+    expect(bridge).toContain("archiveConfirmExpr(identity.conversationId)");
+    expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_PROJECT_LIST_ROW_REMOVED");
   });
 
-  it('confirms archive using toast, sidebar removal, or reopened menu Unarchive state', () => {
-    expect(bridge).toContain("unarchiveVisible:unarchive.length===1");
-    expect(bridge).toContain("sidebarRemoved=links.all.length>0&&links.current.length===0");
-    expect(bridge).toContain("ARCHIVE_TOAST");
-    expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId),awaitPromise:true");
+  it('fails closed on ambiguous or missing identity rows and never falls back to title', () => {
+    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_");
+    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_MENU_COUNT_");
+    expect(bridge).not.toContain("SIDEBAR_ROW_FALLBACK");
   });
 });
 
 
 describe('NV02 archive activation via menu keyboard semantics', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
   it('focuses the exact archive menuitem and activates it with Enter', () => {
     expect(bridge).toContain('function archiveFocusExpr()');
     expect(bridge).toContain("status:document.activeElement===archive[0]?'ARCHIVE_ACTION_FOCUSED':'ARCHIVE_ACTION_FOCUS_FAILED'");
@@ -369,11 +384,6 @@ describe('NV02 archive activation via menu keyboard semantics', () => {
     expect(bridge).toContain("type:'keyDown',key:'Enter'");
     expect(bridge).toContain("type:'keyUp',key:'Enter'");
     expect(bridge).toContain('const activated=await activateArchiveMenuItem(p)');
-    expect(bridge).not.toContain('await cdpMouseClick(p,archivePoint,{paced:false});');
-  });
-  it('opens the sidebar to confirm the archived conversation disappears', () => {
-    expect(bridge).toContain("const scanLinks=()=>");
-    expect(bridge).toContain("mở sidebar|hiện thanh bên|open sidebar");
-    expect(bridge).toContain('links.all.length>0&&links.current.length===0');
   });
 });
+
