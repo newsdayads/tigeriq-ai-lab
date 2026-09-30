@@ -52,7 +52,7 @@
     },
     {
       "id": "NV03",
-      "role": "INDEPENDENT_REVIEW",
+      "role": "INDEPENDENT_REVIEW_QA",
       "enabled": true,
       "profileDirectory": "Profile_NV03",
       "homeUrl": "https://chatgpt.com/g/REPLACE_WITH_NV03_PROJECT",
@@ -61,10 +61,10 @@
     },
     {
       "id": "NV04",
-      "role": "RESEARCH_REVIEW",
+      "role": "DEEP_RESEARCH_SECOND_OPINION",
       "enabled": true,
       "profileDirectory": "Profile_NV04",
-      "homeUrl": "https://gemini.google.com/notebook/REPLACE_WITH_NV04_WORKSPACE",
+      "homeUrl": "https://gemini.google.com/app",
       "debugPort": 9224,
       "userDataDir": "D:\\TigerIQ\\Chrome\\NV04-Worker\\UserData"
     }
