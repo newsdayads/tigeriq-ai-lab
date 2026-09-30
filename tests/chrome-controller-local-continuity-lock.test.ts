@@ -51,6 +51,15 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(detectWorkerAssistantTerminal('Analysis mentions BLOCKED but state is still working.')).toBe('');
   });
 
+  it('preserves the active specialist chat during bounded recovery and defers periodic reset',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("async function reopenWorker(w,target,state,now,reason,resumeUrl='')");
+    expect(bridge).toContain('const preserveAssignedChat=isAssignedWorkerChat(w,resumeCandidate)');
+    expect(bridge).toContain("'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT'");
+    expect(bridge).toContain("'STALLED_3_CHECKS',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
+    expect(bridge).toContain("'CHAT_LOAD_ERROR',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
+  });
+
   it('stops generic continuity on terminal output even if the UI is still reporting WORKING',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
