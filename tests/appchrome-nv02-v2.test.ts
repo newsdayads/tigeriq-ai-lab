@@ -315,7 +315,8 @@ describe('NV02 rotation durable-checkpoint contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
   it('requires the worker terminal marker after durable GitHub checkpoint and does not invent a second Save prompt', () => {
-    expect(bridge).toContain('durable checkpoint/evidence đã ghi GitHub');
+    expect(bridge).not.toContain('durable checkpoint/evidence đã ghi GitHub');
+    expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER");
     expect(bridge).not.toContain("dispatch(target,'Lưu')");
     expect(bridge).toContain('if(hasCurrentNv02Chat(ui?.url))');
     expect(bridge).toContain('const archived=await archiveChat(target)');
