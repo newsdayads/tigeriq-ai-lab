@@ -7,7 +7,7 @@ $Responses = Join-Path $BrokerRoot 'responses'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
-$BrokerVersion = '1.6-wsl-keepalive'
+$BrokerVersion = '1.7-openai-device-auth'
 $Image = 'ghcr.io/paperclipai/paperclip:2026.916.1'
 $Container = 'tigeriq-paperclip-lab'
 $Compose = '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml'
@@ -15,6 +15,10 @@ $KeepaliveExecutable = '/usr/bin/sleep'
 $KeepaliveArgument = 'infinity'
 $WslKeepaliveProcess = $null
 $WslKeepaliveStartedAt = $null
+$DeviceAuthProcess = $null
+$DeviceAuthStdout = $null
+$DeviceAuthStderr = $null
+$DeviceAuthSessionId = $null
 
 New-Item -ItemType Directory -Force -Path $Requests,$Responses | Out-Null
 $created = $false
@@ -76,6 +80,65 @@ function Stop-WslKeepalive {
   }
 }
 
+function Clear-DeviceAuthFiles {
+  foreach ($candidate in @($script:DeviceAuthStdout,$script:DeviceAuthStderr)) {
+    if ($candidate) { Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue }
+  }
+  $script:DeviceAuthStdout=$null
+  $script:DeviceAuthStderr=$null
+  $script:DeviceAuthSessionId=$null
+  $script:DeviceAuthProcess=$null
+}
+
+function Refresh-DeviceAuthCleanup {
+  if ($null -eq $script:DeviceAuthProcess) { return }
+  try {
+    $script:DeviceAuthProcess.Refresh()
+    if ($script:DeviceAuthProcess.HasExited) { Clear-DeviceAuthFiles }
+  } catch { Clear-DeviceAuthFiles }
+}
+
+function Invoke-OpenAiDeviceAuth([string]$RequestId,[string]$SessionId) {
+  if ($SessionId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') { throw 'TIGERIQ_PAPERCLIP_OPENAI_SESSION_INVALID' }
+  Refresh-DeviceAuthCleanup
+  if ($null -ne $script:DeviceAuthProcess) { throw 'TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_ALREADY_RUNNING' }
+  $loginRoot=Join-Path (Join-Path (Join-Path (Join-Path $LabRoot 'data') 'instances') 'default') 'ai-local-logins'
+  $hostHome=Join-Path $loginRoot $SessionId
+  $config=Join-Path $hostHome 'config.toml'
+  if (-not (Test-Path -LiteralPath $hostHome -PathType Container) -or -not (Test-Path -LiteralPath $config -PathType Leaf)) { throw 'TIGERIQ_PAPERCLIP_OPENAI_SESSION_NOT_FOUND' }
+  $codexHome='/paperclip/instances/default/ai-local-logins/'+$SessionId
+  $stdoutPath=Join-Path $BrokerRoot ('device-auth-'+$RequestId+'.out')
+  $stderrPath=Join-Path $BrokerRoot ('device-auth-'+$RequestId+'.err')
+  Remove-Item -LiteralPath $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+  $args=@('--distribution',$Distro,'--exec','docker','exec','-e',('CODEX_HOME='+$codexHome),$Container,'codex','-c','cli_auth_credentials_store="file"','login','--device-auth')
+  $argLine=(($args|ForEach-Object{Quote-FixedArg ([string]$_)}) -join ' ')
+  $proc=Start-Process -FilePath $Wsl -ArgumentList $argLine -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+  $script:DeviceAuthProcess=$proc
+  $script:DeviceAuthStdout=$stdoutPath
+  $script:DeviceAuthStderr=$stderrPath
+  $script:DeviceAuthSessionId=$SessionId
+  $deadline=(Get-Date).AddSeconds(30)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 500
+    $proc.Refresh()
+    Write-BrokerHeartbeat
+    $out=if(Test-Path -LiteralPath $stdoutPath){Get-Content -Raw -LiteralPath $stdoutPath}else{''}
+    $err=if(Test-Path -LiteralPath $stderrPath){Get-Content -Raw -LiteralPath $stderrPath}else{''}
+    $plain=([string]$out+[Environment]::NewLine+[string]$err) -replace '\x1B\[[0-9;]*[A-Za-z]',''
+    $urlMatch=[regex]::Match($plain,'https://auth\.openai\.com/codex/device')
+    $codeMatch=[regex]::Match($plain,'(?is)Enter this one-time code.*?\r?\n\s*([A-Z0-9]{2,}(?:-[A-Z0-9]{2,})+)')
+    if ($urlMatch.Success -and $codeMatch.Success) {
+      $code=[string]$codeMatch.Groups[1].Value
+      Set-Clipboard -Value $code
+      Start-Process -FilePath ([string]$urlMatch.Value) | Out-Null
+      return [pscustomobject]@{ started=$true; browserOpened=$true; codeCopied=$true; sessionId=$SessionId; expiresInMinutes=15 }
+    }
+    if ($proc.HasExited) { Clear-DeviceAuthFiles; throw 'TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_EARLY_EXIT' }
+  }
+  try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+  Clear-DeviceAuthFiles
+  throw 'TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_PROMPT_TIMEOUT'
+}
 function Get-OperationSpec([string]$Operation) {
   switch ($Operation) {
     'version' {
@@ -176,11 +239,16 @@ function Invoke-FixedWslDocker([string]$RequestId, [string]$Operation) {
 function Test-Request($Request) {
   if ([string]$Request.schema -ne 'TIGERIQ_PAPERCLIP_WSL_REQUEST_V1') { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_REQUEST_INVALID' }
   if ([string]$Request.id -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_REQUEST_INVALID' }
-  $allowed = @('schema','id','operation')
+  $operation=[string]$Request.operation
+  $allowed=if($operation -eq 'openai_device_auth_start'){@('schema','id','operation','sessionId')}else{@('schema','id','operation')}
   foreach ($property in $Request.PSObject.Properties.Name) {
     if ($allowed -notcontains [string]$property) { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_REQUEST_INVALID' }
   }
-  [void](Get-OperationSpec ([string]$Request.operation))
+  if($operation -eq 'openai_device_auth_start'){
+    if([string]$Request.sessionId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'){throw 'TIGERIQ_PAPERCLIP_OPENAI_SESSION_INVALID'}
+    return
+  }
+  [void](Get-OperationSpec $operation)
 }
 
 $lastHeartbeat = [DateTime]::MinValue
@@ -193,6 +261,7 @@ try {
       Write-BrokerHeartbeat
       $lastHeartbeat = Get-Date
     }
+    Refresh-DeviceAuthCleanup
 
     $items = @(Get-ChildItem -LiteralPath $Requests -Filter 'request-*.json' -File -ErrorAction SilentlyContinue | Sort-Object CreationTimeUtc | Select-Object -First 3)
     foreach ($item in $items) {
@@ -200,17 +269,25 @@ try {
       try {
         $req = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
         Test-Request $req
-        $result = Invoke-FixedWslDocker ([string]$req.id) ([string]$req.operation)
-        $resp = [pscustomobject]@{
-          schema='TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1'
-          id=[string]$req.id
-          ok=$true
-          exitCode=[int]$result.exitCode
-          timedOut=[bool]$result.timedOut
-          timeoutKind=if ($result.timeoutKind) { [string]$result.timeoutKind } else { $null }
-          stdout=[string]$result.stdout
-          stderr=[string]$result.stderr
-          completedAt=(Get-Date).ToUniversalTime().ToString('o')
+        if([string]$req.operation -eq 'openai_device_auth_start'){
+          $safe=Invoke-OpenAiDeviceAuth ([string]$req.id) ([string]$req.sessionId)
+          $resp=[pscustomobject]@{
+            schema='TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1'; id=[string]$req.id; ok=$true; exitCode=0; timedOut=$false; timeoutKind=$null
+            stdout=($safe|ConvertTo-Json -Compress); stderr=''; completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          }
+        } else {
+          $result = Invoke-FixedWslDocker ([string]$req.id) ([string]$req.operation)
+          $resp = [pscustomobject]@{
+            schema='TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1'
+            id=[string]$req.id
+            ok=$true
+            exitCode=[int]$result.exitCode
+            timedOut=[bool]$result.timedOut
+            timeoutKind=if ($result.timeoutKind) { [string]$result.timeoutKind } else { $null }
+            stdout=[string]$result.stdout
+            stderr=[string]$result.stderr
+            completedAt=(Get-Date).ToUniversalTime().ToString('o')
+          }
         }
       } catch {
         $id = if ($req -and $req.id) { [string]$req.id } else { '' }

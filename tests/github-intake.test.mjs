@@ -698,6 +698,30 @@ test('Owner-direct typed Paperclip broker install is admitted as local direct pc
   assert.strictEqual(pool.jobs[0].capability,'pc_operator');
 });
 
+test('Owner-direct typed Paperclip OpenAI device auth start is admitted with UUID only',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_openai_device_auth_start","sessionId":"d780f0ee-b44c-41e1-830a-4aada9a68ceb"}',
+    'ASSIGNED_ACTION',
+    'Execute exactly the pre-admitted device auth start action.',
+    'ACCEPTANCE',
+    'Return safe start evidence only.',
+  ].join('\n');
+  const issues=[{number:2593,state:'open',title:'Paperclip OpenAI auth start',body,html_url:'https://example/2593'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'paperclip_openai_device_auth_start',sessionId:'d780f0ee-b44c-41e1-830a-4aada9a68ceb'});
+  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
+});
 test('typed direct pc_operator action remains executable when explanatory prompt exceeds OpenClaw limit',async()=>{
   const pool=coreBacklogPool();
   const assigned='x'.repeat(6500);

@@ -272,6 +272,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(PAPERCLIP_LAB_ACTIONS).toEqual([
       'paperclip_lab_preflight',
       'paperclip_lab_broker_install',
+      'paperclip_openai_device_auth_start',
       'paperclip_lab_install',
       'paperclip_lab_start',
       'paperclip_lab_stop',
@@ -279,6 +280,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     ]);
     expect(assertPaperclipLabRequest({ action: 'paperclip_lab_health' })).toEqual({ action: 'paperclip_lab_health' });
     expect(assertPaperclipLabRequest({ action: 'paperclip_lab_broker_install' })).toEqual({ action: 'paperclip_lab_broker_install' });
+    expect(assertPaperclipLabRequest({ action: 'paperclip_openai_device_auth_start', sessionId: 'd780f0ee-b44c-41e1-830a-4aada9a68ceb' })).toEqual({ action: 'paperclip_openai_device_auth_start', sessionId: 'd780f0ee-b44c-41e1-830a-4aada9a68ceb' });
+    expect(() => assertPaperclipLabRequest({ action: 'paperclip_openai_device_auth_start', sessionId: 'bad' })).toThrow('TIGERIQ_PAPERCLIP_OPENAI_SESSION_INVALID');
     expect(() => assertPaperclipLabRequest({ action: 'paperclip_lab_health', port: 8795 })).toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
     expect(() => assertPaperclipLabRequest({ action: 'shell_exec' })).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
   });
