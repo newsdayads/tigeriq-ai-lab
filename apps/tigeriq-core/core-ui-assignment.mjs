@@ -9,6 +9,7 @@ const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_C
 function value(body,key){return bodyValue(body,key);}
 function yes(body,key){return exactBodyFlag(body,key,'true');}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
+function safeResult(v){return String(v||'').replace(/\0/g,'').trim().slice(0,4000);}
 function rank(p){return PRIORITY_RANK[String(p||'P5')]??PRIORITY_RANK.P5;}
 function issueNo(jobId){const m=String(jobId||'').match(/^GH-(\d+)$/);return m?Number(m[1]):null;}
 function resourceId(workerId){return 'res:ui:'+String(workerId).toLowerCase()+':subscription:chrome';}
@@ -177,23 +178,29 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
   const state=String(terminal||'').toUpperCase();
   if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(state))throw new Error('CORE_UI_TERMINAL_INVALID');
   const item=await row(pool,{jobId});
-  if(!item)throw new Error('CORE_UI_JOB_NOT_ACTIVE');
+  if(!item)throw new Error('CORE_UI_JOB_NOT_FOUND');
   if(String(item.employee_id)!==String(workerId))throw new Error('CORE_UI_JOB_WORKER_MISMATCH');
+  if(!['ui_assigned','ui_running'].includes(String(item.status||''))){
+    return {ok:true,alreadyTerminal:true,jobId,workerId,terminal:String(item?.result?.terminal||state),evidenceRef:String(item?.result?.evidenceRef||item?.metadata?.issueUrl||''),issueRef:String(item?.metadata?.issueUrl||'')};
+  }
   const issue=await readIssue(fetchImpl,owner,repo,token,n);
+  const terminalResult=safeResult(result||state);
   const evidenceBody=[
     'TIGERIQ_CORE_UI_TERMINAL_V1',
     'JOB_ID='+jobId,
     'WORKER='+workerId,
     'STATE='+state,
-    'RESULT='+clean(result||state),
     'SOURCE=APP_CHROME_UI_TRANSPORT',
+    'RESULT_BEGIN',
+    terminalResult,
+    'RESULT_END',
   ].join('\n');
   const comment=await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
   if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
   const jobStatus=state==='DONE'?'done':'failed';
   const objectiveStatus=state==='DONE'?'completed':'blocked';
   const evidenceRef=String(comment?.html_url||issue.html_url||'');
-  await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify({source:'app_chrome_ui',terminal:state,evidenceRef,result:clean(result||state)})]);
+  await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify({source:'app_chrome_ui',terminal:state,evidenceRef,result:terminalResult})]);
   await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,objectiveStatus,'Core UI terminal '+state+' from '+workerId]);
   await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_TERMINAL',$1,$2,$3,$4,'ui',$5)",[item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:state,evidenceRef,issueNumber:n})]);
   return {ok:true,jobId,workerId,terminal:state,evidenceRef,issueRef:String(issue.html_url||'')};
