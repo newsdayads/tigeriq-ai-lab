@@ -187,7 +187,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const db = compose.slice(compose.indexOf('  db:'), compose.indexOf('  secrets-init:'));
     const secrets = compose.slice(compose.indexOf('  secrets-init:'), compose.indexOf('  migrate:'));
     const migrate = compose.slice(compose.indexOf('  migrate:'), compose.indexOf('  paperclip:'));
-    const app = compose.slice(compose.indexOf('  paperclip:'), compose.indexOf('volumes:'));
+    const app = compose.slice(compose.indexOf('  paperclip:'), compose.lastIndexOf('\nvolumes:'));
     expect(db).toContain('restart: unless-stopped');
     expect(app).toContain('restart: unless-stopped');
     expect(secrets).toContain('restart: "no"');
