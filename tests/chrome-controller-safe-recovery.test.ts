@@ -360,6 +360,8 @@ describe('safe recovery contracts',()=>{
     expect(installer).toContain("'APPCHROME_DEPLOYMENT_LOCKED'");
     expect(installer).toContain("'active-deploy.json'");
     expect(installer).toContain("activation='NEXT_REBOOT_PENDING'");
+    expect(installer).toContain('installedBootId=$installedBootId');
+    expect(installer).toContain('Get-CimInstance Win32_OperatingSystem');
     expect(installer).not.toContain('git ');
     expect(installer).not.toContain('npm ');
     expect(installer).not.toContain('npx ');
@@ -371,6 +373,8 @@ describe('safe recovery contracts',()=>{
     expect(launcher).toContain('ACTIVE_VERSION_MISMATCH');
     expect(launcher).toContain('ACTIVE_BRIDGE_HASH_MISMATCH');
     expect(launcher).toContain('TIGERIQ_APPROVED_HEAD');
+    expect(launcher).toContain("'NEXT_REBOOT_ACTIVATION_DEFERRED'");
+    expect(launcher).toContain("'PENDING_INSTALL_BOOT_ID_MISSING'");
     expect(launcher).not.toContain('/safe-recover');
     expect(launcher).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
   });
