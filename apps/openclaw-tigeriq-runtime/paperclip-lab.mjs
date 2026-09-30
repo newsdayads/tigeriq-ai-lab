@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_CONNECTION_DIAGNOSTIC_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_SIDECAR_DIAGNOSTIC_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -875,6 +875,72 @@ function mountSourceMatchesLabData(source) {
   ].includes(value);
 }
 
+async function inspectComposeService(dockerKind, service, signal = null, diagnostics = false) {
+  const idResult = await runDocker(
+    dockerKind,
+    composeArgs(['ps', '-q', service]),
+    { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
+  ).catch(() => null);
+  const containerId = idResult?.exitCode === 0
+    ? String(idResult.stdout || '').trim().split(/\s+/).filter(Boolean)[0] || null
+    : null;
+  if (!containerId) {
+    return {
+      present: false,
+      running: false,
+      status: null,
+      exitCode: null,
+      oomKilled: false,
+      healthStatus: null,
+      restartCount: null,
+      stateErrorClass: 'NONE',
+      logClass: diagnostics ? 'LOGS_UNAVAILABLE' : null,
+      logFingerprint: null,
+      logExcerpt: null,
+    };
+  }
+
+  const inspect = await runDocker(
+    dockerKind,
+    ['inspect', containerId, '--format', '{{json .}}'],
+    { timeoutMs: 15000, signal },
+  ).catch(() => null);
+  let info = null;
+  try { info = inspect?.exitCode === 0 ? JSON.parse(String(inspect.stdout || '').trim()) : null; } catch {}
+  const state = info?.State || {};
+  let logClass = null;
+  let logDiagnostic = null;
+  if (diagnostics) {
+    const logs = await runDocker(
+      dockerKind,
+      ['logs', '--tail', '120', containerId],
+      { timeoutMs: 20000, signal },
+    ).catch(() => null);
+    if (logs?.exitCode === 0) {
+      const combinedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
+      logClass = paperclipContainerLogClass(combinedLogs);
+      logDiagnostic = paperclipContainerLogDiagnostic(combinedLogs);
+    } else {
+      logClass = 'LOGS_UNAVAILABLE';
+    }
+  }
+  return {
+    present: Boolean(info),
+    running: state?.Running === true,
+    status: typeof state?.Status === 'string' ? state.Status : null,
+    exitCode: Number.isInteger(state?.ExitCode) ? state.ExitCode : null,
+    oomKilled: state?.OOMKilled === true,
+    healthStatus: typeof state?.Health?.Status === 'string' ? state.Health.Status : null,
+    restartCount: Number.isInteger(info?.RestartCount) ? info.RestartCount : null,
+    startedAt: typeof state?.StartedAt === 'string' ? state.StartedAt : null,
+    finishedAt: typeof state?.FinishedAt === 'string' ? state.FinishedAt : null,
+    stateErrorClass: paperclipContainerStateErrorClass(state?.Error),
+    logClass,
+    logFingerprint: logDiagnostic?.fingerprint || null,
+    logExcerpt: logDiagnostic?.excerpt || null,
+  };
+}
+
 async function health(signal = null, transport = null, options = {}) {
   throwIfAborted(signal);
   let pin;
@@ -883,10 +949,11 @@ async function health(signal = null, transport = null, options = {}) {
 
   const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal);
   if (!docker.kind) return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'DOCKER_UNAVAILABLE', docker };
-  const [port, http, inspect] = await Promise.all([
+  const [port, http, inspect, database] = await Promise.all([
     probePort(),
     httpHealth(signal),
     runDocker(docker.kind, ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
+    inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true),
   ]);
 
   let info = null;
@@ -982,6 +1049,21 @@ async function health(signal = null, transport = null, options = {}) {
       dataMountOk: state.container?.dataMountOk === true,
       secretsMountOk: state.container?.secretsMountOk === true,
       identityOk: state.container?.identityOk === true,
+    },
+    database: {
+      present: database?.present === true,
+      running: database?.running === true,
+      status: database?.status || null,
+      exitCode: database?.exitCode ?? null,
+      oomKilled: database?.oomKilled === true,
+      healthStatus: database?.healthStatus || null,
+      restartCount: database?.restartCount ?? null,
+      startedAt: database?.startedAt || null,
+      finishedAt: database?.finishedAt || null,
+      stateErrorClass: database?.stateErrorClass || null,
+      logClass: database?.logClass || null,
+      logFingerprint: database?.logFingerprint || null,
+      logExcerpt: database?.logExcerpt || null,
     },
   };
   return state;
