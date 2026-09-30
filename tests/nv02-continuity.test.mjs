@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSaveReceipt } from '../apps/chrome-controller/extension/save-receipt.js';
 import {
-  CONTINUE_PROMPTS, CHAT_ROTATE_AFTER_DISPATCHES, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
+  CONTINUE_PROMPTS, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
   CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, detectWorkerAssistantTerminal, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
-  pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
+  pickContinuePrompt, randomDelay, computeWorkerStaggerDelay, rearmWorkerRunGrace,
   AWAITING_WORK_START_TIMEOUT_MS, shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from '../apps/chrome-controller/extension/continuity.js';
 
@@ -135,11 +135,19 @@ describe('NV02 continuity policy', () => {
   });
 
   it('uses exactly the approved 21 continue commands without immediate repetition', () => {
-    expect(CONTINUE_PROMPTS).toEqual(["Kiểm tra trạng thái việc hiện tại và làm bước kế tiếp.","Tiếp tục đúng Work Order đang active, không đổi việc.","Làm bước nhỏ tiếp theo có thể kiểm chứng.","Hoàn tất phần đang dở rồi ghi evidence.","Kiểm tra kết quả bước vừa làm.","Nếu có lỗi, xác định root cause và sửa trong phạm vi Work Order.","Chạy test hoặc verification cần thiết cho bước hiện tại.","Đọc lại acceptance criteria và đối chiếu kết quả.","Kiểm tra dependency trước khi tiếp tục.","Nếu dependency chưa đủ, ghi blocker cụ thể và dừng an toàn.","Tiếp tục xử lý phần còn thiếu của Work Order.","Không tự chuyển sang issue hoặc nhiệm vụ khác.","Không tự tạo scope, claim hoặc resource mới ngoài Work Order.","Kiểm tra evidence đã đủ và đúng định dạng chưa.","Nếu đã đạt yêu cầu, ghi terminal evidence.","Nếu bị chặn thật, ghi blocker và không lặp vô hạn.","Nếu cần retry, retry đúng bước lỗi với giới hạn an toàn.","Kiểm tra lease và resource ownership trước khi ghi.","Hoàn tất, release lease và cập nhật trạng thái cuối.","Nếu không còn active work, không tự bịa việc và chờ controller.","Báo trạng thái ngắn gọn: DONE, BLOCKED, EXTERNAL_WAIT hoặc READY."]);
+    expect(CONTINUE_PROMPTS).toEqual([
+      'Tiếp tục','Làm tiếp','Tiếp đi','Xử lý tiếp','Thực hiện tiếp',
+      'Tiếp tục công việc hiện tại','Làm tiếp công việc hiện tại','Tiếp tục việc đang làm',
+      'Làm tiếp phần đang dở','Tiếp tục từ chỗ hiện tại','Tiếp tục đúng việc này',
+      'Xử lý tiếp việc hiện tại','Thực hiện tiếp việc đang làm','Tiếp tục phần còn dở',
+      'Tiếp tục từ trạng thái hiện tại','Tiếp tục xử lý việc đang dở',
+      'Tiếp tục công việc đang dang dở','Thực thi tiếp việc hiện tại',
+      'Làm tiếp nhiệm vụ đang thực hiện','Tiếp tục đúng việc đang được giao','Làm tiếp, không đổi việc',
+    ]);
     expect(CONTINUE_PROMPTS).toHaveLength(21);
     expect(new Set(CONTINUE_PROMPTS).size).toBe(21);
-    expect(pickContinuePrompt('Kiểm tra trạng thái việc hiện tại và làm bước kế tiếp.',()=>0)).toBe('Tiếp tục đúng Work Order đang active, không đổi việc.');
-    expect(pickContinuePrompt('Báo trạng thái ngắn gọn: DONE, BLOCKED, EXTERNAL_WAIT hoặc READY.',()=>0.999999)).not.toBe('Báo trạng thái ngắn gọn: DONE, BLOCKED, EXTERNAL_WAIT hoặc READY.');
+    expect(pickContinuePrompt('Tiếp tục',()=>0)).toBe('Làm tiếp');
+    expect(pickContinuePrompt('Làm tiếp, không đổi việc',()=>0.999999)).not.toBe('Làm tiếp, không đổi việc');
     for(const prompt of CONTINUE_PROMPTS){
       expect(prompt).not.toMatch(/tự (lấy|chọn)|việc tiếp theo|hàng đợi|ưu tiên cao nhất/i);
     }
@@ -278,14 +286,16 @@ describe('NV02 continuity policy', () => {
     expect(source).not.toContain("MODEL_PROFILE_RECOVERY_FAILED");
     expect(source).toContain("modelCheckBlockedUntil:Number(raw.modelCheckBlockedUntil)||0");
     expect(source).toContain("async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={})");
-    expect(source).toContain("const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
-    expect(source).toContain("const NV02_MAX_DISPATCHES_PER_CHAT=60");
-    expect(source).toContain("const NV02_MAX_CHAT_AGE_MS=6*60*60*1000");
+    expect(source).toContain("const NV02_LEGACY_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
+    expect(source).not.toContain("NV02_MAX_DISPATCHES_PER_CHAT");
+    expect(source).not.toContain("NV02_MAX_CHAT_AGE_MS");
     expect(source).toContain("async function rotateNv02ToFreshChat");
-    expect(source).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
-    expect(source).toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
-    expect(source).toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
-    expect(source).toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
+    const brokenChatRecovery=source.slice(source.indexOf('async function maybeRecoverChatLoadError'),source.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(brokenChatRecovery).toContain("rotateNv02ToFreshChat(target,checkpoint,'CHAT_LOAD_ERROR'");
     expect(source).toContain("crashResumePending:Boolean(raw.crashResumePending)");
     expect(source).toContain("crashResumeUrl:String(raw.crashResumeUrl||'')");
     expect(source).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
@@ -341,7 +351,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
     expect(source).not.toContain("await navigate(target,state.resumeChatUrl)");
     expect(source).not.toContain("'CURRENT_CHAT_RESTORED'");
-    expect(source).toContain("'BOOT_FRESH_CHAT_COMPLETE'");
+    expect(source).toContain("'BOOT_CONTEXT_PRESERVED_OR_RECOVERED'");
     expect(source).not.toContain("'CURRENT_WORK_NEW_CHAT_RESTORED'");
 
     const bootFreshGate=continuityLoop.indexOf("bootFreshContextPending.has('NV02')");
@@ -364,12 +374,19 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("pages.find(t=>sameWorkerLocation(t.url,preferredUrl))");
 
 
-    const f5Block=continuityLoop.slice(continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))"),continuityLoop.indexOf("if(phase==='WORKING')"));
-    expect(f5Block).toContain("reloadTarget(target)");
-    expect(f5Block).toContain("PERIODIC_F5_FAILED");
-    expect(f5Block).not.toContain("ensureNv02ModelProfile");
-    expect(f5Block).not.toContain("checkpointNv02");
-    expect(f5Block).not.toContain("rotateNv02Chat");
+    const workingF5Gate=continuityLoop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const normalF5Gate=continuityLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))",workingF5Gate+1);
+    expect(workingF5Gate).toBeGreaterThan(-1);
+    expect(normalF5Gate).toBeGreaterThan(workingF5Gate);
+    const deferredF5=continuityLoop.slice(workingF5Gate,normalF5Gate);
+    expect(deferredF5).toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(deferredF5).not.toContain("reloadTarget(target)");
+    const normalF5=continuityLoop.slice(normalF5Gate,continuityLoop.indexOf("if(phase==='WORKING'){",normalF5Gate));
+    expect(normalF5).toContain("reloadTarget(target)");
+    expect(normalF5).toContain("PERIODIC_F5_FAILED");
+    expect(normalF5).not.toContain("ensureNv02ModelProfile");
+    expect(normalF5).not.toContain("checkpointNv02");
+    expect(normalF5).not.toContain("rotateNv02Chat");
 
     expect(source).toContain('[data-message-author-role="assistant"]');
 
@@ -381,36 +398,19 @@ describe('NV02 continuity policy', () => {
     expect(contentSource).toContain('button[aria-label*="Ngừng" i]');
   });
 
-  it('rotates a tracked NV02 chat only when safe: READY old/oversized or recovery exhausted', () => {
-    // READY chat can rotate when oversized or overdue; WORKING never rotates.
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:9999999,nextRefreshAt:0,dispatchesInChat:9999,chatStartedAt:9999998})).toBe(true);
-    expect(shouldRotateNv02Chat({phase:'WORKING',currentTrackedWork:true,now:9999999,nextRefreshAt:1,dispatchesInChat:9999,chatStartedAt:1,chatLoadRecoveryStage:3})).toBe(false);
-
-    // Recovery exhaustion rotates once the UI is no longer visibly working.
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,chatLoadRecoveryStage:3})).toBe(true);
-
-    // Untracked work doesn't rotate.
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:false,now:100,chatLoadRecoveryStage:3})).toBe(false);
-
-    // Bounded retry applies.
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:100,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(false);
-    expect(shouldRotateNv02Chat({phase:'READY',currentTrackedWork:true,now:102,rotationRetryAt:101,chatLoadRecoveryStage:3})).toBe(true);
-
+  it('never auto-rotates a tracked NV02 chat by age/count/terminal/idle/boot', () => {
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
-    expect(bridge).not.toContain("CHAT_ROTATION_DUE");
-    expect(bridge).not.toContain("CHAT_ROTATION_FAILED");
-    expect(bridge).not.toContain("CHAT_ROTATION_DEFERRED_TO_EXTERNAL_AUTOPILOT");
-    expect(bridge).toContain("rotationRetryAt:Number(raw.rotationRetryAt)||0");
-    expect(bridge).not.toContain("async function rotateNv02Chat");
-    expect(bridge).not.toContain("async function checkpointNv02");
-    expect(bridge).not.toContain("CURRENT_WORK_ORDER=");
+    const continuitySource=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
+    expect(continuitySource).not.toContain('shouldRotateNv02Chat');
+    expect(continuitySource).not.toContain('CHAT_ROTATE_AFTER_DISPATCHES');
+    expect(bridge).not.toContain('NV02_MAX_DISPATCHES_PER_CHAT');
+    expect(bridge).not.toContain('NV02_MAX_CHAT_AGE_MS');
     const continuity=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('\nasync function handleCommand'));
-    const workingGate=continuity.indexOf("if(phase==='WORKING')");
-    const recoveryGate=continuity.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError');
-    expect(workingGate).toBeGreaterThan(-1);
-    expect(recoveryGate).toBeGreaterThan(workingGate);
-    expect(continuity).not.toContain('if(shouldRotateNv02Chat');
-    expect(continuity).not.toContain('externalAutopilotOwnsNextNv02Job');
+    expect(continuity).not.toContain('SAFETY_CONTEXT_LIMIT');
+    expect(continuity).not.toContain('JOB_TERMINAL_DURABLE_CHECKPOINT');
+    expect(continuity).not.toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
+    expect(continuity).not.toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(continuity).toContain("'BOOT_CONTEXT_PRESERVED_OR_RECOVERED'");
   });
 
   it('uses App Chrome strictly as local UI transport with short prompts', () => {
