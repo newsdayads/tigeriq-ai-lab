@@ -9,10 +9,10 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
   const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
   const doc=readFileSync('docs/app-chrome/APP_CHROME_MASTER_CONTRACT_3UI_V1.md','utf8');
 
-  it('locks the exact 21-command content pool and immutable worker prefixes',()=>{
-    const poolStart=bridge.indexOf('const NV02_CONTINUE_PROMPTS=Object.freeze([');
-    const poolEnd=bridge.indexOf(']);',poolStart);
-    const pool=bridge.slice(poolStart,poolEnd);
+  it('locks one canonical exact 21-command content pool and immutable worker prefixes',()=>{
+    const poolStart=continuity.indexOf('export const CONTINUE_PROMPTS = Object.freeze([');
+    const poolEnd=continuity.indexOf(']);',poolStart);
+    const pool=continuity.slice(poolStart,poolEnd);
     const commands=[
       'Tiếp tục','Làm tiếp','Tiếp đi','Xử lý tiếp','Thực hiện tiếp',
       'Tiếp tục công việc hiện tại','Làm tiếp công việc hiện tại','Tiếp tục việc đang làm',
@@ -25,7 +25,8 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
     expect(poolStart).toBeGreaterThan(-1);
     for(const command of commands)expect(pool).toContain(`'${command}'`);
     expect((pool.match(/^\s*'.+',?$/gm)||[])).toHaveLength(21);
-    expect(bridge).toContain('return `02 - ${base}`;');
+    expect(bridge).not.toContain('NV02_CONTINUE_PROMPTS');
+    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
     expect(continuity).toContain("return code?code+' - '+base:base");
     expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
     expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
