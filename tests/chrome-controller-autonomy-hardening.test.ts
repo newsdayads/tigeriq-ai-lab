@@ -641,12 +641,18 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
 
-  it('activates a new exact-head deploy without requiring a PC reboot',()=>{
+  it('defers NEXT_REBOOT_PENDING on the install boot and activates only after boot identity changes',()=>{
     const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
     const readActive=launcher.indexOf('$active=Read-ValidatedActive');
+    const deferGate=launcher.indexOf('if($active.pendingSameBoot)');
     const stopStale=launcher.indexOf('Stop-StaleTrustedListener');
     const verify=launcher.indexOf('Wait-LiveVerified $active');
     expect(readActive).toBeGreaterThan(-1);
+    expect(deferGate).toBeGreaterThan(readActive);
+    expect(launcher).toContain('Get-CurrentBootId');
+    expect(launcher).toContain("'NEXT_REBOOT_PENDING'");
+    expect(launcher).toContain("'PENDING_INSTALL_BOOT_ID_MISSING'");
+    expect(launcher).toContain("'NEXT_REBOOT_ACTIVATION_DEFERRED'");
     expect(stopStale).toBeGreaterThan(-1);
     expect(verify).toBeGreaterThan(readActive);
     expect(launcher).toContain('$headChanged=$lastHead-ne$active.head');
@@ -660,6 +666,8 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(installer).toContain("$taskName='TigerIQ APP Chrome Unified'");
     expect(installer).toContain("$taskActivation=if($task){'TASK_PRESENT_NEXT_REBOOT'}else{'TASK_ABSENT'}");
     expect(installer).toContain("activation='NEXT_REBOOT_PENDING'");
+    expect(installer).toContain('installedBootId=$installedBootId');
+    expect(installer).toContain('Get-CimInstance Win32_OperatingSystem');
     expect(installer).not.toContain("Stop-ScheduledTask -TaskName $taskName");
     expect(installer).not.toContain("Start-ScheduledTask -TaskName $taskName");
     expect(installer).not.toContain('New-ScheduledTaskPrincipal');
