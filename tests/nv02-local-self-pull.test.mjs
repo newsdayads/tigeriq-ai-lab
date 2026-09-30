@@ -91,6 +91,7 @@ describe('NV02 local GitHub self-pull contract', () => {
 
   it('uses the prepended current authority block instead of stale duplicate metadata below it', () => {
     const work = issue(2475, '[P1] rearmed', [
+      '## OWNER REARM — NV02 P1 SAFE WORK — 2026-09-30',
       'CURRENT_STATE=READY_FOR_NV02_SELF_PULL',
       'TIGERIQ_EXECUTABLE=true',
       'AUTO_QUEUE=INCLUDED',
@@ -98,6 +99,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       'RESOURCE_SCOPE=REARMED_SCOPE',
       'REARMED_AT=2026-09-30T13:30:00Z',
       '',
+      '## NV02 TERMINAL CHECKPOINT — 2026-09-30',
       'CURRENT_STATE=TERMINAL_BLOCKED_RUNTIME_INVENTORY',
       'TIGERIQ_EXECUTABLE=false',
       'AUTO_QUEUE=EXCLUDED',
@@ -116,6 +118,7 @@ describe('NV02 local GitHub self-pull contract', () => {
 
   it('ignores terminal evidence before an explicit rearm epoch but honors terminal evidence after it', () => {
     const work = issue(2475, '[P1] rearmed', [
+      '## OWNER REARM — NV02 P1 SAFE WORK — 2026-09-30',
       'CURRENT_STATE=READY_FOR_NV02_SELF_PULL',
       'TIGERIQ_EXECUTABLE=true',
       'AUTO_QUEUE=INCLUDED',
