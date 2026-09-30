@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_WSL_KEEPALIVE_2';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_OPENAI_DEVICE_AUTH_3';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -18,6 +18,7 @@ export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
   'paperclip_lab_preflight',
   'paperclip_lab_broker_install',
+  'paperclip_openai_device_auth_start',
   'paperclip_lab_install',
   'paperclip_lab_start',
   'paperclip_lab_stop',
@@ -46,7 +47,7 @@ const BROKER_DIR = win.join(PAPERCLIP_LAB_ROOT, 'broker');
 const BROKER_REQUESTS_DIR = win.join(BROKER_DIR, 'requests');
 const BROKER_RESPONSES_DIR = win.join(BROKER_DIR, 'responses');
 const BROKER_HEARTBEAT_FILE = win.join(BROKER_DIR, 'heartbeat.json');
-const BROKER_EXPECTED_VERSION = '1.6-wsl-keepalive';
+const BROKER_EXPECTED_VERSION = '1.7-openai-device-auth';
 const BROKER_SCRIPT_FILE = win.join(BROKER_DIR, 'paperclip-wsl-broker.ps1');
 const BROKER_INSTALLER_FILE = win.join(BROKER_DIR, 'Install-PaperclipWslBroker.ps1');
 const BROKER_SOURCE_SCRIPT = fileURLToPath(new URL('./paperclip-wsl-broker.ps1', import.meta.url));
@@ -97,6 +98,13 @@ export function paperclipLabWslDockerArgs(args = []) {
 export function assertPaperclipLabRequest(input = {}) {
   const action = String(input?.action || '');
   if (!PAPERCLIP_LAB_ACTIONS.includes(action)) throw new Error('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
+  if (action === 'paperclip_openai_device_auth_start') {
+    const extras = Object.keys(input).filter((key) => !['action','sessionId'].includes(key) && input[key] !== undefined);
+    if (extras.length) throw new Error('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
+    const sessionId = String(input?.sessionId || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId)) throw new Error('TIGERIQ_PAPERCLIP_OPENAI_SESSION_INVALID');
+    return { action, sessionId };
+  }
   const extras = Object.keys(input).filter((key) => key !== 'action' && input[key] !== undefined);
   if (extras.length) throw new Error('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
   return { action };
@@ -343,7 +351,7 @@ async function installInteractiveWslBroker(signal = null) {
     || !brokerSource.includes("$KeepaliveExecutable = '/usr/bin/sleep'")
     || !brokerSource.includes("$KeepaliveArgument = 'infinity'")
     || !installerSource.includes("$TaskName='TigerIQ Paperclip WSL Broker'")
-    || !installerSource.includes("$ExpectedBrokerVersion='1.6-wsl-keepalive'")
+    || !installerSource.includes("$ExpectedBrokerVersion='1.7-openai-device-auth'")
     || !installerSource.includes("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited")) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID');
   }
@@ -375,10 +383,8 @@ async function installInteractiveWslBroker(signal = null) {
   };
 }
 
-async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = {}) {
+async function runBrokerRequest(operation, extra = {}, { timeoutMs = 120000, signal = null } = {}) {
   throwIfAborted(signal);
-  const operation = paperclipLabBrokerOperationForDockerArgs(args);
-  if (!operation) throw new Error('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
   const status = await brokerStatus();
   if (!status.ready) throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_UNAVAILABLE');
   await ensureContainedDirectory(BROKER_REQUESTS_DIR);
@@ -386,33 +392,41 @@ async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = 
   const id = randomUUID();
   const requestFile = await assertSafeFileTarget(win.join(BROKER_REQUESTS_DIR, `request-${id}.json`));
   const responseFile = await assertSafeFileTarget(win.join(BROKER_RESPONSES_DIR, `response-${id}.json`));
-  await fs.writeFile(requestFile, JSON.stringify({ schema: 'TIGERIQ_PAPERCLIP_WSL_REQUEST_V1', id, operation }), { encoding: 'utf8', flag: 'wx' });
+  await fs.writeFile(requestFile, JSON.stringify({ schema: 'TIGERIQ_PAPERCLIP_WSL_REQUEST_V1', id, operation, ...extra }), { encoding: 'utf8', flag: 'wx' });
   const deadline = Date.now() + Math.max(5000, Math.min(PAPERCLIP_LAB_BROKER_MAX_WAIT_MS, Number(timeoutMs) + 10000));
   try {
     while (Date.now() < deadline) {
       throwIfAborted(signal);
       try {
         const response = parseBrokerJson(await fs.readFile(responseFile, 'utf8'));
-        if (response?.schema !== 'TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1' || response?.id !== id) {
-          throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_RESPONSE_INVALID');
-        }
+        if (response?.schema !== 'TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1' || response?.id !== id) throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_RESPONSE_INVALID');
         await fs.rm(responseFile, { force: true });
         return {
-          exitCode: Number(response?.exitCode ?? -1),
-          timedOut: response?.timedOut === true,
-          timeoutKind: response?.timeoutKind || null,
+          exitCode: Number(response?.exitCode ?? -1), timedOut: response?.timedOut === true, timeoutKind: response?.timeoutKind || null,
           stdout: clipped(response?.stdout || ''),
           stderr: clipped(response?.ok === true ? (response?.stderr || '') : (response?.stderr || 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_FAILED')),
         };
-      } catch (error) {
-        if (error?.code !== 'ENOENT') throw error;
-      }
+      } catch (error) { if (error?.code !== 'ENOENT') throw error; }
       await sleepWithSignal(200, signal);
     }
     return { exitCode: -1, timedOut: true, stdout: '', stderr: 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_TIMEOUT' };
-  } finally {
-    await fs.rm(requestFile, { force: true }).catch(() => {});
-  }
+  } finally { await fs.rm(requestFile, { force: true }).catch(() => {}); }
+}
+
+async function runDockerViaBroker(args, { timeoutMs = 120000, signal = null } = {}) {
+  const operation = paperclipLabBrokerOperationForDockerArgs(args);
+  if (!operation) throw new Error('TIGERIQ_PAPERCLIP_LAB_BROKER_DOCKER_ARGS_NOT_ALLOWED');
+  return await runBrokerRequest(operation, {}, { timeoutMs, signal });
+}
+
+async function startOpenAiDeviceAuth(sessionId, signal = null) {
+  const safe = assertPaperclipLabRequest({ action: 'paperclip_openai_device_auth_start', sessionId });
+  const result = await runBrokerRequest('openai_device_auth_start', { sessionId: safe.sessionId }, { timeoutMs: 45000, signal });
+  if (result.exitCode !== 0 || result.timedOut) throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_START_FAILED');
+  let data;
+  try { data = JSON.parse(result.stdout.trim()); } catch { throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_RESPONSE_INVALID'); }
+  if (data?.started !== true || data?.browserOpened !== true || data?.codeCopied !== true || data?.sessionId !== safe.sessionId) throw new Error('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_RESPONSE_INVALID');
+  return { started: true, browserOpened: true, codeCopied: true, sessionId: safe.sessionId, expiresInMinutes: 15 };
 }
 
 async function runDocker(transport, args, options = {}) {
@@ -1186,11 +1200,13 @@ async function health(signal = null, transport = null, options = {}) {
 export async function executePaperclipLabAction(input = {}, options = {}) {
   const signal = options?.signal || null;
   throwIfAborted(signal);
-  const { action } = assertPaperclipLabRequest(input);
+  const request = assertPaperclipLabRequest(input);
+  const { action } = request;
   const started = Date.now();
   let data;
   if (action === 'paperclip_lab_preflight') data = await preflight(signal);
   else if (action === 'paperclip_lab_broker_install') data = await installInteractiveWslBroker(signal);
+  else if (action === 'paperclip_openai_device_auth_start') data = await startOpenAiDeviceAuth(request.sessionId, signal);
   else if (action === 'paperclip_lab_install') data = await install(signal);
   else if (action === 'paperclip_lab_start') data = await start(signal);
   else if (action === 'paperclip_lab_stop') data = await stop(signal);
