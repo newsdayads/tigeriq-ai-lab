@@ -27,42 +27,26 @@ describe('App Chrome chat lifecycle',()=>{
   });
 
 
-  it('never restores stale conversation URLs and preserves a valid current chat on boot',()=>{
+  it('handles fresh-chat normal boot and crash-only restore correctly',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("const bootFreshContextPending=new Set(CONTINUITY_WORKERS)");
     expect(bridge).toContain("resumeChatUrl:'', // legacy conversation pointers are intentionally discarded");
     expect(bridge).toContain("resumeUrl:'', // legacy conversation pointers are never restored");
     expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
-    expect(bridge).not.toContain("WORKER_RESUME_URL_RESTORED");
-    expect(bridge).not.toContain("CURRENT_WORK_NEW_CHAT_RESTORED");
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).not.toContain("currentWorkerAssignmentStatus('NV02')");
-    expect(nv02Loop).not.toContain("READY_UNASSIGNED");
-    expect(nv02Loop).not.toContain("autoModelRecoverySuppressed:true");
-    expect(nv02Loop).toContain("if(phase==='READY')");
-    expect(nv02Loop).toContain("dispatchNaturalContinue(target,state,now)");
-    expect(bridge).toContain("BOOT_FRESH_LOCAL_COMPLETE");
-    expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
-    expect(bridge).toContain("const preserveCurrentChat=hasCurrentNv02Chat(ui?.url)");
-    expect(bridge).toContain("state.idleState!=='READY_NO_ELIGIBLE_WORK'");
-    expect(bridge).toContain("Boolean(state.modelVerifiedAt)");
-    expect(bridge).toContain("hasCurrentNv02Chat(state.verifiedChatUrl)");
-    expect(bridge).toContain("await navigate(target,restoreVerifiedChatUrl)");
-    expect(bridge).toContain("const expectedChatUrl=restoreVerifiedChatUrl||String(ui?.url||'')");
-    expect(bridge).toContain("waitForNv02PreservedChatSettled(target,expectedChatUrl,30000)");
-    expect(bridge).toContain("sameNv02Chat(bootUi?.url,expectedChatUrl)");
-    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_RESTORED'");
-    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_SETTLE_DEFERRED'");
-    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_MODEL_VERIFY_DEFERRED'");
+    expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(nv02Loop).not.toContain("restoreVerifiedChatUrl");
+    expect(nv02Loop).toContain("state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)");
+    expect(nv02Loop).toContain("await navigate(target,crashResumeUrl)");
+    expect(nv02Loop).toContain("waitForNv02PreservedChatSettled(target,crashResumeUrl,30000)");
+    expect(nv02Loop).toContain("'NV02_CRASH_CHAT_RESTORED'");
+    expect(bridge).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
     expect(bridge).toContain("if(now<Number(state.modelCheckBlockedUntil||0))return");
     expect(bridge).toContain("bootFreshContextPending.add('NV02')");
-    expect(bridge).toContain("chatLoadBlockedUntil:preserveVerifiedProfile?0:state.chatLoadBlockedUntil");
-    expect(bridge).toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:true})");
-    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,bootUi,{forceFresh:!keepChat})");
-    expect(bridge).toContain("'BOOT_VERIFIED_CHAT_READY'");
-    expect(bridge).not.toContain("await navigate(target,state.resumeChatUrl)");
-    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,ui,{forceFresh:true})");
-    expect(bridge).not.toContain("ensureNv02LocalReadyLocked(target,raw,{forceFresh:false})");
+    expect(bridge).toContain("await archiveChat(target)");
+    expect(bridge).toContain("await newChat(target)");
+    expect(bridge).toContain("dispatchesInChat:0,chatStartedAt:now");
+    expect(bridge).toContain("LOCAL_CONTINUE_DISPATCHED");
     expect(bridge).toContain("waitForNv02Composer(target,30000)||raw");
   });
 
