@@ -441,7 +441,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.4-postgres-sidecar'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.5-db-sidecar-diagnostic'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
@@ -501,7 +501,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.4-postgres-sidecar'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.5-db-sidecar-diagnostic'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
