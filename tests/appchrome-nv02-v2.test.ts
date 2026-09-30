@@ -133,12 +133,17 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain("'PERIODIC_RESTART_DEFERRED_WORKING'");
   });
 
-  it('does not rebase overdue F5/reset timers after Chrome restart', () => {
+  it('rebases overdue maintenance only across an OS reboot, not an ordinary Chrome restart', () => {
+    const supervisor=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
     expect(bridge).toContain('const f5WindowVersion=4;');
-    expect(bridge).toContain('NV02_F5_TIMER_OVERDUE_AFTER_RESTART');
-    expect(bridge).toContain('NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART');
-    expect(bridge).not.toContain('NV02_F5_TIMERS_REBASED_AFTER_RESTART');
-    expect(bridge).not.toContain('NV02_REFRESH_TIMER_REBASED_AFTER_RESTART');
+    expect(supervisor).toContain('$env:TIGERIQ_BOOT_ID=$currentBootId');
+    expect(bridge).toContain("const BOOT_ID=String(process.env.TIGERIQ_BOOT_ID||'').trim()");
+    expect(bridge).toContain("const bootChanged=Boolean(BOOT_ID&&String(raw.bootId||'')!==BOOT_ID)");
+    expect(bridge).toContain('if(bootChanged&&nextPeriodicF5At<=now)');
+    expect(bridge).toContain('if(bootChanged&&nextRefreshAt<=now)');
+    expect(bridge).toContain('NV02_F5_TIMER_REBASED_AFTER_OS_REBOOT');
+    expect(bridge).toContain('NV02_REFRESH_TIMER_REBASED_AFTER_OS_REBOOT');
+    expect(bridge).toContain("bootId:BOOT_ID||String(raw.bootId||'')");
   });
 
   it('keeps NV02 maintenance timers monotonic across stale continuity-state writers', () => {
@@ -147,8 +152,8 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain('function saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt)');
     expect(bridge).toContain('nextPeriodicF5At:Math.max(Number(prior.nextPeriodicF5At)||0,Number(nextPeriodicF5At)||0)');
     expect(bridge).toContain('nextRefreshAt:Math.max(Number(prior.nextRefreshAt)||0,Number(nextRefreshAt)||0)');
-    expect(bridge).toContain('const nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0)');
-    expect(bridge).toContain('const nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0)');
+    expect(bridge).toContain('let nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0)');
+    expect(bridge).toContain('let nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0)');
     expect(bridge).toContain('NV02_MAINTENANCE_TIMER_REGRESSION_BLOCKED');
     const saveStart=bridge.indexOf('function saveNv02Continuity(state)');
     const saveEnd=bridge.indexOf('\n\nfunction auth(',saveStart);
@@ -158,6 +163,21 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(saveBlock).toContain('nextRefreshAt:Math.max');
   });
 
+
+  it('verifies project recovery before success and backs off a failed recovery instead of looping every tick', () => {
+    const recovery=bridge.slice(bridge.indexOf('async function waitForNv02ProjectContextRecovery'),bridge.indexOf('async function focus(target)'));
+    expect(recovery).toContain("isNv02ProjectContext(last?.url)||last?.projectDraftReady===true");
+    expect(recovery).toContain("status:'PROJECT_NEW_CHAT_CONFIRMED'");
+    expect(recovery).toContain("status:'PROJECT_CONTEXT_NAVIGATED_CONFIRMED'");
+    expect(recovery).toContain("ok:false,status:confirmed?.status||'PROJECT_CONTEXT_NOT_RECOVERED'");
+
+    const tick=bridge.slice(bridge.indexOf('async function tickWorker(w){'),bridge.indexOf('\n\nasync function tick()'));
+    expect(bridge).toContain('projectRecoveryRetryAt:Number(raw.projectRecoveryRetryAt)||0');
+    expect(tick).toContain('Date.now()<Number(recoveryState.projectRecoveryRetryAt||0)');
+    expect(tick).toContain('const projectRecoveryRetryAt=Date.now()+30000');
+    expect(tick).toContain("'PROJECT_CONTEXT_RECOVERY_FAILED'");
+    expect(tick).toContain("projectRecoveryRetryAt:0");
+  });
 
   it('does not terminal-escalate a transient load-error immediately after an F5 stable candidate', () => {
     const recoveryStart=bridge.indexOf('async function maybeRecoverChatLoadError');
