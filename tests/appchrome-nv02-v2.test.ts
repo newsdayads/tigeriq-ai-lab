@@ -262,3 +262,24 @@ describe('NV02 archive rotation robustness', () => {
     expect(bridge).toContain("rotationRetryAt:now+60_000");
   });
 });
+
+
+describe('NV02 archive live DOM R2', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('uses the current ChatGPT header More button as the primary live fallback', () => {
+    expect(bridge).toContain("source:'HEADER_TOOLBAR_MORE'");
+    expect(bridge).toContain("['thêm','more','more options','thêm tùy chọn'].includes(label)");
+    expect(bridge).toContain("r.top>=0&&r.top<80&&r.right>=innerWidth-100");
+  });
+
+  it('does not bypass rotationRetryAt from the boot fresh-context path', () => {
+    const loop=bridge.slice(bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')"),bridge.indexOf("if(phase==='READY')",bridge.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")));
+    expect(loop).toContain("if(now<Number(state.rotationRetryAt||0))return");
+  });
+
+  it('skips redundant Save on boot when the current chat already has terminal durable evidence', () => {
+    expect(bridge).toContain("const terminalOrIdle=ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER||ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'");
+    expect(bridge).toContain("checkpoint:hasCurrentNv02Chat(ui?.url)&&!terminalOrIdle");
+  });
+});
