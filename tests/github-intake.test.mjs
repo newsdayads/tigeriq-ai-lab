@@ -206,6 +206,42 @@ test('safe coding Work Order materializes one API coordination job without takin
   assert.match(pool.jobs[0].prompt,/without repository mutation/);
 });
 
+test('safe P1-P5 duplicate event does not create a second objective or job',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2474,state:'open',title:'[P1][CORE] dedupe',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:0,html_url:'https://example/2474'};
+  const first=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  const second=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(first.created,1);
+  assert.strictEqual(second.created,0);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.jobs.length,1);
+});
+
+test('safe P1-P5 same RESOURCE_SCOPE is blocked by an active writer',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({id:'OBJ-OTHER',status:'active',metadata:{source:'github',issueNumber:2400,resourceScope:'SAFE_AUTO_TEST'}});
+  const issue={number:2474,state:'open',title:'[P1][CORE] scope conflict',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:0,html_url:'https://example/2474'};
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.jobs.length,0);
+});
+
+test('safe P1-P5 active external role lease is not claimed by Core',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2474,state:'open',title:'[P1][CORE] externally claimed',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:1,html_url:'https://example/2474'};
+  const claim={id:1,created_at:'2026-09-30T00:00:00Z',body:'[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV12\nRESOURCE_SCOPE=SAFE_AUTO_TEST\nLEASE_UNTIL=2999-01-01T00:00:00Z'};
+  const fetchImpl=async(url,init={})=>{
+    if(String(init.method||'GET').toUpperCase()==='GET'&&url.includes('/issues/2474/comments?'))return response([claim]);
+    return response({});
+  };
+  const out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(out.externalClaims,1);
+  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(pool.jobs.length,0);
+});
+
 test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw content',()=>{
   const assigned='Use exactly tigeriq_pc action=file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json".';
   const plain=buildGithubPcOperatorPrompt(assigned,[]);
