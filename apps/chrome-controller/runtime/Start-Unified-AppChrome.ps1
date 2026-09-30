@@ -11,6 +11,7 @@ if($PollSeconds -lt 5 -or $PollSeconds -gt 120){throw 'APPCHROME_POLL_INTERVAL_O
 
 $runtime=Join-Path $InstallRoot 'Runtime'
 $activePath=Join-Path $runtime 'active-deploy.json'
+$pendingPath=Join-Path $runtime 'pending-deploy.json'
 $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
@@ -68,6 +69,59 @@ function Read-ValidatedActive{
   $actualBridgeHash=(Get-FileHash -LiteralPath $bridge -Algorithm SHA256).Hash.ToLowerInvariant()
   if($actualBridgeHash-ne$bridgeHash.ToLowerInvariant()){throw 'ACTIVE_BRIDGE_HASH_MISMATCH'}
   [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge;nv02Only=$nv02Only;activation=$activation;installedBootId=$installedBootId;pendingSameBoot=$pendingSameBoot}
+}
+
+function Read-ValidatedPending{
+  if(-not(Test-Path -LiteralPath $pendingPath)){return $null}
+  $pending=Get-Content -LiteralPath $pendingPath -Raw|ConvertFrom-Json
+  $deploy=[string]$pending.deploy
+  $head=[string]$pending.exactHead
+  $bridgeHash=[string]$pending.bridgeSha256
+  $activation=[string]$pending.activation
+  $installedBootId=[string]$pending.installedBootId
+  $nv02Only=$false
+  if($pending.PSObject.Properties.Name -contains 'nv02Only'){$nv02Only=[bool]$pending.nv02Only}
+  if($activation-ne'NEXT_REBOOT_PENDING'){throw "PENDING_ACTIVATION_INVALID:$activation"}
+  if([string]::IsNullOrWhiteSpace($installedBootId)){throw 'PENDING_INSTALL_BOOT_ID_MISSING'}
+  if([string]::IsNullOrWhiteSpace($deploy)-or-not(Test-Path -LiteralPath $deploy)){throw "PENDING_DEPLOY_INVALID:$deploy"}
+  if([string]::IsNullOrWhiteSpace($head)){throw 'PENDING_HEAD_MISSING'}
+  if([string]::IsNullOrWhiteSpace($bridgeHash)){throw 'PENDING_BRIDGE_HASH_MISSING'}
+  $versionPath=Join-Path $deploy 'VERSION.txt'
+  if(-not(Test-Path -LiteralPath $versionPath)){throw "PENDING_VERSION_MISSING:$versionPath"}
+  $version=(Get-Content -LiteralPath $versionPath -Raw).Trim()
+  if($version-ne$head){throw "PENDING_VERSION_MISMATCH:$version"}
+  $bridge=Join-Path $deploy 'apps\chrome-controller\direct-cdp-bridge.mjs'
+  if(-not(Test-Path -LiteralPath $bridge)){throw "PENDING_BRIDGE_MISSING:$bridge"}
+  $actualBridgeHash=(Get-FileHash -LiteralPath $bridge -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($actualBridgeHash-ne$bridgeHash.ToLowerInvariant()){throw 'PENDING_BRIDGE_HASH_MISMATCH'}
+  [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;nv02Only=$nv02Only;installedAt=[string]$pending.installedAt;installedBootId=$installedBootId}
+}
+
+function Promote-PendingDeployAfterReboot{
+  $pending=Read-ValidatedPending
+  if(-not$pending){return $false}
+  if($pending.installedBootId-eq$currentBootId){
+    Write-SupervisorEvent 'NEXT_REBOOT_ACTIVATION_DEFERRED' @{head=$pending.head;deploy=$pending.deploy;installedBootId=$pending.installedBootId;currentBootId=$currentBootId}
+    return $false
+  }
+  $active=[ordered]@{
+    schemaVersion='tigeriq.appchrome.active-deploy.v1'
+    exactHead=$pending.head
+    nv02Only=[bool]$pending.nv02Only
+    deploy=$pending.deploy
+    bridgeSha256=$pending.bridgeHash
+    installedAt=$pending.installedAt
+    installedBootId=$pending.installedBootId
+    activatedAt=(Get-Date).ToUniversalTime().ToString('o')
+    activatedBootId=$currentBootId
+    activation='REBOOT_ACTIVATED'
+  }
+  $tmp=$activePath+'.tmp'
+  [IO.File]::WriteAllText($tmp,($active|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+  Move-Item $tmp $activePath -Force
+  Remove-Item -LiteralPath $pendingPath -Force
+  Write-SupervisorEvent 'PENDING_DEPLOY_PROMOTED_AFTER_REBOOT' @{head=$pending.head;deploy=$pending.deploy;installedBootId=$pending.installedBootId;activatedBootId=$currentBootId}
+  return $true
 }
 
 function Set-RuntimeEnvironment($Active){
@@ -253,8 +307,9 @@ function Ensure-AppChrome{
   $script:lastHead=$active.head
 }
 
-Write-SupervisorEvent 'SUPERVISOR_STARTED' @{pid=$PID;pollSeconds=$PollSeconds}
+Write-SupervisorEvent 'SUPERVISOR_STARTED' @{pid=$PID;pollSeconds=$PollSeconds;currentBootId=$currentBootId}
 try{
+  Promote-PendingDeployAfterReboot|Out-Null
   while($true){
     try{Ensure-AppChrome}
     catch{
