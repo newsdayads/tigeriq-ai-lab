@@ -17,6 +17,7 @@ function fakePool(){
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.id=$1')){const j=jobs.find(x=>x.id===params[0]);return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.employee_id=$1')){const j=jobs.find(x=>x.employee_id===params[0]&&['ui_assigned','ui_running'].includes(x.status)&&objectives.find(o=>o.id===x.objective_id)?.status==='active');return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
     if(sql.startsWith('select 1 from tigeriq_objectives where id=$1')){const found=objectives.some(x=>x.id===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
+    if(sql.startsWith('with locked as materialized')){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);if(found)return{rowCount:0,rows:[]};objectives.push({id:params[1],objective:params[2],priority:params[3],status:'active',summary:params[4],metadata:JSON.parse(params[5]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[{id:params[1]}]};}
     if(sql.includes("metadata->>'resourceScope'=$1")){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
     if(sql.startsWith('insert into tigeriq_objectives')){objectives.push({id:params[0],objective:params[1],priority:params[2],status:'active',summary:params[3],metadata:JSON.parse(params[4]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
     if(sql.startsWith('insert into tigeriq_jobs')){jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:params[4],kind:'ui',status:'ui_assigned',employee_id:params[5],resource_id:params[6],provider:'ui',created_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
@@ -55,7 +56,7 @@ test('Core can assign NV03 and NV04 concurrently while NV02 remains external',as
   assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-212');
 });
 
-test('same RESOURCE_SCOPE cannot be assigned twice across NV03/NV04',async()=>{
+test('same RESOURCE_SCOPE cannot be assigned twice across NV03/NV04 using atomic advisory-lock insert',async()=>{
   const pool=fakePool();
   const issues=[issue(220,safe(['CAPABILITY=review'])),issue(221,safe(['CAPABILITY=research']))];
   const fetchImpl=async()=>response(issues);
