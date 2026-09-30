@@ -92,6 +92,11 @@ function structuredBridgeEvidenceSources(bridgeCalls){
     if(!call||typeof call!=='object')continue;
     const result=call.result;
     if(result&&typeof result==='object'){
+      const trustedPcReceipt=result.ok===true
+        && String(result.target||'').toLowerCase()==='pc01-local'
+        && typeof result.action==='string'
+        && result.data&&typeof result.data==='object'&&!Array.isArray(result.data);
+      if(trustedPcReceipt)sources.push({result:result.data});
       if(result.data&&typeof result.data==='object')sources.push(result.data);
       else if(result.evidence&&typeof result.evidence==='object')sources.push(result.evidence);
       else sources.push(result);
