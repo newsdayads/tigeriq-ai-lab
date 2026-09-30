@@ -199,13 +199,15 @@ describe('security fail-closed matrix',()=>{
 });
 
 describe('NV02 explicit resume from durable idle',()=>{
-  it('forces one P1-P5 self-pull wake instead of honoring a stale idle marker',()=>{
+  it('wakes durable idle with one exact short continuation instead of a long self-pull prompt',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const helper=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
     const local=bridge.slice(bridge.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),bridge.indexOf("if(action==='NV02_IDLE')"));
-    expect(local).toContain("NV02_IDLE_SELF_PULL_WAKE_SUBMITTED");
-    expect(local).toContain("dispatch(target,NV02_SELF_PULL_WAKE_PROMPT)");
+    expect(local).toContain("pickWorkerContinuePrompt('NV02',stateBefore.lastPrompt)");
+    expect(local).toContain("dispatch(target,continuationPrompt)");
+    expect(local).toContain("NV02_IDLE_CONTINUE_SUBMITTED");
     expect(local).toContain("fs.unlinkSync(NV02_IDLE_MARKER)");
+    expect(local).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
     expect(local).not.toContain("return{status:'READY_NO_ELIGIBLE_WORK_IDLE'}");
     expect(helper).toContain("/api/utility/workers/NV02/resume");
     expect(helper).toContain("APPCHROME_NV02_WAKE_TIMEOUT");
@@ -213,7 +215,7 @@ describe('NV02 explicit resume from durable idle',()=>{
   });
 });
 
-describe('Owner-authorized zero-touch App Chrome deployment',()=>{
+describe('Owner-authorized zero-touch App Chrome deployment',()=>{describe('Owner-authorized zero-touch App Chrome deployment',()=>{
   it('keeps reboot default but supports explicit same-boot activation with rollback ownership',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
     const helper=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
