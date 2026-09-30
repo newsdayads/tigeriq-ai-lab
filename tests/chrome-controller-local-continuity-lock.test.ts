@@ -4,17 +4,38 @@ import { describe, expect, it } from 'vitest';
 import { CONTINUE_PROMPTS, detectWorkerAssistantTerminal, pickWorkerContinuePrompt } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('App Chrome Recovery V1 local-only spec lock',()=>{
-  it('uses only short prefixed local prompts for NV02/NV03/NV04',()=>{
-    expect(CONTINUE_PROMPTS).toHaveLength(21);
+  const exactMasterPool=["Tiếp tục","Làm tiếp","Tiếp đi","Xử lý tiếp","Thực hiện tiếp","Tiếp tục công việc hiện tại","Làm tiếp công việc hiện tại","Tiếp tục việc đang làm","Làm tiếp phần đang dở","Tiếp tục từ chỗ hiện tại","Tiếp tục đúng việc này","Xử lý tiếp việc hiện tại","Thực hiện tiếp việc đang làm","Tiếp tục phần còn dở","Tiếp tục từ trạng thái hiện tại","Tiếp tục xử lý việc đang dở","Tiếp tục công việc đang dang dở","Thực thi tiếp việc hiện tại","Làm tiếp nhiệm vụ đang thực hiện","Tiếp tục đúng việc đang được giao","Làm tiếp, không đổi việc"];
+  it('uses the immutable exact 21-command pool with worker prefix and no immediate repeat',()=>{
+    expect(CONTINUE_PROMPTS).toEqual(exactMasterPool);
     for(const id of ['NV02','NV03','NV04']){
-      const prompt=pickWorkerContinuePrompt(id,'',()=>0);
-      expect(prompt).toMatch(new RegExp('^'+id.slice(-2)+' - '));
-      expect(prompt).toContain(CONTINUE_PROMPTS[0]);
-      expect(prompt).not.toMatch(/Core|GitHub|claim|assignment|P0|P1-P5/i);
+      const first=pickWorkerContinuePrompt(id,'',()=>0);
+      expect(first).toBe(id.slice(-2)+' - '+exactMasterPool[0]);
+      const next=pickWorkerContinuePrompt(id,first,()=>0);
+      expect(next).toBe(id.slice(-2)+' - '+exactMasterPool[1]);
+      expect(next).not.toMatch(/Core|GitHub|claim|assignment|P0|P1-P5/i);
     }
   });
 
-  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{
+  it('contains no long NV02 wake prompt, rotation suffix, or count/age safety rotation',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).not.toContain('NV02_MAX_DISPATCHES_PER_CHAT');
+    expect(bridge).not.toContain('NV02_MAX_CHAT_AGE_MS');
+    expect(bridge).not.toContain('SAFETY_CONTEXT_LIMIT');
+    expect(bridge).toContain("prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
+  });
+
+  it('keeps the standalone NV03 sidecar on the same exact prefixed pool and 3-15s pacing',()=>{
+    const sidecar=readFileSync('apps/chrome-controller/nv03-isolated-sidecar.mjs','utf8');
+    for(const item of exactMasterPool)expect(sidecar).toContain(JSON.stringify(item));
+    expect(sidecar).toContain("return `03 - ${base}`");
+    expect(sidecar).toContain('TIGERIQ_NV03_CONTINUE_MIN_MS||3000');
+    expect(sidecar).toContain('TIGERIQ_NV03_CONTINUE_MAX_MS||15000');
+    expect(sidecar).toContain('pickContinuePrompt(state.lastContinuePrompt)');
+  });
+
+  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     for(const forbidden of [
       'CORE_UI_ASSIGNMENT',
