@@ -499,7 +499,7 @@ async function maybeWorkerContinuity(w,target,ui){
     }
     const activeJob=binding?.active||null;
     if(!genericWorkerJobContinuable(activeJob)){
-      const jobStage=String(activeJob?.stage||'READY_UNASSIGNED').toUpperCase();
+      const jobStage=String(activeJob?.stage||'NO_ACTIVE_WORK').toUpperCase();
       const stopped={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0};
       saveWorkerContinuity(w.id,stopped);
       await genericWorkerEvent(w.id,'LOCAL_CONTINUITY_STOPPED_JOB_STATE',{jobId:activeJob?.jobId||null,jobStage});
@@ -1996,8 +1996,8 @@ async function handleCommand(w,target,command){
       if(!genericWorkerJobContinuable(binding?.active)){
         const active=binding?.active||null;
         saveWorkerContinuity(w.id,{...stateBefore,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0});
-        await genericWorkerEvent(w.id,'LOCAL_CONTINUITY_STOPPED_JOB_STATE',{jobId:active?.jobId||null,jobStage:String(active?.stage||'READY_UNASSIGNED').toUpperCase(),trigger:'LOCAL_CONTINUE_NOW'});
-        return{status:'READY_UNASSIGNED',jobId:active?.jobId||null,jobStage:String(active?.stage||'READY_UNASSIGNED').toUpperCase()};
+        await genericWorkerEvent(w.id,'LOCAL_CONTINUITY_STOPPED_JOB_STATE',{jobId:active?.jobId||null,jobStage:String(active?.stage||'NO_ACTIVE_WORK').toUpperCase(),trigger:'LOCAL_CONTINUE_NOW'});
+        return{status:'NO_ACTIVE_WORK',jobId:active?.jobId||null,jobStage:String(active?.stage||'NO_ACTIVE_WORK').toUpperCase()};
       }
     }
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
