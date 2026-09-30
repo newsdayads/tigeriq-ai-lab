@@ -6,7 +6,7 @@ import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, AWAITING_WORK_START_TIMEOUT_MS,
-  deriveNv02Phase, deriveWorkerPhase,
+  deriveNv02Phase, deriveWorkerPhase, detectWorkerAssistantTerminal,
   nextRandomAt, randomDelay, pickContinuePrompt, pickWorkerContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
   shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from './extension/continuity.js';
@@ -367,7 +367,7 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'NO_ACTIVE_ASSIGNMENT_IDLE',{phase,url:ui?.url||null});
     return;
   }
-  if(phase!=='WORKING'&&['DONE','BLOCKED','EXTERNAL_WAIT','READY_NO_ELIGIBLE_WORK','TIGERIQ_CHAT_ROTATE_READY'].includes(String(ui?.assistantTerminal||''))){
+  if(['DONE','BLOCKED','EXTERNAL_WAIT','READY_NO_ELIGIBLE_WORK','TIGERIQ_CHAT_ROTATE_READY'].includes(String(ui?.assistantTerminal||''))){
     const terminal={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0};
     saveWorkerContinuity(w.id,terminal);
     await genericWorkerEvent(w.id,'ASSISTANT_TERMINAL_WAIT',{jobId:activeAssignment.jobId,stage:activeAssignment.stage,terminal:ui?.assistantTerminal,url:ui?.url||null});
@@ -798,7 +798,8 @@ async function windowIdFor(port,targetId){
   try{return (await b.call('Browser.getWindowForTarget',{targetId})).windowId;}
   finally{b.close();}
 }
-const UI_EXPR=`(()=>{
+const ASSISTANT_TERMINAL_DETECTOR=detectWorkerAssistantTerminal.toString();
+const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR};
   const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect();const s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};
   const sels=location.hostname==='chatgpt.com'
     ? ['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea']
@@ -843,17 +844,13 @@ const UI_EXPR=`(()=>{
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
   const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"],model-response-content')].filter(vis);
-  const assistantText=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').replace(/\s+/g,' ').trim();
+  const assistantTextRaw=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').trim();
+  const assistantText=assistantTextRaw.replace(/\s+/g,' ').trim();
   const progressText=(assistantText+'|'+activityText).trim();
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
   const assistantSignature=String(assistantNodes.length)+':'+String(assistantText.length)+':'+String(activityHash);
-  const assistantTerminal=assistantText.includes('TIGERIQ_CHAT_ROTATE_READY')?'TIGERIQ_CHAT_ROTATE_READY'
-    :assistantText.includes('READY_NO_ELIGIBLE_WORK')?'READY_NO_ELIGIBLE_WORK'
-    :/(?:^|\\n)\\s*EXTERNAL_WAIT\\b/i.test(assistantText)?'EXTERNAL_WAIT'
-    :/(?:^|\\n)\\s*DONE\\b/i.test(assistantText)?'DONE'
-    :/(?:^|\\n)\\s*BLOCKED\\b/i.test(assistantText)||(/\\bSTATE=BLOCKED\\b/i.test(assistantText)&&/\\bLEASE=RELEASED\\b/i.test(assistantText))?'BLOCKED'
-    :'';
+  const assistantTerminal=detectAssistantTerminal(assistantTextRaw);
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
