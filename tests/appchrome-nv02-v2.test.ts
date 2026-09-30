@@ -247,7 +247,7 @@ describe('NV02 archive rotation robustness', () => {
     expect(bridge).toContain("button[data-testid*=\"conversation\"][data-testid*=\"option\"]");
     expect(bridge).toContain("document.querySelectorAll('[role=\"listitem\"],li')");
     expect(bridge).toContain("linkMatches:links.length");
-    expect(bridge).toContain("if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint)");
+    expect(bridge).toContain("if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint,{paced:false})");
   });
 
   it('accepts current localized archive labels but rejects archive-all actions', () => {
@@ -259,7 +259,7 @@ describe('NV02 archive rotation robustness', () => {
   it('honors rotationRetryAt after archive failure instead of retrying every 3s tick', () => {
     expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER&&now>=Number(state.rotationRetryAt||0)");
     expect(bridge).toContain("ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&now>=Number(state.rotationRetryAt||0)");
-    expect(bridge).toContain("rotationRetryAt:now+60_000");
+    expect(bridge).toContain("rotationRetryAt:Date.now()+60_000");
   });
 });
 
@@ -281,5 +281,23 @@ describe('NV02 archive live DOM R2', () => {
   it('skips redundant Save on boot when the current chat already has terminal durable evidence', () => {
     expect(bridge).toContain("const terminalOrIdle=ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER||ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'");
     expect(bridge).toContain("checkpoint:hasCurrentNv02Chat(ui?.url)&&!terminalOrIdle");
+  });
+});
+
+
+describe('NV02 archive live DOM R3 transient click/backoff', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('clicks transient archive controls immediately after coordinates are resolved', () => {
+    expect(bridge).toContain("async function cdpMouseClick(p,point,{paced=true}={})");
+    expect(bridge).toContain("transient:!paced");
+    expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
+    expect(bridge).toContain("cdpMouseClick(p,archivePoint,{paced:false})");
+  });
+
+  it('arms archive retry from failure completion time, not stale tick start time', () => {
+    expect(bridge).not.toContain("rotationRetryAt:now+60_000");
+    expect(bridge).toContain("rotationRetryAt:Date.now()+60_000");
+    expect(bridge).toContain("modelCheckBlockedUntil:Date.now()+30_000");
   });
 });

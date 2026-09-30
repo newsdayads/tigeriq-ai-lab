@@ -1298,9 +1298,9 @@ async function prepareWorkerForPlannedRestart(w,target,initialUi){
 
 function archiveMenuPointExpr(){return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const isArchive=t=>(t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||((t.startsWith('archive ')||t.startsWith('lưu trữ '))&&!/all|tất cả/i.test(t)));if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';const openArchive=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>isArchive(norm(e)));if(openArchive.length===1)return{ok:true,status:'ARCHIVE_MENU_ALREADY_OPEN',alreadyOpen:true,source:'OPEN_MENU',before,title,conversationId};const header=[...document.querySelectorAll('button[data-testid="conversation-options-button"],button[data-testid*="conversation"][data-testid*="option"]')].filter(vis);if(header.length===1){const r=header[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'HEADER_CONVERSATION_OPTIONS',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}}const headerMore=[...document.querySelectorAll('button')].filter(vis).filter(e=>{const label=(e.getAttribute('aria-label')||e.getAttribute('title')||'').trim().toLowerCase();const r=e.getBoundingClientRect();return ['thêm','more','more options','thêm tùy chọn'].includes(label)&&r.top>=0&&r.top<80&&r.right>=innerWidth-100});if(headerMore.length===1){const r=headerMore[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'HEADER_TOOLBAR_MORE',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}}const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(450)}const links=conversationId?[...document.querySelectorAll('a[href*="/c/'+conversationId+'"]')].filter(vis):[];const rows=[...new Set([...document.querySelectorAll('[role="listitem"],li')].filter(vis).concat(links.map(a=>a.closest('[role="listitem"],li')||a.parentElement?.parentElement||a.parentElement).filter(Boolean)))];const matchesConversation=row=>Boolean(conversationId)&&(row.getAttribute?.('data-pinned-content-tab-drop-key')===('chatgpt:conversation:'+conversationId)||row.querySelector?.('[data-pinned-content-tab-drop-key="chatgpt:conversation:'+conversationId+'"]')||row.querySelector?.('a[href*="/c/'+conversationId+'"]')||row.querySelector?.('[data-app-action-sidebar-thread-id="'+conversationId+'"]'));const identityRows=conversationId?rows.filter(matchesConversation):[];const candidates=identityRows.length?identityRows:rows.filter(row=>String(row.innerText||'').trim()===title);const pickMenu=row=>{const buttons=[...row.querySelectorAll('button')].filter(vis);const labeled=buttons.filter(b=>/hành động trong trò chuyện|conversation actions|chat actions|thao tác.*trò chuyện|more|menu|thêm/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||'').trim())||/conversation.*(option|action)|chat.*action/i.test(b.getAttribute('data-testid')||''));if(labeled.length===1)return labeled[0];return buttons.length===1?buttons[0]:null};const exact=candidates.map(row=>({row,menu:pickMenu(row)})).filter(x=>x.menu);if(exact.length!==1)return{ok:false,status:'ARCHIVE_CURRENT_ROW_COUNT_'+exact.length,title,conversationId,identityMatches:identityRows.length,linkMatches:links.length};const r=exact[0].menu.getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'SIDEBAR_ROW_FALLBACK',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
 function archiveItemPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const items=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>{const t=norm(e);if(/all|tất cả/i.test(t))return false;return t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||t.startsWith('archive ')||t.startsWith('lưu trữ ')});if(items.length!==1)return{ok:false,status:'ARCHIVE_ACTION_COUNT_'+items.length,labels:items.map(norm)};const r=items[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_ACTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,text:(items[0].innerText||items[0].textContent||'').trim()}})()`; }
-async function cdpMouseClick(p,point){
-  const pacingMs=await stabilityPace();
-  log('UI_STABILITY_PACING',{action:'MOUSE_CLICK',delayMs:pacingMs});
+async function cdpMouseClick(p,point,{paced=true}={}){
+  const pacingMs=paced?await stabilityPace():0;
+  log('UI_STABILITY_PACING',{action:'MOUSE_CLICK',delayMs:pacingMs,transient:!paced});
   await p.call('Input.dispatchMouseEvent',{type:'mouseMoved',x:Number(point.x),y:Number(point.y),button:'none'});
   await p.call('Input.dispatchMouseEvent',{type:'mousePressed',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
   await p.call('Input.dispatchMouseEvent',{type:'mouseReleased',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
@@ -1314,7 +1314,7 @@ async function archiveChat(target){
   try{
     const menuPoint=(await p.call('Runtime.evaluate',{expression:archiveMenuPointExpr(),awaitPromise:true,returnByValue:true,userGesture:true},10000)).result.value;
     if(!menuPoint?.ok)return menuPoint||{ok:false,status:'ARCHIVE_MENU_POINT_MISSING'};
-    if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint);
+    if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint,{paced:false});
     let archivePoint=null;
     const actionDeadline=Date.now()+4000;
     while(Date.now()<actionDeadline){
@@ -1327,7 +1327,7 @@ async function archiveChat(target){
       await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
       return archivePoint||{ok:false,status:'ARCHIVE_ACTION_POINT_MISSING'};
     }
-    await cdpMouseClick(p,archivePoint);
+    await cdpMouseClick(p,archivePoint,{paced:false});
     const deadline=Date.now()+10000;
     while(Date.now()<deadline){
       await sleep(250);
@@ -1681,7 +1681,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(phase==='READY'&&ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER&&now>=Number(state.rotationRetryAt||0)){
     const rotated=await rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT',{checkpoint:false,idle:false});
     if(!rotated?.ok){
-      state={...loadNv02Continuity(),rotationRetryAt:now+60_000};saveNv02Continuity(state);
+      state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'JOB_TERMINAL_DURABLE_CHECKPOINT',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt});
     }
     return;
@@ -1689,7 +1689,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(phase==='READY'&&ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&now>=Number(state.rotationRetryAt||0)&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')&&String(ui?.assistantSignature||'')!==String(state.idleWakeBaselineSignature||'')){
     const rotated=await rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK',{checkpoint:false,idle:true});
     if(!rotated?.ok){
-      state={...loadNv02Continuity(),rotationRetryAt:now+60_000};saveNv02Continuity(state);
+      state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'READY_NO_ELIGIBLE_WORK',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt});
     }
     return;
@@ -1700,7 +1700,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(safetyRotationDue){
     const rotated=await rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT',{checkpoint:true,idle:false});
     if(!rotated?.ok){
-      state={...loadNv02Continuity(),rotationRetryAt:now+60_000};saveNv02Continuity(state);
+      state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'SAFETY_CONTEXT_LIMIT',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt,dispatchesInChat:state.dispatchesInChat,chatAgeMs});
     }
     return;
@@ -1878,7 +1878,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     const terminalOrIdle=ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER||ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK';
     const rotated=await rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT',{checkpoint:hasCurrentNv02Chat(ui?.url)&&!terminalOrIdle,idle:false});
     if(!rotated?.ok){
-      const retry={...loadNv02Continuity(),rotationRetryAt:now+60_000,modelCheckBlockedUntil:now+30_000};
+      const retry={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000,modelCheckBlockedUntil:Date.now()+30_000};
       saveNv02Continuity(retry);
       bootFreshContextPending.add('NV02');
       await continuityEvent('BOOT_FRESH_CHAT_DEFERRED',{status:rotated?.status||null,rotationRetryAt:retry.rotationRetryAt});
