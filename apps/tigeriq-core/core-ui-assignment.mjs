@@ -72,7 +72,18 @@ async function reconcile({pool,fetchImpl,owner,repo,token,item,observedAt}){
   return {...item,status,completed_at:issue.closed_at||issue.updated_at,issue};
 }
 
-async function scopeBusy(pool,scope){return (await pool.query("select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1 limit 1",[scope])).rowCount>0;}
+async function insertObjectiveIfScopeFree(pool,spec,metadata){
+  const oid='OBJ-UI-GH-'+spec.number;
+  const q=await pool.query(
+    "with locked as materialized (select pg_advisory_xact_lock(hashtext($1)) as guard), inserted as ("+
+    "insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) "+
+    "select $2,$3,$4,'active',$5,$6 from locked "+
+    "where not exists (select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1) "+
+    "on conflict(id) do nothing returning id) select id from inserted",
+    [spec.resourceScope,oid,'Core-selected UI Work Order #'+spec.number+' - '+spec.title,spec.priority,'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title+'; worker='+spec.workerId,JSON.stringify(metadata)]
+  );
+  return q.rowCount>0;
+}
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
   if(await row(pool,{workerId}))return null;
@@ -80,11 +91,10 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
   for(const spec of specs){
     const oid='OBJ-UI-GH-'+spec.number;
     if((await pool.query('select 1 from tigeriq_objectives where id=$1',[oid])).rowCount)continue;
-    if(await scopeBusy(pool,spec.resourceScope))continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
     const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled};
-    await pool.query("insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) values($1,$2,$3,'active',$4,$5) on conflict(id) do nothing",[oid,'Core-selected UI Work Order #'+spec.number+' - '+spec.title,spec.priority,'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title+'; worker='+spec.workerId,JSON.stringify(metadata)]);
+    if(!await insertObjectiveIfScopeFree(pool,spec,metadata))continue;
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[spec.jobId,oid,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(spec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope})]);
     await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[oid,spec.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority})]);
     return row(pool,{workerId});
