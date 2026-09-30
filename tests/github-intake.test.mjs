@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -93,7 +93,8 @@ function coreBacklogPool(options={}){
       return {rowCount:1,rows:[]};
     }
     if(q.includes('insert into tigeriq_jobs')){
-      jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:'pc_operator',kind:'pc_operator',status:'queued',max_attempts:2});
+      const apiAutowork=q.includes("'reasoning','github_api_autowork'");
+      jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:apiAutowork?'reasoning':'pc_operator',kind:apiAutowork?'github_api_autowork':'pc_operator',status:'queued',max_attempts:2});
       return {rowCount:1,rows:[]};
     }
     if(q.includes("select type,data from tigeriq_events")&&q.includes("ROUTING_FAULT_CLEAR")){
@@ -143,6 +144,66 @@ OWNER_POLICY=AUTO
 NO_CODE_CHANGE=true
 NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
+
+const SAFE_AUTO_POLICY_BASE=`OWNER_POLICY=AUTO
+PRIORITY=P1
+ZERO_COST=true
+NO_PC01_SHELL=true
+NO_PAID_COST=true
+NO_CREDENTIAL_CHANGE=true
+NO_SECURITY_BOUNDARY_CHANGE=true
+NO_PRODUCTION_RELEASE=true
+NO_DESTRUCTIVE=true
+NO_DIRECT_MAIN=true
+RESOURCE_SCOPE=SAFE_AUTO_TEST
+CAPABILITY=coding
+EXECUTION_SURFACE=CODING`;
+
+test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
+  const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason,requiresCodingHandoff:admission.requiresCodingHandoff},{eligible:true,reason:'SAFE_P1_P5_POLICY',requiresCodingHandoff:true});
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  assert.strictEqual(spec.admissionMode,'SAFE_P1_P5_POLICY');
+  assert.strictEqual(spec.requestedCapability,'coding');
+  assert.strictEqual(spec.capability,'reasoning');
+  assert.strictEqual(spec.dispatchLane,'CORE_REASONING');
+  assert.strictEqual(spec.requiresCodingHandoff,true);
+});
+
+test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, UI owner, hard gate, active owner, and terminal-blocked',()=>{
+  const base={number:2500,state:'open',title:'[P1][CORE] candidate',body:SAFE_AUTO_POLICY_BASE,labels:[]};
+  const cases=[
+    [{...base,title:'[P0][CORE] p0',body:SAFE_AUTO_POLICY_BASE.replace('PRIORITY=P1','PRIORITY=P0')},'P0_OR_INVALID_PRIORITY'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nOWNER_HOLD=true'},'OWNER_OR_HOLD_GATE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nCURRENT_STATE=WAITING_PARENT_GATE'},'DEPENDENCY_BLOCKED'],
+    [{...base,title:'[P1][APP-CHROME] excluded'},'APP_CHROME_EXCLUDED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nASSIGNED_EXECUTOR=NV02'},'OWNER_OR_UI_ROUTE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nMUTATION_OWNER=NV12'},'MUTATION_OWNER_CONFLICT'],
+    [{...base,labels:[{name:'tigeriq:terminal-blocked'}]},'TERMINAL_BLOCKED'],
+  ];
+  for(const [issue,reason] of cases)assert.deepStrictEqual({eligible:safeAutoWorkAdmission(issue).eligible,reason:safeAutoWorkAdmission(issue).reason},{eligible:false,reason});
+});
+
+test('safe coding Work Order materializes one API coordination job without taking coding ownership',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:0,html_url:'https://example/2474'};
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,2474);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.objectives[0].metadata.admissionMode,'SAFE_P1_P5_POLICY');
+  assert.strictEqual(pool.objectives[0].metadata.requestedCapability,'coding');
+  assert.strictEqual(pool.objectives[0].metadata.capability,'reasoning');
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_REASONING_COORDINATION');
+  assert.match(pool.objectives[0].objective,/must not mutate source or claim coding\/review ownership/);
+  assert.strictEqual(pool.jobs.length,1);
+  assert.strictEqual(pool.jobs[0].kind,'github_api_autowork');
+  assert.strictEqual(pool.jobs[0].capability,'reasoning');
+  assert.match(pool.jobs[0].prompt,/without repository mutation/);
+});
 
 test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw content',()=>{
   const assigned='Use exactly tigeriq_pc action=file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json".';
@@ -818,4 +879,11 @@ test('github_review job validates reviewer evidence before terminal done write',
   const run=core.slice(core.indexOf('async function claimJob()'),core.indexOf('async function callManagerDecision'));
   assert.match(run,/j\.kind==='github_review'\?parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\):null/);
   assert.match(run,/reviewEvidence/);
+});
+
+test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
+  assert.match(core,/employeeAllowlist\.size/);
+  assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
