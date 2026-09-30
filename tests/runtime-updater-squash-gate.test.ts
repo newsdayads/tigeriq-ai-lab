@@ -130,4 +130,18 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('Gates-Pass $head');
   });
 
+  it('keeps App Chrome lifecycle self-heal wired into updater and bootstrap watchdog',()=>{
+    const updater=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const watchdog=readFileSync('scripts/tigeriq-core/bootstrap-watchdog.ps1','utf8');
+    expect(updater).toContain('app-chrome-unified-task.xml');
+    expect(updater).toContain('function Sync-AppChromeTaskBlueprint');
+    expect(updater).toContain('APPCHROME_TASK_BLUEPRINT_CURRENT');
+    expect(updater).toContain('appChromeTaskBlueprintState=Sync-AppChromeTaskBlueprint');
+    expect(updater).toContain('refreshed_restarted');
+    expect(watchdog).toContain('function Ensure-AppChromeTask');
+    expect(watchdog).toContain('APPCHROME_TASK_BLUEPRINT_HASH_MISMATCH');
+    expect(watchdog).toContain('APPCHROME_TASK_RESTORED_FROM_BLUEPRINT');
+    expect(watchdog).toContain("if($t.key -eq 'appchrome')");
+  });
+
 });
