@@ -15,6 +15,9 @@ $openclawCanaryPolicyGeneration='20260922_DETERMINISTIC_CANARY_2'
 $openclawGatewayStartupTimeoutSec=120
 $appChromeIssue=1372
 $appChromeController='http://127.0.0.1:8798'
+$appChromeTask='TigerIQ APP Chrome Unified'
+$appChromeTaskBlueprint='D:\TigerIQ\State\app-chrome-unified-task.xml'
+$appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
@@ -186,9 +189,49 @@ function Ensure-BootstrapWatchdogTask(){
     $retarget=([string]$first.Execute -ine $ps -or [string]$first.Arguments -notmatch [regex]::Escape($bootstrapWatchdogRuntime))
     if($retarget){Set-ScheduledTask -TaskName $bootstrapWatchdogTask -Action $action -Settings $settings -Principal $principal|Out-Null}
     $fresh=Get-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction SilentlyContinue
-    if($fresh -and [string]$fresh.State -ne 'Running'){Start-ScheduledTask -TaskName $bootstrapWatchdogTask}
-    return @{action=if($retarget -or $needsCopy){'refreshed'}else{'verified'};task=$bootstrapWatchdogTask}
+    $mustRestart=[bool]($retarget -or $needsCopy)
+    if($fresh -and $mustRestart -and [string]$fresh.State -eq 'Running'){
+      Stop-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction SilentlyContinue
+      Start-Sleep -Milliseconds 750
+      Start-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction Stop
+    }elseif($fresh -and [string]$fresh.State -ne 'Running'){
+      Start-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction Stop
+    }
+    return @{action=if($mustRestart){'refreshed_restarted'}else{'verified'};task=$bootstrapWatchdogTask}
   }catch{return @{action='blocked';reason=('BOOTSTRAP_WATCHDOG_'+$_.Exception.GetType().Name)}}
+}
+function Test-AppChromeTaskContract($task){
+  if(-not $task){return $false}
+  $first=@($task.Actions|Select-Object -First 1)
+  if(-not $first){return $false}
+  $execute=[string]$first.Execute
+  $arguments=[string]$first.Arguments
+  $allowed=@(
+    'D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome.ps1',
+    'D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome-1372.ps1'
+  )
+  $launcherOk=[bool](@($allowed|Where-Object{$arguments -match [regex]::Escape($_)}).Count)
+  $powershellOk=([IO.Path]::GetFileName($execute) -match '^(powershell|pwsh)\.exe$')
+  return ($launcherOk -and $powershellOk)
+}
+function Sync-AppChromeTaskBlueprint(){
+  try{
+    $task=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction SilentlyContinue
+    if(-not $task){return @{action='blocked';reason='APPCHROME_TASK_MISSING';task=$appChromeTask}}
+    if(-not(Test-AppChromeTaskContract $task)){return @{action='blocked';reason='APPCHROME_TASK_CONTRACT_INVALID';task=$appChromeTask}}
+    $xml=Export-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
+    if([string]::IsNullOrWhiteSpace([string]$xml)){return @{action='blocked';reason='APPCHROME_TASK_EXPORT_EMPTY';task=$appChromeTask}}
+    $dir=Split-Path -Parent $appChromeTaskBlueprint
+    if(-not(Test-Path -LiteralPath $dir)){New-Item -ItemType Directory -Path $dir -Force|Out-Null}
+    $tmp=$appChromeTaskBlueprint+'.tmp'
+    [IO.File]::WriteAllText($tmp,[string]$xml,[Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $tmp -Destination $appChromeTaskBlueprint -Force
+    $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $appChromeTaskBlueprint).Hash.ToLowerInvariant()
+    $hashTmp=$appChromeTaskBlueprintHash+'.tmp'
+    [IO.File]::WriteAllText($hashTmp,$hash,[Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $hashTmp -Destination $appChromeTaskBlueprintHash -Force
+    return @{action='synced';reason='APPCHROME_TASK_BLUEPRINT_CURRENT';task=$appChromeTask;sha256=$hash}
+  }catch{return @{action='blocked';reason=('APPCHROME_TASK_BLUEPRINT_'+$_.Exception.GetType().Name);task=$appChromeTask}}
 }
 function Retire-LegacyOpenClawLifecycleOwner(){
   $task=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
@@ -716,6 +759,7 @@ while($true){
   try{
     $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
     $webTaskTarget=Ensure-WebTaskRuntimeTarget
+    $appChromeTaskBlueprintState=Sync-AppChromeTaskBlueprint
     $watchdog=Runtime-Watchdog
     $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
     $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
@@ -745,7 +789,7 @@ while($true){
       }
     }
     if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
-    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -797,7 +841,7 @@ while($true){
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
-    Save-State @{result='UPDATED';liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
