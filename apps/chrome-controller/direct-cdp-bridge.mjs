@@ -842,7 +842,7 @@ const UI_EXPR=`(()=>{
   const uiBusy=location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
-  const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"]')].filter(vis);
+  const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"],model-response-content')].filter(vis);
   const assistantText=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').replace(/\s+/g,' ').trim();
   const progressText=(assistantText+'|'+activityText).trim();
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
