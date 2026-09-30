@@ -19,18 +19,9 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(supervisor).not.toContain('gh.exe');
   });
 
-  it('uses one bounded idle wake while NV02 chooses and claims its own work', () => {
-    expect(bridge).toContain('NV02_SELF_PULL_WAKE_PROMPT');
-    expect(bridge).toContain('App Chrome không chọn việc');
-    expect(bridge).toContain('toàn bộ Work Order P1-P5');
-    expect(bridge).toContain('CAPABILITY không phải tiêu chí loại việc khỏi tầm nhìn');
-    expect(bridge).toContain('điều phối/handoff đúng resource');
-    expect(bridge).toContain('không chiếm mutation/review ownership của specialist');
-    expect(bridge).toContain('Review độc lập không được tự duyệt phần NV02 đã thực thi');
-    expect(bridge).toContain('App Chrome self-maintenance');
-    expect(bridge).toContain('owner/lease/resource-scope conflict');
-    expect(bridge).toContain('không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ');
-    expect(bridge).toContain('Loại P0/hard-gate');
+  it('uses one bounded exact short wake while NV02 keeps work selection authority', () => {
+    expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
+    expect(bridge).toContain("pickWorkerContinuePrompt('NV02'");
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
     expect(bridge).toContain('detectWorkerAssistantTerminal');
     expect(bridge).toContain('assistantTerminal=detectAssistantTerminal(assistantTextRaw)');
@@ -47,10 +38,10 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(doc).toContain('no P1-P5 Work Order can be directly executed or validly coordinated/handoff by NV02');
   });
 
-  it('keeps the approved short continue pool scoped to NV02 only', () => {
-    expect(bridge).toContain('const NV02_CONTINUE_PROMPTS=Object.freeze([');
-    expect(bridge).toContain("workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
-    expect(bridge).toContain("'Làm tiếp, không đổi việc'");
+  it('uses the shared exact short continue pool for NV02/NV03/NV04', () => {
+    expect(bridge).not.toContain('const NV02_CONTINUE_PROMPTS=Object.freeze([');
+    expect(bridge).toContain("prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
   });
 
   it('locks NV02 F5 to 5-10 minutes and preserves worker isolation', () => {
@@ -229,9 +220,9 @@ describe('NV02 V2 independent maintenance timers', () => {
 describe('NV02 fresh-chat lifecycle V3', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('uses GitHub checkpoint as continuity and rotates chat after terminal work', () => {
+  it('uses the terminal marker without appending a rotation suffix to continuation text', () => {
     expect(bridge).toContain("const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
-    expect(bridge).toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
     expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER");
     expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
     expect(bridge).toContain("await archiveChat(target)");
@@ -252,14 +243,13 @@ describe('NV02 fresh-chat lifecycle V3', () => {
     expect(bridge).toContain("const crashUrl=isRestorableNv02Chat(continuity.verifiedChatUrl)");
   });
 
-  it('rotates idle and oversized chats instead of growing context forever', () => {
-    expect(bridge).toContain('NV02_MAX_DISPATCHES_PER_CHAT=60');
-    expect(bridge).toContain('NV02_MAX_CHAT_AGE_MS=6*60*60*1000');
+  it('does not rotate merely because a chat is old or has many prompts', () => {
+    expect(bridge).not.toContain('NV02_MAX_DISPATCHES_PER_CHAT');
+    expect(bridge).not.toContain('NV02_MAX_CHAT_AGE_MS');
+    expect(bridge).not.toContain("'SAFETY_CONTEXT_LIMIT'");
     expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
-    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
-    expect(bridge).toContain('Number(state.dispatchesInChat||0)>=NV02_MAX_DISPATCHES_PER_CHAT');
-    expect(bridge).toContain('chatAgeMs>=NV02_MAX_CHAT_AGE_MS');
   });
+
 });
 
 
