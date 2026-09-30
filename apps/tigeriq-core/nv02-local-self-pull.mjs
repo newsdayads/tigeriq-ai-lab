@@ -49,10 +49,14 @@ async function releaseLocalClaimLock(lockKey) {
 }
 
 function fields(body) {
-  return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
+  const parsed = {};
+  for (const line of String(body || '').split(/\r?\n/)) {
     const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
-    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
-  }));
+    if (!m) continue;
+    const key = m[1].toUpperCase();
+    if (!(key in parsed)) parsed[key] = m[2].trim();
+  }
+  return parsed;
 }
 
 export function nv02PrioritySummary(issue) {
@@ -60,6 +64,28 @@ export function nv02PrioritySummary(issue) {
   return m ? m[1].toUpperCase() : '';
 }
 export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
+
+function nv02RearmEpochMs(issue) {
+  const meta = nv02WorkOrderMeta(issue);
+  const state = `${meta.CURRENT_STATE || ''} ${meta.STATE || ''}`;
+  const explicitlyRearmed = meta.OWNER_REARM === 'true'
+    || /REARM|READY_FOR_NV02_SELF_PULL/i.test(state);
+  if (!explicitlyRearmed || meta.TIGERIQ_EXECUTABLE !== 'true' || meta.AUTO_QUEUE === 'EXCLUDED') return 0;
+  const epoch = Date.parse(String(meta.REARMED_AT || meta.QUEUE_REARMED_AT || meta.EPOCH_STARTED_AT || ''));
+  return Number.isFinite(epoch) ? epoch : 0;
+}
+
+export function nv02HasTerminalEvidence(issue, comments = []) {
+  if (issue?.state === 'closed' && issue?.state_reason === 'completed') return true;
+  const epochMs = nv02RearmEpochMs(issue);
+  return (Array.isArray(comments) ? comments : [])
+    .filter((comment) => {
+      const body = String(comment?.body || '');
+      return body.includes(NV02_LEASE_MARKER) || body.includes(NV02_RELEASE_MARKER) || /WORKER=NV02/i.test(body);
+    })
+    .filter((comment) => !epochMs || commentAtMs(comment) >= epochMs)
+    .some((comment) => /^(?:STATE|CURRENT_STATE)=(?:DONE|BLOCKED)$/mi.test(String(comment?.body || '')));
+}
 
 function workOrderRef(issueOrNumber) {
   const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
