@@ -314,3 +314,22 @@ describe('NV02 rotation never sends save prompt', () => {
     expect(bridge).toContain('const archived=await archiveChat(target)');
   });
 });
+
+
+describe('NV02 archive live confirmation R4', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('treats visible Unarchive as durable evidence that the current chat is already archived', () => {
+    expect(bridge).toContain("status:'ARCHIVE_ALREADY_DONE'");
+    expect(bridge).toContain("alreadyArchived:true");
+    expect(bridge).toContain("confirmation:'UNARCHIVE_ACTION_VISIBLE'");
+    expect(bridge).toContain("bỏ lưu trữ");
+  });
+
+  it('confirms archive using toast, sidebar removal, or reopened menu Unarchive state', () => {
+    expect(bridge).toContain("unarchiveVisible:unarchive.length===1");
+    expect(bridge).toContain("sidebarRemoved=allLinks.length>0&&currentLinks.length===0");
+    expect(bridge).toContain("ARCHIVE_TOAST");
+    expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId),awaitPromise:true");
+  });
+});
