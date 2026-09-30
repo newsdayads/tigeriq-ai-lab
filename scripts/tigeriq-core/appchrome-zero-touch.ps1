@@ -218,10 +218,16 @@ try{
   $live=Wait-ExactHead ([string]$req.exactHead)
   try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{};$paused=$false
   $wakeStatus='NOT_ATTEMPTED'
-  $wakeDeadline=(Get-Date).AddSeconds(120)
+  # The NV02 resume endpoint can synchronously wait through up to three
+  # controller command attempts (60s each + retry gaps). Keep the client
+  # timeout above that bounded server budget so a healthy wake is not
+  # misclassified as WebException and rolled back.
+  $nv02ResumeRequestTimeoutSec=210
+  $nv02WakeDeadlineSec=240
+  $wakeDeadline=(Get-Date).AddSeconds($nv02WakeDeadlineSec)
   while((Get-Date)-lt$wakeDeadline){
     try{
-      $wake=Invoke-RestMethod -Method Post -Uri ($controller+'/api/utility/workers/NV02/resume') -TimeoutSec 15
+      $wake=Invoke-RestMethod -Method Post -Uri ($controller+'/api/utility/workers/NV02/resume') -TimeoutSec $nv02ResumeRequestTimeoutSec
       $wakeStatus=[string]$wake.status
       if($wakeStatus -in @('NV02_IDLE_SELF_PULL_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){break}
     }catch{$wakeStatus='RETRY:'+[string]$_.Exception.GetType().Name}
