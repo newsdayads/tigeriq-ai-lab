@@ -237,3 +237,28 @@ describe('NV02 fresh-chat lifecycle V3', () => {
     expect(bridge).toContain('chatAgeMs>=NV02_MAX_CHAT_AGE_MS');
   });
 });
+
+
+describe('NV02 archive rotation robustness', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('handles an already-open menu and current sidebar row without role=listitem dependence', () => {
+    expect(bridge).toContain("ARCHIVE_MENU_ALREADY_OPEN");
+    expect(bridge).toContain("button[data-testid*=\"conversation\"][data-testid*=\"option\"]");
+    expect(bridge).toContain("document.querySelectorAll('[role=\"listitem\"],li')");
+    expect(bridge).toContain("linkMatches:links.length");
+    expect(bridge).toContain("if(menuPoint?.alreadyOpen!==true)await cdpMouseClick(p,menuPoint)");
+  });
+
+  it('accepts current localized archive labels but rejects archive-all actions', () => {
+    expect(bridge).toContain("lưu trữ đoạn chat");
+    expect(bridge).toContain("archive conversation");
+    expect(bridge).toContain("if(/all|tất cả/i.test(t))return false");
+  });
+
+  it('honors rotationRetryAt after archive failure instead of retrying every 3s tick', () => {
+    expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER&&now>=Number(state.rotationRetryAt||0)");
+    expect(bridge).toContain("ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&now>=Number(state.rotationRetryAt||0)");
+    expect(bridge).toContain("rotationRetryAt:now+60_000");
+  });
+});
