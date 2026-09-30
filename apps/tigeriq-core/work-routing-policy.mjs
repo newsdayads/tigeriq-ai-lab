@@ -1,6 +1,7 @@
 import {backlogAssignedExecutor,bodyValue,effectiveBacklogPriority,exactBodyFlag,isReviewOnlySpec} from './github-backlog-policy.mjs';
 
 export const UI_ROLE_WORKERS=Object.freeze(['NV02','NV03','NV04']);
+export const CORE_ROUTED_UI_WORKERS=Object.freeze(['NV03','NV04']);
 export const ROLE_CLAIM_MARKER='[TIGERIQ_ROLE_CLAIM_V1]';
 export const ROLE_RELEASE_MARKER='[TIGERIQ_ROLE_RELEASE_V1]';
 
@@ -28,7 +29,7 @@ export function classifyWorkOrder(body){
   if(assigned){
     if(assigned==='NV06')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'OPENCLAW',workerId:assigned,autonomous:true};
     if(assigned==='NV09')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CODING',workerId:assigned,autonomous:true};
-    if(UI_ROLE_WORKERS.includes(assigned))return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'UI',workerId:assigned,autonomous:false};
+    if(UI_ROLE_WORKERS.includes(assigned))return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'UI',workerId:assigned,autonomous:CORE_ROUTED_UI_WORKERS.includes(assigned)};
     return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:cap==='review'?'CORE_REVIEW':'CORE_REASONING',workerId:assigned,autonomous:true};
   }
   if(cap==='pc_operator')return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'OPENCLAW',workerId:'NV06',autonomous:true};
@@ -36,15 +37,22 @@ export function classifyWorkOrder(body){
     return {...priority,capability:'coding',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CODING',workerId:null,autonomous:true};
   }
   if(cap==='review'){
-    if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:false};
-    return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:preferred||null,autonomous:true};
+    if(preferred){
+      if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:CORE_ROUTED_UI_WORKERS.includes(preferred)};
+      return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:preferred,autonomous:true};
+    }
+    return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:'',route:'UI',workerId:'NV03',autonomous:true};
   }
   if(cap==='research'||cap==='deep_research'||surface==='RESEARCH'){
-    if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:'research',surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:false};
-    return {...priority,capability:'research',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REASONING',workerId:preferred||null,autonomous:true};
+    if(preferred){
+      if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:'research',surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:CORE_ROUTED_UI_WORKERS.includes(preferred)};
+      return {...priority,capability:'research',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REASONING',workerId:preferred,autonomous:true};
+    }
+    return {...priority,capability:'research',surface,assignedExecutor:'',preferredEmployee:'',route:'UI',workerId:'NV04',autonomous:true};
   }
   if(surface==='UI'){
-    return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:null,autonomous:false};
+    const worker=cap==='review'?'NV03':(cap==='research'||cap==='deep_research')?'NV04':'NV02';
+    return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:worker,autonomous:CORE_ROUTED_UI_WORKERS.includes(worker)};
   }
   if(cap==='general'||cap==='ui'){
     return {...priority,capability:'general',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REASONING',workerId:null,autonomous:true};
@@ -59,9 +67,15 @@ export function roleCanPull(_workerId,_classification){
 
 export function buildRoleFallbackPrompt(workerId){
   const id=employee(workerId);
+  if(CORE_ROUTED_UI_WORKERS.includes(id))return [
+    id+' — CORE_ROUTED_UI=true.',
+    'Continue the current Core assignment if present; otherwise remain READY for Core to assign the next eligible P1-P5 role-matched Work Order.',
+    'Do not scan or self-claim GitHub backlog locally. App Chrome is transport/continuity only.',
+    'P0 and hard-gated work remain Owner-only/fail-closed.',
+  ].join(' ');
   return [
     id+' — UI_WORKER_EXTERNAL_TO_CORE=true.',
-    'Core must not assign, route, claim, revoke, reassign, or select backlog for this worker.',
+    'Core does not select backlog for this worker.',
     'Command 02: active CURRENT_WORK_ORDER plus checkpoint means resume; terminal/no-current means local GitHub self-pull exactly one eligible P1-P5 item for NV02.',
     'Use NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY with lease, evidence, release, then continue to the next eligible item.',
     'P0 remains Owner-only and App Chrome remains a separate Owner-controlled scope.',
