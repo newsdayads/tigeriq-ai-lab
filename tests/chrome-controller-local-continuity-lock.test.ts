@@ -14,7 +14,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     }
   });
 
-  it('contains no Core/assignment/self-claim gate in the Direct CDP continuity path',()=>{
+  it('keeps Core/GitHub selection out while requiring a local durable assignment for NV03/NV04',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     for(const forbidden of [
       'CORE_UI_ASSIGNMENT',
@@ -34,6 +34,9 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(generic).toContain("if(phase==='READY')");
     expect(generic).toContain('awaitingWorkStart');
     expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
+    expect(generic).toContain('activeLocalAssignment(controller,w.id)');
+    expect(generic).toContain("'NO_ACTIVE_ASSIGNMENT_IDLE'");
+    expect(generic).toContain("'ASSISTANT_TERMINAL_WAIT'");
     expect(nv02).toContain("if(phase==='WORKING')");
     expect(nv02).toContain("if(phase==='READY')");
     expect(nv02).toContain('awaitingWorkStart');
