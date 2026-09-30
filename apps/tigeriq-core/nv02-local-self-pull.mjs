@@ -49,21 +49,28 @@ async function releaseLocalClaimLock(lockKey) {
 }
 
 function fields(body) {
-  const parsed = {};
-  for (const line of String(body || '').split(/\r?\n/)) {
+  return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
     const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
-    if (!m) continue;
-    const key = m[1].toUpperCase();
-    if (!(key in parsed)) parsed[key] = m[2].trim();
-  }
-  return parsed;
+    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
+  }));
 }
 
 export function nv02PrioritySummary(issue) {
   const m = String(issue?.title || '').match(/\b(P[0-5])\b/i) || String(issue?.priority || '').match(/^P[0-5]$/i);
   return m ? m[1].toUpperCase() : '';
 }
-export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
+function currentAuthoritySection(body) {
+  const text = String(body || '');
+  const trimmed = text.trimStart();
+  if (!/^##\s+OWNER\b/i.test(trimmed)) return text;
+  const firstBreak = trimmed.indexOf('\n');
+  if (firstBreak < 0) return trimmed;
+  const rest = trimmed.slice(firstBreak + 1);
+  const nextHeading = rest.search(/^##\s+/m);
+  return nextHeading < 0 ? trimmed : trimmed.slice(0, firstBreak + 1 + nextHeading);
+}
+
+export function nv02WorkOrderMeta(issue) { return fields(currentAuthoritySection(issue?.body)); }
 
 function nv02RearmEpochMs(issue) {
   const meta = nv02WorkOrderMeta(issue);
