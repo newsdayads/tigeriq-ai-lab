@@ -703,3 +703,32 @@ describe('NV03/NV04 canonical model preservation #1940',()=>{
     expect(bridge).not.toContain("if(expectedHost(w)==='chatgpt.com'&&state.modelCheckAttempted!==true)");
   });
 });
+
+
+describe('NV03/NV04 Core UI transport loop',()=>{
+  it('routes only Core-selected specialist work and keeps NV02 outside the transport',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("const CORE_UI_TRANSPORT_WORKERS:WorkerId[]=['NV03','NV04']");
+    expect(server).toContain('const coreUiTransportEnabled=true');
+    expect(server).toContain("const externalWorkAutopilotEnabled=false");
+    expect(server).toContain('async function coreUiTransportTick()');
+    expect(server).toContain("active?.source==='CORE_UI'");
+    expect(server).toContain("['DONE','BLOCKED','EXTERNAL_WAIT'].includes(terminal)");
+    expect(server).toContain("source:'CORE_UI'");
+    expect(server).toContain('await coreUiFetch(String(job.jobId))');
+    expect(server).toContain("setInterval(()=>void coreUiTransportTick()");
+    expect(server).not.toContain("CORE_UI_TRANSPORT_WORKERS:WorkerId[]=['NV02'");
+  });
+
+  it('reports UI terminal state back to Core before releasing local specialist work',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    expect(server).toContain("u.pathname='/api/ui-assignment/terminal'");
+    expect(server).toContain('CORE_UI_TRANSPORT_TERMINAL');
+    expect(server).toContain("terminal==='DONE'?'DONE':'BLOCKED'");
+    expect(server).toContain('uiJobLedger.reconcileAuthoritativeTerminal');
+    expect(server).toContain('hb.assistantResultTail||hb.assistantSignature||terminal');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('const assistantResultTail=assistantTextRaw.slice(-4000)');
+    expect(bridge).toContain('assistantTerminal,assistantResultTail');
+  });
+});

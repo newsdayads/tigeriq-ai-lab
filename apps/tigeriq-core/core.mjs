@@ -15,7 +15,7 @@ import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
-import { buildCoreUiAssignmentSnapshot } from './core-ui-assignment.mjs';
+import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { publishGithubEvent } from './github-event-bus.mjs';
@@ -1387,6 +1387,16 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       const projected=await buildCoreUiAssignmentSnapshot({pool,token:GITHUB_TOKEN,owner:GITHUB_OWNER,repo:GITHUB_REPO,previousJobId});
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(projected));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/ui-assignment/terminal'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const b=await readBody(req);
+      const result=await completeCoreUiAssignment({
+        pool,token:GITHUB_TOKEN,owner:GITHUB_OWNER,repo:GITHUB_REPO,
+        jobId:String(b.jobId||''),workerId:String(b.workerId||''),terminal:String(b.terminal||''),result:String(b.result||''),
+      });
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(result));
     }
     if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end(dashboard());}
     if(req.method==='POST'&&url.pathname==='/api/resources/probe'){

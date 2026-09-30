@@ -53,7 +53,7 @@ import {
 import { DurableSelfRunClaimStore } from './self-run-claim-store.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; chatLoadError?:boolean; chatRetryReady?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; chatLoadError?:boolean; chatRetryReady?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; assistantTerminal?:string|null; assistantSignature?:string|null; assistantResultTail?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -120,7 +120,11 @@ let startupRecoveryInFlight=false;
 let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let githubTerminalReconcileTicking=false;
+let coreUiTransportTicking=false;
 let selfRunTimer:NodeJS.Timeout|undefined;
+const CORE_UI_TRANSPORT_WORKERS:WorkerId[]=['NV03','NV04'];
+const coreUiTransportEnabled=true;
+const coreUiAssignmentUrl=String(process.env.TIGERIQ_CORE_UI_ASSIGNMENT_URL||'http://100.97.23.87:8795/api/ui-assignment').trim();
 const selfRunEnabled=false; // NV02 V2: App Chrome is UI continuity only; ChatGPT Plus self-selects/claims GitHub work.
 const externalWorkAutopilotEnabled=false; // App Chrome is local UI control only; no Core/queue/GitHub assignment
 const githubTerminalReconcileEnabled=false; // NV02 V2: App Chrome must not poll GitHub for terminal state.
@@ -471,7 +475,7 @@ async function dispatch(
   if(workerId==='NV04'){
     const contract=validateNv04AssignmentContract(text);
     navigate=true;
-    metadata={...metadata,source:'NV04_ASSIGNMENT'};
+    metadata={...metadata,source:metadata.source==='CORE_UI'?'CORE_UI':'NV04_ASSIGNMENT'};
     log('NV04_ASSIGNMENT_ACCEPTED',{role:contract.role,currentWorkOrder:contract.currentWorkOrder,resourceScope:contract.resourceScope,evidenceDestination:contract.evidenceDestination,freshContext:true});
   }
   const requestedJobId=String(metadata.jobId??'').trim();
@@ -807,6 +811,75 @@ function scheduleSelfRunTick(delayMs=5000){
   },delayMs);
   selfRunTimer.unref();
 }
+
+function validCoreUiAssignmentUrl(value:string){
+  try{
+    const u=new URL(value);
+    if(u.protocol!=='http:'||u.pathname!=='/api/ui-assignment')return false;
+    if(['127.0.0.1','localhost','::1'].includes(u.hostname))return true;
+    const m=u.hostname.match(/^100\.(\d{1,3})\./);
+    return Boolean(m&&Number(m[1])>=64&&Number(m[1])<=127);
+  }catch{return false;}
+}
+async function coreUiFetch(previousJobId?:string){
+  if(!validCoreUiAssignmentUrl(coreUiAssignmentUrl))throw new Error('CORE_UI_ASSIGNMENT_URL_INVALID');
+  const u=new URL(coreUiAssignmentUrl);
+  if(previousJobId&&/^GH-\d+$/.test(previousJobId))u.searchParams.set('previousJobId',previousJobId);
+  const response=await fetch(u,{signal:AbortSignal.timeout(config.autopilot.requestTimeoutMs)});
+  if(!response.ok)throw new Error('CORE_UI_ASSIGNMENT_HTTP_'+response.status);
+  const raw=await response.json() as any;
+  const snapshot=validateExternalSnapshot(raw);
+  if(snapshot.source!=='CORE'||String(raw?.authority||'')!=='CORE')throw new Error('CORE_UI_ASSIGNMENT_AUTHORITY_INVALID');
+  return raw as any;
+}
+async function reportCoreUiTerminal(workerId:WorkerId,job:{jobId:string;issueRef:string|null},terminal:string,hb:Heartbeat){
+  if(!validCoreUiAssignmentUrl(coreUiAssignmentUrl))throw new Error('CORE_UI_ASSIGNMENT_URL_INVALID');
+  const u=new URL(coreUiAssignmentUrl);u.pathname='/api/ui-assignment/terminal';u.search='';
+  const result=String(hb.assistantResultTail||hb.assistantSignature||terminal).slice(-4000);
+  const response=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jobId:job.jobId,workerId,terminal,result}),signal:AbortSignal.timeout(12000)});
+  if(!response.ok)throw new Error('CORE_UI_TERMINAL_HTTP_'+response.status+':'+(await response.text()).slice(0,160));
+  const value=await response.json() as any;
+  const evidenceRef=String(value?.evidenceRef||job.issueRef||'');
+  const localTerminal=terminal==='DONE'?'DONE':'BLOCKED';
+  uiJobLedger.reconcileAuthoritativeTerminal(workerId,job.jobId,localTerminal,{evidenceRef,blocker:terminal==='DONE'?null:terminal,result:'Core UI terminal '+terminal});
+  log('CORE_UI_TRANSPORT_TERMINAL',{workerId,jobId:job.jobId,terminal,evidenceRef});
+}
+async function coreUiTransportTick(){
+  if(!coreUiTransportEnabled||coreUiTransportTicking||paused||killed||!startupReady)return;
+  coreUiTransportTicking=true;
+  try{
+    for(const workerId of CORE_UI_TRANSPORT_WORKERS){
+      const active=uiJobLedger.active(workerId);
+      const state=states.get(workerId)!;
+      const hb=state.lastHeartbeat;
+      if(active?.source==='CORE_UI'&&hb?.uiBusy!==true){
+        const terminal=String(hb?.assistantTerminal||'').toUpperCase();
+        if(['DONE','BLOCKED','EXTERNAL_WAIT'].includes(terminal)){
+          await reportCoreUiTerminal(workerId,active,terminal,hb!);
+        }
+      }
+    }
+    const snapshot=await coreUiFetch();
+    const candidates=(Array.isArray(snapshot?.nextJobs)?snapshot.nextJobs:(snapshot?.nextJob?[snapshot.nextJob]:[]))
+      .filter((job:any)=>CORE_UI_TRANSPORT_WORKERS.includes(String(job?.workerId||'') as WorkerId)&&job?.executable===true&&job?.status==='READY'&&String(job?.prompt||'').trim());
+    for(const workerId of CORE_UI_TRANSPORT_WORKERS){
+      if(uiJobLedger.active(workerId))continue;
+      const state=states.get(workerId)!;
+      if(!state.enabled||state.blocked||state.manualCloseSuppressed||utilityPausedWorkers.has(workerId)||!recentHeartbeat(workerId))continue;
+      const security=heartbeatStopReason(state.lastHeartbeat);if(security)continue;
+      if(state.lastHeartbeat?.uiBusy!==false)continue;
+      const job=candidates.find((item:any)=>item.workerId===workerId);if(!job)continue;
+      await dispatch(workerId,String(job.prompt),false,'MANUAL',{
+        jobId:String(job.jobId),issueRef:String(job.issueRef||''),title:String(job.currentWorkOrder||('Core UI '+job.jobId)),source:'CORE_UI',
+      });
+      await coreUiFetch(String(job.jobId));
+      log('CORE_UI_TRANSPORT_DISPATCHED',{workerId,jobId:String(job.jobId),issueRef:String(job.issueRef||'')});
+    }
+  }catch(error){
+    log('CORE_UI_TRANSPORT_ERROR',{error:String(error)});
+  }finally{coreUiTransportTicking=false;}
+}
+
 async function fetchExternalSnapshot(){
   if(!config.autopilot.stateUrl)return;
   const controller=new AbortController();
@@ -1151,6 +1224,7 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       sessionName:process.env.SESSIONNAME??null,
       autopilot:autopilotState,
       externalWorkAutopilotEnabled,
+      coreUiTransportEnabled,
       selfRun:selfRunState,
       githubSelfRun:{...selfRunState,tokenReady:Boolean(selfRunGithubToken),tickInFlight:selfRunTicking,claims:selfRunClaims.snapshot()},
       utilityPausedWorkers:[...utilityPausedWorkers],
@@ -1734,3 +1808,4 @@ server.listen(config.port,config.host,()=>{
 setInterval(()=>void autopilotTick(),config.autopilot.pollIntervalMs).unref();
 setInterval(()=>void recoveryTick(),config.recovery.checkIntervalMs).unref();
 if(githubTerminalReconcileEnabled)setInterval(()=>void reconcileGithubTerminalUiJobs(),30_000).unref();
+setInterval(()=>void coreUiTransportTick(),Math.max(5000,config.autopilot.pollIntervalMs)).unref();

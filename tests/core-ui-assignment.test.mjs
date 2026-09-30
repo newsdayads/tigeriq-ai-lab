@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildCoreUiAssignmentSnapshot,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -22,6 +22,7 @@ function fakePool(){
     if(sql.startsWith('insert into tigeriq_objectives')){objectives.push({id:params[0],objective:params[1],priority:params[2],status:'active',summary:params[3],metadata:JSON.parse(params[4]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
     if(sql.startsWith('insert into tigeriq_jobs')){jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:params[4],kind:'ui',status:'ui_assigned',employee_id:params[5],resource_id:params[6],provider:'ui',created_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
     if(sql.includes('CORE_UI_ASSIGNMENT_CREATED')){events.push({type:'CORE_UI_ASSIGNMENT_CREATED',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
+    if(sql.includes('CORE_UI_ASSIGNMENT_TERMINAL')){events.push({type:'CORE_UI_ASSIGNMENT_TERMINAL',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.startsWith('select prompt from tigeriq_jobs')){const j=jobs.find(x=>x.id===params[0]);return{rowCount:j?1:0,rows:j?[{prompt:j.prompt}]:[]};}
     if(sql.includes("set status='ui_running'")){const j=jobs.find(x=>x.id===params[0]);if(j){j.status='ui_running';j.started_at='2026-09-30T00:01:00Z';}return{rowCount:j?1:0,rows:[]};}
     if(sql.startsWith('update tigeriq_jobs set status=$2')){const j=jobs.find(x=>x.id===params[0]);if(j){j.status=params[1];j.completed_at='2026-09-30T00:02:00Z';j.result=JSON.parse(params[2]);}return{rowCount:j?1:0,rows:[]};}
@@ -82,4 +83,44 @@ test('READY_UNASSIGNED keeps mixed authority explicit',()=>{
   assert.equal(snap.workerBindings.NV02.state,'EXTERNAL_TO_CORE');
   assert.equal(snap.workerBindings.NV03.state,'READY_UNASSIGNED');
   assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+});
+
+
+test('Core UI prompt is self-contained and NV04 satisfies explicit assignment contract',()=>{
+  const review=parseCoreUiIssue(issue(2601,safe(['CAPABILITY=review']),'Review contract'));
+  const research=parseCoreUiIssue(issue(2602,safe(['CAPABILITY=research']),'Research contract'));
+  const p3=buildCoreUiPrompt(review);
+  const p4=buildCoreUiPrompt(research);
+  assert.match(p3,/ROLE=INDEPENDENT_REVIEW_QA/);
+  assert.match(p3,/WORK_ORDER_BODY_BEGIN/);
+  assert.match(p3,/DONE hoặc BLOCKED hoặc EXTERNAL_WAIT/);
+  assert.match(p4,/NV04_ROLE=DEEP_RESEARCH/);
+  assert.match(p4,/CURRENT_WORK_ORDER=#2602/);
+  assert.match(p4,/EXACT_INPUT=https:\/\/github\.com\//);
+  assert.match(p4,/RESOURCE_SCOPE=UI_CANARY/);
+  assert.match(p4,/CHECKLIST=/);
+  assert.match(p4,/OUTPUT=/);
+  assert.match(p4,/EVIDENCE_DESTINATION=/);
+  assert.match(p4,/MUTATION_ALLOWED=false/);
+  assert.match(p4,/WORK_ORDER_BODY_BEGIN/);
+});
+
+
+test('Core UI terminal evidence closes DONE issue and frees the worker durably',async()=>{
+  const pool=fakePool();
+  let current=issue(2603,safe(['CAPABILITY=review']),'Terminal canary');
+  const fetchImpl=async(url,init={})=>{
+    if(url.endsWith('/comments')&&init.method==='POST')return response({html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2603#issuecomment-1'});
+    if(url.endsWith('/issues/2603')&&init.method==='PATCH'){current={...current,state:'closed',state_reason:'completed',closed_at:'2026-09-30T00:03:00Z'};return response(current);}
+    if(url.endsWith('/issues/2603'))return response(current);
+    return response([current]);
+  };
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs[0].status,'ui_assigned');
+  const out=await completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-2603',workerId:'NV03',terminal:'DONE',result:'QA PASS\nDONE'});
+  assert.equal(out.terminal,'DONE');
+  assert.match(out.evidenceRef,/issuecomment-1/);
+  assert.equal(pool.jobs[0].status,'done');
+  assert.equal(pool.objectives[0].status,'completed');
+  assert.equal(pool.events.at(-1).type,'CORE_UI_ASSIGNMENT_TERMINAL');
 });

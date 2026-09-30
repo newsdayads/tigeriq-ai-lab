@@ -9,6 +9,7 @@ const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_C
 function value(body,key){return bodyValue(body,key);}
 function yes(body,key){return exactBodyFlag(body,key,'true');}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
+function safeResult(v){return String(v||'').replace(/\0/g,'').trim().slice(0,4000);}
 function rank(p){return PRIORITY_RANK[String(p||'P5')]??PRIORITY_RANK.P5;}
 function issueNo(jobId){const m=String(jobId||'').match(/^GH-(\d+)$/);return m?Number(m[1]):null;}
 function resourceId(workerId){return 'res:ui:'+String(workerId).toLowerCase()+':subscription:chrome';}
@@ -34,12 +35,38 @@ export function parseCoreUiIssue(issue){
     number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,title:clean(issue.title),url:String(issue.html_url||''),
     priority:classification.priority,sourcePriority:classification.sourcePriority,legacyP0Autonomous:classification.legacyP0Autonomous,
     ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:classification.workerId,
-    readOnly,autonomousCode,updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0)),
+    readOnly,autonomousCode,body:String(issue.body||'').slice(0,12000),updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0)),
   };
 }
 
 export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO){
-  return 'LÀM — NO YAPPING. CURRENT_WORK_ORDER=['+spec.url+'] | JOB_ID='+spec.jobId+'. Đây là Core assignment ưu tiên hơn role-fallback. Chỉ làm #'+spec.number+' - '+spec.title+' trong repo '+repo+'. Không tự đổi sang P0/việc khác khi assignment còn hiệu lực. Tuân thủ guardrail; không MAIN/Production, không chi phí, không đổi credential/security, không destructive. Khi terminal hoặc phải handoff/wait, cập nhật evidence và nhả role lease nếu có.';
+  const guard='LÀM — NO YAPPING. Đây là Core assignment duy nhất đang hiệu lực. Không tự đổi việc/P0. Không MAIN/Production, không chi phí, không credential/security, không destructive.';
+  const body='WORK_ORDER_BODY_BEGIN\n'+String(spec.body||'').slice(0,12000)+'\nWORK_ORDER_BODY_END';
+  if(spec.workerId==='NV04'){
+    const role=String(spec.capability||'').toLowerCase()==='review'?'INDEPENDENT_REVIEW':'DEEP_RESEARCH';
+    return [
+      guard,
+      'NV04_ROLE='+role,
+      'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title,
+      'EXACT_INPUT='+spec.url,
+      'RESOURCE_SCOPE='+spec.resourceScope,
+      'CHECKLIST=Thực hiện đúng Work Order/body bên dưới; kiểm chứng kết quả; không mutation source/runtime nếu Work Order không cho phép.',
+      'OUTPUT=Trả kết quả ngắn gọn kèm evidence cần thiết; dòng cuối bắt buộc DONE hoặc BLOCKED hoặc EXTERNAL_WAIT.',
+      'EVIDENCE_DESTINATION='+spec.url,
+      'REVIEW_ONLY='+(role==='INDEPENDENT_REVIEW'?'true':'false'),
+      'MUTATION_ALLOWED=false',
+      body,
+    ].join('\n');
+  }
+  return [
+    guard,
+    'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title,
+    'JOB_ID='+spec.jobId,
+    'ROLE=INDEPENDENT_REVIEW_QA',
+    'RESOURCE_SCOPE='+spec.resourceScope,
+    'YÊU CẦU: làm đúng Work Order/body bên dưới; không tự quét backlog; dòng cuối bắt buộc DONE hoặc BLOCKED hoặc EXTERNAL_WAIT.',
+    body,
+  ].join('\n');
 }
 
 function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
@@ -51,6 +78,7 @@ function completion({jobId,workerId,priority,issueRef,closedAt,updatedAt,verifie
   return {jobId,workItemId:'CORE-UI-'+jobId,workerId,status:'DONE',executable:false,priority,issueRef,coreSelected:true,completedAt,completionRevision,evidence:[{source:'GITHUB',ref:issueRef,verifiedAt,jobId,completedAt,completionRevision}]};
 }
 async function gh(fetchImpl,url,token=''){const headers={accept:'application/vnd.github+json','user-agent':'TigerIQ-Core-UI-Assignment/3.0','x-github-api-version':'2022-11-28'};if(token)headers.authorization='Bearer '+token;const r=await fetchImpl(url,{headers,signal:AbortSignal.timeout(12000)});if(!r.ok)throw new Error('GITHUB_HTTP_'+r.status);return r.json();}
+async function ghWrite(fetchImpl,url,token,method,payload){if(!token)throw new Error('GITHUB_TOKEN_REQUIRED');const headers={accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Core-UI-Assignment/3.0','x-github-api-version':'2022-11-28',authorization:'Bearer '+token};const r=await fetchImpl(url,{method,headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(12000)});if(!r.ok)throw new Error('GITHUB_WRITE_HTTP_'+r.status);return r.status===204?{}:r.json();}
 async function readIssue(fetchImpl,owner,repo,token,n){return gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token);}
 async function readComments(fetchImpl,owner,repo,token,n,count){if(Number(count||0)<=0)return[];try{return await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token);}catch{return[];}}
 
@@ -140,4 +168,40 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
   const revision=['core-ui-v3',previous?.jobId||'none',previous?.status||'none',...current.map(x=>x.job_id+':'+x.status)].join(':');
   if(!current.length&&!previous)return readyUnassignedCoreUiSnapshot({observedAt,revision});
   return{source:'CORE',authority:'CORE',observedAt,revision,assignmentState,previousJob:previous,nextJob,nextJobs,requiredWorkers,workerBindings:b};
+}
+
+
+export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,jobId,workerId,terminal,result=''}={}){
+  if(!pool)throw new Error('CORE_UI_POOL_REQUIRED');
+  if(!WORKERS.includes(String(workerId||'')))throw new Error('CORE_UI_WORKER_INVALID');
+  const n=issueNo(jobId);if(!n)throw new Error('CORE_UI_JOB_ID_INVALID');
+  const state=String(terminal||'').toUpperCase();
+  if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(state))throw new Error('CORE_UI_TERMINAL_INVALID');
+  const item=await row(pool,{jobId});
+  if(!item)throw new Error('CORE_UI_JOB_NOT_FOUND');
+  if(String(item.employee_id)!==String(workerId))throw new Error('CORE_UI_JOB_WORKER_MISMATCH');
+  if(!['ui_assigned','ui_running'].includes(String(item.status||''))){
+    return {ok:true,alreadyTerminal:true,jobId,workerId,terminal:String(item?.result?.terminal||state),evidenceRef:String(item?.result?.evidenceRef||item?.metadata?.issueUrl||''),issueRef:String(item?.metadata?.issueUrl||'')};
+  }
+  const issue=await readIssue(fetchImpl,owner,repo,token,n);
+  const terminalResult=safeResult(result||state);
+  const evidenceBody=[
+    'TIGERIQ_CORE_UI_TERMINAL_V1',
+    'JOB_ID='+jobId,
+    'WORKER='+workerId,
+    'STATE='+state,
+    'SOURCE=APP_CHROME_UI_TRANSPORT',
+    'RESULT_BEGIN',
+    terminalResult,
+    'RESULT_END',
+  ].join('\n');
+  const comment=await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
+  if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
+  const jobStatus=state==='DONE'?'done':'failed';
+  const objectiveStatus=state==='DONE'?'completed':'blocked';
+  const evidenceRef=String(comment?.html_url||issue.html_url||'');
+  await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify({source:'app_chrome_ui',terminal:state,evidenceRef,result:terminalResult})]);
+  await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,objectiveStatus,'Core UI terminal '+state+' from '+workerId]);
+  await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_TERMINAL',$1,$2,$3,$4,'ui',$5)",[item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:state,evidenceRef,issueNumber:n})]);
+  return {ok:true,jobId,workerId,terminal:state,evidenceRef,issueRef:String(issue.html_url||'')};
 }
