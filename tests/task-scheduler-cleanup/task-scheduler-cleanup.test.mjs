@@ -31,15 +31,22 @@ describe("task scheduler cleanup planner", () => {
   });
 
   it("classifies current runtime with broken path as KEEP_BUT_FIX", () => {
-    expect(
-      classifyTask({
-        ...provenCurrent,
-        pathExists: false,
-      }),
-    ).toBe(CLASSIFICATIONS.KEEP_BUT_FIX);
+    expect(classifyTask({ ...provenCurrent, pathExists: false })).toBe(
+      CLASSIFICATIONS.KEEP_BUT_FIX,
+    );
   });
 
-  it("marks evidenced disabled legacy task as a deletion candidate", () => {
+  it("requires source references for delete classifications", () => {
+    expect(
+      classifyTask({
+        taskName: "Old Worker",
+        state: "Disabled",
+        evidence: { supersededBy: "New Worker" },
+      }),
+    ).toBe(CLASSIFICATIONS.UNKNOWN_NEEDS_PROOF);
+  });
+
+  it("puts evidenced disabled legacy task into backup plan but not delete proposal before backup PASS", () => {
     const plan = buildCleanupPlan([
       {
         taskName: "TigerIQ Temp 820",
@@ -58,7 +65,31 @@ describe("task scheduler cleanup planner", () => {
     expect(plan.classified[0].deletionEligible).toBe(true);
     expect(plan.backupPlan.candidates).toHaveLength(1);
     expect(plan.deleteProposal.candidates[0]).toMatchObject({
+      proposed: false,
+      blocker: "BACKUP_NOT_VERIFIED",
+      ownerApprovalRequired: true,
+      destructiveActionIncluded: false,
+    });
+  });
+
+  it("allows delete proposal only after XML backup and SHA256 manifest are verified", () => {
+    const plan = buildCleanupPlan([
+      {
+        taskName: "TigerIQ Temp 820",
+        state: "Disabled",
+        evidence: {
+          legacy: true,
+          sourceRefs: ["issue:#2475"],
+          backupXmlExported: true,
+          backupPass: true,
+          backupManifestSha256: "abc123",
+        },
+      },
+    ]);
+
+    expect(plan.deleteProposal.candidates[0]).toMatchObject({
       proposed: true,
+      blocker: null,
       ownerApprovalRequired: true,
       destructiveActionIncluded: false,
     });
@@ -144,6 +175,9 @@ describe("task scheduler cleanup planner", () => {
         evidence: {
           temporaryOneShot: true,
           sourceRefs: ["issue:#2475"],
+          backupXmlExported: true,
+          backupPass: true,
+          backupManifestSha256: "abc123",
         },
       },
     ]);
