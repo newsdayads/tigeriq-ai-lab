@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_POSTGRES_MIGRATE_GATE_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_CONNECTION_DIAGNOSTIC_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -683,12 +683,22 @@ function paperclipStructuredLogSignals(raw = '') {
 }
 
 function paperclipDiagnosticClassTriggerSignals(logClass, lines = [], structured = []) {
-  if (logClass !== 'DB_MIGRATION') return [];
-  const triggerPattern = /pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration/i;
-  const candidates = [...lines, ...structured].filter(line => triggerPattern.test(String(line || '')));
+  const patterns = {
+    DB_MIGRATION: {
+      trigger: /pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration/i,
+      anchor: /pending migrations|stale schema|migration|failed|error/i,
+    },
+    DB_CONNECTION: {
+      trigger: /connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/i,
+      anchor: /connection refused|could not connect|econnrefused|database system is starting up|database connection/i,
+    },
+  };
+  const pattern = patterns[logClass];
+  if (!pattern) return [];
+  const candidates = [...lines, ...structured].filter(line => pattern.trigger.test(String(line || '')));
   return [...new Set(candidates.map((line) => {
     const text = String(line || '').trim();
-    const anchor = text.search(/pending migrations|stale schema|migration|failed|error/i);
+    const anchor = text.search(pattern.anchor);
     const start = Math.max(0, anchor - 120);
     return text.slice(start, start + 520).trim();
   }).filter(Boolean))].slice(0, 4);
