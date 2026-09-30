@@ -6,7 +6,7 @@ import {
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, AWAITING_WORK_START_TIMEOUT_MS,
-  deriveNv02Phase, deriveWorkerPhase,
+  deriveNv02Phase, deriveWorkerPhase, detectWorkerAssistantTerminal,
   nextRandomAt, randomDelay, pickContinuePrompt, pickWorkerContinuePrompt, computeWorkerStaggerDelay, rearmWorkerRunGrace,
   shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from './extension/continuity.js';
@@ -273,7 +273,7 @@ async function periodicReopenOrRearm(w,target,state,now,reason,status){
     return deferred;
   }
 }
-async function reopenWorker(w,target,state,now,reason){
+async function reopenWorker(w,target,state,now,reason,resumeUrl=''){
   if(Number(state.recoveryBlockedUntil)>now)return state;
   if(state.recoveryAttempts>=WORKER_RESET_MAX_ATTEMPTS){
     const blocked={...state,recoveryAttempts:0,recoveryBlockedUntil:now+15*60*1000,lastPhase:'STALLED'};
@@ -281,10 +281,12 @@ async function reopenWorker(w,target,state,now,reason){
     await genericWorkerEvent(w.id,'RECOVERY_BOUNDED_STOP',{reason,recoveryBlockedUntil:blocked.recoveryBlockedUntil});
     return blocked;
   }
-  const freshUrl=String(w.homeUrl||'').trim();
-  const checkpointed={...state,resumeUrl:'',recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
+  const resumeCandidate=String(resumeUrl||'').trim();
+  const preserveAssignedChat=isAssignedWorkerChat(w,resumeCandidate);
+  const freshUrl=preserveAssignedChat?resumeCandidate:String(w.homeUrl||'').trim();
+  const checkpointed={...state,resumeUrl:preserveAssignedChat?freshUrl:'',recoveryAttempts:state.recoveryAttempts+1,lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,checkpointed);
-  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,freshUrl,recoveryAttempt:checkpointed.recoveryAttempts});
+  await genericWorkerEvent(w.id,'RESET_CHECKPOINTED',{reason,freshUrl,preserveAssignedChat,recoveryAttempt:checkpointed.recoveryAttempts});
   const closeResult=await withWorkerMutation(w.id,async(lease)=>{
     await post(`/api/utility/workers/${w.id}/plan-refresh`,w.id,{reason,leaseOwnerId:lease.ownerId,leaseId:lease.leaseId});
     await closeWorker(w,target);
@@ -329,8 +331,8 @@ async function reopenWorker(w,target,state,now,reason){
   if(!reopened)throw lastError||new Error('WORKER_REOPEN_FAILED');
   const recovered={...checkpointed,recoveryAttempts:0,recoveryBlockedUntil:0,stalledChecks:0,workingSignature:'',workingUnchangedChecks:0,nextProgressCheckAt:0,pendingContinue:true,awaitingWorkStart:false,modelCheckAttempted:false,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),nextPeriodicF5At:nextRandomAt(now,WORKER_F5_MIN_MS,WORKER_F5_MAX_MS),nextResetAt:nextWorkerResetAt(w.id,now),lastPhase:'STALLED'};
   saveWorkerContinuity(w.id,recovered);
-  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,nextResetAt:recovered.nextResetAt});
-  return recovered;
+  await genericWorkerEvent(w.id,'WORKER_REOPENED',{reason,freshUrl,preserveAssignedChat,nextResetAt:recovered.nextResetAt});
+  return {...recovered,preserveAssignedChat};
 }
 async function maybeWorkerContinuity(w,target,ui){
   const runGraceUntil=Number(workerRunGraceUntil.get(w.id)||0);
@@ -352,6 +354,25 @@ async function maybeWorkerContinuity(w,target,ui){
   }
   if(phase==='BLOCKED'){
     await genericWorkerEvent(w.id,'BLOCKED',{securityBlock:ui?.securityBlock||null});
+    return;
+  }
+  let controller=null;
+  try{controller=await getControllerState();}
+  catch(error){
+    await genericWorkerEvent(w.id,'LOCAL_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error)});
+    return;
+  }
+  const activeAssignment=activeLocalAssignment(controller,w.id);
+  if(!activeAssignment){
+    const idle={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0};
+    saveWorkerContinuity(w.id,idle);
+    await genericWorkerEvent(w.id,'NO_ACTIVE_ASSIGNMENT_IDLE',{phase,url:ui?.url||null});
+    return;
+  }
+  if(['DONE','BLOCKED','EXTERNAL_WAIT','READY_NO_ELIGIBLE_WORK','TIGERIQ_CHAT_ROTATE_READY'].includes(String(ui?.assistantTerminal||''))){
+    const terminal={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0};
+    saveWorkerContinuity(w.id,terminal);
+    await genericWorkerEvent(w.id,'ASSISTANT_TERMINAL_WAIT',{jobId:activeAssignment.jobId,stage:activeAssignment.stage,terminal:ui?.assistantTerminal,url:ui?.url||null});
     return;
   }
   const wrongWorkerContext=!validWorkerUrl(w,ui?.url);
@@ -400,6 +421,12 @@ async function maybeWorkerContinuity(w,target,ui){
   }
 
   if(phase!=='WORKING'&&now>=Number(state.nextResetAt||0)){
+    if(activeAssignment){
+      const deferred={...state,nextResetAt:nextWorkerResetAt(w.id,now)};
+      saveWorkerContinuity(w.id,deferred);
+      await genericWorkerEvent(w.id,'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT',{jobId:activeAssignment.jobId,nextResetAt:deferred.nextResetAt});
+      return;
+    }
     let prepared;
     try{
       prepared=await withWorkerMutation(w.id,()=>prepareWorkerForPlannedRestart(w,target,ui),'PERIODIC_PREPARE_RESTART',120000);
@@ -537,7 +564,7 @@ async function maybeWorkerContinuity(w,target,ui){
     saveWorkerContinuity(w.id,guarded);
     await genericWorkerEvent(w.id,'STALLED_RELOAD',{status:refreshed?.status||null,confirmAfter});
   }else if(stalledChecks>=MAX_STALLED_CHECKS){
-    await reopenWorker(w,target,next,now,'STALLED_3_CHECKS');
+    await reopenWorker(w,target,next,now,'STALLED_3_CHECKS',isAssignedWorkerChat(w,ui?.url)?ui.url:'');
   }
 }
 
@@ -779,7 +806,8 @@ async function windowIdFor(port,targetId){
   try{return (await b.call('Browser.getWindowForTarget',{targetId})).windowId;}
   finally{b.close();}
 }
-const UI_EXPR=`(()=>{
+const ASSISTANT_TERMINAL_DETECTOR=detectWorkerAssistantTerminal.toString();
+const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR};
   const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect();const s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};
   const sels=location.hostname==='chatgpt.com'
     ? ['#prompt-textarea','div[contenteditable="true"][data-lexical-editor="true"]','[contenteditable="true"][role="textbox"]','textarea']
@@ -823,13 +851,14 @@ const UI_EXPR=`(()=>{
   const uiBusy=location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
   const activityText=String(activityRoot?.innerText||activityRoot?.textContent||'').replace(/\s+/g,' ').trim();
-  const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"]')].filter(vis);
-  const assistantText=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').replace(/\s+/g,' ').trim();
+  const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"],model-response-content')].filter(vis);
+  const assistantTextRaw=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').trim();
+  const assistantText=assistantTextRaw.replace(/\s+/g,' ').trim();
   const progressText=(assistantText+'|'+activityText).trim();
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
   const assistantSignature=String(assistantNodes.length)+':'+String(assistantText.length)+':'+String(activityHash);
-  const assistantTerminal=assistantText.includes('TIGERIQ_CHAT_ROTATE_READY')?'TIGERIQ_CHAT_ROTATE_READY':assistantText.includes('READY_NO_ELIGIBLE_WORK')?'READY_NO_ELIGIBLE_WORK':'';
+  const assistantTerminal=detectAssistantTerminal(assistantTextRaw);
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
@@ -973,7 +1002,7 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
     if(w.id==='NV02'){
       await continuityEventFor(w,'CHAT_LOAD_TERMINAL_FAILURE_REACHED',{url:ui?.url||null});
     }else{
-      await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR');
+      await reopenWorker(w,target,state,now,'CHAT_LOAD_ERROR',isAssignedWorkerChat(w,ui?.url)?ui.url:'');
     }
     await continuityEventFor(w,'CHAT_LOAD_REOPEN_REQUESTED',{url:ui?.url||null});
     return true;
@@ -1113,6 +1142,10 @@ async function getControllerState(){
   try{return await controllerStateFetch;}
   finally{controllerStateFetch=null;}
 }
+function activeLocalAssignment(controller,workerId){
+  const stages=new Set(['SUBMITTED','WORKING']);
+  return (controller?.jobs||[]).find((job)=>job?.workerId===workerId&&!job?.completedAt&&stages.has(String(job?.stage||'')))||null;
+}
 async function chooseLocalContinuePrompt(workerId,state={}){
   return {
     source:'LOCAL_CONTINUE',
@@ -1151,6 +1184,18 @@ async function releaseBridgeMutationLease(workerId,lease){
 async function navigate(target,url){
   const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'NAVIGATE',delayMs:pacingMs});
   const p=await pageRpc(target);try{await p.call('Page.enable');await p.call('Page.navigate',{url});}finally{p.close();}
+}
+async function waitForWorkerFreshContext(w,target,timeoutMs=30000){
+  const deadline=Date.now()+timeoutMs;
+  let last=null;
+  while(Date.now()<deadline){
+    await sleep(250);
+    last=await uiStateRaw(target).catch(()=>null);
+    if(last&&isWorkerFreshContext(w,last.url)&&last.composerReady===true&&!last.authRequired&&!last.chatLoadError&&!last.connectionPending){
+      return last;
+    }
+  }
+  throw new Error(`FRESH_CONTEXT_NOT_READY:${w.id}:${String(last?.url||'UNKNOWN')}`);
 }
 function projectNewChatExpr(){
   return `(()=>{const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
@@ -1933,12 +1978,36 @@ async function handleCommand(w,target,command){
   if(action==='FOCUS') return focus(target).then(()=>({status:'FOCUSED'}));
   if(action==='LAYOUT') return layout(w,target,payload).then(()=>({status:'LAYOUT_APPLIED'}));
   if(action==='CLOSE_WINDOW') return closeWorker(w,target).then(()=>({status:'WINDOW_CLOSED'}));
-  if(action==='NAVIGATE'){const u=new URL(String(payload.url||''));if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');await navigate(target,u.toString());return{status:'NAVIGATED'};}
+  if(action==='NAVIGATE'){
+    const u=new URL(String(payload.url||''));
+    if(u.hostname!==expectedHost(w))throw new Error('BLOCKED_URL');
+    await navigate(target,u.toString());
+    if(u.toString()===String(w.homeUrl||'')){
+      const fresh=await waitForWorkerFreshContext(w,target,30000);
+      return{status:'FRESH_CONTEXT_READY',url:fresh?.url||u.toString()};
+    }
+    return{status:'NAVIGATED'};
+  }
   if(action==='MODEL_PREFLIGHT'){if(w.id!=='NV02')return{status:'MODEL_PREFLIGHT_NOT_REQUIRED'};return ensureNv02ModelProfile(target);}
   if(action==='LOCAL_CONTINUE_NOW'){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
     if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true)return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};
+    if(w.id!=='NV02'){
+      let controller=null;
+      try{controller=await getControllerState();}
+      catch(error){
+        saveWorkerContinuity(w.id,{...stateBefore,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0});
+        await genericWorkerEvent(w.id,'LOCAL_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error),trigger:'LOCAL_CONTINUE_NOW'});
+        return{status:'LOCAL_CONTINUE_ASSIGNMENT_STATE_UNAVAILABLE'};
+      }
+      const activeAssignment=activeLocalAssignment(controller,w.id);
+      if(!activeAssignment){
+        saveWorkerContinuity(w.id,{...stateBefore,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0});
+        await genericWorkerEvent(w.id,'NO_ACTIVE_ASSIGNMENT_IDLE',{trigger:'LOCAL_CONTINUE_NOW'});
+        return{status:'NO_ACTIVE_WORK'};
+      }
+    }
     if(stateBefore.awaitingWorkStart===true)return{status:'LOCAL_CONTINUE_ALREADY_DISPATCHED'};
     const raw=await uiState(target);
     const phase=w.id==='NV02'?deriveNv02Phase(raw||{}):deriveWorkerPhase(raw||{},{workerId:w.id});
@@ -1964,7 +2033,20 @@ async function handleCommand(w,target,command){
     return{status:'LOCAL_CONTINUE_SUBMITTED',prompt};
   }
   if(action==='NV02_IDLE'){if(w.id!=='NV02')return{status:'NV02_IDLE_ONLY'};const now=Date.now();fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);const nextIdleWakeAt=nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS);saveNv02Continuity({...loadNv02Continuity(),idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,nextContinueAt:0,nextIdleWakeAt});await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,nextIdleWakeAt});return{status:'READY_NO_ELIGIBLE_WORK_IDLE'};}
-  if(action==='DISPATCH'){const r=await dispatch(target,String(payload.text||''));if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');if(w.id==='NV02'){try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});}if(w.id==='NV02')await noteNv02CommandDispatch();return r;}
+  if(action==='DISPATCH'){
+    const r=await dispatch(target,String(payload.text||''));
+    if(!r?.ok)throw new Error(r?.status||'DISPATCH_FAILED');
+    if(w.id==='NV02'){
+      try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
+      saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now()});
+      await noteNv02CommandDispatch();
+    }else{
+      const state=loadWorkerContinuity(w.id);
+      saveWorkerContinuity(w.id,{...state,pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:Date.now(),lastPhase:'WORKING',stalledChecks:0,nextContinueAt:nextRandomAt(Date.now(),CONTINUE_MIN_MS,CONTINUE_MAX_MS)});
+      await genericWorkerEvent(w.id,'ASSIGNED_WORK_DISPATCHED_GUARD_ARMED');
+    }
+    return r;
+  }
   if(action==='ARCHIVE_CHAT'){const r=await archiveChat(target);if(!r?.ok)throw new Error(r?.status||'ARCHIVE_FAILED');return r;}
   throw new Error(`UNKNOWN_ACTION:${action}`);
 }

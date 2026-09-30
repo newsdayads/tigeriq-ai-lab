@@ -464,6 +464,10 @@ async function dispatch(
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
+  if(workerId==='NV03'){
+    navigate=true;
+    log('NV03_ASSIGNMENT_FRESH_CONTEXT_REQUIRED',{freshContext:true});
+  }
   if(workerId==='NV04'){
     const contract=validateNv04AssignmentContract(text);
     navigate=true;
@@ -1569,6 +1573,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
         if(!recentHeartbeat(workerId)){
           void recoverWorker(workerId);
           json(res,200,{ok:true,status:'LOCAL_RUN_RECOVERY_STARTED'});return true;
+        }
+        if(workerId!=='NV02'){
+          const active=uiJobLedger.active(workerId);
+          const status=active?'LOCAL_CONTINUITY_ARMED':'RESUMED_IDLE_NO_ACTIVE_JOB';
+          log('UTILITY_WORKER_RESUME_LOCAL_ONLY',{workerId,status,jobId:active?.jobId??null});
+          json(res,200,{ok:true,status});return true;
         }
         let result:any={status:'LOCAL_CONTINUE_DEFERRED'};
         for(let attempt=1;attempt<=3;attempt+=1){

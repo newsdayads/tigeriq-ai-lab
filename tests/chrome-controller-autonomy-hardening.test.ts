@@ -413,8 +413,21 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 });
 
 
+describe('NV03/NV04 safe resume',()=>{
+  it('resumes specialist workers without blind LOCAL_CONTINUE_NOW dispatch',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const start=server.indexOf("if(action==='resume')");
+    const end=server.indexOf("if(action==='idle')",start);
+    const resume=server.slice(start,end);
+    expect(resume).toContain("if(workerId!=='NV02')");
+    expect(resume).toContain("'RESUMED_IDLE_NO_ACTIVE_JOB'");
+    expect(resume).toContain("'LOCAL_CONTINUITY_ARMED'");
+    expect(resume.indexOf("if(workerId!=='NV02')")).toBeLessThan(resume.indexOf("sendCommand(workerId,'LOCAL_CONTINUE_NOW')"));
+  });
+});
+
 describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
-  it('keeps the explicit NV04 contract while continuity ignores assignment state',()=>{
+  it('keeps the explicit NV04 contract and gates generic continuity on the local durable job only',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(server).toContain('function validateNv04AssignmentContract(text:string)');
     expect(server).toContain("['DEEP_RESEARCH','INDEPENDENT_REVIEW'].includes(role)");
@@ -425,6 +438,8 @@ describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
     expect(server).toContain("'NV04_OUTPUT_REQUIRED'");
     expect(server).toContain("'NV04_EVIDENCE_DESTINATION_REQUIRED'");
     expect(server).toContain("'NV04_MUTATION_ASSIGNMENT_FORBIDDEN'");
+    expect(server).toContain("if(workerId==='NV03')");
+    expect(server).toContain("'NV03_ASSIGNMENT_FRESH_CONTEXT_REQUIRED'");
 
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
@@ -432,8 +447,10 @@ describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
     expect(bridge).not.toContain('function workerAssignmentStatus(controller,workerId)');
     expect(bridge).not.toContain('currentWorkerAssignmentStatus(');
     expect(bridge).not.toContain('READY_UNASSIGNED');
+    expect(generic).toContain('activeLocalAssignment(controller,w.id)');
+    expect(generic).toContain("'NO_ACTIVE_ASSIGNMENT_IDLE'");
+    expect(generic).toContain("'ASSISTANT_TERMINAL_WAIT'");
     expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
-    expect(generic).not.toContain('assignment.status');
     expect(command).not.toContain('assignment.status');
   });
 });
@@ -484,7 +501,7 @@ describe('NV02 independent F5/reset timers',()=>{
     expect(dispatchNote).toContain('const preservedF5At=state.nextPeriodicF5At');
     expect(dispatchNote).toContain('const preservedRefreshAt=state.nextRefreshAt');
     expect(dispatchNote).not.toContain('state.nextPeriodicF5At=nextRandomAt');
-    expect(bridge).toContain("if(w.id==='NV02')await noteNv02CommandDispatch()");
+    expect(bridge).toContain('await noteNv02CommandDispatch();');
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
     expect(loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");

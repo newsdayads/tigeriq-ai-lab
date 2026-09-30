@@ -32,8 +32,8 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(bridge).toContain('không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ');
     expect(bridge).toContain('Loại P0/hard-gate');
     expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
-    expect(bridge).toContain("assistantTerminal=assistantText.includes('TIGERIQ_CHAT_ROTATE_READY')");
-    expect(bridge).toContain("assistantText.includes('READY_NO_ELIGIBLE_WORK')");
+    expect(bridge).toContain('detectWorkerAssistantTerminal');
+    expect(bridge).toContain('assistantTerminal=detectAssistantTerminal(assistantTextRaw)');
     expect(bridge).toContain('lastIdleMarkerSignature');
     expect(bridge).toContain('NV02_IDLE_WAKE_MIN_MS=5*60*1000');
     expect(bridge).toContain('NV02_IDLE_WAKE_MAX_MS=10*60*1000');
