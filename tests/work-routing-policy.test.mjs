@@ -25,17 +25,22 @@ test('P1-P5 remain autonomous and keep their priority',()=>{
   }
 });
 
-test('specialist routing keeps UI workers outside Core and routes autonomous work to specialist lanes',()=>{
+test('specialist routing keeps NV02 external and Core-routes NV03/NV04 roles',()=>{
   let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general');assert.equal(s.route,'CORE_REASONING');assert.equal(s.workerId,null);
-  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,null);
-  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research');assert.equal(s.route,'CORE_REASONING');assert.equal(s.workerId,null);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=research');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=deep_research');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.autonomous,true);
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=pc_operator');assert.equal(s.route,'OPENCLAW');assert.equal(s.workerId,'NV06');
   s=classifyWorkOrder('PRIORITY=P2\nEXECUTION_SURFACE=CODING\nAUTONOMOUS_CODE=true');assert.equal(s.route,'CODING');
 });
 
-test('explicit UI preference stays external while API reviewer stays Core',()=>{
+test('explicit UI preference routes NV03/NV04 autonomously while NV02 stays external',()=>{
   let s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV03\nEXECUTION_SURFACE=CORE_READ_ONLY');
-  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,false);
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=research\nPREFERRED_REVIEWER=NV04');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV02');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV02');assert.equal(s.autonomous,false);
   s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV17\nEXECUTION_SURFACE=CORE_READ_ONLY');
   assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');assert.equal(s.autonomous,true);
 });
@@ -55,10 +60,12 @@ test('NV02 NV03 NV04 never self-pull through Core routing',()=>{
   }
 });
 
-test('explicit Core assignment cannot delegate a P1-P5 item to UI workers',()=>{
-  for(const worker of ['NV02','NV03','NV04']){
-    const s=classifyWorkOrder('PRIORITY=P2\nASSIGNED_EXECUTOR='+worker+'\nCAPABILITY=general');
-    assert.equal(s.route,'UI');assert.equal(s.workerId,worker);assert.equal(s.autonomous,false);
+test('explicit Core assignment can delegate only NV03/NV04 autonomously',()=>{
+  let s=classifyWorkOrder('PRIORITY=P2\nASSIGNED_EXECUTOR=NV02\nCAPABILITY=general');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV02');assert.equal(s.autonomous,false);
+  for(const worker of ['NV03','NV04']){
+    s=classifyWorkOrder('PRIORITY=P2\nASSIGNED_EXECUTOR='+worker+'\nCAPABILITY='+(worker==='NV03'?'review':'research'));
+    assert.equal(s.route,'UI');assert.equal(s.workerId,worker);assert.equal(s.autonomous,true);
   }
 });
 
