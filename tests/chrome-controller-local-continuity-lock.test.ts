@@ -14,12 +14,11 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     }
   });
 
-  it('contains no Core/assignment/self-claim gate in the Direct CDP continuity path',()=>{
+  it('keeps local-only prompts but requires an active bound job before generic continue',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     for(const forbidden of [
       'CORE_UI_ASSIGNMENT',
       'currentWorkerAssignmentStatus(',
-      'READY_UNASSIGNED',
       'ROLE_FALLBACK',
       'CORE_ASSIGNMENT',
       'CORE_CONTINUE',
@@ -33,6 +32,10 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(generic).toContain("if(phase==='WORKING')");
     expect(generic).toContain("if(phase==='READY')");
     expect(generic).toContain('awaitingWorkStart');
+    expect(generic).toContain('getWorkerJobBinding(w.id)');
+    expect(generic).toContain('genericWorkerJobContinuable(activeJob)');
+    expect(generic).toContain('LOCAL_CONTINUITY_STOPPED_JOB_STATE');
+    expect(generic).toContain('READY_UNASSIGNED');
     expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
     expect(nv02).toContain("if(phase==='WORKING')");
     expect(nv02).toContain("if(phase==='READY')");
