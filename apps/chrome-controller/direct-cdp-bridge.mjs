@@ -30,6 +30,7 @@ const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const APPROVED_HEAD=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
 const DEPLOY_ROOT=String(process.env.TIGERIQ_DEPLOY_ROOT||'').trim();
+const BOOT_ID=String(process.env.TIGERIQ_BOOT_ID||'').trim();
 const EXPECTED_BRIDGE_SHA256=String(process.env.TIGERIQ_NV02_BRIDGE_SHA256||'').trim().toLowerCase();
 const BRIDGE_PATH=fs.realpathSync(process.argv[1]);
 const BRIDGE_SHA256=createHash('sha256').update(fs.readFileSync(BRIDGE_PATH)).digest('hex');
@@ -623,26 +624,28 @@ function loadNv02Continuity(){
     saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt);
   }
   const workingRecheckAt=Number(raw.workingRecheckAt)||0;
-  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||f5TimerRegressed||refreshTimerRegressed;
+  const bootChanged=Boolean(BOOT_ID&&String(raw.bootId||'')!==BOOT_ID);
+  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||f5TimerRegressed||refreshTimerRegressed||bootChanged;
   if(!nv02BootF5ScheduleInitialized){
     nv02BootF5ScheduleInitialized=true;
-    if(nextPeriodicF5At<=now){
+    if(bootChanged&&nextPeriodicF5At<=now){
       const previousNextPeriodicF5At=nextPeriodicF5At;
       nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
       persistBootSchedule=true;
-      log('NV02_F5_TIMER_REBASED_AFTER_RESTART',{previousNextPeriodicF5At,nextPeriodicF5At});
+      log('NV02_F5_TIMER_REBASED_AFTER_OS_REBOOT',{previousNextPeriodicF5At,nextPeriodicF5At,bootId:BOOT_ID});
     }
   }
   if(!nv02BootRefreshScheduleInitialized){
     nv02BootRefreshScheduleInitialized=true;
-    if(nextRefreshAt<=now){
+    if(bootChanged&&nextRefreshAt<=now){
       const previousNextRefreshAt=nextRefreshAt;
       nextRefreshAt=nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
       persistBootSchedule=true;
-      log('NV02_REFRESH_TIMER_REBASED_AFTER_RESTART',{previousNextRefreshAt,nextRefreshAt});
+      log('NV02_REFRESH_TIMER_REBASED_AFTER_OS_REBOOT',{previousNextRefreshAt,nextRefreshAt,bootId:BOOT_ID});
     }
   }
   const state={
+    bootId:BOOT_ID||String(raw.bootId||''),
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At,
     f5WindowVersion,
