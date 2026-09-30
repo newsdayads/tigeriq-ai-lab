@@ -354,6 +354,25 @@ async function maybeWorkerContinuity(w,target,ui){
     await genericWorkerEvent(w.id,'BLOCKED',{securityBlock:ui?.securityBlock||null});
     return;
   }
+  let controller=null;
+  try{controller=await getControllerState();}
+  catch(error){
+    await genericWorkerEvent(w.id,'LOCAL_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error)});
+    return;
+  }
+  const activeAssignment=activeLocalAssignment(controller,w.id);
+  if(!activeAssignment){
+    const idle={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0};
+    saveWorkerContinuity(w.id,idle);
+    await genericWorkerEvent(w.id,'NO_ACTIVE_ASSIGNMENT_IDLE',{phase,url:ui?.url||null});
+    return;
+  }
+  if(phase!=='WORKING'&&['DONE','BLOCKED','EXTERNAL_WAIT','READY_NO_ELIGIBLE_WORK','TIGERIQ_CHAT_ROTATE_READY'].includes(String(ui?.assistantTerminal||''))){
+    const terminal={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,stalledChecks:0};
+    saveWorkerContinuity(w.id,terminal);
+    await genericWorkerEvent(w.id,'ASSISTANT_TERMINAL_WAIT',{jobId:activeAssignment.jobId,stage:activeAssignment.stage,terminal:ui?.assistantTerminal,url:ui?.url||null});
+    return;
+  }
   const wrongWorkerContext=!validWorkerUrl(w,ui?.url);
   if(wrongWorkerContext&&phase!=='STALLED'){
     await genericWorkerEvent(w.id,'WRONG_WORKER_CONTEXT',{url:ui?.url||null,expectedHost:expectedHost(w)});
@@ -829,7 +848,12 @@ const UI_EXPR=`(()=>{
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
   const assistantSignature=String(assistantNodes.length)+':'+String(assistantText.length)+':'+String(activityHash);
-  const assistantTerminal=assistantText.includes('TIGERIQ_CHAT_ROTATE_READY')?'TIGERIQ_CHAT_ROTATE_READY':assistantText.includes('READY_NO_ELIGIBLE_WORK')?'READY_NO_ELIGIBLE_WORK':'';
+  const assistantTerminal=assistantText.includes('TIGERIQ_CHAT_ROTATE_READY')?'TIGERIQ_CHAT_ROTATE_READY'
+    :assistantText.includes('READY_NO_ELIGIBLE_WORK')?'READY_NO_ELIGIBLE_WORK'
+    :/(?:^|\\n)\\s*EXTERNAL_WAIT\\b/i.test(assistantText)?'EXTERNAL_WAIT'
+    :/(?:^|\\n)\\s*DONE\\b/i.test(assistantText)?'DONE'
+    :/(?:^|\\n)\\s*BLOCKED\\b/i.test(assistantText)||(/\\bSTATE=BLOCKED\\b/i.test(assistantText)&&/\\bLEASE=RELEASED\\b/i.test(assistantText))?'BLOCKED'
+    :'';
   const uiReady=document.readyState==='complete'&&!!composer&&!authRequired;
   const uiPhase=securityBlock?'BLOCKED':(chatLoadError||connectionPending)?'STALLED':uiBusy?'WORKING':uiReady&&modelReady?'READY':'STALLED';
   return {
@@ -1112,6 +1136,10 @@ async function getControllerState(){
   })();
   try{return await controllerStateFetch;}
   finally{controllerStateFetch=null;}
+}
+function activeLocalAssignment(controller,workerId){
+  const stages=new Set(['QUEUED','DISPATCHING','SUBMITTED','WORKING','WAITING_EVIDENCE','VERIFY']);
+  return (controller?.jobs||[]).find((job)=>job?.workerId===workerId&&!job?.completedAt&&stages.has(String(job?.stage||'')))||null;
 }
 async function chooseLocalContinuePrompt(workerId,state={}){
   return {
