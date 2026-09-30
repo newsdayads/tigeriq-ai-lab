@@ -2072,12 +2072,8 @@ async function handleCommand(w,target,command){
       const ready=await waitForNv02Composer(target,30000)||raw;
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
       const now=Date.now();
-      const woke=await withNv02Mutation(async()=>{
-        const result=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
-        if(!result?.ok)throw new Error(result?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
-        return result;
-      },'NV02_IDLE_SELF_PULL_WAKE');
-      if(woke?.status==='MUTATION_LEASE_BUSY')return{status:'LOCAL_CONTINUE_DEFERRED'};
+      const woke=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
+      if(!woke?.ok)throw new Error(woke?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
       try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
       saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:Number(stateBefore.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ready?.assistantSignature||'')});
       await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED',{trigger:'LOCAL_CONTINUE_NOW',evidence:woke?.evidence||null});
