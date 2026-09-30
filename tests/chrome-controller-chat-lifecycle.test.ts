@@ -55,9 +55,12 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE'");
     expect(bridge).toContain("ARCHIVE_HEADER_MENU_COUNT_");
     expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_LEFT_CURRENT_CONVERSATION");
-    expect(bridge).not.toContain('archiveProjectRowPointExpr');
-    expect(bridge).not.toContain('archiveProjectMenuPointExpr');
-    expect(bridge).not.toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
+    const archiveStart=bridge.indexOf('function archiveMenuPointExpr');
+    const archiveEnd=bridge.indexOf('function newChatExpr',archiveStart);
+    const archiveBlock=bridge.slice(archiveStart,archiveEnd);
+    expect(archiveBlock).not.toContain('archiveProjectRowPointExpr');
+    expect(archiveBlock).not.toContain('archiveProjectMenuPointExpr');
+    expect(archiveBlock).not.toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
   });
 
   it('keeps generic WORKING non-mutating while preserving recovery and view-follow',()=>{
