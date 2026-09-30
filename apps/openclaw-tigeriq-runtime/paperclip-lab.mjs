@@ -878,7 +878,7 @@ function mountSourceMatchesLabData(source) {
 async function inspectComposeService(dockerKind, service, signal = null, diagnostics = false) {
   const idResult = await runDocker(
     dockerKind,
-    composeArgs(['ps', '-q', service]),
+    composeArgs(['ps', '--all', '-q', service]),
     { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
   ).catch(() => null);
   const containerId = idResult?.exitCode === 0
