@@ -115,6 +115,15 @@ function hasCurrentNv02Chat(url){
   if(!isNv02ProjectContext(url))return false;
   try{return /\/c\//.test(new URL(String(url||'')).pathname);}catch{return false}
 }
+function isRestorableNv02Chat(url){
+  if(!hasCurrentNv02Chat(url))return false;
+  try{
+    const path=new URL(String(url||'')).pathname;
+    const encodedId=(path.match(/\/c\/([^/?#]+)/)||[])[1]||'';
+    const conversationId=decodeURIComponent(encodedId);
+    return Boolean(conversationId)&&!/^local-chatgpt:/i.test(conversationId);
+  }catch{return false}
+}
 function sameNv02Chat(a,b){
   try{
     const x=new URL(String(a||'')),y=new URL(String(b||''));
@@ -1954,7 +1963,13 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     if(now<Number(state.rotationRetryAt||0))return;
     bootFreshContextPending.delete('NV02');
     state=loadNv02Continuity();
-    const crashResumeUrl=state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)?String(state.crashResumeUrl):'';
+    const crashResumeUrl=state.crashResumePending===true&&isRestorableNv02Chat(state.crashResumeUrl)?String(state.crashResumeUrl):'';
+    if(state.crashResumePending===true&&!crashResumeUrl){
+      const skippedUrl=String(state.crashResumeUrl||'');
+      state={...state,crashResumePending:false,crashResumeUrl:''};
+      saveNv02Continuity(state);
+      await continuityEvent('NV02_CRASH_CHAT_RESUME_SKIPPED_NON_DURABLE',{url:skippedUrl||null});
+    }
     if(crashResumeUrl){
       const restored=await withNv02Mutation(async()=>{
         if(!sameNv02Chat(ui?.url,crashResumeUrl)){
@@ -2215,7 +2230,7 @@ async function tickWorker(w){
           if(w.id==='NV02'){
             const continuity=loadNv02Continuity();
             const activeCrash=continuity.lastPhase==='WORKING'||continuity.awaitingWorkStart===true;
-            const crashUrl=hasCurrentNv02Chat(continuity.verifiedChatUrl)?String(continuity.verifiedChatUrl):'';
+            const crashUrl=isRestorableNv02Chat(continuity.verifiedChatUrl)?String(continuity.verifiedChatUrl):'';
             if(activeCrash&&crashUrl){
               saveNv02Continuity({...continuity,crashResumePending:true,crashResumeUrl:crashUrl});
               log('NV02_CRASH_CHAT_RESUME_ARMED',{crashResumeUrl:crashUrl,lastPhase:continuity.lastPhase,awaitingWorkStart:continuity.awaitingWorkStart===true});
