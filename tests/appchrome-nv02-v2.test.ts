@@ -283,3 +283,21 @@ describe('NV02 archive live DOM R2', () => {
     expect(bridge).toContain("checkpoint:hasCurrentNv02Chat(ui?.url)&&!terminalOrIdle");
   });
 });
+
+
+describe('NV02 archive live DOM R3 transient click/backoff', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('clicks transient archive controls immediately after coordinates are resolved', () => {
+    expect(bridge).toContain("async function cdpMouseClick(p,point,{paced=true}={})");
+    expect(bridge).toContain("transient:!paced");
+    expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
+    expect(bridge).toContain("cdpMouseClick(p,archivePoint,{paced:false})");
+  });
+
+  it('arms archive retry from failure completion time, not stale tick start time', () => {
+    expect(bridge).not.toContain("rotationRetryAt:now+60_000");
+    expect(bridge).toContain("rotationRetryAt:Date.now()+60_000");
+    expect(bridge).toContain("modelCheckBlockedUntil:Date.now()+30_000");
+  });
+});
