@@ -59,7 +59,40 @@ export function nv02PrioritySummary(issue) {
   const m = String(issue?.title || '').match(/\b(P[0-5])\b/i) || String(issue?.priority || '').match(/^P[0-5]$/i);
   return m ? m[1].toUpperCase() : '';
 }
-export function nv02WorkOrderMeta(issue) { return fields(issue?.body); }
+function currentAuthoritySection(body) {
+  const text = String(body || '');
+  const trimmed = text.trimStart();
+  if (!/^##\s+OWNER\b/i.test(trimmed)) return text;
+  const firstBreak = trimmed.indexOf('\n');
+  if (firstBreak < 0) return trimmed;
+  const rest = trimmed.slice(firstBreak + 1);
+  const nextHeading = rest.search(/^##\s+/m);
+  return nextHeading < 0 ? trimmed : trimmed.slice(0, firstBreak + 1 + nextHeading);
+}
+
+export function nv02WorkOrderMeta(issue) { return fields(currentAuthoritySection(issue?.body)); }
+
+function nv02RearmEpochMs(issue) {
+  const meta = nv02WorkOrderMeta(issue);
+  const state = `${meta.CURRENT_STATE || ''} ${meta.STATE || ''}`;
+  const explicitlyRearmed = meta.OWNER_REARM === 'true'
+    || /REARM|READY_FOR_NV02_SELF_PULL/i.test(state);
+  if (!explicitlyRearmed || meta.TIGERIQ_EXECUTABLE !== 'true' || meta.AUTO_QUEUE === 'EXCLUDED') return 0;
+  const epoch = Date.parse(String(meta.REARMED_AT || meta.QUEUE_REARMED_AT || meta.EPOCH_STARTED_AT || ''));
+  return Number.isFinite(epoch) ? epoch : 0;
+}
+
+export function nv02HasTerminalEvidence(issue, comments = []) {
+  if (issue?.state === 'closed' && issue?.state_reason === 'completed') return true;
+  const epochMs = nv02RearmEpochMs(issue);
+  return (Array.isArray(comments) ? comments : [])
+    .filter((comment) => {
+      const body = String(comment?.body || '');
+      return body.includes(NV02_LEASE_MARKER) || body.includes(NV02_RELEASE_MARKER) || /WORKER=NV02/i.test(body);
+    })
+    .filter((comment) => !epochMs || commentAtMs(comment) >= epochMs)
+    .some((comment) => /^(?:STATE|CURRENT_STATE)=(?:DONE|BLOCKED)$/mi.test(String(comment?.body || '')));
+}
 
 function workOrderRef(issueOrNumber) {
   const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
