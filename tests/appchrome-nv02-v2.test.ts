@@ -210,9 +210,6 @@ describe('NV02 V2 independent maintenance timers', () => {
 });
 
 
-describe('NV02 fresh-chat lifecycle V3'
-});
-
 
 describe('NV02 chat lifecycle master contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
@@ -269,9 +266,6 @@ describe('NV02 archive rotation robustness', () => {
 
 });
 
-describe('NV02 current-header archive generated-expression regression'
-});
-
 describe('NV02 current-header archive generated-expression regression', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
@@ -295,23 +289,28 @@ describe('NV02 current-header archive interaction', () => {
     expect(bridge).not.toContain("cdpMouseClick(p,archivePoint,{paced:false})");
   });
 
-  it('arms archive retry from failure completion time, not stale tick start time', () => {
-    expect(bridge).not.toContain("rotationRetryAt:now+60_000");
-    expect(bridge).toContain("rotationRetryAt:Date.now()+60_000");
-    expect(bridge).toContain("modelCheckBlockedUntil:Date.now()+30_000");
+  it('backs off a failed genuine chat-load archive recovery from failure completion time', () => {
+    const recovery=bridge.slice(bridge.indexOf('async function maybeRecoverChatLoadError'),bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(recovery).toContain('const retryAt=Date.now()+60_000');
+    expect(recovery).toContain('CHAT_LOAD_ARCHIVE_RECOVERY_DEFERRED');
+    expect(recovery).not.toContain("rotationRetryAt:now+60_000");
   });
 });
 
-describe('NV02 rotation durable-checkpoint contract', () => {
+describe('NV02 broken-chat durable recovery contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('requires the worker terminal marker after durable GitHub checkpoint and does not invent a second Save prompt', () => {
-    expect(bridge).toContain('durable checkpoint/evidence đã ghi GitHub');
-    expect(bridge).not.toContain("dispatch(target,'Lưu')");
-    expect(bridge).toContain('if(hasCurrentNv02Chat(ui?.url))');
-    expect(bridge).toContain('const archived=await archiveChat(target)');
+  it('checkpoints before archive and dispatches only an exact prefixed continuation in the fresh Project chat', () => {
+    const recovery=bridge.slice(bridge.indexOf('async function maybeRecoverChatLoadError'),bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(recovery).toContain('CHAT_LOAD_DURABLE_CHECKPOINT');
+    expect(recovery).toContain("rotateNv02ToFreshChat(target,checkpoint,'CHAT_LOAD_ERROR'");
+    expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).toContain("const prompt=pickNv02ContinuePrompt(state?.lastPrompt)");
+    expect(bridge).toContain("return `02 - ${base}`");
   });
 });
+
 
 describe('NV02 current-header archive confirmation', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
