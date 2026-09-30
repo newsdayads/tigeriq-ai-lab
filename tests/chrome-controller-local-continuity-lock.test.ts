@@ -35,7 +35,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(generic).toContain('getWorkerJobBinding(w.id)');
     expect(generic).toContain('genericWorkerJobContinuable(activeJob)');
     expect(generic).toContain('LOCAL_CONTINUITY_STOPPED_JOB_STATE');
-    expect(generic).toContain('READY_UNASSIGNED');
+    expect(generic).toContain('NO_ACTIVE_WORK');
     expect(generic).toContain('chooseLocalContinuePrompt(w.id,state)');
     expect(nv02).toContain("if(phase==='WORKING')");
     expect(nv02).toContain("if(phase==='READY')");
