@@ -5,11 +5,14 @@ $statePath='D:\TigerIQ\State\bootstrap-watchdog.json'
 $updaterStatePath='D:\TigerIQ\State\core-runtime-updater.json'
 $updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
 $updaterTask='TigerIQ Core Runtime Updater'
+$appChromeTask='TigerIQ APP Chrome Unified'
+$appChromeTaskBlueprint='D:\TigerIQ\State\app-chrome-unified-task.xml'
+$appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $watchdogStartedAt=Get-Date
 $targets=@(
   @{key='updater';task=$updaterTask;ports=@()},
   @{key='openclaw';task='TigerIQ OpenClaw Gateway';ports=@(18789)},
-  @{key='appchrome';task='TigerIQ APP Chrome Unified';ports=@(8798,8799)}
+  @{key='appchrome';task=$appChromeTask;ports=@(8798,8799)}
 )
 $failures=@{}
 $lastHeal=@{}
@@ -73,6 +76,88 @@ function Ensure-UpdaterTask(){
     Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
     return @{action='installed';reason='UPDATER_TASK_RECREATED'}
   }catch{return @{action='blocked';reason=('UPDATER_TASK_RECREATE_'+$_.Exception.GetType().Name)}}
+}
+function Test-AppChromeTaskContract($task){
+  if(-not $task){return $false}
+  $first=@($task.Actions|Select-Object -First 1)
+  if(-not $first){return $false}
+  $execute=[string]$first.Execute
+  $arguments=[string]$first.Arguments
+  $allowed=@(
+    'D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome.ps1',
+    'D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome-1372.ps1'
+  )
+  $launcherOk=[bool](@($allowed|Where-Object{$arguments -match [regex]::Escape($_)}).Count)
+  $powershellOk=([IO.Path]::GetFileName($execute) -match '^(powershell|pwsh)\.exe
+  $rows=@()
+  foreach($t in $targets){
+    $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
+    $bootstrapRepair=@{action='none';reason='NOT_APPLICABLE'}
+    if($t.key -eq 'appchrome'){
+      $bootstrapRepair=Ensure-AppChromeTask
+      $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
+    }elseif($t.key -eq 'updater' -and -not $task){
+      $bootstrapRepair=Ensure-UpdaterTask
+      $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
+    }
+    $taskRunning=[bool]($task -and [string]$task.State -eq 'Running')
+    $portsHealthy=$true
+    foreach($p in @($t.ports)){if(-not(Test-Tcp ([int]$p))){$portsHealthy=$false;break}}
+    $heartbeat=if($t.key -eq 'updater'){Get-UpdaterHeartbeat}else{@{fresh=$true;ageSec=$null;reason='NOT_APPLICABLE'}}
+    $healthy=$taskRunning -and $portsHealthy -and [bool]$heartbeat.fresh
+    $repairAction=[string]$bootstrapRepair.action
+    $action=if($repairAction -eq 'installed'){'install'}elseif($repairAction -in @('repaired','enabled')){'repair'}elseif($repairAction -eq 'blocked'){'blocked'}else{'none'}
+    $reason=if($repairAction -in @('installed','repaired','enabled','blocked')){[string]$bootstrapRepair.reason}elseif($healthy){'HEALTHY'}elseif(-not $task){'TASK_MISSING'}elseif(-not $taskRunning){'TASK_NOT_RUNNING'}elseif(-not [bool]$heartbeat.fresh){[string]$heartbeat.reason}else{'PORT_UNHEALTHY'}
+    $stoppedPids=@()
+    if($healthy){$failures[$t.key]=0}
+    else{
+      $failures[$t.key]=[int]$failures[$t.key]+1
+      $since=((Get-Date)-[DateTime]$lastHeal[$t.key]).TotalSeconds
+      if([string]$bootstrapRepair.action -ne 'blocked' -and $task -and $failures[$t.key] -ge $FailureThreshold -and $since -ge $CooldownSeconds){
+        try{
+          if($taskRunning -and ($t.key -eq 'updater' -or @($t.ports).Count)){Stop-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2}
+          if($t.key -eq 'updater'){$stoppedPids=@(Stop-ExactUpdaterProcesses)}
+          Start-ScheduledTask -TaskName $t.task -ErrorAction Stop
+          $lastHeal[$t.key]=Get-Date;$failures[$t.key]=0;$action='restart'
+          $reason=if($t.key -eq 'updater'){'STALE_UPDATER_SELF_HEAL'}else{'BOUNDED_SELF_HEAL'}
+        }catch{$action='blocked';$reason=('SELF_HEAL_'+$_.Exception.GetType().Name)}
+      }
+    }
+    $rows+=@{key=$t.key;task=$t.task;healthy=$healthy;taskRunning=$taskRunning;portsHealthy=$portsHealthy;heartbeatFresh=[bool]$heartbeat.fresh;heartbeatAgeSec=$heartbeat.ageSec;failures=[int]$failures[$t.key];action=$action;reason=$reason;stoppedUpdaterPids=$stoppedPids}
+  }
+  try{Save-State $rows}catch{}
+  Start-Sleep -Seconds $IntervalSeconds
+}
+)
+  return ($launcherOk -and $powershellOk)
+}
+function Ensure-AppChromeTask(){
+  try{
+    $task=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction SilentlyContinue
+    if($task -and (Test-AppChromeTaskContract $task)){
+      if([string]$task.State -eq 'Disabled'){
+        Enable-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop|Out-Null
+        return @{action='enabled';reason='APPCHROME_TASK_REENABLED';task=$appChromeTask}
+      }
+      return @{action='none';reason='TASK_PRESENT_VALID';task=$appChromeTask}
+    }
+    if(-not(Test-Path -LiteralPath $appChromeTaskBlueprint)){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_MISSING';task=$appChromeTask}}
+    if(-not(Test-Path -LiteralPath $appChromeTaskBlueprintHash)){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_HASH_MISSING';task=$appChromeTask}}
+    $expected=(Get-Content -LiteralPath $appChromeTaskBlueprintHash -Raw).Trim().ToLowerInvariant()
+    $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $appChromeTaskBlueprint).Hash.ToLowerInvariant()
+    if(-not $expected -or $expected -ne $actual){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_HASH_MISMATCH';task=$appChromeTask}}
+    $xml=Get-Content -LiteralPath $appChromeTaskBlueprint -Raw
+    $allowedXml=[bool]($xml -match [regex]::Escape('D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome.ps1') -or $xml -match [regex]::Escape('D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome-1372.ps1'))
+    if(-not $allowedXml){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_ACTION_INVALID';task=$appChromeTask}}
+    try{[xml]$null=$xml}catch{return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_XML_INVALID';task=$appChromeTask}}
+    $repair=if($task){'repaired'}else{'installed'}
+    Register-ScheduledTask -TaskName $appChromeTask -Xml $xml -Force|Out-Null
+    $restored=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
+    if(-not(Test-AppChromeTaskContract $restored)){return @{action='blocked';reason='APPCHROME_TASK_RESTORE_CONTRACT_INVALID';task=$appChromeTask}}
+    if([string]$restored.State -eq 'Disabled'){Enable-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop|Out-Null}
+    Start-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
+    return @{action=$repair;reason='APPCHROME_TASK_RESTORED_FROM_BLUEPRINT';task=$appChromeTask;sha256=$actual}
+  }catch{return @{action='blocked';reason=('APPCHROME_TASK_RESTORE_'+$_.Exception.GetType().Name);task=$appChromeTask}}
 }
 while($true){
   $rows=@()
