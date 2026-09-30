@@ -37,6 +37,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(generic).toContain('activeLocalAssignment(controller,w.id)');
     expect(generic).toContain("'NO_ACTIVE_ASSIGNMENT_IDLE'");
     expect(generic).toContain("'ASSISTANT_TERMINAL_WAIT'");
+    expect(bridge).toContain('model-response-content');
     expect(nv02).toContain("if(phase==='WORKING')");
     expect(nv02).toContain("if(phase==='READY')");
     expect(nv02).toContain('awaitingWorkStart');
