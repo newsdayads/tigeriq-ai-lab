@@ -51,11 +51,12 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(detectWorkerAssistantTerminal('Analysis mentions BLOCKED but state is still working.')).toBe('');
   });
 
-  it('preserves the active specialist chat during bounded recovery and defers periodic reset',()=>{
+  it('preserves the active specialist chat during bounded recovery and idle periodic reset',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain("async function reopenWorker(w,target,state,now,reason,resumeUrl='')");
     expect(bridge).toContain('const preserveAssignedChat=isAssignedWorkerChat(w,resumeCandidate)');
-    expect(bridge).toContain("'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT'");
+    expect(bridge).not.toContain("'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT'");
+    expect(bridge).toContain("reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',isAssignedWorkerChat(w,prepared?.url)?prepared.url:'')");
     expect(bridge).toContain("'STALLED_3_CHECKS',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
     expect(bridge).toContain("'CHAT_LOAD_ERROR',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
   });
@@ -75,15 +76,16 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(tick).not.toContain('idleReady');
   });
 
-  it('keeps independent WORKING F5/reset and anti-spam guards',()=>{
+  it('keeps WORKING no-send/no-F5 and anti-spam guards',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(nv02Loop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
     expect(nv02Loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
-    expect(nv02Loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(nv02Loop).not.toContain("PERIODIC_F5_DEFERRED_WORKING");
+    expect(nv02Loop).toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02Loop).toContain("PERIODIC_F5_DEFERRED_WORKING");
     expect(nv02Loop).toContain('awaitingWorkStart===true');
-    expect(nv02Loop).not.toContain('WORK_START_ACK_TIMEOUT_REARMED');
+    const working=nv02Loop.slice(nv02Loop.indexOf("if(phase==='WORKING'){"),nv02Loop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
+    expect(working).not.toContain('dispatchNaturalContinue');
   });
   it('fails closed on ChatGPT auth routes and keeps the generated UI expression syntactically valid',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');

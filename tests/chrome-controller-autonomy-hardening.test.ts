@@ -199,13 +199,15 @@ describe('security fail-closed matrix',()=>{
 });
 
 describe('NV02 explicit resume from durable idle',()=>{
-  it('forces one P1-P5 self-pull wake instead of honoring a stale idle marker',()=>{
+  it('uses one exact prefixed continuation command instead of a long self-pull wake prompt',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const helper=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
     const local=bridge.slice(bridge.indexOf("if(action==='LOCAL_CONTINUE_NOW')"),bridge.indexOf("if(action==='NV02_IDLE')"));
-    expect(local).toContain("NV02_IDLE_SELF_PULL_WAKE_SUBMITTED");
-    expect(local).toContain("dispatch(target,NV02_SELF_PULL_WAKE_PROMPT)");
+    expect(local).toContain("NV02_IDLE_CONTINUE_WAKE_SUBMITTED");
+    expect(local).toContain("const prompt=pickNv02ContinuePrompt(stateBefore.lastPrompt)");
+    expect(local).toContain("dispatch(target,prompt)");
     expect(local).toContain("fs.unlinkSync(NV02_IDLE_MARKER)");
+    expect(local).not.toContain("NV02_SELF_PULL_WAKE_PROMPT");
     expect(local).not.toContain("return{status:'READY_NO_ELIGIBLE_WORK_IDLE'}");
     expect(helper).toContain("/api/utility/workers/NV02/resume");
     expect(helper).toContain("APPCHROME_NV02_WAKE_TIMEOUT");
@@ -256,7 +258,7 @@ describe('NV02 restart schedule WORKING safety',()=>{
 });
 
 describe('isolated NV02 WORKING maintenance scope',()=>{
-  it('allows only the approved periodic F5/reset mutations while WORKING and keeps normal continue suppressed',()=>{
+  it('suppresses prompt/F5/reset mutations while WORKING',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).not.toContain("'STALE_WORKING_RECOVERY'");
     expect(bridge).not.toContain("'WORKING_STALLED_REOPEN_SCHEDULED'");
@@ -264,13 +266,15 @@ describe('isolated NV02 WORKING maintenance scope',()=>{
     expect(bridge).not.toContain("stopAndClearComposerExpr");
     const hotLoop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(hotLoop).toContain("if(now>=Number(state.nextRefreshAt||0))");
-    expect(hotLoop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(hotLoop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
-    const dueF5=hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(dueF5).toBeGreaterThan(-1);
-    const f5Mutation=hotLoop.slice(dueF5,hotLoop.indexOf("if(phase==='WORKING')",dueF5));
-    expect(f5Mutation).toContain('reloadTarget(target)');
-    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING')",dueF5),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
+    expect(hotLoop).toContain("NV02_PERIODIC_REOPEN_DEFERRED_WORKING");
+    expect(hotLoop).toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(hotLoop).toContain('PERIODIC_F5_DEFERRED_WORKING');
+    const deferF5=hotLoop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const normalF5=hotLoop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))",deferF5+1);
+    expect(deferF5).toBeGreaterThan(-1);
+    expect(normalF5).toBeGreaterThan(deferF5);
+    expect(hotLoop.slice(deferF5,normalF5)).not.toContain('reloadTarget(target)');
+    const working=hotLoop.slice(hotLoop.indexOf("if(phase==='WORKING'){",normalF5),hotLoop.indexOf('const chatLoadRecoveryHandled=await maybeRecoverChatLoadError'));
     expect(working).not.toContain('dispatchNaturalContinue');
     expect(working).toContain("'WORKING_LONG_RUNNING_NO_MUTATION'");
     expect(working).toContain('return;');
@@ -539,12 +543,12 @@ describe('NV02 independent F5/reset timers',()=>{
     expect(bridge).toContain('await noteNv02CommandDispatch();');
     const loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(loop).toContain("if(now>=Number(state.nextRefreshAt||0))");
-    expect(loop).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
-    expect(loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
-    const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(f5).toBeGreaterThan(-1);
-    const f5Block=loop.slice(f5,loop.indexOf("if(phase==='WORKING')",f5));
-    expect(f5Block).toContain('reloadTarget(target)');
+    expect(loop).toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(loop).toContain('PERIODIC_F5_DEFERRED_WORKING');
+    const deferF5=loop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5=loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))",deferF5+1);
+    expect(f5).toBeGreaterThan(deferF5);
+    expect(loop.slice(deferF5,f5)).not.toContain('reloadTarget(target)');
   });
 });
 
