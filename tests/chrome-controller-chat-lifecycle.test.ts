@@ -36,7 +36,7 @@ describe('App Chrome chat lifecycle',()=>{
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
     expect(nv02Loop).not.toContain("restoreVerifiedChatUrl");
-    expect(nv02Loop).toContain("state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)");
+    expect(nv02Loop).toContain("state.crashResumePending===true&&isRestorableNv02Chat(state.crashResumeUrl)");
     expect(nv02Loop).toContain("await navigate(target,crashResumeUrl)");
     expect(nv02Loop).toContain("waitForNv02PreservedChatSettled(target,crashResumeUrl,30000)");
     expect(nv02Loop).toContain("'NV02_CRASH_CHAT_RESTORED'");
