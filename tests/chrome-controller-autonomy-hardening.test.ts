@@ -641,18 +641,24 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(launcher).not.toContain('Stop-Process -Name chrome');
   });
 
-  it('defers NEXT_REBOOT_PENDING on the install boot and activates only after boot identity changes',()=>{
+  it('keeps staged deploy invisible to the running supervisor and promotes it only after boot identity changes',()=>{
     const launcher=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+    const promote=launcher.indexOf('function Promote-PendingDeployAfterReboot');
+    const promoteCall=launcher.lastIndexOf('Promote-PendingDeployAfterReboot|Out-Null');
     const readActive=launcher.indexOf('$active=Read-ValidatedActive');
-    const deferGate=launcher.indexOf('if($active.pendingSameBoot)');
     const stopStale=launcher.indexOf('Stop-StaleTrustedListener');
     const verify=launcher.indexOf('Wait-LiveVerified $active');
-    expect(readActive).toBeGreaterThan(-1);
-    expect(deferGate).toBeGreaterThan(readActive);
+    expect(promote).toBeGreaterThan(-1);
+    expect(promoteCall).toBeGreaterThan(promote);
+    expect(launcher).toContain("$pendingPath=Join-Path $runtime 'pending-deploy.json'");
+    expect(launcher).toContain('Read-ValidatedPending');
     expect(launcher).toContain('Get-CurrentBootId');
     expect(launcher).toContain("'NEXT_REBOOT_PENDING'");
     expect(launcher).toContain("'PENDING_INSTALL_BOOT_ID_MISSING'");
     expect(launcher).toContain("'NEXT_REBOOT_ACTIVATION_DEFERRED'");
+    expect(launcher).toContain("'PENDING_DEPLOY_PROMOTED_AFTER_REBOOT'");
+    expect(launcher).toContain("$pending.installedBootId-eq$currentBootId");
+    expect(readActive).toBeGreaterThan(-1);
     expect(stopStale).toBeGreaterThan(-1);
     expect(verify).toBeGreaterThan(readActive);
     expect(launcher).toContain('$headChanged=$lastHead-ne$active.head');
@@ -666,6 +672,8 @@ describe('APP Chrome unified runtime supervisor #1525',()=>{
     expect(installer).toContain("$taskName='TigerIQ APP Chrome Unified'");
     expect(installer).toContain("$taskActivation=if($task){'TASK_PRESENT_NEXT_REBOOT'}else{'TASK_ABSENT'}");
     expect(installer).toContain("activation='NEXT_REBOOT_PENDING'");
+    expect(installer).toContain("$pendingPath=Join-Path $runtime 'pending-deploy.json'");
+    expect(installer).toContain('pendingDeploy=$pendingPath');
     expect(installer).toContain('installedBootId=$installedBootId');
     expect(installer).toContain('Get-CimInstance Win32_OperatingSystem');
     expect(installer).not.toContain("Stop-ScheduledTask -TaskName $taskName");
