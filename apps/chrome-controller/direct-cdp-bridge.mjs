@@ -1931,7 +1931,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       }catch(error){
         state={...loadNv02Continuity(),nextIdleWakeAt:now+60_000};
         saveNv02Continuity(state);
-        await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN',{error:String(error?.message||error),nextIdleWakeAt:state.nextIdleWakeAt});
+        await continuityEvent('NV02_IDLE_CONTINUE_WAKE_UNCERTAIN',{error:String(error?.message||error),nextIdleWakeAt:state.nextIdleWakeAt});
         return;
       }
       if(woke?.status==='MUTATION_LEASE_BUSY'){
