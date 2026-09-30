@@ -333,3 +333,22 @@ describe('NV02 archive live confirmation R4', () => {
     expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId),awaitPromise:true");
   });
 });
+
+
+describe('NV02 archive activation via menu keyboard semantics', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+  it('focuses the exact archive menuitem and activates it with Enter', () => {
+    expect(bridge).toContain('function archiveFocusExpr()');
+    expect(bridge).toContain("status:'ARCHIVE_ACTION_FOCUSED'");
+    expect(bridge).toContain("status:'ARCHIVE_ACTION_ACTIVATED_BY_ENTER'");
+    expect(bridge).toContain("type:'keyDown',key:'Enter'");
+    expect(bridge).toContain("type:'keyUp',key:'Enter'");
+    expect(bridge).toContain('const activated=await activateArchiveMenuItem(p)');
+    expect(bridge).not.toContain('await cdpMouseClick(p,archivePoint,{paced:false});');
+  });
+  it('opens the sidebar to confirm the archived conversation disappears', () => {
+    expect(bridge).toContain("const scanLinks=()=>");
+    expect(bridge).toContain("mở sidebar|hiện thanh bên|open sidebar");
+    expect(bridge).toContain('links.all.length>0&&links.current.length===0');
+  });
+});
