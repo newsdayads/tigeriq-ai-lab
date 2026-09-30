@@ -342,10 +342,9 @@ async function maybeWorkerContinuity(w,target,ui){
   let controller=null;
   try{controller=await getControllerState();}
   catch(error){
-    await genericWorkerEvent(w.id,'LOCAL_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error)});
-    return;
+    await genericWorkerEvent(w.id,'LOCAL_ASSIGNMENT_STATE_UNAVAILABLE',{error:String(error?.message||error),continuity:'MAINTENANCE_ONLY'});
   }
-  const activeAssignment=activeLocalAssignment(controller,w.id);
+  const activeAssignment=controller?activeLocalAssignment(controller,w.id):null;
   if(!activeAssignment){
     state={...state,pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0};
     saveWorkerContinuity(w.id,state);
@@ -367,7 +366,7 @@ async function maybeWorkerContinuity(w,target,ui){
   }
   if(bootFreshContextPending.has(w.id)&&phase!=='WORKING'){
     bootFreshContextPending.delete(w.id);
-    const preserveAssignedContext=Boolean(activeAssignment&&isAssignedWorkerChat(w,ui?.url));
+    const preserveAssignedContext=isAssignedWorkerChat(w,ui?.url);
     state={...state,resumeUrl:preserveAssignedContext?String(ui?.url||''):'',pendingContinue:Boolean(activeAssignment),awaitingWorkStart:false,nextContinueAt:activeAssignment?nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS):0,stalledChecks:0};
     saveWorkerContinuity(w.id,state);
     if(!preserveAssignedContext&&!isWorkerFreshContext(w,ui?.url)){
@@ -430,7 +429,7 @@ async function maybeWorkerContinuity(w,target,ui){
       await genericWorkerEvent(w.id,'PERIODIC_RESTART_PREPARE_FAILED',{status,nextResetAt:deferred.nextResetAt});
       return;
     }
-    await reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',activeAssignment&&isAssignedWorkerChat(w,prepared?.url)?prepared.url:'');
+    await reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',isAssignedWorkerChat(w,prepared?.url)?prepared.url:'');
     bootFreshContextPending.add(w.id);
     return;
   }
