@@ -39,6 +39,7 @@ function Discover-AuthorizedRequest(){
     if(-not(Exact-Line $body 'APP_CHROME_DEPLOY_AUTHORIZED' 'true')){continue}
     if(-not(Exact-Line $body 'MUTATION_OWNER' 'VY_OWNER_AUTHORIZED')){continue}
     if(-not(Exact-Line $body 'ZERO_TOUCH_DEPLOY' 'true')){continue}
+    if(-not(Exact-Line $body 'ZERO_TOUCH_ACTIVATE_SAME_BOOT' 'true')){continue}
     $head=Body-Value $body 'TARGET_HEAD';$artifactId=Body-Value $body 'PACKAGE_ARTIFACT_ID';$artifactName=Body-Value $body 'PACKAGE_ARTIFACT_NAME'
     $nv02Only=(Exact-Line $body 'LIVE_ACCEPTANCE_SCOPE' 'NV02_ONLY') -or (Exact-Line $body 'NV02_ONLY' 'true')
     if($head -notmatch '^[0-9a-f]{40}$'){continue}
@@ -86,6 +87,8 @@ function Assert-Authorization($req){
   if(-not(Exact-Line $body 'OWNER_DIRECT' 'true')){throw 'APPCHROME_OWNER_DIRECT_MISSING'}
   if(-not(Exact-Line $body 'APP_CHROME_DEPLOY_AUTHORIZED' 'true')){throw 'APPCHROME_DEPLOY_AUTH_MISSING'}
   if(-not(Exact-Line $body 'MUTATION_OWNER' 'VY_OWNER_AUTHORIZED')){throw 'APPCHROME_MUTATION_OWNER_INVALID'}
+  if(-not(Exact-Line $body 'ZERO_TOUCH_DEPLOY' 'true')){throw 'APPCHROME_ZERO_TOUCH_AUTH_MISSING'}
+  if(-not(Exact-Line $body 'ZERO_TOUCH_ACTIVATE_SAME_BOOT' 'true')){throw 'APPCHROME_SAME_BOOT_AUTH_MISSING'}
   if((Body-Value $body 'TARGET_HEAD') -ne [string]$req.exactHead){throw 'APPCHROME_AUTH_HEAD_MISMATCH'}
   if((Body-Value $body 'PACKAGE_ARTIFACT_ID') -ne [string]$req.artifactId){throw 'APPCHROME_AUTH_ARTIFACT_ID_MISMATCH'}
   $authName=Body-Value $body 'PACKAGE_ARTIFACT_NAME';if($authName -and $authName -ne [string]$req.artifactName){throw 'APPCHROME_AUTH_ARTIFACT_NAME_MISMATCH'}
@@ -192,19 +195,26 @@ try{
   $version=Join-Path $artifactRoot 'VERSION.txt';if(-not(Test-Path -LiteralPath $version)){throw 'APPCHROME_DOWNLOADED_VERSION_MISSING'}
   if((Get-Content -Raw -LiteralPath $version).Trim() -ne [string]$req.exactHead){throw 'APPCHROME_DOWNLOADED_HEAD_MISMATCH'}
   $installer=Join-Path $artifactRoot 'apps\chrome-controller\runtime\Install-ApprovedArtifact.ps1';if(-not(Test-Path -LiteralPath $installer)){throw 'APPCHROME_CANONICAL_INSTALLER_MISSING'}
-  $runtime=Join-Path $InstallRoot 'Runtime';$active=Join-Path $runtime 'active-deploy.json';$launcher=Join-Path $runtime 'Start-Unified-AppChrome.ps1';$legacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
+  $runtime=Join-Path $InstallRoot 'Runtime';$active=Join-Path $runtime 'active-deploy.json';$pending=Join-Path $runtime 'pending-deploy.json';$launcher=Join-Path $runtime 'Start-Unified-AppChrome.ps1';$legacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
   $preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)
   Wait-SafeBoundary|Out-Null;$paused=$true
   $revalidated=Revalidate-After-SafeBoundary $req $requestFingerprint ([long]$verified.runId)
   $req=$revalidated.request;$verified=$revalidated.verified
   New-Item -ItemType Directory -Force -Path $rollback|Out-Null
   if(Test-Path -LiteralPath $active){Copy-Item $active (Join-Path $rollback 'active-deploy.json') -Force}
+  if(Test-Path -LiteralPath $pending){Copy-Item $pending (Join-Path $rollback 'pending-deploy.json') -Force}
   if(Test-Path -LiteralPath $launcher){Copy-Item $launcher (Join-Path $rollback 'Start-Unified-AppChrome.ps1') -Force}
   if(Test-Path -LiteralPath $legacy){Copy-Item $legacy (Join-Path $rollback 'Start-Unified-AppChrome-1372.ps1') -Force}
-  $installerArgs=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-ExpectedHead',([string]$req.exactHead),'-ArtifactRoot',$artifactRoot)
+  $installerArgs=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-ExpectedHead',([string]$req.exactHead),'-ArtifactRoot',$artifactRoot,'-ActivateNow')
   if(Request-Nv02Only $req){$installerArgs+='-Nv02Only'}
   & powershell.exe @installerArgs
   if($LASTEXITCODE -ne 0){throw 'APPCHROME_CANONICAL_INSTALLER_FAILED'}
+  $taskName='TigerIQ APP Chrome Unified'
+  $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  if(-not $task){throw 'APPCHROME_UNIFIED_TASK_MISSING'}
+  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
   $live=Wait-ExactHead ([string]$req.exactHead)
   try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{};$paused=$false
   $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
@@ -217,7 +227,11 @@ try{
   $reason=$_.Exception.Message
   try{
     if($rollback){
-      $runtime=Join-Path $InstallRoot 'Runtime';Restore-File (Join-Path $rollback 'active-deploy.json') (Join-Path $runtime 'active-deploy.json');Restore-File (Join-Path $rollback 'Start-Unified-AppChrome.ps1') (Join-Path $runtime 'Start-Unified-AppChrome.ps1');Restore-File (Join-Path $rollback 'Start-Unified-AppChrome-1372.ps1') (Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1')
+      $runtime=Join-Path $InstallRoot 'Runtime'
+      $activeTarget=Join-Path $runtime 'active-deploy.json';$pendingTarget=Join-Path $runtime 'pending-deploy.json'
+      Restore-File (Join-Path $rollback 'active-deploy.json') $activeTarget
+      if(Test-Path -LiteralPath (Join-Path $rollback 'pending-deploy.json')){Restore-File (Join-Path $rollback 'pending-deploy.json') $pendingTarget}else{Remove-Item -LiteralPath $pendingTarget -Force -ErrorAction SilentlyContinue}
+      Restore-File (Join-Path $rollback 'Start-Unified-AppChrome.ps1') (Join-Path $runtime 'Start-Unified-AppChrome.ps1');Restore-File (Join-Path $rollback 'Start-Unified-AppChrome-1372.ps1') (Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1')
       $task=Get-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction SilentlyContinue;if($task){Stop-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction SilentlyContinue;Start-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction SilentlyContinue}
     }
   }catch{}
