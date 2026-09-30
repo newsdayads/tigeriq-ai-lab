@@ -39,10 +39,12 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(doc).toContain('no P1-P5 Work Order can be directly executed or validly coordinated/handoff by NV02');
   });
 
-  it('keeps the approved short continue pool scoped to NV02 only', () => {
-    expect(bridge).toContain('const NV02_CONTINUE_PROMPTS=Object.freeze([');
+  it('uses the one canonical short-command pool with an NV02-specific prefix adapter', () => {
+    const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
+    expect(bridge).not.toContain('NV02_CONTINUE_PROMPTS');
     expect(bridge).toContain("workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
-    expect(bridge).toContain("'Làm tiếp, không đổi việc'");
+    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(continuity).toContain("'Làm tiếp, không đổi việc'");
   });
 
   it('locks NV02 F5 to 5-10 minutes and preserves reversible worker scope isolation', () => {
