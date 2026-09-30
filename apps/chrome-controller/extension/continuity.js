@@ -74,6 +74,17 @@ export function pickWorkerContinuePrompt(workerId,previous='',random=Math.random
   return code?code+' - '+base:base;
 }
 
+export function detectWorkerAssistantTerminal(rawText=''){
+  const text=String(rawText||'').trim();
+  if(!text)return '';
+  if(text.includes('TIGERIQ_CHAT_ROTATE_READY'))return 'TIGERIQ_CHAT_ROTATE_READY';
+  if(text.includes('READY_NO_ELIGIBLE_WORK'))return 'READY_NO_ELIGIBLE_WORK';
+  if(/(?:^|\n)\s*EXTERNAL_WAIT\b/i.test(text))return 'EXTERNAL_WAIT';
+  if(/(?:^|\n)\s*DONE\b/i.test(text))return 'DONE';
+  if(/(?:^|\n)\s*BLOCKED\b/i.test(text)||(/\bSTATE=BLOCKED\b/i.test(text)&&/\bLEASE=RELEASED\b/i.test(text)))return 'BLOCKED';
+  return '';
+}
+
 export function deriveWorkerPhase(ui,{heartbeatStale=false,workerId='NV02'}={}){
   if(ui?.securityBlock)return 'BLOCKED';
   if(heartbeatStale)return 'STALLED';
