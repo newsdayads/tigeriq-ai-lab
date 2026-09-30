@@ -198,6 +198,24 @@ describe('security fail-closed matrix',()=>{
   });
 });
 
+describe('Owner-authorized zero-touch App Chrome deployment',()=>{
+  it('keeps reboot default but supports explicit same-boot activation with rollback ownership',()=>{
+    const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
+    const helper=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
+    const updater=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(installer).toContain('[switch]$ActivateNow');
+    expect(installer).toContain("activation='NEXT_REBOOT_PENDING'");
+    expect(installer).toContain("activation='OWNER_ZERO_TOUCH_ACTIVATED'");
+    expect(helper).toContain("Exact-Line $body 'ZERO_TOUCH_ACTIVATE_SAME_BOOT' 'true'");
+    expect(helper).toContain("'-ActivateNow'");
+    expect(helper).toContain("Stop-ScheduledTask -TaskName $taskName");
+    expect(helper).toContain("Start-ScheduledTask -TaskName $taskName");
+    expect(helper.indexOf("Start-ScheduledTask -TaskName $taskName")).toBeLessThan(helper.indexOf("$live=Wait-ExactHead"));
+    expect(helper).toContain("pending-deploy.json");
+    expect(updater).toContain('$appChromeInstallPollIntervalSec=120');
+  });
+});
+
 describe('controller-independent Chrome lifecycle contract',()=>{
   it('keeps Chrome spawn only in detached broker helper, never in Controller',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
