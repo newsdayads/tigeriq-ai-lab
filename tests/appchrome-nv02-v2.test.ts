@@ -105,37 +105,31 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain("reason:'CONNECTIVITY_FAILURE'");
   });
 
-  it('prioritizes verified boot-chat restore over overdue F5 grace', () => {
+  it('prioritizes boot fresh-context transition over overdue F5', () => {
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).toContain("const bootVerifiedChatRestorePending=bootFreshContextPending.has('NV02')");
-    expect(nv02Loop).toContain("&&hasCurrentNv02Chat(state.verifiedChatUrl);");
-    expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CHAT_RESTORE'");
-    expect(nv02Loop).toContain("if(now>=Number(state.nextPeriodicF5At||0))");
-    expect(nv02Loop).toContain("if(bootVerifiedChatRestorePending)");
-    const gatedF5=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const deferStart=nv02Loop.indexOf("if(bootVerifiedChatRestorePending)",gatedF5);
-    const elseStart=nv02Loop.indexOf("}else{",deferStart);
-    expect(gatedF5).toBeGreaterThan(-1);
-    expect(deferStart).toBeGreaterThan(gatedF5);
-    expect(elseStart).toBeGreaterThan(deferStart);
-    expect(nv02Loop.slice(deferStart,elseStart)).not.toContain('return;');
-    expect(nv02Loop.indexOf("if(bootFreshContextPending.has('NV02')&&phase!=='WORKING')")).toBeGreaterThan(elseStart);
+    expect(nv02Loop).toContain("const bootContextTransitionPending=bootFreshContextPending.has('NV02')");
+    expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CONTEXT'");
+    expect(nv02Loop).toContain("if(bootContextTransitionPending)");
+    expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(nv02Loop).toContain("state.crashResumePending===true");
+    expect(nv02Loop).toContain("'NV02_CRASH_CHAT_RESTORED'");
   });
 
-  it('executes due 2-4h reset regardless of WORKING and preserves same chat plus F5 timer', () => {
-    expect(bridge).not.toContain("if(phase!=='WORKING'&&now>=Number(state.nextRefreshAt||0))");
+  it('defers planned 2-4h reset while WORKING and reopens into fresh project context', () => {
     expect(bridge).toContain("if(now>=Number(state.nextRefreshAt||0))");
-    expect(bridge).toContain('async function reopenNv02PeriodicWorker');
     const resetHelper=bridge.slice(
       bridge.indexOf('async function reopenNv02PeriodicWorker'),
       bridge.indexOf('async function maybeNv02Continuity')
     );
-    expect(resetHelper).toContain("const resumeUrl=isNv02ProjectContext(beforeUrl)?beforeUrl:NV02_HOME_URL");
+    expect(resetHelper).toContain("if(phase==='WORKING')return{ok:false,status:'NV02_PERIODIC_REOPEN_DEFERRED_WORKING'}");
+    expect(resetHelper).toContain('prepareWorkerForPlannedRestart');
+    expect(resetHelper).toContain('const resumeUrl=NV02_HOME_URL');
     expect(resetHelper).toContain("reason:'PERIODIC_2_4H_RESET'");
     expect(resetHelper).toContain('await closeWorker(w,target)');
     expect(resetHelper).toContain('await navigate(replacement,resumeUrl)');
-    expect(resetHelper).toContain('nextPeriodicF5At:checkpointed.nextPeriodicF5At');
-    expect(resetHelper).toContain('PERIODIC_RESTART_COMPLETED');
+    expect(resetHelper).toContain('dispatchesInChat:0');
+    expect(resetHelper).toContain("bootFreshContextPending.add('NV02')");
+    expect(bridge).toContain("'PERIODIC_RESTART_DEFERRED_WORKING'");
   });
 
   it('does not rebase overdue F5/reset timers after Chrome restart', () => {
@@ -207,5 +201,38 @@ describe('NV02 V2 independent maintenance timers', () => {
     const idleGate=bridge.indexOf("if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true)");
     expect(f5Gate).toBeGreaterThan(-1);
     expect(idleGate).toBeGreaterThan(f5Gate);
+  });
+});
+
+
+describe('NV02 fresh-chat lifecycle V3', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('uses GitHub checkpoint as continuity and rotates chat after terminal work', () => {
+    expect(bridge).toContain("const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
+    expect(bridge).toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER");
+    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
+    expect(bridge).toContain("await archiveChat(target)");
+    expect(bridge).toContain("await newChat(target)");
+    expect(bridge).toContain('dispatchesInChat:0,chatStartedAt:now');
+  });
+
+  it('does not restore a verified chat on ordinary boot and keeps crash-only restore explicit', () => {
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(nv02Loop).not.toContain('restoreVerifiedChatUrl');
+    expect(bridge).toContain('crashResumePending:Boolean(raw.crashResumePending)');
+    expect(bridge).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
+    expect(nv02Loop).toContain("state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)");
+  });
+
+  it('rotates idle and oversized chats instead of growing context forever', () => {
+    expect(bridge).toContain('NV02_MAX_DISPATCHES_PER_CHAT=60');
+    expect(bridge).toContain('NV02_MAX_CHAT_AGE_MS=6*60*60*1000');
+    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
+    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
+    expect(bridge).toContain('Number(state.dispatchesInChat||0)>=NV02_MAX_DISPATCHES_PER_CHAT');
+    expect(bridge).toContain('chatAgeMs>=NV02_MAX_CHAT_AGE_MS');
   });
 });
