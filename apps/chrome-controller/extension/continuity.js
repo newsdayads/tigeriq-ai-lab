@@ -77,8 +77,16 @@ export function pickWorkerContinuePrompt(workerId,previous='',random=Math.random
 export function detectWorkerAssistantTerminal(rawText=''){
   const text=String(rawText||'').trim();
   if(!text)return '';
-  if(text.includes('TIGERIQ_CHAT_ROTATE_READY'))return 'TIGERIQ_CHAT_ROTATE_READY';
-  if(text.includes('READY_NO_ELIGIBLE_WORK'))return 'READY_NO_ELIGIBLE_WORK';
+  const markerLine=(marker)=>text.split(/\r?\n/).some((rawLine)=>{
+    const line=String(rawLine||'').trim()
+      .replace(/^[>\-*+\s]+/,'')
+      .replace(/^\*\*|\*\*$/g,'')
+      .replace(/^\`+|\`+$/g,'')
+      .trim();
+    return line===marker||line===`STATE=${marker}`||line===`RESULT=${marker}`;
+  });
+  if(markerLine('TIGERIQ_CHAT_ROTATE_READY'))return 'TIGERIQ_CHAT_ROTATE_READY';
+  if(markerLine('READY_NO_ELIGIBLE_WORK'))return 'READY_NO_ELIGIBLE_WORK';
   if(/(?:^|\n)\s*EXTERNAL_WAIT\b/i.test(text))return 'EXTERNAL_WAIT';
   if(/(?:^|\n)\s*DONE\b/i.test(text))return 'DONE';
   if(/(?:^|\n)\s*BLOCKED\b/i.test(text)||(/\bSTATE=BLOCKED\b/i.test(text)&&/\bLEASE=RELEASED\b/i.test(text)))return 'BLOCKED';

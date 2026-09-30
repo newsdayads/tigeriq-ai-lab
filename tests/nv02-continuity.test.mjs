@@ -5,13 +5,21 @@ import { buildDurableSavePrompt, SAVE_RECEIPT_POLL_DELAYS_MS, waitForDurableSave
 import {
   CONTINUE_PROMPTS, CHAT_ROTATE_AFTER_DISPATCHES, MAX_WORKING_UNCHANGED_CHECKS, WORKING_PROGRESS_CHECK_MS,
   CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, WORKER_F5_MIN_MS, WORKER_F5_MAX_MS,
-  CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, hasActiveNv02Work, hasActiveWorkerWork,
+  CONTINUITY_WORKERS, deriveNv02Phase, deriveWorkerPhase, detectWorkerAssistantTerminal, hasActiveNv02Work, hasActiveWorkerWork,
   hasWaitingEvidenceNv02Work, hasWaitingEvidenceWorkerWork, hasContinuableNv02Work, hasContinuableWorkerWork,
   pickContinuePrompt, randomDelay, shouldRotateNv02Chat, computeWorkerStaggerDelay, rearmWorkerRunGrace,
   AWAITING_WORK_START_TIMEOUT_MS, shouldRearmAwaitingWorkStart, rearmAwaitingWorkStart,
 } from '../apps/chrome-controller/extension/continuity.js';
 
 describe('NV02 continuity policy', () => {
+  it('does not false-terminalize negated READY_NO_ELIGIBLE_WORK text',()=>{
+    expect(detectWorkerAssistantTerminal('TRẠNG THÁI: WAIT_SPECIALIST_READONLY_ENUMERATION — không phải READY_NO_ELIGIBLE_WORK.')).toBe('');
+    expect(detectWorkerAssistantTerminal('READY_NO_ELIGIBLE_WORK')).toBe('READY_NO_ELIGIBLE_WORK');
+    expect(detectWorkerAssistantTerminal('STATE=READY_NO_ELIGIBLE_WORK')).toBe('READY_NO_ELIGIBLE_WORK');
+    expect(detectWorkerAssistantTerminal('TIGERIQ_CHAT_ROTATE_READY')).toBe('TIGERIQ_CHAT_ROTATE_READY');
+    expect(detectWorkerAssistantTerminal('không phải TIGERIQ_CHAT_ROTATE_READY')).toBe('');
+  });
+
   it('recovers READY awaitingWorkStart after one bounded acknowledgement window',()=>{
     expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS-1})).toBe(false);
     expect(shouldRearmAwaitingWorkStart({phase:'READY',awaitingWorkStart:true,awaitingWorkStartSince:1000,now:1000+AWAITING_WORK_START_TIMEOUT_MS})).toBe(true);
