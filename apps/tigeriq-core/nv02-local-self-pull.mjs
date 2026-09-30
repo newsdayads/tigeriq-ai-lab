@@ -225,7 +225,7 @@ export async function releaseStaleAssigneeLease({ issue, takeover, postComment, 
   if (!resourceScope || claim.resourceScope !== resourceScope || !claim.worker || claim.worker === 'NV02') {
     throw new Error('NV02_TAKEOVER_RELEASE_INVALID');
   }
-  await postComment(issue.number, `[TIGERIQ_ROLE_RELEASE_V1]\\nWORKER=${claim.worker}\\nRESOURCE_SCOPE=${resourceScope}\\nSTATE=STALE_TAKEOVER_BY_NV02\\nTAKEOVER_REASON=${takeover.reason}\\nRELEASED_AT=${new Date(nowMs).toISOString()}`);
+  await postComment(issue.number, `[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=${claim.worker}\nRESOURCE_SCOPE=${resourceScope}\nSTATE=STALE_TAKEOVER_BY_NV02\nTAKEOVER_REASON=${takeover.reason}\nRELEASED_AT=${new Date(nowMs).toISOString()}`);
   return { released: true, worker: claim.worker, resourceScope, reason: takeover.reason };
 }
 
