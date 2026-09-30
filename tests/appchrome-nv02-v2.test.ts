@@ -288,11 +288,12 @@ describe('NV02 archive live DOM R2', () => {
 describe('NV02 archive live DOM R3 transient click/backoff', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('clicks transient archive controls immediately after coordinates are resolved', () => {
+  it('opens the transient menu by mouse but activates Archive through keyboard semantics', () => {
     expect(bridge).toContain("async function cdpMouseClick(p,point,{paced=true}={})");
     expect(bridge).toContain("transient:!paced");
     expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
     expect(bridge).toContain("const activated=await activateArchiveMenuItem(p)");
+    expect(bridge).not.toContain("cdpMouseClick(p,archivePoint,{paced:false})");
   });
 
   it('arms archive retry from failure completion time, not stale tick start time', () => {
@@ -339,7 +340,7 @@ describe('NV02 archive activation via menu keyboard semantics', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
   it('focuses the exact archive menuitem and activates it with Enter', () => {
     expect(bridge).toContain('function archiveFocusExpr()');
-    expect(bridge).toContain("'ARCHIVE_ACTION_FOCUSED'");
+    expect(bridge).toContain("status:document.activeElement===archive[0]?'ARCHIVE_ACTION_FOCUSED':'ARCHIVE_ACTION_FOCUS_FAILED'");
     expect(bridge).toContain("status:'ARCHIVE_ACTION_ACTIVATED_BY_ENTER'");
     expect(bridge).toContain("type:'keyDown',key:'Enter'");
     expect(bridge).toContain("type:'keyUp',key:'Enter'");
