@@ -7,10 +7,14 @@ $Responses = Join-Path $BrokerRoot 'responses'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
-$BrokerVersion = '1.5-db-sidecar-diagnostic'
+$BrokerVersion = '1.6-wsl-keepalive'
 $Image = 'ghcr.io/paperclipai/paperclip:2026.916.1'
 $Container = 'tigeriq-paperclip-lab'
 $Compose = '/mnt/d/TigerIQ-Paperclip-Lab/config/docker-compose.lab.yml'
+$KeepaliveExecutable = '/usr/bin/sleep'
+$KeepaliveArgument = 'infinity'
+$WslKeepaliveProcess = $null
+$WslKeepaliveStartedAt = $null
 
 New-Item -ItemType Directory -Force -Path $Requests,$Responses | Out-Null
 $created = $false
@@ -23,7 +27,18 @@ function Write-JsonAtomic([string]$Path, $Value) {
   Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
 
+function Test-WslKeepaliveRunning {
+  if ($null -eq $script:WslKeepaliveProcess) { return $false }
+  try {
+    $script:WslKeepaliveProcess.Refresh()
+    return (-not $script:WslKeepaliveProcess.HasExited)
+  } catch {
+    return $false
+  }
+}
+
 function Write-BrokerHeartbeat {
+  $keepaliveRunning = Test-WslKeepaliveRunning
   Write-JsonAtomic $Heartbeat ([pscustomobject]@{
     schema='TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
     version=$BrokerVersion
@@ -32,12 +47,33 @@ function Write-BrokerHeartbeat {
     user=[Environment]::UserName
     pid=$PID
     distro=$Distro
+    wslKeepaliveRunning=[bool]$keepaliveRunning
+    wslKeepalivePid=if($keepaliveRunning){ [int]$script:WslKeepaliveProcess.Id }else{ $null }
+    wslKeepaliveStartedAt=if($script:WslKeepaliveStartedAt){ $script:WslKeepaliveStartedAt.ToString('o') }else{ $null }
   })
 }
 
 function Quote-FixedArg([string]$Value) {
   if ($Value -notmatch '[\s"]') { return $Value }
   return '"' + ($Value -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+}
+
+function Start-WslKeepalive {
+  if (Test-WslKeepaliveRunning) { return }
+  if (-not (Test-Path -LiteralPath $Wsl -PathType Leaf)) { throw 'TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_WSL_NOT_FOUND' }
+  $keepaliveArgs = @('--distribution',$Distro,'--exec',$KeepaliveExecutable,$KeepaliveArgument)
+  $argLine = (($keepaliveArgs | ForEach-Object { Quote-FixedArg ([string]$_) }) -join ' ')
+  $script:WslKeepaliveProcess = Start-Process -FilePath $Wsl -ArgumentList $argLine -PassThru -WindowStyle Hidden
+  $script:WslKeepaliveStartedAt = (Get-Date).ToUniversalTime()
+  Start-Sleep -Milliseconds 250
+  if (-not (Test-WslKeepaliveRunning)) { throw 'TIGERIQ_PAPERCLIP_LAB_WSL_KEEPALIVE_START_FAILED' }
+}
+
+function Stop-WslKeepalive {
+  if (Test-WslKeepaliveRunning) {
+    Stop-Process -Id $script:WslKeepaliveProcess.Id -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $script:WslKeepaliveProcess.Id -Timeout 5 -ErrorAction SilentlyContinue
+  }
 }
 
 function Get-OperationSpec([string]$Operation) {
@@ -149,8 +185,11 @@ function Test-Request($Request) {
 
 $lastHeartbeat = [DateTime]::MinValue
 try {
+  Start-WslKeepalive
+  Write-BrokerHeartbeat
   while ($true) {
     if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge 2) {
+      if (-not (Test-WslKeepaliveRunning)) { throw 'TIGERIQ_PAPERCLIP_LAB_WSL_KEEPALIVE_EXITED' }
       Write-BrokerHeartbeat
       $lastHeartbeat = Get-Date
     }
@@ -195,6 +234,7 @@ try {
     Start-Sleep -Milliseconds 200
   }
 } finally {
+  Stop-WslKeepalive
   try { $mutex.ReleaseMutex() } catch {}
   $mutex.Dispose()
 }
