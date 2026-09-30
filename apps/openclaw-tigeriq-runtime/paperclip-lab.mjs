@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_SECRETS_VOLUME_0700_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_POSTGRES_MIGRATE_GATE_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -468,6 +468,15 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     '    command: ["sh", "-c", "chmod 0700 /secrets"]',
     '    volumes:',
     '      - paperclip-secrets:/secrets',
+    '  migrate:',
+    `    image: ${imageRef}`,
+    '    restart: "no"',
+    '    environment:',
+    '      DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip',
+    '    depends_on:',
+    '      db:',
+    '        condition: service_healthy',
+    '    command: ["pnpm", "db:migrate"]',
     '  paperclip:',
     `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
@@ -483,6 +492,8 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     '      db:',
     '        condition: service_healthy',
     '      secrets-init:',
+    '        condition: service_completed_successfully',
+    '      migrate:',
     '        condition: service_completed_successfully',
     '    volumes:',
     '      - ../data:/paperclip',
