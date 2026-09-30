@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_HEALTH_INVARIANT_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_WSL_RECOVERY_RESTART_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -452,7 +452,7 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     'services:',
     '  db:',
     '    image: postgres:17-alpine',
-    '    restart: "no"',
+    '    restart: unless-stopped',
     '    environment:',
     '      POSTGRES_USER: paperclip',
     '      POSTGRES_PASSWORD: paperclip',
@@ -483,7 +483,7 @@ export function paperclipLabComposeYaml(imageRef = PAPERCLIP_LAB_IMAGE) {
     `    image: ${imageRef}`,
     `    container_name: ${PAPERCLIP_LAB_CONTAINER}`,
     '    pids_limit: 2048',
-    '    restart: "no"',
+    '    restart: unless-stopped',
     '    ports:',
     `      - "127.0.0.1:${PAPERCLIP_LAB_PORT}:3100"`,
     '    env_file:',
