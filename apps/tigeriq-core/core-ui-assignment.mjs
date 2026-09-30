@@ -173,35 +173,56 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
 
 export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,jobId,workerId,terminal,result=''}={}){
   if(!pool)throw new Error('CORE_UI_POOL_REQUIRED');
+  if(typeof pool.connect!=='function')throw new Error('CORE_UI_POOL_CONNECT_REQUIRED');
   if(!WORKERS.includes(String(workerId||'')))throw new Error('CORE_UI_WORKER_INVALID');
   const n=issueNo(jobId);if(!n)throw new Error('CORE_UI_JOB_ID_INVALID');
-  const state=String(terminal||'').toUpperCase();
-  if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(state))throw new Error('CORE_UI_TERMINAL_INVALID');
-  const item=await row(pool,{jobId});
-  if(!item)throw new Error('CORE_UI_JOB_NOT_FOUND');
-  if(String(item.employee_id)!==String(workerId))throw new Error('CORE_UI_JOB_WORKER_MISMATCH');
-  if(!['ui_assigned','ui_running'].includes(String(item.status||''))){
-    return {ok:true,alreadyTerminal:true,jobId,workerId,terminal:String(item?.result?.terminal||state),evidenceRef:String(item?.result?.evidenceRef||item?.metadata?.issueUrl||''),issueRef:String(item?.metadata?.issueUrl||'')};
+  const requestedState=String(terminal||'').toUpperCase();
+  if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(requestedState))throw new Error('CORE_UI_TERMINAL_INVALID');
+  const terminalResult=safeResult(result||requestedState);
+  const terminalKey='TIGERIQ_CORE_UI_TERMINAL_KEY='+jobId;
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[terminalKey]);
+    const item=await row(client,{jobId});
+    if(!item)throw new Error('CORE_UI_JOB_NOT_FOUND');
+    if(String(item.employee_id)!==String(workerId))throw new Error('CORE_UI_JOB_WORKER_MISMATCH');
+    if(!['ui_assigned','ui_running'].includes(String(item.status||''))){
+      await client.query('commit');
+      return {ok:true,alreadyTerminal:true,jobId,workerId,terminal:String(item?.result?.terminal||requestedState),evidenceRef:String(item?.result?.evidenceRef||item?.metadata?.issueUrl||''),issueRef:String(item?.metadata?.issueUrl||'')};
+    }
+
+    const issue=await readIssue(fetchImpl,owner,repo,token,n);
+    const comments=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token).catch(()=>[]);
+    const prior=(Array.isArray(comments)?comments:[]).find((comment)=>String(comment?.body||'').includes(terminalKey));
+    const priorText=String(prior?.body||'');
+    const priorState=String(priorText.match(/^STATE=(DONE|BLOCKED|EXTERNAL_WAIT)$/m)?.[1]||'');
+    const state=priorState||requestedState;
+    const evidenceBody=[
+      'TIGERIQ_CORE_UI_TERMINAL_V1',
+      terminalKey,
+      'JOB_ID='+jobId,
+      'WORKER='+workerId,
+      'STATE='+state,
+      'SOURCE=APP_CHROME_UI_TRANSPORT',
+      'RESULT_BEGIN',
+      terminalResult,
+      'RESULT_END',
+    ].join('\n');
+    const comment=prior||await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
+    if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
+    const jobStatus=state==='DONE'?'done':'failed';
+    const objectiveStatus=state==='DONE'?'completed':'blocked';
+    const evidenceRef=String(comment?.html_url||issue.html_url||'');
+    await client.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify({source:'app_chrome_ui',terminal:state,evidenceRef,result:terminalResult,terminalKey})]);
+    await client.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,objectiveStatus,'Core UI terminal '+state+' from '+workerId]);
+    await client.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_TERMINAL',$1,$2,$3,$4,'ui',$5)",[item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:state,evidenceRef,issueNumber:n,terminalKey,recoveredExistingEvidence:Boolean(prior)})]);
+    await client.query('commit');
+    return {ok:true,jobId,workerId,terminal:state,evidenceRef,issueRef:String(issue.html_url||''),recoveredExistingEvidence:Boolean(prior)};
+  }catch(error){
+    try{await client.query('rollback')}catch{}
+    throw error;
+  }finally{
+    client.release();
   }
-  const issue=await readIssue(fetchImpl,owner,repo,token,n);
-  const terminalResult=safeResult(result||state);
-  const evidenceBody=[
-    'TIGERIQ_CORE_UI_TERMINAL_V1',
-    'JOB_ID='+jobId,
-    'WORKER='+workerId,
-    'STATE='+state,
-    'SOURCE=APP_CHROME_UI_TRANSPORT',
-    'RESULT_BEGIN',
-    terminalResult,
-    'RESULT_END',
-  ].join('\n');
-  const comment=await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
-  if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
-  const jobStatus=state==='DONE'?'done':'failed';
-  const objectiveStatus=state==='DONE'?'completed':'blocked';
-  const evidenceRef=String(comment?.html_url||issue.html_url||'');
-  await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify({source:'app_chrome_ui',terminal:state,evidenceRef,result:terminalResult})]);
-  await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,objectiveStatus,'Core UI terminal '+state+' from '+workerId]);
-  await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_TERMINAL',$1,$2,$3,$4,'ui',$5)",[item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:state,evidenceRef,issueNumber:n})]);
-  return {ok:true,jobId,workerId,terminal:state,evidenceRef,issueRef:String(issue.html_url||'')};
 }
