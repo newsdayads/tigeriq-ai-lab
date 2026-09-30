@@ -79,10 +79,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
 
   it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
     const csv = [
-      '"PC01","\\\\TigerIQ Core 24x7","10/1/2026 12:00:00 AM","Ready","Interactive/Background","9/30/2026 5:00:00 PM","0","SYSTEM","node D:\\\\TigerIQ\\\\Runtime\\\\core.mjs","N/A","","Enabled","","","SYSTEM","","","Every 5 minutes","Minute","5:00:00 PM","9/30/2026"',
-      '"PC01","\\\\Microsoft\\\\Windows\\\\Defrag\\\\ScheduledDefrag","N/A","Ready","Background","N/A","0","SYSTEM","defrag.exe","","","Enabled","","","SYSTEM","","","Weekly","Weekly","3:00:00 AM","9/30/2026"',
-      '"PC01","\\\\TigerIQ Quote Test","N/A","Disabled","Background","N/A","1","SYSTEM","cmd /c echo ""hello,world""","","","Disabled","","","SYSTEM","","","At startup","At system startup","",""',
-    ].join('\\r\\n');
+      String.raw`"PC01","\\TigerIQ Core 24x7","10/1/2026 12:00:00 AM","Ready","Interactive/Background","9/30/2026 5:00:00 PM","0","SYSTEM","node D:\\TigerIQ\\Runtime\\core.mjs","N/A","","Enabled","","","SYSTEM","","","Every 5 minutes","Minute","5:00:00 PM","9/30/2026"`,
+      String.raw`"PC01","\\Microsoft\\Windows\\Defrag\\ScheduledDefrag","N/A","Ready","Background","N/A","0","SYSTEM","defrag.exe","","","Enabled","","","SYSTEM","","","Weekly","Weekly","3:00:00 AM","9/30/2026"`,
+      String.raw`"PC01","\\TigerIQ Quote Test","N/A","Disabled","Background","N/A","1","SYSTEM","cmd /c echo ""hello,world""","","","Disabled","","","SYSTEM","","","At startup","At system startup","",""`,
+    ].join('\r\n');
 
     expect(parseTaskListCsv(csv)).toEqual([
       {
