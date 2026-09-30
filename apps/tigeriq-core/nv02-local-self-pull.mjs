@@ -132,9 +132,9 @@ function workerMentioned(body, worker) {
   const text = String(body || '');
   const id = String(worker || '').toUpperCase();
   return [
-    new RegExp(\`^(?:WORKER|TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE|IMPLEMENTER)=\${id}$\`, 'mi'),
-    new RegExp(\`\\bImplementer:\\s*\${id}\\b\`, 'i'),
-    new RegExp(\`\\bworker[=:]\\s*\${id}\\b\`, 'i'),
+    new RegExp(`^(?:WORKER|TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE|IMPLEMENTER)=${id}$`, 'mi'),
+    new RegExp(`\\bImplementer:\\s*${id}\\b`, 'i'),
+    new RegExp(`\\bworker[=:]\\s*${id}\\b`, 'i'),
   ].some((pattern) => pattern.test(text));
 }
 
@@ -157,7 +157,7 @@ function takeoverWorkerBlocked(issue, comments, target) {
   const texts = [String(issue?.body || ''), ...(Array.isArray(comments) ? comments.map((x) => String(x?.body || '')) : [])];
   for (const text of texts) {
     if (!/(?:STATE|CURRENT_STATE)=BLOCKED/i.test(text)) continue;
-    if (target && !workerMentioned(text, target) && !new RegExp(\`\\b\${target}\\b\`, 'i').test(text)) continue;
+    if (target && !workerMentioned(text, target) && !new RegExp(`\\b${target}\\b`, 'i').test(text)) continue;
     const reason = String(text.match(/^(?:BLOCKER|BLOCKED_REASON|REASON)=(.+)$/mi)?.[1] || text);
     if (/owner|hold|dependency|production|paid|credential|security|destructive|irreversible|external[_ -]?wait/i.test(reason)) continue;
     if (/worker|transport|timeout|stall|retry|offline|unavailable|no[_ -]?heartbeat|capabil/i.test(reason)) return true;
@@ -225,7 +225,7 @@ export async function releaseStaleAssigneeLease({ issue, takeover, postComment, 
   if (!resourceScope || claim.resourceScope !== resourceScope || !claim.worker || claim.worker === 'NV02') {
     throw new Error('NV02_TAKEOVER_RELEASE_INVALID');
   }
-  await postComment(issue.number, \`[TIGERIQ_ROLE_RELEASE_V1]\\nWORKER=\${claim.worker}\\nRESOURCE_SCOPE=\${resourceScope}\\nSTATE=STALE_TAKEOVER_BY_NV02\\nTAKEOVER_REASON=\${takeover.reason}\\nRELEASED_AT=\${new Date(nowMs).toISOString()}\`);
+  await postComment(issue.number, `[TIGERIQ_ROLE_RELEASE_V1]\\nWORKER=${claim.worker}\\nRESOURCE_SCOPE=${resourceScope}\\nSTATE=STALE_TAKEOVER_BY_NV02\\nTAKEOVER_REASON=${takeover.reason}\\nRELEASED_AT=${new Date(nowMs).toISOString()}`);
   return { released: true, worker: claim.worker, resourceScope, reason: takeover.reason };
 }
 
