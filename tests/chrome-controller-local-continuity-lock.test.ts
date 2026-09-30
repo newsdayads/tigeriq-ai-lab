@@ -85,4 +85,11 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(nv02Loop).toContain('awaitingWorkStart===true');
     expect(nv02Loop).not.toContain('WORK_START_ACK_TIMEOUT_REARMED');
   });
+  it('fails closed on ChatGPT auth routes for generic workers',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("const authRouteRequired=location.hostname==='chatgpt.com'");
+    expect(bridge).toContain("/^\\/auth\\/(?:login|signin)(?:\\/|$)/i.test(location.pathname)");
+    expect(bridge).toContain("if(!securityBlock&&authRouteRequired) securityBlock='BLOCKED_REAUTH'");
+  });
+
 });
