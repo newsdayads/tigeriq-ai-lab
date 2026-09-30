@@ -154,18 +154,20 @@ describe('independent worker recovery flows in direct-cdp-bridge',()=>{
     expect(genericLoop).toContain('awaitingWorkStart');
   });
 
-  it('keeps generic workers WORKING-safe while NV02 follows the approved independent F5/reset policy',()=>{
+  it('keeps all workers WORKING-safe by deferring F5/reset mutation',()=>{
     expect(source).toContain("MAINTENANCE_DEFERRED_WORKING");
     const prep=source.slice(source.indexOf('async function prepareWorkerForPlannedRestart'),source.indexOf('function archiveMenuPointExpr'));
     expect(prep).not.toContain('stopStalledWorking(target)');
     const generic=source.slice(source.indexOf('async function maybeWorkerContinuity'),source.indexOf('\nfunction log('));
-    expect(generic).toContain("const freshPhase=deriveWorkerPhase(fresh||{},{workerId:w.id})");
-    expect(generic).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
+    expect(generic).toContain("if(phase==='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
+    expect(generic).toContain('PERIODIC_F5_DEFERRED_WORKING');
     const nv02=source.slice(source.indexOf('async function maybeNv02Continuity'),source.indexOf('async function handleCommand'));
-    expect(nv02).toContain('const fresh=applyNv02DurableVerifiedModelProfile(await uiState(target).catch(()=>null))');
-    expect(nv02).not.toContain("freshPhase==='WORKING'||fresh?.uiBusy===true||fresh?.stopVisible===true");
-    expect(nv02).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
-    expect(nv02).toContain('await reloadTarget(target)');
+    expect(nv02).toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02).toContain('PERIODIC_F5_DEFERRED_WORKING');
+    const defer=nv02.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const normal=nv02.indexOf("if(now>=Number(state.nextPeriodicF5At||0))",defer+1);
+    expect(normal).toBeGreaterThan(defer);
+    expect(nv02.slice(defer,normal)).not.toContain('reloadTarget(target)');
     expect(source).toContain('async function reopenNv02PeriodicWorker');
   });
 
