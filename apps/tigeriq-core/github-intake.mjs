@@ -89,7 +89,7 @@ export function extractPcOperatorInstruction(body){
 }
 
 const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','process_list','tcp_probe','file_read','file_list','file_stat','paperclip_lab_preflight','paperclip_lab_health']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','paperclip_lab_broker_install','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
   const text=String(body||'');
@@ -111,6 +111,10 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     normalized={action,taskName};
   }else if(action==='tcp_probe'){
     normalized={action,host:String(parsed.host||'127.0.0.1'),port:Number(parsed.port)};
+  }else if(action==='paperclip_openai_device_auth_start'){
+    const sessionId=String(parsed.sessionId||'').trim().toLowerCase();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId))return {present:true,valid:false,action:null,reason:'SESSION_ID_INVALID'};
+    normalized={action,sessionId};
   }else if(action.startsWith('file_')){
     normalized={action,path:String(parsed.path||'')};
   }else{
