@@ -45,11 +45,15 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(bridge).toContain("'Làm tiếp, không đổi việc'");
   });
 
-  it('locks NV02 F5 to 5-10 minutes and preserves worker isolation', () => {
+  it('locks NV02 F5 to 5-10 minutes and preserves reversible worker scope isolation', () => {
     expect(bridge).toContain('const NV02_F5_MIN_MS=5*60*1000');
     expect(bridge).toContain('const NV02_F5_MAX_MS=10*60*1000');
     expect(supervisor).toContain("foreach($id in @('NV03','NV04'))");
     expect(supervisor).toContain('Ensure-UtilityPaused');
+    expect(supervisor).toContain('Ensure-UtilityResumed');
+    expect(supervisor).toContain("'THREE_UI_SIDE_WORKERS_RESUMED'");
+    expect(supervisor).toContain("'THREE_UI_RESUME_SKIPPED_OWNER_PAUSE'");
+    expect(supervisor).toContain('if([bool]$Active.nv02Only)');
   });
 });
 
