@@ -730,5 +730,8 @@ describe('NV03/NV04 Core UI transport loop',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     expect(bridge).toContain('const assistantResultTail=assistantTextRaw.slice(-4000)');
     expect(bridge).toContain('assistantTerminal,assistantResultTail');
+    expect(bridge).toContain('assistantTerminal:ui.assistantTerminal||null');
+    expect(bridge).toContain('assistantSignature:ui.assistantSignature||null');
+    expect(bridge).toContain("assistantResultTail:String(ui.assistantResultTail||'').slice(-4000)");
   });
 });
