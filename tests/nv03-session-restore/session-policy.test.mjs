@@ -56,6 +56,8 @@ describe('NV03 interactive-session recovery policy',()=>{
     expect(restore).not.toContain('Restore-AppChrome-Windows.ps1');
     expect(restore).not.toMatch(/NV02|NV04/);
     expect(restore).toContain('--remote-debugging-port=9223');
+    expect(restore).toContain('"--profile-directory=`"$ProfileDirectory`""');
+    expect(restore).not.toContain('"--profile-directory=$ProfileDirectory"');
     expect(restore).toContain("Wait-Nv03Port -Port 8823");
     expect(restore).toContain('--window-position=$WindowLeft,$WindowTop');
     expect(restore).toContain('NV03_INTERACTIVE_SESSION_REQUIRED');
