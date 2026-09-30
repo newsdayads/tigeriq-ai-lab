@@ -56,7 +56,7 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(bridge).toContain("async function reopenWorker(w,target,state,now,reason,resumeUrl='')");
     expect(bridge).toContain('const preserveAssignedChat=isAssignedWorkerChat(w,resumeCandidate)');
     expect(bridge).not.toContain("'PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT'");
-    expect(bridge).toContain("reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',activeAssignment&&isAssignedWorkerChat(w,prepared?.url)?prepared.url:'')");
+    expect(bridge).toContain("reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',isAssignedWorkerChat(w,prepared?.url)?prepared.url:'')");
     expect(bridge).toContain("'STALLED_3_CHECKS',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
     expect(bridge).toContain("'CHAT_LOAD_ERROR',isAssignedWorkerChat(w,ui?.url)?ui.url:''");
   });
