@@ -488,13 +488,15 @@ describe('Direct-CDP Controller command transport',()=>{
 });
 
 describe('NV02 independent F5/reset timers',()=>{
-  it('preserves overdue timer intent across restart and keeps Auto dispatch timer-neutral',()=>{
+  it('rebases overdue timers only across OS reboot and keeps Auto dispatch timer-neutral',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    const supervisor=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
     expect(bridge).toContain('let nv02BootF5ScheduleInitialized=false');
-    expect(bridge).toContain("'NV02_F5_TIMER_OVERDUE_AFTER_RESTART'");
-    expect(bridge).toContain("'NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART'");
-    expect(bridge).not.toContain("'NV02_F5_TIMERS_REBASED_AFTER_RESTART'");
-    expect(bridge).not.toContain("'NV02_REFRESH_TIMER_REBASED_AFTER_RESTART'");
+    expect(supervisor).toContain('$env:TIGERIQ_BOOT_ID=$currentBootId');
+    expect(bridge).toContain("const BOOT_ID=String(process.env.TIGERIQ_BOOT_ID||'').trim()");
+    expect(bridge).toContain("const bootChanged=Boolean(BOOT_ID&&String(raw.bootId||'')!==BOOT_ID)");
+    expect(bridge).toContain("'NV02_F5_TIMER_REBASED_AFTER_OS_REBOOT'");
+    expect(bridge).toContain("'NV02_REFRESH_TIMER_REBASED_AFTER_OS_REBOOT'");
     expect(bridge).toContain('if(persistBootSchedule)saveNv02Continuity(state)');
     expect(bridge).toContain("'DISPATCH_CONTINUITY_GUARD_ARMED'");
     const dispatchNote=bridge.slice(bridge.indexOf('async function noteNv02CommandDispatch'),bridge.indexOf('async function reopenNv02PeriodicWorker'));
