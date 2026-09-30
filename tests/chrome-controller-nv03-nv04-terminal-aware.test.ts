@@ -25,6 +25,8 @@ describe('NV03/NV04 terminal-aware continuity #2549',()=>{
     expect(bridge).toContain('isWorkerFreshContext(w,last.url)');
     expect(bridge).toContain('FRESH_CONTEXT_NOT_READY:');
     expect(command).toContain("status:'FRESH_CONTEXT_READY'");
+    expect(command).toContain("bootFreshContextPending.delete(w.id)");
+    expect(command).toContain("ASSIGNMENT_FRESH_CONTEXT_ACKNOWLEDGED");
     expect(command).toContain('ASSIGNED_WORK_DISPATCHED_GUARD_ARMED');
   });
 
