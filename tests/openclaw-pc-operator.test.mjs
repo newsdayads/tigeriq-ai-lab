@@ -138,7 +138,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_SECRETS_VOLUME_0700_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_POSTGRES_MIGRATE_GATE_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -147,7 +147,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(compose).toContain('ghcr.io/paperclipai/paperclip:2026.916.1');
     expect(compose).toContain('image: postgres:17-alpine');
     expect(compose).toContain('DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip');
+    expect(compose).toContain('  migrate:');
+    expect(compose).toContain('command: ["pnpm", "db:migrate"]');
     expect(compose).toContain('condition: service_healthy');
+    expect(compose.match(/condition: service_completed_successfully/g)?.length).toBeGreaterThanOrEqual(2);
     expect(compose).toContain('paperclip-db:/var/lib/postgresql/data');
     expect(compose).toContain('paperclip-db:');
     expect(compose).toContain('  secrets-init:');
@@ -181,6 +184,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(compose).toContain('POSTGRES_DB: paperclip');
     expect(compose).toContain('pg_isready -U paperclip -d paperclip');
     expect(compose).toContain('DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip');
+    expect(compose).toContain('  migrate:');
+    expect(compose).toContain('command: ["pnpm", "db:migrate"]');
+    expect(compose).toMatch(/migrate:[\s\S]*condition: service_healthy[\s\S]*command: \["pnpm", "db:migrate"\]/);
+    expect(compose).toMatch(/paperclip:[\s\S]*migrate:[\s\S]*condition: service_completed_successfully/);
     expect(compose).toContain('      - ../data:/paperclip');
     expect(compose).toContain('      - paperclip-db:/var/lib/postgresql/data');
     expect(compose).toContain('      - paperclip-secrets:/paperclip/instances/default/secrets');
