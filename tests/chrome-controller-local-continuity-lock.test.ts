@@ -91,8 +91,12 @@ describe('App Chrome Recovery V1 local-only spec lock',()=>{
     expect(bridge).toContain("/^\\\\/auth\\\\/(?:login|signin)(?:\\\\/|$)/i.test(location.pathname)");
     expect(bridge).toContain("if(!securityBlock&&authRouteRequired) securityBlock='BLOCKED_REAUTH'");
 
-    const body=bridge.match(/const UI_EXPR=`([\\s\\S]*?)`;/)?.[1];
-    expect(body).toBeTruthy();
+    const marker='const UI_EXPR=`';
+    const start=bridge.indexOf(marker);
+    const end=bridge.indexOf('`;',start+marker.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const body=bridge.slice(start+marker.length,end);
     const runtimeExpression=new Function('ASSISTANT_TERMINAL_DETECTOR',`return \`${body}\`;`)('()=>null');
     expect(()=>new Function(`return ${runtimeExpression};`)).not.toThrow();
   });
