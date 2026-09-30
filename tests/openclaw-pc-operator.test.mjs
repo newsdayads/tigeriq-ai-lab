@@ -139,7 +139,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_WSL_RECOVERY_RESTART_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_RESTART_IDENTITY_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -180,6 +180,12 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(compose).toContain('        condition: service_completed_successfully');
     expect(compose).not.toContain('rm -rf');
     expect(compose).not.toContain('down -v');
+  });
+
+  it('aligns runtime identity with the continuous-service restart policy', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("String(info?.HostConfig?.RestartPolicy?.Name || '') === 'unless-stopped'");
+    expect(source).not.toContain("String(info?.HostConfig?.RestartPolicy?.Name || '') === 'no'");
   });
 
   it('recovers DB and app after Docker or WSL daemon restart without reviving one-shot jobs', () => {
