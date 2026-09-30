@@ -301,3 +301,16 @@ describe('NV02 archive live DOM R3 transient click/backoff', () => {
     expect(bridge).toContain("modelCheckBlockedUntil:Date.now()+30_000");
   });
 });
+
+
+describe('NV02 rotation never sends save prompt', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+
+  it('archives via UI without dispatching a literal save message', () => {
+    expect(bridge).not.toContain("dispatch(target,'Lưu')");
+    expect(bridge).not.toContain('CHAT_ROTATION_SAVE_FAILED');
+    expect(bridge).not.toContain('CHAT_ROTATION_SAVE_NOT_SETTLED');
+    expect(bridge).toContain('if(hasCurrentNv02Chat(ui?.url))');
+    expect(bridge).toContain('const archived=await archiveChat(target)');
+  });
+});
