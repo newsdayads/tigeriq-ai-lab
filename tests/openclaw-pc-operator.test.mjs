@@ -139,7 +139,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_BROKER_DB_DIAGNOSTIC_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_ROLLBACK_INVARIANT_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -216,7 +216,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
 
   it('classifies health timeout causes before rollback', () => {
     expect(paperclipHealthFailureClass({ reason: 'PIN_NOT_READY' })).toBe('PIN_NOT_READY');
-    expect(paperclipHealthFailureClass({ container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
+    expect(paperclipHealthFailureClass({ database: { present: false } })).toBe('DATABASE_NOT_PRESENT');
+    expect(paperclipHealthFailureClass({ database: { present: true, running: false, logClass: 'DB_ADMIN_STOP' } })).toBe('DATABASE_NOT_RUNNING_DB_ADMIN_STOP');
+    expect(paperclipHealthFailureClass({ database: { present: true, running: true, healthStatus: 'starting' } })).toBe('DATABASE_HEALTH_STARTING');
+    expect(paperclipHealthFailureClass({ database: { present: true, running: true, healthStatus: 'healthy' }, container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
     expect(paperclipHealthFailureClass({ container: { running: false, logClass: 'PERMISSION' } })).toBe('CONTAINER_NOT_RUNNING_PERMISSION');
     expect(paperclipHealthFailureClass({ container: { running: false, stateErrorClass: 'MOUNT' } })).toBe('CONTAINER_NOT_RUNNING_STATE_MOUNT');
     expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: false } })).toBe('PORT_BINDING_MISMATCH');
@@ -331,6 +334,9 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("composeArgs(['logs', '--no-color', '--tail', '120', 'db'])");
     expect(source).toContain("inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true)");
     expect(source).toContain('healthStatus: database?.healthStatus || null');
+    expect(source).toContain('const databaseReady = databaseState.present === true');
+    expect(source).toContain("String(databaseState.healthStatus || '').toLowerCase() === 'healthy'");
+    expect(source).toContain('ok: databaseReady && port.reachable && http.appOk === true && identityOk');
     expect(source).toContain('restartCount: database?.restartCount ?? null');
     expect(source).toContain('logFingerprint: database?.logFingerprint || null');
     expect(source).toContain('logExcerpt: database?.logExcerpt || null');
@@ -356,6 +362,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipContainerLogClass('drizzle query select * from heartbeat_runs')).not.toBe('DB_MIGRATION');
     expect(paperclipContainerLogClass('drizzle query select agents.error_reason, agents.last_heartbeat_at from heartbeat_runs inner join agents on heartbeat_runs.agent_id = agents.id')).not.toBe('DB_MIGRATION');
     expect(paperclipContainerLogClass('database connection refused')).toBe('DB_CONNECTION');
+    expect(paperclipContainerLogClass('FATAL: terminating connection due to administrator command')).toBe('DB_ADMIN_STOP');
+    expect(paperclipContainerLogClass('received fast shutdown request')).toBe('DB_ADMIN_STOP');
     expect(paperclipContainerLogClass('database checksum failed: corrupt page')).toBe('DB_CORRUPT');
     expect(paperclipContainerLogClass('database startup failed')).toBe('DATABASE');
     expect(paperclipContainerLogClass('EADDRINUSE address already in use')).toBe('PORT_CONFLICT');
@@ -418,7 +426,6 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("$Distro = 'Ubuntu'");
-    expect(broker).toContain("$BrokerVersion = '1.4-postgres-sidecar'");
     expect(broker).toContain("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'");
     expect(broker).toContain("'pull_pinned_image'");
     expect(broker).toContain("TimeoutSec=1200; IdleTimeoutSec=300");
@@ -523,7 +530,8 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('portBindingOk');
     expect(source).toContain('dataMountOk');
     expect(source).toContain('rollbackContainer');
-    expect(source).toContain("composeArgs(['stop'])");
+    expect(source).toContain("runDocker(resolved, ['stop', PAPERCLIP_LAB_CONTAINER]");
+    expect(source).not.toMatch(/async function rollbackContainer[\s\S]{0,500}composeArgs\(\['stop'\]\)/);
     expect(source).toContain("['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER]");
     expect(source).toContain('paperclipContainerLogClass');
     expect(source).toContain('state.result = {');
