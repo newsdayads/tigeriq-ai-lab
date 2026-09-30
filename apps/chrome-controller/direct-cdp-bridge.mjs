@@ -1367,19 +1367,12 @@ async function newChat(target){
   }finally{p.close();}
 }
 
-async function rotateNv02ToFreshChat(target,state,reason,{checkpoint=true,idle=false}={}){
+async function rotateNv02ToFreshChat(target,state,reason,{idle=false}={}){
   const now=Date.now();
   return withNv02Mutation(async()=>{
     let ui=await uiStateRaw(target).catch(()=>null);
     if(ui?.securityBlock)return{ok:false,status:ui.securityBlock};
     if(ui?.uiBusy===true||ui?.stopVisible===true)return{ok:false,status:'CHAT_ROTATION_DEFERRED_WORKING'};
-    if(checkpoint&&hasCurrentNv02Chat(ui?.url)){
-      const saved=await dispatch(target,'Lưu');
-      if(!saved?.ok)return{ok:false,status:saved?.status||'CHAT_ROTATION_SAVE_FAILED'};
-      const ready=await waitWorkerReadyForMaintenance(target,180000);
-      if(!ready?.ok)return{ok:false,status:ready?.status||'CHAT_ROTATION_SAVE_NOT_SETTLED'};
-      ui=ready.ui||await uiStateRaw(target).catch(()=>null);
-    }
     if(hasCurrentNv02Chat(ui?.url)){
       const archived=await archiveChat(target);
       if(!archived?.ok)return{ok:false,status:archived?.status||'CHAT_ROTATION_ARCHIVE_FAILED'};
@@ -1679,7 +1672,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     saveNv02Continuity(state);
   }
   if(phase==='READY'&&ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER&&now>=Number(state.rotationRetryAt||0)){
-    const rotated=await rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT',{checkpoint:false,idle:false});
+    const rotated=await rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT',{idle:false});
     if(!rotated?.ok){
       state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'JOB_TERMINAL_DURABLE_CHECKPOINT',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt});
@@ -1687,7 +1680,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     return;
   }
   if(phase==='READY'&&ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&now>=Number(state.rotationRetryAt||0)&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')&&String(ui?.assistantSignature||'')!==String(state.idleWakeBaselineSignature||'')){
-    const rotated=await rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK',{checkpoint:false,idle:true});
+    const rotated=await rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK',{idle:true});
     if(!rotated?.ok){
       state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'READY_NO_ELIGIBLE_WORK',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt});
@@ -1698,7 +1691,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const safetyRotationDue=currentChat&&phase==='READY'&&state.awaitingWorkStart!==true&&now>=Number(state.rotationRetryAt||0)
     &&(Number(state.dispatchesInChat||0)>=NV02_MAX_DISPATCHES_PER_CHAT||chatAgeMs>=NV02_MAX_CHAT_AGE_MS);
   if(safetyRotationDue){
-    const rotated=await rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT',{checkpoint:true,idle:false});
+    const rotated=await rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT',{idle:false});
     if(!rotated?.ok){
       state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
       await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'SAFETY_CONTEXT_LIMIT',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt,dispatchesInChat:state.dispatchesInChat,chatAgeMs});
