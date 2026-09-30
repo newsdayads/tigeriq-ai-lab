@@ -263,14 +263,37 @@ function Ensure-UtilityPaused([string]$WorkerId){
   return $true
 }
 
+function Ensure-UtilityResumed([string]$WorkerId){
+  $healthUri=("http://127.0.0.1:8798/api/utility/workers/{0}/health" -f $WorkerId)
+  $resumeUri=("http://127.0.0.1:8798/api/utility/workers/{0}/resume" -f $WorkerId)
+  $health=Invoke-RestMethod -Uri $healthUri -TimeoutSec 4
+  if($health.utilityPaused -ne $true){return $false}
+  Invoke-RestMethod -Method Post -Uri $resumeUri -TimeoutSec 10|Out-Null
+  $after=Invoke-RestMethod -Uri $healthUri -TimeoutSec 4
+  if($after.utilityPaused -eq $true){throw "THREE_UI_RESUME_VERIFY_FAILED:$WorkerId"}
+  return $true
+}
+
 function Ensure-WorkerScope($Active){
-  if(-not[bool]$Active.nv02Only){return $false}
   $changed=$false
+  if([bool]$Active.nv02Only){
+    foreach($id in @('NV03','NV04')){
+      if((Ensure-UtilityPaused $id)){$changed=$true}
+    }
+    if($changed){
+      Write-SupervisorEvent 'NV02_ONLY_SIDE_WRITERS_PAUSED' @{head=$Active.head;pausedWorkers='NV03,NV04'}
+    }
+    return $changed
+  }
+  if(-not(Owner-AutomationAllowed)){
+    Write-SupervisorEvent 'THREE_UI_RESUME_SKIPPED_OWNER_PAUSE' @{head=$Active.head}
+    return $false
+  }
   foreach($id in @('NV03','NV04')){
-    if((Ensure-UtilityPaused $id)){$changed=$true}
+    if((Ensure-UtilityResumed $id)){$changed=$true}
   }
   if($changed){
-    Write-SupervisorEvent 'NV02_ONLY_SIDE_WRITERS_PAUSED' @{head=$Active.head;pausedWorkers='NV03,NV04'}
+    Write-SupervisorEvent 'THREE_UI_SIDE_WORKERS_RESUMED' @{head=$Active.head;resumedWorkers='NV03,NV04'}
   }
   return $changed
 }
