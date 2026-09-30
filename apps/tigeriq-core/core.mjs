@@ -501,7 +501,9 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
   const stats=await taskPerformance(taskKind);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
+  const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
   let candidates=q.rows.filter(x=>!excluded.includes(x.resource_id));
+  if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
   const rows=candidates.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
   const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
@@ -513,7 +515,7 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     const r=locked.rows[0];if(!r){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
     await client.query('commit');
-    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,candidates:decision.candidates,chosen:decision.chosen};
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:decision.chosen};
     await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
     await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
     return {...r,routingProfile:profile,routingDecision:evidence};
@@ -924,7 +926,8 @@ async function claimJob() {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
-    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null});
+    const employeeAllowlist=j.kind==='github_api_autowork'?['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:[];
+    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
     const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
