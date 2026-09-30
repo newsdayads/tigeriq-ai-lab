@@ -36,11 +36,15 @@ function sourceRefs(task) {
     .filter(Boolean);
 }
 
+function hasSourceProof(task) {
+  return sourceRefs(task).length > 0;
+}
+
 function hasCurrentRuntimeProof(task) {
   return (
     task?.evidence?.currentRuntime === true &&
     Boolean(String(task?.runtimeOwner ?? "").trim()) &&
-    sourceRefs(task).length > 0
+    hasSourceProof(task)
   );
 }
 
@@ -58,6 +62,14 @@ function hasInactiveTriggerProof(task) {
   );
 }
 
+function hasBackupProof(task) {
+  return (
+    task?.evidence?.backupXmlExported === true &&
+    task?.evidence?.backupPass === true &&
+    Boolean(String(task?.evidence?.backupManifestSha256 ?? "").trim())
+  );
+}
+
 export function classifyTask(task) {
   if (!task || typeof task !== "object") {
     return CLASSIFICATIONS.UNKNOWN_NEEDS_PROOF;
@@ -71,20 +83,21 @@ export function classifyTask(task) {
   }
 
   if (
-    Boolean(String(task?.evidence?.duplicateOf ?? "").trim()) ||
-    Boolean(String(task?.evidence?.supersededBy ?? "").trim())
+    hasSourceProof(task) &&
+    (Boolean(String(task?.evidence?.duplicateOf ?? "").trim()) ||
+      Boolean(String(task?.evidence?.supersededBy ?? "").trim()))
   ) {
     return CLASSIFICATIONS.DUPLICATE_SUPERSEDED;
   }
 
-  if (task?.evidence?.temporaryOneShot === true) {
+  if (hasSourceProof(task) && task?.evidence?.temporaryOneShot === true) {
     return CLASSIFICATIONS.TEMP_ONE_SHOT;
   }
 
   if (
     stateOf(task) === "DISABLED" &&
     task?.evidence?.legacy === true &&
-    sourceRefs(task).length > 0
+    hasSourceProof(task)
   ) {
     return CLASSIFICATIONS.LEGACY_DISABLED;
   }
@@ -164,6 +177,7 @@ export function buildCleanupPlan(inventory) {
       evidenceRefs: sourceRefs(task),
       deletionEligible: deletion.eligible,
       deletionBlocker: deletion.blocker,
+      backupVerified: hasBackupProof(task),
     };
   });
 
@@ -195,8 +209,12 @@ export function buildCleanupPlan(inventory) {
     .map((item) => ({
       taskName: item.taskName,
       classification: item.classification,
-      proposed: item.deletionEligible,
-      blocker: item.deletionBlocker,
+      proposed: item.deletionEligible && item.backupVerified,
+      blocker: !item.deletionEligible
+        ? item.deletionBlocker
+        : item.backupVerified
+          ? null
+          : "BACKUP_NOT_VERIFIED",
       ownerApprovalRequired: true,
       destructiveActionIncluded: false,
     }));
@@ -245,7 +263,10 @@ async function main() {
   process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname.endsWith(process.argv[1].replaceAll("\\", "/"))) {
+if (
+  process.argv[1] &&
+  new URL(import.meta.url).pathname.endsWith(process.argv[1].replaceAll("\\", "/"))
+) {
   main().catch((error) => {
     process.stderr.write(String(error?.stack ?? error) + "\n");
     process.exitCode = 1;
