@@ -879,6 +879,7 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   const assistantNodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-content-search-unit-key$=":assistant"],model-response-content')].filter(vis);
   const assistantTextRaw=String(assistantNodes.at(-1)?.innerText||assistantNodes.at(-1)?.textContent||'').trim();
   const assistantText=assistantTextRaw.replace(/\s+/g,' ').trim();
+  const assistantResultTail=assistantTextRaw.slice(-4000);
   const progressText=(assistantText+'|'+activityText).trim();
   let activityHash=0;for(let i=0;i<progressText.length;i+=1)activityHash=((activityHash*31)+progressText.charCodeAt(i))>>>0;
   const activitySignature=uiBusy?(String(progressText.length)+':'+String(activityHash)):'';
@@ -889,7 +890,7 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   return {
     uiReady,uiPhase,composerReady:Boolean(composer),sendReady:Boolean(send),stopVisible:Boolean(stop),activityBusyVisible:Boolean(activityBusy),
     scrollToBottomVisible:Boolean(scroll),authRequired,uiBusy,securityBlock,chatLoadError,connectionPending,chatRetryReady:Boolean(chatRetry),responseInterrupted,responseContinueReady:Boolean(responseContinue),
-    modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,assistantSignature,assistantTerminal,projectDraftReady,
+    modelControlPresent:Boolean(modelControl),modelProfileStatus,modelName,reasoningEffort,modelReady,modelExact,verifiedAt,blockedReason,activitySignature,assistantSignature,assistantTerminal,assistantResultTail,projectDraftReady,
     title:document.title,url:location.href,readyState:document.readyState,bodyChildren:document.body?.children?.length||0
   };
 })()`;
