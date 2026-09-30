@@ -53,7 +53,7 @@ import {
 import { DurableSelfRunClaimStore } from './self-run-claim-store.js';
 
 type Command = { id:string; workerId:WorkerId; action:string; payload?:Record<string,unknown>; createdAt:string };
-type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; chatLoadError?:boolean; chatRetryReady?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; assistantTerminal?:string|null; assistantSignature?:string|null; display?:{workArea?:WorkArea}; at:string };
+type Heartbeat = { workerId:WorkerId; url?:string; windowId?:number; tabId?:number; state?:string; uiReady?:boolean; authRequired?:boolean; reauthRequired?:boolean; captchaRequired?:boolean; rateLimited?:boolean; rateLimitCode?:number|string; uiBusy?:boolean|null; uiPhase?:'WORKING'|'READY'|'STALLED'|'BLOCKED'|string; composerReady?:boolean; sendReady?:boolean; stopVisible?:boolean; scrollToBottomVisible?:boolean; chatLoadError?:boolean; chatRetryReady?:boolean; securityBlock?:string|null; modelProfileStatus?:string|null; modelName?:string|null; reasoningEffort?:string|null; modelReady?:boolean|null; modelExact?:boolean|null; verifiedAt?:string|null; blockedReason?:string|null; assistantTerminal?:string|null; assistantSignature?:string|null; assistantResultTail?:string|null; display?:{workArea?:WorkArea}; at:string };
 type WindowState = 'OPEN' | 'CLOSED';
 type WorkerState = {
   id:WorkerId;
@@ -835,7 +835,7 @@ async function coreUiFetch(previousJobId?:string){
 async function reportCoreUiTerminal(workerId:WorkerId,job:{jobId:string;issueRef:string|null},terminal:string,hb:Heartbeat){
   if(!validCoreUiAssignmentUrl(coreUiAssignmentUrl))throw new Error('CORE_UI_ASSIGNMENT_URL_INVALID');
   const u=new URL(coreUiAssignmentUrl);u.pathname='/api/ui-assignment/terminal';u.search='';
-  const result=[terminal,String(hb.assistantSignature||'').slice(0,120)].filter(Boolean).join(' | ');
+  const result=String(hb.assistantResultTail||hb.assistantSignature||terminal).slice(-4000);
   const response=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jobId:job.jobId,workerId,terminal,result}),signal:AbortSignal.timeout(12000)});
   if(!response.ok)throw new Error('CORE_UI_TERMINAL_HTTP_'+response.status+':'+(await response.text()).slice(0,160));
   const value=await response.json() as any;
