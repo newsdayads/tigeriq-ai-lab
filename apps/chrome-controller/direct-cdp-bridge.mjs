@@ -30,6 +30,7 @@ const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
 const APPROVED_HEAD=String(process.env.TIGERIQ_APPROVED_HEAD||'').trim();
 const DEPLOY_ROOT=String(process.env.TIGERIQ_DEPLOY_ROOT||'').trim();
+const BOOT_ID=String(process.env.TIGERIQ_BOOT_ID||'').trim();
 const EXPECTED_BRIDGE_SHA256=String(process.env.TIGERIQ_NV02_BRIDGE_SHA256||'').trim().toLowerCase();
 const BRIDGE_PATH=fs.realpathSync(process.argv[1]);
 const BRIDGE_SHA256=createHash('sha256').update(fs.readFileSync(BRIDGE_PATH)).digest('hex');
@@ -183,6 +184,7 @@ function loadWorkerContinuity(workerId){
     chatLoadBlockedUntil:Number(raw.chatLoadBlockedUntil)||0,
     chatLoadClearCandidateAt:Number(raw.chatLoadClearCandidateAt)||0,
     chatConnectingSince:Number(raw.chatConnectingSince)||0,
+    projectRecoveryRetryAt:Number(raw.projectRecoveryRetryAt)||0,
     idleState:fs.existsSync(NV02_IDLE_MARKER)?'READY_NO_ELIGIBLE_WORK':String(raw.idleState||''),
     nextIdleWakeAt:Number(raw.nextIdleWakeAt)||0,
     lastIdleMarkerSignature:String(raw.lastIdleMarkerSignature||''),
@@ -607,8 +609,8 @@ function loadNv02Continuity(){
   const durableTimers=loadNv02MaintenanceTimerFloor();
   const rawNextPeriodicF5At=Number(raw.nextPeriodicF5At)||nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
   const rawNextRefreshAt=Number(raw.nextRefreshAt)||nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
-  const nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0);
-  const nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0);
+  let nextPeriodicF5At=Math.max(rawNextPeriodicF5At,Number(durableTimers.nextPeriodicF5At)||0);
+  let nextRefreshAt=Math.max(rawNextRefreshAt,Number(durableTimers.nextRefreshAt)||0);
   const f5TimerRegressed=Boolean(durableTimers.nextPeriodicF5At&&rawNextPeriodicF5At<durableTimers.nextPeriodicF5At);
   const refreshTimerRegressed=Boolean(durableTimers.nextRefreshAt&&rawNextRefreshAt<durableTimers.nextRefreshAt);
   if(f5TimerRegressed||refreshTimerRegressed){
@@ -622,16 +624,28 @@ function loadNv02Continuity(){
     saveNv02MaintenanceTimerFloor(nextPeriodicF5At,nextRefreshAt);
   }
   const workingRecheckAt=Number(raw.workingRecheckAt)||0;
-  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||f5TimerRegressed||refreshTimerRegressed;
+  const bootChanged=Boolean(BOOT_ID&&String(raw.bootId||'')!==BOOT_ID);
+  let persistBootSchedule=Number(raw.f5WindowVersion)!==f5WindowVersion||f5TimerRegressed||refreshTimerRegressed||bootChanged;
   if(!nv02BootF5ScheduleInitialized){
     nv02BootF5ScheduleInitialized=true;
-    if(nextPeriodicF5At<=now)log('NV02_F5_TIMER_OVERDUE_AFTER_RESTART',{nextPeriodicF5At});
+    if(bootChanged&&nextPeriodicF5At<=now){
+      const previousNextPeriodicF5At=nextPeriodicF5At;
+      nextPeriodicF5At=nextRandomAt(now,NV02_F5_MIN_MS,NV02_F5_MAX_MS);
+      persistBootSchedule=true;
+      log('NV02_F5_TIMER_REBASED_AFTER_OS_REBOOT',{previousNextPeriodicF5At,nextPeriodicF5At,bootId:BOOT_ID});
+    }
   }
   if(!nv02BootRefreshScheduleInitialized){
     nv02BootRefreshScheduleInitialized=true;
-    if(nextRefreshAt<=now)log('NV02_REFRESH_TIMER_OVERDUE_AFTER_RESTART',{nextRefreshAt});
+    if(bootChanged&&nextRefreshAt<=now){
+      const previousNextRefreshAt=nextRefreshAt;
+      nextRefreshAt=nextRandomAt(now,REFRESH_MIN_MS,REFRESH_MAX_MS);
+      persistBootSchedule=true;
+      log('NV02_REFRESH_TIMER_REBASED_AFTER_OS_REBOOT',{previousNextRefreshAt,nextRefreshAt,bootId:BOOT_ID});
+    }
   }
   const state={
+    bootId:BOOT_ID||String(raw.bootId||''),
     nextContinueAt:Number(raw.nextContinueAt)||nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
     nextPeriodicF5At,
     f5WindowVersion,
@@ -1221,17 +1235,36 @@ async function waitForWorkerFreshContext(w,target,timeoutMs=30000){
 function projectNewChatExpr(){
   return `(()=>{const labels=['Trò chuyện mới trong TigerIQ AI Lab','New chat in TigerIQ AI Lab'];const matches=[...document.querySelectorAll('button,[role="button"]')].filter(e=>labels.includes((e.getAttribute('aria-label')||'').trim()));if(matches.length!==1)return{ok:false,status:'PROJECT_NEW_CHAT_BUTTON_COUNT_'+matches.length};matches[0].click();return{ok:true,status:'PROJECT_NEW_CHAT_CLICKED'}})()`;
 }
+async function waitForNv02ProjectContextRecovery(target,timeoutMs=8000){
+  const deadline=Date.now()+timeoutMs;
+  let last=null;
+  while(Date.now()<deadline){
+    last=await uiStateRaw(target).catch(()=>null);
+    if(last?.securityBlock)return{ok:false,status:last.securityBlock,url:last?.url||null};
+    const inProject=isNv02ProjectContext(last?.url)||last?.projectDraftReady===true;
+    if(inProject&&last?.composerReady===true)return{ok:true,status:'PROJECT_CONTEXT_CONFIRMED',url:last?.url||null};
+    await sleep(250);
+  }
+  return{ok:false,status:'PROJECT_CONTEXT_NOT_CONFIRMED',url:last?.url||null};
+}
 async function recoverNv02ProjectContext(target){
-  for(let attempt=0;attempt<12;attempt+=1){
+  for(let attempt=0;attempt<2;attempt+=1){
     const p=await pageRpc(target);
+    let clicked=null;
     try{
-      const clicked=(await p.call('Runtime.evaluate',{expression:projectNewChatExpr(),returnByValue:true,userGesture:true})).result.value;
-      if(clicked?.ok)return clicked;
+      clicked=(await p.call('Runtime.evaluate',{expression:projectNewChatExpr(),returnByValue:true,userGesture:true})).result.value;
     }finally{p.close();}
+    if(clicked?.ok){
+      const confirmed=await waitForNv02ProjectContextRecovery(target,5000);
+      if(confirmed?.ok)return{ok:true,status:'PROJECT_NEW_CHAT_CONFIRMED',url:confirmed.url};
+      break;
+    }
     await sleep(250);
   }
   await navigate(target,NV02_HOME_URL);
-  return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED'};
+  const confirmed=await waitForNv02ProjectContextRecovery(target,12000);
+  if(confirmed?.ok)return{ok:true,status:'PROJECT_CONTEXT_NAVIGATED_CONFIRMED',url:confirmed.url};
+  return{ok:false,status:confirmed?.status||'PROJECT_CONTEXT_NOT_RECOVERED',url:confirmed?.url||null};
 }
 async function focus(target){const pacingMs=await stabilityPace();log('UI_STABILITY_PACING',{action:'FOCUS',delayMs:pacingMs});const p=await pageRpc(target);try{await p.call('Page.bringToFront');}finally{p.close();}}
 async function layout(w,target,bounds){
@@ -2137,8 +2170,21 @@ async function tickWorker(w){
         return;
       }
       if(!NV02_HOME_URL){await continuityEvent('PROJECT_CONTEXT_RECOVERY_BLOCKED',{reason:'NV02_HOME_URL_MISSING',url:rawUi.url||null});return;}
+      const recoveryState=loadNv02Continuity();
+      if(Date.now()<Number(recoveryState.projectRecoveryRetryAt||0))return;
       const recovered=await withNv02Mutation(()=>recoverNv02ProjectContext(target),'PROJECT_CONTEXT_RECOVERY');
-      await continuityEvent(recovered?.status==='MUTATION_LEASE_BUSY'?'PROJECT_CONTEXT_RECOVERY_DEFERRED':'PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered?.status||null,fromUrl:rawUi.url||null});
+      if(recovered?.status==='MUTATION_LEASE_BUSY'){
+        await continuityEvent('PROJECT_CONTEXT_RECOVERY_DEFERRED',{status:recovered.status,fromUrl:rawUi.url||null});
+        return;
+      }
+      if(!recovered?.ok){
+        const projectRecoveryRetryAt=Date.now()+30000;
+        saveNv02Continuity({...loadNv02Continuity(),projectRecoveryRetryAt});
+        await continuityEvent('PROJECT_CONTEXT_RECOVERY_FAILED',{status:recovered?.status||null,fromUrl:rawUi.url||null,lastUrl:recovered?.url||null,projectRecoveryRetryAt});
+        return;
+      }
+      saveNv02Continuity({...loadNv02Continuity(),projectRecoveryRetryAt:0});
+      await continuityEvent('PROJECT_CONTEXT_RECOVERY_NAVIGATED',{status:recovered.status,fromUrl:rawUi.url||null,toUrl:recovered?.url||null});
       return;
     }
     if(w.id==='NV02')await maybeNv02Continuity(w,target,ui);
