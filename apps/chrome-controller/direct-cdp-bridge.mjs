@@ -1986,6 +1986,8 @@ async function handleCommand(w,target,command){
     await navigate(target,u.toString());
     if(u.toString()===String(w.homeUrl||'')){
       const fresh=await waitForWorkerFreshContext(w,target,30000);
+      bootFreshContextPending.delete(w.id);
+      await genericWorkerEvent(w.id,'ASSIGNMENT_FRESH_CONTEXT_ACKNOWLEDGED',{url:fresh?.url||u.toString()});
       return{status:'FRESH_CONTEXT_READY',url:fresh?.url||u.toString()};
     }
     return{status:'NAVIGATED'};
