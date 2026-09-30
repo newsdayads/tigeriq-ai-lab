@@ -1574,6 +1574,12 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
           void recoverWorker(workerId);
           json(res,200,{ok:true,status:'LOCAL_RUN_RECOVERY_STARTED'});return true;
         }
+        if(workerId!=='NV02'){
+          const active=uiJobLedger.active(workerId);
+          const status=active?'LOCAL_CONTINUITY_ARMED':'RESUMED_IDLE_NO_ACTIVE_JOB';
+          log('UTILITY_WORKER_RESUME_LOCAL_ONLY',{workerId,status,jobId:active?.jobId??null});
+          json(res,200,{ok:true,status});return true;
+        }
         let result:any={status:'LOCAL_CONTINUE_DEFERRED'};
         for(let attempt=1;attempt<=3;attempt+=1){
           result=await sendCommand(workerId,'LOCAL_CONTINUE_NOW').catch(error=>({status:'LOCAL_CONTINUE_DEFERRED',error:String(error)}));
