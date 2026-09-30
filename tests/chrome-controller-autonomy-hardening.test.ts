@@ -215,7 +215,7 @@ describe('NV02 explicit resume from durable idle',()=>{
   });
 });
 
-describe('Owner-authorized zero-touch App Chrome deployment',()=>{describe('Owner-authorized zero-touch App Chrome deployment',()=>{
+describe('Owner-authorized zero-touch App Chrome deployment',()=>{
   it('keeps reboot default but supports explicit same-boot activation with rollback ownership',()=>{
     const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
     const helper=readFileSync('scripts/tigeriq-core/appchrome-zero-touch.ps1','utf8');
