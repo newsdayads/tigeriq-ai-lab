@@ -288,11 +288,12 @@ describe('NV02 archive live DOM R2', () => {
 describe('NV02 archive live DOM R3 transient click/backoff', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('clicks transient archive controls immediately after coordinates are resolved', () => {
+  it('opens the transient menu by mouse but activates Archive through keyboard semantics', () => {
     expect(bridge).toContain("async function cdpMouseClick(p,point,{paced=true}={})");
     expect(bridge).toContain("transient:!paced");
     expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
-    expect(bridge).toContain("cdpMouseClick(p,archivePoint,{paced:false})");
+    expect(bridge).toContain("const activated=await activateArchiveMenuItem(p)");
+    expect(bridge).not.toContain("cdpMouseClick(p,archivePoint,{paced:false})");
   });
 
   it('arms archive retry from failure completion time, not stale tick start time', () => {
@@ -328,8 +329,27 @@ describe('NV02 archive live confirmation R4', () => {
 
   it('confirms archive using toast, sidebar removal, or reopened menu Unarchive state', () => {
     expect(bridge).toContain("unarchiveVisible:unarchive.length===1");
-    expect(bridge).toContain("sidebarRemoved=allLinks.length>0&&currentLinks.length===0");
+    expect(bridge).toContain("sidebarRemoved=links.all.length>0&&links.current.length===0");
     expect(bridge).toContain("ARCHIVE_TOAST");
     expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId),awaitPromise:true");
+  });
+});
+
+
+describe('NV02 archive activation via menu keyboard semantics', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+  it('focuses the exact archive menuitem and activates it with Enter', () => {
+    expect(bridge).toContain('function archiveFocusExpr()');
+    expect(bridge).toContain("status:document.activeElement===archive[0]?'ARCHIVE_ACTION_FOCUSED':'ARCHIVE_ACTION_FOCUS_FAILED'");
+    expect(bridge).toContain("status:'ARCHIVE_ACTION_ACTIVATED_BY_ENTER'");
+    expect(bridge).toContain("type:'keyDown',key:'Enter'");
+    expect(bridge).toContain("type:'keyUp',key:'Enter'");
+    expect(bridge).toContain('const activated=await activateArchiveMenuItem(p)');
+    expect(bridge).not.toContain('await cdpMouseClick(p,archivePoint,{paced:false});');
+  });
+  it('opens the sidebar to confirm the archived conversation disappears', () => {
+    expect(bridge).toContain("const scanLinks=()=>");
+    expect(bridge).toContain("mở sidebar|hiện thanh bên|open sidebar");
+    expect(bridge).toContain('links.all.length>0&&links.current.length===0');
   });
 });
