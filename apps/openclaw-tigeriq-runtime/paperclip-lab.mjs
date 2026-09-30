@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
 export const PAPERCLIP_LAB_PORT = 3210;
-export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_ROLLBACK_PRESERVE_DB_1';
+export const PAPERCLIP_LAB_RUNTIME_REVISION = '20260930_DB_HEALTH_INVARIANT_1';
 export const PAPERCLIP_LAB_RELEASE = 'v2026.916.1';
 export const PAPERCLIP_LAB_RELEASE_SHA = 'd554c4789ed3930f8a53ac9fdf6503b3187097da';
 export const PAPERCLIP_LAB_IMAGE_REPOSITORY = 'ghcr.io/paperclipai/paperclip';
@@ -694,6 +694,10 @@ function paperclipDiagnosticClassTriggerSignals(logClass, lines = [], structured
       trigger: /connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/i,
       anchor: /connection refused|could not connect|econnrefused|database system is starting up|database connection/i,
     },
+    DB_ADMIN_STOP: {
+      trigger: /terminating connection due to administrator command|received (?:fast|smart|immediate) shutdown request|database system is shut down/i,
+      anchor: /administrator command|shutdown request|database system is shut down/i,
+    },
   };
   const pattern = patterns[logClass];
   if (!pattern) return [];
@@ -749,6 +753,7 @@ export function paperclipContainerLogClass(value = '') {
   if (/relation .* does not exist|column .* does not exist|undefined table|undefined column|\b42p01\b|\b42703\b/.test(text)) return 'DB_SCHEMA_MISSING';
   if (/pending migrations|stale schema|migration.*(?:failed|error)|(?:failed|error).*migration/.test(text)) return 'DB_MIGRATION';
   if (/connection refused|could not connect|econnrefused|database system is starting up|database connection.*(?:failed|error)/.test(text)) return 'DB_CONNECTION';
+  if (/terminating connection due to administrator command|received (?:fast|smart|immediate) shutdown request|database system is shut down/.test(text)) return 'DB_ADMIN_STOP';
   if (/corrupt|invalid page|checksum.*(?:failed|error)|wal.*(?:corrupt|invalid)/.test(text)) return 'DB_CORRUPT';
   if (/database|sqlite|migration|postgres|\bsql\b/.test(text)) return 'DATABASE';
   if (/address already in use|\beaddrinuse\b|port .*in use/.test(text)) return 'PORT_CONFLICT';
@@ -773,6 +778,16 @@ export function paperclipHealthFailureClass(state = {}) {
   const reason = String(state?.reason || '').toUpperCase();
   if (reason === 'PIN_NOT_READY') return 'PIN_NOT_READY';
   if (reason === 'DOCKER_UNAVAILABLE') return 'DOCKER_UNAVAILABLE';
+  if (state?.database?.present !== true) return 'DATABASE_NOT_PRESENT';
+  if (state?.database?.running !== true) {
+    const logClass = String(state?.database?.logClass || '');
+    const stateErrorClass = String(state?.database?.stateErrorClass || '');
+    if (logClass && logClass !== 'NO_LOGS' && logClass !== 'LOGS_UNAVAILABLE' && logClass !== 'UNCLASSIFIED') return `DATABASE_NOT_RUNNING_${logClass}`;
+    if (stateErrorClass && stateErrorClass !== 'NONE') return `DATABASE_NOT_RUNNING_STATE_${stateErrorClass}`;
+    return 'DATABASE_NOT_RUNNING';
+  }
+  const databaseHealth = String(state?.database?.healthStatus || '').trim().toLowerCase();
+  if (databaseHealth !== 'healthy') return `DATABASE_HEALTH_${databaseHealth ? databaseHealth.toUpperCase() : 'UNKNOWN'}`;
   if (state?.container?.running !== true) {
     const logClass = String(state?.container?.logClass || '');
     const stateErrorClass = String(state?.container?.stateErrorClass || '');
@@ -1032,11 +1047,30 @@ async function health(signal = null, transport = null, options = {}) {
     logExcerpt: logDiagnostic?.excerpt || null,
   };
 
+  const databaseState = {
+    present: database?.present === true,
+    running: database?.running === true,
+    status: database?.status || null,
+    exitCode: database?.exitCode ?? null,
+    oomKilled: database?.oomKilled ?? null,
+    healthStatus: database?.healthStatus || null,
+    restartCount: database?.restartCount ?? null,
+    startedAt: database?.startedAt || null,
+    finishedAt: database?.finishedAt || null,
+    stateErrorClass: database?.stateErrorClass || null,
+    logClass: database?.logClass || null,
+    logFingerprint: database?.logFingerprint || null,
+    logExcerpt: database?.logExcerpt || null,
+  };
+  const databaseReady = databaseState.present === true
+    && databaseState.running === true
+    && String(databaseState.healthStatus || '').toLowerCase() === 'healthy';
   const state = {
-    ok: port.reachable && http.appOk === true && identityOk,
+    ok: databaseReady && port.reachable && http.appOk === true && identityOk,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     port,
     http,
+    database: databaseState,
     container: {
       running: info?.State?.Running === true,
       identityOk,
