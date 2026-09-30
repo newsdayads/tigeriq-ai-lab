@@ -23,6 +23,7 @@ import {
   paperclipContainerLogClass,
   paperclipContainerLogDiagnostic,
   paperclipHealthFailureClass,
+  paperclipOpenAiDeviceAuthFailureClass,
   parsePaperclipComposePsRows,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
@@ -546,6 +547,14 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'manifest unknown: manifest not found' })).toBe('IMAGE_NOT_FOUND');
     expect(paperclipDockerFailureClass({ exitCode: 1, stderr: 'dial tcp: network is unreachable' })).toBe('NETWORK');
     expect(paperclipDockerFailureClass({ exitCode: 125, stderr: 'opaque provider text' })).toBe('EXIT_125');
+  });
+
+  it('classifies Paperclip OpenAI device auth failures without exposing raw output', () => {
+    expect(paperclipOpenAiDeviceAuthFailureClass('TIGERIQ_PAPERCLIP_OPENAI_SESSION_NOT_FOUND', false)).toBe('SESSION_NOT_FOUND');
+    expect(paperclipOpenAiDeviceAuthFailureClass('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_EARLY_EXIT', false)).toBe('CODEX_EARLY_EXIT');
+    expect(paperclipOpenAiDeviceAuthFailureClass('TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_PROMPT_TIMEOUT', false)).toBe('PROMPT_TIMEOUT');
+    expect(paperclipOpenAiDeviceAuthFailureClass('unclassified provider output SECRET_VALUE', false)).toBe('BROKER_EXECUTION_FAILED');
+    expect(paperclipOpenAiDeviceAuthFailureClass('', true)).toBe('BROKER_TIMEOUT');
   });
 
   it('pins immutable image refs and rejects mutable/foreign refs', () => {
