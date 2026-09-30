@@ -65,12 +65,13 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
 
   it('keeps NV03/NV04 lifecycle alive while Core assignment gates prompt dispatch only',()=>{
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));
-    expect(generic).toContain('const activeAssignment=activeLocalAssignment(controller,w.id)');
+    expect(generic).toContain('const activeAssignment=controller?activeLocalAssignment(controller,w.id):null');
+    expect(generic).toContain("continuity:'MAINTENANCE_ONLY'");
     expect(generic).toContain("'NO_ACTIVE_ASSIGNMENT_IDLE'");
     expect(generic).toContain("if(phase==='WORKING'&&Number(state.nextPeriodicF5At||0)<=now)");
     expect(generic).toContain("if(phase==='READY'){");
     expect(generic).toContain('if(!activeAssignment){');
-    expect(generic).toContain("reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',activeAssignment&&isAssignedWorkerChat(w,prepared?.url)?prepared.url:'')");
+    expect(generic).toContain("reopenWorker(w,target,state,now,'PERIODIC_2_4H_RESET',isAssignedWorkerChat(w,prepared?.url)?prepared.url:'')");
     expect(generic).not.toContain('PERIODIC_RESET_DEFERRED_ACTIVE_ASSIGNMENT');
   });
 
