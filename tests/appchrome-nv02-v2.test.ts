@@ -333,3 +333,14 @@ describe('NV02 archive live confirmation R4', () => {
     expect(bridge).toContain("archiveConfirmExpr(menuPoint.title,menuPoint.conversationId),awaitPromise:true");
   });
 });
+
+
+describe('NV02 current-chat header archive selector', () => {
+  const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+  it('supports the live ChatGPT top-header More button without matching composer add-file controls', () => {
+    expect(bridge).toContain("source:'HEADER_MORE_BUTTON'");
+    expect(bridge).toContain("r.top>=0&&r.top<80");
+    expect(bridge).toContain("/^(thêm|more)$/i.test(label)");
+    expect(bridge).toContain("lưu trữ");
+  });
+});
