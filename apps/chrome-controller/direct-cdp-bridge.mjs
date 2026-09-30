@@ -21,10 +21,6 @@ const NV02_IDLE_WAKE_MIN_MS=5*60*1000;
 const NV02_IDLE_WAKE_MAX_MS=10*60*1000;
 const NV02_POST_F5_STABLE_GRACE_MS=30*1000;
 const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY';
-const NV02_MAX_DISPATCHES_PER_CHAT=60;
-const NV02_MAX_CHAT_AGE_MS=6*60*60*1000;
-const NV02_ROTATION_INSTRUCTION='Nếu Work Order hiện tại đã terminal và durable checkpoint/evidence đã ghi GitHub, không lấy việc kế tiếp trong chat này; trả đúng TIGERIQ_CHAT_ROTATE_READY.';
-const NV02_SELF_PULL_WAKE_PROMPT='02 - Tự kiểm tra toàn bộ Work Order P1-P5 trên GitHub canonical. Trước tiên resume đúng lease NV02 còn active; nếu không có, phải đánh giá toàn bộ P1-P5 trước khi kết luận. CAPABILITY không phải tiêu chí loại việc khỏi tầm nhìn: nếu NV02 được phép và có đường thực thi trực tiếp thì claim đúng 1 scope và làm; nếu cần specialist thì điều phối/handoff đúng resource nhưng không chiếm mutation/review ownership của specialist. Review độc lập không được tự duyệt phần NV02 đã thực thi. Loại P0/hard-gate, App Chrome self-maintenance, HOLD, dependency chưa đạt, owner/lease/resource-scope conflict hoặc không có execution/handoff hợp lệ. App Chrome không chọn việc. Chỉ trả READY_NO_ELIGIBLE_WORK khi không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ.';
 const CONTROLLER='http://127.0.0.1:8798';
 const BINDING='2';
 const NV02_TOKEN=String(process.env.TIGERIQ_NV02_WORKER_TOKEN||'').trim();
@@ -53,35 +49,6 @@ let nv02MaintenanceTimerFloorInitialized=false;
 const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
-const NV02_CONTINUE_PROMPTS=Object.freeze([
-  'Tiếp tục',
-  'Làm tiếp',
-  'Tiếp đi',
-  'Xử lý tiếp',
-  'Thực hiện tiếp',
-  'Tiếp tục công việc hiện tại',
-  'Làm tiếp công việc hiện tại',
-  'Tiếp tục việc đang làm',
-  'Làm tiếp phần đang dở',
-  'Tiếp tục từ chỗ hiện tại',
-  'Tiếp tục đúng việc này',
-  'Xử lý tiếp việc hiện tại',
-  'Thực hiện tiếp việc đang làm',
-  'Tiếp tục phần còn dở',
-  'Tiếp tục từ trạng thái hiện tại',
-  'Tiếp tục xử lý việc đang dở',
-  'Tiếp tục công việc đang dang dở',
-  'Thực thi tiếp việc hiện tại',
-  'Làm tiếp nhiệm vụ đang thực hiện',
-  'Tiếp tục đúng việc đang được giao',
-  'Làm tiếp, không đổi việc',
-]);
-function pickNv02ContinuePrompt(previous='',random=Math.random){
-  const prior=String(previous||'').replace(/^02\s*-\s*/,'');
-  const candidates=NV02_CONTINUE_PROMPTS.filter((text)=>text!==prior);
-  const base=candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
-  return `${base}. ${NV02_ROTATION_INSTRUCTION}`;
-}
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
 const LOCAL_RUN_GRACE_MS=15000;
@@ -1194,7 +1161,7 @@ function activeLocalAssignment(controller,workerId){
 async function chooseLocalContinuePrompt(workerId,state={}){
   return {
     source:'LOCAL_CONTINUE',
-    prompt:workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt),
+    prompt:pickWorkerContinuePrompt(workerId,state?.lastPrompt),
     jobId:'',
     issueRef:null,
     priority:null,
@@ -1530,17 +1497,18 @@ async function rotateNv02ToFreshChat(target,state,reason,{idle=false}={}){
       await continuityEvent('NV02_CHAT_ROTATED_FRESH',{reason,idle:true,chatStartedAt:finalIdle.chatStartedAt,nextIdleWakeAt:finalIdle.nextIdleWakeAt});
       return{ok:true,status:'NV02_CHAT_ROTATED_IDLE',reason};
     }
-    const dispatched=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
-    if(!dispatched?.ok)return{ok:false,status:dispatched?.status||'CHAT_ROTATION_SELF_PULL_FAILED'};
+    const continuationPrompt=pickWorkerContinuePrompt('NV02',reset.lastPrompt);
+    const dispatched=await dispatch(target,continuationPrompt);
+    if(!dispatched?.ok)return{ok:false,status:dispatched?.status||'CHAT_ROTATION_CONTINUE_FAILED'};
     const active={...loadNv02Continuity(),
       idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,
       nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-      lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:1,lastPhase:'WORKING',
+      lastPrompt:continuationPrompt,dispatchesInChat:1,lastPhase:'WORKING',
       lastIdleMarkerSignature:'',idleWakeBaselineSignature:''
     };
     saveNv02Continuity(active);
     await continuityEvent('NV02_CHAT_ROTATED_FRESH',{reason,idle:false,chatStartedAt:active.chatStartedAt,dispatchesInChat:active.dispatchesInChat,evidence:dispatched.evidence||null});
-    return{ok:true,status:'NV02_CHAT_ROTATED_AND_SELF_PULL_DISPATCHED',reason};
+    return{ok:true,status:'NV02_CHAT_ROTATED_AND_CONTINUE_DISPATCHED',reason};
   },'NV02_CHAT_ROTATION',120000);
 }
 
@@ -1807,17 +1775,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     }
     return;
   }
-  const chatAgeMs=Math.max(0,now-Number(state.chatStartedAt||now));
-  const safetyRotationDue=currentChat&&phase==='READY'&&state.awaitingWorkStart!==true&&now>=Number(state.rotationRetryAt||0)
-    &&(Number(state.dispatchesInChat||0)>=NV02_MAX_DISPATCHES_PER_CHAT||chatAgeMs>=NV02_MAX_CHAT_AGE_MS);
-  if(safetyRotationDue){
-    const rotated=await rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT',{idle:false});
-    if(!rotated?.ok){
-      state={...loadNv02Continuity(),rotationRetryAt:Date.now()+60_000};saveNv02Continuity(state);
-      await continuityEvent('NV02_CHAT_ROTATION_RETRY_ARMED',{reason:'SAFETY_CONTEXT_LIMIT',status:rotated?.status||null,rotationRetryAt:state.rotationRetryAt,dispatchesInChat:state.dispatchesInChat,chatAgeMs});
-    }
-    return;
-  }
+
 
   state={...state,lastPhase:phase,resumeChatUrl:''};saveNv02Continuity(state);
   if(phase!=='BLOCKED'&&ui?.scrollToBottomVisible===true&&now>=Number(state.nextViewFollowAt||0)){
@@ -1936,10 +1894,11 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
       if(now<wakeAt)return;
       state={...state,nextIdleWakeAt:now+60_000};
       saveNv02Continuity(state);
+      const continuationPrompt=pickWorkerContinuePrompt('NV02',state.lastPrompt);
       let woke;
       try{
         woke=await withNv02Mutation(async()=>{
-          const result=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
+          const result=await dispatch(target,continuationPrompt);
           if(!result?.ok)throw new Error(result?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
           return result;
         },'NV02_IDLE_SELF_PULL_WAKE');
@@ -1953,7 +1912,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
         state={...loadNv02Continuity(),nextIdleWakeAt:now+5000};saveNv02Continuity(state);return;
       }
       try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
-      state={...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:Number(state.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')};
+      state={...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:continuationPrompt,dispatchesInChat:Number(state.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ui?.assistantSignature||'')};
       saveNv02Continuity(state);
       await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED',{nextIdleWakeAt:null,evidence:woke?.evidence||null});
       return;
@@ -2072,13 +2031,14 @@ async function handleCommand(w,target,command){
       const ready=await waitForNv02Composer(target,30000)||raw;
       if(ready?.uiBusy===true||ready?.uiPhase==='WORKING')return{status:'ALREADY_WORKING'};
       const now=Date.now();
-      const woke=await dispatch(target,NV02_SELF_PULL_WAKE_PROMPT);
+      const continuationPrompt=pickWorkerContinuePrompt('NV02',stateBefore.lastPrompt);
+      const woke=await dispatch(target,continuationPrompt);
       if(!woke?.ok)throw new Error(woke?.status||'NV02_IDLE_SELF_PULL_WAKE_FAILED');
       try{fs.unlinkSync(NV02_IDLE_MARKER);}catch{}
-      saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:NV02_SELF_PULL_WAKE_PROMPT,dispatchesInChat:Number(stateBefore.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ready?.assistantSignature||'')});
+      saveNv02Continuity({...loadNv02Continuity(),idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),lastPrompt:continuationPrompt,dispatchesInChat:Number(stateBefore.dispatchesInChat||0)+1,lastPhase:'WORKING',lastIdleMarkerSignature:'',idleWakeBaselineSignature:String(ready?.assistantSignature||'')});
       await continuityEvent('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED',{trigger:'LOCAL_CONTINUE_NOW',evidence:woke?.evidence||null});
       await noteNv02CommandDispatch();
-      return{status:'NV02_IDLE_SELF_PULL_WAKE_SUBMITTED',prompt:NV02_SELF_PULL_WAKE_PROMPT};
+      return{status:'NV02_IDLE_CONTINUE_SUBMITTED',prompt:continuationPrompt};
     }
     if(w.id!=='NV02'){
       let controller=null;
