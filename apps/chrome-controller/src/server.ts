@@ -464,6 +464,10 @@ async function dispatch(
   if(!text.trim())throw new Error('DISPATCH_TEXT_REQUIRED');
   const worker=getWorker(workerId)!;
   browserMutationLeases.assertControllerAllowed(workerId);
+  if(workerId==='NV03'){
+    navigate=true;
+    log('NV03_ASSIGNMENT_FRESH_CONTEXT_REQUIRED',{freshContext:true});
+  }
   if(workerId==='NV04'){
     const contract=validateNv04AssignmentContract(text);
     navigate=true;
