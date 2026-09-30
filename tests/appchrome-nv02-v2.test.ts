@@ -356,7 +356,12 @@ describe('NV02 archive Project-list confirmation', () => {
 
   it('confirms only after the exact conversation ID row disappears from Project list', () => {
     expect(bridge).toContain("rowRemoved:exact.length===0");
-    expect(bridge).toContain("projectContext:!/\\/c\\//.test(location.pathname)");
+    const confirmStart=bridge.indexOf('function archiveConfirmExpr');
+    const confirmEnd=bridge.indexOf('async function archiveChat',confirmStart);
+    const confirmBlock=bridge.slice(confirmStart,confirmEnd);
+    expect(confirmBlock).toContain("projectContext:!");
+    expect(confirmBlock).toContain(".test(location.pathname)");
+    expect(confirmBlock).toContain("pathname.endsWith('/c/'+conversationId)");
     expect(bridge).toContain("archiveConfirmExpr(identity.conversationId)");
     expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_PROJECT_LIST_ROW_REMOVED");
   });
