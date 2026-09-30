@@ -726,5 +726,9 @@ describe('NV03/NV04 Core UI transport loop',()=>{
     expect(server).toContain('CORE_UI_TRANSPORT_TERMINAL');
     expect(server).toContain("terminal==='DONE'?'DONE':'BLOCKED'");
     expect(server).toContain('uiJobLedger.reconcileAuthoritativeTerminal');
+    expect(server).toContain('hb.assistantResultTail||hb.assistantSignature||terminal');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('const assistantResultTail=assistantTextRaw.slice(-4000)');
+    expect(bridge).toContain('assistantTerminal,assistantResultTail');
   });
 });
