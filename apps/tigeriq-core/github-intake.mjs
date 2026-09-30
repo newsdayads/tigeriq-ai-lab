@@ -149,7 +149,8 @@ export function safeAutoWorkAdmission(issue){
   const title=String(issue.title||'');
   const priority=bodyValue(body,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
-  if(!hasExactFlag(body,'OWNER_POLICY','AUTO'))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
+  const ownerPolicy=bodyValue(body,'OWNER_POLICY').toUpperCase();
+  if(ownerPolicy&&!['AUTO','AUTO_AFTER_GATE'].includes(ownerPolicy))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
   if(backlogOwnerControlled(body)
     ||hasExactFlag(body,'OWNER_ACCEPTANCE_REQUIRED')
     ||hasExactFlag(body,'OWNER_REVIEW_REQUIRED')
@@ -201,7 +202,7 @@ export function parseExecutableIssue(issue){
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
-    capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',targetWorker:classification.workerId||null,
+    capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(classification.workerId||null),
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
@@ -652,7 +653,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         ? `GitHub autonomous CORE_REASONING coordination work item #${spec.number}. Analyze and coordinate only. Repository/source mutation must be handed off to the bounded coding executor lane; this API worker must not mutate source or claim coding/review ownership. Do not use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Preserve one-resource-one-writer and require independent review after implementation.\n\n${context}`
         : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
-      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
+      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY'),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
