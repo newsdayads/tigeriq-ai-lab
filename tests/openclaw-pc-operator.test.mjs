@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import {
   assertShellCommandAllowed,
   assertTigerIQTaskName,
+  parseTaskListCsv,
   assertWritePathAllowed,
   resolveOperatorPath,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
@@ -74,6 +75,41 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('limits scheduled-task actions to TigerIQ task names', () => {
     expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
     expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
+  });
+
+  it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
+    const csv = [
+      '"PC01","\\\\TigerIQ Core 24x7","10/1/2026 12:00:00 AM","Ready","Interactive/Background","9/30/2026 5:00:00 PM","0","SYSTEM","node D:\\\\TigerIQ\\\\Runtime\\\\core.mjs","N/A","","Enabled","","","SYSTEM","","","Every 5 minutes","Minute","5:00:00 PM","9/30/2026"',
+      '"PC01","\\\\Microsoft\\\\Windows\\\\Defrag\\\\ScheduledDefrag","N/A","Ready","Background","N/A","0","SYSTEM","defrag.exe","","","Enabled","","","SYSTEM","","","Weekly","Weekly","3:00:00 AM","9/30/2026"',
+      '"PC01","\\\\TigerIQ Quote Test","N/A","Disabled","Background","N/A","1","SYSTEM","cmd /c echo ""hello,world""","","","Disabled","","","SYSTEM","","","At startup","At system startup","",""',
+    ].join('\\r\\n');
+
+    expect(parseTaskListCsv(csv)).toEqual([
+      {
+        taskName: 'TigerIQ Core 24x7',
+        state: 'Ready',
+        lastRun: '9/30/2026 5:00:00 PM',
+        lastResult: '0',
+        action: 'node D:\\TigerIQ\\Runtime\\core.mjs',
+        trigger: 'Every 5 minutes | Minute | 5:00:00 PM | 9/30/2026',
+      },
+      {
+        taskName: 'TigerIQ Quote Test',
+        state: 'Disabled',
+        lastRun: 'N/A',
+        lastResult: '1',
+        action: 'cmd /c echo "hello,world"',
+        trigger: 'At startup | At system startup',
+      },
+    ]);
+  });
+
+  it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'task_list'");
+    expect(source).toContain("['/Query', '/FO', 'CSV', '/V', '/NH']");
+    expect(source).toContain("scope: 'TigerIQ'");
+    expect(source).not.toContain("['/Delete'");
   });
 });
 
