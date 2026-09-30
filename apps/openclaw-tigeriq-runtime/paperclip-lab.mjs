@@ -166,11 +166,52 @@ const LAB_ENV_FIXED = Object.freeze({
   PAPERCLIP_DEPLOYMENT_EXPOSURE: 'private',
   PAPERCLIP_PUBLIC_URL: `http://localhost:${PAPERCLIP_LAB_PORT}`,
   PAPERCLIP_ALLOWED_HOSTNAMES: 'localhost,127.0.0.1',
+  BETTER_AUTH_TRUSTED_ORIGINS: `http://localhost:${PAPERCLIP_LAB_PORT}`,
   OPENAI_API_KEY: '',
   ANTHROPIC_API_KEY: '',
 });
 const LAB_ENV_SECRET_KEYS = new Set(['BETTER_AUTH_SECRET','PAPERCLIP_TOOL_ACTION_SIGNING_SECRET']);
 const LAB_ENV_KEYS = new Set([...Object.keys(LAB_ENV_FIXED), ...LAB_ENV_SECRET_KEYS]);
+
+export function upgradeLegacyPaperclipLabEnvText(text) {
+  const rawText = String(text || '');
+  if (/^BETTER_AUTH_TRUSTED_ORIGINS=/m.test(rawText)) return null;
+
+  const legacyFixed = Object.fromEntries(
+    Object.entries(LAB_ENV_FIXED).filter(([key]) => key !== 'BETTER_AUTH_TRUSTED_ORIGINS'),
+  );
+  const legacyKeys = new Set([...Object.keys(legacyFixed), ...LAB_ENV_SECRET_KEYS]);
+  const values = new Map();
+  const orderedLines = [];
+  for (const raw of rawText.split(/\r?\n/)) {
+    if (!raw) continue;
+    const index = raw.indexOf('=');
+    if (index <= 0) return null;
+    const key = raw.slice(0, index);
+    const value = raw.slice(index + 1);
+    if (!legacyKeys.has(key) || values.has(key)) return null;
+    values.set(key, value);
+    orderedLines.push({ key, raw });
+  }
+  if (values.size !== legacyKeys.size) return null;
+  for (const [key, expected] of Object.entries(legacyFixed)) {
+    if (values.get(key) !== expected) return null;
+  }
+  for (const key of LAB_ENV_SECRET_KEYS) {
+    if (!/^[a-f0-9]{64}$/.test(values.get(key) || '')) return null;
+  }
+
+  const upgraded = [];
+  for (const entry of orderedLines) {
+    upgraded.push(entry.raw);
+    if (entry.key === 'PAPERCLIP_ALLOWED_HOSTNAMES') {
+      upgraded.push(`BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:${PAPERCLIP_LAB_PORT}`);
+    }
+  }
+  const result = upgraded.join('\n') + '\n';
+  validatePaperclipLabEnvText(result);
+  return result;
+}
 
 export function validatePaperclipLabEnvText(text) {
   const values = new Map();
@@ -526,7 +567,14 @@ async function ensureConfig(pin = null) {
   let envText;
   try {
     envText = await fs.readFile(safeEnvFile, 'utf8');
-    validatePaperclipLabEnvText(envText);
+    try {
+      validatePaperclipLabEnvText(envText);
+    } catch (error) {
+      const upgraded = upgradeLegacyPaperclipLabEnvText(envText);
+      if (!upgraded) throw error;
+      envText = upgraded;
+      await fs.writeFile(safeEnvFile, envText, 'utf8');
+    }
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
     const authSecret = randomBytes(32).toString('hex');
@@ -538,6 +586,7 @@ async function ensureConfig(pin = null) {
       'PAPERCLIP_DEPLOYMENT_EXPOSURE=private',
       `PAPERCLIP_PUBLIC_URL=http://localhost:${PAPERCLIP_LAB_PORT}`,
       'PAPERCLIP_ALLOWED_HOSTNAMES=localhost,127.0.0.1',
+      `BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:${PAPERCLIP_LAB_PORT}`,
       `BETTER_AUTH_SECRET=${authSecret}`,
       `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=${signingSecret}`,
       'OPENAI_API_KEY=',

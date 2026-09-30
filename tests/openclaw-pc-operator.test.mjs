@@ -30,6 +30,7 @@ import {
   paperclipLabWslPath,
   resolvePaperclipLabPath,
   validatePaperclipLabEnvText,
+  upgradeLegacyPaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('OpenClaw PC01 guarded local operator', () => {
@@ -559,6 +560,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
       'PAPERCLIP_DEPLOYMENT_EXPOSURE=private',
       'PAPERCLIP_PUBLIC_URL=http://localhost:3210',
       'PAPERCLIP_ALLOWED_HOSTNAMES=localhost,127.0.0.1',
+      'BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:3210',
       'BETTER_AUTH_SECRET=' + 'a'.repeat(64),
       'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=' + 'b'.repeat(64),
       'OPENAI_API_KEY=',
@@ -568,6 +570,28 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(validatePaperclipLabEnvText(safe)).toBe(true);
     expect(() => validatePaperclipLabEnvText(safe.replace('OPENAI_API_KEY=', 'OPENAI_API_KEY=not-allowed'))).toThrow('TIGERIQ_PAPERCLIP_LAB_ENV_UNSAFE');
     expect(() => validatePaperclipLabEnvText(safe + 'TIGERIQ_TOKEN=x\n')).toThrow('TIGERIQ_PAPERCLIP_LAB_ENV_NOT_ALLOWLISTED');
+  });
+
+  it('upgrades the legacy Paperclip env with the exact browser origin without rotating secrets', () => {
+    const legacy = [
+      'HOST=0.0.0.0',
+      'PAPERCLIP_HOME=/paperclip',
+      'PAPERCLIP_DEPLOYMENT_MODE=authenticated',
+      'PAPERCLIP_DEPLOYMENT_EXPOSURE=private',
+      'PAPERCLIP_PUBLIC_URL=http://localhost:3210',
+      'PAPERCLIP_ALLOWED_HOSTNAMES=localhost,127.0.0.1',
+      'BETTER_AUTH_SECRET=' + 'a'.repeat(64),
+      'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=' + 'b'.repeat(64),
+      'OPENAI_API_KEY=',
+      'ANTHROPIC_API_KEY=',
+      '',
+    ].join('\n');
+    const upgraded = upgradeLegacyPaperclipLabEnvText(legacy);
+    expect(upgraded).toContain('BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:3210');
+    expect(upgraded).toContain('BETTER_AUTH_SECRET=' + 'a'.repeat(64));
+    expect(upgraded).toContain('PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=' + 'b'.repeat(64));
+    expect(validatePaperclipLabEnvText(upgraded)).toBe(true);
+    expect(upgradeLegacyPaperclipLabEnvText(upgraded)).toBeNull();
   });
 
   it('ships the Paperclip module in the packaged OpenClaw plugin', async () => {
