@@ -19,19 +19,11 @@ describe('App Chrome NV02 V2 boundary', () => {
     expect(supervisor).not.toContain('gh.exe');
   });
 
-  it('uses one bounded idle wake while NV02 chooses and claims its own work', () => {
-    expect(bridge).toContain('NV02_SELF_PULL_WAKE_PROMPT');
-    expect(bridge).toContain('App Chrome không chọn việc');
-    expect(bridge).toContain('toàn bộ Work Order P1-P5');
-    expect(bridge).toContain('CAPABILITY không phải tiêu chí loại việc khỏi tầm nhìn');
-    expect(bridge).toContain('điều phối/handoff đúng resource');
-    expect(bridge).toContain('không chiếm mutation/review ownership của specialist');
-    expect(bridge).toContain('Review độc lập không được tự duyệt phần NV02 đã thực thi');
-    expect(bridge).toContain('App Chrome self-maintenance');
-    expect(bridge).toContain('owner/lease/resource-scope conflict');
-    expect(bridge).toContain('không còn P1-P5 nào NV02 có thể trực tiếp xử lý hoặc điều phối/handoff hợp lệ');
-    expect(bridge).toContain('Loại P0/hard-gate');
-    expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
+  it('uses only one exact prefixed continuation command for bounded idle wake', () => {
+    expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).toContain("return `02 - ${base}`");
+    expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_DISPATCHED');
     expect(bridge).toContain('detectWorkerAssistantTerminal');
     expect(bridge).toContain('assistantTerminal=detectAssistantTerminal(assistantTextRaw)');
     expect(bridge).toContain('lastIdleMarkerSignature');
@@ -75,17 +67,15 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(dispatchBlock).not.toContain('state.nextPeriodicF5At=nextRandomAt');
   });
 
-  it('executes due F5 while WORKING instead of deferring it', () => {
+  it('defers due F5 while WORKING', () => {
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).not.toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
-    expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING');
-    expect(nv02Loop).not.toContain('PERIODIC_F5_DEFERRED_WORKING_FRESH');
-    const f5Gate=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
-    const workingGate=nv02Loop.indexOf("if(phase==='WORKING'){",f5Gate);
-    expect(f5Gate).toBeGreaterThan(-1);
-    expect(workingGate).toBeGreaterThan(f5Gate);
-    expect(nv02Loop.slice(f5Gate,workingGate)).toContain('await reloadTarget(target)');
-    expect(nv02Loop.slice(f5Gate,workingGate)).toContain("'PERIODIC_F5_REFRESH',15000");
+    expect(nv02Loop).toContain("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    expect(nv02Loop).toContain('PERIODIC_F5_DEFERRED_WORKING');
+    const deferGate=nv02Loop.indexOf("if(phase==='WORKING'&&now>=Number(state.nextPeriodicF5At||0))");
+    const f5Gate=nv02Loop.indexOf("if(now>=Number(state.nextPeriodicF5At||0))",deferGate+1);
+    expect(deferGate).toBeGreaterThan(-1);
+    expect(f5Gate).toBeGreaterThan(deferGate);
+    expect(nv02Loop.slice(deferGate,f5Gate)).not.toContain('reloadTarget(target)');
   });
 
   it('requires a stable renderer grace before an overdue follow-up F5', () => {
@@ -106,17 +96,17 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain("reason:'CONNECTIVITY_FAILURE'");
   });
 
-  it('prioritizes boot fresh-context transition over overdue F5', () => {
+  it('preserves or recovers the existing NV02 project/chat context on boot', () => {
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
     expect(nv02Loop).toContain("const bootContextTransitionPending=bootFreshContextPending.has('NV02')");
     expect(nv02Loop).toContain("'PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CONTEXT'");
-    expect(nv02Loop).toContain("if(bootContextTransitionPending)");
-    expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
     expect(nv02Loop).toContain("state.crashResumePending===true");
     expect(nv02Loop).toContain("'NV02_CRASH_CHAT_RESTORED'");
+    expect(nv02Loop).toContain("'BOOT_CONTEXT_PRESERVED_OR_RECOVERED'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
   });
 
-  it('defers planned 2-4h reset while WORKING and reopens into fresh project context', () => {
+  it('defers planned 2-4h reset while WORKING and preserves a valid chat when idle', () => {
     expect(bridge).toContain("if(now>=Number(state.nextRefreshAt||0))");
     const resetHelper=bridge.slice(
       bridge.indexOf('async function reopenNv02PeriodicWorker'),
@@ -124,12 +114,11 @@ describe('NV02 V2 independent maintenance timers', () => {
     );
     expect(resetHelper).toContain("if(phase==='WORKING')return{ok:false,status:'NV02_PERIODIC_REOPEN_DEFERRED_WORKING'}");
     expect(resetHelper).toContain('prepareWorkerForPlannedRestart');
-    expect(resetHelper).toContain('const resumeUrl=NV02_HOME_URL');
+    expect(resetHelper).toContain("const resumeUrl=isRestorableNv02Chat(prepared.url)?String(prepared.url):NV02_HOME_URL");
     expect(resetHelper).toContain("reason:'PERIODIC_2_4H_RESET'");
     expect(resetHelper).toContain('await closeWorker(w,target)');
     expect(resetHelper).toContain('await navigate(replacement,resumeUrl)');
-    expect(resetHelper).toContain('dispatchesInChat:0');
-    expect(resetHelper).toContain("bootFreshContextPending.add('NV02')");
+    expect(resetHelper).toContain("preservedChat:isRestorableNv02Chat(resumeUrl)");
     expect(bridge).toContain("'PERIODIC_RESTART_DEFERRED_WORKING'");
   });
 
@@ -194,71 +183,58 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(recovery.slice(graceGate,terminalGate)).toContain('return true;');
   });
 
-  it('does not arm the 15m terminal backoff for a valid active NV02 chat after post-reboot F5', () => {
+  it('archives/rebuilds NV02 only after bounded retry and F5 fail on a genuinely unloadable current chat', () => {
     const recoveryStart=bridge.indexOf('async function maybeRecoverChatLoadError');
     const recoveryEnd=bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR',recoveryStart);
     const recovery=bridge.slice(recoveryStart,recoveryEnd);
     const stage2=recovery.indexOf('if(stage===2)');
-    const genericBlock=recovery.indexOf('const blockedUntil=now+15*60*1000',stage2);
     expect(stage2).toBeGreaterThan(-1);
-    expect(genericBlock).toBeGreaterThan(stage2);
-    const activeChatPath=recovery.slice(stage2,genericBlock);
+    const activeChatPath=recovery.slice(stage2,recovery.indexOf('const blockedUntil=now+15*60*1000',stage2));
     expect(activeChatPath).toContain("w.id==='NV02'&&hasCurrentNv02Chat(ui?.url)");
-    expect(activeChatPath).toContain('const retryAt=now+30_000');
-    expect(activeChatPath).toContain('chatLoadRecoveryStage:0');
-    expect(activeChatPath).toContain('chatLoadBlockedUntil:retryAt');
-    expect(activeChatPath).toContain('CHAT_LOAD_ACTIVE_CHAT_BOUNDED_BACKOFF');
-    expect(activeChatPath).toContain('return false;');
-    const nv02ActiveStart=activeChatPath.indexOf("w.id==='NV02'&&hasCurrentNv02Chat(ui?.url)");
-    const terminalStart=activeChatPath.indexOf('chatLoadRecoveryStage:3');
-    expect(terminalStart).toBeGreaterThan(nv02ActiveStart);
+    expect(activeChatPath).toContain('CHAT_LOAD_DURABLE_CHECKPOINT');
+    expect(activeChatPath).toContain("rotateNv02ToFreshChat(target,checkpoint,'CHAT_LOAD_ERROR'");
+    expect(activeChatPath).toContain('CHAT_LOAD_ARCHIVE_RECOVERY_DEFERRED');
   });
 
-  it('keeps reviewed self-pull and idle behavior in the exact head', () => {
-    expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_UNCERTAIN');
+  it('keeps exact-command idle wake after maintenance gates', () => {
+    expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_UNCERTAIN');
     expect(bridge).toContain('nextIdleWakeAt:now+60_000');
-    expect(bridge).toContain('NV02_IDLE_SELF_PULL_WAKE_DISPATCHED');
+    expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_DISPATCHED');
+    expect(bridge).toContain("return `02 - ${base}`");
     const f5Gate=bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
     const idleGate=bridge.indexOf("if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true)");
     expect(f5Gate).toBeGreaterThan(-1);
     expect(idleGate).toBeGreaterThan(f5Gate);
   });
+
 });
 
 
-describe('NV02 fresh-chat lifecycle V3', () => {
+describe('NV02 fresh-chat lifecycle V3'
+});
+
+
+describe('NV02 chat lifecycle master contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('uses GitHub checkpoint as continuity and rotates chat after terminal work', () => {
-    expect(bridge).toContain("const NV02_CHAT_ROTATE_MARKER='TIGERIQ_CHAT_ROTATE_READY'");
-    expect(bridge).toContain('NV02_ROTATION_INSTRUCTION');
-    expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER");
-    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
-    expect(bridge).toContain("await archiveChat(target)");
-    expect(bridge).toContain("await newChat(target)");
-    expect(bridge).toContain('dispatchesInChat:0,chatStartedAt:now');
-  });
-
-  it('does not restore a verified chat on ordinary boot and keeps crash-only restore explicit', () => {
+  it('does not auto-rotate on terminal, idle, prompt-count, chat-age, or ordinary boot', () => {
     const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
-    expect(nv02Loop).toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
-    expect(nv02Loop).not.toContain('restoreVerifiedChatUrl');
-    expect(bridge).toContain('crashResumePending:Boolean(raw.crashResumePending)');
-    expect(bridge).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
-    expect(nv02Loop).toContain("state.crashResumePending===true&&isRestorableNv02Chat(state.crashResumeUrl)");
-    expect(bridge).toContain("function isRestorableNv02Chat(url)");
-    expect(bridge).toContain("!/^local-chatgpt:/i.test(conversationId)");
-    expect(bridge).toContain("'NV02_CRASH_CHAT_RESUME_SKIPPED_NON_DURABLE'");
-    expect(bridge).toContain("const crashUrl=isRestorableNv02Chat(continuity.verifiedChatUrl)");
+    expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
+    expect(bridge).not.toContain('NV02_MAX_DISPATCHES_PER_CHAT');
+    expect(bridge).not.toContain('NV02_MAX_CHAT_AGE_MS');
+    expect(nv02Loop).not.toContain('SAFETY_CONTEXT_LIMIT');
+    expect(nv02Loop).not.toContain('JOB_TERMINAL_DURABLE_CHECKPOINT');
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'BOOT_FRESH_CHAT'");
+    expect(nv02Loop).toContain('BOOT_CONTEXT_PRESERVED_OR_RECOVERED');
   });
 
-  it('rotates idle and oversized chats instead of growing context forever', () => {
-    expect(bridge).toContain('NV02_MAX_DISPATCHES_PER_CHAT=60');
-    expect(bridge).toContain('NV02_MAX_CHAT_AGE_MS=6*60*60*1000');
-    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
-    expect(bridge).toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
-    expect(bridge).toContain('Number(state.dispatchesInChat||0)>=NV02_MAX_DISPATCHES_PER_CHAT');
-    expect(bridge).toContain('chatAgeMs>=NV02_MAX_CHAT_AGE_MS');
+  it('keeps archive/new-chat available only for explicit command or genuine chat-load recovery', () => {
+    expect(bridge).toContain("if(action==='ARCHIVE_CHAT')");
+    const recovery=bridge.slice(bridge.indexOf('async function maybeRecoverChatLoadError'),bridge.indexOf('const MODEL_SELECTOR_POINT_EXPR'));
+    expect(recovery).toContain("rotateNv02ToFreshChat(target,checkpoint,'CHAT_LOAD_ERROR'");
+    expect(bridge).toContain('await archiveChat(target)');
+    expect(bridge).toContain('await newChat(target)');
   });
 });
 
@@ -284,11 +260,16 @@ describe('NV02 archive rotation robustness', () => {
     expect(bridge).toContain("if(/all|tất cả/i.test(t))return false");
   });
 
-  it('honors rotationRetryAt after archive failure instead of retrying every 3s tick', () => {
-    expect(bridge).toContain("ui?.assistantTerminal===NV02_CHAT_ROTATE_MARKER&&now>=Number(state.rotationRetryAt||0)");
-    expect(bridge).toContain("ui?.assistantTerminal==='READY_NO_ELIGIBLE_WORK'&&now>=Number(state.rotationRetryAt||0)");
-    expect(bridge).toContain("rotationRetryAt:Date.now()+60_000");
+  it('does not trigger archive from READY/terminal continuity state', () => {
+    const nv02Loop=bridge.slice(bridge.indexOf('async function maybeNv02Continuity'),bridge.indexOf('async function handleCommand'));
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'JOB_TERMINAL_DURABLE_CHECKPOINT'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'READY_NO_ELIGIBLE_WORK'");
+    expect(nv02Loop).not.toContain("rotateNv02ToFreshChat(target,state,'SAFETY_CONTEXT_LIMIT'");
   });
+
+});
+
+describe('NV02 current-header archive generated-expression regression'
 });
 
 describe('NV02 current-header archive generated-expression regression', () => {
