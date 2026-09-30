@@ -139,7 +139,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_HEALTH_INVARIANT_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_WSL_KEEPALIVE_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -444,13 +444,21 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).toContain("$timeoutKind = 'total'");
     expect(broker).toContain('function Write-BrokerHeartbeat');
     expect((broker.match(/Write-BrokerHeartbeat/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(broker).toContain("function Start-WslKeepalive");
+    expect(broker).toContain("function Test-WslKeepaliveRunning");
+    expect(broker).toContain("$KeepaliveExecutable = '/usr/bin/sleep'");
+    expect(broker).toContain("$KeepaliveArgument = 'infinity'");
+    expect(broker).toContain("@('--distribution',$Distro,'--exec',$KeepaliveExecutable,$KeepaliveArgument)");
+    expect(broker).toContain("wslKeepaliveRunning=[bool]$keepaliveRunning");
+    expect(broker).toContain("wslKeepalivePid=if($keepaliveRunning)");
+    expect(broker).not.toMatch(/(?:sh|bash)\s+-c/);
     expect(broker).toContain("'inspect_revision'");
     expect(broker).toContain("'inspect_repo_digests'");
     expect(broker).toContain("'compose_up'");
     expect(broker).toContain("'compose_stop'");
     expect(broker).toContain("'compose_ps_all_db_json'");
     expect(broker).toContain("'compose_db_logs_tail'");
-    expect(broker).toContain("$BrokerVersion = '1.5-db-sidecar-diagnostic'");
+    expect(broker).toContain("$BrokerVersion = '1.6-wsl-keepalive'");
     expect(broker).toContain("'stop_container'");
     expect(broker).toContain("'inspect_container'");
     expect(broker).toContain("'container_logs_tail'");
@@ -459,10 +467,12 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(broker).not.toMatch(/OPENAI_API_KEY|ANTHROPIC_API_KEY|TIGERIQ_GITHUB_TOKEN|DATABASE_URL/);
     expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
     expect(installer).toContain("$TaskName='TigerIQ Paperclip WSL Broker'");
-    expect(installer).toContain("$ExpectedBrokerVersion='1.5-db-sidecar-diagnostic'");
+    expect(installer).toContain("$ExpectedBrokerVersion='1.6-wsl-keepalive'");
     expect(installer).toContain('Stop-ScheduledTask -TaskName $TaskName');
     expect(installer).toContain('Remove-Item -LiteralPath $Heartbeat -Force');
     expect(installer).toContain("[string]$h.version -eq $ExpectedBrokerVersion");
+    expect(installer).toContain("[bool]$h.wslKeepaliveRunning -eq $true");
+    expect(installer).toContain("[int]$h.wslKeepalivePid -gt 0");
     expect(installer).toContain("$heartbeatAt -ge $InstallStartedAt");
     expect(installer).not.toMatch(/Password|Credential|RunLevel Highest/);
   });
@@ -519,8 +529,10 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain("wsl.exe");
     expect(source).toContain("'--distribution', PAPERCLIP_LAB_WSL_DISTRO, '--exec', 'docker'");
     expect(source).toContain('wsl-ubuntu-interactive-broker');
-    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.5-db-sidecar-diagnostic'");
+    expect(source).toContain("BROKER_EXPECTED_VERSION = '1.6-wsl-keepalive'");
     expect(source).toContain("String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION");
+    expect(source).toContain("heartbeat?.wslKeepaliveRunning === true");
+    expect(source).toContain("Number(heartbeat?.wslKeepalivePid || 0) > 0");
     expect(source).toContain("paperclip_lab_broker_install");
     expect(source).toContain("TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_INVALID");
     expect(source).toContain("C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe");
