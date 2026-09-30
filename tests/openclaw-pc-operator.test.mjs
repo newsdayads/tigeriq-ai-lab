@@ -215,19 +215,20 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   });
 
   it('classifies health timeout causes before rollback', () => {
+    const database = { present: true, running: true, healthStatus: 'healthy' };
     expect(paperclipHealthFailureClass({ reason: 'PIN_NOT_READY' })).toBe('PIN_NOT_READY');
     expect(paperclipHealthFailureClass({ database: { present: false } })).toBe('DATABASE_NOT_PRESENT');
     expect(paperclipHealthFailureClass({ database: { present: true, running: false, logClass: 'DB_ADMIN_STOP' } })).toBe('DATABASE_NOT_RUNNING_DB_ADMIN_STOP');
     expect(paperclipHealthFailureClass({ database: { present: true, running: true, healthStatus: 'starting' } })).toBe('DATABASE_HEALTH_STARTING');
-    expect(paperclipHealthFailureClass({ database: { present: true, running: true, healthStatus: 'healthy' }, container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
-    expect(paperclipHealthFailureClass({ container: { running: false, logClass: 'PERMISSION' } })).toBe('CONTAINER_NOT_RUNNING_PERMISSION');
-    expect(paperclipHealthFailureClass({ container: { running: false, stateErrorClass: 'MOUNT' } })).toBe('CONTAINER_NOT_RUNNING_STATE_MOUNT');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: false } })).toBe('PORT_BINDING_MISMATCH');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: false } })).toBe('DATA_MOUNT_MISMATCH');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: false } })).toBe('PORT_UNREACHABLE');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
-    expect(paperclipHealthFailureClass({ container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
+    expect(paperclipHealthFailureClass({ database, container: { running: false } })).toBe('CONTAINER_NOT_RUNNING');
+    expect(paperclipHealthFailureClass({ database, container: { running: false, logClass: 'PERMISSION' } })).toBe('CONTAINER_NOT_RUNNING_PERMISSION');
+    expect(paperclipHealthFailureClass({ database, container: { running: false, stateErrorClass: 'MOUNT' } })).toBe('CONTAINER_NOT_RUNNING_STATE_MOUNT');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: false } })).toBe('PORT_BINDING_MISMATCH');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: true, dataMountOk: false } })).toBe('DATA_MOUNT_MISMATCH');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: false } })).toBe('PORT_UNREACHABLE');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: false } })).toBe('HTTP_UNREACHABLE');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: true, dataMountOk: true }, port: { reachable: true }, http: { reachable: true, status: 503, appOk: false } })).toBe('HTTP_503');
+    expect(paperclipHealthFailureClass({ database, container: { running: true, portBindingOk: true, dataMountOk: true, identityOk: true }, port: { reachable: true }, http: { reachable: true, status: 200, appOk: false } })).toBe('HTTP_STATUS_NOT_OK');
   });
 
   it('returns only bounded redacted container log diagnostics while preserving relevant root-cause lines', () => {
