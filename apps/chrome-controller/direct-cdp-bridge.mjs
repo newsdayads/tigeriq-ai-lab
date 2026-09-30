@@ -872,9 +872,28 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
 })()`;
 
 async function uiStateRaw(target){
-  const p=await pageRpc(target);
-  try{return (await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true})).result.value;}
-  finally{p.close();}
+  let lastError=null;
+  for(let attempt=1;attempt<=3;attempt+=1){
+    const p=await pageRpc(target);
+    try{
+      const evaluated=await p.call('Runtime.evaluate',{expression:UI_EXPR,returnByValue:true});
+      const remote=evaluated?.result;
+      if(evaluated?.exceptionDetails){
+        const description=String(evaluated.exceptionDetails?.exception?.description||evaluated.exceptionDetails?.text||'RUNTIME_EVALUATE_EXCEPTION');
+        lastError=new Error('UI_STATE_EVALUATE_EXCEPTION:'+description);
+      }else if(remote&&Object.prototype.hasOwnProperty.call(remote,'value')&&remote.value&&typeof remote.value==='object'){
+        if(attempt>1)log('UI_STATE_RECOVERED_AFTER_RETRY',{attempt,url:String(remote.value.url||target?.url||'')});
+        return remote.value;
+      }else{
+        lastError=new Error('UI_STATE_VALUE_UNAVAILABLE:'+String(remote?.type||'UNKNOWN'));
+      }
+    }catch(error){
+      lastError=error;
+    }finally{p.close();}
+    log('UI_STATE_READ_RETRY',{attempt,targetId:target?.id||null,targetUrl:target?.url||null,error:String(lastError?.message||lastError)});
+    if(attempt<3)await sleep(250*attempt);
+  }
+  throw lastError||new Error('UI_STATE_READ_FAILED');
 }
 async function uiState(target){
   const raw=await uiStateRaw(target);
@@ -2073,6 +2092,10 @@ async function tickWorker(w){
     }
     const target=await pruneDuplicates(w,list);if(!target)return;
     const rawUi=await uiState(target);
+    if(!rawUi||typeof rawUi!=='object'){
+      log('UI_STATE_UNAVAILABLE_FAIL_CLOSED',{workerId:w.id,targetId:target?.id||null,targetUrl:target?.url||null});
+      return;
+    }
     const projectContextReady=w.id!=='NV02'||isNv02ProjectContext(rawUi.url)||rawUi.projectDraftReady===true;
     const localReady=projectContextReady&&rawUi?.composerReady===true&&!rawUi?.securityBlock&&!rawUi?.authRequired&&!rawUi?.chatLoadError&&!rawUi?.connectionPending;
     const ui=projectContextReady?(localReady?{...rawUi,uiReady:true,uiPhase:'READY'}:rawUi):{...rawUi,uiReady:false,uiPhase:'STALLED',modelReady:false};
