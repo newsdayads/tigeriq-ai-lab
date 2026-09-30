@@ -52,20 +52,27 @@ try{
   $taskName='TigerIQ APP Chrome Unified'
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
   $taskActivation=if($task){'TASK_PRESENT_NEXT_REBOOT'}else{'TASK_ABSENT'}
+  try{
+    $installedBootId=([DateTime](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime).ToUniversalTime().ToString('o')
+  }catch{
+    throw "INSTALL_BOOT_ID_UNAVAILABLE:$($_.Exception.Message)"
+  }
 
-  $active=[ordered]@{
-    schemaVersion='tigeriq.appchrome.active-deploy.v1'
+  $pending=[ordered]@{
+    schemaVersion='tigeriq.appchrome.pending-deploy.v1'
     exactHead=$ExpectedHead
     nv02Only=[bool]$Nv02Only
     deploy=$deploy
     bridgeSha256=$bridgeHash
     installedAt=(Get-Date).ToUniversalTime().ToString('o')
+    installedBootId=$installedBootId
     activation='NEXT_REBOOT_PENDING'
   }
-  $activeTmp=Join-Path $runtime 'active-deploy.json.tmp'
+  $pendingTmp=Join-Path $runtime 'pending-deploy.json.tmp'
+  $pendingPath=Join-Path $runtime 'pending-deploy.json'
   $activePath=Join-Path $runtime 'active-deploy.json'
-  [IO.File]::WriteAllText($activeTmp,($active|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-  Move-Item $activeTmp $activePath -Force
+  [IO.File]::WriteAllText($pendingTmp,($pending|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+  Move-Item $pendingTmp $pendingPath -Force
 
   $manifest=[ordered]@{
     ok=$true
@@ -74,10 +81,12 @@ try{
     deploy=$deploy
     bridgeSha256=$bridgeHash
     activeDeploy=$activePath
+    pendingDeploy=$pendingPath
     launcher=$launcherLegacy
     activation='NEXT_REBOOT_PENDING'
     taskActivation=$taskActivation
-    installedAt=$active.installedAt
+    installedAt=$pending.installedAt
+    installedBootId=$pending.installedBootId
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
