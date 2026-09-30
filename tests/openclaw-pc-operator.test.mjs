@@ -138,7 +138,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_POSTGRES_MIGRATE_GATE_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_CONNECTION_DIAGNOSTIC_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -262,6 +262,23 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(out.excerpt).toContain('migration failed');
     expect(out.excerpt).toContain('pending migrations');
     expect(out.excerpt).toContain('stale schema');
+    expect(out).toEqual(paperclipContainerLogDiagnostic(input));
+  });
+
+  it('preserves the DB_CONNECTION trigger when a long failed-query tail would otherwise hide it', () => {
+    const trigger = 'cause=ECONNREFUSED database connection failed to db:5432';
+    const input = [
+      ...Array.from({ length: 20 }, (_, i) => 'noise-before-' + i),
+      trigger,
+      ...Array.from({ length: 40 }, (_, i) => 'ERROR database generic tail line ' + i + ' '.repeat(30)),
+      'message=Failed query: select id, endpoint_id, event_kind from chat_deliveries where state = $1',
+      'generic database shutdown error tail',
+    ].join('\n');
+    expect(paperclipContainerLogClass(input)).toBe('DB_CONNECTION');
+    const out = paperclipContainerLogDiagnostic(input);
+    expect(out.excerpt.length).toBeLessThanOrEqual(900);
+    expect(out.excerpt).toContain('ECONNREFUSED');
+    expect(out.excerpt).toContain('database connection failed');
     expect(out).toEqual(paperclipContainerLogDiagnostic(input));
   });
 
