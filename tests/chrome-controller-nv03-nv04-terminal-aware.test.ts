@@ -13,7 +13,7 @@ describe('NV03/NV04 terminal-aware continuity #2549',()=>{
     expect(generic).toContain('genericWorkerJobContinuable(activeJob)');
     expect(generic).toContain('LOCAL_CONTINUITY_STOPPED_JOB_STATE');
     expect(command).toContain('getWorkerJobBinding(w.id)');
-    expect(command).toContain("status:'READY_UNASSIGNED'");
+    expect(command).toContain("status:'NO_ACTIVE_WORK'");
   });
 
   it('waits for a clean home context before an assigned job can be dispatched',()=>{
