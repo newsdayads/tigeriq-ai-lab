@@ -299,6 +299,7 @@ describe('NV02 archive rotation robustness', () => {
 });
 
 
+// #2535 exact-head regression: Project-list identity archive only.
 describe('NV02 Project-list archive generated-expression regression', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
