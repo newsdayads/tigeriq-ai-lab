@@ -7,11 +7,14 @@ export const NV02_LOCAL_GITHUB_SELF_PULL = 'P1_P5_ONLY';
 export const NV02_READY_NO_ELIGIBLE_WORK = 'READY_NO_ELIGIBLE_WORK';
 export const NV02_LEASE_MARKER = '[TIGERIQ_NV02_LEASE_V1]';
 export const NV02_RELEASE_MARKER = '[TIGERIQ_NV02_RELEASE_V1]';
+export const NV02_TAKEOVER_STALE_MS = 15 * 60 * 1000;
+export const NV02_TAKEOVER_NO_PROGRESS_ROUNDS = 3;
 
 const PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4', 'P5']);
 export const NV02_PRIMARY_CAPABILITIES = new Set(['general', 'reasoning', 'ui']);
 export const NV02_FALLBACK_CAPABILITIES = new Set(['analysis', 'research', 'documentation', 'evidence', 'read_only', 'coding', 'knowledge', 'audit', 'maintenance', 'review']);
-const HARD_GATE_MARKERS = /(?:production|paid|credential|security|destructive|device[._-]?bound|pc[._-]?operator|app[._-]?chrome)/i;
+const HARD_GATE_MARKERS = /(?:production|paid|credential|security|destructive|irreversible|app[._-]?chrome)/i;
+const DIRECT_PATH_CAPABILITIES = new Set(['pc_operator', 'device_bound']);
 const LOCKED_WORKER_FIELDS = ['TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE'];
 const localClaimLocks = new Set();
 const localClaimFiles = new Map();
@@ -80,14 +83,30 @@ function explicitTarget(meta) {
   return targets.find((target) => !/^NV02$/i.test(target)) || targets[0] || '';
 }
 
+export function nv02AssignedWorker(issue) {
+  return String(explicitTarget(nv02WorkOrderMeta(issue)) || '').trim().toUpperCase();
+}
+
+function capabilityDirectPath(meta, capability) {
+  if (!DIRECT_PATH_CAPABILITIES.has(capability)) return true;
+  return meta.NV02_DIRECT_EXECUTION === 'true'
+    || /^DIRECT$/i.test(String(meta.NV02_EXECUTION_PATH || ''))
+    || /^DIRECT_/i.test(String(meta.NV02_EXECUTION_PATH || ''));
+}
+
+function selfReviewConflict(meta, capability) {
+  const reviewWork = capability === 'review' || meta.REVIEW_ONLY === 'true' || meta.REVIEW_INDEPENDENT === 'true';
+  const implementer = String(meta.IMPLEMENTER || meta.IMPLEMENTATION_OWNER || '').trim().toUpperCase();
+  return reviewWork && implementer === 'NV02';
+}
+
 function hardGate(meta) {
   const values = Object.entries(meta)
     .filter(([key]) => !['CAPABILITY', 'MUTATION_OWNER', 'TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE', 'PREFERRED_REVIEWER'].includes(key))
     .map(([, value]) => String(value));
   return values.some((value) => HARD_GATE_MARKERS.test(value))
-    || meta.REVIEW_INDEPENDENT === 'true'
-    || meta.DEVICE_BOUND === 'true'
-    || meta.APP_CHROME_MUTATION === 'true';
+    || meta.APP_CHROME_MUTATION === 'true'
+    || meta.APP_CHROME_SELF_MAINTENANCE === 'true';
 }
 
 function dependenciesReady(meta, dependencies = new Map()) {
@@ -98,7 +117,119 @@ function dependenciesReady(meta, dependencies = new Map()) {
   });
 }
 
-export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map(), activeOwners = new Set(), allowFallback = true } = {}) {
+function commentAtMs(comment) {
+  const direct = Date.parse(String(comment?.updated_at || comment?.created_at || ''));
+  if (Number.isFinite(direct)) return direct;
+  const meta = fields(comment?.body);
+  for (const key of ['HEARTBEAT_AT', 'PROGRESS_AT', 'UPDATED_AT', 'CLAIMED_AT', 'CREATED_AT']) {
+    const value = Date.parse(String(meta[key] || ''));
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function workerMentioned(body, worker) {
+  const text = String(body || '');
+  const id = String(worker || '').toUpperCase();
+  return [
+    new RegExp(`^(?:WORKER|TARGET_EMPLOYEE|ASSIGNED_EXECUTOR|EXECUTOR|PRIMARY_EMPLOYEE|IMPLEMENTER)=${id}$`, 'mi'),
+    new RegExp(`\\bImplementer:\\s*${id}\\b`, 'i'),
+    new RegExp(`\\bworker[=:]\\s*${id}\\b`, 'i'),
+  ].some((pattern) => pattern.test(text));
+}
+
+function progressMarker(body) {
+  return /\[(?:CLAIM|PROGRESS|RESULT|HEARTBEAT)\]/i.test(String(body || ''))
+    || /^(?:STATE|CURRENT_STATE)=(?:WORKING|READY|STALLED|BLOCKED|DONE|COMPLETED)$/mi.test(String(body || ''))
+    || /^(?:HEARTBEAT_AT|PROGRESS_AT)=/mi.test(String(body || ''));
+}
+
+function noProgressRounds(issue, comments) {
+  let rounds = 0;
+  for (const text of [String(issue?.body || ''), ...(Array.isArray(comments) ? comments.map((x) => String(x?.body || '')) : [])]) {
+    const match = text.match(/^(?:NO_PROGRESS_ROUNDS|STALL_COUNT|STALLED_ROUNDS)=(\d+)$/mi);
+    if (match) rounds = Math.max(rounds, Number(match[1]) || 0);
+  }
+  return rounds;
+}
+
+function takeoverWorkerBlocked(issue, comments, target) {
+  const texts = [String(issue?.body || ''), ...(Array.isArray(comments) ? comments.map((x) => String(x?.body || '')) : [])];
+  for (const text of texts) {
+    if (!/(?:STATE|CURRENT_STATE)=BLOCKED/i.test(text)) continue;
+    if (target && !workerMentioned(text, target) && !new RegExp(`\\b${target}\\b`, 'i').test(text)) continue;
+    const reason = String(text.match(/^(?:BLOCKER|BLOCKED_REASON|REASON)=(.+)$/mi)?.[1] || text);
+    if (/owner|hold|dependency|production|paid|credential|security|destructive|irreversible|external[_ -]?wait/i.test(reason)) continue;
+    if (/worker|transport|timeout|stall|retry|offline|unavailable|no[_ -]?heartbeat|capabil/i.test(reason)) return true;
+  }
+  return false;
+}
+
+export function nv02TakeoverStatus(issue, comments = [], {
+  nowMs = Date.now(),
+  staleMs = NV02_TAKEOVER_STALE_MS,
+  noProgressThreshold = NV02_TAKEOVER_NO_PROGRESS_ROUNDS,
+} = {}) {
+  const meta = nv02WorkOrderMeta(issue);
+  const target = nv02AssignedWorker(issue);
+  const capability = String(meta.CAPABILITY || 'general').toLowerCase();
+  const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
+  if (!target || target === 'NV02') return { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
+  if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN', target, resourceScope };
+  if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
+
+  const rounds = noProgressRounds(issue, comments);
+  const explicitStalled = [String(issue?.body || ''), ...comments.map((x) => String(x?.body || ''))]
+    .some((text) => /^(?:STATE|CURRENT_STATE)=STALLED$/mi.test(text));
+  const workerBlocked = takeoverWorkerBlocked(issue, comments, target);
+  const activeClaim = activeResourceClaims(comments, nowMs)
+    .find((claim) => claim.resourceScope === resourceScope && claim.worker === target);
+
+  let latestProgressAt = 0;
+  for (const comment of comments) {
+    if (workerMentioned(comment?.body, target) && progressMarker(comment?.body)) {
+      latestProgressAt = Math.max(latestProgressAt, commentAtMs(comment));
+    }
+  }
+  const assignedAt = Date.parse(String(meta.ASSIGNED_AT || issue?.updated_at || issue?.created_at || ''));
+  const claimAt = Number(activeClaim?.createdAtMs || 0);
+  const baseline = Math.max(latestProgressAt, claimAt, Number.isFinite(assignedAt) ? assignedAt : 0);
+  const stale = baseline > 0 && nowMs - baseline >= staleMs;
+  const evidenced = explicitStalled || workerBlocked || rounds >= noProgressThreshold || stale;
+
+  if (!evidenced) return {
+    eligible: false,
+    reason: activeClaim ? 'ASSIGNEE_LEASE_FRESH' : 'ASSIGNEE_STALE_UNPROVEN',
+    target, resourceScope, activeClaim: activeClaim || null, latestProgressAt, rounds,
+  };
+
+  return {
+    eligible: true,
+    reason: explicitStalled ? 'ASSIGNEE_STALLED'
+      : workerBlocked ? 'ASSIGNEE_BLOCKED_WORKER_OR_TRANSPORT'
+        : rounds >= noProgressThreshold ? 'NO_PROGRESS_ROUNDS_EXHAUSTED'
+          : 'ASSIGNEE_HEARTBEAT_STALE',
+    target,
+    resourceScope,
+    activeClaim: activeClaim || null,
+    needsRelease: Boolean(activeClaim),
+    latestProgressAt,
+    rounds,
+  };
+}
+
+export async function releaseStaleAssigneeLease({ issue, takeover, postComment, nowMs = Date.now() }) {
+  if (!takeover?.eligible || !takeover?.needsRelease || !takeover?.activeClaim) return { released: false, reason: 'NO_RELEASE_REQUIRED' };
+  const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
+  const claim = takeover.activeClaim;
+  if (!resourceScope || claim.resourceScope !== resourceScope || !claim.worker || claim.worker === 'NV02') {
+    throw new Error('NV02_TAKEOVER_RELEASE_INVALID');
+  }
+  await postComment(issue.number, `[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=${claim.worker}\nRESOURCE_SCOPE=${resourceScope}\nSTATE=STALE_TAKEOVER_BY_NV02\nTAKEOVER_REASON=${takeover.reason}\nRELEASED_AT=${new Date(nowMs).toISOString()}`);
+  return { released: true, worker: claim.worker, resourceScope, reason: takeover.reason };
+}
+
+export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map(), activeOwners = new Set(), allowFallback = true, takeoverStatuses = new Map() } = {}) {
   const meta = nv02WorkOrderMeta(issue);
   const priority = nv02PrioritySummary(issue) || String(meta.PRIORITY || '').toUpperCase();
   if (!PRIORITIES.has(priority)) return { eligible: false, reason: priority === 'P0' ? 'P0_FORBIDDEN' : 'PRIORITY_OUT_OF_RANGE' };
@@ -109,15 +240,22 @@ export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependenc
   const capability = String(meta.CAPABILITY || 'general').toLowerCase();
   const primary = NV02_PRIMARY_CAPABILITIES.has(capability);
   const target = explicitTarget(meta);
-  if (target && !/^NV02$/i.test(target)) return { eligible: false, reason: 'TARGET_EMPLOYEE_LOCKED' };
+  const takeover = takeoverStatuses instanceof Map ? takeoverStatuses.get(Number(issue?.number)) : takeoverStatuses?.[Number(issue?.number)];
+  if (target && !/^NV02$/i.test(target) && !takeover?.eligible) return { eligible: false, reason: takeover?.reason || 'TARGET_EMPLOYEE_LOCKED' };
   if (hardGate(meta) || HARD_GATE_MARKERS.test(capability)) return { eligible: false, reason: 'HARD_GATE_UNSAFE' };
+  if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN' };
+  if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH' };
   if ([...activeOwners].some((owner) => String(owner).toLowerCase() === String(meta.MUTATION_OWNER || '').toLowerCase())) return { eligible: false, reason: 'ACTIVE_OWNER_HELD' };
   const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
   if (!resourceScope) return { eligible: false, reason: 'RESOURCE_SCOPE_REQUIRED' };
-  if (heldScopes.has(resourceScope)) return { eligible: false, reason: 'RESOURCE_SCOPE_HELD' };
+  if (heldScopes.has(resourceScope) && !(takeover?.eligible && takeover?.needsRelease && takeover?.activeClaim?.resourceScope === resourceScope)) {
+    return { eligible: false, reason: 'RESOURCE_SCOPE_HELD' };
+  }
   return {
-    eligible: true, priority, capability, resourceScope,
-    mode: /^NV02$/i.test(target) ? 'EXPLICIT_TARGET' : primary ? 'PRIMARY_ROLE' : 'SAFE_FALLBACK',
+    eligible: true, priority, capability, resourceScope, takeover: takeover?.eligible ? takeover : null,
+    mode: /^NV02$/i.test(target) ? 'EXPLICIT_TARGET'
+      : takeover?.eligible ? 'STALE_ASSIGNEE_TAKEOVER'
+        : primary ? 'PRIMARY_ROLE' : 'SAFE_FALLBACK',
   };
 }
 
@@ -127,7 +265,7 @@ export function selectNv02WorkOrder(issues, options = {}) {
     .filter((issue) => nv02PrioritySummary(issue) !== 'P0')
     .map((issue) => ({ issue, result: nv02EligibleWorkOrder(issue, options) }))
     .filter(({ result }) => result.eligible);
-  const rank = { EXPLICIT_TARGET: 0, PRIMARY_ROLE: 1, SAFE_FALLBACK: 2 };
+  const rank = { EXPLICIT_TARGET: 0, STALE_ASSIGNEE_TAKEOVER: 1, PRIMARY_ROLE: 2, SAFE_FALLBACK: 3 };
   return eligible
     .sort((a, b) => rank[a.result.mode] - rank[b.result.mode]
       || a.result.priority.localeCompare(b.result.priority)
@@ -146,6 +284,7 @@ export function buildNv02LocalSelfPullPrompt(issue, lease) {
     `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `WORK_ORDER=#${issue.number}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`,
     'Core không assign/route NV02. App Chrome chỉ là UI continuity/transport.',
     'P0 tuyệt đối không đọc, nhận, claim hoặc execute. Làm đúng một Work Order này đến DONE hoặc BLOCKED.',
+    lease.takeoverFrom ? `TAKEOVER_FROM=${lease.takeoverFrom}; TAKEOVER_REASON=${lease.takeoverReason || 'STALE_ASSIGNEE'}; lease cũ đã release trước claim.` : 'TAKEOVER_FROM=NONE',
     'Không tự tạo, mở rộng, claim hoặc allocate scope/resource ngoài Work Order này. Chỉ dùng đúng WORK_ORDER, RESOURCE_SCOPE và LEASE_ID đã cấp.',
     'Ghi evidence vào GitHub trước khi release lease; terminal xong mới tự lấy việc P1-P5 kế tiếp.', String(issue.body || ''),
   ].join('\n');
@@ -172,7 +311,10 @@ export function activeResourceClaims(comments = [], nowMs = Date.now()) {
     if (claim) {
       const expiry = Date.parse(meta.EXPIRES_AT || meta.LEASE_UNTIL || '');
       if (resourceScope && identity && expiry > nowMs) {
-        active.set(identity, { resourceScope, worker, identity, expiry, commentId: Number(comment.id) || 0, meta });
+        active.set(identity, {
+          resourceScope, worker, identity, expiry, commentId: Number(comment.id) || 0,
+          createdAtMs: commentAtMs(comment), meta,
+        });
       }
       continue;
     }
@@ -238,7 +380,10 @@ export async function claimNv02WorkOrder({
       await releaseLocalClaimLock(lockKey);
       return null;
     }
-    const lease = { leaseId: `NV02-${issue.number}-${randomUUID()}`, workOrder, resourceScope, expiresAt: new Date(nowMs + ttlMs).toISOString() };
+    const lease = {
+      leaseId: `NV02-${issue.number}-${randomUUID()}`, workOrder, resourceScope,
+      expiresAt: new Date(nowMs + ttlMs).toISOString(),
+    };
     await postComment(issue.number, `${NV02_LEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
     // GitHub comment creation is not a transaction. Let concurrent cross-issue
     // claims become visible, then elect the earliest still-live lease per scope.

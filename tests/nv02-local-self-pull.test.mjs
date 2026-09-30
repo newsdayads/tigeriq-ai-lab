@@ -11,6 +11,8 @@ import {
   resourceOwnershipConflict,
   selectNv02WorkOrder,
   nv02LeaseAuthority,
+  nv02TakeoverStatus,
+  releaseStaleAssigneeLease,
   releaseNv02WorkOrder,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
@@ -40,7 +42,7 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([base(5, '')], { heldScopes: new Set(['S5']) })).toBeNull();
     expect(selectNv02WorkOrder([base(6, 'CAPABILITY=analysis')]).result.mode).toBe('SAFE_FALLBACK');
     expect(selectNv02WorkOrder([base(7, 'CAPABILITY=analysis\nTARGET_EMPLOYEE=CODING')])).toBeNull();
-    expect(selectNv02WorkOrder([base(8, 'CAPABILITY=analysis\nREVIEW_INDEPENDENT=true')])).toBeNull();
+    expect(selectNv02WorkOrder([base(8, 'CAPABILITY=review\nREVIEW_INDEPENDENT=true\nIMPLEMENTER=NV02')])).toBeNull();
     expect(selectNv02WorkOrder([base(9, 'CAPABILITY=coding\nMUTATION_OWNER=CODING')])).not.toBeNull();
     expect(selectNv02WorkOrder([base(10, 'CAPABILITY=security')])).toBeNull();
     expect(selectNv02WorkOrder([base(11, 'TARGET_EMPLOYEE=NV02\nASSIGNED_EXECUTOR=NV09')])).toBeNull();
@@ -243,5 +245,141 @@ describe('NV02 local GitHub self-pull contract', () => {
       { id: 1, body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV09\nRESOURCE_SCOPE=CODING_RETRY\nLEASE_UNTIL=2026-09-27T01:00:00Z' },
       { id: 2, body: '[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=NV12\nRESOURCE_SCOPE=CODING_RETRY' },
     ], now)).toEqual(new Set(['CODING_RETRY']));
+  });
+
+  it('allows NV02 takeover only after an assigned employee is stale or has 3 no-progress rounds', () => {
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    const assigned = {
+      ...issue(90, '[P1] stale assigned', safe('PRIORITY=P1\nTARGET_EMPLOYEE=NV12\nRESOURCE_SCOPE=STALE_ASSIGNED')),
+      updated_at: '2026-09-30T11:40:00Z',
+    };
+    const stale = nv02TakeoverStatus(assigned, [], { nowMs: now });
+    expect(stale).toMatchObject({ eligible: true, target: 'NV12', reason: 'ASSIGNEE_HEARTBEAT_STALE' });
+    const selected = selectNv02WorkOrder([assigned], {
+      takeoverStatuses: new Map([[90, stale]]),
+    });
+    expect(selected.result.mode).toBe('STALE_ASSIGNEE_TAKEOVER');
+
+    const fresh = {
+      ...assigned,
+      number: 91,
+      updated_at: '2026-09-30T11:55:00Z',
+    };
+    expect(nv02TakeoverStatus(fresh, [], { nowMs: now })).toMatchObject({ eligible: false, reason: 'ASSIGNEE_STALE_UNPROVEN' });
+
+    const rounds = issue(92, '[P2] stalled rounds', safe('PRIORITY=P2\nTARGET_EMPLOYEE=NV17\nRESOURCE_SCOPE=ROUNDS\nNO_PROGRESS_ROUNDS=3'));
+    expect(nv02TakeoverStatus(rounds, [], { nowMs: now })).toMatchObject({
+      eligible: true,
+      target: 'NV17',
+      reason: 'NO_PROGRESS_ROUNDS_EXHAUSTED',
+    });
+  });
+
+  it('releases a stale live assignee lease before NV02 can claim the same scope', async () => {
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    const work = {
+      ...issue(93, '[P1] stale lease', safe('PRIORITY=P1\nTARGET_EMPLOYEE=NV09\nRESOURCE_SCOPE=STALE_SCOPE')),
+      updated_at: '2026-09-30T11:30:00Z',
+    };
+    const comments = [{
+      id: 1,
+      created_at: '2026-09-30T11:30:00Z',
+      body: '[TIGERIQ_ROLE_CLAIM_V1]\nCLAIM_ID=NV09-STALE\nWORKER=NV09\nRESOURCE_SCOPE=STALE_SCOPE\nLEASE_UNTIL=2026-09-30T13:00:00Z',
+    }];
+    const takeover = nv02TakeoverStatus(work, comments, { nowMs: now });
+    expect(takeover).toMatchObject({ eligible: true, needsRelease: true, target: 'NV09' });
+    expect(selectNv02WorkOrder([work], {
+      heldScopes: activeResourceScopes(comments, now),
+      takeoverStatuses: new Map([[93, takeover]]),
+    }).result.mode).toBe('STALE_ASSIGNEE_TAKEOVER');
+
+    const postComment = async (_number, body) => {
+      comments.push({ id: comments.length + 1, created_at: new Date(now).toISOString(), body });
+      return comments.at(-1);
+    };
+    await releaseStaleAssigneeLease({ issue: work, takeover, postComment, nowMs: now });
+    expect(comments.at(-1).body).toContain('STATE=STALE_TAKEOVER_BY_NV02');
+    expect(activeResourceScopes(comments, now)).toEqual(new Set());
+
+    const lease = await claimNv02WorkOrder({
+      issue: work,
+      comments,
+      allComments: comments,
+      refreshAllComments: async () => comments,
+      postComment,
+      claimSettleMs: 0,
+      nowMs: now,
+    });
+    expect(lease).toMatchObject({ workOrder: '#93', resourceScope: 'STALE_SCOPE' });
+    await releaseNv02WorkOrder({
+      issue: work, issueNumber: 93, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: 'DONE', postComment,
+    });
+  });
+
+  it('keeps fresh assignee leases, self-review, hard gates and App Chrome fail-closed', () => {
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    const freshLeaseWork = issue(94, '[P1] fresh', safe('PRIORITY=P1\nTARGET_EMPLOYEE=NV12\nRESOURCE_SCOPE=FRESH'));
+    const freshComments = [{
+      id: 1,
+      created_at: '2026-09-30T11:55:00Z',
+      body: '[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV12\nRESOURCE_SCOPE=FRESH\nLEASE_UNTIL=2026-09-30T13:00:00Z',
+    }];
+    expect(nv02TakeoverStatus(freshLeaseWork, freshComments, { nowMs: now })).toMatchObject({
+      eligible: false,
+      reason: 'ASSIGNEE_LEASE_FRESH',
+    });
+
+    const selfReview = issue(95, '[P1] review', safe('PRIORITY=P1\nCAPABILITY=review\nTARGET_EMPLOYEE=NV12\nREVIEW_INDEPENDENT=true\nIMPLEMENTER=NV02\nRESOURCE_SCOPE=REVIEW_95\nNO_PROGRESS_ROUNDS=3'));
+    const selfReviewTakeover = nv02TakeoverStatus(selfReview, [], { nowMs: now });
+    expect(selfReviewTakeover).toMatchObject({ eligible: false, reason: 'SELF_REVIEW_FORBIDDEN' });
+
+    const appChrome = issue(96, '[P1] app chrome', safe('PRIORITY=P1\nTARGET_EMPLOYEE=NV12\nRESOURCE_SCOPE=APP_CHROME_SELF_MAINTENANCE\nNO_PROGRESS_ROUNDS=3'));
+    const appTakeover = nv02TakeoverStatus(appChrome, [], { nowMs: now });
+    expect(selectNv02WorkOrder([appChrome], { takeoverStatuses: new Map([[96, appTakeover]]) })).toBeNull();
+
+    const hard = issue(97, '[P1] credential', safe('PRIORITY=P1\nTARGET_EMPLOYEE=NV12\nRESOURCE_SCOPE=CRED\nGOAL=credential rotation\nNO_PROGRESS_ROUNDS=3'));
+    const hardTakeover = nv02TakeoverStatus(hard, [], { nowMs: now });
+    expect(selectNv02WorkOrder([hard], { takeoverStatuses: new Map([[97, hardTakeover]]) })).toBeNull();
+  });
+
+  it('treats capability as soft but requires an explicit direct path for device-bound pc_operator takeover', () => {
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    const blocked = issue(98, '[P1] pc operator', safe('PRIORITY=P1\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06\nRESOURCE_SCOPE=PC98\nNO_PROGRESS_ROUNDS=3'));
+    expect(nv02TakeoverStatus(blocked, [], { nowMs: now })).toMatchObject({
+      eligible: false,
+      reason: 'NO_NV02_DIRECT_EXECUTION_PATH',
+    });
+
+    const direct = issue(99, '[P1] pc operator direct', safe('PRIORITY=P1\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06\nRESOURCE_SCOPE=PC99\nNO_PROGRESS_ROUNDS=3\nNV02_DIRECT_EXECUTION=true'));
+    const takeover = nv02TakeoverStatus(direct, [], { nowMs: now });
+    expect(takeover).toMatchObject({ eligible: true, target: 'NV06' });
+    expect(selectNv02WorkOrder([direct], { takeoverStatuses: new Map([[99, takeover]]) })).not.toBeNull();
+  });
+
+  it('recognizes worker/transport blocked evidence without treating dependency or owner waits as takeover', () => {
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    const transport = issue(100, '[P2] transport blocked', safe('PRIORITY=P2\nTARGET_EMPLOYEE=NV17\nRESOURCE_SCOPE=T100'));
+    const transportComments = [{
+      id: 1,
+      created_at: '2026-09-30T11:59:00Z',
+      body: '[PROGRESS]\nWORKER=NV17\nSTATE=BLOCKED\nBLOCKER=TRANSPORT_OFFLINE',
+    }];
+    expect(nv02TakeoverStatus(transport, transportComments, { nowMs: now })).toMatchObject({
+      eligible: true,
+      reason: 'ASSIGNEE_BLOCKED_WORKER_OR_TRANSPORT',
+    });
+
+    const dependency = issue(101, '[P2] dependency blocked', safe('PRIORITY=P2\nTARGET_EMPLOYEE=NV17\nRESOURCE_SCOPE=T101\nDEPENDS_ON=#999'));
+    const dependencyComments = [{
+      id: 1,
+      created_at: '2026-09-30T11:00:00Z',
+      body: '[PROGRESS]\nWORKER=NV17\nSTATE=BLOCKED\nBLOCKER=DEPENDENCY_NOT_READY',
+    }];
+    const status = nv02TakeoverStatus(dependency, dependencyComments, { nowMs: now });
+    expect(status.reason).not.toBe('ASSIGNEE_BLOCKED_WORKER_OR_TRANSPORT');
+    expect(selectNv02WorkOrder([dependency], {
+      dependencies: new Map([[999, false]]),
+      takeoverStatuses: new Map([[101, status]]),
+    })).toBeNull();
   });
 });

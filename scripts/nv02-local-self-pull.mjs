@@ -11,6 +11,8 @@ import {
   activeNv02Lease,
   resourceOwnershipConflict,
   nv02LeaseAuthority,
+  nv02TakeoverStatus,
+  releaseStaleAssigneeLease,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 
@@ -113,12 +115,26 @@ const candidateIssues = summaries()
   .map((summary) => details(summary));
 const candidateDependencies = new Map();
 for (const candidate of candidateIssues) for (const [id, ready] of dependencyMap(candidate)) candidateDependencies.set(id, ready);
+const candidateGlobalComments = activeIssueComments();
 const candidateHeldScopes = new Set();
-for (const scope of activeResourceScopes(activeIssueComments())) candidateHeldScopes.add(scope);
+for (const scope of activeResourceScopes(candidateGlobalComments)) candidateHeldScopes.add(scope);
+const candidateTakeovers = new Map(candidateIssues.map((candidate) => [
+  Number(candidate.number),
+  nv02TakeoverStatus(candidate, issueComments(candidate.number)),
+]));
 const selected = selectNv02WorkOrder(candidateIssues
-  .filter((issue) => !hasTerminalEvidence(issue)), { dependencies: candidateDependencies, heldScopes: candidateHeldScopes });
+  .filter((issue) => !hasTerminalEvidence(issue)), {
+    dependencies: candidateDependencies,
+    heldScopes: candidateHeldScopes,
+    takeoverStatuses: candidateTakeovers,
+  });
 if (!selected) { await setIdle(); console.log(JSON.stringify({ event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' })); process.exit(0); }
 const issue = selected.issue;
+const takeover = selected.result.takeover;
+if (takeover?.needsRelease) {
+  const released = await releaseStaleAssigneeLease({ issue, takeover, postComment });
+  console.log(JSON.stringify({ event: 'NV02_STALE_ASSIGNEE_RELEASED', issue: issue.number, ...released }));
+}
 const lease = await claimNv02WorkOrder({
   issue,
   comments: issueComments(issue.number),
@@ -127,7 +143,14 @@ const lease = await claimNv02WorkOrder({
   postComment,
 });
 if (!lease) throw new Error(`NV02_LEASE_BUSY_OR_LOST:${issue.number}`);
-console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_ACQUIRED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId }));
+if (takeover?.eligible) {
+  lease.takeoverFrom = takeover.target;
+  lease.takeoverReason = takeover.reason;
+}
+console.log(JSON.stringify({
+  event: 'TIGERIQ_NV02_LEASE_ACQUIRED', issue: issue.number, resourceScope: lease.resourceScope,
+  leaseId: lease.leaseId, takeoverFrom: lease.takeoverFrom || null, takeoverReason: lease.takeoverReason || null,
+}));
 let result = null;
 try {
   const reconcileResult = await reconcile(issue, lease);
@@ -156,9 +179,18 @@ const nextIssues = summaries()
   .map((summary) => details(summary));
 const nextDependencies = new Map();
 for (const candidate of nextIssues) for (const [id, ready] of dependencyMap(candidate)) nextDependencies.set(id, ready);
+const nextGlobalComments = activeIssueComments();
 const nextHeldScopes = new Set();
-for (const scope of activeResourceScopes(activeIssueComments())) nextHeldScopes.add(scope);
-const next = selectNv02WorkOrder(nextIssues.filter((candidate) => !hasTerminalEvidence(candidate)), { dependencies: nextDependencies, heldScopes: nextHeldScopes });
+for (const scope of activeResourceScopes(nextGlobalComments)) nextHeldScopes.add(scope);
+const nextTakeovers = new Map(nextIssues.map((candidate) => [
+  Number(candidate.number),
+  nv02TakeoverStatus(candidate, issueComments(candidate.number)),
+]));
+const next = selectNv02WorkOrder(nextIssues.filter((candidate) => !hasTerminalEvidence(candidate)), {
+  dependencies: nextDependencies,
+  heldScopes: nextHeldScopes,
+  takeoverStatuses: nextTakeovers,
+});
 console.log(JSON.stringify(next
   ? { event: 'NV02_NEXT_WORK_ORDER_READY', issue: next.issue.number, priority: next.result.priority, resourceScope: next.result.resourceScope }
   : { event: 'NV02_READY_NO_ELIGIBLE_WORK', ...noEligibleNv02Work(), idle: 'DURABLE' }));
