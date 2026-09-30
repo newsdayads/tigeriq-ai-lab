@@ -15,6 +15,7 @@ $supervisorLog=Join-Path $runtime 'appchrome-supervisor.jsonl'
 $tokenFile=Join-Path $runtime 'NV02-ProfileToken.value'
 $ownerStatePath=Join-Path $runtime 'owner-interaction-state.json'
 $lastHead=''
+$lastDeferredHead=''
 $supervisorMutex=[Threading.Mutex]::new($false,'Global\TigerIQ.AppChrome.Unified.Supervisor')
 $ownsSupervisorMutex=$false
 try{$ownsSupervisorMutex=$supervisorMutex.WaitOne(0)}catch{}
@@ -28,6 +29,16 @@ function Write-SupervisorEvent([string]$Event,$Data=@{}){
   [IO.File]::AppendAllText($supervisorLog,(($payload|ConvertTo-Json -Compress -Depth 8)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
 }
 
+function Get-CurrentBootId{
+  try{
+    return ([DateTime](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime).ToUniversalTime().ToString('o')
+  }catch{
+    throw "BOOT_ID_UNAVAILABLE:$($_.Exception.Message)"
+  }
+}
+
+$currentBootId=Get-CurrentBootId
+
 function Read-ValidatedActive{
   if(-not(Test-Path -LiteralPath $activePath)){throw "ACTIVE_DEPLOY_MISSING:$activePath"}
   $active=Get-Content -LiteralPath $activePath -Raw|ConvertFrom-Json
@@ -36,6 +47,15 @@ function Read-ValidatedActive{
   $bridgeHash=[string]$active.bridgeSha256
   $nv02Only=$false
   if($active.PSObject.Properties.Name -contains 'nv02Only'){$nv02Only=[bool]$active.nv02Only}
+  $activation=''
+  if($active.PSObject.Properties.Name -contains 'activation'){$activation=[string]$active.activation}
+  $installedBootId=''
+  if($active.PSObject.Properties.Name -contains 'installedBootId'){$installedBootId=[string]$active.installedBootId}
+  $pendingSameBoot=$false
+  if($activation-eq'NEXT_REBOOT_PENDING'){
+    if([string]::IsNullOrWhiteSpace($installedBootId)){throw 'PENDING_INSTALL_BOOT_ID_MISSING'}
+    $pendingSameBoot=$installedBootId-eq$currentBootId
+  }
   if([string]::IsNullOrWhiteSpace($deploy)-or-not(Test-Path -LiteralPath $deploy)){throw "ACTIVE_DEPLOY_INVALID:$deploy"}
   if([string]::IsNullOrWhiteSpace($head)){throw 'ACTIVE_HEAD_MISSING'}
   if([string]::IsNullOrWhiteSpace($bridgeHash)){throw 'ACTIVE_BRIDGE_HASH_MISSING'}
@@ -47,7 +67,7 @@ function Read-ValidatedActive{
   if(-not(Test-Path -LiteralPath $bridge)){throw "ACTIVE_BRIDGE_MISSING:$bridge"}
   $actualBridgeHash=(Get-FileHash -LiteralPath $bridge -Algorithm SHA256).Hash.ToLowerInvariant()
   if($actualBridgeHash-ne$bridgeHash.ToLowerInvariant()){throw 'ACTIVE_BRIDGE_HASH_MISMATCH'}
-  [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge;nv02Only=$nv02Only}
+  [pscustomobject]@{deploy=$deploy;head=$head;bridgeHash=$bridgeHash;bridge=$bridge;nv02Only=$nv02Only;activation=$activation;installedBootId=$installedBootId;pendingSameBoot=$pendingSameBoot}
 }
 
 function Set-RuntimeEnvironment($Active){
@@ -202,6 +222,14 @@ function Ensure-WorkerScope($Active){
 
 function Ensure-AppChrome{
   $active=Read-ValidatedActive
+  if($active.pendingSameBoot){
+    if($lastDeferredHead-ne$active.head){
+      Write-SupervisorEvent 'NEXT_REBOOT_ACTIVATION_DEFERRED' @{head=$active.head;deploy=$active.deploy;installedBootId=$active.installedBootId;currentBootId=$currentBootId}
+      $script:lastDeferredHead=$active.head
+    }
+    return
+  }
+  $script:lastDeferredHead=''
   Set-RuntimeEnvironment $active
   $headChanged=$lastHead-ne$active.head
 
