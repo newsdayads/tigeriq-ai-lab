@@ -312,7 +312,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
 
   it('includes bounded PostgreSQL sidecar diagnostics in typed health source', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
-    expect(source).toContain("composeArgs(['ps', '-q', service])");
+    expect(source).toContain("composeArgs(['ps', '--all', '-q', service])");
     expect(source).toContain("inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true)");
     expect(source).toContain('healthStatus: database?.healthStatus || null');
     expect(source).toContain('restartCount: database?.restartCount ?? null');
