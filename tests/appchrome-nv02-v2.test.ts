@@ -266,23 +266,16 @@ describe('NV02 fresh-chat lifecycle V3', () => {
 describe('NV02 archive rotation robustness', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('captures exact conversation identity and archives only from the Project chat list', () => {
-    expect(bridge).toContain("status:'ARCHIVE_IDENTITY_CAPTURED'");
-    expect(bridge).toContain("source:'PROJECT_LIST_IDENTITY_ROW'");
-    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_");
-    expect(bridge).toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
-    expect(bridge).toContain("confirmation:'PROJECT_LIST_ROW_REMOVED'");
-  });
-
-  it('does not use current-chat header selectors or title fallback for archive identity', () => {
-    const start=bridge.indexOf('function archiveCurrentIdentityExpr');
-    const end=bridge.indexOf('function archiveItemPointExpr',start);
-    const archiveSelectors=bridge.slice(start,end);
-    expect(archiveSelectors).not.toContain('HEADER_TOOLBAR_MORE');
-    expect(archiveSelectors).not.toContain('HEADER_CONVERSATION_OPTIONS');
-    expect(archiveSelectors).not.toContain('conversation-options-button');
-    expect(archiveSelectors).not.toContain("String(row.innerText||'').trim()===title");
-    expect(archiveSelectors).toContain("pathname.endsWith('/c/'+conversationId)");
+  it('archives from the current conversation header menu only', () => {
+    expect(bridge).toContain("source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE'");
+    expect(bridge).toContain("ARCHIVE_HEADER_MENU_COUNT_");
+    expect(bridge).toContain("conversation-options-button");
+    const archiveStart=bridge.indexOf('function archiveMenuPointExpr');
+    const archiveEnd=bridge.indexOf('function newChatExpr',archiveStart);
+    const archiveBlock=bridge.slice(archiveStart,archiveEnd);
+    expect(archiveBlock).not.toContain('archiveProjectRowPointExpr');
+    expect(archiveBlock).not.toContain('archiveProjectMenuPointExpr');
+    expect(archiveBlock).not.toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
   });
 
   it('accepts localized archive labels but rejects archive-all actions', () => {
@@ -298,34 +291,24 @@ describe('NV02 archive rotation robustness', () => {
   });
 });
 
-
-// #2535 exact-head regression: Project-list identity archive only.
-describe('NV02 Project-list archive generated-expression regression', () => {
+describe('NV02 current-header archive generated-expression regression', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  function generatedExpr(functionName:string,nextFunctionName:string){
-    const start=bridge.indexOf('function '+functionName);
-    const end=bridge.indexOf('function '+nextFunctionName,start);
+  it('parses the generated header-menu expression as executable JavaScript', () => {
+    const start=bridge.indexOf('function archiveMenuPointExpr');
+    const end=bridge.indexOf('function archiveItemPointExpr',start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const fnSource=bridge.slice(start,end);
-    return new Function(fnSource+'; return '+functionName+"('conv-test')")();
-  }
-
-  it('parses the generated Project row and menu expressions as executable JavaScript', () => {
-    const rowExpr=generatedExpr('archiveProjectRowPointExpr','archiveProjectMenuPointExpr');
-    const menuExpr=generatedExpr('archiveProjectMenuPointExpr','archiveItemPointExpr');
-    expect(()=>new Function('return '+rowExpr)).not.toThrow();
-    expect(()=>new Function('return '+menuExpr)).not.toThrow();
+    const expression=new Function(fnSource+'; return archiveMenuPointExpr()')();
+    expect(()=>new Function('return '+expression)).not.toThrow();
   });
 });
 
-
-describe('NV02 archive Project-list interaction', () => {
+describe('NV02 current-header archive interaction', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('hovers the exact identity row before opening its menu, then activates Archive by keyboard semantics', () => {
-    expect(bridge).toContain("type:'mouseMoved',x:Number(rowPoint.x),y:Number(rowPoint.y)");
+  it('opens the unique header menu and activates Archive by keyboard semantics', () => {
     expect(bridge).toContain("cdpMouseClick(p,menuPoint,{paced:false})");
     expect(bridge).toContain("const activated=await activateArchiveMenuItem(p)");
     expect(bridge).not.toContain("cdpMouseClick(p,archivePoint,{paced:false})");
@@ -338,7 +321,6 @@ describe('NV02 archive Project-list interaction', () => {
   });
 });
 
-
 describe('NV02 rotation durable-checkpoint contract', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
@@ -350,25 +332,19 @@ describe('NV02 rotation durable-checkpoint contract', () => {
   });
 });
 
-
-describe('NV02 archive Project-list confirmation', () => {
+describe('NV02 current-header archive confirmation', () => {
   const bridge = readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
 
-  it('confirms only after the exact conversation ID row disappears from Project list', () => {
-    expect(bridge).toContain("rowRemoved:exact.length===0");
-    const confirmStart=bridge.indexOf('function archiveConfirmExpr');
-    const confirmEnd=bridge.indexOf('async function archiveChat',confirmStart);
-    const confirmBlock=bridge.slice(confirmStart,confirmEnd);
-    expect(confirmBlock).toContain("projectContext:!");
-    expect(confirmBlock).toContain(".test(location.pathname)");
-    expect(confirmBlock).toContain("pathname.endsWith('/c/'+conversationId)");
-    expect(bridge).toContain("archiveConfirmExpr(identity.conversationId)");
-    expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_PROJECT_LIST_ROW_REMOVED");
+  it('confirms only after leaving the exact current conversation or seeing Unarchive', () => {
+    expect(bridge).toContain("sameConversation=Boolean(conversationId)&&location.pathname.endsWith('/c/'+conversationId)");
+    expect(bridge).toContain("archiveConfirmExpr(menuPoint.before,menuPoint.conversationId)");
+    expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_LEFT_CURRENT_CONVERSATION");
+    expect(bridge).toContain("confirmation=state?.unarchiveVisible===true?'UNARCHIVE_ACTION_VISIBLE':'LEFT_CURRENT_CONVERSATION'");
   });
 
-  it('fails closed on ambiguous or missing identity rows and never falls back to title', () => {
-    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_");
-    expect(bridge).toContain("ARCHIVE_PROJECT_ROW_MENU_COUNT_");
+  it('fails closed on missing or ambiguous header menu and never navigates to Project list first', () => {
+    expect(bridge).toContain("ARCHIVE_HEADER_MENU_COUNT_");
+    expect(bridge).not.toContain("PROJECT_LIST_IDENTITY_ROW");
     expect(bridge).not.toContain("SIDEBAR_ROW_FALLBACK");
   });
 });

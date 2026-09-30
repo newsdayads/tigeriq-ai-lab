@@ -50,6 +50,19 @@ describe('App Chrome chat lifecycle',()=>{
     expect(bridge).toContain("waitForNv02Composer(target,30000)||raw");
   });
 
+  it('archives NV02 from the current chat header menu, not the Project list',()=>{
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain("source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE'");
+    expect(bridge).toContain("ARCHIVE_HEADER_MENU_COUNT_");
+    expect(bridge).toContain("ARCHIVE_NOT_CONFIRMED_LEFT_CURRENT_CONVERSATION");
+    const archiveStart=bridge.indexOf('function archiveMenuPointExpr');
+    const archiveEnd=bridge.indexOf('function newChatExpr',archiveStart);
+    const archiveBlock=bridge.slice(archiveStart,archiveEnd);
+    expect(archiveBlock).not.toContain('archiveProjectRowPointExpr');
+    expect(archiveBlock).not.toContain('archiveProjectMenuPointExpr');
+    expect(archiveBlock).not.toContain("await p.call('Page.navigate',{url:NV02_HOME_URL})");
+  });
+
   it('keeps generic WORKING non-mutating while preserving recovery and view-follow',()=>{
     const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
     const generic=bridge.slice(bridge.indexOf('async function maybeWorkerContinuity'),bridge.indexOf('\nfunction log('));

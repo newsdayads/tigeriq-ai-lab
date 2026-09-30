@@ -1401,15 +1401,7 @@ async function prepareWorkerForPlannedRestart(w,target,initialUi){
   return{ok:true,status:'PLANNED_RESTART_PREPARED',url:currentUrl};
 }
 
-function archiveCurrentIdentityExpr(){return `(()=>{if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';if(!conversationId)return{ok:false,status:'ARCHIVE_CONVERSATION_ID_MISSING'};return{ok:true,status:'ARCHIVE_IDENTITY_CAPTURED',before:location.href,title:document.title.trim(),conversationId}})()`; }
-function archiveProjectRowPointExpr(conversationId){
-  const expected=JSON.stringify(String(conversationId||''));
-  return `(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const conversationId=${expected};if(!conversationId)return{ok:false,status:'ARCHIVE_CONVERSATION_ID_MISSING'};const open=[...document.querySelectorAll('button,[role="button"]')].find(e=>vis(e)&&/mở sidebar|hiện thanh bên|open sidebar/i.test((e.getAttribute('aria-label')||e.innerText||'').trim()));if(open){open.click();await sleep(350)}const links=[...document.querySelectorAll('a[href*="/c/"]')].filter(vis).filter(a=>{try{return new URL(a.href,location.origin).pathname.endsWith('/c/'+conversationId)}catch{return false}});const rowFor=a=>{let n=a;for(let i=0;i<7&&n;i+=1,n=n.parentElement){if(n!==a&&n.querySelector?.('button,[role="button"]'))return n}return a.closest?.('[role="listitem"],li')||a.parentElement};const rows=[...new Set(links.map(rowFor).filter(Boolean))];if(rows.length!==1)return{ok:false,status:'ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_'+rows.length,conversationId,linkMatches:links.length};const r=rows[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_PROJECT_ROW_POINT',conversationId,linkMatches:links.length,x:r.left+r.width/2,y:r.top+r.height/2}})()`;
-}
-function archiveProjectMenuPointExpr(conversationId){
-  const expected=JSON.stringify(String(conversationId||''));
-  return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const conversationId=${expected};const links=[...document.querySelectorAll('a[href*="/c/"]')].filter(vis).filter(a=>{try{return new URL(a.href,location.origin).pathname.endsWith('/c/'+conversationId)}catch{return false}});const rowFor=a=>{let n=a;for(let i=0;i<7&&n;i+=1,n=n.parentElement){if(n!==a&&n.querySelector?.('button,[role="button"]'))return n}return a.closest?.('[role="listitem"],li')||a.parentElement};const rows=[...new Set(links.map(rowFor).filter(Boolean))];if(rows.length!==1)return{ok:false,status:'ARCHIVE_PROJECT_ROW_IDENTITY_COUNT_'+rows.length,conversationId,linkMatches:links.length};const buttons=[...rows[0].querySelectorAll('button,[role="button"]')].filter(vis);const menus=buttons.filter(b=>{const label=(b.getAttribute('aria-label')||b.getAttribute('title')||'').trim();const testid=(b.getAttribute('data-testid')||'').trim();return /hành động.*(trò chuyện|cuộc trò chuyện)|conversation actions|chat actions|more|thêm|menu/i.test(label)||/(conversation|chat).*(option|action|menu)/i.test(testid)});if(menus.length!==1)return{ok:false,status:'ARCHIVE_PROJECT_ROW_MENU_COUNT_'+menus.length,conversationId,buttonCount:buttons.length};const r=menus[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:'PROJECT_LIST_IDENTITY_ROW',conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`;
-}
+function archiveMenuPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';if(!conversationId)return{ok:false,status:'ARCHIVE_CONVERSATION_ID_MISSING'};const direct=[...document.querySelectorAll('button[data-testid="conversation-options-button"],button[data-testid*="conversation"][data-testid*="option"]')].filter(vis);const more=[...document.querySelectorAll('button,[role="button"]')].filter(vis).filter(e=>{const label=(e.getAttribute('aria-label')||e.getAttribute('title')||'').replace(/\\s+/g,' ').trim().toLowerCase();const r=e.getBoundingClientRect();return ['thêm','more','more options','thêm tùy chọn'].includes(label)&&r.top>=0&&r.top<100&&r.right>=innerWidth-120});const candidates=direct.length?direct:more;if(candidates.length!==1)return{ok:false,status:'ARCHIVE_HEADER_MENU_COUNT_'+candidates.length,conversationId,directCount:direct.length,moreCount:more.length};const r=candidates[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
 function archiveItemPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const all=[...document.querySelectorAll('[role="menuitem"]')].filter(vis);const archive=all.filter(e=>{const t=norm(e);if(/all|tất cả/i.test(t))return false;return t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||t.startsWith('archive ')||t.startsWith('lưu trữ ')});const unarchive=all.filter(e=>/^(unarchive|bỏ lưu trữ|khôi phục khỏi lưu trữ|restore from archive)(\\b|$)/i.test(norm(e)));if(archive.length!==1){if(unarchive.length===1)return{ok:true,status:'ARCHIVE_ALREADY_DONE',alreadyArchived:true,text:(unarchive[0].innerText||unarchive[0].textContent||'').trim()};return{ok:false,status:'ARCHIVE_ACTION_COUNT_'+archive.length,labels:all.map(norm)};}const r=archive[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_ACTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,text:(archive[0].innerText||archive[0].textContent||'').trim()}})()`; }
 function archiveFocusExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const items=[...document.querySelectorAll('[role="menuitem"]')].filter(vis);const archive=items.filter(e=>{const t=norm(e);if(/all|tất cả/i.test(t))return false;return t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||t.startsWith('archive ')||t.startsWith('lưu trữ ')});if(archive.length!==1)return{ok:false,status:'ARCHIVE_FOCUS_COUNT_'+archive.length,labels:items.map(norm)};archive[0].focus();return{ok:document.activeElement===archive[0],status:document.activeElement===archive[0]?'ARCHIVE_ACTION_FOCUSED':'ARCHIVE_ACTION_FOCUS_FAILED',text:(archive[0].innerText||archive[0].textContent||'').trim(),activeRole:document.activeElement?.getAttribute?.('role')||null}})()`;}
 async function activateArchiveMenuItem(p){
@@ -1428,40 +1420,19 @@ async function cdpMouseClick(p,point,{paced=true}={}){
   await p.call('Input.dispatchMouseEvent',{type:'mousePressed',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
   await p.call('Input.dispatchMouseEvent',{type:'mouseReleased',x:Number(point.x),y:Number(point.y),button:'left',clickCount:1});
 }
-function archiveConfirmExpr(conversationId){
+function archiveConfirmExpr(before,conversationId){
+  const expectedBefore=JSON.stringify(String(before||''));
   const expectedConversation=JSON.stringify(String(conversationId||''));
-  return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const conversationId=${expectedConversation};const exact=[...document.querySelectorAll('a[href*="/c/"]')].filter(vis).filter(a=>{try{return new URL(a.href,location.origin).pathname.endsWith('/c/'+conversationId)}catch{return false}});return{url:location.href,path:location.pathname,conversationId,projectContext:!/\\/c\\//.test(location.pathname),currentIdentityRows:exact.length,rowRemoved:exact.length===0}})()`;
+  return `(()=>{const before=${expectedBefore},conversationId=${expectedConversation};const sameConversation=Boolean(conversationId)&&location.pathname.endsWith('/c/'+conversationId);const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const unarchive=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>/^(unarchive|bỏ lưu trữ|khôi phục khỏi lưu trữ|restore from archive)(\\b|$)/i.test(norm(e)));return{url:location.href,path:location.pathname,sameConversation,navigated:location.href!==before,unarchiveVisible:unarchive.length===1}})()`;
 }
 async function archiveChat(target){
   const p=await pageRpc(target);
   try{
-    const identity=(await p.call('Runtime.evaluate',{expression:archiveCurrentIdentityExpr(),returnByValue:true},3000)).result.value;
-    if(!identity?.ok)return identity||{ok:false,status:'ARCHIVE_IDENTITY_MISSING'};
-    if(!NV02_HOME_URL)return{ok:false,status:'NV02_HOME_URL_MISSING'};
-    await p.call('Page.navigate',{url:NV02_HOME_URL});
-    let rowPoint=null;
-    const rowDeadline=Date.now()+12000;
-    while(Date.now()<rowDeadline){
-      await sleep(300);
-      try{
-        rowPoint=(await p.call('Runtime.evaluate',{expression:archiveProjectRowPointExpr(identity.conversationId),awaitPromise:true,returnByValue:true,userGesture:true},5000)).result.value;
-        if(rowPoint?.ok)break;
-      }catch{}
-    }
-    if(!rowPoint?.ok)return rowPoint||{ok:false,status:'ARCHIVE_PROJECT_ROW_NOT_FOUND'};
-    await p.call('Input.dispatchMouseEvent',{type:'mouseMoved',x:Number(rowPoint.x),y:Number(rowPoint.y),button:'none'});
-    await sleep(250);
-    let menuPoint=null;
-    const menuDeadline=Date.now()+4000;
-    while(Date.now()<menuDeadline){
-      await sleep(150);
-      menuPoint=(await p.call('Runtime.evaluate',{expression:archiveProjectMenuPointExpr(identity.conversationId),returnByValue:true},3000)).result.value;
-      if(menuPoint?.ok)break;
-    }
-    if(!menuPoint?.ok)return menuPoint||{ok:false,status:'ARCHIVE_PROJECT_ROW_MENU_NOT_FOUND'};
+    const menuPoint=(await p.call('Runtime.evaluate',{expression:archiveMenuPointExpr(),returnByValue:true,userGesture:true},5000)).result.value;
+    if(!menuPoint?.ok)return menuPoint||{ok:false,status:'ARCHIVE_MENU_POINT_MISSING'};
     await cdpMouseClick(p,menuPoint,{paced:false});
     let archivePoint=null;
-    const actionDeadline=Date.now()+4000;
+    const actionDeadline=Date.now()+5000;
     while(Date.now()<actionDeadline){
       await sleep(200);
       archivePoint=(await p.call('Runtime.evaluate',{expression:archiveItemPointExpr(),returnByValue:true},3000)).result.value;
@@ -1472,18 +1443,19 @@ async function archiveChat(target){
       await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{});
       return archivePoint||{ok:false,status:'ARCHIVE_ACTION_POINT_MISSING'};
     }
-    if(archivePoint?.alreadyArchived===true)return{ok:false,status:'ARCHIVE_PROJECT_ROW_UNEXPECTED_UNARCHIVE',conversationId:identity.conversationId};
+    if(archivePoint?.alreadyArchived===true)return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:menuPoint.before,title:menuPoint.title,conversationId:menuPoint.conversationId,actionText:archivePoint.text,confirmation:'UNARCHIVE_ACTION_VISIBLE'};
     const activated=await activateArchiveMenuItem(p);
     if(!activated?.ok)return activated||{ok:false,status:'ARCHIVE_ACTION_ACTIVATION_FAILED'};
     const deadline=Date.now()+10000;
     while(Date.now()<deadline){
       await sleep(250);
-      const state=(await p.call('Runtime.evaluate',{expression:archiveConfirmExpr(identity.conversationId),returnByValue:true},3000)).result.value;
-      if(state?.projectContext===true&&state?.rowRemoved===true){
-        return{ok:true,status:'ARCHIVED',before:identity.before,after:state.url||null,title:identity.title,conversationId:identity.conversationId,actionText:archivePoint.text,confirmation:'PROJECT_LIST_ROW_REMOVED'};
+      const state=(await p.call('Runtime.evaluate',{expression:archiveConfirmExpr(menuPoint.before,menuPoint.conversationId),returnByValue:true},3000)).result.value;
+      if(state?.sameConversation===false||state?.unarchiveVisible===true){
+        const confirmation=state?.unarchiveVisible===true?'UNARCHIVE_ACTION_VISIBLE':'LEFT_CURRENT_CONVERSATION';
+        return{ok:true,status:'ARCHIVED',before:menuPoint.before,after:state?.url||null,title:menuPoint.title,conversationId:menuPoint.conversationId,actionText:archivePoint.text,confirmation};
       }
     }
-    return{ok:false,status:'ARCHIVE_NOT_CONFIRMED_PROJECT_LIST_ROW_REMOVED',before:identity.before,title:identity.title,conversationId:identity.conversationId};
+    return{ok:false,status:'ARCHIVE_NOT_CONFIRMED_LEFT_CURRENT_CONVERSATION',before:menuPoint.before,title:menuPoint.title,conversationId:menuPoint.conversationId};
   }finally{p.close();}
 }
 
