@@ -5,6 +5,8 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
   const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
   const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
   const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+  const supervisor=readFileSync('apps/chrome-controller/runtime/Start-Unified-AppChrome.ps1','utf8');
+  const installer=readFileSync('apps/chrome-controller/runtime/Install-ApprovedArtifact.ps1','utf8');
   const doc=readFileSync('docs/app-chrome/APP_CHROME_MASTER_CONTRACT_3UI_V1.md','utf8');
 
   it('locks the exact 21-command content pool and immutable worker prefixes',()=>{
@@ -78,6 +80,17 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
     expect(server).toContain('const externalWorkAutopilotEnabled=false');
     expect(doc).toContain('NV02 itself self-pulls eligible P1-P5');
     expect(doc).toContain('Core-routed only; no self-pull');
+  });
+
+  it('converges a non-NV02-only release to all three workers without overriding Owner pause',()=>{
+    expect(installer).toContain('[switch]$Nv02Only');
+    expect(installer).toContain('nv02Only=[bool]$Nv02Only');
+    expect(supervisor).toContain('if([bool]$Active.nv02Only)');
+    expect(supervisor).toContain('Ensure-UtilityPaused');
+    expect(supervisor).toContain('Ensure-UtilityResumed');
+    expect(supervisor).toContain("'THREE_UI_SIDE_WORKERS_RESUMED'");
+    expect(supervisor).toContain("'THREE_UI_RESUME_SKIPPED_OWNER_PAUSE'");
+    expect(supervisor).toContain('if(-not(Owner-AutomationAllowed))');
   });
 
   it('requires NV02 visible model verification and keeps generic model preservation',()=>{
