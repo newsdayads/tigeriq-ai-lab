@@ -138,7 +138,7 @@ describe('Paperclip Lab bounded PC01 capability', () => {
   it('pins the exact approved release and loopback-only port', () => {
     expect(PAPERCLIP_LAB_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab');
     expect(PAPERCLIP_LAB_PORT).toBe(3210);
-    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_CONNECTION_DIAGNOSTIC_1');
+    expect(PAPERCLIP_LAB_RUNTIME_REVISION).toBe('20260930_DB_SIDECAR_DIAGNOSTIC_1');
     expect(PAPERCLIP_LAB_RELEASE).toBe('v2026.916.1');
     expect(PAPERCLIP_LAB_RELEASE_SHA).toBe('d554c4789ed3930f8a53ac9fdf6503b3187097da');
     expect(PAPERCLIP_LAB_IMAGE).toBe('ghcr.io/paperclipai/paperclip:2026.916.1');
@@ -308,6 +308,16 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(out.excerpt).toContain('[REDACTED]');
     expect(out.excerpt).not.toContain('secret-value');
     expect(out.excerpt.length).toBeLessThanOrEqual(900);
+  });
+
+  it('includes bounded PostgreSQL sidecar diagnostics in typed health source', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("composeArgs(['ps', '--all', '-q', service])");
+    expect(source).toContain("inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true)");
+    expect(source).toContain('healthStatus: database?.healthStatus || null');
+    expect(source).toContain('restartCount: database?.restartCount ?? null');
+    expect(source).toContain('logFingerprint: database?.logFingerprint || null');
+    expect(source).toContain('logExcerpt: database?.logExcerpt || null');
   });
 
   it('classifies bounded container logs without exposing raw log text', () => {
