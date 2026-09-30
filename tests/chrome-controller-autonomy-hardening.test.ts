@@ -413,6 +413,19 @@ describe('GitHub terminal UI-job reconciliation #1843',()=>{
 });
 
 
+describe('NV03/NV04 safe resume',()=>{
+  it('resumes specialist workers without blind LOCAL_CONTINUE_NOW dispatch',()=>{
+    const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
+    const start=server.indexOf("if(action==='resume')");
+    const end=server.indexOf("if(action==='idle')",start);
+    const resume=server.slice(start,end);
+    expect(resume).toContain("if(workerId!=='NV02')");
+    expect(resume).toContain("'RESUMED_IDLE_NO_ACTIVE_JOB'");
+    expect(resume).toContain("'LOCAL_CONTINUITY_ARMED'");
+    expect(resume.indexOf("if(workerId!=='NV02')")).toBeLessThan(resume.indexOf("sendCommand(workerId,'LOCAL_CONTINUE_NOW')"));
+  });
+});
+
 describe('NV04 explicit dispatch contract plus local-only continuity',()=>{
   it('keeps the explicit NV04 contract and gates generic continuity on the local durable job only',()=>{
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
