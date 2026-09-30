@@ -15,16 +15,38 @@ const STATE_PATH=`${RUNTIME_DIR}\\state.json`;
 const ASSIGNMENT_PATH=`${RUNTIME_DIR}\\assignment.json`;
 const LOG_PATH=`${RUNTIME_DIR}\\events.jsonl`;
 const POLL_MS=Math.max(5000,Number(process.env.TIGERIQ_NV03_POLL_MS||15000));
-const CONTINUE_MIN_MS=Math.max(60000,Number(process.env.TIGERIQ_NV03_CONTINUE_MIN_MS||300000));
-const CONTINUE_MAX_MS=Math.max(CONTINUE_MIN_MS,Number(process.env.TIGERIQ_NV03_CONTINUE_MAX_MS||600000));
+const CONTINUE_MIN_MS=Math.max(3000,Number(process.env.TIGERIQ_NV03_CONTINUE_MIN_MS||3000));
+const CONTINUE_MAX_MS=Math.max(CONTINUE_MIN_MS,Number(process.env.TIGERIQ_NV03_CONTINUE_MAX_MS||15000));
 const OWNER_SCOPE='APP_CHROME_NV03_ROLLOUT_20260929';
 const CONTINUE_PROMPTS=Object.freeze([
-  'Tiếp tục đúng việc review hiện tại',
-  'Làm tiếp phần review đang dở',
-  'Tiếp tục kiểm tra đúng Work Order hiện tại',
-  'Tiếp tục review, không đổi việc',
-  'Xử lý tiếp phần QA hiện tại',
+  "Tiếp tục",
+  "Làm tiếp",
+  "Tiếp đi",
+  "Xử lý tiếp",
+  "Thực hiện tiếp",
+  "Tiếp tục công việc hiện tại",
+  "Làm tiếp công việc hiện tại",
+  "Tiếp tục việc đang làm",
+  "Làm tiếp phần đang dở",
+  "Tiếp tục từ chỗ hiện tại",
+  "Tiếp tục đúng việc này",
+  "Xử lý tiếp việc hiện tại",
+  "Thực hiện tiếp việc đang làm",
+  "Tiếp tục phần còn dở",
+  "Tiếp tục từ trạng thái hiện tại",
+  "Tiếp tục xử lý việc đang dở",
+  "Tiếp tục công việc đang dang dở",
+  "Thực thi tiếp việc hiện tại",
+  "Làm tiếp nhiệm vụ đang thực hiện",
+  "Tiếp tục đúng việc đang được giao",
+  "Làm tiếp, không đổi việc",
 ]);
+function pickContinuePrompt(previous='',random=Math.random){
+  const prior=String(previous||'').replace(/^03\s*-\s*/,'');
+  const candidates=CONTINUE_PROMPTS.filter((text)=>text!==prior);
+  const base=candidates[Math.min(candidates.length-1,Math.floor(random()*candidates.length))];
+  return `03 - ${base}`;
+}
 
 await mkdir(RUNTIME_DIR,{recursive:true});
 
@@ -245,7 +267,7 @@ async function cycle(){
       return;
     }
     if(Date.now()>=Number(state.nextContinueAt||0)){
-      const prompt=CONTINUE_PROMPTS[Math.floor(Math.random()*CONTINUE_PROMPTS.length)];
+      const prompt=pickContinuePrompt(state.lastContinuePrompt);
       const sent=await submit(target,prompt);
       state={...state,phase:sent?.ok?'CONTINUE_DISPATCHED':'READY',dispatches:Number(state.dispatches||0)+(sent?.ok?1:0),nextContinueAt:randomContinueAt(),lastContinuePrompt:sent?.ok?prompt:state.lastContinuePrompt||''};
       await saveState(state);
