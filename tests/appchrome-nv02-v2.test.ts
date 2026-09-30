@@ -245,7 +245,11 @@ describe('NV02 fresh-chat lifecycle V3', () => {
     expect(nv02Loop).not.toContain('restoreVerifiedChatUrl');
     expect(bridge).toContain('crashResumePending:Boolean(raw.crashResumePending)');
     expect(bridge).toContain("log('NV02_CRASH_CHAT_RESUME_ARMED'");
-    expect(nv02Loop).toContain("state.crashResumePending===true&&hasCurrentNv02Chat(state.crashResumeUrl)");
+    expect(nv02Loop).toContain("state.crashResumePending===true&&isRestorableNv02Chat(state.crashResumeUrl)");
+    expect(bridge).toContain("function isRestorableNv02Chat(url)");
+    expect(bridge).toContain("!/^local-chatgpt:/i.test(conversationId)");
+    expect(bridge).toContain("'NV02_CRASH_CHAT_RESUME_SKIPPED_NON_DURABLE'");
+    expect(bridge).toContain("const crashUrl=isRestorableNv02Chat(continuity.verifiedChatUrl)");
   });
 
   it('rotates idle and oversized chats instead of growing context forever', () => {
