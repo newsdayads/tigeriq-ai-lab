@@ -14,7 +14,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -691,7 +691,12 @@ async function runApiDoctorScan(){
       if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
       actions.push(row);continue;
     }
-    const existingHandoff=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
+    const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
+    const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
+    if(handoffCandidate&&!existingHandoff){
+      row.handoff='ignored_stale_failure_class';
+      row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
+    }
     if(existingHandoff){
       const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
