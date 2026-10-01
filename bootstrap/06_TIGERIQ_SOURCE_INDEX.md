@@ -1,10 +1,10 @@
 # TIGERIQ — SOURCE INDEX
-Version: 3.2
+Version: 3.3
 Status: Source Architecture
-Updated: 2026-09-26
+Updated: 2026-10-01
 
 ## 1. Mục tiêu
-Đồng nhất ChatGPT Plus, ChatGPT Go và Gemini Pro về một entry point nguồn duy nhất, tránh duy trì 3 bộ file thủ công và tránh lệch phiên bản. Authority canonical nằm trên GitHub; các tài khoản AI chỉ giữ/trỏ tới Loader.
+Đồng nhất ChatGPT Plus, ChatGPT Go và Gemini Pro về một entry point nguồn duy nhất, tránh duy trì 3 bộ file thủ công và tránh lệch phiên bản. Authority canonical của TigerIQ nằm trên GitHub, **ngoại trừ App Chrome đã được tách LOCAL-only trên PC01**; các tài khoản AI chỉ giữ/trỏ tới Loader.
 
 ## 2. Single Source Entry Point
 Canonical entry point:
@@ -54,23 +54,22 @@ Nếu nguồn thấp hơn xung đột nguồn cao hơn, nguồn thấp hơn khô
 ## 6. NEW CHAT loading contract
 1. Đọc `bootstrap/00_TIGERIQ_LOADER.md` từ GitHub `main`.
 2. Resolve PREBOOT HARD COMMAND trước generic bootstrap.
-3. Nếu message độc lập khớp `LÀM APP CHROME` (primary) hoặc alias `APP CHROME` / `APPCHROME` / legacy `AC`: dùng AC FAST-LOAD V4 = Loader → #280 → #335 → #504 → #1940 → #1888/#1900 → Work Order/PR APP-CHROME đang mở liên quan → checkpoint/runtime mới nhất; mặc định KHÔNG đọc đủ 5 Bootstrap.
-4. AC chỉ nạp đủ 5 Bootstrap khi có một trong các trigger: version Bootstrap thay đổi; task governance/architecture; source conflict; SOT pointer thay đổi; Owner yêu cầu.
-5. Nếu không phải AC: đọc đủ 5 Bootstrap canonical theo Loader.
-6. Nếu message chỉ là số nguyên `N`, đọc CENTRAL #280 → registry hiện hành → resolve command trước khi làm.
+3. Nếu message độc lập khớp `LÀM APP CHROME` hoặc alias `APP CHROME` / `APPCHROME` / `AC`: **không tạo/đọc Work Order App Chrome để thực thi**; chuyển sang lane Owner → Vy → PC01 local, đọc marker `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json` và trạng thái local cần thiết.
+4. Với App Chrome, GitHub chỉ cung cấp policy ranh giới và authority công việc/quyền của NV02/NV03/NV04; source/runtime/deploy App Chrome không lấy từ GitHub.
+5. Nếu không phải App Chrome: đọc đủ 5 Bootstrap canonical theo Loader.
+6. Nếu message chỉ là số nguyên `N`, đọc CENTRAL + registry hiện hành → resolve command trước khi làm.
 7. Nếu task phụ thuộc trạng thái hiện hành, đọc `docs/CURRENT_STATE.md`, queue/P0/Work Order và evidence liên quan.
 8. Trong cùng phiên hợp lệ, không đọc lặp nguồn tĩnh đã xác minh nếu version/pointer chưa đổi; refresh nguồn động cần thiết trước mutation/kết luận.
-9. Nếu GitHub hoặc registry không truy cập được: fail closed; không dùng bản Drive/file upload cũ để suy diễn trạng thái.
+9. Nếu GitHub hoặc registry không truy cập được đối với task TigerIQ thông thường: fail closed; không dùng bản Drive/file upload cũ để suy diễn trạng thái. App Chrome là ngoại lệ LOCAL-only và phải dùng local marker/runtime thay vì fallback sang GitHub App Chrome cũ.
 
-### APP Chrome command policy
+### APP Chrome LOCAL-only policy
 `APP_CHROME_PRIMARY_COMMAND=LÀM APP CHROME`
 `APP_CHROME_ALIASES=APP CHROME|APPCHROME|AC`
-`LEGACY_AC=SUPPORTED_BUT_NOT_RECOMMENDED`
-
-### AC fast-load policy
-`AC_FAST_LOAD_V4=true`
-`GENERAL_BOOTSTRAP_5_FILES_UNCHANGED=true`
-`AC_TOKEN_OPTIMIZATION=NO_REDUNDANT_STATIC_READS`
+`APP_CHROME_SOURCE_MODE=LOCAL_ONLY`
+`APP_CHROME_LOCAL_AUTHORITY=D:\TigerIQ\Apps\ChromeController\LocalOnly\Current`
+`APP_CHROME_GITHUB_WORK_ORDER=FORBIDDEN`
+`APP_CHROME_GITHUB_DEPLOY=FORBIDDEN`
+`APP_CHROME_SYSTEM_MUTATION=FORBIDDEN`
 
 ## 7. Chính sách cho 3 tài khoản
 ### ChatGPT Plus
@@ -121,7 +120,7 @@ Sau khi PR migration được merge `main` và regression đạt:
 - Không giữ nhiều authority cho cùng một policy.
 - Chat không authoritative.
 - Drive không authoritative.
-- GitHub `main` là nguồn canonical duy nhất.
+- GitHub `main` là nguồn canonical duy nhất của TigerIQ **ngoại trừ App Chrome**; App Chrome dùng local authority đã nêu ở mục 6.
 
 ## 12. Regression bắt buộc sau migration
 Tối thiểu trên mỗi nền tảng/tài khoản có thể kiểm tra:
@@ -132,4 +131,4 @@ Tối thiểu trên mỗi nền tảng/tài khoản có thể kiểm tra:
 5. Command đã đăng ký resolve đúng registry.
 6. Command không đăng ký/disabled fail closed.
 7. Câu hỏi trạng thái trả đúng `CURRENT_STATE.md` hiện hành.
-8. `LÀM APP CHROME` là command chuẩn, resolve trước generic bootstrap và dùng AC FAST-LOAD V4; alias `APP CHROME`/`APPCHROME`/legacy `AC` tương thích; 5 Bootstrap chỉ nạp khi trigger bắt buộc xuất hiện.
+8. `LÀM APP CHROME` và alias `APP CHROME`/`APPCHROME`/`AC` phải resolve sang lane LOCAL-only, không tạo Work Order/PR/deploy GitHub cho App Chrome.
