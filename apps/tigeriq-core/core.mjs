@@ -8,6 +8,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
+import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -333,6 +334,17 @@ async function invokeProvider(r, prompt) {
     create index if not exists tigeriq_jobs_status_idx on tigeriq_jobs(status,created_at);
     create index if not exists tigeriq_ai_resources_employee_idx on tigeriq_ai_resources(employee_id);
     create index if not exists tigeriq_events_resource_task_idx on tigeriq_events(resource_id,task_kind,ts desc);
+    create table if not exists tigeriq_self_audit_anomalies(
+      signature text primary key,
+      contract_id text not null,
+      severity text not null,
+      status text not null default 'OPEN',
+      first_seen_at timestamptz not null default now(),
+      last_seen_at timestamptz not null default now(),
+      last_materialized_at timestamptz,
+      count int not null default 1,
+      evidence jsonb not null default '{}'::jsonb);
+    create index if not exists tigeriq_self_audit_contract_idx on tigeriq_self_audit_anomalies(contract_id,status,last_seen_at desc);
   `);
 }
 async function event(type, data = {}) {
@@ -1406,6 +1418,16 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(evidence));
     }
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
+    if(req.method==='GET'&&url.pathname==='/api/self-audit'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await selfAuditStatus()));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/self-audit/canary'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const canary=syntheticSelfAuditCanary();
+      await event('SELF_AUDIT_CANARY',{pass:canary.pass,queueMutation:false,contractIds:canary.anomalies.map(x=>x.contractId),anomalyCount:canary.anomalies.length});
+      res.writeHead(canary.pass?200:500,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(canary));
+    }
     if(req.method==='GET'&&url.pathname==='/api/work-projection'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-orders'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await githubWorkOrders()));}
     if(req.method==='POST'&&url.pathname==='/api/github-event'){
@@ -1522,76 +1544,133 @@ function getDynamicMaxParallel() {
   return Math.max(3, Math.min(20, healthyCount));
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
-export async function startSelfCheck(runtime) {
-  const now = runtime?.now ? runtime.now() : Date.now();
-  const lightInterval = runtime?.lightIntervalMs ?? 10 * 60 * 1000;
-  const deepInterval = runtime?.deepIntervalMs ?? 30 * 60 * 1000;
-  const store = runtime?.store || pool;
 
-  if (!lastLightAudit) {
-    lastLightAudit = now;
-    try {
-      const healthMetrics = {
-        ok: true,
-        uptimeSec: Math.floor(process.uptime()),
-        timestamp: new Date(now).toISOString(),
-      };
-      if (typeof store.persist === 'function') {
-        await store.persist('SELF_CHECK_LIGHT', healthMetrics);
-      } else if (typeof store.query === 'function') {
-        await store.query(
-          "insert into tigeriq_events(type, data) values($1, $2)",
-          ['SELF_CHECK_LIGHT', JSON.stringify(healthMetrics)]
-        );
-      }
-    } catch (err) {
-      console.error(JSON.stringify({ event: 'SELF_CHECK_LIGHT_ERROR', error: String(err?.message || err) }));
-    }
-  } else if (now - lastLightAudit >= lightInterval) {
-    lastLightAudit = now;
-    try {
-      const healthMetrics = {
-        ok: true,
-        uptimeSec: Math.floor(process.uptime()),
-        timestamp: new Date(now).toISOString(),
-      };
-      if (typeof store.query === 'function') {
-        await store.query(
-          "insert into tigeriq_events(type, data) values($1, $2)",
-          ['SELF_CHECK_LIGHT', JSON.stringify(healthMetrics)]
-        );
-      } else if (typeof store.persist === 'function') {
-        await store.persist('SELF_CHECK_LIGHT', healthMetrics);
-      }
-    } catch (err) {
-      console.error(JSON.stringify({ event: 'SELF_CHECK_LIGHT_ERROR', error: String(err?.message || err) }));
-    }
+async function collectSelfAuditSnapshot(store=pool){
+  const [queueRow,idleRow,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows]=await Promise.all([
+    store.query(`select count(*)::int as count,min(j.created_at) as oldest
+      from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
+      where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+        and j.attempts<j.max_attempts and o.status='active'`),
+    store.query(`select count(*)::int as count from tigeriq_ai_resources
+      where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE')
+        and current_job_id is null and (cooldown_until is null or cooldown_until<=now())`),
+    store.query("select count(*)::int as count from tigeriq_jobs where status in ('dispatching','running')"),
+    store.query(`select j.id,j.status,j.lease_until,j.completed_at,
+      exists(select 1 from tigeriq_ai_resources r where r.current_job_id=j.id)
+      or exists(select 1 from tigeriq_resources r2 where r2.current_job_id=j.id) as resource_still_bound
+      from tigeriq_jobs j
+      where j.status in ('done','failed') and j.completed_at is not null and j.completed_at>=now()-interval '24 hours'
+      order by j.completed_at desc limit 250`),
+    store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,
+      r.health_state,r.credential_state,r.cooldown_until
+      from tigeriq_jobs j left join tigeriq_ai_resources r on r.resource_id=j.resource_id
+      where j.status in ('dispatching','running') and j.resource_id is not null`),
+    store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,o.metadata
+      from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
+      where j.kind='github_review' and j.status in ('running','done') and j.created_at>=now()-interval '7 days'
+      order by j.created_at desc limit 200`),
+    store.query(`select id,status,metadata from tigeriq_objectives
+      where status='completed' and updated_at>=now()-interval '7 days'
+      order by updated_at desc limit 250`),
+  ]);
+  const oldest=queueRow.rows[0]?.oldest?new Date(queueRow.rows[0].oldest).getTime():Date.now();
+  const now=Date.now();
+  const reviews=reviewRows.rows.map(row=>{
+    const m=row.metadata||{};
+    const employeeIds=[...(Array.isArray(m.finalReviewImplementerEmployeeIds)?m.finalReviewImplementerEmployeeIds:[]),...(Array.isArray(m.implementerEmployeeIds)?m.implementerEmployeeIds:[]),m.implementerEmployeeId].filter(Boolean);
+    const resourceIds=[...(Array.isArray(m.finalReviewImplementerResourceIds)?m.finalReviewImplementerResourceIds:[]),...(Array.isArray(m.implementerResourceIds)?m.implementerResourceIds:[])].filter(Boolean);
+    return {jobId:row.job_id,status:row.status,reviewerEmployeeId:row.employee_id,reviewerResourceId:row.resource_id,implementerEmployeeIds:[...new Set(employeeIds)],implementerResourceIds:[...new Set(resourceIds)]};
+  });
+  const dependencies=objectiveRows.rows.map(row=>({
+    objectiveId:row.id,status:row.status,
+    dependencyGateRequired:row.metadata?.dependencyGateRequired===true,
+    dependencyGatePass:row.metadata?.dependencyGatePass===true,
+    dependencyGateReason:row.metadata?.dependencyGateReason||null,
+  })).filter(x=>x.dependencyGateRequired);
+  const expectedSha=String(process.env.TIGERIQ_EXPECTED_SOURCE_SHA||process.env.GITHUB_SHA||'').trim();
+  const installedSha=String(process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA||'').trim();
+  return {
+    queue:{
+      eligibleBacklogCount:Number(queueRow.rows[0]?.count||0),
+      eligibleIdleWorkers:Number(idleRow.rows[0]?.count||0),
+      activeWorkCount:Number(activeRow.rows[0]?.count||0),
+      backlogStableForMs:Math.max(0,now-oldest),
+    },
+    terminalJobs:terminalRows.rows.map(row=>({
+      id:row.id,status:row.status,leaseUntil:row.lease_until||null,resourceStillBound:row.resource_still_bound===true,
+      completedAgeMs:Math.max(0,now-new Date(row.completed_at).getTime()),
+    })),
+    activeAssignments:assignmentRows.rows.map(row=>({
+      jobId:row.job_id,status:row.status,employeeId:row.employee_id,resourceId:row.resource_id,
+      healthState:row.health_state,credentialState:row.credential_state,cooldownUntil:row.cooldown_until||null,
+    })),
+    reviews,
+    dependencies,
+    runtime:{expectedSha,installedSha},
+    service:{healthy:true,functionalFailures:[]},
+    watchdog:{
+      ...(process.env.TIGERIQ_UPDATER_HEALTH?{updaterHealthy:process.env.TIGERIQ_UPDATER_HEALTH==='PASS'}:{}),
+      ...(process.env.TIGERIQ_WATCHDOG_HEALTH?{watchdogHealthy:process.env.TIGERIQ_WATCHDOG_HEALTH==='PASS'}:{}),
+    },
+  };
+}
+
+async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldownMs=10*60*1000}={}){
+  let materialized=0,deduped=0;
+  for(const a of result.anomalies){
+    const existing=(await store.query('select signature,status,last_materialized_at,count from tigeriq_self_audit_anomalies where signature=$1',[a.signature])).rows[0]||null;
+    const decision=anomalyMaterializationDecision(existing,a,{nowMs,cooldownMs});
+    await store.query(`insert into tigeriq_self_audit_anomalies(signature,contract_id,severity,status,first_seen_at,last_seen_at,last_materialized_at,count,evidence)
+      values($1,$2,$3,'OPEN',to_timestamp($4::double precision/1000.0),to_timestamp($4::double precision/1000.0),case when $5 then to_timestamp($4::double precision/1000.0) else null end,1,$6::jsonb)
+      on conflict(signature) do update set
+        contract_id=excluded.contract_id,severity=excluded.severity,status='OPEN',last_seen_at=excluded.last_seen_at,
+        last_materialized_at=case when $5 then excluded.last_seen_at else tigeriq_self_audit_anomalies.last_materialized_at end,
+        count=tigeriq_self_audit_anomalies.count+1,evidence=excluded.evidence`,
+      [a.signature,a.contractId,a.severity,nowMs,decision.materialize,JSON.stringify(a.evidence||{})]);
+    if(decision.materialize){
+      materialized++;
+      await event('SELF_AUDIT_ANOMALY',{signature:a.signature,contractId:a.contractId,severity:a.severity,key:a.key,evidence:a.evidence,materializationReason:decision.reason});
+    }else deduped++;
   }
+  await event('SELF_AUDIT_SCAN',{contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized,deduped});
+  return {materialized,deduped};
+}
 
-  if (!activeDeepAudit && (!lastDeepAudit || (now - lastDeepAudit >= deepInterval))) {
-    activeDeepAudit = true;
-    lastDeepAudit = now;
-    try {
-      const resList = typeof resources !== 'undefined' ? resources : [];
-      const auditResult = {
-        ok: true,
-        auditType: 'deep',
-        resourcesCount: resList.length,
-        timestamp: new Date(now).toISOString(),
-      };
-      if (typeof store.persist === 'function') {
-        await store.persist('SELF_CHECK_DEEP', auditResult);
-      } else if (typeof store.query === 'function') {
-        await store.query(
-          "insert into tigeriq_events(type, data) values($1, $2)",
-          ['SELF_CHECK_DEEP', JSON.stringify(auditResult)]
-        );
-      }
-    } catch (err) {
-      console.error(JSON.stringify({ event: 'SELF_CHECK_DEEP_ERROR', error: String(err?.message || err) }));
-    } finally {
-      activeDeepAudit = false;
-    }
+export async function runSelfAuditScan({store=pool,nowMs=Date.now()}={}){
+  const snapshot=await collectSelfAuditSnapshot(store);
+  const result=evaluateSelfAudit(snapshot,{nowMs});
+  const persistence=await persistSelfAuditResult(result,store,{nowMs});
+  return {...result,...persistence};
+}
+
+async function selfAuditStatus(){
+  const anomalies=(await pool.query(`select signature,contract_id,severity,status,first_seen_at,last_seen_at,last_materialized_at,count,evidence
+    from tigeriq_self_audit_anomalies order by last_seen_at desc limit 100`)).rows;
+  return {ok:true,contracts:SELF_AUDIT_CONTRACTS,anomalies};
+}
+
+export async function startSelfCheck(runtime={}){
+  const now=runtime?.now?runtime.now():Date.now();
+  const lightInterval=runtime?.lightIntervalMs??10*60*1000;
+  const deepInterval=runtime?.deepIntervalMs??5*60*1000;
+  const store=runtime?.store||pool;
+  if(!lastLightAudit||now-lastLightAudit>=lightInterval){
+    lastLightAudit=now;
+    const healthMetrics={ok:true,uptimeSec:Math.floor(process.uptime()),timestamp:new Date(now).toISOString()};
+    try{
+      if(typeof store.persist==='function'&&typeof store.query!=='function')await store.persist('SELF_CHECK_LIGHT',healthMetrics);
+      else await store.query("insert into tigeriq_events(type,data) values($1,$2)",['SELF_CHECK_LIGHT',JSON.stringify(healthMetrics)]);
+    }catch(err){console.error(JSON.stringify({event:'SELF_CHECK_LIGHT_ERROR',error:String(err?.message||err)}));}
+  }
+  if(!activeDeepAudit&&(!lastDeepAudit||now-lastDeepAudit>=deepInterval)){
+    activeDeepAudit=true;lastDeepAudit=now;
+    try{
+      if(typeof runtime.audit==='function')await runtime.audit();
+      else if(typeof store.persist==='function'&&typeof store.query!=='function'){
+        await store.persist('SELF_CHECK_DEEP',{ok:true,auditType:'expected-behavior',contractCount:SELF_AUDIT_CONTRACTS.length,timestamp:new Date(now).toISOString()});
+      }else await runSelfAuditScan({store,nowMs:now});
+    }catch(err){console.error(JSON.stringify({event:'SELF_CHECK_DEEP_ERROR',error:String(err?.message||err)}));}
+    finally{activeDeepAudit=false;}
   }
 }
 
