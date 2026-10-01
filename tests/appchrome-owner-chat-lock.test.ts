@@ -84,9 +84,11 @@ describe('App Chrome Owner-chat-only maintenance lock',()=>{
     expect(script).not.toContain("foreach($id in @('NV02','NV03','NV04'))");
     expect(script).not.toContain("$controller+'/api/utility/workers/'+$id+'/resume'");
     const pre=script.indexOf('$preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)');
-    const wait=script.indexOf('Wait-SafeBoundary|Out-Null;$paused=$true');
+    const wait=script.indexOf('$boundary=Wait-SafeBoundary');
+    const paused=script.indexOf('$paused=[bool]$boundary.paused');
     expect(pre).toBeGreaterThan(-1);
     expect(wait).toBeGreaterThan(pre);
+    expect(paused).toBeGreaterThan(wait);
   });
 
   it('fails closed for supersede or target/artifact changes during the safe-boundary wait',()=>{

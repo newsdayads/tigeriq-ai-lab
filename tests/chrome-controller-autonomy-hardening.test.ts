@@ -218,6 +218,7 @@ describe('NV02 explicit resume from durable idle',()=>{
     expect(helper).toContain("reason='install_inflight'");
     expect(helper).toContain("'APPCHROME_ALREADY_LIVE_EXACT_HEAD'");
     expect(helper).toContain("reason='already_live_exact_head'");
+    expect(helper).not.toContain("reason='already_installed'");
     expect(helper).toContain("Release-SingleFlight");
   });
 });
@@ -236,6 +237,11 @@ describe('Owner-authorized zero-touch App Chrome deployment',()=>{
     expect(helper).toContain("Start-ScheduledTask -TaskName $taskName");
     expect(helper.indexOf("Start-ScheduledTask -TaskName $taskName")).toBeLessThan(helper.indexOf("$live=Wait-ExactHead"));
     expect(helper).toContain("pending-deploy.json");
+    expect(helper).toContain('function Test-AppChromeColdBoundary');
+    expect(helper).toContain("mode='COLD_START'");
+    expect(helper).toContain("mode='LIVE_PAUSED'");
+    expect(helper).toContain("$paused=[bool]$boundary.paused");
+    expect(helper).toContain("safeBoundaryMode=[string]$boundary.mode");
     expect(updater).toContain('$appChromeInstallPollIntervalSec=120');
   });
 });
