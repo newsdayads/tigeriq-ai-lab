@@ -236,6 +236,11 @@ describe('Owner-authorized zero-touch App Chrome deployment',()=>{
     expect(helper).toContain("Start-ScheduledTask -TaskName $taskName");
     expect(helper.indexOf("Start-ScheduledTask -TaskName $taskName")).toBeLessThan(helper.indexOf("$live=Wait-ExactHead"));
     expect(helper).toContain("pending-deploy.json");
+    expect(helper).toContain('function Test-AppChromeColdBoundary');
+    expect(helper).toContain("mode='COLD_START'");
+    expect(helper).toContain("mode='LIVE_PAUSED'");
+    expect(helper).toContain("$paused=[bool]$boundary.paused");
+    expect(helper).toContain("safeBoundaryMode=[string]$boundary.mode");
     expect(updater).toContain('$appChromeInstallPollIntervalSec=120');
   });
 });
