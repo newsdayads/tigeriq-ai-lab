@@ -267,6 +267,41 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(row).toMatchObject({ status: 'GOAL', workKind: 'GOAL', employeeId: null });
   });
 
+  it('keeps App Chrome subject tags and historical target employees from becoming current executors', () => {
+    const row = parseOpenWorkIssue(issue(2477, '[P0][NV03][WINDOW] Khôi phục App Chrome interactive session sau reboot', [
+      'STATE=EXTERNAL_WAIT_OWNER_NV03_LOGIN',
+      'NEXT=Owner login NV03 visible Chrome once; then one bounded verification only',
+      'P0_BLOCKER=NV03_REAUTH',
+      '',
+      'CURRENT_STATE=WAIT_REBOOT_PERSISTENCE_GATE',
+      'MUTATION_OWNER=VY_OWNER_AUTHORIZED',
+      '',
+      'TARGET_EMPLOYEE=NV09',
+      'PRIORITY=P0',
+    ].join('\n')), {
+      active: {
+        status: 'REVIEW',
+        employeeId: 'NV03',
+        currentStep: 'Đang chạy kiểm tra PR',
+        prNumber: 2634,
+        prUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/pull/2634',
+        updatedAt: '2026-10-01T00:56:24Z',
+        checks: { state: 'ĐANG CHẠY', passed: 1, total: 3, active: 2, failed: 0 },
+      },
+    });
+
+    expect(row).toMatchObject({
+      number: 2477,
+      status: 'OWNER_GATE',
+      currentState: 'EXTERNAL_WAIT_OWNER_NV03_LOGIN',
+      employeeId: null,
+      prNumber: null,
+      prUrl: null,
+      checks: null,
+      nextStep: 'Owner login NV03 visible Chrome once; then one bounded verification only',
+    });
+  });
+
   it('lets a newer blocker-cleared lifecycle checkpoint supersede a stale blocked body for display truth', () => {
     const lifecycle = parseClearedBlockerLifecycleComment({
       body: [
