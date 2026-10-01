@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -843,6 +843,41 @@ test('terminal objective orphan queued and waiting_resource jobs are failed clos
   assert.strictEqual(pool.jobs.find(j=>j.id==='JOB-D').status,'done');
 });
 
+
+
+test('accepted sibling reuse is exact-revision and exact-scope gated',()=>{
+  const current={sourceRevision:'rev-1',resourceScope:'scope-a'};
+  const accepted={
+    sourceRevision:'rev-1',
+    resourceScope:'scope-a',
+    liveAcceptancePass:true,
+    liveAcceptanceRevision:'rev-1',
+    liveAcceptanceEvidenceCommentId:123,
+    finalReviewPass:true,
+    finalReviewRevision:'rev-1',
+    finalReviewJobId:'JOB-REVIEW',
+    finalReviewerEmployeeId:'NV18',
+  };
+  const patch=reusableAcceptedSiblingMetadata(current,accepted,{liveRequired:true,finalReviewRequired:true});
+  assert.strictEqual(patch.liveAcceptancePass,true);
+  assert.strictEqual(patch.finalReviewPass,true);
+  assert.strictEqual(patch.finalReviewJobId,'JOB-REVIEW');
+  assert.strictEqual(reusableAcceptedSiblingMetadata({...current,sourceRevision:'rev-2'},accepted,{liveRequired:true,finalReviewRequired:true}),null);
+  assert.strictEqual(reusableAcceptedSiblingMetadata({...current,resourceScope:'scope-b'},accepted,{liveRequired:true,finalReviewRequired:true}),null);
+  assert.strictEqual(reusableAcceptedSiblingMetadata(current,{...accepted,finalReviewRevision:'old'}, {liveRequired:true,finalReviewRequired:true}),null);
+  assert.strictEqual(reusableAcceptedSiblingMetadata(current,{...accepted,liveAcceptancePass:false}, {liveRequired:true,finalReviewRequired:true}),null);
+});
+
+test('closed accepted sibling inheritance runs before new live/final review orchestration',()=>{
+  const source=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  const sync=source.slice(source.indexOf('export async function syncGithubOutcomes'));
+  const inheritAt=sync.indexOf('const inheritedAcceptedSibling=await inheritClosedAcceptedSiblingCompletion');
+  const acceptanceAt=sync.indexOf('if(!inheritedAcceptedSibling&&(row.metadata?.liveAcceptanceRequired===true||row.metadata?.finalReviewRequired===true))');
+  const ensureAt=sync.indexOf('ensureFinalLiveReviewJob');
+  assert.ok(inheritAt>0);
+  assert.ok(acceptanceAt>inheritAt);
+  assert.ok(ensureAt>acceptanceAt);
+});
 
 test('closed source issue terminalizes stale active GitHub objective and releases intake lock',async()=>{
   const pool=coreBacklogPool();

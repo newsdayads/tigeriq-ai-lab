@@ -860,6 +860,61 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
 }
 
+
+const ACCEPTANCE_INHERIT_KEYS=[
+  'liveAcceptancePass','liveAcceptanceRevision','liveAcceptanceEvidenceCommentId','liveAcceptanceCommentCount',
+  'finalReviewPass','finalReviewRevision','finalReviewJobId','finalReviewerEmployeeId','finalReviewerResourceId',
+  'finalReviewImplementationFingerprint','finalReviewImplementerEmployeeIds','finalReviewImplementerResourceIds',
+];
+
+export function reusableAcceptedSiblingMetadata(currentMetadata={},siblingMetadata={},{
+  liveRequired=false,
+  finalReviewRequired=false,
+}={}){
+  const revision=String(currentMetadata?.sourceRevision||'');
+  if(!revision||String(siblingMetadata?.sourceRevision||'')!==revision)return null;
+  if(String(currentMetadata?.resourceScope||'')!==String(siblingMetadata?.resourceScope||''))return null;
+  if(liveRequired&&(siblingMetadata?.liveAcceptancePass!==true||String(siblingMetadata?.liveAcceptanceRevision||'')!==revision))return null;
+  if(finalReviewRequired&&(siblingMetadata?.finalReviewPass!==true||String(siblingMetadata?.finalReviewRevision||'')!==revision))return null;
+  const patch={};
+  for(const key of ACCEPTANCE_INHERIT_KEYS){
+    if(Object.prototype.hasOwnProperty.call(siblingMetadata||{},key))patch[key]=siblingMetadata[key];
+  }
+  return patch;
+}
+
+async function inheritClosedAcceptedSiblingCompletion(pool,row,{sourceIssue=null,liveRequired=false,finalReviewRequired=false}={}){
+  if(row?.status!=='active'||sourceIssue?.state!=='closed'||String(sourceIssue?.state_reason||'')!=='completed')return null;
+  const issueNumber=String(row?.metadata?.issueNumber||'');
+  const sourceRevision=String(row?.metadata?.sourceRevision||'');
+  if(!issueNumber||!sourceRevision)return null;
+  const siblings=(await pool.query(`select id,metadata from tigeriq_objectives
+    where id<>$1
+      and status='completed'
+      and metadata->>'source'='github'
+      and metadata->>'issueNumber'=$2
+      and metadata->>'sourceRevision'=$3
+    order by updated_at desc
+    limit 10`,[row.id,issueNumber,sourceRevision])).rows||[];
+  for(const sibling of siblings){
+    const inherited=reusableAcceptedSiblingMetadata(row.metadata,sibling.metadata,{liveRequired,finalReviewRequired});
+    if(!inherited)continue;
+    const sourceReason=String(sourceIssue.state_reason||'completed');
+    const summary=`duplicate current-revision objective terminalized from accepted sibling ${sibling.id}`;
+    const metadataPatch={
+      ...inherited,
+      acceptanceInheritedFromObjectiveId:sibling.id,
+      githubSourceState:'closed',
+      githubSourceStateReason:sourceReason,
+      githubSourceClosedAt:String(sourceIssue.closed_at||''),
+    };
+    await pool.query("update tigeriq_objectives set status='completed',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1",[row.id,summary,JSON.stringify(metadataPatch)]);
+    await cleanupTerminalObjectiveJobs({pool});
+    return {siblingId:sibling.id,summary,metadataPatch};
+  }
+  return null;
+}
+
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
@@ -920,7 +975,18 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.metadata={...row.metadata,...policyPatch};
     }
 
-    if(row.metadata?.liveAcceptanceRequired===true||row.metadata?.finalReviewRequired===true){
+    const inheritedAcceptedSibling=await inheritClosedAcceptedSiblingCompletion(pool,row,{
+      sourceIssue:sourceIssueForGate,
+      liveRequired:row.metadata?.liveAcceptanceRequired===true,
+      finalReviewRequired:row.metadata?.finalReviewRequired===true,
+    });
+    if(inheritedAcceptedSibling){
+      row.status='completed';
+      row.summary=inheritedAcceptedSibling.summary;
+      row.metadata={...row.metadata,...inheritedAcceptedSibling.metadataPatch};
+    }
+
+    if(!inheritedAcceptedSibling&&(row.metadata?.liveAcceptanceRequired===true||row.metadata?.finalReviewRequired===true)){
       try{
         const commentCount=Math.max(0,Number(sourceIssueForGate?.comments||0));
         const checkedCount=Math.max(-1,Number(row.metadata?.liveAcceptanceCommentCount??-1));
