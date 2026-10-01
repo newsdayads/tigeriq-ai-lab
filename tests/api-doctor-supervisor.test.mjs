@@ -63,9 +63,18 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorExistingHandoffAction({
       existingHandoff:true,successAfterHandoff:false,cooldownUntil:null,validationAttempts:2,nowMs:now,
     })).toEqual({action:'wait_repair',reason:'post_repair_validation_budget_exhausted'});
-    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true,nowMs:now})).toEqual({
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'ONLINE',nowMs:now,
+    })).toEqual({
       action:'recovered',reason:'live_work_success_after_handoff',
     });
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'ERROR',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'validate_repair',reason:'post_repair_validation_due'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'RATE_LIMITED',
+      cooldownUntil:'2026-09-21T07:10:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'repair_handoff_cooldown_active'});
     expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false,nowMs:now})).toEqual({action:'proceed'});
   });
 
