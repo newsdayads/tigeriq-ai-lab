@@ -103,7 +103,7 @@ export function projectProgress({ pull, runs = [] }) {
       : gate.status === 'running' ? 'RUNNING'
         : gate.status === 'fail' ? 'FAILED'
           : 'WAITING';
-    return { ...gate, statusCode: gate.status, status: ownerStatusLabel(code) };
+    return { ...gate, status: ownerStatusLabel(code) };
   });
 
   return {
