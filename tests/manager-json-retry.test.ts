@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+import {managerExhaustionRetryPlan,managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
@@ -50,6 +50,20 @@ describe('manager JSON parsing',()=>{
   });
 });
 
+describe('manager exhaustion objective backoff',()=>{
+  it('backs off exponentially without spinning and caps the delay',()=>{
+    expect(managerExhaustionRetryPlan({managerCycles:0})).toMatchObject({retry:true,nextCycle:1,delayMs:30_000});
+    expect(managerExhaustionRetryPlan({managerCycles:1})).toMatchObject({retry:true,nextCycle:2,delayMs:60_000});
+    expect(managerExhaustionRetryPlan({managerCycles:5})).toMatchObject({retry:true,nextCycle:6,delayMs:600_000});
+    expect(managerExhaustionRetryPlan({managerCycles:12})).toMatchObject({retry:true,nextCycle:13,delayMs:600_000});
+  });
+  it('fails closed when the bounded objective retry budget is exhausted',()=>{
+    expect(managerExhaustionRetryPlan({managerCycles:29,maxCycles:30})).toEqual({
+      retry:false,nextCycle:30,delayMs:0,reason:'manager_exhaustion_retry_budget_exhausted',
+    });
+  });
+});
+
 describe('bounded manager retry/failover',()=>{
   it('retries malformed output once on the same resource',async()=>{
     const acquired=[];const invoked=[];const retried=[];let calls=0;
@@ -86,5 +100,16 @@ describe('bounded manager retry/failover',()=>{
     expect(result.exhausted).toBe(false);
     expect(result.providerAttempts).toBe(1);
     expect(result.decision).toEqual({status:'blocked',summary:'manager decision stopped by resource failure policy',jobs:[]});
+  });
+});
+
+describe('Core manager exhaustion integration',()=>{
+  it('keeps exhausted manager objectives active with bounded backoff before terminal budget exhaustion',async()=>{
+    const {readFileSync}=await import('node:fs');
+    const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
+    expect(core).toContain("if(routed.exhausted===true)");
+    expect(core).toContain("MANAGER_EXHAUSTED_RETRY_QUEUED");
+    expect(core).toContain("reason:retryPlan.reason");
+    expect(core.indexOf("if(routed.exhausted===true)")).toBeLessThan(core.indexOf("const decision=routed.decision"));
   });
 });
