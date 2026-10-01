@@ -697,6 +697,7 @@ async function runApiDoctorScan(){
       const handoffPlan=apiDoctorExistingHandoffAction({
         existingHandoff:true,
         successAfterHandoff:Boolean(successAfter),
+        healthState:resource.health_state,
         cooldownUntil:resource.cooldown_until,
         validationAttempts,
         maxValidationAttempts:2,
