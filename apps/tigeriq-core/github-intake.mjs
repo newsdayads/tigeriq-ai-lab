@@ -42,6 +42,11 @@ export function indexOpenGithubIssues(rows=[]){
   return out;
 }
 
+export function githubIssuesAfterOutcomeSync(issues=[],resultIssueNumbers=[]){
+  const terminal=new Set((Array.isArray(resultIssueNumbers)?resultIssueNumbers:[]).map(Number).filter(Boolean));
+  return (Array.isArray(issues)?issues:[]).filter(issue=>!terminal.has(Number(issue?.number)));
+}
+
 export function hasExactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
 }
@@ -874,7 +879,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
     limit 100`)).rows;
   const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
-  let claims=0,results=0;
+  let claims=0,results=0;const resultIssueNumbers=[];
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
     if(issueFilter&&!issueFilter.has(number))continue;
@@ -1040,10 +1045,10 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         }
       }
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&row.metadata?.keepOpenOnStepComplete!==true})]);
-      results++;
+      results++;resultIssueNumbers.push(number);
     }
   }
-  return {claims,results};
+  return {claims,results,resultIssueNumbers};
 }
 
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=1000}={}){
@@ -1079,7 +1084,8 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
       }
       const issues=[issue];
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[n]});
-      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:issues});
+      const materializeIssues=githubIssuesAfterOutcomeSync(issues,b.resultIssueNumbers);
+      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:materializeIssues});
       console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,created:a.created,claims:b.claims,results:b.results}));
     }catch(e){applyError(e,'event')}
     finally{
@@ -1108,7 +1114,8 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
       }
       const stableIssues=openIssues.filter(issue=>!handedOff.has(Number(issue.number)));
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
-      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
+      const materializeIssues=githubIssuesAfterOutcomeSync(stableIssues,b.resultIssueNumbers);
+      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:materializeIssues});
       if(handedOff.size)console.log(JSON.stringify({event:'GITHUB_CHAT_OWNER_FALLBACK_HANDOFF',count:handedOff.size,issueNumbers:[...handedOff]}));
       if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));
     }catch(e){applyError(e,'fallback')}
