@@ -105,6 +105,19 @@ export function assertPrOpenState(pr){
   throw e;
 }
 
+export function reviewReworkDecision(review,reviewCycle,{maxCycles=3}={}){
+  const decision=String(review?.decision||'').trim().toLowerCase();
+  const cycle=Math.max(0,Number(reviewCycle)||0);
+  const limit=Math.max(1,Number(maxCycles)||3);
+  const issues=Array.isArray(review?.issues)?review.issues.map(String).filter(Boolean).slice(0,8):[];
+  if(decision==='approve')return {action:'approve',issues,nextStatus:'review'};
+  if(decision!=='changes_requested'){
+    const error=new Error('REVIEW_DECISION_INVALID');error.code='REVIEW_SCHEMA_INVALID';throw error;
+  }
+  if(cycle>=limit-1)return {action:'fail',code:'REVIEW_CHANGES_UNRESOLVED',issues,nextStatus:'review'};
+  return {action:'repair',issues,nextStatus:'waiting_ci'};
+}
+
 export function gateFailureIssues(error){
   const detail=error?.detail||{};
   const states=Array.isArray(detail.states)?detail.states:[];
@@ -1263,13 +1276,14 @@ async function runJob(j){
     if(reviewer.id===worker.id)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
     await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
     await persistIndependentReviewArtifact(pr.number,{implementerId:worker.id,reviewerId:reviewer.id,targetHead:gates.sha,review});
-    if(review.decision==='approve'){approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;break;}
-    if(reviewCycle===2)throw Object.assign(new Error('REVIEW_CHANGES_UNRESOLVED'),{detail:review});
+    const reviewAction=reviewReworkDecision(review,reviewCycle,{maxCycles:3});
+    if(reviewAction.action==='approve'){approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;break;}
+    if(reviewAction.action==='fail')throw Object.assign(new Error(reviewAction.code),{detail:review});
     const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,repairGithubContext);j.liveGithubContext=repairGithubContext;
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    const repaired=await generateAndWriteRepair(worker,j,branch,review.issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
+    const repaired=await generateAndWriteRepair(worker,j,branch,reviewAction.issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
     if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
-    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status=$4 where id=$1",[j.id,worker.id,reviewer.id,reviewAction.nextStatus]);
   }
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await gh(`/pulls/${pr.number}`));
