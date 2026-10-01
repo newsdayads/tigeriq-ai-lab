@@ -210,9 +210,12 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Command không đăng ký/disabled → fail closed.
 - Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
 
-## 18. Invariant cho Owner‑facing references
+## 18. Invariant cho Owner-facing references
 
-- Tất cả các tham chiếu **Owner‑facing** phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#12 - Kiểm tra bảo mật`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
+- Tất cả các tham chiếu Owner-facing phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#1664 - [P1][QUẢN TRỊ] Bắt buộc hiển thị #xxxx - Tên việc cho Owner`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
+
+- Tất cả các tham chiếu Owner-facing phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#1664 - [P1][QUẢN TRỊ] Bắt buộc hiển thị #xxxx - Tên việc cho Owner`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
+- Cấm tuyệt đối hiển thị mã trần dạng `#<số>` đứng độc lập trong bất kỳ thông điệp, chat, queue, status, checkpoint, handoff, report hoặc dashboard nào gửi đến anh Sơn.
 - Vi phạm định dạng sẽ gây lỗi kiểm tra và ngăn không cho PR được merge.
 
 ## 19. Regression test cho bare references
@@ -240,7 +243,7 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.
 
 
-## 20.1. App Chrome LOCAL-only — ranh giới cứng
+## 21. App Chrome LOCAL-only — ranh giới cứng
 - App Chrome là hệ **LOCAL-only trên PC01**. Nguồn triển khai hiện hành và runtime authority nằm tại `D:\TigerIQ\Apps\ChromeController\LocalOnly\Source`; marker ranh giới là `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
 - GitHub/Core/Coding Lane/OpenClaw/automation **KHÔNG được** tạo Work Order, claim, route, sửa, đóng gói, deploy, restart hoặc tự phục hồi source/runtime/config/controller của App Chrome.
 - Mọi `RESOURCE_SCOPE=APP_CHROME_*`, tiêu đề `[APP-CHROME]`, path `apps/chrome-controller/**` hoặc request `appchrome-install-request.json` phải fail-closed ở hệ điều phối.

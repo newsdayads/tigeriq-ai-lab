@@ -111,4 +111,9 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(source).toContain("bucket=ownerStatusLabel('WORKING')");
     expect(source).not.toContain("bucket='BLOCKED'");
   });
+
+  it('rejects bare #<number> without title in owner-facing output', () => {
+    const output = localizeOwnerFacingText('Work #2657 is pending');
+    expect(output).not.toContain('#2657');
+  });
 });
