@@ -1,8 +1,8 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.7
+Version: 1.8
 Status: Bootstrap Entry Point
 Priority: P0
-Updated: 2026-09-26
+Updated: 2026-10-02
 
 ## PREBOOT HARD COMMAND — OWNER AUTHORITY
 - `LÀM APP CHROME` is the primary hard command. Aliases `APP CHROME`, `APPCHROME`, and legacy `AC` are supported. Matching is trimmed and case-insensitive. The command MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
@@ -54,11 +54,18 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 4. `bootstrap/05_TIGERIQ_BASELINE_DECISIONS.md`
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
 
+## OWNER INTERACTION HARD-LOAD V1 — bắt buộc mọi phiên
+- Trước phản hồi Owner đầu tiên của mọi NEW CHAT, sau Bootstrap canonical phải đọc Interaction Policy #504 từ GitHub hiện hành.
+- Quy tắc này áp dụng cả chat thường lẫn chat công việc; không phụ thuộc task có cần trạng thái runtime hay không.
+- #504 là authority động cho ngôn ngữ, icon/trạng thái, độ ngắn gọn, thứ tự KẾT QUẢ → VƯỚNG → BƯỚC TIẾP THEO, mã việc đầy đủ và % chỉ từ evidence/checklist thật.
+- Không được dựa vào memory/model habit để thay #504. Nếu #504 không đọc được trong task TigerIQ thì fail closed theo SOURCE_UNAVAILABLE.
+STATE=OWNER_INTERACTION_HARD_LOAD_V1
+
 ## Dynamic Source of Truth — đọc khi task phụ thuộc trạng thái hiện hành
 1. `docs/CURRENT_STATE.md`
 2. CENTRAL: `https://github.com/newsdayads/tigeriq-ai-lab/issues/280`
 3. Registry: `https://github.com/newsdayads/tigeriq-ai-lab/issues/335`
-4. Interaction Policy: `https://github.com/newsdayads/tigeriq-ai-lab/issues/504`
+4. Interaction Policy #504 đã hard-load ở trên; refresh lại nếu task thay đổi interaction/Owner-facing policy.
 5. Work Order / Issue / PR / evidence liên quan trực tiếp tới task.
 
 ## Quy tắc truy cập nguồn — connector first
@@ -94,8 +101,9 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 2. Nếu có GitHub connector, đọc Loader theo repo/branch/path; không dùng raw URL làm điều kiện thành công duy nhất.
 3. Nếu là lệnh `LÀM APP CHROME` hoặc alias hỗ trợ: dùng AC FAST-LOAD V4; không đọc đủ 5 Bootstrap trừ khi có trigger bắt buộc.
 4. Nếu KHÔNG phải command APP CHROME hoặc alias hỗ trợ: đọc đủ 5 Bootstrap canonical theo danh sách trên.
-5. Nếu câu hỏi phụ thuộc trạng thái hiện hành, đọc CURRENT_STATE + CENTRAL/Registry/Interaction + tài liệu liên quan.
-6. Chỉ sau khi hoàn tất đường nạp tương ứng mới kết luận hoặc thực thi.
+5. Luôn đọc Interaction Policy #504 trước phản hồi Owner đầu tiên, kể cả chat thường không hỏi trạng thái.
+6. Nếu câu hỏi phụ thuộc trạng thái hiện hành, đọc CURRENT_STATE + CENTRAL/Registry + tài liệu liên quan; refresh #504 nếu task chạm interaction policy.
+7. Chỉ sau khi hoàn tất đường nạp tương ứng mới kết luận hoặc thực thi.
 
 ## Fail-safe
 Nếu GitHub connector đã được kết nối nhưng một raw URL trả 404, phải thử lại bằng GitHub connector theo repo/branch/path trước khi kết luận SOURCE_UNAVAILABLE. Chỉ khi canonical path vẫn không đọc được mới fail closed; không fallback sang bản `(1)/(2)`, timestamped copy, file cũ trong Drive hay memory.

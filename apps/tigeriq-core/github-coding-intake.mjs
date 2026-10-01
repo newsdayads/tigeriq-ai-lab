@@ -7,6 +7,7 @@ import {githubRateLimitCooldownMs} from './github-intake.mjs';
 import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecycle-label.mjs';
 import {githubRequestJson} from './github-shared-client.mjs';
 import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
+import {localizeOwnerFacingText} from './owner-facing-vietnamese.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 const DEFAULT_CODING_URL='http://100.97.23.87:8797';
@@ -148,7 +149,22 @@ async function jsonFetch(fetchImpl,url,init={}){
   return body;
 }
 async function gh(fetchImpl,owner,repo,path,token,init={}){const opts=String(init.method||'GET').toUpperCase()==='GET'&&init.freshMs==null?{...init,freshMs:0}:init;return githubRequestJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}${path}`,token,opts)}
-async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body})})}
+export function ownerCodingComment(value=''){
+  let text=localizeOwnerFacingText(String(value||''));
+  const markers=[
+    [/^\[DEPENDENCY_WAIT\]/,'⏳ [ĐANG CHỜ PHỤ THUỘC]'],
+    [/^\[(?:REOPEN_REARMED|CLAIM_RECOVERED|CLAIM)\]/,'⚙️ [TIẾP NHẬN]'],
+    [/^\[PROGRESS\]/,'⚙️ [TIẾN ĐỘ]'],
+    [/^\[STALE_RESULT_REJECTED\]/,'⚠️ [TỪ CHỐI KẾT QUẢ CŨ]'],
+    [/^\[(?:STALE_RESULT_REARMED|RECOVERY_REARMED|RETRY_DISPATCHED)\]/,'⚙️ [KÍCH HOẠT LẠI]'],
+    [/^\[RESULT\]/,'✅ [KẾT QUẢ]'],
+    [/^\[BLOCKED_FINAL\]/,'⚠️ [BỊ CHẶN]'],
+    [/^\[RETRY_SCHEDULED\]/,'⏳ [LÊN LỊCH THỬ LẠI]'],
+  ];
+  for(const [pattern,label] of markers){if(pattern.test(text)){text=text.replace(pattern,label);break}}
+  return text;
+}
+async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body:ownerCodingComment(body)})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
 async function objectiveMarkerExists(pool,type,n,codingObjectiveId){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 and data->>'codingObjectiveId'=$3 limit 1",[type,String(n),String(codingObjectiveId||'')]);return q.rowCount>0}

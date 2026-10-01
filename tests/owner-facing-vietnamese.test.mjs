@@ -5,6 +5,11 @@ import {
   localizeOwnerFacingText,
   ownerFacingWorkRow,
   ownerStatusLabel,
+  ownerStatusIcon,
+  verifiedOwnerProgress,
+  ownerFacingPresentation,
+  validateOwnerFacingOutput,
+  OWNER_SURFACE_REGISTRY,
 } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 import { formatResultComment } from '../apps/tigeriq-core/github-intake.mjs';
 import {
@@ -12,6 +17,7 @@ import {
   formatCoreUiTerminalComment,
 } from '../apps/tigeriq-core/core-ui-assignment.mjs';
 import { ownerFacingHandoffLifecycle } from '../apps/tigeriq-core/work-handoff.mjs';
+import { ownerCodingComment } from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 describe('Owner-facing Vietnamese output gate', () => {
   it('maps every required machine status to Vietnamese', () => {
@@ -98,11 +104,29 @@ describe('Owner-facing Vietnamese output gate', () => {
       status: 'completed',
       blocker: 'none after fallback PASS',
       next: 'final review DONE',
+      progress: { passed: 4, total: 5, verified: true },
     });
     expect(row.stage).toBe('HOÀN TẤT');
+    expect(row.icon).toBe('✅');
+    expect(row.progressPresentation.text).toBe('████████░░ 80%');
     expect(row.blocker).toContain('phương án dự phòng ĐẠT');
     expect(row.nextAction).toContain('rà soát cuối HOÀN TẤT');
     expect(containsBareEnglishOwnerStatus(JSON.stringify(row))).toBe(false);
+  });
+
+  it('handoff only shows evidence-backed progress', () => {
+    const verified = ownerFacingHandoffLifecycle({
+      status: 'working',
+      progress: { passed: 4, total: 5, verified: true },
+    });
+    expect(verified.icon).toBe('⚙️');
+    expect(verified.progressPresentation.text).toBe('████████░░ 80%');
+
+    const stale = ownerFacingHandoffLifecycle({
+      status: 'working',
+      progress: { passed: 4, total: 5, stale: true },
+    });
+    expect(stale.progressPresentation).toBeUndefined();
   });
 
   it('keeps Web Control blocked/working display buckets Vietnamese', () => {
@@ -116,5 +140,90 @@ describe('Owner-facing Vietnamese output gate', () => {
     const source = readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1', import.meta.url), 'utf8');
     expect(source).toContain("@{src='apps\\tigeriq-core\\owner-facing-vietnamese.mjs';dst='owner-facing-vietnamese.mjs'}");
     expect(source).toContain("$_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs'");
+  });
+  it('enforces the shared compact presentation contract', () => {
+    expect(OWNER_SURFACE_REGISTRY).toHaveLength(8);
+    expect(ownerStatusIcon('DONE')).toBe('✅');
+    expect(ownerStatusIcon('WORKING')).toBe('⚙️');
+    expect(ownerStatusIcon('BLOCKED')).toBe('⚠️');
+    expect(ownerStatusIcon('OWNER_APPROVAL_REQUIRED')).toBe('🔒');
+
+    const progress = verifiedOwnerProgress({ passed: 7, total: 10, verified: true });
+    expect(progress).toMatchObject({ percent: 70, text: '███████░░░ 70%', verified: true });
+    expect(verifiedOwnerProgress({ passed: 7, total: 10, stale: true })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 10, conflicting: true })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 0 })).toBeNull();
+
+    const presentation = ownerFacingPresentation({
+      status: 'WORKING',
+      result: 'final review PASS',
+      blocker: 'fallback WAITING',
+      nextAction: 'routing READY',
+      progress: { passed: 2, total: 4, verified: true },
+    });
+    expect(presentation.icon).toBe('⚙️');
+    expect(presentation.progress.text).toBe('█████░░░░░ 50%');
+    expect(presentation.result).toContain('rà soát cuối ĐẠT');
+    expect(presentation.blocker).toContain('phương án dự phòng ĐANG CHỜ');
+    expect(presentation.nextAction).toContain('định tuyến SẴN SÀNG');
+    expect(presentation.order).toEqual(['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO']);
+  });
+
+  it('hard-loads Interaction #504 for every new chat and registers all Owner surfaces', () => {
+    const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
+    const sourceIndex = readFileSync(new URL('../bootstrap/06_TIGERIQ_SOURCE_INDEX.md', import.meta.url), 'utf8');
+    expect(loader).toContain('OWNER INTERACTION HARD-LOAD V1');
+    expect(loader).toContain('Luôn đọc Interaction Policy #504 trước phản hồi Owner đầu tiên');
+    expect(sourceIndex).toContain('Interaction #504 bắt buộc mọi NEW CHAT');
+    expect(OWNER_SURFACE_REGISTRY).toEqual([
+      'DIRECT_CHAT_NEW_CHAT',
+      'CORE_GITHUB_COMMENTS',
+      'NV_API_OUTPUT',
+      'UI_WORKER_OUTPUT',
+      'CODING_LANE_SUMMARY',
+      'QUEUE_CHECKPOINT_HANDOFF_REPORT',
+      'TIGERIQ_LIVE_WEB_CONTROL',
+      'AUTOMATION_NOTICE',
+    ]);
+  });
+
+  it('renders verified progress only from evidence-backed numerator/denominator', () => {
+    const row = ownerFacingWorkRow({
+      status: 'WORKING',
+      progress: { passed: 3, total: 5, verified: true },
+      currentStep: 'final review READY',
+    });
+    expect(row.statusIcon).toBe('⚙️');
+    expect(row.progressPresentation.text).toBe('██████░░░░ 60%');
+
+    const stale = ownerFacingWorkRow({
+      status: 'WORKING',
+      progress: { passed: 3, total: 5, stale: true },
+    });
+    expect(stale.progressPresentation).toBeUndefined();
+  });
+
+  it('routes Coding Lane Owner comments through the shared presentation gate', () => {
+    expect(ownerCodingComment('[CLAIM] job READY')).toBe('⚙️ [TIẾP NHẬN] job SẴN SÀNG');
+    expect(ownerCodingComment('[RESULT] job DONE')).toBe('✅ [KẾT QUẢ] job HOÀN TẤT');
+    expect(ownerCodingComment('[BLOCKED_FINAL] job ERROR')).toBe('⚠️ [BỊ CHẶN] job LỖI');
+  });
+
+  it('fails closed on guessed/stale progress and bare machine status', () => {
+    expect(validateOwnerFacingOutput({ text: '⚙️ Đang làm 70%', progress: null }).defects)
+      .toContain('UNVERIFIED_PROGRESS_PERCENT');
+    expect(validateOwnerFacingOutput({
+      text: '███████░░░ 70%',
+      progress: { passed: 7, total: 10, stale: true },
+      evidenceFresh: false,
+    }).defects).toEqual(expect.arrayContaining(['UNVERIFIED_PROGRESS_PERCENT', 'STALE_PROGRESS_VISIBLE']));
+    expect(validateOwnerFacingOutput({ text: 'PASS READY', progress: null }).defects)
+      .toContain('BARE_ENGLISH_STATUS');
+    expect(validateOwnerFacingOutput({ text: '✅ HOÀN TẤT', canonicalRefsResolved: false }).defects)
+      .toContain('UNRESOLVED_WORK_REFERENCE');
+    expect(validateOwnerFacingOutput({
+      text: '✅ HOÀN TẤT ██████████ 100%',
+      progress: { passed: 4, total: 4, verified: true },
+    })).toMatchObject({ ok: true, defects: [] });
   });
 });

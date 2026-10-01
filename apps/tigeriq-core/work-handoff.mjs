@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel, verifiedOwnerProgress } from './owner-facing-vietnamese.mjs';
 
 const CAPABILITIES=new Set(['general','reasoning','review']);
 const CODING_PREFIX=/^\s*\[(?:CODING|SOURCE_MUTATION|SOURCE)\]\s*/i;
@@ -87,10 +87,13 @@ export function normalizeWorkItemLifecycle(item = {}) {
 
 export function ownerFacingHandoffLifecycle(item = {}) {
   const lifecycle = normalizeWorkItemLifecycle(item);
+  const progressPresentation = verifiedOwnerProgress(item?.progress || null);
   return {
     ...lifecycle,
     stage: ownerStatusLabel(lifecycle.stage),
+    icon: ownerStatusIcon(lifecycle.stage),
     blocker: localizeOwnerFacingText(lifecycle.blocker),
     nextAction: localizeOwnerFacingText(lifecycle.nextAction),
+    ...(progressPresentation ? { progressPresentation } : {}),
   };
 }
