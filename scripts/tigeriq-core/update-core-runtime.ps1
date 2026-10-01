@@ -20,6 +20,7 @@ $appChromeTaskBlueprint='D:\TigerIQ\State\app-chrome-unified-task.xml'
 $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
+$appChromeExternalLocalOnly=$true
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir='D:\TigerIQ\Runtime\LiveStatusBridge'
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -215,23 +216,7 @@ function Test-AppChromeTaskContract($task){
   return ($launcherOk -and $powershellOk)
 }
 function Sync-AppChromeTaskBlueprint(){
-  try{
-    $task=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction SilentlyContinue
-    if(-not $task){return @{action='blocked';reason='APPCHROME_TASK_MISSING';task=$appChromeTask}}
-    if(-not(Test-AppChromeTaskContract $task)){return @{action='blocked';reason='APPCHROME_TASK_CONTRACT_INVALID';task=$appChromeTask}}
-    $xml=Export-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
-    if([string]::IsNullOrWhiteSpace([string]$xml)){return @{action='blocked';reason='APPCHROME_TASK_EXPORT_EMPTY';task=$appChromeTask}}
-    $dir=Split-Path -Parent $appChromeTaskBlueprint
-    if(-not(Test-Path -LiteralPath $dir)){New-Item -ItemType Directory -Path $dir -Force|Out-Null}
-    $tmp=$appChromeTaskBlueprint+'.tmp'
-    [IO.File]::WriteAllText($tmp,[string]$xml,[Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $tmp -Destination $appChromeTaskBlueprint -Force
-    $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $appChromeTaskBlueprint).Hash.ToLowerInvariant()
-    $hashTmp=$appChromeTaskBlueprintHash+'.tmp'
-    [IO.File]::WriteAllText($hashTmp,$hash,[Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $hashTmp -Destination $appChromeTaskBlueprintHash -Force
-    return @{action='synced';reason='APPCHROME_TASK_BLUEPRINT_CURRENT';task=$appChromeTask;sha256=$hash}
-  }catch{return @{action='blocked';reason=('APPCHROME_TASK_BLUEPRINT_'+$_.Exception.GetType().Name);task=$appChromeTask}}
+  return @{action='none';reason='APP_CHROME_EXTERNAL_LOCAL_ONLY';authority='OWNER_TO_VY_DIRECT_LOCAL_PC01'}
 }
 function Retire-LegacyOpenClawLifecycleOwner(){
   $task=Get-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue
@@ -287,16 +272,7 @@ function Invoke-GithubApiJson([string]$endpoint,[string[]]$headers=@()){
   return ($raw|ConvertFrom-Json -ErrorAction Stop)
 }
 function Owner-AppChromeResumeRequested(){
-  $now=(Get-Date).ToUniversalTime()
-  if(Test-GithubApiBackoff){return $false}
-  if((($now-$script:lastAppChromeResumePoll).TotalSeconds) -lt $appChromeResumePollIntervalSec){return $false}
-  $script:lastAppChromeResumePoll=$now
-  try{
-    $raw=(& gh issue view $appChromeIssue --repo newsdayads/tigeriq-ai-lab --json body --jq '.body' 2>&1|Out-String)
-    if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
-    $lines=@($raw -split [Environment]::NewLine|ForEach-Object{$_.Trim()})
-    return [bool]($lines -contains 'OWNER_RUNTIME_RESUME=true')
-  }catch{return $false}
+  return $false
 }
 function Get-AppChromeResumeState(){
   try{if(Test-Path -LiteralPath $appChromeResumeState){return (Get-Content -LiteralPath $appChromeResumeState -Raw|ConvertFrom-Json)}}catch{}
@@ -307,72 +283,13 @@ function Save-AppChromeResumeState([string]$installedSha,[string]$result,[string
   $tmp="$appChromeResumeState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $appChromeResumeState
 }
 function Report-AppChromeResume([string]$installedSha,[string]$result,[string]$reason,$state){
-  $nv02=@($state.workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
-  $body=@(
-    'TIGERIQ_APP_CHROME_RUNTIME_RECOVERY_V1',
-    ('installedSha='+$installedSha),
-    ('result='+$result),
-    ('reason='+$reason),
-    ('paused='+[string][bool]$state.paused),
-    ('killed='+[string][bool]$state.killed),
-    ('ownerInteractionMode='+[string]$state.ownerInteractionMode),
-    ('externalWorkAutopilotEnabled='+[string][bool]$state.externalWorkAutopilotEnabled),
-    ('nv02WindowState='+[string]$nv02.windowState),
-    ('nv02Blocked='+[string][bool]$nv02.blocked),
-    'rawOutputPublished=false'
-  ) -join [Environment]::NewLine
-  if(Test-GithubApiBackoff){return $false}
-  $raw=(& gh issue comment $appChromeIssue --repo newsdayads/tigeriq-ai-lab --body $body 2>&1|Out-String)
-  if($LASTEXITCODE -ne 0){$null=Set-GithubApiBackoffFromText $raw;return $false}
-  return $true
+  return $false
 }
 function Invoke-AppChromeOwnerResume([string]$installedSha){
-  if(-not(Owner-AppChromeResumeRequested)){return @{action='none';reason='not_requested'}}
-  $after=$null
-  try{
-    $before=Invoke-RestMethod -Uri ($appChromeController+'/api/state') -TimeoutSec 5
-    $workers=@($before.workers)
-    $nv02=@($workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
-    $needsResume=[bool]$before.paused -or [bool]$before.killed -or [string]$before.ownerInteractionMode -eq 'READ_ONLY' -or -not [bool]$before.externalWorkAutopilotEnabled
-    $needsStart=($null -eq $nv02) -or ([string]$nv02.windowState -notmatch 'OPEN|RUNNING|READY|WORKING')
-    $needsUnblock=($null -ne $nv02) -and [bool]$nv02.blocked
-    if($needsResume){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/resume') -TimeoutSec 10|Out-Null}
-    if($needsUnblock){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/workers/NV02/unblock') -TimeoutSec 15|Out-Null}
-    if($needsStart){Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($appChromeController+'/api/start-all') -TimeoutSec 20|Out-Null}
-    if($needsResume -or $needsUnblock -or $needsStart){Start-Sleep -Seconds 3}
-    $after=Invoke-RestMethod -Uri ($appChromeController+'/api/state') -TimeoutSec 5
-    $nv02After=@($after.workers|Where-Object{$_.id -eq 'NV02'}|Select-Object -First 1)
-    $ok=(-not [bool]$after.paused) -and (-not [bool]$after.killed) -and ([string]$after.ownerInteractionMode -ne 'READ_ONLY') -and ($null -ne $nv02After) -and (-not [bool]$nv02After.blocked)
-    $result=if($ok){'PASS'}else{'BLOCKED'}
-    $reason=if($ok){'NV02_RUNTIME_RESUMED'}else{'CONTROLLER_STATE_NOT_RECOVERED'}
-    $previous=Get-AppChromeResumeState
-    $reported=[bool]($previous -and [string]$previous.installedSha -eq $installedSha -and [string]$previous.result -eq $result -and [bool]$previous.reported)
-    if(-not $reported){$reported=Report-AppChromeResume $installedSha $result $reason $after}
-    Save-AppChromeResumeState $installedSha $result $reason $reported
-    return @{action=if($needsResume -or $needsUnblock -or $needsStart){'recovered'}else{'verified'};result=$result;reason=$reason;reported=$reported}
-  }catch{
-    $reason=('APP_CHROME_RECOVERY_EXCEPTION_'+$_.Exception.GetType().Name)
-    Save-AppChromeResumeState $installedSha 'BLOCKED' $reason $false
-    return @{action='blocked';result='BLOCKED';reason=$reason;reported=$false}
-  }
+  return @{action='none';reason='APP_CHROME_EXTERNAL_LOCAL_ONLY';authority='OWNER_TO_VY_DIRECT_LOCAL_PC01'}
 }
 function Invoke-AppChromeZeroTouchHelper(){
-  if(-not(Test-Path -LiteralPath $appChromeZeroTouchScript)){return @{action='none';reason='helper_missing'}}
-  if(Test-GithubApiBackoff){return @{action='deferred';reason='github_rate_limit_backoff'}}
-  $now=(Get-Date).ToUniversalTime()
-  if((($now-$script:lastAppChromeInstallPoll).TotalSeconds) -lt $appChromeInstallPollIntervalSec){return @{action='deferred';reason='poll_interval'}}
-  $script:lastAppChromeInstallPoll=$now
-  try{
-    $raw=(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $appChromeZeroTouchScript 2>$null|Out-String).Trim()
-    $exitCode=$LASTEXITCODE
-    $null=Set-GithubApiBackoffFromText $raw
-    if($raw){
-      $last=@($raw -split "`r?`n"|Where-Object{$_ -and $_.Trim()}|Select-Object -Last 1)
-      try{$parsed=($last|Out-String).Trim()|ConvertFrom-Json -ErrorAction Stop;return $parsed}catch{}
-    }
-    if($exitCode -eq 0){return @{action='none';reason='helper_no_output'}}
-    return @{action='blocked';reason=('helper_exit_'+$exitCode)}
-  }catch{return @{action='blocked';reason=('helper_exception_'+$_.Exception.GetType().Name)}}
+  return @{action='none';reason='APP_CHROME_EXTERNAL_LOCAL_ONLY';authority='OWNER_TO_VY_DIRECT_LOCAL_PC01'}
 }
 function Task-Exists([string]$name){return [bool](Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)}
 function Get-RemoteDesktopRuntimeProcesses(){
@@ -713,23 +630,19 @@ function Ensure-OpenClawHealth(){
   try{$after=Restart-OpenClawGateway;if($after){$healthFailures.openclaw=0;return @{service='openclaw';healthy=$true;action='restarted';port=18789}};return @{service='openclaw';healthy=$false;action='restart_failed'}}catch{return @{service='openclaw';healthy=$false;action='restart_error';error=$_.Exception.Message}}
 }
 function Ensure-AppChromeTransportHealth(){
-  $task=Get-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction SilentlyContinue
-  $healthy=[bool]($task -and [string]$task.State -eq 'Running' -and (Test-TcpPort '127.0.0.1' 8798) -and (Test-TcpPort '127.0.0.1' 8799))
-  if($healthy){$healthFailures.appchrome=0;return @{service='appchrome';healthy=$true;action='none';ports='8798,8799'}}
-  $healthFailures.appchrome=[int]$healthFailures.appchrome+1
-  if($healthFailures.appchrome -lt 2){return @{service='appchrome';healthy=$false;action='observe';failures=$healthFailures.appchrome}}
-  $since=((Get-Date)-[DateTime]$lastHeal.appchrome).TotalSeconds
-  if($since-lt$healCooldownSec){return @{service='appchrome';healthy=$false;action='cooldown';failures=$healthFailures.appchrome}}
-  $lastHeal.appchrome=Get-Date
-  try{
-    if(-not $task){return @{service='appchrome';healthy=$false;action='blocked';reason='TASK_MISSING'}}
-    if([string]$task.State -eq 'Running'){Stop-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction SilentlyContinue;Start-Sleep -Seconds 2}
-    Start-ScheduledTask -TaskName 'TigerIQ APP Chrome Unified' -ErrorAction Stop
-    Start-Sleep -Seconds 3
-    $ok=(Test-TcpPort '127.0.0.1' 8798) -and (Test-TcpPort '127.0.0.1' 8799)
-    if($ok){$healthFailures.appchrome=0;return @{service='appchrome';healthy=$true;action='restarted'}}
-    return @{service='appchrome';healthy=$false;action='restart_failed'}
-  }catch{return @{service='appchrome';healthy=$false;action='restart_error';error=$_.Exception.Message}}
+  $task=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction SilentlyContinue
+  $taskRunning=[bool]($task -and [string]$task.State -eq 'Running')
+  $portsHealthy=(Test-TcpPort '127.0.0.1' 8798) -and (Test-TcpPort '127.0.0.1' 8799)
+  $healthy=[bool]($taskRunning -and $portsHealthy)
+  return @{
+    service='appchrome'
+    healthy=$healthy
+    action='observe_only'
+    reason='APP_CHROME_EXTERNAL_LOCAL_ONLY'
+    taskRunning=$taskRunning
+    portsHealthy=$portsHealthy
+    authority='OWNER_TO_VY_DIRECT_LOCAL_PC01'
+  }
 }
 function Runtime-Watchdog(){
   $events=@(
