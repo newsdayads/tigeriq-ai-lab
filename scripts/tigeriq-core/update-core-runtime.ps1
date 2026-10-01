@@ -718,14 +718,17 @@ function Restart-UpdaterAfterExit(){
 }
 if($rollbackCanaryMode){
   $impact=@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$false}
+  $candidateHead=$null
   try{
     git -C $runtimeRepo reset --hard $RollbackCanaryCandidateSha|Out-Null
     if($LASTEXITCODE -ne 0){throw 'ROLLBACK_CANARY_CANDIDATE_RESET_FAILED'}
+    $candidateHead=Head $runtimeRepo 'HEAD'
+    if($candidateHead -ne $RollbackCanaryCandidateSha){throw 'ROLLBACK_CANARY_CANDIDATE_HEAD_MISMATCH'}
     throw 'SYNTHETIC_CANDIDATE_FAILURE'
   }catch{
     $failure=$_.Exception.Message
     $rollback=Invoke-RuntimeRollback $RollbackCanaryPreviousSha $RollbackCanaryCandidateSha $impact -CanaryMode
-    [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
+    [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;candidateHeadBeforeFailure=$candidateHead;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
     exit 0
   }
 }
