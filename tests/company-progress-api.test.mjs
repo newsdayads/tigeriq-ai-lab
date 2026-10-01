@@ -17,7 +17,8 @@ describe('company progress calculation', () => {
     });
     expect(result.progressPct).toBe(80);
     expect(result.gates.map((gate) => gate.status)).toEqual(['ĐẠT', 'ĐẠT', 'ĐẠT', 'ĐẠT', 'ĐANG CHỜ']);
-    expect(result.currentStep).toContain('chuẩn bị merge/Production');\n    expect(result.currentStep).not.toContain('PASS');
+    expect(result.currentStep).toContain('chuẩn bị merge/Production');
+    expect(result.currentStep).not.toContain('PASS');
   });
 
   it('shows a failed gate as current work instead of inflating progress', () => {
