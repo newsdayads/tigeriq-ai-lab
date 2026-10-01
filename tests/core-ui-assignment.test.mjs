@@ -142,6 +142,77 @@ test('Core UI prompt is self-contained and NV04 satisfies explicit assignment co
 });
 
 
+test('Core UI injects bounded exact-head PR context for NV03 review',async()=>{
+  const pool=fakePool();
+  const head='a'.repeat(40);
+  const review=issue(27430,safe(['TARGET_EMPLOYEE=NV03','CAPABILITY=review','TARGET_PR=#123 - exact review','TARGET_HEAD='+head]),'Exact-head review');
+  const seen=[];
+  const fetchImpl=async url=>{
+    seen.push(url);
+    if(url.includes('/pulls/123/files?'))return response([{filename:'apps/core.mjs',status:'modified',patch:'@@ -1 +1 @@\n-old\n+new'}]);
+    if(url.endsWith('/pulls/123'))return response({title:'Fix exact context',state:'open',head:{sha:head},base:{sha:'b'.repeat(40)},changed_files:1,additions:1,deletions:1});
+    if(url.includes('/issues?'))return response([review]);
+    if(url.endsWith('/issues/27430'))return response(review);
+    return response([]);
+  };
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(snap.nextJobs[0].workerId,'NV03');
+  const prompt=pool.jobs[0].prompt;
+  assert.match(prompt,/EXACT_HEAD_CONTEXT_BEGIN/);
+  assert.match(prompt,/TARGET_PR=#123/);
+  assert.match(prompt,new RegExp('TARGET_HEAD='+head));
+  assert.match(prompt,/FILE=apps\/core\.mjs/);
+  assert.match(prompt,/\+new/);
+  assert.match(prompt,/EXACT_HEAD_CONTEXT_END/);
+  assert.equal(pool.objectives[0].metadata.targetPr,123);
+  assert.equal(pool.objectives[0].metadata.targetHead,head);
+  assert.equal(seen.some(x=>!x.startsWith('https://api.github.com/repos/newsdayads/tigeriq-ai-lab/')),false);
+});
+
+test('Core UI fails closed when TARGET_HEAD does not match current PR head',async()=>{
+  const pool=fakePool();
+  const expected='a'.repeat(40),actual='c'.repeat(40);
+  const review=issue(27431,safe(['TARGET_EMPLOYEE=NV03','CAPABILITY=review','TARGET_PR=#124','TARGET_HEAD='+expected]),'Stale-head review');
+  const seen=[];
+  const fetchImpl=async url=>{
+    seen.push(url);
+    if(url.endsWith('/pulls/124'))return response({title:'Mismatch',state:'open',head:{sha:actual},base:{sha:'b'.repeat(40)},changed_files:1});
+    if(url.includes('/issues?'))return response([review]);
+    return response([]);
+  };
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,0);
+  assert.equal(pool.objectives.length,0);
+  assert.equal(snap.assignmentState,'READY_UNASSIGNED');
+  assert.equal(seen.some(x=>x.includes('/pulls/124/files?')),false);
+});
+
+test('Core UI bounds exact-head patches before sending to UI worker',async()=>{
+  const pool=fakePool();
+  const head='d'.repeat(40);
+  const review=issue(27432,safe(['TARGET_EMPLOYEE=NV03','CAPABILITY=review','TARGET_PR=#125','TARGET_HEAD='+head]),'Bounded context');
+  const huge='x'.repeat(40000);
+  const files=Array.from({length:30},(_,i)=>({filename:'f'+i+'.mjs',status:'modified',patch:huge}));
+  const fetchImpl=async url=>{
+    if(url.includes('/pulls/125/files?'))return response(files);
+    if(url.endsWith('/pulls/125'))return response({title:'Large PR',state:'open',head:{sha:head},base:{sha:'e'.repeat(40)},changed_files:30,additions:100,deletions:90});
+    if(url.includes('/issues?'))return response([review]);
+    return response([]);
+  };
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.objectives[0].metadata.exactContextTruncated,true);
+  const prompt=pool.jobs[0].prompt;
+  const context=prompt.split('EXACT_HEAD_CONTEXT_BEGIN')[1].split('EXACT_HEAD_CONTEXT_END')[0];
+  const patchPayload=[...context.matchAll(/PATCH_BEGIN\\n([\\s\\S]*?)\\nPATCH_END/g)].map(m=>m[1]).join('');
+  assert.equal(patchPayload.length,24000);
+  assert.ok(patchPayload.length<=24000);
+  assert.ok(prompt.length<39000);
+  assert.match(prompt,/CONTEXT_FILE_LIMIT=20/);
+  assert.match(prompt,/CONTEXT_PATCH_CHAR_LIMIT=24000/);
+});
+
 test('Core UI source revision is stable for title+body and changes with canonical source',()=>{
   const a=issue(2700,safe(['CAPABILITY=review']),'Revision canary');
   const b={...a,updated_at:'2026-10-01T01:00:00Z'};
