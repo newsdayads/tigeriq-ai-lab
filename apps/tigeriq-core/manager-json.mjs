@@ -24,6 +24,22 @@ export function managerShouldUseLocalFallback(excludedCount,cloudBudget=2){
   return Math.max(0,Number(excludedCount)||0)>=Math.max(0,Number(cloudBudget)||0);
 }
 
+export function managerExhaustionRetryPlan({
+  managerCycles=0,
+  maxCycles=30,
+  baseDelayMs=30_000,
+  maxDelayMs=10*60_000,
+}={}){
+  const current=Math.max(0,Math.floor(Number(managerCycles)||0));
+  const limit=Math.max(1,Math.floor(Number(maxCycles)||30));
+  const nextCycle=current+1;
+  if(nextCycle>=limit)return {retry:false,nextCycle,delayMs:0,reason:'manager_exhaustion_retry_budget_exhausted'};
+  const base=Math.max(1000,Number(baseDelayMs)||30_000);
+  const cap=Math.max(base,Number(maxDelayMs)||10*60_000);
+  const exponent=Math.min(current,20);
+  return {retry:true,nextCycle,delayMs:Math.min(cap,base*Math.pow(2,exponent)),reason:'manager_exhaustion_backoff'};
+}
+
 function parseableJsonObjects(text){
   const s=String(text||'');const out=[];
   for(let start=0;start<s.length;start++){
