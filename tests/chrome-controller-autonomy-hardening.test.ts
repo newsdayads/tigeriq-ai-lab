@@ -212,6 +212,8 @@ describe('NV02 explicit resume from durable idle',()=>{
     expect(helper).toContain("/api/utility/workers/NV02/resume");
     expect(helper).toContain("APPCHROME_NV02_WAKE_TIMEOUT");
     expect(helper).toContain("NV02_WAKE_STATUS=");
+    expect(helper).toContain("'NV02_IDLE_CONTINUE_WAKE_SUBMITTED'");
+    expect(helper).not.toContain("'NV02_IDLE_SELF_PULL_WAKE_SUBMITTED'");
   });
 });
 
