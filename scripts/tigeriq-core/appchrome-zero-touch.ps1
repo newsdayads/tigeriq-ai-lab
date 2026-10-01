@@ -127,6 +127,12 @@ function Worker-Busy($state){
   }
   return $false
 }
+function Test-AppChromeColdBoundary(){
+  foreach($port in @(8798,8799,8800,9222,9223,9224,8823)){
+    if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){return $false}
+  }
+  return $true
+}
 function Wait-SafeBoundary([int]$timeoutSec=600){
   $deadline=(Get-Date).AddSeconds($timeoutSec)
   while((Get-Date)-lt$deadline){
@@ -136,9 +142,11 @@ function Wait-SafeBoundary([int]$timeoutSec=600){
       Invoke-RestMethod -Method Post -Uri ($controller+'/api/pause') -TimeoutSec 5|Out-Null
       Start-Sleep -Milliseconds 500
       $locked=Invoke-RestMethod -Uri ($controller+'/api/state') -TimeoutSec 5
-      if(-not(Worker-Busy $locked)){return $locked}
+      if(-not(Worker-Busy $locked)){return [pscustomobject]@{mode='LIVE_PAUSED';paused=$true;state=$locked}}
       Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null
-    }catch{}
+    }catch{
+      if(Test-AppChromeColdBoundary){return [pscustomobject]@{mode='COLD_START';paused=$false;state=$null}}
+    }
     Start-Sleep -Seconds 3
   }
   throw 'APPCHROME_SAFE_BOUNDARY_TIMEOUT'
@@ -218,7 +226,8 @@ try{
   $installer=Join-Path $artifactRoot 'apps\chrome-controller\runtime\Install-ApprovedArtifact.ps1';if(-not(Test-Path -LiteralPath $installer)){throw 'APPCHROME_CANONICAL_INSTALLER_MISSING'}
   $runtime=Join-Path $InstallRoot 'Runtime';$active=Join-Path $runtime 'active-deploy.json';$pending=Join-Path $runtime 'pending-deploy.json';$launcher=Join-Path $runtime 'Start-Unified-AppChrome.ps1';$legacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
   $preQuiescedWorkers=@(Pause-Nv02OnlySideWriters $req)
-  Wait-SafeBoundary|Out-Null;$paused=$true
+  $boundary=Wait-SafeBoundary
+  $paused=[bool]$boundary.paused
   $revalidated=Revalidate-After-SafeBoundary $req $requestFingerprint ([long]$verified.runId)
   $req=$revalidated.request;$verified=$revalidated.verified
   New-Item -ItemType Directory -Force -Path $rollback|Out-Null
@@ -255,7 +264,7 @@ try{
     Start-Sleep -Seconds 3
   }
   if($wakeStatus -notin @('NV02_IDLE_CONTINUE_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){throw ('APPCHROME_NV02_WAKE_TIMEOUT:'+ $wakeStatus)}
-  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;nv02WakeStatus=$wakeStatus;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
+  $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;nv02WakeStatus=$wakeStatus;preQuiescedWorkers=@($preQuiescedWorkers);safeBoundaryMode=[string]$boundary.mode;requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
   Save-Result 'PASS' 'APPCHROME_EXACT_HEAD_LIVE' $req $details
   $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('NV02_WAKE_STATUS='+$wakeStatus),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
   & gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null
