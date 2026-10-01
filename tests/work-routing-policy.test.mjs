@@ -69,6 +69,13 @@ test('explicit Core assignment can delegate only NV03/NV04 autonomously',()=>{
   }
 });
 
+test('TARGET_EMPLOYEE has assignment precedence and routes explicit NV03/NV04 work to UI',()=>{
+  let s=classifyWorkOrder('PRIORITY=P1\nTARGET_EMPLOYEE=NV03\nASSIGNED_EXECUTOR=NV11\nPRIMARY_EMPLOYEE=NV12\nCAPABILITY=review');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.assignedExecutor,'NV03');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P1\nTARGET_EMPLOYEE=NV04\nASSIGNED_EXECUTOR=NV11\nPRIMARY_EMPLOYEE=NV12\nCAPABILITY=deep_research');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.assignedExecutor,'NV04');assert.equal(s.autonomous,true);
+});
+
 test('external role claim lease expires and release clears it',()=>{
   const now=Date.parse('2026-09-25T00:00:00Z');
   const comments=[{id:1,created_at:'2026-09-24T23:59:00Z',body:'[TIGERIQ_ROLE_CLAIM_V1]\nWORKER=NV02\nRESOURCE_SCOPE=ABC\nLEASE_UNTIL=2026-09-25T00:20:00Z'}];
