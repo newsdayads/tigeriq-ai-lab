@@ -193,6 +193,24 @@ export function assertTigerIQTaskName(value) {
   return taskName;
 }
 
+function successfulTaskProcessResult(result) {
+  return Boolean(result && typeof result === 'object' && result.timedOut !== true && Number(result.exitCode) === 0);
+}
+
+export function trustedTigerIQTaskActionData(action, data) {
+  const kind = String(action || '').toLowerCase();
+  if (!['task_start', 'task_stop', 'task_restart'].includes(kind) || !data || typeof data !== 'object' || Array.isArray(data)) return false;
+  try { assertTigerIQTaskName(data.taskName); } catch { return false; }
+  if (kind === 'task_restart') return successfulTaskProcessResult(data.stopped) && successfulTaskProcessResult(data.started);
+  return successfulTaskProcessResult(data);
+}
+
+function assertTaskProcessSuccess(result, phase) {
+  if (result?.timedOut === true) throw new Error(`TIGERIQ_PC_TASK_${phase}_TIMEOUT`);
+  if (!result || Number(result.exitCode) !== 0) throw new Error(`TIGERIQ_PC_TASK_${phase}_FAILED`);
+  return result;
+}
+
 function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -294,14 +312,20 @@ async function runTaskAction(action, taskName) {
     return { taskName: name, ...(await spawnBounded('schtasks.exe', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], { timeoutSec: 15 })) };
   }
   if (action === 'task_start') {
-    return { taskName: name, ...(await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 })) };
+    const result = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
+    assertTaskProcessSuccess(result, 'START');
+    return { taskName: name, ...result };
   }
   if (action === 'task_stop') {
-    return { taskName: name, ...(await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 })) };
+    const result = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
+    assertTaskProcessSuccess(result, 'STOP');
+    return { taskName: name, ...result };
   }
   if (action === 'task_restart') {
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
+    assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
+    assertTaskProcessSuccess(started, 'RESTART_START');
     return { taskName: name, stopped, started };
   }
   throw new Error('TIGERIQ_PC_TASK_ACTION_NOT_ALLOWED');
