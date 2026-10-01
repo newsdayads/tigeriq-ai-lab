@@ -1,6 +1,6 @@
 import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority,exactBodyFlag} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
-import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const OWNER='newsdayads',REPO='tigeriq-ai-lab';
 const ALL_WORKERS=['NV02','NV03','NV04'];
@@ -28,7 +28,7 @@ export function formatCoreUiTerminalComment({jobId,workerId,state,result=''}) {
   const status=ownerStatusLabel(normalized);
   const ownerResult=localizeOwnerFacingText(safeResult(result||normalized));
   return [
-    '[KẾT QUẢ] TigerIQ Core đã nhận kết quả từ '+String(workerId||'')+'.',
+    ownerStatusIcon(normalized)+' [KẾT QUẢ] TigerIQ Core đã nhận kết quả từ '+String(workerId||'')+'.',
     'Trạng thái: '+status,
     '',
     'TIGERIQ_CORE_UI_TERMINAL_V1',
