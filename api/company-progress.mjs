@@ -1,3 +1,5 @@
+import { ownerStatusLabel } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
+
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const FETCH_TIMEOUT_MS = 5000;
 const CENTRAL_ISSUE = 280;
@@ -93,13 +95,21 @@ export function projectProgress({ pull, runs = [] }) {
   let currentStep = 'Đang hoàn thiện';
   if (blocking) currentStep = `Đang sửa lỗi: ${blocking.label}`;
   else if (running) currentStep = `Đang chạy: ${running.label}`;
-  else if (pending?.name === 'Merge + Production') currentStep = 'Các gate kỹ thuật đã PASS · chuẩn bị merge/Production';
+  else if (pending?.name === 'Merge + Production') currentStep = 'Các cổng kỹ thuật đã ĐẠT · chuẩn bị merge/Production';
   else if (pending) currentStep = `Chuẩn bị: ${pending.label}`;
+
+  const publicGates = gates.map((gate) => {
+    const code = gate.status === 'pass' ? 'PASS'
+      : gate.status === 'running' ? 'RUNNING'
+        : gate.status === 'fail' ? 'FAILED'
+          : 'WAITING';
+    return { ...gate, statusCode: gate.status, status: ownerStatusLabel(code) };
+  });
 
   return {
     active: true,
     progressPct,
-    gates,
+    gates: publicGates,
     currentStep,
     nextStep: focus?.name === 'Merge + Production' ? 'Merge → kiểm tra Production → tự lấy việc tiếp theo' : `Hoàn thành ${focus?.label || 'gate hiện tại'}`,
   };
