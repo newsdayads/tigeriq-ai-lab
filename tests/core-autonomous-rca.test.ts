@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
 // @ts-expect-error runtime module intentionally has no TS declaration file.
-import {AUTONOMOUS_RCA_TAXONOMY,classifyAutonomousRca,dedupeAutonomousRca,buildImprovementWorkOrder,buildOwnerException,syntheticAutonomousRcaCanary} from '../apps/tigeriq-core/autonomous-rca.mjs';
+import {AUTONOMOUS_RCA_TAXONOMY,autonomousRcaMaterializationDedupe,classifyAutonomousRca,dedupeAutonomousRca,buildImprovementWorkOrder,buildOwnerException,syntheticAutonomousRcaCanary} from '../apps/tigeriq-core/autonomous-rca.mjs';
 
 describe('Core autonomous RCA + Improvement Work Order',()=>{
   it('implements the canonical 14-class taxonomy and classifies five distinct fault fixtures',()=>{
@@ -23,6 +23,13 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(dedupeAutonomousRca([a,b])).toHaveLength(1);
   });
 
+  it('dedupes only while the prior RCA Work Order remains open',()=>{
+    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'open'})).toBe(true);
+    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'closed'})).toBe(false);
+    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'unknown'})).toBe(true);
+    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_OWNER_EXCEPTION',priorIssueState:'open'})).toBe(false);
+  });
+
   it('fails closed to Owner exception for auth/credential gates and never creates a safe mutation Work Order',()=>{
     const rca=classifyAutonomousRca({signature:'auth',contractId:'SERVICE_FUNCTIONAL_INTEGRITY',evidence:{kind:'auth',message:'credential required'}});
     expect(rca).toMatchObject({class:'AUTH',hardGate:true,selfFixable:false});
@@ -40,6 +47,7 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.body).toContain('NO_DIRECT_MAIN=true');
     expect(wo.body).toContain('APP_CHROME_MUTATION=FORBIDDEN');
     expect(wo.body).toContain('EVIDENCE_HASH=');
+    expect(wo.body).toContain('ACCEPTANCE=');
     expect(wo.body).toContain('REQUIRED_TESTS=');
     expect(wo.body).toContain('PROVENANCE=SELF_AUDIT|DEGRADED_RESOURCE_ROUTING|route');
   });
@@ -54,7 +62,8 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
   it('wires RCA only after repeated durable OPEN evidence and exposes a read-only canary',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("where status='OPEN' and count>=2");
-    expect(source).toContain("type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION','AUTONOMOUS_RCA_OBSERVE_ONLY')");
+    expect(source).toContain("where type=$1 and data->>'rcaSignature'=$2 order by seq desc limit 1");
+    expect(source).toContain('githubAutonomousRcaIssueState');
     expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
     expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");
   });

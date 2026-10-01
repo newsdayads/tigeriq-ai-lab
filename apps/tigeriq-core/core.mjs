@@ -9,7 +9,7 @@ import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.m
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
-import { buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
+import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -1744,6 +1744,17 @@ async function githubCreateAutonomousRcaIssue(spec){
   },10000);
 }
 
+async function githubAutonomousRcaIssueState(issueNumber){
+  const n=Number(issueNumber||0);
+  if(!Number.isInteger(n)||n<=0)return'unknown';
+  if(!GITHUB_TOKEN)return'unknown';
+  try{
+    const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
+    const issue=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Autonomous-RCA'}},10000);
+    return String(issue?.state||'unknown').toLowerCase();
+  }catch{return'unknown';}
+}
+
 async function materializeAutonomousRca({store=pool}={}){
   const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
     from tigeriq_self_audit_anomalies
@@ -1755,10 +1766,15 @@ async function materializeAutonomousRca({store=pool}={}){
   })));
   let workOrders=0,ownerExceptions=0,observeOnly=0,deduped=0,blocked=0;
   for(const rca of rcas){
-    const prior=(await store.query(`select 1 from tigeriq_events
-      where type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION','AUTONOMOUS_RCA_OBSERVE_ONLY')
-        and data->>'rcaSignature'=$1 limit 1`,[rca.rcaSignature])).rows?.[0];
-    if(prior){deduped++;continue;}
+    const mode=rca.hardGate?'OWNER_EXCEPTION':(!rca.selfFixable?'OBSERVE_ONLY':'WORK_ORDER');
+    const priorType=mode==='OWNER_EXCEPTION'?'AUTONOMOUS_RCA_OWNER_EXCEPTION':mode==='OBSERVE_ONLY'?'AUTONOMOUS_RCA_OBSERVE_ONLY':'AUTONOMOUS_RCA_WORK_ORDER';
+    const prior=(await store.query(`select type,data from tigeriq_events
+      where type=$1 and data->>'rcaSignature'=$2 order by seq desc limit 1`,[priorType,rca.rcaSignature])).rows?.[0]||null;
+    let priorIssueState='unknown';
+    if(priorType==='AUTONOMOUS_RCA_WORK_ORDER'&&prior){
+      priorIssueState=await githubAutonomousRcaIssueState(prior.data?.issueNumber);
+    }
+    if(autonomousRcaMaterializationDedupe({mode,priorType:prior?.type,priorIssueState})){deduped++;continue;}
     if(rca.hardGate){
       const exception=buildOwnerException(rca);
       await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,confidence:rca.confidence,provenance:rca.provenance});

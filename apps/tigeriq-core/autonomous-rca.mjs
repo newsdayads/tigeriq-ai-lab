@@ -122,6 +122,20 @@ export function dedupeAutonomousRca(items=[]){
   return out;
 }
 
+export function autonomousRcaMaterializationDedupe({mode,priorType,priorIssueState}={}){
+  const type=String(priorType||'').toUpperCase();
+  const m=String(mode||'').toUpperCase();
+  if(!type)return false;
+  if(m==='WORK_ORDER'){
+    if(type!=='AUTONOMOUS_RCA_WORK_ORDER')return false;
+    const state=String(priorIssueState||'unknown').toLowerCase();
+    return state!=='closed';
+  }
+  if(m==='OWNER_EXCEPTION')return type==='AUTONOMOUS_RCA_OWNER_EXCEPTION';
+  if(m==='OBSERVE_ONLY')return type==='AUTONOMOUS_RCA_OBSERVE_ONLY';
+  return false;
+}
+
 export function buildImprovementWorkOrder(rca={}){
   if(!rca?.rcaSignature||!rca?.selfFixable||rca?.hardGate)throw new Error('RCA_WORK_ORDER_NOT_SAFE');
   const severity=String(rca?.evidence?.severity||'').toUpperCase();
@@ -154,6 +168,7 @@ export function buildImprovementWorkOrder(rca={}){
     `AFFECTED_SCOPE=${rca.affectedScope}`,
     `EVIDENCE_HASH=${rca.evidenceHash}`,
     `PROPOSED_FIX=${rca.proposedFix}`,
+    `ACCEPTANCE=Verified RCA signature ${rca.rcaSignature}; required tests pass; independent exact-head review approves; applicable runtime/live canary passes`,
     `REQUIRED_TESTS=${rca.tests.join('|')}`,
     `RISK=${rca.risk}`,
     `PROVENANCE=${rca.provenance.source}|${rca.provenance.contractId}|${rca.provenance.anomalySignature}`,
