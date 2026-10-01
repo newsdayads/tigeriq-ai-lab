@@ -47,6 +47,10 @@ export function githubIssuesAfterOutcomeSync(issues=[],resultIssueNumbers=[]){
   return (Array.isArray(issues)?issues:[]).filter(issue=>!terminal.has(Number(issue?.number)));
 }
 
+export function shouldSuppressStaleClosedSuccessor({rowId='',rowStatus='',sourceState='',canonicalCompletedId=''}={}){
+  return String(rowStatus)==='active'&&String(sourceState)==='closed'&&Boolean(canonicalCompletedId)&&String(canonicalCompletedId)!==String(rowId);
+}
+
 export function hasExactFlag(body,key,value='true'){
   return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
 }
@@ -893,6 +897,25 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     const sourceBody=String(sourceIssueForGate?.body||'');
     const currentSourceRevision=githubIssueSourceRevision(sourceIssueForGate||{});
+    if(row.status==='active'&&String(sourceIssueForGate?.state||'')==='closed'){
+      const canonical=(await pool.query(`select id from tigeriq_objectives
+        where id<>$1 and status='completed'
+          and metadata->>'source'='github'
+          and metadata->>'issueNumber'=$2
+          and metadata->>'sourceRevision'=$3
+          and coalesce(metadata->>'githubClosed','false')='true'
+        order by updated_at desc limit 1`,[row.id,String(number),currentSourceRevision])).rows[0]||null;
+      if(shouldSuppressStaleClosedSuccessor({rowId:row.id,rowStatus:row.status,sourceState:sourceIssueForGate?.state,canonicalCompletedId:canonical?.id})){
+        const summary=`stale successor suppressed after canonical completion: ${canonical.id}`;
+        const patch={githubResultReported:true,githubClosed:true,githubSourceState:'closed',githubTerminalLabelSynced:true,supersededByObjectiveId:canonical.id};
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1 and status='active'",[row.id,summary,JSON.stringify(patch)]);
+        await pool.query("update tigeriq_jobs set status='failed',lease_until=null,completed_at=coalesce(completed_at,now()),failure=coalesce(failure,'{}'::jsonb)||$2::jsonb where objective_id=$1 and status in ('queued','waiting_resource')",[row.id,JSON.stringify({kind:'SUPERSEDED_BY_CANONICAL_COMPLETION',canonicalObjectiveId:canonical.id})]);
+        await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id in (select id from tigeriq_jobs where objective_id=$1)",[row.id]);
+        await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id in (select id from tigeriq_jobs where objective_id=$1)",[row.id]);
+        await event('GITHUB_STALE_CLOSED_SUCCESSOR_SUPPRESSED',{objectiveId:row.id,issueNumber:number,canonicalObjectiveId:canonical.id,sourceRevision:currentSourceRevision});
+        continue;
+      }
+    }
     const sourceLiveRequired=hasExactFlag(sourceBody,'LIVE_ACCEPTANCE_REQUIRED');
     const sourceFinalReviewRequired=hasExactFlag(sourceBody,'FINAL_REVIEW_REQUIRED')||hasExactFlag(sourceBody,'FINAL_LIVE_REVIEW_REQUIRED');
     const revisionChanged=Boolean(currentSourceRevision)&&currentSourceRevision!==String(row.metadata?.sourceRevision||'');
