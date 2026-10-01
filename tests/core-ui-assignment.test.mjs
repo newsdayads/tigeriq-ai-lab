@@ -203,9 +203,14 @@ test('Core UI bounds exact-head patches before sending to UI worker',async()=>{
   await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
   assert.equal(pool.jobs.length,1);
   assert.equal(pool.objectives[0].metadata.exactContextTruncated,true);
-  assert.ok(pool.jobs[0].prompt.length<39000);
-  assert.match(pool.jobs[0].prompt,/CONTEXT_FILE_LIMIT=20/);
-  assert.match(pool.jobs[0].prompt,/CONTEXT_PATCH_CHAR_LIMIT=24000/);
+  const prompt=pool.jobs[0].prompt;
+  const context=prompt.split('EXACT_HEAD_CONTEXT_BEGIN')[1].split('EXACT_HEAD_CONTEXT_END')[0];
+  const patchPayload=[...context.matchAll(/PATCH_BEGIN\\n([\\s\\S]*?)\\nPATCH_END/g)].map(m=>m[1]).join('');
+  assert.equal(patchPayload.length,24000);
+  assert.ok(patchPayload.length<=24000);
+  assert.ok(prompt.length<39000);
+  assert.match(prompt,/CONTEXT_FILE_LIMIT=20/);
+  assert.match(prompt,/CONTEXT_PATCH_CHAR_LIMIT=24000/);
 });
 
 test('Core UI source revision is stable for title+body and changes with canonical source',()=>{
