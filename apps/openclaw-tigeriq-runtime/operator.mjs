@@ -194,15 +194,35 @@ export function assertTigerIQTaskName(value) {
 }
 
 function successfulTaskProcessResult(result) {
-  return Boolean(result && typeof result === 'object' && result.timedOut !== true && Number(result.exitCode) === 0);
+  return Boolean(
+    result
+    && typeof result === 'object'
+    && result.timedOut === false
+    && typeof result.exitCode === 'number'
+    && Number.isInteger(result.exitCode)
+    && result.exitCode === 0
+  );
+}
+
+function trustedTaskVerification(action, taskName, verification) {
+  if (!verification || typeof verification !== 'object' || Array.isArray(verification)) return false;
+  if (verification.taskName !== taskName) return false;
+  const state = String(verification.state || '').trim().toLowerCase();
+  if (!state) return false;
+  if (action === 'task_stop') return state !== 'running';
+  if (state === 'running') return true;
+  return state === 'ready' && String(verification.lastResult ?? '').trim() === '0';
 }
 
 export function trustedTigerIQTaskActionData(action, data) {
   const kind = String(action || '').toLowerCase();
   if (!['task_start', 'task_stop', 'task_restart'].includes(kind) || !data || typeof data !== 'object' || Array.isArray(data)) return false;
-  try { assertTigerIQTaskName(data.taskName); } catch { return false; }
-  if (kind === 'task_restart') return successfulTaskProcessResult(data.stopped) && successfulTaskProcessResult(data.started);
-  return successfulTaskProcessResult(data);
+  let taskName;
+  try { taskName = assertTigerIQTaskName(data.taskName); } catch { return false; }
+  const subprocessOk = kind === 'task_restart'
+    ? successfulTaskProcessResult(data.stopped) && successfulTaskProcessResult(data.started)
+    : successfulTaskProcessResult(data);
+  return subprocessOk && trustedTaskVerification(kind, taskName, data.verification);
 }
 
 function assertTaskProcessSuccess(result, phase) {
@@ -306,6 +326,21 @@ async function listTigerIQTasks() {
   };
 }
 
+async function queryTigerIQTaskVerification(taskName) {
+  const name = assertTigerIQTaskName(taskName);
+  const result = await spawnBounded('schtasks.exe', ['/Query', '/TN', name, '/FO', 'CSV', '/V', '/NH'], { timeoutSec: 15 });
+  assertTaskProcessSuccess(result, 'VERIFY');
+  if (result.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_VERIFY_TRUNCATED');
+  const task = parseTaskListCsv(result.stdout).find((item) => item.taskName === name);
+  if (!task) throw new Error('TIGERIQ_PC_TASK_VERIFY_MISSING');
+  return {
+    taskName: name,
+    state: task.state,
+    lastRun: task.lastRun,
+    lastResult: task.lastResult,
+  };
+}
+
 async function runTaskAction(action, taskName) {
   const name = assertTigerIQTaskName(taskName);
   if (action === 'task_status') {
@@ -314,19 +349,19 @@ async function runTaskAction(action, taskName) {
   if (action === 'task_start') {
     const result = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(result, 'START');
-    return { taskName: name, ...result };
+    return { taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
   }
   if (action === 'task_stop') {
     const result = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(result, 'STOP');
-    return { taskName: name, ...result };
+    return { taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
   }
   if (action === 'task_restart') {
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(started, 'RESTART_START');
-    return { taskName: name, stopped, started };
+    return { taskName: name, stopped, started, verification: await queryTigerIQTaskVerification(name) };
   }
   throw new Error('TIGERIQ_PC_TASK_ACTION_NOT_ALLOWED');
 }
