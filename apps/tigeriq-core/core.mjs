@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, managerExhaustionRetryPlan, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -1241,7 +1241,20 @@ async function managerTick() {
   const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator"}]}. Maximum 3 jobs. Prefer independent useful work. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   try {
-    const routed=await callManagerDecision(prompt,o.id); const decision=routed.decision;
+    const routed=await callManagerDecision(prompt,o.id);
+    if(routed.exhausted===true){
+      const retryPlan=managerExhaustionRetryPlan({managerCycles:o.manager_cycles,maxCycles:30});
+      const summary=String(routed.decision?.summary||'manager decision exhausted after bounded retry/failover').slice(0,2000);
+      if(retryPlan.retry){
+        await pool.query("update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1",[o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs)]);
+        await event('MANAGER_EXHAUSTED_RETRY_QUEUED',{objectiveId:o.id,phaseIndex:currentPhase,retryCount:retryPlan.nextCycle,delayMs:retryPlan.delayMs,failureCount:Array.isArray(routed.failures)?routed.failures.length:0});
+        return;
+      }
+      await pool.query("update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1",[o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted']);
+      await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:retryPlan.reason,retryCount:retryPlan.nextCycle});
+      return;
+    }
+    const decision=routed.decision;
     await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
