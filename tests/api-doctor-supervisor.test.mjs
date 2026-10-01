@@ -63,9 +63,18 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorExistingHandoffAction({
       existingHandoff:true,successAfterHandoff:false,cooldownUntil:null,validationAttempts:2,nowMs:now,
     })).toEqual({action:'wait_repair',reason:'post_repair_validation_budget_exhausted'});
-    expect(apiDoctorExistingHandoffAction({existingHandoff:true,successAfterHandoff:true,nowMs:now})).toEqual({
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'ONLINE',nowMs:now,
+    })).toEqual({
       action:'recovered',reason:'live_work_success_after_handoff',
     });
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'ERROR',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'validate_repair',reason:'post_repair_validation_due'});
+    expect(apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:true,healthState:'RATE_LIMITED',
+      cooldownUntil:'2026-09-21T07:10:00Z',validationAttempts:0,nowMs:now,
+    })).toEqual({action:'wait_repair',reason:'repair_handoff_cooldown_active'});
     expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false,nowMs:now})).toEqual({action:'proceed'});
   });
 
@@ -98,6 +107,20 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
   });
 
+  it('keeps routing through a healthy worker when peer API resources are degraded',()=>{
+    const resources=[
+      {employeeId:'NV11',resourceId:'res:groq:x',provider:'groq',model:'x',enabled:true,healthState:'ERROR',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:1},
+      {employeeId:'NV12',resourceId:'res:gemini:x',provider:'gemini',model:'x',enabled:true,healthState:'ONLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:2},
+      {employeeId:'NV14',resourceId:'res:mistral:x',provider:'mistral',model:'x',enabled:true,healthState:'RATE_LIMITED',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:3},
+      {employeeId:'NV18',resourceId:'res:watsonx:x',provider:'watsonx',model:'x',enabled:true,healthState:'OFFLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:4},
+    ];
+    const decision=rankCandidates(resources,{capability:'general',taskKind:'ai'});
+    expect(decision.chosen?.employeeId).toBe('NV12');
+    expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
+    expect(decision.candidates.find(x=>x.employeeId==='NV14')?.eligible).toBe(false);
+    expect(decision.candidates.find(x=>x.employeeId==='NV18')?.eligible).toBe(false);
+  });
+
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
@@ -111,6 +134,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("row.action='wait_repair'");
     expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
+    expect(core).toContain("healthState:resource.health_state");
     expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
     expect(core).toContain("return recovered?null:handoff");
     expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
