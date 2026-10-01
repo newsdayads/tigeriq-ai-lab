@@ -46,13 +46,15 @@ export function apiDoctorAction({
 export function apiDoctorExistingHandoffAction({
   existingHandoff=false,
   successAfterHandoff=false,
+  healthState='READY',
   cooldownUntil=null,
   validationAttempts=0,
   maxValidationAttempts=2,
   nowMs=Date.now(),
 }={}){
   if(!existingHandoff)return {action:'proceed'};
-  if(successAfterHandoff)return {action:'recovered',reason:'live_work_success_after_handoff'};
+  const canonicalHealthy=['READY','ONLINE'].includes(String(healthState||'').toUpperCase());
+  if(successAfterHandoff&&canonicalHealthy)return {action:'recovered',reason:'live_work_success_after_handoff'};
   const cooldownMs=cooldownUntil?Date.parse(String(cooldownUntil)):NaN;
   if(Number.isFinite(cooldownMs)&&cooldownMs>Number(nowMs))return {action:'wait_repair',reason:'repair_handoff_cooldown_active'};
   if(Number(validationAttempts)<Number(maxValidationAttempts))return {action:'validate_repair',reason:'post_repair_validation_due'};
