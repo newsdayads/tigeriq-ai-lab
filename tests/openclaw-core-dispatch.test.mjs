@@ -12,6 +12,7 @@ import {
   parseOpenClawAgentResult,
   openClawTerminalDecision,
   safeOpenClawFailureMessage,
+  expectedTigerIQTaskActionFromInstruction,
   trustedBridgeFileReadReceipt,
   trustedBridgeTaskActionReceipt,
   trustedStructuredFileReadReceipt,
@@ -158,16 +159,19 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     },{timedOut:false,parsedPresent:true}).success).toBe(false);
   });
 
-  it('accepts a failed agent terminal only when a structured TigerIQ task-action bridge receipt proves success', () => {
+  it('accepts a failed agent terminal only when the assigned TigerIQ task action has strict post-action evidence', () => {
+    const taskName='TigerIQ Core 24x7';
     const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
-    const bridgeCalls=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName:'TigerIQ Core 24x7',stopped:ok,started:ok}}}];
-    expect(trustedBridgeTaskActionReceipt(bridgeCalls)).toBe(true);
+    const verification={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0'};
+    const expected={action:'task_restart',taskName};
+    const bridgeCalls=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName,stopped:ok,started:ok,verification}}}];
+    expect(trustedBridgeTaskActionReceipt(bridgeCalls,expected)).toBe(true);
     expect(openClawTerminalDecision({
       exitCode:1,status:'error',
       agentResult:{status:'FAILED',evidence:{reason:'model terminal envelope mismatch'},blocker:'agent reported failed'},
       successfulToolNames:['tigeriq_pc'],
       bridgeCalls,
-    },{timedOut:false,parsedPresent:true})).toMatchObject({
+    },{timedOut:false,parsedPresent:true,expectedTaskAction:expected})).toMatchObject({
       success:true,
       invalidTerminal:false,
       successSource:'trusted_task_action_receipt',
@@ -176,16 +180,35 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     });
   });
 
-  it('does not trust generic tool-name claims or failed/timeout task-action receipts', () => {
+  it('extracts only an explicit bounded task assignment from the dispatch instruction', () => {
+    expect(expectedTigerIQTaskActionFromInstruction('Use exactly tigeriq_pc action=task_restart with taskName="TigerIQ Core Runtime Updater".')).toEqual({
+      action:'task_restart',
+      taskName:'TigerIQ Core Runtime Updater',
+    });
+    expect(expectedTigerIQTaskActionFromInstruction('restart whatever is needed')).toBe(null);
+    expect(expectedTigerIQTaskActionFromInstruction('action=task_restart taskName="Microsoft\\\\Windows\\\\Defrag"')).toBe(null);
+  });
+
+  it('rejects generic claims, malformed receipts, wrong tools/tasks, and partial task-action sequences', () => {
+    const taskName='TigerIQ Core 24x7';
     const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
-    const failed=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName:'TigerIQ Core 24x7',stopped:ok,started:{...ok,exitCode:1}}}}];
-    const timeout=[{tool:'tigeriq_pc',result:{ok:true,action:'task_start',target:'pc01-local',data:{taskName:'TigerIQ Core 24x7',...ok,timedOut:true}}}];
-    expect(trustedBridgeTaskActionReceipt(failed)).toBe(false);
-    expect(trustedBridgeTaskActionReceipt(timeout)).toBe(false);
-    expect(trustedBridgeTaskActionReceipt([{tool:'other',result:{ok:true,action:'shell_exec',target:'pc01-local',data:{exitCode:0,timedOut:false}}}])).toBe(false);
+    const verification={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0'};
+    const expected={action:'task_restart',taskName};
+    const failed=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName,stopped:ok,started:{...ok,exitCode:1},verification}}}];
+    const timeout=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName,stopped:ok,started:{...ok,timedOut:true},verification}}}];
+    const missingVerification=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName,stopped:ok,started:ok}}}];
+    const wrongTool=[{tool:'web_fetch',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName,stopped:ok,started:ok,verification}}}];
+    const wrongTask=[{tool:'tigeriq_pc',result:{ok:true,action:'task_restart',target:'pc01-local',data:{taskName:'TigerIQ Other Task',stopped:ok,started:ok,verification:{...verification,taskName:'TigerIQ Other Task'}}}}];
+    const partialSequence=[
+      {tool:'tigeriq_pc',result:{ok:true,action:'task_stop',target:'pc01-local',data:{taskName,...ok,verification:{...verification,state:'Ready'}}}},
+      {tool:'tigeriq_pc',result:{ok:false,action:'task_start',target:'pc01-local',data:{taskName,...ok,exitCode:1,verification}}},
+    ];
+    for(const calls of [failed,timeout,missingVerification,wrongTool,wrongTask,partialSequence]){
+      expect(trustedBridgeTaskActionReceipt(calls,expected)).toBe(false);
+    }
     expect(openClawTerminalDecision({
       exitCode:1,status:'error',agentResult:{status:'FAILED'},successfulToolNames:['tigeriq_pc'],bridgeCalls:failed,
-    },{timedOut:false,parsedPresent:true})).toMatchObject({success:false,terminalReceiptTool:true,bridgeTaskActionReceipt:false});
+    },{timedOut:false,parsedPresent:true,expectedTaskAction:expected})).toMatchObject({success:false,terminalReceiptTool:true,bridgeTaskActionReceipt:false});
   });
 
   it('uses classification-only public failure messages and never raw agent text or stderr', () => {
