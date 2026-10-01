@@ -21,9 +21,11 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     for(const [input,expected] of fixtures)expect(classifyAutonomousRca(input).class).toBe(expected);
   });
 
-  it('dedupes the same root/anomaly signature into one RCA candidate',()=>{
-    const a={signature:'same',contractId:'AUTO_DISPATCH_CONTINUITY',evidence:{eligibleBacklogCount:2}};
-    expect(dedupeAutonomousRca([a,a])).toHaveLength(1);
+  it('dedupes the same root/anomaly signature even as observation evidence changes',()=>{
+    const a={signature:'same',contractId:'AUTO_DISPATCH_CONTINUITY',evidence:{eligibleBacklogCount:2,observationCount:2}};
+    const b={signature:'same',contractId:'AUTO_DISPATCH_CONTINUITY',evidence:{eligibleBacklogCount:3,observationCount:3}};
+    expect(classifyAutonomousRca(a).rcaSignature).toBe(classifyAutonomousRca(b).rcaSignature);
+    expect(dedupeAutonomousRca([a,b])).toHaveLength(1);
   });
 
   it('fails closed to Owner exception for auth/credential gates and never creates a safe mutation Work Order',()=>{
@@ -34,8 +36,9 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
   });
 
   it('creates a bounded evidence-backed Work Order proposal for safe reversible RCA',()=>{
-    const rca=classifyAutonomousRca({signature:'route',contractId:'DEGRADED_RESOURCE_ROUTING',evidence:{resourceScope:'CORE_ROUTING',resourceId:'res:test'}});
+    const rca=classifyAutonomousRca({signature:'route',contractId:'DEGRADED_RESOURCE_ROUTING',evidence:{resourceScope:'CORE_ROUTING',resourceId:'res:test',severity:'HIGH'}});
     const wo=buildImprovementWorkOrder(rca);
+    expect(wo.priority).toBe('P1');
     expect(wo.body).toContain('RESOURCE_SCOPE=AUTO_RCA_ROUTING_');
     expect(wo.body).toContain('SELF_UPGRADE_CANDIDATE=true');
     expect(wo.body).toContain('AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE');
