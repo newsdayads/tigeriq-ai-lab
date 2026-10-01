@@ -176,7 +176,7 @@ export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',final
   for(const comment of rows){
     const body=String(comment?.body||'');
     const pass=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS');
-    const explicitFail=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS','false')||hasExactFlag(body,'DONE','false');
+    const explicitFail=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS','false')||(!pass&&hasExactFlag(body,'DONE','false'));
     if(!pass&&!explicitFail)continue;
     const revision=(bodyValue(body,'SOURCE_REVISION')||bodyValue(body,'LIVE_ACCEPTANCE_SOURCE_REVISION')).trim();
     if(revision&&revision!==expected)continue;
