@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
 
@@ -103,5 +104,16 @@ describe('Core Self-Audit expected behavior engine',()=>{
     expect(out.pass).toBe(true);
     expect(out.queueMutation).toBe(false);
     expect(ids(out)).toEqual(expect.arrayContaining(['AUTO_DISPATCH_CONTINUITY','TERMINAL_LEASE_RELEASE']));
+  });
+
+  it('exposes a read-only GET live canary without event mutation in that route',()=>{
+    const source=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
+    const marker="if(req.method==='GET'&&url.pathname==='/api/self-audit/canary')";
+    expect(source).toContain(marker);
+    const start=source.indexOf(marker);
+    const end=source.indexOf("if(req.method==='POST'&&url.pathname==='/api/self-audit/canary')",start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(source.slice(start,end)).not.toContain("event('SELF_AUDIT_CANARY'");
   });
 });
