@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {githubRequestJson,githubTransportSnapshot,invalidateGithubCache} from '../apps/tigeriq-core/github-shared-client.mjs';
 import {githubEventIssue,githubEventNumber,subscribeGithubEvents,publishGithubEvent} from '../apps/tigeriq-core/github-event-bus.mjs';
 import {validateGithubActionsClaims} from '../apps/tigeriq-core/github-actions-oidc.mjs';
-import {GITHUB_RECONCILE_INTERVAL_MS,githubIssuesAfterOutcomeSync} from '../apps/tigeriq-core/github-intake.mjs';
+import {GITHUB_RECONCILE_INTERVAL_MS,githubIssuesAfterOutcomeSync,shouldSuppressStaleClosedSuccessor} from '../apps/tigeriq-core/github-intake.mjs';
 import {GITHUB_CODING_RECONCILE_INTERVAL_MS} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function headers(values={}){const map=new Map(Object.entries(values).map(([k,v])=>[k.toLowerCase(),String(v)]));return {get:key=>map.get(String(key).toLowerCase())??null}}
@@ -131,4 +131,24 @@ test('event and fallback materialization both consume post-outcome filtered issu
   assert.equal((source.match(/githubIssuesAfterOutcomeSync\(/g)||[]).length>=3,true);
   assert.match(source,/results\+\+;resultIssueNumbers\.push\(number\)/);
   assert.match(source,/return \{claims,results,resultIssueNumbers\}/);
+});
+
+
+test('closed stale successor is suppressed only when canonical completed objective exists',()=>{
+  assert.equal(shouldSuppressStaleClosedSuccessor({
+    rowId:'OBJ-GH-2652-Rghost',rowStatus:'active',sourceState:'closed',canonicalCompletedId:'OBJ-GH-2652-Rcanonical'
+  }),true);
+  assert.equal(shouldSuppressStaleClosedSuccessor({
+    rowId:'OBJ-GH-2652-Rghost',rowStatus:'active',sourceState:'open',canonicalCompletedId:'OBJ-GH-2652-Rcanonical'
+  }),false);
+  assert.equal(shouldSuppressStaleClosedSuccessor({
+    rowId:'OBJ-GH-2652-Rghost',rowStatus:'active',sourceState:'closed',canonicalCompletedId:''
+  }),false);
+});
+
+test('stale successor cleanup records canonical supersession and terminalizes queued work',()=>{
+  const source=readFileSync('apps/tigeriq-core/github-intake.mjs','utf8');
+  assert.match(source,/GITHUB_STALE_CLOSED_SUCCESSOR_SUPPRESSED/);
+  assert.match(source,/SUPERSEDED_BY_CANONICAL_COMPLETION/);
+  assert.match(source,/supersededByObjectiveId/);
 });
