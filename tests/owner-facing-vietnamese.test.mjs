@@ -116,6 +116,5 @@ describe('Owner-facing Vietnamese output gate', () => {
     const output = localizeOwnerFacingText('Work #2657 is pending');
     expect(output).not.toMatch(/\B#\d+\b(?!\s*-)/);
     expect(output).not.toContain('#2657');
-    expect(output).not.toContain('#2657');
   });
 });
