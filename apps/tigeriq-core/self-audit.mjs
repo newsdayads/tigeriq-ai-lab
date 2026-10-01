@@ -28,7 +28,9 @@ export function evaluateSelfAudit(snapshot={},{
   minTerminalSettleMs=5000,
 }={}){
   const anomalies=[];
+  const evaluatedContracts=new Set();
   const queue=snapshot.queue||{};
+  if(snapshot.queue&&typeof snapshot.queue==='object')evaluatedContracts.add('AUTO_DISPATCH_CONTINUITY');
   const backlog=Number(queue.eligibleBacklogCount||0);
   const idle=Number(queue.eligibleIdleWorkers||0);
   const active=Number(queue.activeWorkCount||0);
@@ -39,6 +41,7 @@ export function evaluateSelfAudit(snapshot={},{
     }));
   }
 
+  if(Array.isArray(snapshot.reviews))evaluatedContracts.add('REVIEW_INDEPENDENCE');
   for(const review of arr(snapshot.reviews)){
     if(!['RUNNING','DONE','COMPLETED'].includes(upper(review.status)))continue;
     const implEmployees=new Set(arr(review.implementerEmployeeIds).map(upper).filter(Boolean));
@@ -53,6 +56,7 @@ export function evaluateSelfAudit(snapshot={},{
     }
   }
 
+  if(Array.isArray(snapshot.terminalJobs))evaluatedContracts.add('TERMINAL_LEASE_RELEASE');
   for(const job of arr(snapshot.terminalJobs)){
     if(!['DONE','FAILED','COMPLETED','BLOCKED'].includes(upper(job.status)))continue;
     const completedAgeMs=Number(job.completedAgeMs||0);
@@ -65,6 +69,7 @@ export function evaluateSelfAudit(snapshot={},{
     }
   }
 
+  if(Array.isArray(snapshot.activeAssignments))evaluatedContracts.add('DEGRADED_RESOURCE_ROUTING');
   for(const job of arr(snapshot.activeAssignments)){
     if(!['RUNNING','DISPATCHING'].includes(upper(job.status)))continue;
     const health=upper(job.healthState);
@@ -84,10 +89,12 @@ export function evaluateSelfAudit(snapshot={},{
   const runtime=snapshot.runtime||{};
   const expectedSha=String(runtime.expectedSha||'').trim();
   const installedSha=String(runtime.installedSha||'').trim();
+  if(expectedSha&&installedSha)evaluatedContracts.add('RUNTIME_SOURCE_SHA');
   if(expectedSha&&installedSha&&expectedSha!==installedSha){
     anomalies.push(anomaly('RUNTIME_SOURCE_SHA',expectedSha+'>'+installedSha,{expectedSha,installedSha}));
   }
 
+  if(Array.isArray(snapshot.dependencies))evaluatedContracts.add('DEPENDENCY_TERMINAL_GATE');
   for(const dep of arr(snapshot.dependencies)){
     if(upper(dep.status)!=='COMPLETED')continue;
     if(dep.dependencyGateRequired===true&&dep.dependencyGatePass!==true){
@@ -101,6 +108,7 @@ export function evaluateSelfAudit(snapshot={},{
 
   const service=snapshot.service||{};
   const functionalFailures=arr(service.functionalFailures).map(String).filter(Boolean);
+  if(typeof service.healthy==='boolean'&&Array.isArray(service.functionalFailures))evaluatedContracts.add('SERVICE_FUNCTIONAL_INTEGRITY');
   if(service.healthy===true&&functionalFailures.length){
     anomalies.push(anomaly('SERVICE_FUNCTIONAL_INTEGRITY',functionalFailures.slice().sort().join('|'),{
       healthy:true,functionalFailures:functionalFailures.slice(0,20)
@@ -110,6 +118,7 @@ export function evaluateSelfAudit(snapshot={},{
   const watchdog=snapshot.watchdog||{};
   const updaterKnown=typeof watchdog.updaterHealthy==='boolean';
   const watchdogKnown=typeof watchdog.watchdogHealthy==='boolean';
+  if(updaterKnown&&watchdogKnown)evaluatedContracts.add('UPDATER_WATCHDOG_HEALTH');
   if((updaterKnown&&watchdog.updaterHealthy!==true)||(watchdogKnown&&watchdog.watchdogHealthy!==true)){
     anomalies.push(anomaly('UPDATER_WATCHDOG_HEALTH','runtime',{
       updaterHealthy:updaterKnown?watchdog.updaterHealthy:null,
@@ -122,6 +131,7 @@ export function evaluateSelfAudit(snapshot={},{
     contractCount:SELF_AUDIT_CONTRACTS.length,
     evaluatedAt:new Date(nowMs).toISOString(),
     anomalies,
+    evaluatedContractIds:[...evaluatedContracts],
   };
 }
 
@@ -131,6 +141,16 @@ export function anomalyMaterializationDecision(existing,anomalyRecord,{nowMs=Dat
   const last=Date.parse(existing.last_materialized_at||existing.lastMaterializedAt||'');
   if(!Number.isFinite(last)||nowMs-last>=cooldownMs)return {materialize:true,reason:'COOLDOWN_ELAPSED'};
   return {materialize:false,reason:'DEDUP_COOLDOWN'};
+}
+
+export function anomalyResolutionSignatures(existingOpen=[],currentAnomalies=[],evaluatedContractIds=[]){
+  const current=new Set(arr(currentAnomalies).map(x=>String(x?.signature||'')).filter(Boolean));
+  const evaluated=new Set(arr(evaluatedContractIds).map(String).filter(Boolean));
+  return arr(existingOpen)
+    .filter(row=>!evaluated.size||typeof row!=='object'||!row?.contract_id||evaluated.has(String(row.contract_id)))
+    .map(x=>String(x?.signature||x||'').trim())
+    .filter(Boolean)
+    .filter(signature=>!current.has(signature));
 }
 
 export function syntheticSelfAuditCanary({nowMs=Date.now()}={}){

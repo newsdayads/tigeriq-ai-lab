@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
 
 const now=Date.parse('2026-10-02T03:00:00+07:00');
 const ids=result=>result.anomalies.map(x=>x.contractId);
@@ -72,12 +72,40 @@ describe('Core Self-Audit expected behavior engine',()=>{
     expect(anomalyMaterializationDecision(existing,anomaly,{nowMs:now+61000,cooldownMs:60000})).toMatchObject({materialize:true,reason:'COOLDOWN_ELAPSED'});
   });
 
+  it('does not suppress dispatch continuity when unrelated work is active',()=>{
+    const out=evaluateSelfAudit({queue:{eligibleBacklogCount:1,eligibleIdleWorkers:1,activeWorkCount:3,backlogStableForMs:30000}},{nowMs:now});
+    expect(ids(out)).toContain('AUTO_DISPATCH_CONTINUITY');
+  });
+
+  it('resolves only missing signatures from contracts evaluated in the current scan',()=>{
+    const existing=[
+      {signature:'sig-a',contract_id:'AUTO_DISPATCH_CONTINUITY'},
+      {signature:'sig-b',contract_id:'RUNTIME_SOURCE_SHA'},
+      {signature:'sig-c',contract_id:'UPDATER_WATCHDOG_HEALTH'},
+    ];
+    const current=[{signature:'sig-a',contractId:'AUTO_DISPATCH_CONTINUITY'}];
+    expect(anomalyResolutionSignatures(existing,current,['AUTO_DISPATCH_CONTINUITY','RUNTIME_SOURCE_SHA'])).toEqual(['sig-b']);
+  });
+
+  it('does not mark watchdog contract fully evaluated when one live signal is unknown',()=>{
+    const out=evaluateSelfAudit({watchdog:{watchdogHealthy:true}},{nowMs:now});
+    expect(out.evaluatedContractIds).not.toContain('UPDATER_WATCHDOG_HEALTH');
+    expect(ids(out)).not.toContain('UPDATER_WATCHDOG_HEALTH');
+  });
+
+  it('keeps a known watchdog failure materialized even when the peer signal is unknown',()=>{
+    const out=evaluateSelfAudit({watchdog:{updaterHealthy:false}},{nowMs:now});
+    expect(ids(out)).toContain('UPDATER_WATCHDOG_HEALTH');
+    expect(out.evaluatedContractIds).not.toContain('UPDATER_WATCHDOG_HEALTH');
+  });
+
   it('bounded synthetic canary detects two anomalies without queue mutation',()=>{
     const out=syntheticSelfAuditCanary({nowMs:now});
     expect(out.pass).toBe(true);
     expect(out.queueMutation).toBe(false);
     expect(ids(out)).toEqual(expect.arrayContaining(['AUTO_DISPATCH_CONTINUITY','TERMINAL_LEASE_RELEASE']));
   });
+
   it('exposes a read-only GET live canary without event mutation in that route',()=>{
     const source=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
     const marker="if(req.method==='GET'&&url.pathname==='/api/self-audit/canary')";
@@ -88,5 +116,4 @@ describe('Core Self-Audit expected behavior engine',()=>{
     expect(end).toBeGreaterThan(start);
     expect(source.slice(start,end)).not.toContain("event('SELF_AUDIT_CANARY'");
   });
-
 });
