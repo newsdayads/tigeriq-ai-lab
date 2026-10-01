@@ -194,7 +194,9 @@ try{
   if([long]$req.artifactId -le 0){throw 'APPCHROME_REQUEST_ARTIFACT_INVALID'}
   if([int]$req.issueNumber -le 0){throw 'APPCHROME_REQUEST_ISSUE_INVALID'}
   $prior=$null;try{if(Test-Path -LiteralPath $resultPath){$prior=Get-Content -Raw -LiteralPath $resultPath|ConvertFrom-Json}}catch{}
-  if($prior -and [string]$prior.result -eq 'PASS' -and [string]$prior.exactHead -eq [string]$req.exactHead -and [long]$prior.artifactId -eq [long]$req.artifactId){[pscustomobject]@{action='none';reason='already_installed';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId}|ConvertTo-Json -Compress;Release-SingleFlight;exit 0}
+  # A durable PASS receipt is evidence of a previous install, not proof that the
+  # runtime is alive after reboot. Always revalidate authorization/artifact and
+  # live provenance before deciding no install is required.
   Assert-Authorization $req
   $verified=Verify-Artifact $req
   try{
