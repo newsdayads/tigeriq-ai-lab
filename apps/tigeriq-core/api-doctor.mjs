@@ -1,6 +1,16 @@
+import {isRetryableManagerOutputError} from './manager-json.mjs';
+
 export const API_DOCTOR_CAPABILITY='api_doctor';
 
 const safeText=(value,max=240)=>String(value??'').trim().slice(0,max);
+
+export function apiDoctorHealthEvidenceEvents(events=[]){
+  return (Array.isArray(events)?events:[]).filter(row=>{
+    const taskKind=String(row?.task_kind||row?.data?.taskKind||'').trim().toLowerCase();
+    const code=String(row?.data?.message||row?.data?.code||'').trim();
+    return !(String(row?.type||'')==='RESOURCE_FAILURE'&&taskKind==='manager'&&isRetryableManagerOutputError({code}));
+  });
+}
 
 export function classifyApiDoctorFailure(input={}){
   const kind=safeText(input.kind||input.errorClass||'',80).toLowerCase();

@@ -6,6 +6,7 @@ import {
   apiDoctorCurrentFailure,
   apiDoctorExistingHandoffAction,
   apiDoctorHandoffMatchesFailureClass,
+  apiDoctorHealthEvidenceEvents,
   apiDoctorRepairSignature,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -97,6 +98,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
     ])).toMatchObject({type:'RESOURCE_PROBE_FAIL'});
   });
 
+  it('ignores manager output-contract failures as resource-health evidence',()=>{
+    const managerFailure={type:'RESOURCE_FAILURE',task_kind:'manager',data:{kind:'invalid_response',message:'MANAGER_SCHEMA_INVALID'}};
+    const providerFailure={type:'RESOURCE_FAILURE',task_kind:'ai',data:{kind:'invalid_response',message:'EMPTY_RESPONSE'}};
+    const rateLimit={type:'RESOURCE_FAILURE',task_kind:'manager',data:{kind:'rate_limit',message:'HTTP_429'}};
+    expect(apiDoctorHealthEvidenceEvents([managerFailure,providerFailure])).toEqual([providerFailure]);
+    expect(apiDoctorHealthEvidenceEvents([rateLimit])).toEqual([rateLimit]);
+    expect(apiDoctorCurrentFailure(apiDoctorHealthEvidenceEvents([managerFailure]))).toBeNull();
+  });
+
   it('does not let an old source-contract handoff suppress a newer expired rate-limit reprobe',()=>{
     const oldHandoff={data:{failureClass:'source_contract',signature:'NV11|groq|source_contract|invalid_response'}};
     expect(apiDoctorHandoffMatchesFailureClass(oldHandoff,'rate_limit')).toBe(false);
@@ -140,11 +150,10 @@ describe('#1255 routing/runtime integration',()=>{
       {employeeId:'NV14',resourceId:'res:mistral:x',provider:'mistral',model:'x',enabled:true,healthState:'RATE_LIMITED',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:3},
       {employeeId:'NV18',resourceId:'res:watsonx:x',provider:'watsonx',model:'x',enabled:true,healthState:'OFFLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:4},
     ];
-    const decision=rankCandidates(resources,{capability:'general',taskKind:'ai'});
+    const routable=resources.filter(r=>['READY','ONLINE'].includes(String(r.healthState||'').toUpperCase()));
+    const decision=rankCandidates(routable,{capability:'general',taskKind:'ai'});
     expect(decision.chosen?.employeeId).toBe('NV12');
-    expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
-    expect(decision.candidates.find(x=>x.employeeId==='NV14')?.eligible).toBe(false);
-    expect(decision.candidates.find(x=>x.employeeId==='NV18')?.eligible).toBe(false);
+    expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
@@ -176,7 +185,7 @@ describe('#1255 routing/runtime integration',()=>{
 
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
-    expect(core).toContain("kind,'api_doctor_validation'");
+    expect(core).toContain("taskKind:'api_doctor_validation'");
     expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
     expect(core).toContain("maxValidationAttempts:2");
     expect(core).toContain("post_repair_live_validation_job");
