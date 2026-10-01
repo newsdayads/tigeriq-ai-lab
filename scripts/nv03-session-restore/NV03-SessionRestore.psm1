@@ -82,6 +82,10 @@ function Get-Nv03RuntimeState {
       ($Snapshot.sidecar.listening -and -not $Snapshot.sidecar.scopeMatched)) {
     return 'SCOPE_MISMATCH'
   }
+  if ($Snapshot.chrome.listening -and -not $Snapshot.sidecar.listening -and
+      [int]$Snapshot.chrome.sessionId -eq $active) {
+    return 'CHROME_INTERACTIVE_SIDECAR_MISSING'
+  }
   if (-not $Snapshot.chrome.listening -or -not $Snapshot.sidecar.listening) {
     return 'NOT_RUNNING'
   }
