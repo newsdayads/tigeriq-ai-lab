@@ -1,7 +1,7 @@
 # TIGERIQ — SOURCE INDEX
-Version: 3.3
+Version: 3.4
 Status: Source Architecture
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 ## 1. Mục tiêu
 Đồng nhất ChatGPT Plus, ChatGPT Go và Gemini Pro về một entry point nguồn duy nhất, tránh duy trì 3 bộ file thủ công và tránh lệch phiên bản. Authority canonical của TigerIQ nằm trên GitHub, **ngoại trừ App Chrome đã được tách LOCAL-only trên PC01**; các tài khoản AI chỉ giữ/trỏ tới Loader.
@@ -57,10 +57,11 @@ Nếu nguồn thấp hơn xung đột nguồn cao hơn, nguồn thấp hơn khô
 3. Nếu message độc lập khớp `LÀM APP CHROME` hoặc alias `APP CHROME` / `APPCHROME` / `AC`: **không tạo/đọc Work Order App Chrome để thực thi**; chuyển sang lane Owner → Vy → PC01 local, đọc marker `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json` và trạng thái local cần thiết.
 4. Với App Chrome, GitHub chỉ cung cấp policy ranh giới và authority công việc/quyền của NV02/NV03/NV04; source/runtime/deploy App Chrome không lấy từ GitHub.
 5. Nếu không phải App Chrome: đọc đủ 5 Bootstrap canonical theo Loader.
-6. Nếu message chỉ là số nguyên `N`, đọc CENTRAL + registry hiện hành → resolve command trước khi làm.
-7. Nếu task phụ thuộc trạng thái hiện hành, đọc `docs/CURRENT_STATE.md`, queue/P0/Work Order và evidence liên quan.
-8. Trong cùng phiên hợp lệ, không đọc lặp nguồn tĩnh đã xác minh nếu version/pointer chưa đổi; refresh nguồn động cần thiết trước mutation/kết luận.
-9. Nếu GitHub hoặc registry không truy cập được đối với task TigerIQ thông thường: fail closed; không dùng bản Drive/file upload cũ để suy diễn trạng thái. App Chrome là ngoại lệ LOCAL-only và phải dùng local marker/runtime thay vì fallback sang GitHub App Chrome cũ.
+6. Interaction #504 bắt buộc mọi NEW CHAT: đọc trước phản hồi Owner đầu tiên, kể cả chat thường; đây là authority cho ngôn ngữ + icon + compact layout + mã việc + progress truth.
+7. Nếu message chỉ là số nguyên `N`, đọc CENTRAL + registry hiện hành → resolve command trước khi làm.
+8. Nếu task phụ thuộc trạng thái hiện hành, đọc `docs/CURRENT_STATE.md`, queue/P0/Work Order và evidence liên quan.
+9. Trong cùng phiên hợp lệ, không đọc lặp nguồn tĩnh đã xác minh nếu version/pointer chưa đổi; refresh nguồn động cần thiết trước mutation/kết luận.
+10. Nếu GitHub hoặc registry/#504 không truy cập được đối với task TigerIQ thông thường: fail closed; không dùng bản Drive/file upload cũ để suy diễn trạng thái. App Chrome là ngoại lệ LOCAL-only và phải dùng local marker/runtime thay vì fallback sang GitHub App Chrome cũ.
 
 ### APP Chrome LOCAL-only policy
 `APP_CHROME_PRIMARY_COMMAND=LÀM APP CHROME`
