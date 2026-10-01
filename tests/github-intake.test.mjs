@@ -188,6 +188,16 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
   for(const [issue,reason] of cases)assert.deepStrictEqual({eligible:safeAutoWorkAdmission(issue).eligible,reason:safeAutoWorkAdmission(issue).reason},{eligible:false,reason});
 });
 
+test('generic API intake does not intercept explicit NV03/NV04 UI targets',()=>{
+  const common=['PRIORITY=P1','ZERO_COST=true','OWNER_POLICY=AUTO','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','RESOURCE_SCOPE=UI_TARGET_TEST'];
+  const review={number:2678,state:'open',title:'[P1][REVIEW] explicit NV03',body:[...common,'CAPABILITY=review','TARGET_EMPLOYEE=NV03'].join('\n'),labels:[]};
+  const research={number:2679,state:'open',title:'[P1][RESEARCH] explicit NV04',body:[...common,'CAPABILITY=deep_research','TARGET_EMPLOYEE=NV04'].join('\n'),labels:[]};
+  for(const issue of [review,research]){
+    assert.deepStrictEqual({eligible:safeAutoWorkAdmission(issue).eligible,reason:safeAutoWorkAdmission(issue).reason},{eligible:false,reason:'OWNER_OR_UI_ROUTE'});
+    assert.strictEqual(parseExecutableIssue(issue),null);
+  }
+});
+
 test('safe coding Work Order materializes one API coordination job without taking coding ownership',async()=>{
   const pool=coreBacklogPool();
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:0,html_url:'https://example/2474'};
