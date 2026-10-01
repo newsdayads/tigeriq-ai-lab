@@ -745,5 +745,5 @@ describe('GitHub Core intake guardrails',()=>{
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
   });
 
-  it('formats a terminal result with objective evidence',()=>{expect(formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'ok'})).toContain('[RESULT] TigerIQ Core completed OBJ-GH-588');});
+  it('formats a terminal result with Vietnamese Owner-facing evidence',()=>{const out=formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'final review PASS'});expect(out).toContain('[KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-588');expect(out).toContain('rà soát cuối ĐẠT');expect(out).not.toMatch(/\\b(?:PASS|COMPLETED|BLOCKED)\\b/);});
 });
