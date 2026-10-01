@@ -810,15 +810,15 @@ test('different GitHub dispatch lanes do not starve each other',async()=>{
   assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
 });
 
-test('bounded App Chrome deploy-request State work is not treated as protected App Chrome mutation',async()=>{
+test('App Chrome deploy-request State work is excluded from Core after LOCAL-only migration',async()=>{
   const pool=coreBacklogPool();
   const body=['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator','APP_CHROME_REQUEST_ONLY=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE','ASSIGNED_ACTION','Use tigeriq_pc file_write only:','path=D:\\TigerIQ\\State\\appchrome-install-request.json','Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS'].join('\n');
-  const issues=[{number:1881,state:'open',title:'[P0][OPENCLAW] request state',body,html_url:'https://example/1881'}];
-  const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
-  const out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,1881);
-  assert.strictEqual(pool.objectives.at(-1).metadata.executionSurface,'CORE_OPENCLAW_BOUNDED');
-  assert.strictEqual(pool.objectives.at(-1).metadata.dispatchLane,'PC_OPERATOR');
+  const issue={number:1881,state:'open',title:'[P0][OPENCLAW] request state',body,html_url:'https://example/1881'};
+  assert.strictEqual(parseExecutableIssue(issue),null);
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(pool.objectives.length,0);
+  assert.strictEqual(pool.jobs.length,0);
 });
 
 test('preferred and default NV03 review are excluded from generic Core intake to avoid duplicate review',async()=>{
