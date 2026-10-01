@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority,exactBodyFlag} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
@@ -43,8 +44,19 @@ export function formatCoreUiTerminalComment({jobId,workerId,state,result=''}) {
   ].join('\n');
 }
 function rank(p){return PRIORITY_RANK[String(p||'P5')]??PRIORITY_RANK.P5;}
-function issueNo(jobId){const m=String(jobId||'').match(/^GH-(\d+)$/);return m?Number(m[1]):null;}
+function issueNo(jobId){const m=String(jobId||'').match(/^GH-(\d+)(?:-R[a-f0-9]{12})?$/i);return m?Number(m[1]):null;}
 function resourceId(workerId){return 'res:ui:'+String(workerId).toLowerCase()+':subscription:chrome';}
+export function coreUiSourceRevision(issue={}){
+  return createHash('sha256').update(String(issue?.title||'')).update('\n').update(String(issue?.body||'')).digest('hex').slice(0,12);
+}
+function coreUiRearmEpoch(body=''){
+  let latest=0;
+  for(const match of String(body||'').matchAll(/^(?:REARMED_AT|QUEUE_REARMED_AT|EPOCH_STARTED_AT)=(.+)$/gmi)){
+    const ts=Date.parse(String(match[1]||'').trim());
+    if(Number.isFinite(ts)&&ts>latest)latest=ts;
+  }
+  return latest;
+}
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
@@ -65,7 +77,7 @@ export function parseCoreUiIssue(issue){
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
   const number=Number(issue.number);if(!Number.isInteger(number)||number<=0)return null;
   return {
-    number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,title:clean(issue.title),url:String(issue.html_url||''),
+    number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,sourceRevision:coreUiSourceRevision(issue),title:clean(issue.title),url:String(issue.html_url||''),
     priority:classification.priority,sourcePriority:classification.sourcePriority,legacyP0Autonomous:classification.legacyP0Autonomous,
     ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:classification.workerId,
     readOnly,autonomousCode,body:String(issue.body||'').slice(0,12000),updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0)),
@@ -133,8 +145,28 @@ async function reconcile({pool,fetchImpl,owner,repo,token,item,observedAt}){
   return {...item,status,completed_at:issue.closed_at||issue.updated_at,issue};
 }
 
-async function insertObjectiveIfScopeFree(pool,spec,metadata){
-  const oid='OBJ-UI-GH-'+spec.number;
+async function latestCoreUiObjective(pool,spec){
+  const q=await pool.query("select id,status,metadata,updated_at from tigeriq_objectives where metadata->>'source'='github_ui' and metadata->>'issueNumber'=$1 order by updated_at desc limit 1",[String(spec.number)]);
+  return q.rows[0]||null;
+}
+function sameCoreUiRevision(prior,spec){
+  if(!prior)return false;
+  const priorScope=String(prior.metadata?.resourceScope||'');
+  if(priorScope!==String(spec.resourceScope||''))return false;
+  const priorRevision=String(prior.metadata?.sourceRevision||'');
+  if(priorRevision)return priorRevision===String(spec.sourceRevision||'');
+  const rearmEpoch=coreUiRearmEpoch(spec.body);
+  const priorUpdated=Date.parse(String(prior.updated_at||''));
+  return !(rearmEpoch>0&&Number.isFinite(priorUpdated)&&rearmEpoch>priorUpdated);
+}
+function materializedCoreUiIds(spec,prior){
+  if(!prior)return {objectiveId:'OBJ-UI-GH-'+spec.number,jobId:'GH-'+spec.number};
+  const revision=String(spec.sourceRevision||'').toLowerCase();
+  return {objectiveId:'OBJ-UI-GH-'+spec.number+'-R'+revision,jobId:'GH-'+spec.number+'-R'+revision};
+}
+
+async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
+  const oid=objectiveId;
   const q=await pool.query(
     "with locked as materialized (select pg_advisory_xact_lock(hashtext($1)) as guard), inserted as ("+
     "insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) "+
@@ -150,15 +182,18 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
   if(await row(pool,{workerId}))return null;
   const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&x.workerId===workerId).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
-    const oid='OBJ-UI-GH-'+spec.number;
-    if((await pool.query('select 1 from tigeriq_objectives where id=$1',[oid])).rowCount)continue;
+    const prior=await latestCoreUiObjective(pool,spec);
+    if(sameCoreUiRevision(prior,spec))continue;
+    const ids=materializedCoreUiIds(spec,prior);
+    if((await pool.query('select 1 from tigeriq_objectives where id=$1',[ids.objectiveId])).rowCount)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled};
-    if(!await insertObjectiveIfScopeFree(pool,spec,metadata))continue;
-    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[spec.jobId,oid,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(spec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope})]);
-    await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[oid,spec.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority})]);
-    return row(pool,{workerId});
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null};
+    if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
+    const materializedSpec={...spec,jobId:ids.jobId};
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision})]);
+    await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[ids.objectiveId,ids.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null})]);
+    return row(pool,{jobId:ids.jobId});
   }
   return null;
 }
