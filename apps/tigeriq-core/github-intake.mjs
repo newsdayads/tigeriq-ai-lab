@@ -87,7 +87,8 @@ export async function implementationReviewContext(pool,{objectiveId='',metadata=
     if(employee)implementerEmployeeIds.add(employee);
     if(resource)implementerResourceIds.add(resource);
   }
-  const blockingJobs=rows.filter((row)=>String(row.status||'').toLowerCase()!=='done').map((row)=>String(row.id||''));
+  const terminalStatuses=new Set(['done','failed']);
+  const blockingJobs=rows.filter((row)=>!terminalStatuses.has(String(row.status||'').toLowerCase())).map((row)=>String(row.id||''));
   const fingerprint=createHash('sha256').update(JSON.stringify({
     rows:rows.map((row)=>({
       id:String(row.id||''),
