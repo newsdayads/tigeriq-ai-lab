@@ -69,6 +69,11 @@ export function ownerFacingWorkRow(row) {
   if (typeof localized.waitReason === 'string') localized.waitReason = localizeOwnerFacingText(localized.waitReason);
   if (typeof localized.currentStep === 'string') localized.currentStep = localizeOwnerFacingText(localized.currentStep);
   if (typeof localized.detail === 'string') localized.detail = localizeOwnerFacingText(localized.detail);
+  if (typeof localized.job === 'string') localized.job = localizeOwnerFacingText(localized.job);
+  if (statusCode) localized.statusIcon = ownerStatusIcon(statusCode);
+  const progress = verifiedOwnerProgress(localized.progress);
+  if (progress) localized.progressPresentation = progress;
+  else if ('progressPresentation' in localized) delete localized.progressPresentation;
   return localized;
 }
 
@@ -78,3 +83,89 @@ export function containsBareEnglishOwnerStatus(value = '') {
 }
 
 export const OWNER_STATUS_LABELS = STATUS_LABELS;
+
+
+export const OWNER_PRESENTATION_ICONS = Object.freeze({
+  COMPLETED: '✅',
+  WORKING: '⚙️',
+  WAITING: '⏳',
+  ATTENTION: '⚠️',
+  OWNER: '🔒',
+  IDEA: '💡',
+  KEY: '📌',
+  NEXT: '➡️',
+});
+
+const VI_STATUS_ICON = Object.freeze({
+  'ĐẠT': OWNER_PRESENTATION_ICONS.COMPLETED,
+  'HOÀN TẤT': OWNER_PRESENTATION_ICONS.COMPLETED,
+  'ĐANG XỬ LÝ': OWNER_PRESENTATION_ICONS.WORKING,
+  'SẴN SÀNG': OWNER_PRESENTATION_ICONS.WAITING,
+  'ĐANG CHỜ': OWNER_PRESENTATION_ICONS.WAITING,
+  'CHỜ BÊN NGOÀI': OWNER_PRESENTATION_ICONS.WAITING,
+  'BỊ CHẶN': OWNER_PRESENTATION_ICONS.ATTENTION,
+  'LỖI': OWNER_PRESENTATION_ICONS.ATTENTION,
+  'CHỜ ANH SƠN DUYỆT': OWNER_PRESENTATION_ICONS.OWNER,
+  'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT': OWNER_PRESENTATION_ICONS.OWNER,
+  'RÀ SOÁT': OWNER_PRESENTATION_ICONS.WORKING,
+  'XÁC MINH': OWNER_PRESENTATION_ICONS.WORKING,
+  'MỞ': OWNER_PRESENTATION_ICONS.WAITING,
+});
+
+export const OWNER_SURFACE_REGISTRY = Object.freeze([
+  'DIRECT_CHAT_NEW_CHAT',
+  'CORE_GITHUB_COMMENTS',
+  'NV_API_OUTPUT',
+  'UI_WORKER_OUTPUT',
+  'CODING_LANE_SUMMARY',
+  'QUEUE_CHECKPOINT_HANDOFF_REPORT',
+  'TIGERIQ_LIVE_WEB_CONTROL',
+  'AUTOMATION_NOTICE',
+]);
+
+export function ownerStatusIcon(value = '') {
+  const label = ownerStatusLabel(value);
+  return VI_STATUS_ICON[label] || OWNER_PRESENTATION_ICONS.KEY;
+}
+
+export function verifiedOwnerProgress(input = null) {
+  if (!input || typeof input !== 'object') return null;
+  if (input.stale === true || input.conflicting === true || input.verified === false) return null;
+  const passed = Number(input.passed);
+  const total = Number(input.total);
+  if (!Number.isInteger(passed) || !Number.isInteger(total) || total <= 0 || passed < 0 || passed > total) return null;
+  const percent = Math.round((passed / total) * 100);
+  const filled = Math.max(0, Math.min(10, Math.round(percent / 10)));
+  return {
+    passed,
+    total,
+    percent,
+    bar: '█'.repeat(filled) + '░'.repeat(10 - filled),
+    text: `${'█'.repeat(filled)}${'░'.repeat(10 - filled)} ${percent}%`,
+    verified: true,
+  };
+}
+
+export function ownerFacingPresentation({ status = '', result = '', blocker = '', nextAction = '', progress = null } = {}) {
+  const progressView = verifiedOwnerProgress(progress);
+  const label = ownerStatusLabel(status);
+  return {
+    status: label,
+    icon: ownerStatusIcon(status),
+    progress: progressView,
+    result: localizeOwnerFacingText(result),
+    blocker: localizeOwnerFacingText(blocker),
+    nextAction: localizeOwnerFacingText(nextAction),
+    order: ['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO'],
+  };
+}
+
+export function validateOwnerFacingOutput({ text = '', progress = null, evidenceFresh = true, canonicalRefsResolved = true } = {}) {
+  const defects = [];
+  const value = String(text || '');
+  if (containsBareEnglishOwnerStatus(value)) defects.push('BARE_ENGLISH_STATUS');
+  if (/\b\d{1,3}%\b/.test(value) && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
+  if (evidenceFresh === false && /\b\d{1,3}%\b/.test(value)) defects.push('STALE_PROGRESS_VISIBLE');
+  if (canonicalRefsResolved === false) defects.push('UNRESOLVED_WORK_REFERENCE');
+  return { ok: defects.length === 0, defects };
+}
