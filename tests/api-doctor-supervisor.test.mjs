@@ -107,6 +107,20 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
   });
 
+  it('keeps routing through a healthy worker when peer API resources are degraded',()=>{
+    const resources=[
+      {employeeId:'NV11',resourceId:'res:groq:x',provider:'groq',model:'x',enabled:true,healthState:'ERROR',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:1},
+      {employeeId:'NV12',resourceId:'res:gemini:x',provider:'gemini',model:'x',enabled:true,healthState:'ONLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:2},
+      {employeeId:'NV14',resourceId:'res:mistral:x',provider:'mistral',model:'x',enabled:true,healthState:'RATE_LIMITED',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:3},
+      {employeeId:'NV18',resourceId:'res:watsonx:x',provider:'watsonx',model:'x',enabled:true,healthState:'OFFLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:4},
+    ];
+    const decision=rankCandidates(resources,{capability:'general',taskKind:'ai'});
+    expect(decision.chosen?.employeeId).toBe('NV12');
+    expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
+    expect(decision.candidates.find(x=>x.employeeId==='NV14')?.eligible).toBe(false);
+    expect(decision.candidates.find(x=>x.employeeId==='NV18')?.eligible).toBe(false);
+  });
+
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
@@ -120,6 +134,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("row.action='wait_repair'");
     expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
+    expect(core).toContain("healthState:resource.health_state");
     expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
     expect(core).toContain("return recovered?null:handoff");
     expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
