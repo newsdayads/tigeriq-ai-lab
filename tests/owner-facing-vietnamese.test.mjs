@@ -9,6 +9,8 @@ import {
   verifiedOwnerProgress,
   ownerFacingPresentation,
   validateOwnerFacingOutput,
+  containsUnapprovedOwnerIcon,
+  OWNER_ALLOWED_ICONS,
   OWNER_SURFACE_REGISTRY,
 } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 import { formatResultComment } from '../apps/tigeriq-core/github-intake.mjs';
@@ -228,6 +230,22 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(ownerCodingComment('[CLAIM] job READY')).toBe('⚙️ [TIẾP NHẬN] job SẴN SÀNG');
     expect(ownerCodingComment('[RESULT] job DONE')).toBe('✅ [KẾT QUẢ] job HOÀN TẤT');
     expect(ownerCodingComment('[BLOCKED_FINAL] job ERROR')).toBe('⚠️ [BỊ CHẶN] job LỖI');
+  });
+
+  it('rejects non-canonical icons and hard-loads the direct-chat icon guard', () => {
+    expect(OWNER_ALLOWED_ICONS).toEqual(['✅', '⚙️', '⏳', '⚠️', '🔒', '💡', '📌', '➡️']);
+    expect(containsUnapprovedOwnerIcon('⚙️ ĐANG XỬ LÝ')).toBe(false);
+    expect(containsUnapprovedOwnerIcon('📌 Điểm chính ➡️ Bước tiếp theo')).toBe(false);
+    expect(containsUnapprovedOwnerIcon('🔴 P1 đang xử lý')).toBe(true);
+    expect(containsUnapprovedOwnerIcon('🟠 P2 đang chờ')).toBe(true);
+    expect(containsUnapprovedOwnerIcon('⚪ P4')).toBe(true);
+    expect(validateOwnerFacingOutput({ text: '🔴 P1 đang xử lý' }).defects)
+      .toContain('UNAPPROVED_ICON');
+
+    const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
+    expect(loader).toContain('DIRECT CHAT PRE-SEND ICON GUARD V1');
+    expect(loader).toContain('✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️');
+    expect(loader).toContain('🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫');
   });
 
   it('fails closed on guessed/stale progress and bare machine status', () => {
