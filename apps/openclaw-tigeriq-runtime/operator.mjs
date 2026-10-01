@@ -211,7 +211,13 @@ function trustedTaskVerification(action, taskName, verification) {
   if (!state) return false;
   if (action === 'task_stop') return state !== 'running';
   if (state === 'running') return true;
-  return state === 'ready' && String(verification.lastResult ?? '').trim() === '0';
+  const lastRun = String(verification.lastRun ?? '').trim();
+  const previousLastRun = String(verification.previousLastRun ?? '').trim();
+  return state === 'ready'
+    && String(verification.lastResult ?? '').trim() === '0'
+    && Boolean(lastRun)
+    && Boolean(previousLastRun)
+    && lastRun !== previousLastRun;
 }
 
 export function trustedTigerIQTaskActionData(action, data) {
@@ -347,9 +353,11 @@ async function runTaskAction(action, taskName) {
     return { taskName: name, ...(await spawnBounded('schtasks.exe', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], { timeoutSec: 15 })) };
   }
   if (action === 'task_start') {
+    const before = await queryTigerIQTaskVerification(name);
     const result = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(result, 'START');
-    return { taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
+    const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
+    return { taskName: name, ...result, verification };
   }
   if (action === 'task_stop') {
     const result = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
@@ -357,11 +365,13 @@ async function runTaskAction(action, taskName) {
     return { taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
   }
   if (action === 'task_restart') {
+    const before = await queryTigerIQTaskVerification(name);
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(started, 'RESTART_START');
-    return { taskName: name, stopped, started, verification: await queryTigerIQTaskVerification(name) };
+    const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
+    return { taskName: name, stopped, started, verification };
   }
   throw new Error('TIGERIQ_PC_TASK_ACTION_NOT_ALLOWED');
 }
