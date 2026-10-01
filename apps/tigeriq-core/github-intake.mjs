@@ -53,44 +53,96 @@ export function githubIssueSourceRevision(issue={}){
     .update(String(issue?.title||''))
     .update('\n')
     .update(String(issue?.body||''))
-    .update('\n')
-    .update(String(issue?.state_reason||''))
     .digest('hex')
     .slice(0,12);
 }
 
-export function finalLiveReviewJobId(objectiveId='',evidenceCommentId=''){
-  const objective=String(objectiveId||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,150);
-  const evidence=String(evidenceCommentId||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,40);
+export function finalLiveReviewJobId(objectiveId='',evidenceKey='',implementationFingerprint='base'){
+  const objective=String(objectiveId||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,140);
+  const evidence=String(evidenceKey||'').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,40);
+  const implementation=String(implementationFingerprint||'base').trim().replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,20)||'base';
   if(!objective||!evidence)throw new Error('FINAL_LIVE_REVIEW_JOB_ID_REQUIRED');
-  return `JOB-${objective}-FINAL-LIVE-REVIEW-${evidence}`;
+  return `JOB-${objective}-FINAL-LIVE-REVIEW-${evidence}-${implementation}`;
 }
 
-export async function trustedFinalLiveReviewEvidence(pool,{objectiveId='',sourceRevision='',evidenceCommentId='',implementerResourceIds=[]}={}){
+function employeeControlValues(body=''){
+  return ['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','ASSIGNED_EXECUTOR','EXECUTOR','PRIMARY_EMPLOYEE']
+    .map((key)=>bodyValue(body,key).toUpperCase())
+    .filter((value)=>/^NV\d{2}$/.test(value));
+}
+
+export async function implementationReviewContext(pool,{objectiveId='',metadata={},sourceBody=''}={}){
+  const rows=objectiveId
+    ? (await pool.query("select id,status,employee_id,resource_id,completed_at from tigeriq_jobs where objective_id=$1 and capability<>'review' order by id",[objectiveId])).rows
+    : [];
+  const implementerEmployeeIds=new Set(employeeControlValues(sourceBody));
+  const implementerResourceIds=new Set();
+  for(const key of ['assignedExecutor','implementerEmployeeId','codingExecutor','requestedWorker','targetWorker']){
+    const value=String(metadata?.[key]||'').trim().toUpperCase();
+    if(/^NV\d{2}$/.test(value))implementerEmployeeIds.add(value);
+  }
+  for(const row of rows){
+    const employee=String(row.employee_id||'').trim().toUpperCase();
+    const resource=String(row.resource_id||'').trim();
+    if(employee)implementerEmployeeIds.add(employee);
+    if(resource)implementerResourceIds.add(resource);
+  }
+  const blockingJobs=rows.filter((row)=>String(row.status||'').toLowerCase()!=='done').map((row)=>String(row.id||''));
+  const fingerprint=createHash('sha256').update(JSON.stringify({
+    rows:rows.map((row)=>({
+      id:String(row.id||''),
+      status:String(row.status||'').toLowerCase(),
+      employeeId:String(row.employee_id||'').toUpperCase(),
+      resourceId:String(row.resource_id||''),
+      completedAt:row.completed_at?String(row.completed_at):'',
+    })),
+    implementerEmployeeIds:[...implementerEmployeeIds].sort(),
+    implementerResourceIds:[...implementerResourceIds].sort(),
+  })).digest('hex').slice(0,16);
+  return {
+    blockingJobs,
+    implementationTerminal:blockingJobs.length===0,
+    implementerEmployeeIds:[...implementerEmployeeIds],
+    implementerResourceIds:[...implementerResourceIds],
+    fingerprint,
+  };
+}
+
+export async function trustedFinalLiveReviewEvidence(pool,{objectiveId='',sourceRevision='',evidenceKey='',implementationContext=null}={}){
   const expected=String(sourceRevision||'').trim().toLowerCase();
-  if(!objectiveId||!expected||!evidenceCommentId)return {accepted:false,reason:'trusted_review_input_missing'};
-  const jobId=finalLiveReviewJobId(objectiveId,evidenceCommentId);
-  const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where id=$1 and objective_id=$2 and capability='review' and kind='github_review'",[jobId,objectiveId])).rows[0]||null;
+  const context=implementationContext||{implementerEmployeeIds:[],implementerResourceIds:[],fingerprint:'base',implementationTerminal:true};
+  if(!objectiveId||!expected||!evidenceKey)return {accepted:false,reason:'trusted_review_input_missing'};
+  if(context.implementationTerminal===false)return {accepted:false,reason:'implementation_not_terminal',blockingJobs:context.blockingJobs||[]};
+  const jobId=finalLiveReviewJobId(objectiveId,evidenceKey,context.fingerprint);
+  const job=(await pool.query("select id,status,employee_id,resource_id,provider,result,failure,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and capability='review' and kind='github_review'",[jobId,objectiveId])).rows[0]||null;
   if(!job)return {accepted:false,reason:'trusted_review_missing',jobId};
   if(String(job.status||'').toLowerCase()!=='done')return {accepted:false,reason:`trusted_review_${String(job.status||'unknown').toLowerCase()}`,jobId};
   const review=job.result?.reviewEvidence||null;
   const employeeId=String(job.employee_id||'').trim().toUpperCase();
   const resourceId=String(job.resource_id||'').trim();
-  const excluded=new Set((Array.isArray(implementerResourceIds)?implementerResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean));
+  const excludedEmployees=new Set((context.implementerEmployeeIds||[]).map(x=>String(x||'').trim().toUpperCase()).filter(Boolean));
+  const excludedResources=new Set((context.implementerResourceIds||[]).map(x=>String(x||'').trim()).filter(Boolean));
   if(!review||String(review.decision||'').toUpperCase()!=='PASS'||String(review.targetHead||'').toLowerCase()!==expected)return {accepted:false,reason:'trusted_review_not_pass',jobId,employeeId:employeeId||null,resourceId:resourceId||null};
   if(!employeeId||!resourceId)return {accepted:false,reason:'trusted_reviewer_identity_missing',jobId};
-  if(excluded.has(resourceId))return {accepted:false,reason:'trusted_reviewer_not_independent',jobId,employeeId,resourceId};
-  return {accepted:true,jobId,employeeId,resourceId,provider:String(job.provider||''),review};
+  if(excludedEmployees.has(employeeId)||excludedResources.has(resourceId))return {accepted:false,reason:'trusted_reviewer_not_independent',jobId,employeeId,resourceId};
+  return {accepted:true,jobId,employeeId,resourceId,provider:String(job.provider||''),review,implementationFingerprint:context.fingerprint};
 }
 
-async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',evidenceCommentId=''}={}){
-  const jobId=finalLiveReviewJobId(row.id,evidenceCommentId);
-  const evidenceText=(Array.isArray(comments)?comments:[]).slice(-40).map((comment)=>`COMMENT_ID=${comment?.id??''}\n${String(comment?.body||'').slice(0,5000)}`).join('\n\n---\n\n').slice(0,30000);
+async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',evidenceKey='',evidenceCommentId=null,implementationContext=null,sourceBody=''}={}){
+  const context=implementationContext||{implementationTerminal:true,fingerprint:'base'};
+  if(context.implementationTerminal===false)return {jobId:null,state:'WAIT_IMPLEMENTATION',blockingJobs:context.blockingJobs||[]};
+  const jobId=finalLiveReviewJobId(row.id,evidenceKey,context.fingerprint);
+  const all=Array.isArray(comments)?comments:[];
+  const selected=evidenceCommentId==null?null:all.find((comment)=>String(comment?.id??'')===String(evidenceCommentId));
+  const recent=[...all].reverse().filter((comment)=>!selected||String(comment?.id??'')!==String(selected?.id??'')).slice(0,39);
+  const evidenceRows=[...(selected?[selected]:[]),...recent];
+  const evidenceText=evidenceRows.map((comment)=>`COMMENT_ID=${comment?.id??''}\n${String(comment?.body||'').slice(0,5000)}`).join('\n\n---\n\n').slice(0,30000);
   const prompt=[
     `TARGET_HEAD=${sourceRevision}`,
     `FINAL_LIVE_REVIEW_FOR_GITHUB_ISSUE=#${Number(row.metadata?.issueNumber)||0}`,
-    'You are the independent final LIVE acceptance reviewer. Review only the supplied durable live evidence for the CURRENT source revision. Do not perform source mutation.',
-    'PASS only if the acceptance matrix is terminal, unresolved errors have root-cause/terminal classification, and the supplied evidence is explicitly tied to the current source revision.',
+    `IMPLEMENTATION_FINGERPRINT=${context.fingerprint}`,
+    'You are the independent final acceptance reviewer. Review only the supplied CURRENT source revision, source policy, objective summary, and durable evidence. Do not perform source mutation.',
+    'PASS only if all required acceptance conditions are terminal and the evidence supports the current source revision.',
     'Return exactly:',
     '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
     'REVIEW=PASS|CHANGES_REQUIRED',
@@ -98,11 +150,22 @@ async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',
     'SUMMARY=<short finding>',
     'FINDINGS=<specific findings or NONE>',
     '',
-    'DURABLE_LIVE_EVIDENCE:',
+    'SOURCE_POLICY:',
+    String(sourceBody||'').slice(0,10000)||'NONE',
+    '',
+    'OBJECTIVE_SUMMARY:',
+    String(row.summary||'').slice(0,4000)||'NONE',
+    '',
+    'DURABLE_EVIDENCE_NEWEST_FIRST:',
     evidenceText||'NONE',
   ].join('\n');
-  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,row.id,`Final live review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt]);
-  return jobId;
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,row.id,`Final acceptance review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt]);
+  const existing=(await pool.query("select status,attempts,max_attempts from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
+  if(existing&&String(existing.status||'').toLowerCase()==='failed'&&Number(existing.attempts||0)<Number(existing.max_attempts||2)){
+    await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null where id=$1",[jobId]);
+    return {jobId,state:'REQUEUED'};
+  }
+  return {jobId,state:String(existing?.status||'queued').toUpperCase()};
 }
 
 export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',finalReviewRequired=false}={}){
@@ -132,7 +195,7 @@ export function objectiveCompletionGate(metadata={}){
   }
   if(metadata?.finalReviewRequired===true){
     const reviewRevision=String(metadata?.finalReviewRevision||'').trim();
-    if(!(metadata?.finalReviewPass===true&&sourceRevision&&reviewRevision===sourceRevision&&metadata?.finalReviewerEmployeeId&&metadata?.finalReviewerResourceId))return {allow:false,reason:'final_review_pending'};
+    if(!(metadata?.finalReviewPass===true&&sourceRevision&&reviewRevision===sourceRevision&&metadata?.finalReviewerEmployeeId&&metadata?.finalReviewerResourceId&&metadata?.finalReviewImplementationFingerprint))return {allow:false,reason:'final_review_pending'};
   }
   return {allow:true,reason:'acceptance_satisfied'};
 }
@@ -766,6 +829,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       finalReviewJobId:null,
       finalReviewerEmployeeId:null,
       finalReviewerResourceId:null,
+      finalReviewImplementationFingerprint:null,
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
@@ -838,6 +902,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       policyPatch.finalReviewJobId=null;
       policyPatch.finalReviewerEmployeeId=null;
       policyPatch.finalReviewerResourceId=null;
+      policyPatch.finalReviewImplementationFingerprint=null;
     }else if((sourceLiveRequired||sourceFinalReviewRequired)&&(row.metadata?.liveAcceptanceRequired!==true||row.metadata?.finalReviewRequired!==true)){
       policyPatch.liveAcceptanceCommentCount=-1;
       policyPatch.finalReviewPass=false;
@@ -845,6 +910,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       policyPatch.finalReviewJobId=null;
       policyPatch.finalReviewerEmployeeId=null;
       policyPatch.finalReviewerResourceId=null;
+      policyPatch.finalReviewImplementationFingerprint=null;
     }
     if(Object.keys(policyPatch).length){
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(policyPatch)]);
@@ -855,28 +921,39 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       try{
         const commentCount=Math.max(0,Number(sourceIssueForGate?.comments||0));
         const checkedCount=Math.max(-1,Number(row.metadata?.liveAcceptanceCommentCount??-1));
-        if(row.status==='completed'||commentCount!==checkedCount||row.metadata?.finalReviewRequired===true&&row.metadata?.finalReviewPass!==true){
+        const implementationContext=row.metadata?.finalReviewRequired===true
+          ? await implementationReviewContext(pool,{objectiveId:row.id,metadata:row.metadata,sourceBody})
+          : null;
+        const implementationChanged=Boolean(implementationContext)&&String(row.metadata?.finalReviewImplementationFingerprint||'')!==implementationContext.fingerprint;
+        if(row.status==='completed'||commentCount!==checkedCount||row.metadata?.finalReviewRequired===true&&(row.metadata?.finalReviewPass!==true||implementationChanged)){
           const lastPage=Math.max(1,Math.ceil(commentCount/100));
           const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=100&page=${lastPage}`,token);
           const evidence=parseLiveAcceptanceEvidence(comments,{sourceRevision:row.metadata?.sourceRevision||'',finalReviewRequired:false});
+          const liveRequired=row.metadata?.liveAcceptanceRequired===true;
+          const liveSatisfied=!liveRequired||evidence.accepted===true;
           const livePatch={
-            liveAcceptancePass:row.metadata?.liveAcceptanceRequired===true&&evidence.accepted===true,
-            liveAcceptanceRevision:row.metadata?.liveAcceptanceRequired===true&&evidence.accepted?evidence.revision:null,
-            liveAcceptanceEvidenceCommentId:row.metadata?.liveAcceptanceRequired===true&&evidence.accepted?evidence.commentId:null,
+            liveAcceptancePass:liveRequired&&evidence.accepted===true,
+            liveAcceptanceRevision:liveRequired&&evidence.accepted?evidence.revision:null,
+            liveAcceptanceEvidenceCommentId:liveRequired&&evidence.accepted?evidence.commentId:null,
             liveAcceptanceCommentCount:commentCount,
           };
-          if(row.metadata?.finalReviewRequired===true&&evidence.accepted===true){
-            const implementerRows=(await pool.query("select distinct resource_id from tigeriq_jobs where objective_id=$1 and status='done' and capability<>'review' and resource_id is not null",[row.id])).rows;
-            const implementerResourceIds=implementerRows.map(x=>String(x.resource_id||'')).filter(Boolean);
-            const trusted=await trustedFinalLiveReviewEvidence(pool,{objectiveId:row.id,sourceRevision:row.metadata?.sourceRevision||'',evidenceCommentId:evidence.commentId,implementerResourceIds});
-            if(!trusted.accepted){
-              const jobId=await ensureFinalLiveReviewJob(pool,row,{comments,sourceRevision:row.metadata?.sourceRevision||'',evidenceCommentId:evidence.commentId});
-              Object.assign(livePatch,{finalReviewPass:false,finalReviewRevision:null,finalReviewJobId:jobId,finalReviewerEmployeeId:null,finalReviewerResourceId:null});
+          if(row.metadata?.finalReviewRequired===true){
+            const reviewTriggerKey=liveRequired
+              ? (evidence.accepted?String(evidence.commentId):'')
+              : `SOURCE-${row.metadata?.sourceRevision||''}`;
+            if(!liveSatisfied){
+              Object.assign(livePatch,{finalReviewPass:false,finalReviewRevision:null,finalReviewJobId:null,finalReviewerEmployeeId:null,finalReviewerResourceId:null,finalReviewImplementationFingerprint:null});
+            }else if(implementationContext?.implementationTerminal!==true){
+              Object.assign(livePatch,{finalReviewPass:false,finalReviewRevision:null,finalReviewJobId:null,finalReviewerEmployeeId:null,finalReviewerResourceId:null,finalReviewImplementationFingerprint:null});
             }else{
-              Object.assign(livePatch,{finalReviewPass:true,finalReviewRevision:row.metadata?.sourceRevision||'',finalReviewJobId:trusted.jobId,finalReviewerEmployeeId:trusted.employeeId,finalReviewerResourceId:trusted.resourceId});
+              const trusted=await trustedFinalLiveReviewEvidence(pool,{objectiveId:row.id,sourceRevision:row.metadata?.sourceRevision||'',evidenceKey:reviewTriggerKey,implementationContext});
+              if(!trusted.accepted){
+                const ensured=await ensureFinalLiveReviewJob(pool,row,{comments,sourceRevision:row.metadata?.sourceRevision||'',evidenceKey:reviewTriggerKey,evidenceCommentId:liveRequired?evidence.commentId:null,implementationContext,sourceBody});
+                Object.assign(livePatch,{finalReviewPass:false,finalReviewRevision:null,finalReviewJobId:ensured.jobId,finalReviewerEmployeeId:null,finalReviewerResourceId:null,finalReviewImplementationFingerprint:implementationContext.fingerprint});
+              }else{
+                Object.assign(livePatch,{finalReviewPass:true,finalReviewRevision:row.metadata?.sourceRevision||'',finalReviewJobId:trusted.jobId,finalReviewerEmployeeId:trusted.employeeId,finalReviewerResourceId:trusted.resourceId,finalReviewImplementationFingerprint:implementationContext.fingerprint});
+              }
             }
-          }else if(row.metadata?.finalReviewRequired===true){
-            Object.assign(livePatch,{finalReviewPass:false,finalReviewRevision:null,finalReviewJobId:null,finalReviewerEmployeeId:null,finalReviewerResourceId:null});
           }
           await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(livePatch)]);
           row.metadata={...row.metadata,...livePatch};
