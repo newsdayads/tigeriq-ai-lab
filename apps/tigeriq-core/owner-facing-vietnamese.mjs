@@ -165,7 +165,7 @@ export function validateOwnerFacingOutput({ text = '', progress = null, evidence
   const value = String(text || '');
   if (containsBareEnglishOwnerStatus(value)) defects.push('BARE_ENGLISH_STATUS');
   if (/\d{1,3}%/.test(value) && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
-  if (evidenceFresh === false && /\b\d{1,3}%\b/.test(value)) defects.push('STALE_PROGRESS_VISIBLE');
+  if (evidenceFresh === false && /\d{1,3}%/.test(value)) defects.push('STALE_PROGRESS_VISIBLE');
   if (canonicalRefsResolved === false) defects.push('UNRESOLVED_WORK_REFERENCE');
   return { ok: defects.length === 0, defects };
 }
