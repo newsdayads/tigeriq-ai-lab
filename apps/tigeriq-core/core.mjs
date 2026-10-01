@@ -9,6 +9,7 @@ import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.m
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -1427,6 +1428,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       const canary=syntheticSelfAuditCanary();
       res.writeHead(canary.pass?200:500,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(canary));
     }
+    if(req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const canary=syntheticAutonomousRcaCanary();
+      res.writeHead(canary.pass?200:500,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(canary));
+    }
     if(req.method==='POST'&&url.pathname==='/api/self-audit/canary'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const canary=syntheticSelfAuditCanary();
@@ -1723,11 +1729,74 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
   return {materialized,deduped,resolved};
 }
 
+async function githubCreateAutonomousRcaIssue(spec){
+  if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
+  const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues`;
+  return fetchJson(url,{
+    method:'POST',
+    headers:{
+      Accept:'application/vnd.github+json',
+      Authorization:`Bearer ${GITHUB_TOKEN}`,
+      'Content-Type':'application/json',
+      'User-Agent':'TigerIQ-Core-Autonomous-RCA',
+    },
+    body:JSON.stringify({title:spec.title,body:spec.body}),
+  },10000);
+}
+
+async function materializeAutonomousRca({store=pool}={}){
+  const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
+    from tigeriq_self_audit_anomalies
+    where status='OPEN' and count>=2
+    order by last_seen_at asc limit 20`)).rows||[];
+  const rcas=dedupeAutonomousRca(rows.map(row=>classifyAutonomousRca({
+    signature:row.signature,contract_id:row.contract_id,
+    evidence:{...(row.evidence||{}),severity:row.severity,observationCount:Number(row.count||0)},
+  })));
+  let workOrders=0,ownerExceptions=0,deduped=0,blocked=0;
+  for(const rca of rcas){
+    const prior=(await store.query(`select 1 from tigeriq_events
+      where type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION')
+        and data->>'rcaSignature'=$1 limit 1`,[rca.rcaSignature])).rows?.[0];
+    if(prior){deduped++;continue;}
+    if(rca.hardGate){
+      const exception=buildOwnerException(rca);
+      await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,confidence:rca.confidence,provenance:rca.provenance});
+      ownerExceptions++;continue;
+    }
+    try{
+      const spec=buildImprovementWorkOrder(rca);
+      const issue=await githubCreateAutonomousRcaIssue(spec);
+      await event('AUTONOMOUS_RCA_WORK_ORDER',{
+        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
+        confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        issueNumber:Number(issue?.number)||null,issueUrl:String(issue?.html_url||''),resourceScope:spec.resourceScope,
+      });
+      workOrders++;
+    }catch(error){
+      blocked++;
+      await event('AUTONOMOUS_RCA_MATERIALIZATION_BLOCKED',{
+        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
+        reason:String(error?.code||error?.message||error).slice(0,240),
+      });
+    }
+  }
+  return{candidates:rcas.length,workOrders,ownerExceptions,deduped,blocked};
+}
+
 export async function runSelfAuditScan({store=pool,nowMs=Date.now()}={}){
   const snapshot=await collectSelfAuditSnapshot(store);
   const result=evaluateSelfAudit(snapshot,{nowMs});
   const persistence=await persistSelfAuditResult(result,store,{nowMs});
-  return {...result,...persistence};
+  let rca={candidates:0,workOrders:0,ownerExceptions:0,deduped:0,blocked:0,skipped:store===pool?null:'CUSTOM_STORE'};
+  if(store===pool){
+    try{rca=await materializeAutonomousRca({store});}
+    catch(error){
+      rca={...rca,blocked:1,error:String(error?.code||error?.message||error).slice(0,240)};
+      await event('AUTONOMOUS_RCA_SCAN_ERROR',{error:rca.error});
+    }
+  }
+  return {...result,...persistence,rca};
 }
 
 async function selfAuditStatus(){
