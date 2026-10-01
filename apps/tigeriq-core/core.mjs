@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, managerExhaustionRetryPlan, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -14,7 +14,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -379,6 +379,12 @@ async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',re
   await event(eventType,{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(error?.code||error?.message||error).slice(0,300),cooldownUntil,taskKind:context.taskKind||null,routingProfile:context.profile||null,quota:quotaPatch});
   const quarantine=await maybeQuarantineResource(r);return {kind,health,cooldownUntil,quarantine,policy};
 }
+async function releaseManagerOutputContractFailure(r,jobId,error){
+  await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,last_seen_at=now(),updated_at=now() where resource_id=$1",[r.resourceId]);
+  await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,last_seen_at=now(),updated_at=now() where employee_id=$1",[r.id]);
+  await event('MANAGER_OUTPUT_CONTRACT_FAILURE',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind:String(error?.code||error?.message||'invalid_response').slice(0,120),taskKind:'manager'});
+  return {kind:'manager_output_contract',health:'UNCHANGED',policy:{stop:false}};
+}
 async function refreshResources() {
   const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id not in ($1,$2)",[NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID])).rows;
   if(staleOllama.some(x=>x.current_job_id))throw new Error('STALE_OLLAMA_IDENTITY_BUSY');
@@ -679,7 +685,7 @@ async function runApiDoctorScan(){
   const rows=(await pool.query("select * from tigeriq_ai_resources where enabled=true and employee_id<>$1 order by employee_id",[OLLAMA_EMPLOYEE_ID])).rows;
   const actions=[];
   for(const resource of rows){
-    const events=await apiDoctorRecentResourceEvents(resource.resource_id);
+    const events=apiDoctorHealthEvidenceEvents(await apiDoctorRecentResourceEvents(resource.resource_id));
     const latestFailure=apiDoctorCurrentFailure(events);
     const workFailures=consecutiveWorkFailureEvidence(events);
     const repeatedSourceFailures=workFailures.filter(x=>classifyApiDoctorFailure({kind:x.data?.kind,message:x.data?.message})==='source_contract').length;
@@ -1027,7 +1033,7 @@ async function callManagerDecision(prompt,objectiveId){
     },
     onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),
     onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
-    onFailure:async(r,error)=>markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
+    onFailure:async(r,error)=>isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure(r,jobId,error):markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
   });
 }
 async function reconcileAutonomousHandoff(o){
