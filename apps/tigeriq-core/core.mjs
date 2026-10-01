@@ -1673,8 +1673,8 @@ async function collectSelfAuditSnapshot(store=pool){
 
 async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldownMs=10*60*1000}={}){
   let materialized=0,deduped=0,resolved=0;
-  const openRows=(await store.query("select signature,status,last_materialized_at,count from tigeriq_self_audit_anomalies where status='OPEN'")).rows||[];
-  const toResolve=anomalyResolutionSignatures(openRows,result.anomalies);
+  const openRows=(await store.query("select signature,contract_id,status,last_materialized_at,count from tigeriq_self_audit_anomalies where status='OPEN'")).rows||[];
+  const toResolve=anomalyResolutionSignatures(openRows,result.anomalies,result.evaluatedContractIds);
   for(const signature of toResolve){
     await store.query("update tigeriq_self_audit_anomalies set status='RESOLVED' where signature=$1",[signature]);
     await event('SELF_AUDIT_RESOLVED',{signature});
