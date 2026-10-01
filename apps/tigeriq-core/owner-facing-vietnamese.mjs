@@ -64,7 +64,7 @@ export function ownerFacingWorkRow(row) {
   const statusCode = String(row.status || '').trim();
   const localized = {
     ...row,
-    ...(statusCode ? { statusCode, status: ownerStatusLabel(statusCode) } : {}),
+    ...(statusCode ? { status: ownerStatusLabel(statusCode) } : {}),
   };
   if (typeof localized.waitReason === 'string') localized.waitReason = localizeOwnerFacingText(localized.waitReason);
   if (typeof localized.currentStep === 'string') localized.currentStep = localizeOwnerFacingText(localized.currentStep);
