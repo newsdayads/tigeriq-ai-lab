@@ -13,6 +13,7 @@ import {
   nv02LeaseAuthority,
   nv02TakeoverStatus,
   nv02HasTerminalEvidence,
+  nv02AuthoritativeResumeGuard,
   releaseStaleAssigneeLease,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
@@ -153,16 +154,54 @@ try {
   if (reconcileResult?.action === 'CLOSED_TERMINAL') {
     result = 'DONE';
   } else {
-    assertLeaseOwnership(issue, lease);
-    await controllerDispatch(issue, lease);
-    const started = Date.now();
-    while (Date.now() - started < TIMEOUT_MS) {
-      const fresh = details(issue);
-      result = terminal(fresh, issueComments(issue.number));
-      if (result) break;
-      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    const freshBeforeDispatch = details(issue);
+    const guard = nv02AuthoritativeResumeGuard({
+      currentWorkOrder: lease.workOrder,
+      currentResourceScope: lease.resourceScope,
+      currentSourceRevision: lease.sourceRevision,
+      authoritativeIssue: freshBeforeDispatch,
+      authoritativeComments: issueComments(issue.number),
+    });
+    if (!guard.valid) {
+      result = guard.reason === 'AUTHORITATIVE_TERMINAL' ? 'DONE' : 'REFRESH_REQUIRED';
+      console.error(JSON.stringify({
+        event: 'NV02_AUTHORITATIVE_REFRESH_REQUIRED',
+        issue: issue.number,
+        reason: guard.reason,
+        authoritativeRevision: guard.authoritativeRevision || null,
+        archiveAllowed: guard.archiveAllowed === true,
+      }));
+    } else {
+      assertLeaseOwnership(freshBeforeDispatch, lease);
+      await controllerDispatch(freshBeforeDispatch, lease);
+      const started = Date.now();
+      while (Date.now() - started < TIMEOUT_MS) {
+        const fresh = details(issue);
+        const comments = issueComments(issue.number);
+        result = terminal(fresh, comments);
+        if (result) break;
+        const currentGuard = nv02AuthoritativeResumeGuard({
+          currentWorkOrder: lease.workOrder,
+          currentResourceScope: lease.resourceScope,
+          currentSourceRevision: lease.sourceRevision,
+          authoritativeIssue: fresh,
+          authoritativeComments: comments,
+        });
+        if (!currentGuard.valid) {
+          result = currentGuard.reason === 'AUTHORITATIVE_TERMINAL' ? 'DONE' : 'REFRESH_REQUIRED';
+          console.error(JSON.stringify({
+            event: 'NV02_AUTHORITATIVE_REFRESH_REQUIRED',
+            issue: issue.number,
+            reason: currentGuard.reason,
+            authoritativeRevision: currentGuard.authoritativeRevision || null,
+            archiveAllowed: currentGuard.archiveAllowed === true,
+          }));
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+      }
+      if (!result) result = 'BLOCKED';
     }
-    if (!result) result = 'BLOCKED';
   }
 } catch (error) {
   result = 'DISPATCH_BLOCKED';

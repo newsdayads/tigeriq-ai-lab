@@ -305,18 +305,117 @@ export function selectNv02WorkOrder(issues, options = {}) {
       || Number(a.issue.number) - Number(b.issue.number))[0] || null;
 }
 
-export function resolveNv02Command02State({ currentWorkOrder, currentCheckpoint, active = true } = {}) {
-  if (currentWorkOrder && active) return { state: 'ACTIVE_RESUME', workOrder: currentWorkOrder, checkpoint: currentCheckpoint || null };
+export function nv02AuthorityRevision(issue) {
+  const meta = nv02WorkOrderMeta(issue);
+  const authority = {
+    workOrder: workOrderRef(issue),
+    resourceScope: String(meta.RESOURCE_SCOPE || '').trim(),
+    issueState: String(issue?.state || '').trim().toLowerCase(),
+    stateReason: String(issue?.state_reason || '').trim().toLowerCase(),
+    currentState: String(meta.CURRENT_STATE || meta.STATE || '').trim().toUpperCase(),
+    done: String(meta.DONE || '').trim().toLowerCase(),
+    executable: String(meta.TIGERIQ_EXECUTABLE || '').trim().toLowerCase(),
+    autoQueue: String(meta.AUTO_QUEUE || '').trim().toUpperCase(),
+    mutationOwner: String(meta.MUTATION_OWNER || '').trim().toUpperCase(),
+  };
+  return createHash('sha256').update(JSON.stringify(authority)).digest('hex').slice(0, 16);
+}
+
+export function nv02AuthoritativeResumeGuard({
+  currentWorkOrder,
+  currentResourceScope = '',
+  currentSourceRevision = '',
+  chatState = '',
+  chatBlocker = '',
+  authoritativeIssue,
+  authoritativeComments = [],
+} = {}) {
+  if (!currentWorkOrder) return {
+    valid: false, action: 'SELF_PULL', reason: 'CURRENT_WORK_ORDER_MISSING',
+    archiveAllowed: false,
+  };
+  if (!authoritativeIssue) return {
+    valid: false, action: 'REFRESH_REQUIRED', reason: 'AUTHORITATIVE_ISSUE_REQUIRED',
+    archiveAllowed: false,
+  };
+
+  const expectedScope = String(nv02WorkOrderMeta(authoritativeIssue).RESOURCE_SCOPE || '').trim();
+  const authority = nv02LeaseAuthority(authoritativeIssue, {
+    workOrder: currentWorkOrder,
+    resourceScope: currentResourceScope || expectedScope,
+  });
+  const authoritativeRevision = nv02AuthorityRevision(authoritativeIssue);
+  if (!authority.valid) return {
+    valid: false, action: 'REFRESH_REQUIRED', reason: authority.reason,
+    archiveAllowed: false, authoritativeRevision,
+  };
+
+  const meta = nv02WorkOrderMeta(authoritativeIssue);
+  const durableTerminal = nv02HasTerminalEvidence(authoritativeIssue, authoritativeComments);
+  const declaredTerminal = /^(?:true|yes|1)$/i.test(String(meta.DONE || ''))
+    || /^(?:DONE|COMPLETED)$/i.test(String(meta.CURRENT_STATE || meta.STATE || ''));
+  const terminal = durableTerminal || declaredTerminal;
+  const sourceRevisionMissing = !String(currentSourceRevision || '').trim();
+  const revisionMismatch = !sourceRevisionMissing && currentSourceRevision !== authoritativeRevision;
+  const staleChatState = terminal && /WAIT(?:ING)?|BLOCKED|WORKING|MERGE|APPROVAL/i.test(`${chatState} ${chatBlocker}`);
+
+  if (terminal || sourceRevisionMissing || revisionMismatch || staleChatState) {
+    return {
+      valid: false,
+      action: 'REFRESH_REQUIRED',
+      reason: terminal ? 'AUTHORITATIVE_TERMINAL'
+        : sourceRevisionMissing ? 'SOURCE_REVISION_REQUIRED'
+          : 'SOURCE_REVISION_MISMATCH',
+      archiveAllowed: durableTerminal,
+      authoritativeRevision,
+      next: 'SELF_PULL',
+    };
+  }
+  return {
+    valid: true, action: 'RESUME', reason: 'AUTHORITATIVE_STATE_CURRENT',
+    archiveAllowed: false, authoritativeRevision,
+  };
+}
+
+export function resolveNv02Command02State({
+  currentWorkOrder,
+  currentCheckpoint,
+  currentResourceScope = '',
+  currentSourceRevision = '',
+  chatState = '',
+  chatBlocker = '',
+  authoritativeIssue,
+  authoritativeComments = [],
+  active = true,
+} = {}) {
+  if (currentWorkOrder && active) {
+    const guard = nv02AuthoritativeResumeGuard({
+      currentWorkOrder,
+      currentResourceScope,
+      currentSourceRevision,
+      chatState,
+      chatBlocker,
+      authoritativeIssue,
+      authoritativeComments,
+    });
+    if (!guard.valid) return { state: 'REFRESH_REQUIRED', workOrder: currentWorkOrder, checkpoint: currentCheckpoint || null, ...guard };
+    return {
+      state: 'ACTIVE_RESUME', workOrder: currentWorkOrder, checkpoint: currentCheckpoint || null,
+      authoritativeRevision: guard.authoritativeRevision,
+    };
+  }
   return { state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL };
 }
 export function noEligibleNv02Work() { return { state: NV02_READY_NO_ELIGIBLE_WORK, policy: NV02_LOCAL_GITHUB_SELF_PULL }; }
 
 export function buildNv02LocalSelfPullPrompt(issue, lease) {
+  const sourceRevision = nv02AuthorityRevision(issue);
   return [
     'LÀM — NO YAPPING.', `NV02_LOCAL_GITHUB_SELF_PULL=${NV02_LOCAL_GITHUB_SELF_PULL}`,
-    `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `WORK_ORDER=#${issue.number}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`,
+    `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `WORK_ORDER=#${issue.number}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`, `SOURCE_REVISION=${sourceRevision}`,
     'Core không assign/route NV02. App Chrome chỉ là UI continuity/transport.',
     'P0 tuyệt đối không đọc, nhận, claim hoặc execute. Làm đúng một Work Order này đến DONE hoặc BLOCKED.',
+    'Trước mỗi lần tiếp tục hoặc mutation: đọc lại WORK_ORDER authoritative trên GitHub. Nếu terminal hoặc SOURCE_REVISION/state lệch context hiện tại thì dừng continuation cũ, refresh context có giới hạn và self-pull lại; không archive nếu chưa có durable terminal evidence.',
     lease.takeoverFrom ? `TAKEOVER_FROM=${lease.takeoverFrom}; TAKEOVER_REASON=${lease.takeoverReason || 'STALE_ASSIGNEE'}; lease cũ đã release trước claim.` : 'TAKEOVER_FROM=NONE',
     'Không tự tạo, mở rộng, claim hoặc allocate scope/resource ngoài Work Order này. Chỉ dùng đúng WORK_ORDER, RESOURCE_SCOPE và LEASE_ID đã cấp.',
     'Ghi evidence vào GitHub trước khi release lease; terminal xong mới tự lấy việc P1-P5 kế tiếp.', String(issue.body || ''),
@@ -415,9 +514,10 @@ export async function claimNv02WorkOrder({
     }
     const lease = {
       leaseId: `NV02-${issue.number}-${randomUUID()}`, workOrder, resourceScope,
+      sourceRevision: nv02AuthorityRevision(issue),
       expiresAt: new Date(nowMs + ttlMs).toISOString(),
     };
-    await postComment(issue.number, `${NV02_LEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nEXPIRES_AT=${lease.expiresAt}`);
+    await postComment(issue.number, `${NV02_LEASE_MARKER}\nWORK_ORDER=${workOrder}\nLEASE_ID=${lease.leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${resourceScope}\nSOURCE_REVISION=${lease.sourceRevision}\nEXPIRES_AT=${lease.expiresAt}`);
     // GitHub comment creation is not a transaction. Let concurrent cross-issue
     // claims become visible, then elect the earliest still-live lease per scope.
     await new Promise((resolve) => setTimeout(resolve, claimSettleMs));
