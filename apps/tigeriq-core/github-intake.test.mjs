@@ -31,6 +31,10 @@ describe('GitHub Core intake guardrails',()=>{
     const claimed=[{id:3,body:'LIVE_ACCEPTANCE_PASS=true\nSOURCE_REVISION=current-revision\nFINAL_LIVE_REVIEW=PASS\nFINAL_LIVE_REVIEWER=NV04\nFINAL_REVIEWER_DIFFERENT_FROM_IMPLEMENTER=true'}];
     expect(parseLiveAcceptanceEvidence(claimed,{sourceRevision:'current-revision',finalReviewRequired:true})).toMatchObject({accepted:false,reason:'trusted_final_review_required',commentId:3});
     expect(parseLiveAcceptanceEvidence(claimed,{sourceRevision:'current-revision',finalReviewRequired:false})).toMatchObject({accepted:true,revision:'current-revision',reviewer:null,commentId:3});
+    const livePassPendingFinal=[{id:33,body:'LIVE_ACCEPTANCE_PASS=true\nSOURCE_REVISION=current-revision\nDONE=false'}];
+    expect(parseLiveAcceptanceEvidence(livePassPendingFinal,{sourceRevision:'current-revision',finalReviewRequired:false})).toMatchObject({accepted:true,revision:'current-revision',commentId:33});
+    const doneFalseOnly=[{id:34,body:'DONE=false\nSOURCE_REVISION=current-revision'}];
+    expect(parseLiveAcceptanceEvidence(doneFalseOnly,{sourceRevision:'current-revision',finalReviewRequired:false})).toMatchObject({accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:34});
     const revoked=[...claimed,{id:4,body:'DONE=false\nLIVE_ACCEPTANCE_PASS=false'}];
     expect(parseLiveAcceptanceEvidence(revoked,{sourceRevision:'current-revision'})).toMatchObject({accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:4});
     expect(objectiveCompletionGate({liveAcceptanceRequired:true,sourceRevision:'current-revision',liveAcceptancePass:true,liveAcceptanceRevision:'current-revision',finalReviewRequired:true,finalReviewPass:false})).toMatchObject({allow:false,reason:'final_review_pending'});
