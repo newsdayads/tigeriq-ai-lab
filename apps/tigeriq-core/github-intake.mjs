@@ -189,8 +189,47 @@ export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',final
   return {accepted:false,reason:'live_acceptance_evidence_missing'};
 }
 
+const TERMINAL_DEPENDENCY_POLICIES=new Set(['REQUIRE_PARENT_GATE_PASS','REQUIRE_ALL_PARENT_GATES_PASS','REQUIRE_ALL_TERMINAL_ACCEPTED']);
+
+export function githubDependencySpec(body='',currentNumber=0){
+  const text=String(body||'');
+  const policy=bodyValue(text,'DEPENDENCY_POLICY').trim().toUpperCase();
+  if(!TERMINAL_DEPENDENCY_POLICIES.has(policy))return {required:false,policy,dependencies:[]};
+  const raw=[bodyValue(text,'DEPENDS_ON'),bodyValue(text,'ADDITIONAL_DEPENDENCY')].filter(Boolean).join(',');
+  const dependencies=[]; const seen=new Set([Number(currentNumber)]);
+  for(const match of raw.matchAll(/#(\d{1,6})/g)){
+    const n=Number(match[1]);
+    if(!n||seen.has(n))continue;
+    seen.add(n);dependencies.push(n);
+  }
+  return {required:true,policy,dependencies};
+}
+
+export async function githubTerminalDependencyGate(fetchImpl,owner,repo,token,sourceIssue,openIssueIndex=null){
+  const spec=githubDependencySpec(sourceIssue?.body||'',sourceIssue?.number);
+  if(!spec.required)return {allow:true,reason:'dependency_policy_not_required',...spec};
+  if(spec.dependencies.length===0)return {allow:false,reason:'dependency_reference_missing',...spec};
+  const states=[];
+  for(const dependency of spec.dependencies){
+    let issue;
+    try{
+      issue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,dependency,openIssueIndex);
+    }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
+      return {allow:false,reason:'dependency_lookup_failed',dependency,error:String(error?.message||error),...spec,states};
+    }
+    const state=String(issue?.state||'unknown').toLowerCase();
+    const stateReason=String(issue?.state_reason||'').toLowerCase();
+    const accepted=state==='closed'&&stateReason==='completed';
+    states.push({dependency,state,stateReason,accepted});
+    if(!accepted)return {allow:false,reason:'dependency_not_terminal_accepted',dependency,state,stateReason,...spec,states};
+  }
+  return {allow:true,reason:'dependencies_terminal_accepted',...spec,states};
+}
+
 export function objectiveCompletionGate(metadata={}){
   const sourceRevision=String(metadata?.sourceRevision||'').trim();
+  if(metadata?.dependencyGateRequired===true&&metadata?.dependencyGatePass!==true)return {allow:false,reason:'dependency_pending'};
   if(metadata?.liveAcceptanceRequired===true){
     const liveRevision=String(metadata?.liveAcceptanceRevision||'').trim();
     if(!(metadata?.liveAcceptancePass===true&&sourceRevision&&liveRevision===sourceRevision))return {allow:false,reason:'live_acceptance_pending'};
@@ -720,12 +759,15 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const rows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
+  const openIssueIndex=indexOpenGithubIssues(rows);
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
   const hasPcOperator=specs.some((spec)=>spec.capability==='pc_operator');
   const openClawTerminalState=hasPcOperator?await loadOpenClawTerminalState(pool):null;
   let skipped=0,externalClaims=0;
   for(const spec of specs){
+    const dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,{number:spec.number,body:spec.body},openIssueIndex);
+    if(!dependencyGate.allow){skipped++;continue;}
     if(spec.capability==='pc_operator'){
       const reason='OPENCLAW_INSTRUCTION_INVALID';
       const issueKey=String(spec.number);
@@ -836,6 +878,11 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       finalReviewImplementationFingerprint:null,
       finalReviewImplementerEmployeeIds:[],
       finalReviewImplementerResourceIds:[],
+      dependencyGateRequired:dependencyGate.required===true,
+      dependencyGatePass:dependencyGate.allow===true,
+      dependencyGatePolicy:dependencyGate.policy||null,
+      dependencyGateDependencies:dependencyGate.dependencies||[],
+      dependencyGateReason:dependencyGate.reason||null,
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
@@ -948,8 +995,22 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     const currentSourceRevision=githubIssueSourceRevision(sourceIssueForGate||{});
     const sourceLiveRequired=hasExactFlag(sourceBody,'LIVE_ACCEPTANCE_REQUIRED');
     const sourceFinalReviewRequired=hasExactFlag(sourceBody,'FINAL_REVIEW_REQUIRED')||hasExactFlag(sourceBody,'FINAL_LIVE_REVIEW_REQUIRED');
+    let dependencyGate;
+    try{
+      dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,sourceIssueForGate,openIssueIndex);
+    }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
+      console.error(JSON.stringify({event:'GITHUB_DEPENDENCY_TERMINAL_GATE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+      continue;
+    }
     const revisionChanged=Boolean(currentSourceRevision)&&currentSourceRevision!==String(row.metadata?.sourceRevision||'');
-    const policyPatch={};
+    const policyPatch={
+      dependencyGateRequired:dependencyGate.required===true,
+      dependencyGatePass:dependencyGate.allow===true,
+      dependencyGatePolicy:dependencyGate.policy||null,
+      dependencyGateDependencies:dependencyGate.dependencies||[],
+      dependencyGateReason:dependencyGate.reason||null,
+    };
     if(sourceLiveRequired&&row.metadata?.liveAcceptanceRequired!==true)policyPatch.liveAcceptanceRequired=true;
     if(sourceFinalReviewRequired&&row.metadata?.finalReviewRequired!==true)policyPatch.finalReviewRequired=true;
     if((sourceLiveRequired||sourceFinalReviewRequired)&&revisionChanged){
@@ -978,11 +1039,18 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.metadata={...row.metadata,...policyPatch};
     }
 
-    const inheritedAcceptedSibling=await inheritClosedAcceptedSiblingCompletion(pool,row,{
+    if(row.status==='completed'&&dependencyGate.required&&!dependencyGate.allow){
+      const summary=`completion rejected: dependency gate pending (${dependencyGate.reason}${dependencyGate.dependency?` #${dependencyGate.dependency}`:''})`;
+      await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
+      row.status='active';
+      row.summary=summary;
+    }
+
+    const inheritedAcceptedSibling=dependencyGate.allow?await inheritClosedAcceptedSiblingCompletion(pool,row,{
       sourceIssue:sourceIssueForGate,
       liveRequired:row.metadata?.liveAcceptanceRequired===true,
       finalReviewRequired:row.metadata?.finalReviewRequired===true,
-    });
+    }):null;
     if(inheritedAcceptedSibling){
       row.status='completed';
       row.summary=inheritedAcceptedSibling.summary;
@@ -1052,6 +1120,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         const sourceIssue=sourceIssueForGate||await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
         if(sourceIssue?.state==='closed'){
           const sourceReason=String(sourceIssue.state_reason||'closed');
+          if(sourceReason==='completed'&&dependencyGate.required&&!dependencyGate.allow){
+            const summary=`source close ignored until dependency gate passes (${dependencyGate.reason}${dependencyGate.dependency?` #${dependencyGate.dependency}`:''})`;
+            await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
+            row.status='active';
+            row.summary=summary;
+            continue;
+          }
           const terminalStatus=sourceReason==='completed'?'completed':'blocked';
           const terminalSummary=terminalStatus==='completed'
             ? `Source GitHub issue #${number} closed completed; terminalized stale active objective.`
