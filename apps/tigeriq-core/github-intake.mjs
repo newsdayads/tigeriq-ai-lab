@@ -830,6 +830,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       finalReviewerEmployeeId:null,
       finalReviewerResourceId:null,
       finalReviewImplementationFingerprint:null,
+      finalReviewImplementerEmployeeIds:[],
+      finalReviewImplementerResourceIds:[],
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
@@ -936,6 +938,10 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
             liveAcceptanceRevision:liveRequired&&evidence.accepted?evidence.revision:null,
             liveAcceptanceEvidenceCommentId:liveRequired&&evidence.accepted?evidence.commentId:null,
             liveAcceptanceCommentCount:commentCount,
+            ...(implementationContext?{
+              finalReviewImplementerEmployeeIds:implementationContext.implementerEmployeeIds,
+              finalReviewImplementerResourceIds:implementationContext.implementerResourceIds,
+            }:{}),
           };
           if(row.metadata?.finalReviewRequired===true){
             const reviewTriggerKey=liveRequired
