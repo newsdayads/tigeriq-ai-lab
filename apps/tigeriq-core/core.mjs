@@ -1753,16 +1753,24 @@ async function materializeAutonomousRca({store=pool}={}){
     signature:row.signature,contract_id:row.contract_id,
     evidence:{...(row.evidence||{}),severity:row.severity,observationCount:Number(row.count||0)},
   })));
-  let workOrders=0,ownerExceptions=0,deduped=0,blocked=0;
+  let workOrders=0,ownerExceptions=0,observeOnly=0,deduped=0,blocked=0;
   for(const rca of rcas){
     const prior=(await store.query(`select 1 from tigeriq_events
-      where type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION')
+      where type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION','AUTONOMOUS_RCA_OBSERVE_ONLY')
         and data->>'rcaSignature'=$1 limit 1`,[rca.rcaSignature])).rows?.[0];
     if(prior){deduped++;continue;}
     if(rca.hardGate){
       const exception=buildOwnerException(rca);
       await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,confidence:rca.confidence,provenance:rca.provenance});
       ownerExceptions++;continue;
+    }
+    if(!rca.selfFixable){
+      await event('AUTONOMOUS_RCA_OBSERVE_ONLY',{
+        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
+        confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        reason:'NO_SAFE_AUTOMATIC_MUTATION',
+      });
+      observeOnly++;continue;
     }
     try{
       const spec=buildImprovementWorkOrder(rca);
@@ -1781,14 +1789,14 @@ async function materializeAutonomousRca({store=pool}={}){
       });
     }
   }
-  return{candidates:rcas.length,workOrders,ownerExceptions,deduped,blocked};
+  return{candidates:rcas.length,workOrders,ownerExceptions,observeOnly,deduped,blocked};
 }
 
 export async function runSelfAuditScan({store=pool,nowMs=Date.now()}={}){
   const snapshot=await collectSelfAuditSnapshot(store);
   const result=evaluateSelfAudit(snapshot,{nowMs});
   const persistence=await persistSelfAuditResult(result,store,{nowMs});
-  let rca={candidates:0,workOrders:0,ownerExceptions:0,deduped:0,blocked:0,skipped:store===pool?null:'CUSTOM_STORE'};
+  let rca={candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:store===pool?null:'CUSTOM_STORE'};
   if(store===pool){
     try{rca=await materializeAutonomousRca({store});}
     catch(error){
