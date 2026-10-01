@@ -17,6 +17,7 @@ import {
   formatCoreUiTerminalComment,
 } from '../apps/tigeriq-core/core-ui-assignment.mjs';
 import { ownerFacingHandoffLifecycle } from '../apps/tigeriq-core/work-handoff.mjs';
+import { ownerCodingComment } from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 describe('Owner-facing Vietnamese output gate', () => {
   it('maps every required machine status to Vietnamese', () => {
@@ -148,6 +149,12 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(presentation.blocker).toContain('phương án dự phòng ĐANG CHỜ');
     expect(presentation.nextAction).toContain('định tuyến SẴN SÀNG');
     expect(presentation.order).toEqual(['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO']);
+  });
+
+  it('routes Coding Lane Owner comments through the shared presentation gate', () => {
+    expect(ownerCodingComment('[CLAIM] job READY')).toBe('⚙️ [TIẾP NHẬN] job SẴN SÀNG');
+    expect(ownerCodingComment('[RESULT] job DONE')).toBe('✅ [KẾT QUẢ] job HOÀN TẤT');
+    expect(ownerCodingComment('[BLOCKED_FINAL] job ERROR')).toBe('⚠️ [BỊ CHẶN] job LỖI');
   });
 
   it('fails closed on guessed/stale progress and bare machine status', () => {
