@@ -214,6 +214,11 @@ describe('NV02 explicit resume from durable idle',()=>{
     expect(helper).toContain("NV02_WAKE_STATUS=");
     expect(helper).toContain("'NV02_IDLE_CONTINUE_WAKE_SUBMITTED'");
     expect(helper).not.toContain("'NV02_IDLE_SELF_PULL_WAKE_SUBMITTED'");
+    expect(helper).toContain("Global\\TigerIQAppChromeZeroTouchV1");
+    expect(helper).toContain("reason='install_inflight'");
+    expect(helper).toContain("'APPCHROME_ALREADY_LIVE_EXACT_HEAD'");
+    expect(helper).toContain("reason='already_live_exact_head'");
+    expect(helper).toContain("Release-SingleFlight");
   });
 });
 

@@ -10,6 +10,14 @@ $bridge='http://127.0.0.1:8799'
 $requestPath=Join-Path $StateRoot 'appchrome-install-request.json'
 $resultPath=Join-Path $StateRoot 'appchrome-install-result.json'
 $stageRoot=Join-Path $StateRoot 'AppChromeInstall'
+$singleFlight=New-Object Threading.Mutex($false,'Global\TigerIQAppChromeZeroTouchV1')
+$ownsSingleFlight=$false
+function Release-SingleFlight(){
+  if($script:ownsSingleFlight){try{$script:singleFlight.ReleaseMutex()}catch{};$script:ownsSingleFlight=$false}
+  try{$script:singleFlight.Dispose()}catch{}
+}
+try{$ownsSingleFlight=$singleFlight.WaitOne(0)}catch [Threading.AbandonedMutexException]{$ownsSingleFlight=$true}
+if(-not $ownsSingleFlight){try{$singleFlight.Dispose()}catch{};[pscustomobject]@{action='none';reason='install_inflight'}|ConvertTo-Json -Compress;exit 0}
 
 function Exact-Line([string]$body,[string]$key,[string]$value){
   $escapedKey=[regex]::Escape($key);$escapedValue=[regex]::Escape($value)
@@ -173,14 +181,27 @@ $req=$null;$paused=$false;$rollback=$null
 try{
   New-Item -ItemType Directory -Path $StateRoot -Force|Out-Null
   $req=Resolve-Request
-  if($null -eq $req){[pscustomobject]@{action='none';reason='request_absent'}|ConvertTo-Json -Compress;exit 0}
+  if($null -eq $req){[pscustomobject]@{action='none';reason='request_absent'}|ConvertTo-Json -Compress;Release-SingleFlight;exit 0}
   if([string]$req.exactHead -notmatch '^[0-9a-f]{40}$'){throw 'APPCHROME_REQUEST_HEAD_INVALID'}
   if([long]$req.artifactId -le 0){throw 'APPCHROME_REQUEST_ARTIFACT_INVALID'}
   if([int]$req.issueNumber -le 0){throw 'APPCHROME_REQUEST_ISSUE_INVALID'}
   $prior=$null;try{if(Test-Path -LiteralPath $resultPath){$prior=Get-Content -Raw -LiteralPath $resultPath|ConvertFrom-Json}}catch{}
-  if($prior -and [string]$prior.result -eq 'PASS' -and [string]$prior.exactHead -eq [string]$req.exactHead -and [long]$prior.artifactId -eq [long]$req.artifactId){[pscustomobject]@{action='none';reason='already_installed';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId}|ConvertTo-Json -Compress;exit 0}
+  if($prior -and [string]$prior.result -eq 'PASS' -and [string]$prior.exactHead -eq [string]$req.exactHead -and [long]$prior.artifactId -eq [long]$req.artifactId){[pscustomobject]@{action='none';reason='already_installed';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId}|ConvertTo-Json -Compress;Release-SingleFlight;exit 0}
   Assert-Authorization $req
   $verified=Verify-Artifact $req
+  try{
+    $alreadyLive=Wait-ExactHead ([string]$req.exactHead) 5
+    if($alreadyLive){
+      try{Invoke-RestMethod -Method Post -Uri ($controller+'/api/resume') -TimeoutSec 5|Out-Null}catch{}
+      $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$alreadyLive.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$alreadyLive.bridge.sourceSha256;provenanceVerified=[bool]$alreadyLive.bridge.provenanceVerified;nv02WakeStatus='NOT_REQUIRED_ALREADY_LIVE';preQuiescedWorkers=@();requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
+      Save-Result 'PASS' 'APPCHROME_ALREADY_LIVE_EXACT_HEAD' $req $details
+      $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),'REASON=APPCHROME_ALREADY_LIVE_EXACT_HEAD',('PROVENANCE_VERIFIED='+[string][bool]$alreadyLive.bridge.provenanceVerified),('DEPLOY_ROOT='+[string]$alreadyLive.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
+      & gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null
+      [pscustomobject]@{action='none';reason='already_live_exact_head';result='PASS';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId;issueNumber=[int]$req.issueNumber;runId=[long]$verified.runId}|ConvertTo-Json -Compress
+      Release-SingleFlight
+      exit 0
+    }
+  }catch{}
   $requestFingerprint=Request-Fingerprint $req
   $stage=Join-Path $stageRoot (([string]$req.exactHead).Substring(0,7)+'-'+[string]$req.artifactId)
   $rollback=Join-Path $stage 'rollback'
@@ -239,6 +260,7 @@ try{
   $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('NV02_WAKE_STATUS='+$wakeStatus),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
   & gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null
   [pscustomobject]@{action='installed';result='PASS';exactHead=[string]$req.exactHead;artifactId=[long]$req.artifactId;issueNumber=[int]$req.issueNumber;runId=[long]$verified.runId}|ConvertTo-Json -Compress
+  Release-SingleFlight
   exit 0
 }catch{
   $reason=$_.Exception.Message
@@ -256,5 +278,6 @@ try{
   Save-Result 'BLOCKED' $reason $req
   if($req){$comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=BLOCKED',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('REASON='+$reason),'RDC_USED=false') -join [Environment]::NewLine;& gh issue comment ([int]$req.issueNumber) --repo $Repo --body $comment 2>$null|Out-Null}
   [pscustomobject]@{action='blocked';result='BLOCKED';reason=$reason}|ConvertTo-Json -Compress
+  Release-SingleFlight
   exit 1
 }
