@@ -11,6 +11,8 @@ import {
   resourceOwnershipConflict,
   selectNv02WorkOrder,
   nv02LeaseAuthority,
+  nv02AuthorityRevision,
+  nv02AuthoritativeResumeGuard,
   nv02TakeoverStatus,
   nv02WorkOrderMeta,
   nv02HasTerminalEvidence,
@@ -83,10 +85,97 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(comments[0]).toContain('REARM=false');
   });
 
-  it('implements command 02 active resume, terminal self-pull, and no-work state', () => {
-    expect(resolveNv02Command02State({ currentWorkOrder: '#10', currentCheckpoint: 'cp' })).toMatchObject({ state: 'ACTIVE_RESUME' });
+  it('requires authoritative state before command 02 resume and self-pulls after terminal refresh', () => {
+    const active = {
+      ...issue(10, '[P1] active', safe('PRIORITY=P1\nRESOURCE_SCOPE=ACTIVE_10\nCURRENT_STATE=WORKING\nDONE=false')),
+      state: 'open',
+      state_reason: null,
+    };
+    const revision = nv02AuthorityRevision(active);
+    expect(resolveNv02Command02State({ currentWorkOrder: '#10', currentCheckpoint: 'cp' })).toMatchObject({
+      state: 'REFRESH_REQUIRED',
+      reason: 'AUTHORITATIVE_ISSUE_REQUIRED',
+    });
+    expect(resolveNv02Command02State({
+      currentWorkOrder: '#10',
+      currentCheckpoint: 'cp',
+      currentResourceScope: 'ACTIVE_10',
+      currentSourceRevision: revision,
+      authoritativeIssue: active,
+      authoritativeComments: [],
+    })).toMatchObject({ state: 'ACTIVE_RESUME', authoritativeRevision: revision });
+    expect(resolveNv02Command02State({
+      currentWorkOrder: '#10',
+      currentResourceScope: 'ACTIVE_10',
+      authoritativeIssue: active,
+      authoritativeComments: [],
+    })).toMatchObject({
+      state: 'REFRESH_REQUIRED',
+      reason: 'SOURCE_REVISION_REQUIRED',
+      archiveAllowed: false,
+    });
+
+    const declaredTerminal = {
+      ...active,
+      body: safe('PRIORITY=P1\nRESOURCE_SCOPE=ACTIVE_10\nCURRENT_STATE=COMPLETED\nDONE=true'),
+    };
+    expect(nv02AuthoritativeResumeGuard({
+      currentWorkOrder: '#10',
+      currentResourceScope: 'ACTIVE_10',
+      currentSourceRevision: nv02AuthorityRevision(declaredTerminal),
+      chatState: 'WAITING_FOR_MERGE',
+      authoritativeIssue: declaredTerminal,
+      authoritativeComments: [],
+    })).toMatchObject({
+      valid: false,
+      reason: 'AUTHORITATIVE_TERMINAL',
+      archiveAllowed: false,
+    });
+
+    const terminal = { ...active, state: 'closed', state_reason: 'completed' };
+    expect(resolveNv02Command02State({
+      currentWorkOrder: '#10',
+      currentResourceScope: 'ACTIVE_10',
+      currentSourceRevision: revision,
+      chatState: 'WAITING_FOR_MERGE',
+      chatBlocker: 'PR still needs approval',
+      authoritativeIssue: terminal,
+      authoritativeComments: [],
+    })).toMatchObject({
+      state: 'REFRESH_REQUIRED',
+      reason: 'AUTHORITATIVE_TERMINAL',
+      archiveAllowed: true,
+      next: 'SELF_PULL',
+    });
     expect(resolveNv02Command02State({ currentWorkOrder: null })).toMatchObject({ state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL });
     expect(noEligibleNv02Work().state).toBe('READY_NO_ELIGIBLE_WORK');
+  });
+
+  it('blocks stale source revision and carries an authority guard in the NV02 assignment prompt', () => {
+    const work = {
+      ...issue(2776, '[P1] state guard', safe('PRIORITY=P1\nRESOURCE_SCOPE=NV02_STATE_GUARD\nCURRENT_STATE=READY_AUTO_EXECUTION')),
+      state: 'open',
+      state_reason: null,
+    };
+    const currentRevision = nv02AuthorityRevision(work);
+    const guard = nv02AuthoritativeResumeGuard({
+      currentWorkOrder: '#2776',
+      currentResourceScope: 'NV02_STATE_GUARD',
+      currentSourceRevision: 'stale-revision',
+      authoritativeIssue: work,
+      authoritativeComments: [],
+    });
+    expect(guard).toMatchObject({
+      valid: false,
+      action: 'REFRESH_REQUIRED',
+      reason: 'SOURCE_REVISION_MISMATCH',
+      archiveAllowed: false,
+      authoritativeRevision: currentRevision,
+    });
+    const prompt = buildNv02LocalSelfPullPrompt(work, { resourceScope: 'NV02_STATE_GUARD', leaseId: 'lease-1' });
+    expect(prompt).toContain(`SOURCE_REVISION=${currentRevision}`);
+    expect(prompt).toContain('đọc lại WORK_ORDER authoritative trên GitHub');
+    expect(prompt).toContain('không archive nếu chưa có durable terminal evidence');
   });
 
   it('uses the prepended current authority block instead of stale duplicate metadata below it', () => {
