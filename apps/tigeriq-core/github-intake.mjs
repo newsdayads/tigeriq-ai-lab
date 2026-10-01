@@ -752,7 +752,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         const commentCount=Math.max(0,Number(sourceIssue?.comments||0));
         const checkedCount=Math.max(-1,Number(row.metadata?.liveAcceptanceCommentCount??-1));
         if(row.status==='completed'||commentCount!==checkedCount){
-          const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=100`,token);
+          const lastPage=Math.max(1,Math.ceil(commentCount/100));
+          const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=100&page=${lastPage}`,token);
           const evidence=parseLiveAcceptanceEvidence(comments,{sourceRevision:row.metadata?.sourceRevision||'',finalReviewRequired:row.metadata?.finalReviewRequired===true});
           const patch={
             liveAcceptancePass:evidence.accepted===true,
@@ -818,6 +819,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubTerminalLabelSynced:true})]);
       row.metadata={...row.metadata,githubTerminalLabelSynced:true};
+    }
+    const terminalCompletionGate=objectiveCompletionGate(row.metadata);
+    if(row.status==='completed'&&!terminalCompletionGate.allow){
+      const summary='completion rejected: durable LIVE_ACCEPTANCE_PASS for current source revision is missing';
+      await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
+      row.status='active';
+      row.summary=summary;
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
