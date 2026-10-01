@@ -90,7 +90,7 @@ export function classifyAutonomousRca(anomaly={}){
   const gateReason=hardGateReason(rcaClass,evidence);
   const selfFixable=!gateReason&&SAFE_SELF_FIX_CLASSES.has(rcaClass);
   const evidenceHash=hash(compactJson(evidence,12000));
-  const rcaSignature=hash([anomalySignature,rcaClass,evidenceHash].join('|'));
+  const rcaSignature=hash([anomalySignature,rcaClass].join('|'));
   const affectedScope=text(evidence.resourceScope||evidence.scope||evidence.component||contractId||'CORE',240);
   const mapped=Boolean(CONTRACT_CLASS[contractId]||inferred);
   return {
@@ -124,7 +124,8 @@ export function dedupeAutonomousRca(items=[]){
 
 export function buildImprovementWorkOrder(rca={}){
   if(!rca?.rcaSignature||!rca?.selfFixable||rca?.hardGate)throw new Error('RCA_WORK_ORDER_NOT_SAFE');
-  const priority=String(rca?.evidence?.severity||'').toUpperCase()==='CRITICAL'?'P1':'P2';
+  const severity=String(rca?.evidence?.severity||'').toUpperCase();
+  const priority=['CRITICAL','HIGH'].includes(severity)?'P1':severity==='LOW'?'P3':'P2';
   const scope='AUTO_RCA_'+String(rca.class).replace(/[^A-Z0-9_]/g,'_')+'_'+rca.rcaSignature.slice(0,12);
   const title=`[${priority}][AUTO-RCA][${rca.class}] Repair ${rca.contractId||rca.affectedScope}`;
   const body=[
