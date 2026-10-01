@@ -55,6 +55,8 @@ No long self-pull wake prompt. No `TIGERIQ_CHAT_ROTATE_READY` suffix. No immedia
 - 2–4h reset only when not WORKING; preserve valid existing assigned/current chat when possible.
 - Each worker recovers independently; no cross-worker mutation.
 - Startup/reboot restores exactly one top-level Chrome per worker in the interactive desktop session.
+- The unified App Chrome runtime is the sole startup owner for NV02/NV03/NV04.
+- Legacy NV03 standalone startup owners (`TigerIQ NV03 Interactive Restore`, `TigerIQ NV03 Sidecar`, port `8823`) are retired for the unified 3-UI release and must stay disabled; NV03 continuity is owned by the shared controller/direct-CDP bridge on port `9223`.
 
 ## Chat lifecycle
 No automatic archive/rotation by prompt count, chat age, terminal marker, or idle marker.
@@ -70,3 +72,4 @@ NV03/NV04 preserve their canonical account/profile/project/app identity; do not 
 Golden NV02 behavioral/recovery reference: `5cce41e70521bdc0e6ce0d7b7906c59c42c9c56d`.
 Operational discipline: one GOLDEN + one CANDIDATE + one ROLLBACK.
 Source changes: branch -> PR -> exact-head checks -> independent review -> merge. Only after source is complete may one bounded RDC install/live verification occur.
+The installer must use a crash-safe deploy swap: a valid existing deploy is preserved until the staged exact-head package is verified and promoted; failed promotion restores the prior deploy instead of leaving an empty live directory.
