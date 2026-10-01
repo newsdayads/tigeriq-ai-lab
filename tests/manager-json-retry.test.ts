@@ -109,7 +109,7 @@ describe('Core manager exhaustion integration',()=>{
     const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
     expect(core).toContain("if(routed.exhausted===true)");
     expect(core).toContain("MANAGER_EXHAUSTED_RETRY_QUEUED");
-    expect(core).toContain("manager_exhaustion_retry_budget_exhausted");
+    expect(core).toContain("reason:retryPlan.reason");
     expect(core.indexOf("if(routed.exhausted===true)")).toBeLessThan(core.indexOf("const decision=routed.decision"));
   });
 });
