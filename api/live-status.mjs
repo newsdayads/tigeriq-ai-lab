@@ -164,6 +164,7 @@ function progressForBranch(runs, branch) {
     failed,
     active,
     percent: batch.length ? Math.round((passed / batch.length) * 100) : null,
+    verified: true,
   };
 }
 
@@ -261,7 +262,7 @@ export async function buildLiveStatus(fetchImpl = fetch) {
       registryUpdatedAt: registry.updated_at || null,
     },
     summary,
-    workers: rows,
+    workers: rows.map(ownerFacingWorkRow),
     liveConnected: false,
   }, fetchImpl, { runs, pulls: openPulls });
 }
@@ -1251,7 +1252,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 export function sanitizeRuntimePayload(payload) {
   if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
   const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
-  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt));
+  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt)).map(ownerFacingWorkRow);
   const summary = {
     working: workers.filter((w) => w.state === 'working').length,
     waiting: workers.filter((w) => w.state === 'waiting').length,
