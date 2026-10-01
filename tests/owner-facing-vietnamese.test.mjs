@@ -114,6 +114,21 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(containsBareEnglishOwnerStatus(JSON.stringify(row))).toBe(false);
   });
 
+  it('handoff only shows evidence-backed progress', () => {
+    const verified = ownerFacingHandoffLifecycle({
+      status: 'working',
+      progress: { passed: 4, total: 5, verified: true },
+    });
+    expect(verified.icon).toBe('⚙️');
+    expect(verified.progressPresentation.text).toBe('████████░░ 80%');
+
+    const stale = ownerFacingHandoffLifecycle({
+      status: 'working',
+      progress: { passed: 4, total: 5, stale: true },
+    });
+    expect(stale.progressPresentation).toBeUndefined();
+  });
+
   it('keeps Web Control blocked/working display buckets Vietnamese', () => {
     const source = readFileSync(new URL('../apps/tigeriq-core/web-control-server.mjs', import.meta.url), 'utf8');
     expect(source).toContain("bucket=ownerStatusLabel('BLOCKED')");
