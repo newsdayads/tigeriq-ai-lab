@@ -20,6 +20,7 @@ import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './p
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { publishGithubEvent } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
+import { objectiveCompletionGate } from './github-intake.mjs';
 import { sanitizeRuntimePayload, buildWorkSections } from '../../api/live-status.mjs';
 import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce-registry.mjs';
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -1284,6 +1285,13 @@ async function managerTick() {
         const handoff=await persistTerminalHandoff(o,decision,currentPhase);
         if(handoff.action==='waiting_children'||handoff.action==='coding_handoff_ready')return;
         if(handoff.action==='repeated_completed')await event('AUTONOMOUS_HANDOFF_DEDUPED_COMPLETE',{objectiveId:o.id,generationKey:handoff.generationKey,phaseIndex:currentPhase});
+      }
+      const completionGate=objectiveCompletionGate(o.metadata||{});
+      if(!completionGate.allow){
+        const summary='completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
+        await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
+        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason});
+        return;
       }
       await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
       await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});

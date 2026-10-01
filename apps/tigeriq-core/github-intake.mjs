@@ -48,6 +48,39 @@ export function hasExactFlag(body,key,value='true'){
 
 export function bodyValue(body,key){return policyBodyValue(body,key);}
 
+export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',finalReviewRequired=false}={}){
+  const expected=String(sourceRevision||'').trim();
+  if(!expected)return {accepted:false,reason:'source_revision_missing'};
+  const rows=Array.isArray(comments)?[...comments].reverse():[];
+  for(const comment of rows){
+    const body=String(comment?.body||'');
+    const pass=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS');
+    const explicitFail=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS','false')||hasExactFlag(body,'DONE','false');
+    if(!pass&&!explicitFail)continue;
+    const revision=(bodyValue(body,'SOURCE_REVISION')||bodyValue(body,'LIVE_ACCEPTANCE_SOURCE_REVISION')).trim();
+    if(revision&&revision!==expected)continue;
+    if(explicitFail)return {accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:comment?.id??null};
+    if(revision!==expected)return {accepted:false,reason:'live_acceptance_revision_missing',commentId:comment?.id??null};
+    let reviewer=null;
+    if(finalReviewRequired===true){
+      const verdict=(bodyValue(body,'FINAL_LIVE_REVIEW')||bodyValue(body,'FINAL_REVIEW')).toUpperCase();
+      reviewer=bodyValue(body,'FINAL_LIVE_REVIEWER').toUpperCase();
+      const independent=hasExactFlag(body,'FINAL_REVIEWER_DIFFERENT_FROM_IMPLEMENTER')||hasExactFlag(body,'FINAL_LIVE_REVIEWER_DIFFERENT_FROM_IMPLEMENTER');
+      if(verdict!=='PASS'||!/^NV\d{2}$/.test(reviewer)||!independent)return {accepted:false,reason:'final_live_review_missing_or_not_independent',commentId:comment?.id??null};
+    }
+    return {accepted:true,revision,reviewer,commentId:comment?.id??null};
+  }
+  return {accepted:false,reason:'live_acceptance_evidence_missing'};
+}
+
+export function objectiveCompletionGate(metadata={}){
+  if(metadata?.liveAcceptanceRequired!==true)return {allow:true,reason:'live_acceptance_not_required'};
+  const sourceRevision=String(metadata?.sourceRevision||'').trim();
+  const liveRevision=String(metadata?.liveAcceptanceRevision||'').trim();
+  if(metadata?.liveAcceptancePass===true&&sourceRevision&&liveRevision===sourceRevision)return {allow:true,reason:'live_acceptance_pass'};
+  return {allow:false,reason:'live_acceptance_pending'};
+}
+
 export function preferredUiWorker(body){
   const preferred=bodyValue(body,'PREFERRED_REVIEWER').toUpperCase();
   if(preferred==='NV03'||preferred==='NV04')return preferred;
@@ -212,6 +245,8 @@ export function parseExecutableIssue(issue){
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE'),
+    liveAcceptanceRequired:hasExactFlag(body,'LIVE_ACCEPTANCE_REQUIRED'),
+    finalReviewRequired:hasExactFlag(body,'FINAL_REVIEW_REQUIRED')||hasExactFlag(body,'FINAL_LIVE_REVIEW_REQUIRED'),
     admissionMode:legacyExecutable?'LEGACY_EXECUTION_FLAGS':'SAFE_P1_P5_POLICY',
     requiresCodingHandoff,
   };
@@ -664,6 +699,12 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY'),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
+      liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
+      finalReviewRequired:spec.finalReviewRequired===true,
+      liveAcceptancePass:false,
+      liveAcceptanceRevision:null,
+      liveAcceptanceEvidenceCommentId:null,
+      liveAcceptanceCommentCount:spec.commentCount,
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
@@ -709,6 +750,37 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
     if(issueFilter&&!issueFilter.has(number))continue;
+    if(row.metadata?.liveAcceptanceRequired===true){
+      try{
+        const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
+        const commentCount=Math.max(0,Number(sourceIssue?.comments||0));
+        const checkedCount=Math.max(-1,Number(row.metadata?.liveAcceptanceCommentCount??-1));
+        if(row.status==='completed'||commentCount!==checkedCount){
+          const lastPage=Math.max(1,Math.ceil(commentCount/100));
+          const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=100&page=${lastPage}`,token);
+          const evidence=parseLiveAcceptanceEvidence(comments,{sourceRevision:row.metadata?.sourceRevision||'',finalReviewRequired:row.metadata?.finalReviewRequired===true});
+          const patch={
+            liveAcceptancePass:evidence.accepted===true,
+            liveAcceptanceRevision:evidence.accepted?evidence.revision:null,
+            liveAcceptanceEvidenceCommentId:evidence.accepted?evidence.commentId:null,
+            finalLiveReviewer:evidence.accepted?(evidence.reviewer||null):null,
+            liveAcceptanceCommentCount:commentCount,
+          };
+          await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(patch)]);
+          row.metadata={...row.metadata,...patch};
+        }
+      }catch(error){
+        if(githubRateLimitCooldownMs(error)>0)throw error;
+        console.error(JSON.stringify({event:'GITHUB_LIVE_ACCEPTANCE_SYNC_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+      }
+    }
+    const completionGate=objectiveCompletionGate(row.metadata);
+    if(row.status==='completed'&&!completionGate.allow){
+      const summary='completion rejected: durable LIVE_ACCEPTANCE_PASS for current source revision is missing';
+      await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
+      row.status='active';
+      row.summary=summary;
+    }
     if(row.status==='active'){
       try{
         const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
@@ -751,6 +823,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubTerminalLabelSynced:true})]);
       row.metadata={...row.metadata,githubTerminalLabelSynced:true};
+    }
+    const terminalCompletionGate=objectiveCompletionGate(row.metadata);
+    if(row.status==='completed'&&!terminalCompletionGate.allow){
+      const summary='completion rejected: durable LIVE_ACCEPTANCE_PASS for current source revision is missing';
+      await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
+      row.status='active';
+      row.summary=summary;
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
