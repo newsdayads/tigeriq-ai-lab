@@ -69,6 +69,19 @@ describe('GitHub Core intake guardrails',()=>{
       .resolves.toMatchObject({accepted:false,reason:'trusted_reviewer_not_independent',employeeId:'NV12',resourceId:'res-review'});
   });
 
+  it('treats failed non-review jobs as terminal while preserving them in implementation identity/fingerprint',async()=>{
+    const pool={async query(){return {rows:[
+      {id:'J-DONE',status:'done',employee_id:'NV11',resource_id:'res-done',completed_at:'2026-10-01T00:00:00Z'},
+      {id:'J-FAILED',status:'failed',employee_id:'NV12',resource_id:'res-failed',completed_at:'2026-10-01T00:01:00Z'},
+    ]};}};
+    const context=await implementationReviewContext(pool,{objectiveId:'OBJ-2652',metadata:{implementerEmployeeId:'NV02'}});
+    expect(context.implementationTerminal).toBe(true);
+    expect(context.blockingJobs).toEqual([]);
+    expect(context.implementerEmployeeIds.sort()).toEqual(['NV02','NV11','NV12'].sort());
+    expect(context.implementerResourceIds.sort()).toEqual(['res-done','res-failed']);
+    expect(context.fingerprint).toMatch(/^[a-f0-9]{16}$/);
+  });
+
   it('keeps labels outside sourceRevision while carrying them for lifecycle projection',()=>{
     const a=parseExecutableIssue({...base,labels:[]});
     const b=parseExecutableIssue({...base,labels:[{name:'tigeriq:role-claimed'},{name:'tigeriq:role-worker-nv02'}]});
@@ -691,7 +704,8 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain("kind='github_review'");
     expect(intake).toContain("status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null");
     expect(intake).toContain('const evidenceRows=[...(selected?[selected]:[]),...recent]');
-    expect(intake).toContain("row.status||'').toLowerCase()!=='done'");
+    expect(intake).toContain("const terminalStatuses=new Set(['done','failed'])");
+    expect(intake).toContain("!terminalStatuses.has(String(row.status||'').toLowerCase())");
     expect(intake).toContain('finalReviewImplementerEmployeeIds:implementationContext.implementerEmployeeIds');
     expect(intake).toContain('liveAcceptanceCommentCount:(spec.liveAcceptanceRequired===true||spec.finalReviewRequired===true)?-1:spec.commentCount');
     expect(core).toContain("employee_id=any($1::text[])");
