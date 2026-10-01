@@ -6,7 +6,7 @@ import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePub
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
-import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -416,7 +416,7 @@ export function formatResultComment(row){
   const completed=row?.status==='completed';
   const status=ownerStatusLabel(completed?'COMPLETED':'BLOCKED');
   const summary=localizeOwnerFacingText(String(row?.summary||'Công việc đã kết thúc.').trim().slice(0,5000));
-  return `[KẾT QUẢ] TigerIQ Core ${completed?'đã hoàn tất':'bị chặn'} ${row?.id}.\n\n${summary}\n\nBằng chứng: Core objective \`${row?.id}\` · Trạng thái: ${status}.`;
+  return `${ownerStatusIcon(completed?'COMPLETED':'BLOCKED')} [KẾT QUẢ] TigerIQ Core ${completed?'đã hoàn tất':'bị chặn'} ${row?.id}.\n\n${summary}\n\nBằng chứng: Core objective \`${row?.id}\` · Trạng thái: ${status}.`;
 }
 
 export const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
@@ -1081,7 +1081,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     if(!row.metadata?.githubClaimReported){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
-      await commentIssue(fetchImpl,owner,repo,number,`[TIẾP NHẬN] TigerIQ Core đã nhận công việc này dưới mã ${row.id}. Hệ thống đang tự xử lý.`,token);
+      await commentIssue(fetchImpl,owner,repo,number,`${ownerStatusIcon('WORKING')} [TIẾP NHẬN] TigerIQ Core đã nhận công việc này dưới mã ${row.id}. Hệ thống đang tự xử lý.`,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
