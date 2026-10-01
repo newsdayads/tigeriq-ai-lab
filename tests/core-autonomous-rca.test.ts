@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
 import {
   AUTONOMOUS_RCA_TAXONOMY,
@@ -54,5 +55,13 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(canary).toMatchObject({ok:true,pass:true,fixtureCount:5,dedupedCount:5,mutation:false});
     expect(canary.safeAction.type).toBe('IMPROVEMENT_WORK_ORDER');
     expect(canary.hardGateAction.type).toBe('OWNER_EXCEPTION');
+  });
+
+  it('wires RCA only after repeated durable OPEN evidence and exposes a read-only canary',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("where status='OPEN' and count>=2");
+    expect(source).toContain("type in ('AUTONOMOUS_RCA_WORK_ORDER','AUTONOMOUS_RCA_OWNER_EXCEPTION','AUTONOMOUS_RCA_OBSERVE_ONLY')");
+    expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
+    expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");
   });
 });
