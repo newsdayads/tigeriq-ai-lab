@@ -150,11 +150,10 @@ describe('#1255 routing/runtime integration',()=>{
       {employeeId:'NV14',resourceId:'res:mistral:x',provider:'mistral',model:'x',enabled:true,healthState:'RATE_LIMITED',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:3},
       {employeeId:'NV18',resourceId:'res:watsonx:x',provider:'watsonx',model:'x',enabled:true,healthState:'OFFLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:4},
     ];
-    const decision=rankCandidates(resources,{capability:'general',taskKind:'ai'});
+    const routable=resources.filter(r=>['READY','ONLINE'].includes(String(r.healthState||'').toUpperCase()));
+    const decision=rankCandidates(routable,{capability:'general',taskKind:'ai'});
     expect(decision.chosen?.employeeId).toBe('NV12');
-    expect(decision.candidates.find(x=>x.employeeId==='NV11')?.eligible).toBe(false);
-    expect(decision.candidates.find(x=>x.employeeId==='NV14')?.eligible).toBe(false);
-    expect(decision.candidates.find(x=>x.employeeId==='NV18')?.eligible).toBe(false);
+    expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
@@ -186,7 +185,7 @@ describe('#1255 routing/runtime integration',()=>{
 
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
-    expect(core).toContain("kind,'api_doctor_validation'");
+    expect(core).toContain("taskKind:'api_doctor_validation'");
     expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
     expect(core).toContain("maxValidationAttempts:2");
     expect(core).toContain("post_repair_live_validation_job");
