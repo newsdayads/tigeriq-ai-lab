@@ -34,7 +34,7 @@ describe('GitHub Core intake guardrails',()=>{
     const revoked=[...claimed,{id:4,body:'DONE=false\nLIVE_ACCEPTANCE_PASS=false'}];
     expect(parseLiveAcceptanceEvidence(revoked,{sourceRevision:'current-revision'})).toMatchObject({accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:4});
     expect(objectiveCompletionGate({liveAcceptanceRequired:true,sourceRevision:'current-revision',liveAcceptancePass:true,liveAcceptanceRevision:'current-revision',finalReviewRequired:true,finalReviewPass:false})).toMatchObject({allow:false,reason:'final_review_pending'});
-    expect(objectiveCompletionGate({liveAcceptanceRequired:true,sourceRevision:'current-revision',liveAcceptancePass:true,liveAcceptanceRevision:'current-revision',finalReviewRequired:true,finalReviewPass:true,finalReviewRevision:'current-revision',finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review'})).toMatchObject({allow:true});
+    expect(objectiveCompletionGate({liveAcceptanceRequired:true,sourceRevision:'current-revision',liveAcceptancePass:true,liveAcceptanceRevision:'current-revision',finalReviewRequired:true,finalReviewPass:true,finalReviewRevision:'current-revision',finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review',finalReviewImplementationFingerprint:'impl-fp'})).toMatchObject({allow:true});
     expect(objectiveCompletionGate({finalReviewRequired:true,sourceRevision:'current-revision',finalReviewPass:false})).toMatchObject({allow:false,reason:'final_review_pending'});
   });
 
@@ -692,7 +692,10 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain("status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null");
     expect(intake).toContain('const evidenceRows=[...(selected?[selected]:[]),...recent]');
     expect(intake).toContain("row.status||'').toLowerCase()!=='done'");
+    expect(intake).toContain('finalReviewImplementerEmployeeIds:implementationContext.implementerEmployeeIds');
     expect(intake).toContain('liveAcceptanceCommentCount:(spec.liveAcceptanceRequired===true||spec.finalReviewRequired===true)?-1:spec.commentCount');
+    expect(core).toContain("employee_id=any($1::text[])");
+    expect(core).toContain('finalReviewImplementerEmployeeIds');
     expect(core).toContain("set manager_cycles=0,summary=$2");
     expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
   });
