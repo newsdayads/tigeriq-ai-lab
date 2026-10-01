@@ -36,11 +36,39 @@ try{
   $short=$ExpectedHead.Substring(0,[Math]::Min(7,$ExpectedHead.Length))
   $deploy=Join-Path $InstallRoot ("Deploy-final-"+$short)
   $stage=$deploy+'.staging'
+  $previous=$deploy+'.previous'
   if(Test-Path $stage){Remove-Item $stage -Recurse -Force}
+  if(Test-Path $previous){Remove-Item $previous -Recurse -Force}
   New-Item -ItemType Directory -Path $stage -Force|Out-Null
   Copy-Item (Join-Path $ArtifactRoot '*') $stage -Recurse -Force
-  if(Test-Path $deploy){Remove-Item $deploy -Recurse -Force}
-  Move-Item $stage $deploy
+  if(-not(Test-Path (Join-Path $stage 'VERSION.txt'))){throw 'APPCHROME_STAGE_VERSION_MISSING'}
+  if((Get-Content (Join-Path $stage 'VERSION.txt') -Raw).Trim() -ne $ExpectedHead){throw 'APPCHROME_STAGE_HEAD_MISMATCH'}
+  foreach($rel in @(
+    'apps\chrome-controller\direct-cdp-bridge.mjs',
+    'dist\apps\chrome-controller\src\server.js',
+    'dist\apps\chrome-controller\src\chrome-launch-broker.js',
+    'apps\chrome-controller\runtime\Start-Unified-AppChrome.ps1'
+  )){
+    if(-not(Test-Path (Join-Path $stage $rel))){throw "APPCHROME_STAGE_REQUIRED_FILE_MISSING:$rel"}
+  }
+  if(Test-Path $deploy){Move-Item -LiteralPath $deploy -Destination $previous}
+  try{
+    Move-Item -LiteralPath $stage -Destination $deploy
+  }catch{
+    if((Test-Path $previous) -and -not(Test-Path $deploy)){Move-Item -LiteralPath $previous -Destination $deploy}
+    throw
+  }
+  if(-not(Test-Path (Join-Path $deploy 'VERSION.txt'))){
+    if(Test-Path $deploy){Remove-Item -LiteralPath $deploy -Recurse -Force}
+    if(Test-Path $previous){Move-Item -LiteralPath $previous -Destination $deploy}
+    throw 'APPCHROME_DEPLOY_VERSION_MISSING_AFTER_SWAP'
+  }
+  if((Get-Content (Join-Path $deploy 'VERSION.txt') -Raw).Trim() -ne $ExpectedHead){
+    if(Test-Path $deploy){Remove-Item -LiteralPath $deploy -Recurse -Force}
+    if(Test-Path $previous){Move-Item -LiteralPath $previous -Destination $deploy}
+    throw 'APPCHROME_DEPLOY_HEAD_MISMATCH_AFTER_SWAP'
+  }
+  if(Test-Path $previous){Remove-Item -LiteralPath $previous -Recurse -Force}
 
   $bridge=Join-Path $deploy 'apps\chrome-controller\direct-cdp-bridge.mjs'
   $bridgeHash=(Get-FileHash $bridge -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -49,6 +77,24 @@ try{
   $launcherLegacy=Join-Path $runtime 'Start-Unified-AppChrome-1372.ps1'
   Copy-Item $launcherSource $launcherCanonical -Force
   Copy-Item $launcherSource $launcherLegacy -Force
+
+  $legacyNv03TasksRetired=@()
+  if(-not [bool]$Nv02Only){
+    $legacyBackupDir=Join-Path $runtime 'LegacyNv03TaskBackups'
+    foreach($legacyTaskName in @('TigerIQ NV03 Interactive Restore','TigerIQ NV03 Sidecar')){
+      $legacyTask=Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+      if(-not $legacyTask){continue}
+      New-Item -ItemType Directory -Path $legacyBackupDir -Force|Out-Null
+      $safeName=($legacyTaskName -replace '[^A-Za-z0-9._-]','_')
+      $backupPath=Join-Path $legacyBackupDir ($safeName+'-'+(Get-Date -Format 'yyyyMMddHHmmss')+'.xml')
+      Export-ScheduledTask -TaskName $legacyTaskName | Set-Content -LiteralPath $backupPath -Encoding Unicode
+      Stop-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+      Disable-ScheduledTask -TaskName $legacyTaskName -ErrorAction Stop|Out-Null
+      $after=Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction Stop
+      if([string]$after.State -ne 'Disabled'){throw ('LEGACY_NV03_TASK_DISABLE_FAILED:'+$legacyTaskName)}
+      $legacyNv03TasksRetired+=[ordered]@{name=$legacyTaskName;backup=$backupPath;state='Disabled'}
+    }
+  }
 
   $taskName='TigerIQ APP Chrome Unified'
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -111,6 +157,7 @@ try{
     taskActivation=$taskActivation
     installedAt=$installedAt
     installedBootId=$installedBootId
+    legacyNv03TasksRetired=@($legacyNv03TasksRetired)
   }
   $manifestPath=Join-Path $runtime 'artifact-install-final.json'
   [IO.File]::WriteAllText($manifestPath,($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
