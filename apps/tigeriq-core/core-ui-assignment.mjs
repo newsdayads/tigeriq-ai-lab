@@ -1,5 +1,6 @@
 import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority,exactBodyFlag} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
+import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const OWNER='newsdayads',REPO='tigeriq-ai-lab';
 const ALL_WORKERS=['NV02','NV03','NV04'];
@@ -10,6 +11,37 @@ function value(body,key){return bodyValue(body,key);}
 function yes(body,key){return exactBodyFlag(body,key,'true');}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
 function safeResult(v){return String(v||'').replace(/\0/g,'').trim().slice(0,4000);}
+const VI_TERMINAL_TO_CODE=new Map([
+  ['HOÀN TẤT','DONE'],
+  ['BỊ CHẶN','BLOCKED'],
+  ['CHỜ BÊN NGOÀI','EXTERNAL_WAIT'],
+]);
+export function coreUiTerminalStateFromComment(body=''){
+  const text=String(body||'');
+  const legacy=String(text.match(/^STATE=(DONE|BLOCKED|EXTERNAL_WAIT)$/m)?.[1]||'');
+  if(legacy)return legacy;
+  const vi=String(text.match(/^TRẠNG_THÁI=(.+)$/m)?.[1]||'').trim().toUpperCase();
+  return VI_TERMINAL_TO_CODE.get(vi)||'';
+}
+export function formatCoreUiTerminalComment({jobId,workerId,state,result=''}) {
+  const normalized=String(state||'').toUpperCase();
+  const status=ownerStatusLabel(normalized);
+  const ownerResult=localizeOwnerFacingText(safeResult(result||normalized));
+  return [
+    '[KẾT QUẢ] TigerIQ Core đã nhận kết quả từ '+String(workerId||'')+'.',
+    'Trạng thái: '+status,
+    '',
+    'TIGERIQ_CORE_UI_TERMINAL_V1',
+    'TIGERIQ_CORE_UI_TERMINAL_KEY='+String(jobId||''),
+    'JOB_ID='+String(jobId||''),
+    'WORKER='+String(workerId||''),
+    'TRẠNG_THÁI='+status,
+    'SOURCE=APP_CHROME_UI_TRANSPORT',
+    'RESULT_BEGIN',
+    ownerResult,
+    'RESULT_END',
+  ].join('\n');
+}
 function rank(p){return PRIORITY_RANK[String(p||'P5')]??PRIORITY_RANK.P5;}
 function issueNo(jobId){const m=String(jobId||'').match(/^GH-(\d+)$/);return m?Number(m[1]):null;}
 function resourceId(workerId){return 'res:ui:'+String(workerId).toLowerCase()+':subscription:chrome';}
@@ -197,19 +229,9 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
     const comments=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token).catch(()=>[]);
     const prior=(Array.isArray(comments)?comments:[]).find((comment)=>String(comment?.body||'').includes(terminalKey));
     const priorText=String(prior?.body||'');
-    const priorState=String(priorText.match(/^STATE=(DONE|BLOCKED|EXTERNAL_WAIT)$/m)?.[1]||'');
+    const priorState=coreUiTerminalStateFromComment(priorText);
     const state=priorState||requestedState;
-    const evidenceBody=[
-      'TIGERIQ_CORE_UI_TERMINAL_V1',
-      terminalKey,
-      'JOB_ID='+jobId,
-      'WORKER='+workerId,
-      'STATE='+state,
-      'SOURCE=APP_CHROME_UI_TRANSPORT',
-      'RESULT_BEGIN',
-      terminalResult,
-      'RESULT_END',
-    ].join('\n');
+    const evidenceBody=formatCoreUiTerminalComment({jobId,workerId,state,result:terminalResult});
     const comment=prior||await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
     if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
     const jobStatus=state==='DONE'?'done':'failed';
