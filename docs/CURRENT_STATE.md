@@ -1,3 +1,18 @@
+# CURRENT OVERRIDE — APP CHROME LOCAL-ONLY — 2026-10-01
+
+- App Chrome đã tách khỏi TigerIQ/GitHub execution plane và chạy từ local authority trên PC01: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Current`.
+- Marker ranh giới local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
+- GitHub/Core/Coding Lane/OpenClaw/automation không được tạo việc, route, claim, đóng gói, deploy, sửa source/runtime/config/controller hoặc tự phục hồi App Chrome.
+- Khi Owner giao sửa App Chrome, đường duy nhất là Owner → Vy trực tiếp → PC01 local; backup, sửa, xuất bản, kiểm thử và bằng chứng đều local.
+- GitHub vẫn quản lý policy/role/work của NV02/NV03/NV04 và phần TigerIQ ngoài App Chrome; nó không còn là source/deploy authority cho App Chrome.
+- Source App Chrome còn trong repository là frozen historical mirror, không phải runtime authority.
+- Live migration cùng boot đã xác minh controller và bridge đều chạy từ `LocalOnly\Current`, cùng baseline head đã copy local và provenance bridge hợp lệ.
+- Work Order App Chrome cũ phải được đóng/superseded khỏi queue; trạng thái auth của từng worker nếu còn lỗi được xử lý như local runtime condition, không tạo App Chrome Work Order mới.
+
+STATE: `CURRENT_20261001_APP_CHROME_LOCAL_ONLY`
+
+---
+
 # TigerIQ — Current State
 
 Date: 2026-09-26
