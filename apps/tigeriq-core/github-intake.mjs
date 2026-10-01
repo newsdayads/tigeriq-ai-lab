@@ -790,8 +790,11 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       skipped++;continue;
     }
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
-    const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
-    if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
+    // A terminal objective for the exact current source revision is authoritative.
+    // A stale OPEN snapshot after GitHub close, or a historical githubClosed marker,
+    // must not rematerialize the same revision. Legitimate rearm changes the
+    // canonical issue body/title (for example REARMED_AT), which changes sourceRevision.
+    if(prior&&!sourceChanged){skipped++;continue;}
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
     if(externalClaim){
       if(!roleClaimLabeled||labeledWorker!==externalClaim.workerId){
