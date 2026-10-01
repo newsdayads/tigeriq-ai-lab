@@ -33,7 +33,7 @@ export function evaluateSelfAudit(snapshot={},{
   const idle=Number(queue.eligibleIdleWorkers||0);
   const active=Number(queue.activeWorkCount||0);
   const backlogStableForMs=Number(queue.backlogStableForMs||0);
-  if(backlog>0&&idle>0&&active===0&&backlogStableForMs>=minBacklogStableMs){
+  if(backlog>0&&idle>0&&backlogStableForMs>=minBacklogStableMs){
     anomalies.push(anomaly('AUTO_DISPATCH_CONTINUITY','queue',{
       eligibleBacklogCount:backlog,eligibleIdleWorkers:idle,activeWorkCount:active,backlogStableForMs
     }));
