@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
-import { ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -94,7 +94,7 @@ export function projectWorkOrder(issue) {
   else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
   else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';
   else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
-  return { issue_number:issue.number,title:issue.title,priority,state,bucket,owner,closed,updated_at:issue.updated_at,url:issue.html_url };
+  return { issue_number:issue.number,title:issue.title,priority,state,statusIcon:ownerStatusIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),owner,closed,updated_at:issue.updated_at,url:issue.html_url };
 }
 
 async function githubWorkOrders() {

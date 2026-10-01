@@ -110,6 +110,16 @@ const VI_STATUS_ICON = Object.freeze({
   'RÀ SOÁT': OWNER_PRESENTATION_ICONS.WORKING,
   'XÁC MINH': OWNER_PRESENTATION_ICONS.WORKING,
   'MỞ': OWNER_PRESENTATION_ICONS.WAITING,
+  'ĐANG LÀM': OWNER_PRESENTATION_ICONS.WORKING,
+  'CHỜ': OWNER_PRESENTATION_ICONS.WAITING,
+  'RẢNH': OWNER_PRESENTATION_ICONS.WAITING,
+  'TẠM NGƯNG': OWNER_PRESENTATION_ICONS.ATTENTION,
+  'CHƯA RÕ': OWNER_PRESENTATION_ICONS.ATTENTION,
+  'CHƯA XÁC MINH': OWNER_PRESENTATION_ICONS.ATTENTION,
+  'HOÀN THÀNH': OWNER_PRESENTATION_ICONS.COMPLETED,
+  'CHỜ ANH SƠN': OWNER_PRESENTATION_ICONS.OWNER,
+  'HỆ THỐNG': OWNER_PRESENTATION_ICONS.KEY,
+  'CẦN XỬ LÝ': OWNER_PRESENTATION_ICONS.ATTENTION,
 });
 
 export const OWNER_SURFACE_REGISTRY = Object.freeze([
@@ -130,7 +140,7 @@ export function ownerStatusIcon(value = '') {
 
 export function verifiedOwnerProgress(input = null) {
   if (!input || typeof input !== 'object') return null;
-  if (input.stale === true || input.conflicting === true || input.verified === false) return null;
+  if (input.stale === true || input.conflicting === true || input.verified !== true) return null;
   const passed = Number(input.passed);
   const total = Number(input.total);
   if (!Number.isInteger(passed) || !Number.isInteger(total) || total <= 0 || passed < 0 || passed > total) return null;

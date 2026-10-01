@@ -150,7 +150,8 @@ describe('Owner-facing Vietnamese output gate', () => {
 
     const progress = verifiedOwnerProgress({ passed: 7, total: 10, verified: true });
     expect(progress).toMatchObject({ percent: 70, text: '███████░░░ 70%', verified: true });
-    expect(verifiedOwnerProgress({ passed: 7, total: 10, stale: true })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 10 })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 10, stale: true, verified: true })).toBeNull();
     expect(verifiedOwnerProgress({ passed: 7, total: 10, conflicting: true })).toBeNull();
     expect(verifiedOwnerProgress({ passed: 7, total: 0 })).toBeNull();
 
@@ -167,6 +168,26 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(presentation.blocker).toContain('phương án dự phòng ĐANG CHỜ');
     expect(presentation.nextAction).toContain('định tuyến SẴN SÀNG');
     expect(presentation.order).toEqual(['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO']);
+  });
+
+  it('covers localized Live/Web states with the same icon contract', () => {
+    expect(ownerStatusIcon('ĐANG LÀM')).toBe('⚙️');
+    expect(ownerStatusIcon('CHỜ')).toBe('⏳');
+    expect(ownerStatusIcon('RẢNH')).toBe('⏳');
+    expect(ownerStatusIcon('TẠM NGƯNG')).toBe('⚠️');
+    expect(ownerStatusIcon('CHƯA XÁC MINH')).toBe('⚠️');
+    expect(ownerStatusIcon('HOÀN THÀNH')).toBe('✅');
+    expect(ownerStatusIcon('CHỜ ANH SƠN')).toBe('🔒');
+  });
+
+  it('routes TigerIQ Live and Web Control rows through the shared contract', () => {
+    const liveSource = readFileSync(new URL('../api/live-status.mjs', import.meta.url), 'utf8');
+    const webSource = readFileSync(new URL('../apps/tigeriq-core/web-control-server.mjs', import.meta.url), 'utf8');
+    expect(liveSource).toContain('workers: rows.map(ownerFacingWorkRow)');
+    expect(liveSource).toContain('.map(ownerFacingWorkRow);');
+    expect(liveSource).toContain('verified: true');
+    expect(webSource).toContain('statusIcon:ownerStatusIcon(state)');
+    expect(webSource).toContain('bucketIcon:ownerStatusIcon(bucket)');
   });
 
   it('hard-loads Interaction #504 for every new chat and registers all Owner surfaces', () => {
