@@ -1,14 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
 // @ts-expect-error runtime module intentionally has no TS declaration file.
-import {
-  AUTONOMOUS_RCA_TAXONOMY,
-  classifyAutonomousRca,
-  dedupeAutonomousRca,
-  buildImprovementWorkOrder,
-  buildOwnerException,
-  syntheticAutonomousRcaCanary,
-} from '../apps/tigeriq-core/autonomous-rca.mjs';
+import {AUTONOMOUS_RCA_TAXONOMY,classifyAutonomousRca,dedupeAutonomousRca,buildImprovementWorkOrder,buildOwnerException,syntheticAutonomousRcaCanary} from '../apps/tigeriq-core/autonomous-rca.mjs';
 
 describe('Core autonomous RCA + Improvement Work Order',()=>{
   it('implements the canonical 14-class taxonomy and classifies five distinct fault fixtures',()=>{
