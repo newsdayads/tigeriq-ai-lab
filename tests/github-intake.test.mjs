@@ -784,16 +784,27 @@ test('P0 is excluded while system-routed P1-P5 materialize in priority order',as
   assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
 });
 
-test('reopened completed GitHub Work Order rearms instead of being skipped forever',async()=>{
+test('same-revision reopen marker does not rematerialize; explicit source revision rearm does',async()=>{
   const pool=coreBacklogPool();
-  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`,html_url:'https://example/50'}];
+  const baseBody=`${READ_ONLY_BASE}\nOWNER_DIRECT=true\nPRIORITY=P1`;
+  let issues=[{number:50,state:'open',state_reason:null,updated_at:'2026-09-23T01:00:00Z',title:'Rearm me',body:baseBody,html_url:'https://example/50'}];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,50);
   assert.strictEqual(pool.objectives.length,1);
+
   pool.objectives[0].status='completed';
   pool.objectives[0].metadata.githubClosed=true;
+
+  // Reopened/stale OPEN snapshot with the exact same title/body must not create
+  // a second objective for the same source revision.
   issues=[{...issues[0],state_reason:'reopened',updated_at:'2026-09-23T02:00:00Z'}];
+  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(pool.objectives.length,1);
+
+  // A legitimate rearm changes canonical source content and therefore sourceRevision.
+  issues=[{...issues[0],body:`${baseBody}\nREARMED_AT=2026-09-23T02:05:00Z`,updated_at:'2026-09-23T02:05:00Z'}];
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.issueNumber,50);
   assert.strictEqual(pool.objectives.length,2);
