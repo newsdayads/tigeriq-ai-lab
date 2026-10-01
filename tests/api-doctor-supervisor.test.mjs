@@ -6,6 +6,7 @@ import {
   apiDoctorCurrentFailure,
   apiDoctorExistingHandoffAction,
   apiDoctorHandoffMatchesFailureClass,
+  apiDoctorHealthEvidenceEvents,
   apiDoctorRepairSignature,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -95,6 +96,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
       {type:'RESOURCE_PROBE_OK',data:{}},
       oldFailure,
     ])).toMatchObject({type:'RESOURCE_PROBE_FAIL'});
+  });
+
+  it('ignores manager output-contract failures as resource-health evidence',()=>{
+    const managerFailure={type:'RESOURCE_FAILURE',task_kind:'manager',data:{kind:'invalid_response',message:'MANAGER_SCHEMA_INVALID'}};
+    const providerFailure={type:'RESOURCE_FAILURE',task_kind:'ai',data:{kind:'invalid_response',message:'EMPTY_RESPONSE'}};
+    const rateLimit={type:'RESOURCE_FAILURE',task_kind:'manager',data:{kind:'rate_limit',message:'HTTP_429'}};
+    expect(apiDoctorHealthEvidenceEvents([managerFailure,providerFailure])).toEqual([providerFailure]);
+    expect(apiDoctorHealthEvidenceEvents([rateLimit])).toEqual([rateLimit]);
+    expect(apiDoctorCurrentFailure(apiDoctorHealthEvidenceEvents([managerFailure]))).toBeNull();
   });
 
   it('does not let an old source-contract handoff suppress a newer expired rate-limit reprobe',()=>{
