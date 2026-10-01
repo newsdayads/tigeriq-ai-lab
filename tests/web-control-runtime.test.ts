@@ -170,11 +170,11 @@ describe('Web Control runtime', () => {
     expect(body.codingLane).toEqual(codingPayload);
     expect(body.workOrders).toHaveLength(8);
     expect(body.workOrders.find((x:any)=>x.issue_number===1805)).toMatchObject({ bucket:'CẦN XỬ LÝ' });
-    expect(body.workOrders.find((x:any)=>x.issue_number===1806)).toMatchObject({ priority:'P0', state:'ĐANG LÀM', bucket:'ĐANG LÀM', owner:'NV02_CURRENT_CHAT' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1806)).toMatchObject({ priority:'P0', state:'ĐANG XỬ LÝ', bucket:'ĐANG XỬ LÝ', owner:'NV02_CURRENT_CHAT' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1807)).toMatchObject({ bucket:'CHỜ ANH SƠN' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1808)).toMatchObject({ bucket:'RÀ SOÁT' });
-    expect(body.workOrders.find((x:any)=>x.issue_number===1809)).toMatchObject({ bucket:'BLOCKED' });
-    expect(body.workOrders.find((x:any)=>x.issue_number===2048)).toMatchObject({ bucket:'BLOCKED', state:'BỊ CHẶN' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===1809)).toMatchObject({ bucket:'BỊ CHẶN', state:'BỊ CHẶN' });
+    expect(body.workOrders.find((x:any)=>x.issue_number===2048)).toMatchObject({ bucket:'BỊ CHẶN', state:'BỊ CHẶN' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1900)).toMatchObject({ bucket:'HỆ THỐNG', owner:'OWNER' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1456)).toMatchObject({ bucket:'HỆ THỐNG' });
     expect(body.workOrdersRecent).toHaveLength(1);

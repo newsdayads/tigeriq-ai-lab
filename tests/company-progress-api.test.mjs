@@ -16,8 +16,9 @@ describe('company progress calculation', () => {
       runs: [run('CI'), run('WO-014 Queue Hygiene'), run('WO-012/013 Vercel Online Verify')],
     });
     expect(result.progressPct).toBe(80);
-    expect(result.gates.map((gate) => gate.status)).toEqual(['pass', 'pass', 'pass', 'pass', 'pending']);
+    expect(result.gates.map((gate) => gate.status)).toEqual(['ĐẠT', 'ĐẠT', 'ĐẠT', 'ĐẠT', 'ĐANG CHỜ']);
     expect(result.currentStep).toContain('chuẩn bị merge/Production');
+    expect(result.currentStep).not.toContain('PASS');
   });
 
   it('shows a failed gate as current work instead of inflating progress', () => {

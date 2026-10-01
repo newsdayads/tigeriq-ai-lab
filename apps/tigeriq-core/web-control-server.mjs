@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
+import { ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -63,7 +64,7 @@ function systemWorkOrder(issue,body='') {
   return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ)\]/.test(title) || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope);
 }
 
-function projectWorkOrder(issue) {
+export function projectWorkOrder(issue) {
   const body=String(issue?.body||'');
   const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
@@ -82,13 +83,13 @@ function projectWorkOrder(issue) {
   if(closed) bucket='HOÀN THÀNH';
   else if(ownerGate) bucket='CHỜ ANH SƠN';
   else if(review) bucket='RÀ SOÁT';
-  else if(blocked) bucket='BLOCKED';
-  else if(working&&executable) bucket='ĐANG LÀM';
+  else if(blocked) bucket=ownerStatusLabel('BLOCKED');
+  else if(working&&executable) bucket=ownerStatusLabel('WORKING');
   else if(isSystem||ownerControlled||!executable) bucket='HỆ THỐNG';
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
-  else if(bucket==='BLOCKED') state='BỊ CHẶN';
-  else if(bucket==='ĐANG LÀM') state='ĐANG LÀM';
+  else if(bucket===ownerStatusLabel('BLOCKED')) state=ownerStatusLabel('BLOCKED');
+  else if(bucket===ownerStatusLabel('WORKING')) state=ownerStatusLabel('WORKING');
   else if(bucket==='RÀ SOÁT') state='RÀ SOÁT';
   else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
   else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';

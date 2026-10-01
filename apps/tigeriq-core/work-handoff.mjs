@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const CAPABILITIES=new Set(['general','reasoning','review']);
 const CODING_PREFIX=/^\s*\[(?:CODING|SOURCE_MUTATION|SOURCE)\]\s*/i;
@@ -80,5 +81,16 @@ export function normalizeWorkItemLifecycle(item = {}) {
     timestamps: meta.timestamps || { updated: new Date().toISOString() },
     blocker: String(meta.blocker || meta.blocked_reason || '').trim(),
     nextAction: String(meta.nextAction || meta.next_action || meta.next || '').trim()
+  };
+}
+
+
+export function ownerFacingHandoffLifecycle(item = {}) {
+  const lifecycle = normalizeWorkItemLifecycle(item);
+  return {
+    ...lifecycle,
+    stage: ownerStatusLabel(lifecycle.stage),
+    blocker: localizeOwnerFacingText(lifecycle.blocker),
+    nextAction: localizeOwnerFacingText(lifecycle.nextAction),
   };
 }
