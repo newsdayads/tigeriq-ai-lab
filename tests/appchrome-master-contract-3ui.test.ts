@@ -95,6 +95,26 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
     expect(supervisor).toContain('if(-not(Owner-AutomationAllowed))');
   });
 
+  it('retires legacy NV03 startup owners and keeps unified App Chrome as the single reboot owner',()=>{
+    expect(installer).toContain("'TigerIQ NV03 Interactive Restore'");
+    expect(installer).toContain("'TigerIQ NV03 Sidecar'");
+    expect(installer).toContain('Disable-ScheduledTask -TaskName $legacyTaskName');
+    expect(installer).toContain('LegacyNv03TaskBackups');
+    expect(doc).toContain('sole startup owner for NV02/NV03/NV04');
+    expect(doc).toContain('port `8823`) are retired');
+    expect(supervisor).not.toContain('8823');
+    expect(supervisor).not.toContain('NV03Sidecar');
+  });
+
+  it('promotes an exact-head deploy with rollback-safe staging instead of deleting live first',()=>{
+    expect(installer).toContain("$previous=$deploy+'.previous'");
+    expect(installer).toContain("Move-Item -LiteralPath $deploy -Destination $previous");
+    expect(installer).toContain("Move-Item -LiteralPath $stage -Destination $deploy");
+    expect(installer).toContain('APPCHROME_DEPLOY_VERSION_MISSING_AFTER_SWAP');
+    const oldDelete=installer.indexOf('if(Test-Path $deploy){Remove-Item $deploy -Recurse -Force}');
+    expect(oldDelete).toBe(-1);
+  });
+
   it('requires NV02 visible model verification and keeps generic model preservation',()=>{
     expect(bridge).toContain("modelName:'GPT-5.6 Sol'");
     expect(bridge).toContain("reasoningEffort:'High'");
