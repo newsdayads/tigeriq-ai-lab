@@ -750,9 +750,30 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   for(const row of rows){
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
     if(issueFilter&&!issueFilter.has(number))continue;
+    let sourceIssueForGate=null;
+    try{
+      sourceIssueForGate=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
+      const sourceBody=String(sourceIssueForGate?.body||'');
+      if(hasExactFlag(sourceBody,'LIVE_ACCEPTANCE_REQUIRED')&&row.metadata?.liveAcceptanceRequired!==true){
+        const backfill={
+          liveAcceptanceRequired:true,
+          finalReviewRequired:hasExactFlag(sourceBody,'FINAL_REVIEW_REQUIRED')||hasExactFlag(sourceBody,'FINAL_LIVE_REVIEW_REQUIRED'),
+          liveAcceptancePass:false,
+          liveAcceptanceRevision:null,
+          liveAcceptanceEvidenceCommentId:null,
+          finalLiveReviewer:null,
+          liveAcceptanceCommentCount:-1,
+        };
+        await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(backfill)]);
+        row.metadata={...row.metadata,...backfill};
+      }
+    }catch(error){
+      if(githubRateLimitCooldownMs(error)>0)throw error;
+      console.error(JSON.stringify({event:'GITHUB_LIVE_ACCEPTANCE_POLICY_SYNC_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+    }
     if(row.metadata?.liveAcceptanceRequired===true){
       try{
-        const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
+        const sourceIssue=sourceIssueForGate||await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
         const commentCount=Math.max(0,Number(sourceIssue?.comments||0));
         const checkedCount=Math.max(-1,Number(row.metadata?.liveAcceptanceCommentCount??-1));
         if(row.status==='completed'||commentCount!==checkedCount){
@@ -783,7 +804,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     if(row.status==='active'){
       try{
-        const sourceIssue=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
+        const sourceIssue=sourceIssueForGate||await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
         if(sourceIssue?.state==='closed'){
           const sourceReason=String(sourceIssue.state_reason||'closed');
           const terminalStatus=sourceReason==='completed'?'completed':'blocked';
