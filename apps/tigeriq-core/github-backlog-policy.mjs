@@ -22,7 +22,7 @@ export function isOwnerOnlyP0(body,title=''){
 
 export function backlogAssignedExecutor(body){
   const text=String(body||'');
-  for(const key of ['ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE']){
+  for(const key of ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE']){
     const value=bodyValue(text,key).toUpperCase();
     if(/^NV\d{2}$/.test(value))return value;
   }

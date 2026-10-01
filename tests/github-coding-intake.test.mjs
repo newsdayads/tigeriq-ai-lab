@@ -145,6 +145,11 @@ ALLOW_PATH_PREFIX=tests/`;
     expect(parseCodingIssue(issue(request))).toBeNull();
   });
 
+  it('does not intercept explicit NV03/NV04 UI targets in Coding Lane',()=>{
+    expect(parseCodingIssue(issue(`${SAFE}\nCAPABILITY=review\nTARGET_EMPLOYEE=NV03`))).toBeNull();
+    expect(parseCodingIssue(issue(`${SAFE}\nCAPABILITY=deep_research\nTARGET_EMPLOYEE=NV04`))).toBeNull();
+  });
+
   it('parses explicit target employee and existing PR resume metadata only when valid',()=>{
     const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
     expect(parseCodingRouteMetadata(`TARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`)).toEqual({
