@@ -58,6 +58,13 @@ test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(selectCoreUiWorker('research'),'NV04');
 });
 
+test('Core UI honors TARGET_EMPLOYEE precedence for NV03/NV04',()=>{
+  let x=parseCoreUiIssue(issue(208,safe(['TARGET_EMPLOYEE=NV03','ASSIGNED_EXECUTOR=NV11','PRIMARY_EMPLOYEE=NV12','CAPABILITY=review']),'Explicit review target'));
+  assert.equal(x.workerId,'NV03');assert.equal(x.capability,'review');
+  x=parseCoreUiIssue(issue(209,safe(['TARGET_EMPLOYEE=NV04','ASSIGNED_EXECUTOR=NV11','PRIMARY_EMPLOYEE=NV12','CAPABILITY=deep_research']),'Explicit research target'));
+  assert.equal(x.workerId,'NV04');assert.equal(x.capability,'deep_research');
+});
+
 test('Core UI never assigns App Chrome LOCAL-only work',()=>{
   const byScope=issue(205,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=APP_CHROME_REPAIR'),'Local boundary');
   const byTitle=issue(206,safe(['CAPABILITY=research']),'[P1][APP-CHROME] local repair');
