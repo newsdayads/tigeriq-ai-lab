@@ -104,8 +104,11 @@ describe('Owner-facing Vietnamese output gate', () => {
       status: 'completed',
       blocker: 'none after fallback PASS',
       next: 'final review DONE',
+      progress: { passed: 4, total: 5, verified: true },
     });
     expect(row.stage).toBe('HOÀN TẤT');
+    expect(row.icon).toBe('✅');
+    expect(row.progressPresentation.text).toBe('████████░░ 80%');
     expect(row.blocker).toContain('phương án dự phòng ĐẠT');
     expect(row.nextAction).toContain('rà soát cuối HOÀN TẤT');
     expect(containsBareEnglishOwnerStatus(JSON.stringify(row))).toBe(false);
