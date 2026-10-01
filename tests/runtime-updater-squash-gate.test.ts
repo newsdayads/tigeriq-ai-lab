@@ -64,14 +64,14 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).not.toContain('merge --ff-only origin/main');
   });
 
-  it('synthetic candidate failure restores the previous known-good git revision used by runtime rollback',()=>{
+  it('synthetic candidate failure executes the updater rollback handler and restores known-good runtime',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain('git -C $runtimeRepo reset --hard $previousRuntimeSha');
-    expect(src).toContain('Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha');
-    expect(src).toContain("if($impact.core){$null=Restart-Core $null}");
-    expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
-    expect(src).toContain("if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask");
-    expect(src).toContain("throw ('ROLLED_BACK:'+ $_.Exception.Message)");
+    const candidateTry=src.indexOf('$previousRuntimeSha=$local\n    try{\n      Ensure-RuntimeSource $remote\n      Ensure-NodeModules $runtimeRepo');
+    const candidateCatch=src.indexOf('$null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact');
+    expect(candidateTry).toBeGreaterThanOrEqual(0);
+    expect(candidateCatch).toBeGreaterThan(candidateTry);
+    expect(src).toContain('function Invoke-RuntimeRollback');
+    expect(src).toContain("throw ('ROLLED_BACK:'+ $failure)");
 
     const dir=mkdtempSync(join(tmpdir(),'tigeriq-updater-rollback-'));
     const git=(...args:string[])=>execFileSync('git',args,{cwd:dir,encoding:'utf8'}).trim();
@@ -86,13 +86,28 @@ describe('runtime updater squash merge gate resolution',()=>{
       git('add','runtime.txt');git('commit','-m','candidate');
       const candidateSha=git('rev-parse','HEAD');
       expect(candidateSha).not.toBe(previousSha);
-      expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('candidate-bad\n');
 
-      // Synthetic canary failure follows the updater's rollback primitive.
-      git('reset','--hard',previousSha);
+      const raw=execFileSync('pwsh',[
+        '-NoProfile','-File','scripts/tigeriq-core/update-core-runtime.ps1',
+        '-RollbackCanaryRuntimeRepo',dir,
+        '-RollbackCanaryPreviousSha',previousSha,
+        '-RollbackCanaryCandidateSha',candidateSha,
+      ],{encoding:'utf8'});
+      const line=raw.trim().split(/\r?\n/).filter(Boolean).at(-1);
+      const evidence=JSON.parse(String(line));
 
+      expect(evidence.result).toBe('ROLLED_BACK');
+      expect(evidence.failure).toBe('SYNTHETIC_CANDIDATE_FAILURE');
+      expect(evidence.candidateHeadBeforeFailure).toBe(candidateSha);
+      expect(evidence.rollback.restoredHead).toBe(previousSha);
+      expect(evidence.rollback.restartActions).toEqual(['core','web','coding']);
       expect(git('rev-parse','HEAD')).toBe(previousSha);
       expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('known-good\n');
+
+      const runtimeState=JSON.parse(readFileSync(join(dir,'.canary-core-runtime-source.json'),'utf8'));
+      expect(runtimeState.currentSha).toBe(previousSha);
+      expect(runtimeState.previousSha).toBe(candidateSha);
+      expect(runtimeState.gateSha).toBe(previousSha);
     } finally {
       rmSync(dir,{recursive:true,force:true});
     }
