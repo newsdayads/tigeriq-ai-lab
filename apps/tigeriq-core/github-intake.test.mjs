@@ -263,6 +263,45 @@ describe('GitHub Core intake guardrails',()=>{
     expect(row.metadata).toMatchObject({liveAcceptancePass:false,liveAcceptanceRevision:null,githubResultReported:false});
   });
 
+  it('backfills live acceptance policy onto a pre-fix #2652 objective before any close',async()=>{
+    const row={id:'OBJ-GH-2652-Rlegacy',status:'completed',summary:'legacy objective completed',metadata:{source:'github',issueNumber:2652,githubClaimReported:true,githubResultReported:false,sourceRevision:'current-revision'}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      if(q.includes("update tigeriq_objectives set status='active'")){
+        row.status='active';row.summary=params[1];
+        return {rowCount:1,rows:[]};
+      }
+      return {rowCount:0,rows:[]};
+    }};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues/2652/comments?')&&(init.method||'GET')==='GET'){
+        calls.push('comments-get');
+        return new Response(JSON.stringify([{id:20,body:'DONE=false\nLIVE_ACCEPTANCE_PASS=false'}]),{status:200,headers:{'content-type':'application/json'}});
+      }
+      if(url.endsWith('/issues/2652/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/2652')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({
+      pool,fetchImpl,token:'fake',
+      openIssues:[{number:2652,state:'open',comments:1,body:'LIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'}],
+    });
+    expect(calls).toEqual(['comments-get']);
+    expect(row.status).toBe('active');
+    expect(row.metadata).toMatchObject({
+      liveAcceptanceRequired:true,
+      finalReviewRequired:true,
+      liveAcceptancePass:false,
+      liveAcceptanceRevision:null,
+      githubResultReported:false,
+    });
+  });
+
   it('closes a live-gated issue only after current-revision independent final live PASS',async()=>{
     const row={id:'OBJ-GH-2659-Rcurrent',status:'completed',summary:'ready for live gate',metadata:{source:'github',issueNumber:2659,githubClaimReported:true,githubResultReported:false,sourceRevision:'current-revision',liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptanceCommentCount:0}};
     const pool={async query(q,params=[]){
