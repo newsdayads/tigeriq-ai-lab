@@ -910,8 +910,6 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         const patch={githubResultReported:true,githubClosed:true,githubSourceState:'closed',githubTerminalLabelSynced:true,supersededByObjectiveId:canonical.id};
         await pool.query("update tigeriq_objectives set status='blocked',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1 and status='active'",[row.id,summary,JSON.stringify(patch)]);
         await pool.query("update tigeriq_jobs set status='failed',lease_until=null,completed_at=coalesce(completed_at,now()),failure=coalesce(failure,'{}'::jsonb)||$2::jsonb where objective_id=$1 and status in ('queued','waiting_resource')",[row.id,JSON.stringify({kind:'SUPERSEDED_BY_CANONICAL_COMPLETION',canonicalObjectiveId:canonical.id})]);
-        await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id in (select id from tigeriq_jobs where objective_id=$1)",[row.id]);
-        await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id in (select id from tigeriq_jobs where objective_id=$1)",[row.id]);
         await event('GITHUB_STALE_CLOSED_SUCCESSOR_SUPPRESSED',{objectiveId:row.id,issueNumber:number,canonicalObjectiveId:canonical.id,sourceRevision:currentSourceRevision});
         continue;
       }
