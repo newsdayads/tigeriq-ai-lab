@@ -1422,6 +1422,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await selfAuditStatus()));
     }
+    if(req.method==='GET'&&url.pathname==='/api/self-audit/canary'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const canary=syntheticSelfAuditCanary();
+      res.writeHead(canary.pass?200:500,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(canary));
+    }
     if(req.method==='POST'&&url.pathname==='/api/self-audit/canary'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const canary=syntheticSelfAuditCanary();
