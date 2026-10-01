@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {managerExhaustionRetryPlan,managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+import {isRetryableManagerOutputError,managerExhaustionRetryPlan,managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
@@ -47,6 +47,12 @@ describe('manager JSON parsing',()=>{
     expect(managerShouldUseLocalFallback(1,2)).toBe(false);
     expect(managerShouldUseLocalFallback(2,2)).toBe(true);
     expect(managerShouldUseLocalFallback(3,2)).toBe(true);
+  });
+
+  it('separates manager output-contract failures from provider/resource failures',()=>{
+    expect(isRetryableManagerOutputError({code:'MANAGER_JSON_INVALID'})).toBe(true);
+    expect(isRetryableManagerOutputError({code:'MANAGER_SCHEMA_INVALID'})).toBe(true);
+    expect(isRetryableManagerOutputError(Object.assign(new Error('HTTP_429'),{kind:'rate_limit'}))).toBe(false);
   });
 });
 
@@ -111,5 +117,15 @@ describe('Core manager exhaustion integration',()=>{
     expect(core).toContain("MANAGER_EXHAUSTED_RETRY_QUEUED");
     expect(core).toContain("reason:retryPlan.reason");
     expect(core.indexOf("if(routed.exhausted===true)")).toBeLessThan(core.indexOf("const decision=routed.decision"));
+  });
+});
+
+describe('manager resource health isolation',()=>{
+  it('does not poison canonical resource health for manager-output-only failures',async()=>{
+    const {readFileSync}=await import('node:fs');
+    const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
+    expect(core).toContain("isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure");
+    expect(core).toContain("MANAGER_OUTPUT_CONTRACT_FAILURE");
+    expect(core).toContain("apiDoctorHealthEvidenceEvents(await apiDoctorRecentResourceEvents(resource.resource_id))");
   });
 });
