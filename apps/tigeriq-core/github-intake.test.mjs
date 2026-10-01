@@ -779,8 +779,13 @@ describe('GitHub Core intake guardrails',()=>{
   });
 
   it('accepts receipt-backed structured OpenClaw success even when outer wrapper reports error',()=>{
-    const result={exitCode:1,status:'error',agentResult:{status:'SUCCESS',evidence:{fileRead:{path:'D:\\TigerIQ\\State\\x.json'}}},successfulToolNames:['tigeriq_pc']};
-    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({success:true,trustedToolReceipt:true,agentSuccess:true});
+    const result={
+      exitCode:1,status:'error',
+      agentResult:{status:'SUCCESS',evidence:{fileRead:{path:'D:\\TigerIQ\\State\\x.json'}}},
+      successfulToolNames:['tigeriq_pc'],
+      bridgeCalls:[{tool:'tigeriq_pc',result:{ok:true,action:'file_read',target:'pc01-local',data:{path:'D:\\TigerIQ\\State\\x.json',size:1,content:'x'}}}],
+    };
+    expect(openClawTerminalDecision(result,{timedOut:false,parsedPresent:true})).toMatchObject({success:true,trustedToolReceipt:true,bridgeFileReadReceipt:true,agentSuccess:true});
   });
 
   it('rejects contradictory structured success without a trusted TigerIQ tool receipt',()=>{

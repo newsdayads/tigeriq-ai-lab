@@ -3,7 +3,7 @@ import {promises as fs} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {PC_OPERATOR_ROOTS} from './operator.mjs';
+import {PC_OPERATOR_ROOTS, assertTigerIQTaskName, trustedTigerIQTaskActionData} from './operator.mjs';
 
 export const OPENCLAW_EMPLOYEE_ID='NV06';
 export const OPENCLAW_PROVIDER='openclaw';
@@ -294,6 +294,31 @@ export function trustedBridgeFileReadReceipt(bridgeCalls){
   return findTrustedBridgeFileReadReceipt(bridgeCalls);
 }
 
+export function expectedTigerIQTaskActionFromInstruction(instruction=''){
+  const text=String(instruction||'');
+  const action=String(text.match(/\baction\s*=\s*(task_(?:start|stop|restart))\b/i)?.[1]||'').toLowerCase();
+  const taskName=String(text.match(/\btaskName\s*=\s*["']([^"']+)["']/i)?.[1]||'').trim();
+  if(!action||!taskName)return null;
+  try{return {action,taskName:assertTigerIQTaskName(taskName)};}catch{return null;}
+}
+
+export function trustedBridgeTaskActionReceipt(bridgeCalls,expected=null){
+  if(!Array.isArray(bridgeCalls)||!expected?.action||!expected?.taskName)return false;
+  const taskCalls=bridgeCalls.filter(call=>{
+    if(!call||typeof call!=='object'||String(call.tool||'')!=='tigeriq_pc')return false;
+    const action=String(call.result?.action||'').toLowerCase();
+    return ['task_start','task_stop','task_restart'].includes(action);
+  });
+  if(taskCalls.length!==1)return false;
+  const call=taskCalls[0];
+  const result=call.result;
+  return result?.ok===true
+    && String(result.target||'').toLowerCase()==='pc01-local'
+    && String(result.action||'').toLowerCase()===expected.action
+    && String(result.data?.taskName||'')===expected.taskName
+    && trustedTigerIQTaskActionData(result.action,result.data);
+}
+
 export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,terminal=null,result=null}={}){
   if(timedOut)return 'OPENCLAW_WORKER_TIMEOUT';
   if(rateLimited)return 'OPENCLAW_RATE_LIMIT';
@@ -302,7 +327,7 @@ export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,ter
   return `OPENCLAW_DISPATCH_FAILED:status=${status}`;
 }
 
-export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true}={}){
+export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true,expectedTaskAction=null}={}){
   const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
   const agentStructured=Boolean(result?.agentResult&&typeof result.agentResult==='object');
@@ -313,14 +338,23 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
     .some(name=>/^tigeriq_(?:pc|runtime)(?:[.:/]|$)/i.test(String(name||'')));
   const embeddedFileReadReceipt=trustedStructuredFileReadReceipt(result?.agentResult);
   const bridgeFileReadReceipt=trustedBridgeFileReadReceipt(result?.bridgeCalls);
-  const trustedToolReceipt=terminalReceiptTool||embeddedFileReadReceipt||bridgeFileReadReceipt;
-  const success=!timedOut&&Boolean(parsedPresent)&&agentSuccess&&(wrapperClean||trustedToolReceipt);
+  const bridgeTaskActionReceipt=trustedBridgeTaskActionReceipt(result?.bridgeCalls,expectedTaskAction);
+  const trustedReadReceipt=embeddedFileReadReceipt||bridgeFileReadReceipt;
+  const trustedToolReceipt=trustedReadReceipt||bridgeTaskActionReceipt;
+  const standardSuccess=agentSuccess&&(wrapperClean||trustedToolReceipt);
+  const success=!timedOut&&Boolean(parsedPresent)&&(standardSuccess||bridgeTaskActionReceipt);
   const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
     || !successAgentStatuses.has(agentStatus)
     || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
   );
-  return {success,invalidTerminal,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt};
+  const successSource=success
+    ?(bridgeTaskActionReceipt&&!agentSuccess?'trusted_task_action_receipt'
+      :trustedReadReceipt&&!wrapperClean?'trusted_file_read_receipt'
+        :wrapperClean?'agent_terminal'
+          :'trusted_tool_receipt')
+    :null;
+  return {success,invalidTerminal,successSource,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt,bridgeTaskActionReceipt};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
@@ -354,7 +388,8 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
     if(first>=0&&last>first)parsed=JSON.parse(stdout.slice(first,last+1));
   }catch{}
   const result=compactOpenClawCliResult(parsed,exitCode,stderr);
-  const terminal=openClawTerminalDecision(result,{timedOut,parsedPresent:Boolean(parsed)});
+  const expectedTaskAction=expectedTigerIQTaskActionFromInstruction(envelope.instruction);
+  const terminal=openClawTerminalDecision(result,{timedOut,parsedPresent:Boolean(parsed),expectedTaskAction});
   const success=terminal.success;
   const finalState=success?'completed':'failed';
   const failureText=String(result.agentResult?.blocker||result.text||result.stderr||'');
