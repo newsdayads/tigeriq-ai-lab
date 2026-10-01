@@ -566,6 +566,8 @@ describe('GitHub Core intake guardrails',()=>{
     const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
     expect(intake).toContain('liveAcceptanceRequired:spec.liveAcceptanceRequired===true');
     expect(intake).toContain('parseLiveAcceptanceEvidence(comments');
+    expect(intake).toContain('comments?per_page=100&page=${lastPage}');
+    expect((intake.match(/objectiveCompletionGate\(row\.metadata\)/g)||[]).length).toBeGreaterThanOrEqual(2);
     expect(intake).toContain("update tigeriq_objectives set status='active'");
     expect(core).toContain('objectiveCompletionGate(o.metadata||{})');
     expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
