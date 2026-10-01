@@ -755,6 +755,20 @@ async function recordRoutingFaultClear(pool,data){
     return false;
   }
 }
+
+export function currentRevisionTerminalObjective(rows=[],spec={}){
+  const revision=String(spec?.sourceRevision||'');
+  const resourceScope=String(spec?.resourceScope||'');
+  if(!revision)return null;
+  return (Array.isArray(rows)?rows:[]).find((row)=>{
+    const status=String(row?.status||'').toLowerCase();
+    const metadata=row?.metadata||{};
+    return (status==='completed'||status==='blocked')
+      &&String(metadata?.sourceRevision||'')===revision
+      &&String(metadata?.resourceScope||'')===resourceScope;
+  })||null;
+}
+
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const rows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
@@ -782,6 +796,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       }
     }
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
+    const terminalRows=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 and status in ('completed','blocked') order by created_at desc limit 50",[String(spec.number)])).rows||[];
+    if(currentRevisionTerminalObjective(terminalRows,spec)){skipped++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     const roleClaimLabeled=hasExternalRoleClaimLabel(spec);
     const labeledWorker=externalRoleClaimedWorkerId(spec);
@@ -790,8 +806,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       skipped++;continue;
     }
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
-    const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true);
-    if(prior&&!sourceChanged&&!reopenedAfterCompletion){skipped++;continue;}
+    if(prior&&!sourceChanged){skipped++;continue;}
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
     if(externalClaim){
       if(!roleClaimLabeled||labeledWorker!==externalClaim.workerId){
