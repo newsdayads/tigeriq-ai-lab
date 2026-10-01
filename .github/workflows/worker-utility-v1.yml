@@ -5,6 +5,8 @@ on:
       - 'apps/worker-utility/**'
       - 'apps/chrome-controller/**'
       - 'tests/worker-utility-contract.test.ts'
+      - 'tests/chrome-controller-autonomy-hardening.test.ts'
+      - 'scripts/tigeriq-core/appchrome-zero-touch.ps1'
       - '.github/workflows/worker-utility-v1.yml'
   workflow_dispatch:
 jobs:
