@@ -1,0 +1,80 @@
+const STATUS_LABELS = Object.freeze({
+  PASS: 'ĐẠT',
+  DONE: 'HOÀN TẤT',
+  COMPLETED: 'HOÀN TẤT',
+  WORKING: 'ĐANG XỬ LÝ',
+  RUNNING: 'ĐANG XỬ LÝ',
+  READY: 'SẴN SÀNG',
+  QUEUED: 'ĐANG CHỜ',
+  WAITING: 'ĐANG CHỜ',
+  WAIT_RESOURCE: 'ĐANG CHỜ',
+  BLOCKED: 'BỊ CHẶN',
+  FAILED: 'LỖI',
+  ERROR: 'LỖI',
+  EXTERNAL_WAIT: 'CHỜ BÊN NGOÀI',
+  OWNER_APPROVAL_REQUIRED: 'CHỜ ANH SƠN DUYỆT',
+  READY_FOR_OWNER_APPROVAL: 'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT',
+  REVIEW: 'RÀ SOÁT',
+  VERIFY: 'XÁC MINH',
+  OPEN: 'MỞ',
+  PENDING: 'ĐANG CHỜ',
+});
+
+const OWNER_TERM_REPLACEMENTS = Object.freeze([
+  [/\bfinal review\b/gi, 'rà soát cuối'],
+  [/\bdeep cross-check\b/gi, 'kiểm tra chéo chuyên sâu'],
+  [/\blive acceptance\b/gi, 'nghiệm thu trực tiếp'],
+  [/\bcanary\b/gi, 'kiểm thử thực tế'],
+  [/\bfallback\b/gi, 'phương án dự phòng'],
+  [/\brouting\b/gi, 'định tuyến'],
+]);
+
+const STATUS_REPLACEMENTS = Object.freeze([
+  [/\bREADY_FOR_OWNER_APPROVAL\b/g, STATUS_LABELS.READY_FOR_OWNER_APPROVAL],
+  [/\bOWNER_APPROVAL_REQUIRED\b/g, STATUS_LABELS.OWNER_APPROVAL_REQUIRED],
+  [/\bEXTERNAL_WAIT\b/g, STATUS_LABELS.EXTERNAL_WAIT],
+  [/\bWAIT_RESOURCE\b/g, STATUS_LABELS.WAIT_RESOURCE],
+  [/\bCOMPLETED\b/g, STATUS_LABELS.COMPLETED],
+  [/\bWORKING\b/g, STATUS_LABELS.WORKING],
+  [/\bRUNNING\b/g, STATUS_LABELS.RUNNING],
+  [/\bWAITING\b/g, STATUS_LABELS.WAITING],
+  [/\bBLOCKED\b/g, STATUS_LABELS.BLOCKED],
+  [/\bFAILED\b/g, STATUS_LABELS.FAILED],
+  [/\bERROR\b/g, STATUS_LABELS.ERROR],
+  [/\bREADY\b/g, STATUS_LABELS.READY],
+  [/\bQUEUED\b/g, STATUS_LABELS.QUEUED],
+  [/\bPASS\b/g, STATUS_LABELS.PASS],
+  [/\bDONE\b/g, STATUS_LABELS.DONE],
+]);
+
+export function ownerStatusLabel(value = '') {
+  const key = String(value || '').trim().toUpperCase();
+  return STATUS_LABELS[key] || String(value || '').trim();
+}
+
+export function localizeOwnerFacingText(value = '') {
+  let text = String(value ?? '');
+  for (const [pattern, replacement] of OWNER_TERM_REPLACEMENTS) text = text.replace(pattern, replacement);
+  for (const [pattern, replacement] of STATUS_REPLACEMENTS) text = text.replace(pattern, replacement);
+  return text;
+}
+
+export function ownerFacingWorkRow(row) {
+  if (!row || typeof row !== 'object') return row;
+  const statusCode = String(row.status || '').trim();
+  const localized = {
+    ...row,
+    ...(statusCode ? { statusCode, status: ownerStatusLabel(statusCode) } : {}),
+  };
+  if (typeof localized.waitReason === 'string') localized.waitReason = localizeOwnerFacingText(localized.waitReason);
+  if (typeof localized.currentStep === 'string') localized.currentStep = localizeOwnerFacingText(localized.currentStep);
+  if (typeof localized.detail === 'string') localized.detail = localizeOwnerFacingText(localized.detail);
+  return localized;
+}
+
+export function containsBareEnglishOwnerStatus(value = '') {
+  const text = String(value || '');
+  return /\b(?:PASS|DONE|COMPLETED|WORKING|RUNNING|READY|QUEUED|WAITING|WAIT_RESOURCE|BLOCKED|FAILED|ERROR|EXTERNAL_WAIT|OWNER_APPROVAL_REQUIRED|READY_FOR_OWNER_APPROVAL)\b/.test(text);
+}
+
+export const OWNER_STATUS_LABELS = STATUS_LABELS;
