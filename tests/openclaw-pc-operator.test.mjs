@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import {
   assertShellCommandAllowed,
   assertTigerIQTaskName,
+  trustedTigerIQTaskActionData,
   parseTaskListCsv,
   assertWritePathAllowed,
   resolveOperatorPath,
@@ -77,6 +78,15 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('limits scheduled-task actions to TigerIQ task names', () => {
     expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
     expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
+  });
+
+  it('trusts task-action data only when every required subprocess completed successfully', () => {
+    const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
+    expect(trustedTigerIQTaskActionData('task_start',{taskName:'TigerIQ Core 24x7',...ok})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:ok,started:ok})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:{...ok,exitCode:1},started:ok})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:ok,started:{...ok,timedOut:true}})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName:'Not TigerIQ',...ok})).toBe(false);
   });
 
   it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
