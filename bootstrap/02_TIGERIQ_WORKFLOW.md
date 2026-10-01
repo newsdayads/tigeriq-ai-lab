@@ -212,7 +212,7 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 
 ## 18. Invariant cho Owner‑facing references
 
-- Tất cả các tham chiếu **Owner‑facing** phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#12 - Kiểm tra bảo mật`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
+- Tất cả các tham chiếu **Owner‑facing** phải tuân theo định dạng bắt buộc `#<số> - <Tên việc>` (ví dụ: `#1664 - [P1][QUẢN TRỊ] Bắt buộc hiển thị #xxxx - Tên việc cho Owner`) cho mọi ngữ cảnh hiển thị trực tiếp cho anh Sơn hoặc trong Work Order/Issue/PR/báo cáo.
 - Vi phạm định dạng sẽ gây lỗi kiểm tra và ngăn không cho PR được merge.
 
 ## 19. Regression test cho bare references
