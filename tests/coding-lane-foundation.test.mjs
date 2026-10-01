@@ -709,9 +709,9 @@ test('review changes deterministically return to same-PR repair and retest befor
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
   assert.ok(run.includes("const reviewAction=reviewReworkDecision(review,reviewCycle,{maxCycles:3})"));
-  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,reviewAction.issues"));
-  assert.ok(run.includes("status=$4 where id=$1"));
-  assert.ok(run.includes("reviewAction.nextStatus"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues"));
+  assert.ok(run.includes("reviewAction.nextStatus!=='waiting_ci'"));
+  assert.ok(run.includes("status='waiting_ci'"));
 });
 
 test('runJob wires authoritative GitHub context into generation, review, and repairs',()=>{
