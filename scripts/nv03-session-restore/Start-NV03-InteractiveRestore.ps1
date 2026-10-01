@@ -31,6 +31,7 @@ if ($state -eq 'SCOPE_MISMATCH') {
   throw 'NV03_SCOPE_MISMATCH_REFUSE_MUTATION'
 }
 
+$preserveInteractiveChrome=($state -eq 'CHROME_INTERACTIVE_SIDECAR_MISSING')
 if ($state -eq 'WRONG_WINDOWS_SESSION') {
   Stop-Nv03ScopedRuntime -Snapshot $snapshot -WrongSessionOnly
   Start-Sleep -Seconds 2
@@ -39,22 +40,26 @@ if ($state -eq 'WRONG_WINDOWS_SESSION') {
   Start-Sleep -Seconds 1
 }
 
-if (Get-Nv03PortOwner -Port 9223) { throw 'NV03_PORT_9223_STILL_BUSY' }
+if (-not $preserveInteractiveChrome) {
+  if (Get-Nv03PortOwner -Port 9223) { throw 'NV03_PORT_9223_STILL_BUSY' }
+}
 if (Get-Nv03PortOwner -Port 8823) { throw 'NV03_PORT_8823_STILL_BUSY' }
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir|Out-Null
-$chromeArgs=@(
-  '--remote-debugging-port=9223',
-  "--user-data-dir=$UserDataDir",
-  "--profile-directory=`"$ProfileDirectory`"",
-  "--window-position=$WindowLeft,$WindowTop",
-  "--window-size=$WindowWidth,$WindowHeight",
-  '--no-first-run',
-  '--new-window',
-  $HomeUrl
-)
-Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs
-[void](Wait-Nv03Port -Port 9223 -Seconds 25)
+if (-not $preserveInteractiveChrome) {
+  $chromeArgs=@(
+    '--remote-debugging-port=9223',
+    "--user-data-dir=$UserDataDir",
+    "--profile-directory=`"$ProfileDirectory`"",
+    "--window-position=$WindowLeft,$WindowTop",
+    "--window-size=$WindowWidth,$WindowHeight",
+    '--no-first-run',
+    '--new-window',
+    $HomeUrl
+  )
+  Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs
+  [void](Wait-Nv03Port -Port 9223 -Seconds 25)
+}
 
 $out=Join-Path $RuntimeDir 'sidecar.out.log'
 $err=Join-Path $RuntimeDir 'sidecar.err.log'
@@ -76,5 +81,6 @@ if ($finalState -ne 'HEALTHY_INTERACTIVE') {
   sidecarPid=$final.sidecar.pid
   sidecarSessionId=$final.sidecar.sessionId
   ports=@(9223,8823)
+  preservedInteractiveChrome=$preserveInteractiveChrome
   window=@{left=$WindowLeft;top=$WindowTop;width=$WindowWidth;height=$WindowHeight}
 }|ConvertTo-Json -Depth 8 -Compress
