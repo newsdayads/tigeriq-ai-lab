@@ -96,6 +96,14 @@ export const OWNER_PRESENTATION_ICONS = Object.freeze({
   NEXT: '➡️',
 });
 
+export const OWNER_ALLOWED_ICONS = Object.freeze(Object.values(OWNER_PRESENTATION_ICONS));
+
+export function containsUnapprovedOwnerIcon(value = '') {
+  let text = String(value ?? '');
+  for (const icon of OWNER_ALLOWED_ICONS) text = text.split(icon).join('');
+  return /\p{Extended_Pictographic}/u.test(text);
+}
+
 const VI_STATUS_ICON = Object.freeze({
   'ĐẠT': OWNER_PRESENTATION_ICONS.COMPLETED,
   'HOÀN TẤT': OWNER_PRESENTATION_ICONS.COMPLETED,
@@ -175,6 +183,7 @@ export function validateOwnerFacingOutput({ text = '', progress = null, evidence
   const value = String(text || '');
   const hasPercent = value.includes('%') && /\d/.test(value);
   if (containsBareEnglishOwnerStatus(value)) defects.push('BARE_ENGLISH_STATUS');
+  if (containsUnapprovedOwnerIcon(value)) defects.push('UNAPPROVED_ICON');
   if (hasPercent && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
   if (evidenceFresh === false && hasPercent) defects.push('STALE_PROGRESS_VISIBLE');
   if (canonicalRefsResolved === false) defects.push('UNRESOLVED_WORK_REFERENCE');
