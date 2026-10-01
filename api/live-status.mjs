@@ -3,6 +3,7 @@ import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs'
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson } from '../apps/tigeriq-core/github-shared-client.mjs';
+import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -633,7 +634,7 @@ export function projectExternalRoleClaims(base = {}, issues = []) {
       state: 'working',
       status: 'ĐANG LÀM',
       job: `#${issue.number} - ${String(issue.title || '')}`,
-      detail: 'External role claim · GitHub canonical label',
+      detail: 'Đã có nhân sự ngoài Core nhận việc · nhãn GitHub canonical',
       currentJobId: `GH-${issue.number}`,
       updatedAt: issue.updated_at || worker?.updatedAt || null,
       source: 'GitHub external role claim',
@@ -1205,16 +1206,16 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
-      openWork,
+      openWork: openWork.map(ownerFacingWorkRow),
       openSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
-      )),
-      nextQueue,
+      )).map(ownerFacingWorkRow),
+      nextQueue: nextQueue.map(ownerFacingWorkRow),
       nextQueueTotal: rankedQueue.length,
-      nextExecutable,
-      recentWork,
+      nextExecutable: nextExecutable ? ownerFacingWorkRow(nextExecutable) : null,
+      recentWork: recentWork.map(ownerFacingWorkRow),
       workProjection: {
         mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
@@ -1275,7 +1276,7 @@ export function sanitizeRuntimePayload(payload) {
     },
     summary,
     workers,
-    activeWork: runtimeWorkRows(workers),
+    activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
     nextQueue: [],
     nextQueueTotal: 0,
     recentWork: [],
@@ -1388,7 +1389,7 @@ export default async function handler(req, res) {
     const value = await buildLiveStatus();
     value.liveConnected = false;
     value.mode = 'github-fallback';
-    value.authority = 'GitHub/Registry fallback';
+    value.authority = 'GitHub/Registry dự phòng';
     value.refreshSeconds = 5;
     value.liveReason = liveError;
     value.staleAll = false;
@@ -1413,7 +1414,7 @@ export default async function handler(req, res) {
       mode: 'unavailable',
       authority: 'Không có nguồn live',
       generatedAt: new Date().toISOString(),
-      reason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      reason: localizeOwnerFacingText(liveError || String(error instanceof Error ? error.message : error).slice(0, 120)),
       summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
       workers: [],
       activeWork: [],
