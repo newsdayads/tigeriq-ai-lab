@@ -118,7 +118,7 @@ export function evaluateSelfAudit(snapshot={},{
   const watchdog=snapshot.watchdog||{};
   const updaterKnown=typeof watchdog.updaterHealthy==='boolean';
   const watchdogKnown=typeof watchdog.watchdogHealthy==='boolean';
-  if(updaterKnown||watchdogKnown)evaluatedContracts.add('UPDATER_WATCHDOG_HEALTH');
+  if(updaterKnown&&watchdogKnown)evaluatedContracts.add('UPDATER_WATCHDOG_HEALTH');
   if((updaterKnown&&watchdog.updaterHealthy!==true)||(watchdogKnown&&watchdog.watchdogHealthy!==true)){
     anomalies.push(anomaly('UPDATER_WATCHDOG_HEALTH','runtime',{
       updaterHealthy:updaterKnown?watchdog.updaterHealthy:null,
