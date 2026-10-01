@@ -1566,10 +1566,10 @@ function jobEligibleSinceMs(job,nowMs=Date.now()){
 
 async function collectSelfAuditSnapshot(store=pool){
   const now=Date.now();
-  const [queueJobsResult,idleResourcesResult,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows]=await Promise.all([
-    store.query(`select j.id,j.status,j.capability,j.kind,j.routing_profile,j.created_at,j.next_attempt_at,o.metadata,
+  const [queueJobsResult,idleResourcesResult,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows,functionalRows]=await Promise.all([
+    store.query(`select j.id,j.objective_id,j.status,j.capability,j.kind,j.routing_profile,j.created_at,j.next_attempt_at,o.metadata as objective_metadata,
       coalesce((select max(e.ts) from tigeriq_events e where e.job_id=j.id
-        and e.type in ('JOB_LEASE_RECOVERED','CAMPAIGN_PHASE_EVIDENCE_REQUEUED','RESOURCE_WAIT_RELEASED')),j.created_at) as last_eligible_transition
+        and e.type in ('JOB_LEASE_RECOVERED','CAMPAIGN_PHASE_EVIDENCE_REQUEUED','RESOURCE_WAIT_QUEUED')),j.created_at) as last_eligible_transition
       from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active'`),
@@ -1581,19 +1581,22 @@ async function collectSelfAuditSnapshot(store=pool){
       exists(select 1 from tigeriq_ai_resources r where r.current_job_id=j.id)
       or exists(select 1 from tigeriq_resources r2 where r2.current_job_id=j.id) as resource_still_bound
       from tigeriq_jobs j
-      where j.status in ('done','failed') and j.completed_at is not null and j.completed_at>=now()-interval '24 hours'
-      order by j.completed_at desc limit 250`),
+      where j.status in ('done','failed') and j.completed_at is not null
+      order by j.completed_at desc`),
     store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,
       r.health_state,r.credential_state,r.cooldown_until
       from tigeriq_jobs j left join tigeriq_ai_resources r on r.resource_id=j.resource_id
       where j.status in ('dispatching','running') and j.resource_id is not null`),
     store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,o.metadata
       from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
-      where j.kind='github_review' and j.status in ('running','done') and j.created_at>=now()-interval '7 days'
-      order by j.created_at desc limit 200`),
+      where j.kind='github_review' and j.status in ('running','done')
+      order by j.created_at desc`),
     store.query(`select id,status,metadata from tigeriq_objectives
       where status='completed' and metadata ? 'dependencyGateRequired'
       order by updated_at desc`),
+    store.query(`select signature,contract_id,severity from tigeriq_self_audit_anomalies
+      where status='OPEN' and contract_id<>'SERVICE_FUNCTIONAL_INTEGRITY'
+      order by last_seen_at desc`),
   ]);
 
   const queueJobs=queueJobsResult.rows||[];
@@ -1604,11 +1607,22 @@ async function collectSelfAuditSnapshot(store=pool){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
     const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
-    const targetWorker=String(job.metadata?.targetWorker||'').trim().toUpperCase();
-    const candidateResources=targetWorker
-      ? idleResources.filter(resource=>String(resource.employee_id||'').trim().toUpperCase()===targetWorker)
-      : idleResources;
-    const decision=rankCandidates(candidateResources,{profile,capability,taskKind,nowMs:now});
+    const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
+    const employeeAllowlist=taskKind==='github_api_autowork'
+      ? new Set(['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'])
+      : null;
+    const reviewerResourceIds=capability==='review'?new Set(await reviewerResourceIdsForJob(job)):new Set();
+    const candidateResources=idleResources.filter(resource=>{
+      const employeeId=String(resource.employee_id||'').trim().toUpperCase();
+      const resourceId=String(resource.resource_id||'').trim();
+      if(targetWorker&&employeeId!==targetWorker)return false;
+      if(employeeAllowlist&&!employeeAllowlist.has(employeeId))return false;
+      if(reviewerResourceIds.has(resourceId))return false;
+      return true;
+    });
+    const decision=rankCandidates(candidateResources,{
+      profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now
+    });
     const eligible=decision.candidates.filter(x=>x.eligible);
     if(!eligible.length)continue;
     dispatchableJobs.push(job);
@@ -1635,9 +1649,10 @@ async function collectSelfAuditSnapshot(store=pool){
   const expectedSha=String(process.env.TIGERIQ_EXPECTED_SOURCE_SHA||runtimeSourceState?.gateSha||updaterState?.gateSha||runtimeSourceState?.currentSha||'').trim();
   const installedSha=String(process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA||updaterState?.installedSha||runtimeSourceState?.currentSha||'').trim();
 
-  const preflight=runExecutionPreflight({state:{status:'running',runtimeIsolation:true}});
-  const functionalFailures=preflight.ok?[]:(Array.isArray(preflight.errors)?preflight.errors:[preflight.errors])
-    .filter(Boolean).map(x=>typeof x==='string'?x:JSON.stringify(x)).slice(0,20);
+  const functionalFailures=(functionalRows.rows||[])
+    .map(row=>`${String(row.contract_id||'UNKNOWN')}:${String(row.signature||'')}`)
+    .filter(Boolean)
+    .slice(0,20);
 
   const bootstrapFresh=bootstrapState?selfAuditStateFresh(bootstrapState,now):false;
   const updaterFresh=updaterState?selfAuditStateFresh(updaterState,now):false;
