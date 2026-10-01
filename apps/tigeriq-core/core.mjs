@@ -1281,17 +1281,17 @@ async function managerTick() {
     const transition=campaignTransition({status:decision.status,currentPhase,phases});
     if(transition.action==='blocked'){await pool.query("update tigeriq_objectives set status='blocked',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;}
     if(transition.action==='complete'){
+      if(phases.length){
+        const handoff=await persistTerminalHandoff(o,decision,currentPhase);
+        if(handoff.action==='waiting_children'||handoff.action==='coding_handoff_ready')return;
+        if(handoff.action==='repeated_completed')await event('AUTONOMOUS_HANDOFF_DEDUPED_COMPLETE',{objectiveId:o.id,generationKey:handoff.generationKey,phaseIndex:currentPhase});
+      }
       const completionGate=objectiveCompletionGate(o.metadata||{});
       if(!completionGate.allow){
         const summary='completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
         await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
         await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason});
         return;
-      }
-      if(phases.length){
-        const handoff=await persistTerminalHandoff(o,decision,currentPhase);
-        if(handoff.action==='waiting_children'||handoff.action==='coding_handoff_ready')return;
-        if(handoff.action==='repeated_completed')await event('AUTONOMOUS_HANDOFF_DEDUPED_COMPLETE',{objectiveId:o.id,generationKey:handoff.generationKey,phaseIndex:currentPhase});
       }
       await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
       await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});
