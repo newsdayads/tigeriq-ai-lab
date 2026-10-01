@@ -151,6 +151,40 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(presentation.order).toEqual(['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO']);
   });
 
+  it('hard-loads Interaction #504 for every new chat and registers all Owner surfaces', () => {
+    const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
+    const sourceIndex = readFileSync(new URL('../bootstrap/06_TIGERIQ_SOURCE_INDEX.md', import.meta.url), 'utf8');
+    expect(loader).toContain('OWNER INTERACTION HARD-LOAD V1');
+    expect(loader).toContain('Luôn đọc Interaction Policy #504 trước phản hồi Owner đầu tiên');
+    expect(sourceIndex).toContain('Interaction #504 bắt buộc mọi NEW CHAT');
+    expect(OWNER_SURFACE_REGISTRY).toEqual([
+      'DIRECT_CHAT_NEW_CHAT',
+      'CORE_GITHUB_COMMENTS',
+      'NV_API_OUTPUT',
+      'UI_WORKER_OUTPUT',
+      'CODING_LANE_SUMMARY',
+      'QUEUE_CHECKPOINT_HANDOFF_REPORT',
+      'TIGERIQ_LIVE_WEB_CONTROL',
+      'AUTOMATION_NOTICE',
+    ]);
+  });
+
+  it('renders verified progress only from evidence-backed numerator/denominator', () => {
+    const row = ownerFacingWorkRow({
+      status: 'WORKING',
+      progress: { passed: 3, total: 5, verified: true },
+      currentStep: 'final review READY',
+    });
+    expect(row.statusIcon).toBe('⚙️');
+    expect(row.progressPresentation.text).toBe('██████░░░░ 60%');
+
+    const stale = ownerFacingWorkRow({
+      status: 'WORKING',
+      progress: { passed: 3, total: 5, stale: true },
+    });
+    expect(stale.progressPresentation).toBeUndefined();
+  });
+
   it('routes Coding Lane Owner comments through the shared presentation gate', () => {
     expect(ownerCodingComment('[CLAIM] job READY')).toBe('⚙️ [TIẾP NHẬN] job SẴN SÀNG');
     expect(ownerCodingComment('[RESULT] job DONE')).toBe('✅ [KẾT QUẢ] job HOÀN TẤT');
