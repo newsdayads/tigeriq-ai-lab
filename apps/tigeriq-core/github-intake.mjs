@@ -54,15 +54,19 @@ export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',final
   const rows=Array.isArray(comments)?[...comments].reverse():[];
   for(const comment of rows){
     const body=String(comment?.body||'');
-    if(!hasExactFlag(body,'LIVE_ACCEPTANCE_PASS'))continue;
+    const pass=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS');
+    const explicitFail=hasExactFlag(body,'LIVE_ACCEPTANCE_PASS','false')||hasExactFlag(body,'DONE','false');
+    if(!pass&&!explicitFail)continue;
     const revision=(bodyValue(body,'SOURCE_REVISION')||bodyValue(body,'LIVE_ACCEPTANCE_SOURCE_REVISION')).trim();
-    if(revision!==expected)continue;
+    if(revision&&revision!==expected)continue;
+    if(explicitFail)return {accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:comment?.id??null};
+    if(revision!==expected)return {accepted:false,reason:'live_acceptance_revision_missing',commentId:comment?.id??null};
     let reviewer=null;
     if(finalReviewRequired===true){
       const verdict=(bodyValue(body,'FINAL_LIVE_REVIEW')||bodyValue(body,'FINAL_REVIEW')).toUpperCase();
       reviewer=bodyValue(body,'FINAL_LIVE_REVIEWER').toUpperCase();
       const independent=hasExactFlag(body,'FINAL_REVIEWER_DIFFERENT_FROM_IMPLEMENTER')||hasExactFlag(body,'FINAL_LIVE_REVIEWER_DIFFERENT_FROM_IMPLEMENTER');
-      if(verdict!=='PASS'||!/^NV\d{2}$/.test(reviewer)||!independent)continue;
+      if(verdict!=='PASS'||!/^NV\d{2}$/.test(reviewer)||!independent)return {accepted:false,reason:'final_live_review_missing_or_not_independent',commentId:comment?.id??null};
     }
     return {accepted:true,revision,reviewer,commentId:comment?.id??null};
   }
@@ -242,7 +246,7 @@ export function parseExecutableIssue(issue){
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE'),
     liveAcceptanceRequired:hasExactFlag(body,'LIVE_ACCEPTANCE_REQUIRED'),
-    finalReviewRequired:hasExactFlag(body,'FINAL_REVIEW_REQUIRED'),
+    finalReviewRequired:hasExactFlag(body,'FINAL_REVIEW_REQUIRED')||hasExactFlag(body,'FINAL_LIVE_REVIEW_REQUIRED'),
     admissionMode:legacyExecutable?'LEGACY_EXECUTION_FLAGS':'SAFE_P1_P5_POLICY',
     requiresCodingHandoff,
   };
