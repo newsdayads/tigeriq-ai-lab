@@ -126,11 +126,12 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
 export function isManualOnlyAppChromeMaintenance(title,body){
   const t=String(title||'');
   const b=String(body||'');
-  if(isBoundedAppChromeRequestOnly(b))return false;
   return /\[APP-CHROME\]/i.test(t)
     || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(b)
     || /^ALLOW_PATH_PREFIX=apps\/chrome-controller(?:\/|$)/mi.test(b)
-    || /apps\/chrome-controller\//i.test(b);
+    || /apps\/chrome-controller\//i.test(b)
+    || /^APP_CHROME_REQUEST_ONLY=true$/mi.test(b)
+    || /appchrome-install-request\.json/i.test(b);
 }
 
 const SAFE_AUTO_WORK_PRIORITIES=new Set(['P1','P2','P3','P4','P5']);

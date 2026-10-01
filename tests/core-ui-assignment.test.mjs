@@ -58,6 +58,15 @@ test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(selectCoreUiWorker('research'),'NV04');
 });
 
+test('Core UI never assigns App Chrome LOCAL-only work',()=>{
+  const byScope=issue(205,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=APP_CHROME_REPAIR'),'Local boundary');
+  const byTitle=issue(206,safe(['CAPABILITY=research']),'[P1][APP-CHROME] local repair');
+  const byPath=issue(207,safe(['CAPABILITY=review'])+'\nSOURCE_PATH=apps/chrome-controller/direct-cdp-bridge.mjs','Local path');
+  assert.equal(parseCoreUiIssue(byScope),null);
+  assert.equal(parseCoreUiIssue(byTitle),null);
+  assert.equal(parseCoreUiIssue(byPath),null);
+});
+
 test('Core can assign NV03 and NV04 concurrently while NV02 remains external',async()=>{
   const pool=fakePool();
   const issues=[

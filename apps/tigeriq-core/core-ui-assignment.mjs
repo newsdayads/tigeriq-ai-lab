@@ -30,6 +30,7 @@ export function parseCoreUiIssue(issue){
   const classification=classifyWorkOrder(body);
   if(classification.route!=='UI'||!WORKERS.includes(String(classification.workerId||'')))return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
+  if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
   const number=Number(issue.number);if(!Number.isInteger(number)||number<=0)return null;
   return {
     number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,title:clean(issue.title),url:String(issue.html_url||''),

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent,isProtectedControlPlanePath,protectedControlPlanePaths} from '../apps/shared/control-plane-lock.mjs';
+import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent,isAppChromeLocalOnlyPath,isProtectedControlPlanePath,protectedControlPlanePaths} from '../apps/shared/control-plane-lock.mjs';
 import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {validateManagerJobPaths} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
@@ -34,6 +34,14 @@ describe('Control Plane independent repair guard v34',()=>{
     ]) expect(isProtectedControlPlanePath(path)).toBe(true);
     expect(isProtectedControlPlanePath('apps/dashboard/server.ts')).toBe(false);
     expect(protectedControlPlanePaths(['apps/dashboard/server.ts','apps/tigeriq-core/core.mjs'])).toEqual(['apps/tigeriq-core/core.mjs']);
+  });
+
+  it('hard-denies App Chrome repository mutation even through delegated repair',()=>{
+    expect(isAppChromeLocalOnlyPath('apps/chrome-controller/direct-cdp-bridge.mjs')).toBe(true);
+    expect(isAppChromeLocalOnlyPath('scripts/tigeriq-core/appchrome-zero-touch.ps1')).toBe(true);
+    const delegated={delegated:true,ownerProxy:'NV02',independentRepair:true,executorClass:'CODING_LANE'};
+    expect(()=>assertExecutionPlaneMutationPaths(['apps/chrome-controller/direct-cdp-bridge.mjs'],delegated)).toThrow(/APP_CHROME_EXTERNAL_LOCAL_ONLY/);
+    expect(()=>validateManagerJobPaths({status:'continue',job:{paths:['apps/chrome-controller/direct-cdp-bridge.mjs']}},[],delegated)).toThrow();
   });
 
   it('still fails closed for ordinary protected mutations',()=>{

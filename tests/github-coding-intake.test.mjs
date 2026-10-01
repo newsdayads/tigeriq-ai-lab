@@ -130,6 +130,21 @@ describe('GitHub coding intake guard',()=>{
     expect(parseCodingIssue(issue(SAFE,{state:'closed'}))).toBeNull();
   });
 
+  it('rejects App Chrome from Coding Lane regardless of owner-proxy delegation',()=>{
+    const delegated=`${SAFE}
+OWNER_PROXY=NV02
+AUTO_CONTROL_REPAIR=true
+INDEPENDENT_REPAIR_REQUIRED=true
+RESOURCE_SCOPE=APP_CHROME_LOCAL_REPAIR
+ALLOW_PATH_PREFIX=apps/chrome-controller/,tests/`;
+    expect(parseCodingIssue(issue(delegated,{title:'[P1][APP-CHROME] repair'}))).toBeNull();
+    const request=`${SAFE}
+RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE
+APP_CHROME_REQUEST_ONLY=true
+ALLOW_PATH_PREFIX=tests/`;
+    expect(parseCodingIssue(issue(request))).toBeNull();
+  });
+
   it('parses explicit target employee and existing PR resume metadata only when valid',()=>{
     const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
     expect(parseCodingRouteMetadata(`TARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`)).toEqual({

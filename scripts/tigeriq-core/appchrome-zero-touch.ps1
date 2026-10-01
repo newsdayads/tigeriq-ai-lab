@@ -5,6 +5,11 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+
+# App Chrome is external LOCAL-only. TigerIQ/Core/GitHub must never deploy or mutate it.
+[pscustomobject]@{action='none';reason='APP_CHROME_EXTERNAL_LOCAL_ONLY';source='OWNER_TO_VY_DIRECT_LOCAL_PC01'} | ConvertTo-Json -Compress
+exit 0
+
 $controller='http://127.0.0.1:8798'
 $bridge='http://127.0.0.1:8799'
 $requestPath=Join-Path $StateRoot 'appchrome-install-request.json'

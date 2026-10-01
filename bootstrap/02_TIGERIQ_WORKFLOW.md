@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.7
+Version: 3.8
 Status: Source of Truth
 Priority: P0
-Updated: 2026-09-27
+Updated: 2026-10-01
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -238,3 +238,13 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Core tiếp tục tự động điều phối P1–P5 cho các resource chuyên dụng thuộc Core: API workers/Coding Lane, `NV06/OpenClaw`, và các resource khác đúng capability/health.
 - App Chrome là continuity transport cục bộ riêng cho `NV02/NV03/NV04`; không được dùng Core assignment hoặc GitHub backlog scan làm điều kiện gửi continue.
 - P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.
+
+
+## 20.1. App Chrome LOCAL-only — ranh giới cứng
+- App Chrome là hệ **LOCAL-only trên PC01**. Nguồn triển khai hiện hành và runtime authority nằm tại `D:\TigerIQ\Apps\ChromeController\LocalOnly\Current`; marker ranh giới là `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
+- GitHub/Core/Coding Lane/OpenClaw/automation **KHÔNG được** tạo Work Order, claim, route, sửa, đóng gói, deploy, restart hoặc tự phục hồi source/runtime/config/controller của App Chrome.
+- Mọi `RESOURCE_SCOPE=APP_CHROME_*`, tiêu đề `[APP-CHROME]`, path `apps/chrome-controller/**` hoặc request `appchrome-install-request.json` phải fail-closed ở hệ điều phối.
+- Khi anh Sơn giao sửa App Chrome, đường thực thi duy nhất là **Owner → Vy trực tiếp → PC01 local**: backup local → sửa local → publish local → kiểm thử local → rollback nếu lỗi → lưu evidence local.
+- GitHub vẫn là authority cho **công việc/quyền/role của NV02, NV03, NV04 và phần TigerIQ ngoài App Chrome**; GitHub không còn là source/deploy authority cho bản thân App Chrome.
+- Source App Chrome còn nằm trong repository chỉ là **frozen historical mirror**, không được dùng làm nguồn deploy hay căn cứ tự động mutation.
+- Ngoại lệ này không nới quyền cho bất kỳ actor nào khác: system chỉ được READ/OBSERVE App Chrome nếu cần dashboard; mutation App Chrome từ system luôn bị cấm.
