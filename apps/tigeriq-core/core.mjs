@@ -1567,7 +1567,7 @@ function jobEligibleSinceMs(job,nowMs=Date.now()){
 async function collectSelfAuditSnapshot(store=pool){
   const now=Date.now();
   const [queueJobsResult,idleResourcesResult,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows]=await Promise.all([
-    store.query(`select j.id,j.status,j.capability,j.kind,j.routing_profile,j.created_at,j.next_attempt_at,
+    store.query(`select j.id,j.status,j.capability,j.kind,j.routing_profile,j.created_at,j.next_attempt_at,o.metadata,
       coalesce((select max(e.ts) from tigeriq_events e where e.job_id=j.id
         and e.type in ('JOB_LEASE_RECOVERED','CAMPAIGN_PHASE_EVIDENCE_REQUEUED','RESOURCE_WAIT_RELEASED')),j.created_at) as last_eligible_transition
       from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
@@ -1604,7 +1604,11 @@ async function collectSelfAuditSnapshot(store=pool){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
     const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
-    const decision=rankCandidates(idleResources,{profile,capability,taskKind,nowMs:now});
+    const targetWorker=String(job.metadata?.targetWorker||'').trim().toUpperCase();
+    const candidateResources=targetWorker
+      ? idleResources.filter(resource=>String(resource.employee_id||'').trim().toUpperCase()===targetWorker)
+      : idleResources;
+    const decision=rankCandidates(candidateResources,{profile,capability,taskKind,nowMs:now});
     const eligible=decision.candidates.filter(x=>x.eligible);
     if(!eligible.length)continue;
     dispatchableJobs.push(job);
@@ -1639,7 +1643,7 @@ async function collectSelfAuditSnapshot(store=pool){
   const updaterFresh=updaterState?selfAuditStateFresh(updaterState,now):false;
   const updaterService=Array.isArray(bootstrapState?.services)?bootstrapState.services.find(x=>String(x?.key||'').toLowerCase()==='updater'):null;
   const updaterResult=String(updaterState?.result||'').toUpperCase();
-  const updaterFailed=['FAILED','BLOCKED_DIRTY_RUNTIME'].includes(updaterResult);
+  const updaterFailed=['FAILED','BLOCKED_DIRTY_RUNTIME','GITHUB_TOKEN_MISSING','GITHUB_TOKEN_EMPTY'].includes(updaterResult);
   const updaterHealthy=updaterState||updaterService
     ? Boolean((!updaterState||updaterFresh)&&(!updaterService||(bootstrapFresh&&updaterService.healthy===true))&&!updaterFailed)
     : undefined;
