@@ -61,6 +61,15 @@ export function apiDoctorExistingHandoffAction({
   return {action:'wait_repair',reason:'post_repair_validation_budget_exhausted'};
 }
 
+export function apiDoctorCurrentFailure(events=[]){
+  for(const row of Array.isArray(events)?events:[]){
+    const type=String(row?.type||'');
+    if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK')return null;
+    if(type==='RESOURCE_FAILURE'||type==='RESOURCE_PROBE_FAIL')return row;
+  }
+  return null;
+}
+
 export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass){
   if(!handoff)return false;
   const handoffClass=safeText(handoff?.data?.failureClass||'',64).toLowerCase();
