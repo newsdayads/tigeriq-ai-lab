@@ -61,6 +61,14 @@ export function apiDoctorExistingHandoffAction({
   return {action:'wait_repair',reason:'post_repair_validation_budget_exhausted'};
 }
 
+export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass){
+  if(!handoff)return false;
+  const handoffClass=safeText(handoff?.data?.failureClass||'',64).toLowerCase();
+  const current=safeText(currentFailureClass||'',64).toLowerCase();
+  if(!handoffClass||!current)return false;
+  return handoffClass===current;
+}
+
 export function apiDoctorRepairSignature({employeeId,provider,failureClass,message}={}){
   const normalized=safeText(message,180).toLowerCase().replace(/\d+/g,'#').replace(/\s+/g,' ');
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
