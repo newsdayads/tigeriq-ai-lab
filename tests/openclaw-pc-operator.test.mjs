@@ -80,13 +80,22 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
   });
 
-  it('trusts task-action data only when every required subprocess completed successfully', () => {
+  it('trusts task-action data only with literal subprocess success and verified post-action state', () => {
+    const taskName='TigerIQ Core 24x7';
     const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
-    expect(trustedTigerIQTaskActionData('task_start',{taskName:'TigerIQ Core 24x7',...ok})).toBe(true);
-    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:ok,started:ok})).toBe(true);
-    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:{...ok,exitCode:1},started:ok})).toBe(false);
-    expect(trustedTigerIQTaskActionData('task_restart',{taskName:'TigerIQ Core 24x7',stopped:ok,started:{...ok,timedOut:true}})).toBe(false);
-    expect(trustedTigerIQTaskActionData('task_start',{taskName:'Not TigerIQ',...ok})).toBe(false);
+    const running={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0'};
+    const ready={taskName,state:'Ready',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0'};
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,...ok,verification:running})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,...ok,verification:ready})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_stop',{taskName,...ok,verification:ready})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:{...ok,exitCode:1},started:ok,verification:running})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:{...ok,timedOut:true},verification:running})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,exitCode:null,timedOut:false,verification:running})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,exitCode:false,timedOut:false,verification:running})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,exitCode:0,verification:running})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName,...ok})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_start',{taskName:'Not TigerIQ',...ok,verification:running})).toBe(false);
   });
 
   it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
