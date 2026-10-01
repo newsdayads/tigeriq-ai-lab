@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -38,6 +38,36 @@ describe('GitHub Core intake guardrails',()=>{
     expect(objectiveCompletionGate({finalReviewRequired:true,sourceRevision:'current-revision',finalReviewPass:false})).toMatchObject({allow:false,reason:'final_review_pending'});
   });
 
+
+  it('keeps source revision stable across lifecycle state_reason changes but changes on title/body edits',()=>{
+    const issue={number:1,title:'A',body:'BODY',state_reason:null};
+    const revision=githubIssueSourceRevision(issue);
+    expect(githubIssueSourceRevision({...issue,state_reason:'reopened'})).toBe(revision);
+    expect(githubIssueSourceRevision({...issue,state_reason:'completed'})).toBe(revision);
+    expect(githubIssueSourceRevision({...issue,body:'BODY2'})).not.toBe(revision);
+    expect(githubIssueSourceRevision({...issue,title:'B'})).not.toBe(revision);
+  });
+
+  it('tracks implementation completion plus employee/resource identity and rejects same-employee reviewer',async()=>{
+    const implPool={async query(){return {rows:[
+      {id:'J1',status:'done',employee_id:'NV12',resource_id:'res-a',completed_at:'2026-10-01T00:00:00Z'},
+      {id:'J2',status:'running',employee_id:'NV11',resource_id:'res-b',completed_at:null},
+    ]};}};
+    const context=await implementationReviewContext(implPool,{objectiveId:'OBJ',metadata:{implementerEmployeeId:'NV02'},sourceBody:'IMPLEMENTER_EMPLOYEE=NV10'});
+    expect(context.implementationTerminal).toBe(false);
+    expect(context.blockingJobs).toEqual(['J2']);
+    expect(context.implementerEmployeeIds.sort()).toEqual(['NV02','NV10','NV11','NV12'].sort());
+    expect(context.implementerResourceIds.sort()).toEqual(['res-a','res-b']);
+    expect(context.fingerprint).toMatch(/^[a-f0-9]{16}$/);
+
+    const reviewPool={async query(q,params=[]){
+      expect(params[0]).toBe(finalLiveReviewJobId('OBJ','11',context.fingerprint));
+      return {rows:[{id:params[0],status:'done',employee_id:'NV12',resource_id:'res-review',provider:'gemini',result:{reviewEvidence:{decision:'PASS',targetHead:'abc1234'}}}]};
+    }};
+    const terminal={...context,implementationTerminal:true,blockingJobs:[]};
+    await expect(trustedFinalLiveReviewEvidence(reviewPool,{objectiveId:'OBJ',sourceRevision:'abc1234',evidenceKey:'11',implementationContext:terminal}))
+      .resolves.toMatchObject({accepted:false,reason:'trusted_reviewer_not_independent',employeeId:'NV12',resourceId:'res-review'});
+  });
 
   it('keeps labels outside sourceRevision while carrying them for lifecycle projection',()=>{
     const a=parseExecutableIssue({...base,labels:[]});
@@ -281,12 +311,15 @@ describe('GitHub Core intake guardrails',()=>{
     const sourceIssue={number:2659,state:'open',state_reason:null,title:'live gate',comments:1,body:'LIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'};
     const revision=githubIssueSourceRevision(sourceIssue);
     const row={id:'OBJ-GH-2659-Rcurrent',status:'completed',summary:'ready for live gate',metadata:{source:'github',issueNumber:2659,githubClaimReported:true,githubResultReported:false,sourceRevision:revision,liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptanceCommentCount:0}};
-    const reviewJobId=finalLiveReviewJobId(row.id,11);
+    let trustedJobId='';
     const pool={async query(q,params=[]){
       if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
       if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){Object.assign(row.metadata,JSON.parse(params[1]));return {rowCount:1,rows:[]};}
-      if(q.includes('select distinct resource_id from tigeriq_jobs'))return {rowCount:1,rows:[{resource_id:'res-implementer'}]};
-      if(q.includes("capability='review' and kind='github_review'"))return {rowCount:1,rows:[{id:reviewJobId,status:'done',employee_id:'NV12',resource_id:'res-review',provider:'gemini',result:{reviewEvidence:{schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision:'PASS',targetHead:revision,summary:'live pass',findings:'NONE'}}}]};
+      if(q.includes("select id,status,employee_id,resource_id,completed_at from tigeriq_jobs"))return {rowCount:1,rows:[{id:'JOB-IMPL',status:'done',employee_id:'NV02',resource_id:'res-implementer',completed_at:'2026-10-01T00:00:00Z'}]};
+      if(q.includes("capability='review' and kind='github_review'")){
+        trustedJobId=String(params[0]||'');
+        return {rowCount:1,rows:[{id:trustedJobId,status:'done',employee_id:'NV12',resource_id:'res-review',provider:'gemini',result:{reviewEvidence:{schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision:'PASS',targetHead:revision,summary:'live pass',findings:'NONE'}}}]};
+      }
       return {rowCount:0,rows:[]};
     }};
     const calls=[];
@@ -299,7 +332,57 @@ describe('GitHub Core intake guardrails',()=>{
     };
     await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
     expect(calls).toEqual(['comments-get','result-comment','close-issue','clear-label']);
-    expect(row.metadata).toMatchObject({liveAcceptancePass:true,liveAcceptanceRevision:revision,liveAcceptanceEvidenceCommentId:11,finalReviewPass:true,finalReviewRevision:revision,finalReviewJobId:reviewJobId,finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review',githubResultReported:true,githubClosed:true});
+    expect(row.metadata).toMatchObject({liveAcceptancePass:true,liveAcceptanceRevision:revision,liveAcceptanceEvidenceCommentId:11,finalReviewPass:true,finalReviewRevision:revision,finalReviewJobId:trustedJobId,finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review',githubResultReported:true,githubClosed:true});
+    expect(row.metadata.finalReviewImplementationFingerprint).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it('queues standalone final review without requiring LIVE_ACCEPTANCE_PASS',async()=>{
+    const sourceIssue={number:2660,state:'open',state_reason:null,title:'final review only',comments:0,body:'FINAL_REVIEW_REQUIRED=true'};
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const row={id:'OBJ-GH-2660',status:'completed',summary:'implementation complete',metadata:{source:'github',issueNumber:2660,githubClaimReported:true,githubResultReported:false,sourceRevision:revision,finalReviewRequired:true,liveAcceptanceCommentCount:-1}};
+    const inserted=[];
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){Object.assign(row.metadata,JSON.parse(params[1]));return {rowCount:1,rows:[]};}
+      if(q.includes("select id,status,employee_id,resource_id,completed_at from tigeriq_jobs"))return {rowCount:0,rows:[]};
+      if(q.includes("capability='review' and kind='github_review'"))return {rowCount:0,rows:[]};
+      if(q.includes("insert into tigeriq_jobs")){inserted.push(params[0]);return {rowCount:1,rows:[]};}
+      if(q.includes("select status,attempts,max_attempts from tigeriq_jobs"))return {rowCount:1,rows:[{status:'queued',attempts:0,max_attempts:2}]};
+      if(q.includes("update tigeriq_objectives set status='active'")){row.status='active';row.summary=params[1];return {rowCount:1,rows:[]};}
+      return {rowCount:0,rows:[]};
+    }};
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues/2660/comments?'))return new Response(JSON.stringify([]),{status:200,headers:{'content-type':'application/json'}});
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toContain('FINAL-LIVE-REVIEW-SOURCE-');
+    expect(row.status).toBe('active');
+    expect(row.metadata).toMatchObject({finalReviewPass:false,finalReviewRevision:null});
+    expect(row.metadata.finalReviewJobId).toBe(inserted[0]);
+  });
+
+  it('does not queue final review while implementation jobs are non-terminal',async()=>{
+    const sourceIssue={number:2662,state:'open',state_reason:null,title:'pending impl',comments:1,body:'LIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'};
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const row={id:'OBJ-GH-2662',status:'completed',summary:'premature complete',metadata:{source:'github',issueNumber:2662,githubClaimReported:true,githubResultReported:false,sourceRevision:revision,liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptanceCommentCount:0}};
+    let reviewInsert=0;
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){Object.assign(row.metadata,JSON.parse(params[1]));return {rowCount:1,rows:[]};}
+      if(q.includes("select id,status,employee_id,resource_id,completed_at from tigeriq_jobs"))return {rowCount:1,rows:[{id:'JOB-IMPL',status:'running',employee_id:'NV02',resource_id:'res-impl',completed_at:null}]};
+      if(q.includes("insert into tigeriq_jobs")){reviewInsert++;return {rowCount:1,rows:[]};}
+      if(q.includes("update tigeriq_objectives set status='active'")){row.status='active';return {rowCount:1,rows:[]};}
+      return {rowCount:0,rows:[]};
+    }};
+    const fetchImpl=async(url)=>url.includes('/comments?')
+      ? new Response(JSON.stringify([{id:30,body:`LIVE_ACCEPTANCE_PASS=true\nSOURCE_REVISION=${revision}`}]),{status:200,headers:{'content-type':'application/json'}})
+      : new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(reviewInsert).toBe(0);
+    expect(row.status).toBe('active');
+    expect(row.metadata).toMatchObject({liveAcceptancePass:true,finalReviewPass:false,finalReviewJobId:null});
   });
 
   it('fails closed on source-policy lookup errors before terminal result publication',async()=>{
@@ -606,6 +689,9 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain('githubIssueSourceRevision(sourceIssueForGate||{})');
     expect(intake).toContain('trustedFinalLiveReviewEvidence(pool');
     expect(intake).toContain("kind='github_review'");
+    expect(intake).toContain("status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null");
+    expect(intake).toContain('const evidenceRows=[...(selected?[selected]:[]),...recent]');
+    expect(intake).toContain("row.status||'').toLowerCase()!=='done'");
     expect(intake).toContain('liveAcceptanceCommentCount:(spec.liveAcceptanceRequired===true||spec.finalReviewRequired===true)?-1:spec.commentCount');
     expect(core).toContain("set manager_cycles=0,summary=$2");
     expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
