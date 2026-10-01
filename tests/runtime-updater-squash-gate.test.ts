@@ -15,7 +15,7 @@ describe('runtime updater squash merge gate resolution',()=>{
 
   it('stages Web Control bootstrap files before Web-only restart and after rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain("$webRuntime='D:\\TigerIQ\\Runtime\\WebControl24x7'");
+    expect(src).toContain("else{'D:\\TigerIQ\\Runtime\\WebControl24x7'}");
     expect(src).toContain('function Sync-WebRuntime');
     expect(src).toContain("src='apps\\tigeriq-core\\web-control-server.mjs'");
     expect(src).toContain("src='apps\\tigeriq-core\\web-control-truth.js'");
@@ -52,7 +52,7 @@ describe('runtime updater squash merge gate resolution',()=>{
 
   it('isolates runtime source from the developer worktree with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain("$controlRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
+    expect(src).toContain("else{'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'}");
     expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
     expect(src).toContain('worktree add --detach $runtimeRepo $targetSha');
     expect(src).toContain('git -C $runtimeRepo status --porcelain');
