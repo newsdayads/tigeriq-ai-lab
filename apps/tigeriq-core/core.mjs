@@ -8,7 +8,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
-import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -1545,13 +1545,35 @@ function getDynamicMaxParallel() {
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 
+const CORE_RUNTIME_UPDATER_STATE=process.env.TIGERIQ_CORE_RUNTIME_UPDATER_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-updater.json';
+const CORE_RUNTIME_SOURCE_STATE=process.env.TIGERIQ_CORE_RUNTIME_SOURCE_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-source.json';
+const BOOTSTRAP_WATCHDOG_STATE=process.env.TIGERIQ_BOOTSTRAP_WATCHDOG_STATE?.trim()||'D:\\TigerIQ\\State\\bootstrap-watchdog.json';
+const SELF_AUDIT_STATE_FRESH_MS=Math.max(60000,Number(process.env.TIGERIQ_SELF_AUDIT_STATE_FRESH_MS||300000));
+
+function readSelfAuditJsonState(path){
+  try{return JSON.parse(readFileSync(path,'utf8'));}catch{return null;}
+}
+function selfAuditStateFresh(state,nowMs=Date.now()){
+  const ts=Date.parse(String(state?.updatedAt||state?.updated_at||''));
+  return Number.isFinite(ts)&&nowMs-ts>=0&&nowMs-ts<=SELF_AUDIT_STATE_FRESH_MS;
+}
+function jobEligibleSinceMs(job,nowMs=Date.now()){
+  const values=[job?.created_at,job?.last_eligible_transition];
+  if(String(job?.status||'').toLowerCase()==='waiting_resource')values.push(job?.next_attempt_at);
+  const parsed=values.map(x=>x?Date.parse(String(x)):NaN).filter(x=>Number.isFinite(x)&&x<=nowMs);
+  return parsed.length?Math.max(...parsed):nowMs;
+}
+
 async function collectSelfAuditSnapshot(store=pool){
-  const [queueRow,idleRow,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows]=await Promise.all([
-    store.query(`select count(*)::int as count,min(j.created_at) as oldest
+  const now=Date.now();
+  const [queueJobsResult,idleResourcesResult,activeRow,terminalRows,assignmentRows,reviewRows,objectiveRows]=await Promise.all([
+    store.query(`select j.id,j.status,j.capability,j.kind,j.routing_profile,j.created_at,j.next_attempt_at,
+      coalesce((select max(e.ts) from tigeriq_events e where e.job_id=j.id
+        and e.type in ('JOB_LEASE_RECOVERED','CAMPAIGN_PHASE_EVIDENCE_REQUEUED','RESOURCE_WAIT_RELEASED')),j.created_at) as last_eligible_transition
       from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active'`),
-    store.query(`select count(*)::int as count from tigeriq_ai_resources
+    store.query(`select * from tigeriq_ai_resources
       where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE')
         and current_job_id is null and (cooldown_until is null or cooldown_until<=now())`),
     store.query("select count(*)::int as count from tigeriq_jobs where status in ('dispatching','running')"),
@@ -1570,11 +1592,26 @@ async function collectSelfAuditSnapshot(store=pool){
       where j.kind='github_review' and j.status in ('running','done') and j.created_at>=now()-interval '7 days'
       order by j.created_at desc limit 200`),
     store.query(`select id,status,metadata from tigeriq_objectives
-      where status='completed' and updated_at>=now()-interval '7 days'
-      order by updated_at desc limit 250`),
+      where status='completed' and metadata ? 'dependencyGateRequired'
+      order by updated_at desc`),
   ]);
-  const oldest=queueRow.rows[0]?.oldest?new Date(queueRow.rows[0].oldest).getTime():Date.now();
-  const now=Date.now();
+
+  const queueJobs=queueJobsResult.rows||[];
+  const idleResources=idleResourcesResult.rows||[];
+  const dispatchableJobs=[];
+  const eligibleResourceIds=new Set();
+  for(const job of queueJobs){
+    const capability=String(job.capability||'general');
+    const taskKind=String(job.kind||'general');
+    const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
+    const decision=rankCandidates(idleResources,{profile,capability,taskKind,nowMs:now});
+    const eligible=decision.candidates.filter(x=>x.eligible);
+    if(!eligible.length)continue;
+    dispatchableJobs.push(job);
+    for(const candidate of eligible)eligibleResourceIds.add(candidate.resourceId);
+  }
+  const oldestEligibleMs=dispatchableJobs.length?Math.min(...dispatchableJobs.map(job=>jobEligibleSinceMs(job,now))):now;
+
   const reviews=reviewRows.rows.map(row=>{
     const m=row.metadata||{};
     const employeeIds=[...(Array.isArray(m.finalReviewImplementerEmployeeIds)?m.finalReviewImplementerEmployeeIds:[]),...(Array.isArray(m.implementerEmployeeIds)?m.implementerEmployeeIds:[]),m.implementerEmployeeId].filter(Boolean);
@@ -1587,14 +1624,33 @@ async function collectSelfAuditSnapshot(store=pool){
     dependencyGatePass:row.metadata?.dependencyGatePass===true,
     dependencyGateReason:row.metadata?.dependencyGateReason||null,
   })).filter(x=>x.dependencyGateRequired);
-  const expectedSha=String(process.env.TIGERIQ_EXPECTED_SOURCE_SHA||process.env.GITHUB_SHA||'').trim();
-  const installedSha=String(process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA||'').trim();
+
+  const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
+  const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const bootstrapState=readSelfAuditJsonState(BOOTSTRAP_WATCHDOG_STATE);
+  const expectedSha=String(process.env.TIGERIQ_EXPECTED_SOURCE_SHA||runtimeSourceState?.gateSha||updaterState?.gateSha||runtimeSourceState?.currentSha||'').trim();
+  const installedSha=String(process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA||updaterState?.installedSha||runtimeSourceState?.currentSha||'').trim();
+
+  const preflight=runExecutionPreflight({state:{status:'running',runtimeIsolation:true}});
+  const functionalFailures=preflight.ok?[]:(Array.isArray(preflight.errors)?preflight.errors:[preflight.errors])
+    .filter(Boolean).map(x=>typeof x==='string'?x:JSON.stringify(x)).slice(0,20);
+
+  const bootstrapFresh=bootstrapState?selfAuditStateFresh(bootstrapState,now):false;
+  const updaterFresh=updaterState?selfAuditStateFresh(updaterState,now):false;
+  const updaterService=Array.isArray(bootstrapState?.services)?bootstrapState.services.find(x=>String(x?.key||'').toLowerCase()==='updater'):null;
+  const updaterResult=String(updaterState?.result||'').toUpperCase();
+  const updaterFailed=['FAILED','BLOCKED_DIRTY_RUNTIME'].includes(updaterResult);
+  const updaterHealthy=updaterState||updaterService
+    ? Boolean((!updaterState||updaterFresh)&&(!updaterService||(bootstrapFresh&&updaterService.healthy===true))&&!updaterFailed)
+    : undefined;
+  const watchdogHealthy=bootstrapState?bootstrapFresh:undefined;
+
   return {
     queue:{
-      eligibleBacklogCount:Number(queueRow.rows[0]?.count||0),
-      eligibleIdleWorkers:Number(idleRow.rows[0]?.count||0),
+      eligibleBacklogCount:dispatchableJobs.length,
+      eligibleIdleWorkers:eligibleResourceIds.size,
       activeWorkCount:Number(activeRow.rows[0]?.count||0),
-      backlogStableForMs:Math.max(0,now-oldest),
+      backlogStableForMs:Math.max(0,now-oldestEligibleMs),
     },
     terminalJobs:terminalRows.rows.map(row=>({
       id:row.id,status:row.status,leaseUntil:row.lease_until||null,resourceStillBound:row.resource_still_bound===true,
@@ -1607,16 +1663,23 @@ async function collectSelfAuditSnapshot(store=pool){
     reviews,
     dependencies,
     runtime:{expectedSha,installedSha},
-    service:{healthy:true,functionalFailures:[]},
+    service:{healthy:true,functionalFailures},
     watchdog:{
-      ...(process.env.TIGERIQ_UPDATER_HEALTH?{updaterHealthy:process.env.TIGERIQ_UPDATER_HEALTH==='PASS'}:{}),
-      ...(process.env.TIGERIQ_WATCHDOG_HEALTH?{watchdogHealthy:process.env.TIGERIQ_WATCHDOG_HEALTH==='PASS'}:{}),
+      ...(typeof updaterHealthy==='boolean'?{updaterHealthy}:{}),
+      ...(typeof watchdogHealthy==='boolean'?{watchdogHealthy}:{}),
     },
   };
 }
 
 async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldownMs=10*60*1000}={}){
-  let materialized=0,deduped=0;
+  let materialized=0,deduped=0,resolved=0;
+  const openRows=(await store.query("select signature,status,last_materialized_at,count from tigeriq_self_audit_anomalies where status='OPEN'")).rows||[];
+  const toResolve=anomalyResolutionSignatures(openRows,result.anomalies);
+  for(const signature of toResolve){
+    await store.query("update tigeriq_self_audit_anomalies set status='RESOLVED' where signature=$1",[signature]);
+    await event('SELF_AUDIT_RESOLVED',{signature});
+    resolved++;
+  }
   for(const a of result.anomalies){
     const existing=(await store.query('select signature,status,last_materialized_at,count from tigeriq_self_audit_anomalies where signature=$1',[a.signature])).rows[0]||null;
     const decision=anomalyMaterializationDecision(existing,a,{nowMs,cooldownMs});
@@ -1632,8 +1695,8 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
       await event('SELF_AUDIT_ANOMALY',{signature:a.signature,contractId:a.contractId,severity:a.severity,key:a.key,evidence:a.evidence,materializationReason:decision.reason});
     }else deduped++;
   }
-  await event('SELF_AUDIT_SCAN',{contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized,deduped});
-  return {materialized,deduped};
+  await event('SELF_AUDIT_SCAN',{contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized,deduped,resolved});
+  return {materialized,deduped,resolved};
 }
 
 export async function runSelfAuditScan({store=pool,nowMs=Date.now()}={}){
@@ -1658,7 +1721,7 @@ export async function startSelfCheck(runtime={}){
     lastLightAudit=now;
     const healthMetrics={ok:true,uptimeSec:Math.floor(process.uptime()),timestamp:new Date(now).toISOString()};
     try{
-      if(typeof store.persist==='function'&&typeof store.query!=='function')await store.persist('SELF_CHECK_LIGHT',healthMetrics);
+      if(typeof store.persist==='function')await store.persist('SELF_CHECK_LIGHT',healthMetrics);
       else await store.query("insert into tigeriq_events(type,data) values($1,$2)",['SELF_CHECK_LIGHT',JSON.stringify(healthMetrics)]);
     }catch(err){console.error(JSON.stringify({event:'SELF_CHECK_LIGHT_ERROR',error:String(err?.message||err)}));}
   }
@@ -1666,7 +1729,7 @@ export async function startSelfCheck(runtime={}){
     activeDeepAudit=true;lastDeepAudit=now;
     try{
       if(typeof runtime.audit==='function')await runtime.audit();
-      else if(typeof store.persist==='function'&&typeof store.query!=='function'){
+      else if(typeof store.persist==='function'){
         await store.persist('SELF_CHECK_DEEP',{ok:true,auditType:'expected-behavior',contractCount:SELF_AUDIT_CONTRACTS.length,timestamp:new Date(now).toISOString()});
       }else await runSelfAuditScan({store,nowMs:now});
     }catch(err){console.error(JSON.stringify({event:'SELF_CHECK_DEEP_ERROR',error:String(err?.message||err)}));}
