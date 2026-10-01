@@ -595,6 +595,7 @@ function Sync-WebRuntime(){
   New-Item -ItemType Directory -Path $webRuntime -Force|Out-Null
   $files=@(
     @{src='apps\tigeriq-core\web-control-server.mjs';dst='web-control-server.mjs'},
+    @{src='apps\tigeriq-core\owner-facing-vietnamese.mjs';dst='owner-facing-vietnamese.mjs'},
     @{src='apps\tigeriq-core\web-control-truth.js';dst='web-control-truth.js'},
     @{src='apps\tigeriq-core\web-control.html';dst='web-control.html'},
     @{src='scripts\tigeriq-core\run-web-control-bundle.ps1';dst='run-web-control-bundle.ps1'}
@@ -655,7 +656,7 @@ function Runtime-Watchdog(){
   return @{ok=(@($events|Where-Object{-not $_.healthy}).Count-eq 0);updaterRunning=$true;services=$events;checkedAt=(Get-Date).ToUniversalTime().ToString('o')}
 }
 function Get-Impact([string[]]$paths){
-  $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
+  $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
   $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
   $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw)

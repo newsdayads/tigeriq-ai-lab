@@ -111,4 +111,10 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(source).toContain("bucket=ownerStatusLabel('WORKING')");
     expect(source).not.toContain("bucket='BLOCKED'");
   });
+
+  it('packages the shared Vietnamese renderer into isolated Web Control runtime', () => {
+    const source = readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("@{src='apps\\tigeriq-core\\owner-facing-vietnamese.mjs';dst='owner-facing-vietnamese.mjs'}");
+    expect(source).toContain("$_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs'");
+  });
 });
