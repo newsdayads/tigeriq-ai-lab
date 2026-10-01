@@ -124,7 +124,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue({...legacy,title:'[P0] title-only marker',body:legacy.body.replace('PRIORITY=P0','PRIORITY=P1')})).toBeNull();
   });
 
-  it('allows only explicitly bounded App Chrome request-state work through protected-scope filtering',()=>{
+  it('excludes every App Chrome request or mutation after LOCAL-only migration',()=>{
     const boundedBody=[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator',
       'APP_CHROME_REQUEST_ONLY=true','RESOURCE_SCOPE=APP_CHROME_DEPLOY_REQUEST_STATE',
@@ -133,9 +133,7 @@ describe('GitHub Core intake guardrails',()=>{
       'Then use tigeriq_pc file_read on the same path.','ACCEPTANCE','PASS',
     ].join('\n');
     expect(isBoundedAppChromeRequestOnly(boundedBody)).toBe(true);
-    expect(parseExecutableIssue({...base,number:1881,title:'[P1][OPENCLAW] request only',body:boundedBody})).toMatchObject({
-      number:1881,priority:'P1',sourcePriority:'P1',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'APP_CHROME_DEPLOY_REQUEST_STATE'
-    });
+    expect(parseExecutableIssue({...base,number:1881,title:'[P1][OPENCLAW] request only',body:boundedBody})).toBeNull();
     const mutation=boundedBody.replace('APP_CHROME_REQUEST_ONLY=true\n','').replace('ASSIGNED_ACTION\nUse tigeriq_pc file_write only:','ALLOW_PATH_PREFIX=apps/chrome-controller/\nASSIGNED_ACTION\nUse tigeriq_pc file_write only:');
     expect(parseExecutableIssue({...base,number:1882,title:'[APP-CHROME] mutation',body:mutation})).toBeNull();
   });
