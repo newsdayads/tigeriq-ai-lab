@@ -1,13 +1,14 @@
 # CURRENT OVERRIDE — APP CHROME LOCAL-ONLY — 2026-10-01
 
-- App Chrome đã tách khỏi TigerIQ/GitHub execution plane và chạy từ local authority trên PC01: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Current`.
-- Marker ranh giới local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
+- App Chrome đã tách khỏi TigerIQ/GitHub execution plane. Source authority local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Source`; deploy đang chạy được trỏ bởi `D:\TigerIQ\Apps\ChromeController\Runtime\active-deploy.json`.
+- Marker ranh giới local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`; publisher local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Publish-Local.ps1`.
 - GitHub/Core/Coding Lane/OpenClaw/automation không được tạo việc, route, claim, đóng gói, deploy, sửa source/runtime/config/controller hoặc tự phục hồi App Chrome.
 - Khi Owner giao sửa App Chrome, đường duy nhất là Owner → Vy trực tiếp → PC01 local; backup, sửa, xuất bản, kiểm thử và bằng chứng đều local.
 - GitHub vẫn quản lý policy/role/work của NV02/NV03/NV04 và phần TigerIQ ngoài App Chrome; nó không còn là source/deploy authority cho App Chrome.
 - Source App Chrome còn trong repository là frozen historical mirror, không phải runtime authority.
-- Live migration cùng boot đã xác minh controller và bridge đều chạy từ `LocalOnly\Current`, cùng baseline head đã copy local và provenance bridge hợp lệ.
-- Work Order App Chrome cũ phải được đóng/superseded khỏi queue; trạng thái auth của từng worker nếu còn lỗi được xử lý như local runtime condition, không tạo App Chrome Work Order mới.
+- Local publisher đã xuất bản thành công head local `d3212b055d8cd9138b86fb2c99b7d8cbec4a9d4a`; controller/bridge/broker cùng chạy từ release local và bridge provenance hợp lệ.
+- Sau publish, NV02/NV03/NV04 đều reachable, trạng thái READY, `authRequired=false`, `utilityPaused=false`.
+- Work Order App Chrome cũ phải được đóng/superseded khỏi queue; điều kiện runtime từng worker nếu phát sinh được xử lý local, không tạo App Chrome Work Order mới.
 
 STATE: `CURRENT_20261001_APP_CHROME_LOCAL_ONLY`
 
