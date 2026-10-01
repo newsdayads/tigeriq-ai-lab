@@ -57,6 +57,68 @@ function coreUiRearmEpoch(body=''){
   }
   return latest;
 }
+const MAX_EXACT_CONTEXT_FILES=20;
+const MAX_EXACT_CONTEXT_PATCH_CHARS=24000;
+function targetPrNumber(body=''){
+  const raw=String(value(body,'TARGET_PR')||'').trim();
+  const match=raw.match(/#?(\d{1,8})/);
+  return match?Number(match[1]):null;
+}
+function targetHeadSha(body=''){
+  const raw=String(value(body,'TARGET_HEAD')||'').trim();
+  return /^[a-f0-9]{40}$/i.test(raw)?raw.toLowerCase():'';
+}
+function boundedPatchFiles(files=[]){
+  let remaining=MAX_EXACT_CONTEXT_PATCH_CHARS;
+  const out=[];
+  for(const file of (Array.isArray(files)?files:[]).slice(0,MAX_EXACT_CONTEXT_FILES)){
+    const filename=clean(file?.filename||'unknown');
+    const status=clean(file?.status||'modified');
+    const raw=String(file?.patch||'');
+    const patch=raw.slice(0,Math.max(0,remaining));
+    remaining-=patch.length;
+    out.push(['FILE='+filename,'STATUS='+status,'PATCH_BEGIN',patch||'[PATCH_UNAVAILABLE]','PATCH_END'].join('\n'));
+    if(remaining<=0)break;
+  }
+  return out;
+}
+export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,repo=REPO,token='',spec}={}){
+  const body=String(spec?.body||'');
+  const targetPr=targetPrNumber(body);
+  const rawTargetHead=String(value(body,'TARGET_HEAD')||'').trim();
+  const targetHead=targetHeadSha(body);
+  if(!targetPr&&!rawTargetHead)return {required:false,ok:true,bundle:'',targetPr:null,targetHead:null};
+  if(!targetPr)return {required:true,ok:false,reason:'TARGET_PR_REQUIRED',targetPr:null,targetHead:rawTargetHead||null};
+  if(!targetHead)return {required:true,ok:false,reason:'TARGET_HEAD_REQUIRED_OR_INVALID',targetPr,targetHead:rawTargetHead||null};
+  let pr,files;
+  try{
+    pr=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/pulls/'+targetPr,token);
+    const actualHead=String(pr?.head?.sha||'').toLowerCase();
+    if(actualHead!==targetHead)return {required:true,ok:false,reason:'TARGET_HEAD_MISMATCH',targetPr,targetHead,actualHead};
+    files=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/pulls/'+targetPr+'/files?per_page=100',token);
+  }catch(error){
+    return {required:true,ok:false,reason:'EXACT_CONTEXT_LOAD_FAILED',targetPr,targetHead,error:String(error?.message||error)};
+  }
+  const patches=boundedPatchFiles(files);
+  const bundle=[
+    'EXACT_HEAD_CONTEXT_BEGIN',
+    'REPOSITORY='+owner+'/'+repo,
+    'TARGET_PR=#'+targetPr,
+    'TARGET_HEAD='+targetHead,
+    'PR_TITLE='+clean(pr?.title||''),
+    'PR_STATE='+clean(pr?.state||''),
+    'PR_BASE_SHA='+String(pr?.base?.sha||''),
+    'PR_HEAD_SHA='+String(pr?.head?.sha||''),
+    'PR_CHANGED_FILES='+String(pr?.changed_files??''),
+    'PR_ADDITIONS='+String(pr?.additions??''),
+    'PR_DELETIONS='+String(pr?.deletions??''),
+    'CONTEXT_FILE_LIMIT='+MAX_EXACT_CONTEXT_FILES,
+    'CONTEXT_PATCH_CHAR_LIMIT='+MAX_EXACT_CONTEXT_PATCH_CHARS,
+    ...patches,
+    'EXACT_HEAD_CONTEXT_END',
+  ].join('\n');
+  return {required:true,ok:true,targetPr,targetHead,bundle,fileCount:patches.length,truncated:Number(pr?.changed_files||0)>patches.length||String(bundle).length>=MAX_EXACT_CONTEXT_PATCH_CHARS};
+}
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
@@ -84,9 +146,10 @@ export function parseCoreUiIssue(issue){
   };
 }
 
-export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO){
+export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
   const guard='LÀM — NO YAPPING. Đây là Core assignment duy nhất đang hiệu lực. Không tự đổi việc/P0. Không MAIN/Production, không chi phí, không credential/security, không destructive.';
   const body='WORK_ORDER_BODY_BEGIN\n'+String(spec.body||'').slice(0,12000)+'\nWORK_ORDER_BODY_END';
+  const context=String(exactContext||'').trim();
   if(spec.workerId==='NV04'){
     const role=String(spec.capability||'').toLowerCase()==='review'?'INDEPENDENT_REVIEW':'DEEP_RESEARCH';
     return [
@@ -101,7 +164,8 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO){
       'REVIEW_ONLY='+(role==='INDEPENDENT_REVIEW'?'true':'false'),
       'MUTATION_ALLOWED=false',
       body,
-    ].join('\n');
+      context,
+    ].filter(Boolean).join('\n');
   }
   return [
     guard,
@@ -111,7 +175,8 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO){
     'RESOURCE_SCOPE='+spec.resourceScope,
     'YÊU CẦU: làm đúng Work Order/body bên dưới; không tự quét backlog; dòng cuối bắt buộc DONE hoặc BLOCKED hoặc EXTERNAL_WAIT.',
     body,
-  ].join('\n');
+    context,
+  ].filter(Boolean).join('\n');
 }
 
 function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
@@ -186,12 +251,14 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
     if(sameCoreUiRevision(prior,spec))continue;
     const ids=materializedCoreUiIds(spec,prior);
     if((await pool.query('select 1 from tigeriq_objectives where id=$1',[ids.objectiveId])).rowCount)continue;
+    const exactContext=await loadCoreUiExactHeadContext({fetchImpl,owner,repo,token,spec});
+    if(!exactContext.ok)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
     if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
     const materializedSpec={...spec,jobId:ids.jobId};
-    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision})]);
+    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo,exactContext.bundle),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null})]);
     await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[ids.objectiveId,ids.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null})]);
     return row(pool,{jobId:ids.jobId});
   }
