@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
+import { contextIssueRefs,currentRevisionTerminalObjective,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -501,6 +501,26 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubRateLimitCooldownMs(fallback,1000)).toBe(60000);
     const unrelated=Object.assign(new Error('Forbidden'),{status:403,rateLimitRemaining:'42'});
     expect(githubRateLimitCooldownMs(unrelated,1000)).toBe(0);
+  });
+
+  it('blocks terminal objectives from rematerializing at the same issue revision and resource scope',()=>{
+    const spec={sourceRevision:'rev-a',resourceScope:'SCOPE-A'};
+    const terminal=[
+      {id:'OBJ-GH-2730',status:'completed',metadata:{sourceRevision:'rev-a',resourceScope:'SCOPE-A',githubClosed:true}},
+      {id:'OBJ-GH-2730-Rold',status:'blocked',metadata:{sourceRevision:'rev-old',resourceScope:'SCOPE-A'}},
+    ];
+    expect(currentRevisionTerminalObjective(terminal,spec)?.id).toBe('OBJ-GH-2730');
+    expect(currentRevisionTerminalObjective(terminal,{...spec,sourceRevision:'rev-b'})).toBeNull();
+    expect(currentRevisionTerminalObjective(terminal,{...spec,resourceScope:'SCOPE-B'})).toBeNull();
+    expect(currentRevisionTerminalObjective([{status:'active',metadata:{sourceRevision:'rev-a',resourceScope:'SCOPE-A'}}],spec)).toBeNull();
+  });
+
+  it('does not use githubClosed as a same-revision rearm bypass',()=>{
+    const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(intake).toContain("status in ('completed','blocked')");
+    expect(intake).toContain('currentRevisionTerminalObjective(terminalRows,spec)');
+    expect(intake).not.toContain('const reopenedAfterCompletion=Boolean(prior?.metadata?.githubClosed===true)');
+    expect(intake).toContain('if(prior&&!sourceChanged){skipped++;continue;}');
   });
 
   it('dedupes unchanged Work Orders before loading role-claim comments on the 5s hot path',()=>{
