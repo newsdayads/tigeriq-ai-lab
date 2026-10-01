@@ -86,6 +86,18 @@ describe('Core Self-Audit expected behavior engine',()=>{
     expect(anomalyResolutionSignatures(existing,current,['AUTO_DISPATCH_CONTINUITY','RUNTIME_SOURCE_SHA'])).toEqual(['sig-b']);
   });
 
+  it('does not mark watchdog contract fully evaluated when one live signal is unknown',()=>{
+    const out=evaluateSelfAudit({watchdog:{watchdogHealthy:true}},{nowMs:now});
+    expect(out.evaluatedContractIds).not.toContain('UPDATER_WATCHDOG_HEALTH');
+    expect(ids(out)).not.toContain('UPDATER_WATCHDOG_HEALTH');
+  });
+
+  it('keeps a known watchdog failure materialized even when the peer signal is unknown',()=>{
+    const out=evaluateSelfAudit({watchdog:{updaterHealthy:false}},{nowMs:now});
+    expect(ids(out)).toContain('UPDATER_WATCHDOG_HEALTH');
+    expect(out.evaluatedContractIds).not.toContain('UPDATER_WATCHDOG_HEALTH');
+  });
+
   it('bounded synthetic canary detects two anomalies without queue mutation',()=>{
     const out=syntheticSelfAuditCanary({nowMs:now});
     expect(out.pass).toBe(true);
