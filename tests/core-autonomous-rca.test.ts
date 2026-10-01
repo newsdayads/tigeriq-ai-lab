@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
+// @ts-expect-error runtime module intentionally has no TS declaration file.
 import {
   AUTONOMOUS_RCA_TAXONOMY,
   classifyAutonomousRca,
