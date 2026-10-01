@@ -5,6 +5,11 @@ import {
   localizeOwnerFacingText,
   ownerFacingWorkRow,
   ownerStatusLabel,
+  ownerStatusIcon,
+  verifiedOwnerProgress,
+  ownerFacingPresentation,
+  validateOwnerFacingOutput,
+  OWNER_SURFACE_REGISTRY,
 } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 import { formatResultComment } from '../apps/tigeriq-core/github-intake.mjs';
 import {
@@ -116,5 +121,50 @@ describe('Owner-facing Vietnamese output gate', () => {
     const source = readFileSync(new URL('../scripts/tigeriq-core/update-core-runtime.ps1', import.meta.url), 'utf8');
     expect(source).toContain("@{src='apps\\tigeriq-core\\owner-facing-vietnamese.mjs';dst='owner-facing-vietnamese.mjs'}");
     expect(source).toContain("$_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs'");
+  });
+  it('enforces the shared compact presentation contract', () => {
+    expect(OWNER_SURFACE_REGISTRY).toHaveLength(8);
+    expect(ownerStatusIcon('DONE')).toBe('✅');
+    expect(ownerStatusIcon('WORKING')).toBe('⚙️');
+    expect(ownerStatusIcon('BLOCKED')).toBe('⚠️');
+    expect(ownerStatusIcon('OWNER_APPROVAL_REQUIRED')).toBe('🔒');
+
+    const progress = verifiedOwnerProgress({ passed: 7, total: 10, verified: true });
+    expect(progress).toMatchObject({ percent: 70, text: '███████░░░ 70%', verified: true });
+    expect(verifiedOwnerProgress({ passed: 7, total: 10, stale: true })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 10, conflicting: true })).toBeNull();
+    expect(verifiedOwnerProgress({ passed: 7, total: 0 })).toBeNull();
+
+    const presentation = ownerFacingPresentation({
+      status: 'WORKING',
+      result: 'final review PASS',
+      blocker: 'fallback WAITING',
+      nextAction: 'routing READY',
+      progress: { passed: 2, total: 4, verified: true },
+    });
+    expect(presentation.icon).toBe('⚙️');
+    expect(presentation.progress.text).toBe('█████░░░░░ 50%');
+    expect(presentation.result).toContain('rà soát cuối ĐẠT');
+    expect(presentation.blocker).toContain('phương án dự phòng ĐANG CHỜ');
+    expect(presentation.nextAction).toContain('định tuyến SẴN SÀNG');
+    expect(presentation.order).toEqual(['KẾT QUẢ', 'VƯỚNG', 'BƯỚC TIẾP THEO']);
+  });
+
+  it('fails closed on guessed/stale progress and bare machine status', () => {
+    expect(validateOwnerFacingOutput({ text: '⚙️ Đang làm 70%', progress: null }).defects)
+      .toContain('UNVERIFIED_PROGRESS_PERCENT');
+    expect(validateOwnerFacingOutput({
+      text: '███████░░░ 70%',
+      progress: { passed: 7, total: 10, stale: true },
+      evidenceFresh: false,
+    }).defects).toEqual(expect.arrayContaining(['UNVERIFIED_PROGRESS_PERCENT', 'STALE_PROGRESS_VISIBLE']));
+    expect(validateOwnerFacingOutput({ text: 'PASS READY', progress: null }).defects)
+      .toContain('BARE_ENGLISH_STATUS');
+    expect(validateOwnerFacingOutput({ text: '✅ HOÀN TẤT', canonicalRefsResolved: false }).defects)
+      .toContain('UNRESOLVED_WORK_REFERENCE');
+    expect(validateOwnerFacingOutput({
+      text: '✅ HOÀN TẤT ██████████ 100%',
+      progress: { passed: 4, total: 4, verified: true },
+    })).toMatchObject({ ok: true, defects: [] });
   });
 });
