@@ -159,6 +159,10 @@ describe('GitHub Core intake guardrails',()=>{
       present:true,valid:true,action:{action:'task_start',taskName:'TigerIQ Core Runtime Updater'},mutating:true
     });
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_start","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_restart","taskName":"TigerIQ Core 24x7"}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'task_restart',taskName:'TigerIQ Core 24x7'},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_restart","taskName":"TigerIQ Core 24x7"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_preflight"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'paperclip_lab_preflight'},mutating:false
     });
@@ -186,6 +190,8 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue({...base,body:[...basePc,'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"shell_exec"}'].join('\n')})).toBeNull();
     const direct=parseExecutableIssue({...base,body:[...basePc,'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_status","taskName":"TigerIQ Core Runtime Updater"}'].join('\n')});
     expect(direct.pcOperatorDirectAction).toEqual({action:'task_status',taskName:'TigerIQ Core Runtime Updater'});
+    const restart=parseExecutableIssue({...base,body:[...basePc,'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_restart","taskName":"TigerIQ Core 24x7"}'].join('\n')});
+    expect(restart).toMatchObject({capability:'pc_operator',pcOperatorDirectAction:{action:'task_restart',taskName:'TigerIQ Core 24x7'}});
   });
 
   it('accepts bounded NV06/OpenClaw pc_operator work with required safety flags',()=>{const parsed=parseExecutableIssue({...base,body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P1\nCAPABILITY=pc_operator\nOWNER_POLICY=AUTO\nOWNER_DIRECT=true\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRESOURCE_SCOPE=OPENCLAW_FAST_TEST\nASSIGNED_ACTION\ntigeriq_pc status\nACCEPTANCE\nPASS'});expect(parsed).toMatchObject({number:588,priority:'P1',capability:'pc_operator',dispatchLane:'PC_OPERATOR',resourceScope:'OPENCLAW_FAST_TEST'});});
