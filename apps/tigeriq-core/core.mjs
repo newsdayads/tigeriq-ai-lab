@@ -14,7 +14,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorExistingHandoffAction, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -680,7 +680,7 @@ async function runApiDoctorScan(){
   const actions=[];
   for(const resource of rows){
     const events=await apiDoctorRecentResourceEvents(resource.resource_id);
-    const latestFailure=events.find(x=>x.type==='RESOURCE_FAILURE'||x.type==='RESOURCE_PROBE_FAIL')||null;
+    const latestFailure=apiDoctorCurrentFailure(events);
     const workFailures=consecutiveWorkFailureEvidence(events);
     const repeatedSourceFailures=workFailures.filter(x=>classifyApiDoctorFailure({kind:x.data?.kind,message:x.data?.message})==='source_contract').length;
     const plan=apiDoctorAction({healthState:resource.health_state,credentialState:resource.credential_state,cooldownUntil:resource.cooldown_until,latestFailure:latestFailure?{kind:latestFailure.data?.kind,message:latestFailure.data?.message}:null,repeatedWorkFailures:repeatedSourceFailures});
@@ -691,11 +691,12 @@ async function runApiDoctorScan(){
       if(!await apiDoctorEventBySignature('API_DOCTOR_EXTERNAL_BLOCKED',signature))await event('API_DOCTOR_EXTERNAL_BLOCKED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass:plan.failureClass,reason:plan.reason});
       actions.push(row);continue;
     }
-    const existingHandoff=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
-    if(existingHandoff){
-      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,existingHandoff.ts])).rows[0];
-      const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
-      const handoffPlan=apiDoctorExistingHandoffAction({
+    const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
+    let handoffPlan=null;
+    if(handoffCandidate){
+      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,handoffCandidate.ts])).rows[0];
+      const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
+      handoffPlan=apiDoctorExistingHandoffAction({
         existingHandoff:true,
         successAfterHandoff:Boolean(successAfter),
         healthState:resource.health_state,
@@ -704,10 +705,18 @@ async function runApiDoctorScan(){
         maxValidationAttempts:2,
       });
       if(handoffPlan.action==='recovered'){
-        const signature=existingHandoff.data?.signature;
+        const signature=handoffCandidate.data?.signature;
         if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
         row.action='recovered';row.reason=handoffPlan.reason;row.recovered=true;actions.push(row);continue;
       }
+    }
+    const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
+    if(handoffCandidate&&!existingHandoff){
+      row.handoff='ignored_stale_failure_class';
+      row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
+    }
+    if(existingHandoff){
+      const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
       if(handoffPlan.action==='validate_repair'){
         row.action='validate_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;
         try{
@@ -736,6 +745,13 @@ async function runApiDoctorScan(){
       probeOk=Boolean(probe?.ok);
       row.probe='ok';
     }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
+    if(probeOk&&handoffCandidate&&!existingHandoff){
+      const staleSignature=String(handoffCandidate.data?.signature||'');
+      if(staleSignature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',staleSignature)){
+        await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature:staleSignature,evidence:'stale_failure_class_reprobe_success'});
+      }
+      row.staleHandoffRetired=true;
+    }
     if(plan.action==='probe_then_handoff'&&probeOk&&repeatedSourceFailures>=2){
       const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
       row.handoff=handoff.created?'created':'deduped';

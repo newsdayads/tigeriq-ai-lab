@@ -3,7 +3,9 @@ import {describe,expect,it} from 'vitest';
 import {
   API_DOCTOR_CAPABILITY,
   apiDoctorAction,
+  apiDoctorCurrentFailure,
   apiDoctorExistingHandoffAction,
+  apiDoctorHandoffMatchesFailureClass,
   apiDoctorRepairSignature,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -78,6 +80,30 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorExistingHandoffAction({existingHandoff:false,successAfterHandoff:false,nowMs:now})).toEqual({action:'proceed'});
   });
 
+  it('clears an older failure when newer success/probe evidence exists',()=>{
+    const oldFailure={type:'RESOURCE_FAILURE',data:{kind:'rate_limit',message:'HTTP_429'}};
+    expect(apiDoctorCurrentFailure([
+      {type:'RESOURCE_PROBE_OK',data:{}},
+      oldFailure,
+    ])).toBeNull();
+    expect(apiDoctorCurrentFailure([
+      {type:'RESOURCE_SUCCESS',data:{}},
+      oldFailure,
+    ])).toBeNull();
+    expect(apiDoctorCurrentFailure([
+      {type:'RESOURCE_PROBE_FAIL',data:{kind:'rate_limit'}},
+      {type:'RESOURCE_PROBE_OK',data:{}},
+      oldFailure,
+    ])).toMatchObject({type:'RESOURCE_PROBE_FAIL'});
+  });
+
+  it('does not let an old source-contract handoff suppress a newer expired rate-limit reprobe',()=>{
+    const oldHandoff={data:{failureClass:'source_contract',signature:'NV11|groq|source_contract|invalid_response'}};
+    expect(apiDoctorHandoffMatchesFailureClass(oldHandoff,'rate_limit')).toBe(false);
+    expect(apiDoctorHandoffMatchesFailureClass(oldHandoff,'source_contract')).toBe(true);
+    expect(apiDoctorHandoffMatchesFailureClass({data:{}},'rate_limit')).toBe(false);
+  });
+
   it('uses a stable dedupe signature for the same provider/failure class',()=>{
     const a=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12'});
     const b=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 77'});
@@ -134,6 +160,12 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("row.action='wait_repair'");
     expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
+    expect(core).toContain("apiDoctorCurrentFailure(events)");
+    expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
+    expect(core).toContain("row.handoff='ignored_stale_failure_class'");
+    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=apiDoctorHandoffMatchesFailureClass"));
+    expect(core).toContain("evidence:'stale_failure_class_reprobe_success'");
+    expect(core).toContain("row.staleHandoffRetired=true");
     expect(core).toContain("healthState:resource.health_state");
     expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
     expect(core).toContain("return recovered?null:handoff");
