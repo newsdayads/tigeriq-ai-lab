@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel, verifiedOwnerProgress } from './owner-facing-vietnamese.mjs';
 
 const CAPABILITIES=new Set(['general','reasoning','review']);
 const CODING_PREFIX=/^\s*\[(?:CODING|SOURCE_MUTATION|SOURCE)\]\s*/i;
