@@ -1,5 +1,5 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.8
+Version: 1.9
 Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-02
@@ -60,6 +60,14 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 - #504 là authority động cho ngôn ngữ, icon/trạng thái, độ ngắn gọn, thứ tự KẾT QUẢ → VƯỚNG → BƯỚC TIẾP THEO, mã việc đầy đủ và % chỉ từ evidence/checklist thật.
 - Không được dựa vào memory/model habit để thay #504. Nếu #504 không đọc được trong task TigerIQ thì fail closed theo SOURCE_UNAVAILABLE.
 STATE=OWNER_INTERACTION_HARD_LOAD_V1
+
+## DIRECT CHAT PRE-SEND ICON GUARD V1 — bắt buộc
+- Bộ icon Owner-facing được phép dùng làm trạng thái/đầu mục chỉ gồm: `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️`.
+- Trước khi gửi mọi phản hồi cho anh Sơn, phải quét bản nháp cuối. Nếu có icon/emoji ngoài bộ trên dùng để biểu diễn trạng thái/đầu mục, phải thay bằng icon canonical tương ứng hoặc bỏ đi.
+- Các icon màu tự phát như `🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫` bị cấm trong Owner-facing status/list; priority P0–P5 hiển thị bằng chữ, không dùng chấm màu.
+- Mapping cố định: `✅=HOÀN TẤT`, `⚙️=ĐANG XỬ LÝ`, `⏳=ĐANG CHỜ`, `⚠️=LỖI/CẦN CHÚ Ý`, `🔒=CẦN OWNER`, `💡=GỢI Ý`, `📌=ĐIỂM CHÍNH`, `➡️=BƯỚC TIẾP THEO`.
+- Guard này áp dụng cho direct chat và NEW CHAT ngay cả khi nội dung đã đúng tiếng Việt; không được dựa vào model habit/memory.
+STATE=DIRECT_CHAT_ICON_GUARD_V1
 
 ## Dynamic Source of Truth — đọc khi task phụ thuộc trạng thái hiện hành
 1. `docs/CURRENT_STATE.md`
