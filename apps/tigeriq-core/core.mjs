@@ -1621,7 +1621,7 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
     const existing=(await store.query('select signature,status,last_materialized_at,count from tigeriq_self_audit_anomalies where signature=$1',[a.signature])).rows[0]||null;
     const decision=anomalyMaterializationDecision(existing,a,{nowMs,cooldownMs});
     await store.query(`insert into tigeriq_self_audit_anomalies(signature,contract_id,severity,status,first_seen_at,last_seen_at,last_materialized_at,count,evidence)
-      values($1,$2,$3,'OPEN',to_timestamp($4/1000.0),to_timestamp($4/1000.0),case when $5 then to_timestamp($4/1000.0) else null end,1,$6::jsonb)
+      values($1,$2,$3,'OPEN',to_timestamp($4::double precision/1000.0),to_timestamp($4::double precision/1000.0),case when $5 then to_timestamp($4::double precision/1000.0) else null end,1,$6::jsonb)
       on conflict(signature) do update set
         contract_id=excluded.contract_id,severity=excluded.severity,status='OPEN',last_seen_at=excluded.last_seen_at,
         last_materialized_at=case when $5 then excluded.last_seen_at else tigeriq_self_audit_anomalies.last_materialized_at end,
