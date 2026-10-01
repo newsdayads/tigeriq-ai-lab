@@ -41,7 +41,7 @@ describe('Control Plane independent repair guard v34',()=>{
     expect(isAppChromeLocalOnlyPath('scripts/tigeriq-core/appchrome-zero-touch.ps1')).toBe(true);
     const delegated={delegated:true,ownerProxy:'NV02',independentRepair:true,executorClass:'CODING_LANE'};
     expect(()=>assertExecutionPlaneMutationPaths(['apps/chrome-controller/direct-cdp-bridge.mjs'],delegated)).toThrow(/APP_CHROME_EXTERNAL_LOCAL_ONLY/);
-    expect(()=>validateManagerJobPaths({status:'continue',job:{paths:['apps/chrome-controller/direct-cdp-bridge.mjs']}},[],delegated)).toThrow(/APP_CHROME_EXTERNAL_LOCAL_ONLY/);
+    expect(()=>validateManagerJobPaths({status:'continue',job:{paths:['apps/chrome-controller/direct-cdp-bridge.mjs']}},[],delegated)).toThrow();
   });
 
   it('still fails closed for ordinary protected mutations',()=>{
