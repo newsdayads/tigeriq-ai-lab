@@ -133,6 +133,14 @@ export function anomalyMaterializationDecision(existing,anomalyRecord,{nowMs=Dat
   return {materialize:false,reason:'DEDUP_COOLDOWN'};
 }
 
+export function anomalyResolutionSignatures(existingOpen=[],currentAnomalies=[]){
+  const current=new Set(arr(currentAnomalies).map(x=>String(x?.signature||'')).filter(Boolean));
+  return arr(existingOpen)
+    .map(x=>String(x?.signature||x||'').trim())
+    .filter(Boolean)
+    .filter(signature=>!current.has(signature));
+}
+
 export function syntheticSelfAuditCanary({nowMs=Date.now()}={}){
   const snapshot={
     queue:{eligibleBacklogCount:2,eligibleIdleWorkers:1,activeWorkCount:0,backlogStableForMs:60000},
