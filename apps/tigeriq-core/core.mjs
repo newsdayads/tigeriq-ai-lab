@@ -894,8 +894,20 @@ async function runOpenClawOperatorJob(j){
 
 async function reviewerResourceIdsForJob(j){
   if(j?.capability!=='review'||!j?.objective_id)return [];
-  const q=await pool.query(`select distinct resource_id from tigeriq_jobs where objective_id=$1 and id<>$2 and status='done' and capability<>'review' and resource_id is not null`,[j.objective_id,j.id]);
-  return q.rows.map(x=>String(x.resource_id||'')).filter(Boolean);
+  const direct=await pool.query(`select distinct resource_id,employee_id from tigeriq_jobs where objective_id=$1 and id<>$2 and status='done' and capability<>'review' and (resource_id is not null or employee_id is not null)`,[j.objective_id,j.id]);
+  const excludedResources=new Set(direct.rows.map(x=>String(x.resource_id||'')).filter(Boolean));
+  const excludedEmployees=new Set(direct.rows.map(x=>String(x.employee_id||'').trim().toUpperCase()).filter(Boolean));
+  for(const value of (Array.isArray(j.objective_metadata?.finalReviewImplementerEmployeeIds)?j.objective_metadata.finalReviewImplementerEmployeeIds:[])){
+    const id=String(value||'').trim().toUpperCase(); if(id)excludedEmployees.add(id);
+  }
+  for(const value of (Array.isArray(j.objective_metadata?.finalReviewImplementerResourceIds)?j.objective_metadata.finalReviewImplementerResourceIds:[])){
+    const id=String(value||'').trim(); if(id)excludedResources.add(id);
+  }
+  if(excludedEmployees.size){
+    const mapped=await pool.query(`select resource_id from tigeriq_ai_resources where employee_id=any($1::text[]) and resource_id is not null`,[[...excludedEmployees]]);
+    for(const row of mapped.rows){const id=String(row.resource_id||'').trim();if(id)excludedResources.add(id);}
+  }
+  return [...excludedResources];
 }
 async function claimJob() {
   const c=await pool.connect();
