@@ -229,11 +229,11 @@ try{
     try{
       $wake=Invoke-RestMethod -Method Post -Uri ($controller+'/api/utility/workers/NV02/resume') -TimeoutSec $nv02ResumeRequestTimeoutSec
       $wakeStatus=[string]$wake.status
-      if($wakeStatus -in @('NV02_IDLE_SELF_PULL_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){break}
+      if($wakeStatus -in @('NV02_IDLE_CONTINUE_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){break}
     }catch{$wakeStatus='RETRY:'+[string]$_.Exception.GetType().Name}
     Start-Sleep -Seconds 3
   }
-  if($wakeStatus -notin @('NV02_IDLE_SELF_PULL_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){throw ('APPCHROME_NV02_WAKE_TIMEOUT:'+ $wakeStatus)}
+  if($wakeStatus -notin @('NV02_IDLE_CONTINUE_WAKE_SUBMITTED','LOCAL_CONTINUE_SUBMITTED','ALREADY_WORKING')){throw ('APPCHROME_NV02_WAKE_TIMEOUT:'+ $wakeStatus)}
   $details=[ordered]@{runId=[long]$verified.runId;deploy=[string]$live.state.runtimeProvenance.deployRoot;bridgeSha256=[string]$live.bridge.sourceSha256;provenanceVerified=[bool]$live.bridge.provenanceVerified;nv02WakeStatus=$wakeStatus;preQuiescedWorkers=@($preQuiescedWorkers);requestSource=if($req.PSObject.Properties.Name -contains 'source'){$req.source}else{'STATE_FILE'}}
   Save-Result 'PASS' 'APPCHROME_EXACT_HEAD_LIVE' $req $details
   $comment=@('APP_CHROME_ZERO_TOUCH_INSTALL=PASS',('TARGET_HEAD='+[string]$req.exactHead),('ARTIFACT_ID='+[string]$req.artifactId),('RUN_ID='+[string]$verified.runId),('PROVENANCE_VERIFIED='+[string][bool]$live.bridge.provenanceVerified),('NV02_WAKE_STATUS='+$wakeStatus),('DEPLOY_ROOT='+[string]$live.state.runtimeProvenance.deployRoot),'RDC_USED=false') -join [Environment]::NewLine
