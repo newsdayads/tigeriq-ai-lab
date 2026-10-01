@@ -22,7 +22,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain("src='apps\\tigeriq-core\\web-control.html'");
     expect(src).toContain("src='scripts\\tigeriq-core\\run-web-control-bundle.ps1'");
     expect(src).toContain("if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask");
-    expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
+    expect(src).toContain("if(-not $CanaryMode -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
   });
 
   it('restarts the full Core scheduled task so updated launcher logic is reloaded',()=>{
@@ -53,7 +53,7 @@ describe('runtime updater squash merge gate resolution',()=>{
   it('isolates runtime source from the developer worktree with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("else{'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'}");
-    expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
+    expect(src).toContain("else{'D:\\TigerIQ\\Runtime\\CoreSource'}");
     expect(src).toContain('worktree add --detach $runtimeRepo $targetSha');
     expect(src).toContain('git -C $runtimeRepo status --porcelain');
     expect(src).toContain('git -C $runtimeRepo reset --hard $targetSha');
