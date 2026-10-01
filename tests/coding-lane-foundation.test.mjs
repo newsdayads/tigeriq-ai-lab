@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,reviewReworkDecision,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -690,6 +690,29 @@ test('Gemini internal 429 exhaustion still fails over to next provider',async()=
   assert.deepStrictEqual(calls,['NV12','NV13']);
 });
 
+
+test('review changes deterministically return to same-PR repair and retest before approval',()=>{
+  assert.deepStrictEqual(
+    reviewReworkDecision({decision:'changes_requested',issues:['fix exact-head evidence']},0,{maxCycles:3}),
+    {action:'repair',issues:['fix exact-head evidence'],nextStatus:'waiting_ci'},
+  );
+  assert.deepStrictEqual(
+    reviewReworkDecision({decision:'approve',issues:[]},1,{maxCycles:3}),
+    {action:'approve',issues:[],nextStatus:'review'},
+  );
+  assert.deepStrictEqual(
+    reviewReworkDecision({decision:'changes_requested',issues:['still wrong']},2,{maxCycles:3}),
+    {action:'fail',code:'REVIEW_CHANGES_UNRESOLVED',issues:['still wrong'],nextStatus:'review'},
+  );
+  assert.throws(()=>reviewReworkDecision({decision:'unknown'},0),/REVIEW_DECISION_INVALID/);
+
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
+  assert.ok(run.includes("const reviewAction=reviewReworkDecision(review,reviewCycle,{maxCycles:3})"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,reviewAction.issues"));
+  assert.ok(run.includes("status=$4 where id=$1"));
+  assert.ok(run.includes("reviewAction.nextStatus"));
+});
 
 test('runJob wires authoritative GitHub context into generation, review, and repairs',()=>{
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
