@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -42,6 +42,49 @@ describe('GitHub Core intake guardrails',()=>{
     expect(objectiveCompletionGate({finalReviewRequired:true,sourceRevision:'current-revision',finalReviewPass:false})).toMatchObject({allow:false,reason:'final_review_pending'});
   });
 
+
+  it('parses only explicit terminal dependency policies and references',()=>{
+    expect(githubDependencySpec('DEPENDENCY_POLICY=REQUIRE_PARENT_GATE_PASS\nDEPENDS_ON=#2706 - parent',2707))
+      .toEqual({required:true,policy:'REQUIRE_PARENT_GATE_PASS',dependencies:[2706]});
+    expect(githubDependencySpec('DEPENDENCY_POLICY=REQUIRE_ALL_PARENT_GATES_PASS\nDEPENDS_ON=#2708\nADDITIONAL_DEPENDENCY=#2657 - acceptance',2709))
+      .toEqual({required:true,policy:'REQUIRE_ALL_PARENT_GATES_PASS',dependencies:[2708,2657]});
+    expect(githubDependencySpec('DEPENDS_ON=#2706',2707).required).toBe(false);
+    expect(objectiveCompletionGate({dependencyGateRequired:true,dependencyGatePass:false})).toMatchObject({allow:false,reason:'dependency_pending'});
+  });
+
+  it('fails closed until every canonical dependency is closed completed',async()=>{
+    const source={number:2710,body:'DEPENDENCY_POLICY=REQUIRE_PARENT_GATE_PASS\nDEPENDS_ON=#2709 - parent'};
+    const openParent={number:2709,state:'open',state_reason:null};
+    const openGate=await githubTerminalDependencyGate(async()=>{throw new Error('unexpected fetch')},'newsdayads','tigeriq-ai-lab','fake',source,indexOpenGithubIssues([openParent]));
+    expect(openGate).toMatchObject({allow:false,reason:'dependency_not_terminal_accepted',dependency:2709,state:'open'});
+    const closedGate=await githubTerminalDependencyGate(async()=>new Response(JSON.stringify({number:2709,state:'closed',state_reason:'completed'}),{status:200,headers:{'content-type':'application/json'}}),'newsdayads','tigeriq-ai-lab','fake',source,new Map());
+    expect(closedGate).toMatchObject({allow:true,reason:'dependencies_terminal_accepted',dependencies:[2709]});
+  });
+
+  it('keeps a completed Core objective open when its canonical dependency is not terminal accepted',async()=>{
+    const sourceIssue={number:2707,state:'open',state_reason:null,title:'child',comments:0,body:'DEPENDENCY_POLICY=REQUIRE_PARENT_GATE_PASS\nDEPENDS_ON=#2706 - parent'};
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const row={id:'OBJ-GH-2707',status:'completed',summary:'premature complete',metadata:{source:'github',issueNumber:2707,githubClaimReported:true,githubResultReported:false,sourceRevision:revision}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){Object.assign(row.metadata,JSON.parse(params[1]));return {rowCount:1,rows:[]};}
+      if(q.includes("update tigeriq_objectives set status='active'")){row.status='active';row.summary=params[1];return {rowCount:1,rows:[]};}
+      return {rowCount:0,rows:[]};
+    }};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      calls.push([url,init.method||'GET']);
+      if(url.endsWith('/issues/2706'))return new Response(JSON.stringify({number:2706,state:'open',state_reason:null}),{status:200,headers:{'content-type':'application/json'}});
+      if(url.endsWith('/issues/2707/comments')&&init.method==='POST')return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});
+      if(url.endsWith('/issues/2707')&&init.method==='PATCH')return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(row.status).toBe('active');
+    expect(row.metadata).toMatchObject({dependencyGateRequired:true,dependencyGatePass:false,dependencyGateReason:'dependency_not_terminal_accepted'});
+    expect(calls.some(([url,method])=>url.endsWith('/issues/2707')&&method==='PATCH')).toBe(false);
+    expect(calls.some(([url,method])=>url.endsWith('/issues/2707/comments')&&method==='POST')).toBe(false);
+  });
 
   it('keeps source revision stable across lifecycle state_reason changes but changes on title/body edits',()=>{
     const issue={number:1,title:'A',body:'BODY',state_reason:null};
