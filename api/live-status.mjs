@@ -338,6 +338,28 @@ function bodyValue(body, key) {
   return String(body || '').match(new RegExp('^' + escaped + '=(.+)$', 'mi'))?.[1]?.trim() || '';
 }
 
+function firstBodyField(body, keys = []) {
+  const wanted = new Set((Array.isArray(keys) ? keys : [keys]).map((key) => String(key || '').trim().toUpperCase()).filter(Boolean));
+  if (!wanted.size) return null;
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/i);
+    if (!match) continue;
+    const key = String(match[1] || '').toUpperCase();
+    if (!wanted.has(key)) continue;
+    return { key, value: String(match[2] || '').trim() };
+  }
+  return null;
+}
+
+function firstBodyValue(body, keys = []) {
+  return firstBodyField(body, keys)?.value || '';
+}
+
+function issueIsAppChromeControlPlane(issue) {
+  const text = [issue?.title, issue?.body].filter(Boolean).join('\n');
+  return /(?:\bAPP[-_ ]CHROME\b|apps\/chrome-controller\/|RESOURCE_SCOPE=APP_CHROME_)/i.test(text);
+}
+
 function bodyFlag(body, key, value = 'true') {
   return bodyValue(body, key).toLowerCase() === String(value).toLowerCase();
 }
@@ -407,10 +429,22 @@ function issuePriority(issue) {
 
 function issueEmployeeId(issue) {
   const body = String(issue?.body || '');
-  for (const key of ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','EXECUTOR','PREFERRED_REVIEWER','PRIMARY_EMPLOYEE','IMPLEMENTER','REVIEWER']) {
-    const id = workerIdFromText(bodyValue(body, key));
+  const authority = firstBodyField(body, [
+    'MUTATION_OWNER',
+    'ASSIGNED_EXECUTOR',
+    'EXECUTOR',
+    'TARGET_EMPLOYEE',
+    'PRIMARY_EMPLOYEE',
+    'IMPLEMENTER',
+    'PREFERRED_REVIEWER',
+    'REVIEWER',
+  ]);
+  if (authority) {
+    const id = workerIdFromText(authority.value);
     if (id) return id;
+    if (['MUTATION_OWNER','ASSIGNED_EXECUTOR','EXECUTOR'].includes(authority.key)) return null;
   }
+  if (issueIsAppChromeControlPlane(issue)) return null;
   return workerIdFromText(issue?.title || '');
 }
 
@@ -698,7 +732,7 @@ async function dependencyStates(rows, owner, repo, fetchImpl) {
 
 function issueCanonicalState(issue) {
   const body = String(issue?.body || '');
-  return (bodyValue(body, 'CURRENT_STATE') || bodyValue(body, 'STATE') || '').toUpperCase();
+  return firstBodyValue(body, ['CURRENT_STATE', 'STATE']).toUpperCase();
 }
 
 async function clearedBlockerLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
@@ -737,9 +771,17 @@ function issueDisplayOwner(issue) {
   const body = String(issue?.body || '');
   const classification = classifyOpenIssue(issue);
   if (classification.workKind === 'GOAL') return null;
+
+  if (issueIsAppChromeControlPlane(issue)) {
+    const authority = firstBodyField(body, ['MUTATION_OWNER', 'ASSIGNED_EXECUTOR', 'ACTIVE_OWNER']);
+    const owner = String(authority?.value || '');
+    if (/^(?:NV\d{2}|CODEX)$/i.test(owner)) return owner.toUpperCase();
+    return null;
+  }
+
   const employee = issueEmployeeId(issue);
   if (employee) return employee;
-  const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ACTIVE_OWNER');
+  const owner = firstBodyValue(body, ['MUTATION_OWNER', 'ACTIVE_OWNER']);
   if (/^(?:NV\d{2}|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
   return null;
 }
@@ -872,9 +914,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     priority,
     effectivePriority: priority,
     sourcePriority: priority,
-    employeeId: classification.ownerGate
+    employeeId: issueIsAppChromeControlPlane(issue)
       ? issueDisplayOwner(issue)
-      : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+      : classification.ownerGate
+        ? issueDisplayOwner(issue)
+        : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
     workKind: classification.workKind,
     ownerGate: classification.ownerGate,
