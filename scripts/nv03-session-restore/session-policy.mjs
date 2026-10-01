@@ -1,6 +1,7 @@
 export const NV03_SESSION_STATES = Object.freeze({
   HEALTHY_INTERACTIVE: 'HEALTHY_INTERACTIVE',
   WRONG_WINDOWS_SESSION: 'WRONG_WINDOWS_SESSION',
+  CHROME_INTERACTIVE_SIDECAR_MISSING: 'CHROME_INTERACTIVE_SIDECAR_MISSING',
   NOT_RUNNING: 'NOT_RUNNING',
   SCOPE_MISMATCH: 'SCOPE_MISMATCH',
   NO_INTERACTIVE_SESSION: 'NO_INTERACTIVE_SESSION',
@@ -20,6 +21,14 @@ export function classifyNv03Session(snapshot) {
   const sidecar = snapshot?.sidecar ?? {};
   if ((chrome.listening && chrome.scopeMatched === false) || (sidecar.listening && sidecar.scopeMatched === false)) {
     return { state: NV03_SESSION_STATES.SCOPE_MISMATCH, activeSessionId: active };
+  }
+
+  if (chrome.listening && !sidecar.listening && Number(chrome.sessionId) === active) {
+    return {
+      state: NV03_SESSION_STATES.CHROME_INTERACTIVE_SIDECAR_MISSING,
+      activeSessionId: active,
+      chromeSessionId: active,
+    };
   }
 
   if (!chrome.listening || !sidecar.listening) {
@@ -55,6 +64,14 @@ export function planNv03SessionRecovery(snapshot) {
           'STOP_NV03_SIDECAR_WRONG_SESSION',
           'STOP_NV03_CHROME_WRONG_SESSION',
           'START_NV03_CHROME_INTERACTIVE',
+          'START_NV03_SIDECAR_INTERACTIVE',
+          'VERIFY_NV03_INTERACTIVE',
+        ],
+      };
+    case NV03_SESSION_STATES.CHROME_INTERACTIVE_SIDECAR_MISSING:
+      return {
+        classification,
+        actions: [
           'START_NV03_SIDECAR_INTERACTIVE',
           'VERIFY_NV03_INTERACTIVE',
         ],
