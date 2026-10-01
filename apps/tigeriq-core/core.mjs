@@ -1288,9 +1288,11 @@ async function managerTick() {
       }
       const completionGate=objectiveCompletionGate(o.metadata||{});
       if(!completionGate.allow){
-        const summary='completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
-        await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
-        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason});
+        const summary=completionGate.reason==='final_review_pending'
+          ? 'completion pending trusted independent final review for current source revision'
+          : 'completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
+        await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
+        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason,managerCyclesReset:true});
         return;
       }
       await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
