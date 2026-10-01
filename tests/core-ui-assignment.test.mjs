@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -31,6 +31,10 @@ function fakePool(){
   },async query(sql,params=[]){
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.id=$1')){const j=jobs.find(x=>x.id===params[0]);return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
     if(sql.includes('from tigeriq_jobs j join tigeriq_objectives o')&&sql.includes('j.employee_id=$1')){const j=jobs.find(x=>x.employee_id===params[0]&&['ui_assigned','ui_running'].includes(x.status)&&objectives.find(o=>o.id===x.objective_id)?.status==='active');return {rowCount:j?1:0,rows:j?[joined(j)]:[]};}
+    if(sql.startsWith("select id,status,metadata,updated_at from tigeriq_objectives where metadata->>'source'='github_ui'")){
+      const rows=objectives.filter(x=>x.metadata?.source==='github_ui'&&String(x.metadata?.issueNumber)===String(params[0])).sort((a,b)=>Date.parse(b.updated_at||0)-Date.parse(a.updated_at||0));
+      return{rowCount:rows.length?1:0,rows:rows.length?[{id:rows[0].id,status:rows[0].status,metadata:rows[0].metadata,updated_at:rows[0].updated_at}]:[]};
+    }
     if(sql.startsWith('select 1 from tigeriq_objectives where id=$1')){const found=objectives.some(x=>x.id===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
     if(sql.startsWith('with locked as materialized')){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);if(found)return{rowCount:0,rows:[]};objectives.push({id:params[1],objective:params[2],priority:params[3],status:'active',summary:params[4],metadata:JSON.parse(params[5]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[{id:params[1]}]};}
     if(sql.includes("metadata->>'resourceScope'=$1")){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
@@ -137,6 +141,55 @@ test('Core UI prompt is self-contained and NV04 satisfies explicit assignment co
   assert.match(p4,/WORK_ORDER_BODY_BEGIN/);
 });
 
+
+test('Core UI source revision is stable for title+body and changes with canonical source',()=>{
+  const a=issue(2700,safe(['CAPABILITY=review']),'Revision canary');
+  const b={...a,updated_at:'2026-10-01T01:00:00Z'};
+  assert.equal(coreUiSourceRevision(a),coreUiSourceRevision(b));
+  assert.notEqual(coreUiSourceRevision(a),coreUiSourceRevision({...a,body:a.body+'\nREARMED_AT=2026-10-01T01:00:00Z'}));
+  assert.notEqual(coreUiSourceRevision(a),coreUiSourceRevision({...a,title:'Revision canary v2'}));
+});
+
+test('terminal Core UI Work Order rearms exactly once when source revision changes',async()=>{
+  const pool=fakePool();
+  let current=issue(2733,safe(['CAPABILITY=review'])+'\nREARMED_AT=2026-10-01T18:00:00Z','Final review');
+  const fetchImpl=async url=>response(url.includes('/issues/2733')?current:[current]);
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.jobs[0].id,'GH-2733');
+  const firstObjective=pool.objectives[0];
+  assert.equal(firstObjective.metadata.sourceRevision,coreUiSourceRevision(current));
+  assert.equal(firstObjective.metadata.rearmedFromObjectiveId,null);
+
+  pool.jobs[0].status='failed';pool.jobs[0].completed_at='2026-10-01T18:01:00Z';
+  firstObjective.status='blocked';firstObjective.updated_at='2026-10-01T18:01:00Z';
+  current={...current,body:current.body+'\nPOST_FIX_EVIDENCE=true\nREARMED_AT=2026-10-01T18:10:00Z',updated_at:'2026-10-01T18:10:00Z'};
+  const revision=coreUiSourceRevision(current);
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,2);
+  assert.equal(pool.jobs[1].id,'GH-2733-R'+revision);
+  assert.equal(pool.objectives[1].id,'OBJ-UI-GH-2733-R'+revision);
+  assert.equal(pool.objectives[1].metadata.sourceRevision,revision);
+  assert.equal(pool.objectives[1].metadata.rearmedFromObjectiveId,'OBJ-UI-GH-2733');
+
+  pool.jobs[1].status='failed';pool.jobs[1].completed_at='2026-10-01T18:11:00Z';
+  pool.objectives[1].status='blocked';pool.objectives[1].updated_at='2026-10-01T18:11:00Z';
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,2);
+  assert.equal(pool.objectives.length,2);
+});
+
+test('legacy Core UI objective can rearm only with a newer explicit rearm epoch',async()=>{
+  const pool=fakePool();
+  pool.objectives.push({id:'OBJ-UI-GH-2734',objective:'legacy',priority:'P1',status:'blocked',summary:'legacy',metadata:{source:'github_ui',issueNumber:2734,resourceScope:'UI_CANARY',uiWorkerId:'NV03'},updated_at:'2026-10-01T18:01:00Z'});
+  let current=issue(2734,safe(['CAPABILITY=review'])+'\nREARMED_AT=2026-10-01T18:10:00Z','Legacy rearm');
+  const fetchImpl=async url=>response(url.includes('/issues/2734')?current:[current]);
+  const revision=coreUiSourceRevision(current);
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.jobs[0].id,'GH-2734-R'+revision);
+  assert.equal(pool.objectives.at(-1).metadata.rearmedFromObjectiveId,'OBJ-UI-GH-2734');
+});
 
 test('Core UI terminal evidence closes DONE issue and frees the worker durably',async()=>{
   const pool=fakePool();
