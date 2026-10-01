@@ -118,14 +118,8 @@ export function parseLiveAcceptanceEvidence(comments=[],{sourceRevision='',final
     if(revision&&revision!==expected)continue;
     if(explicitFail)return {accepted:false,reason:'live_acceptance_explicitly_not_passed',commentId:comment?.id??null};
     if(revision!==expected)return {accepted:false,reason:'live_acceptance_revision_missing',commentId:comment?.id??null};
-    let reviewer=null;
-    if(finalReviewRequired===true){
-      const verdict=(bodyValue(body,'FINAL_LIVE_REVIEW')||bodyValue(body,'FINAL_REVIEW')).toUpperCase();
-      reviewer=bodyValue(body,'FINAL_LIVE_REVIEWER').toUpperCase();
-      const independent=hasExactFlag(body,'FINAL_REVIEWER_DIFFERENT_FROM_IMPLEMENTER')||hasExactFlag(body,'FINAL_LIVE_REVIEWER_DIFFERENT_FROM_IMPLEMENTER');
-      if(verdict!=='PASS'||!/^NV\d{2}$/.test(reviewer)||!independent)return {accepted:false,reason:'final_live_review_missing_or_not_independent',commentId:comment?.id??null};
-    }
-    return {accepted:true,revision,reviewer,commentId:comment?.id??null};
+    if(finalReviewRequired===true)return {accepted:false,reason:'trusted_final_review_required',commentId:comment?.id??null};
+    return {accepted:true,revision,reviewer:null,commentId:comment?.id??null};
   }
   return {accepted:false,reason:'live_acceptance_evidence_missing'};
 }
