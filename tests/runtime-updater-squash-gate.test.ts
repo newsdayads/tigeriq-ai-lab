@@ -1,4 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {describe,expect,it} from 'vitest';
 
 describe('runtime updater squash merge gate resolution',()=>{
@@ -59,6 +62,40 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('Sync-Launchers');
     expect(src).not.toContain('checkout -B core-runtime-sync origin/main');
     expect(src).not.toContain('merge --ff-only origin/main');
+  });
+
+  it('synthetic candidate failure restores the previous known-good git revision used by runtime rollback',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain('git -C $runtimeRepo reset --hard $previousRuntimeSha');
+    expect(src).toContain('Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha');
+    expect(src).toContain("if($impact.core){$null=Restart-Core $null}");
+    expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
+    expect(src).toContain("if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask");
+    expect(src).toContain("throw ('ROLLED_BACK:'+ $_.Exception.Message)");
+
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-updater-rollback-'));
+    const git=(...args:string[])=>execFileSync('git',args,{cwd:dir,encoding:'utf8'}).trim();
+    try{
+      git('init');
+      git('config','user.email','canary@tigeriq.local');
+      git('config','user.name','TigerIQ Canary');
+      writeFileSync(join(dir,'runtime.txt'),'known-good\n');
+      git('add','runtime.txt');git('commit','-m','known good');
+      const previousSha=git('rev-parse','HEAD');
+      writeFileSync(join(dir,'runtime.txt'),'candidate-bad\n');
+      git('add','runtime.txt');git('commit','-m','candidate');
+      const candidateSha=git('rev-parse','HEAD');
+      expect(candidateSha).not.toBe(previousSha);
+      expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('candidate-bad\n');
+
+      // Synthetic canary failure follows the updater's rollback primitive.
+      git('reset','--hard',previousSha);
+
+      expect(git('rev-parse','HEAD')).toBe(previousSha);
+      expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('known-good\n');
+    } finally {
+      rmSync(dir,{recursive:true,force:true});
+    }
   });
 
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
