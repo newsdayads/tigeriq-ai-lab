@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
 import {backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
-import {controlPlaneRepairIntent,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
+import {controlPlaneRepairIntent,isAppChromeLocalOnlyPath,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
 import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecycle-label.mjs';
 import {githubRequestJson} from './github-shared-client.mjs';
@@ -122,6 +122,12 @@ export function parseCodingIssue(issue){
   const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(body,'P3');
   const scopeLease=parseCodingScope(body);
   const controlRepair=controlPlaneRepairIntent(body);
+  const appChromeLocalOnly=/\[APP-CHROME\]/i.test(String(issue.title||''))
+    || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(body)
+    || /^APP_CHROME_REQUEST_ONLY=true$/mi.test(body)
+    || /appchrome-install-request\.json/i.test(body)
+    || scopeLease.paths.some(isAppChromeLocalOnlyPath);
+  if(appChromeLocalOnly)return null;
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
   const routing=parseCodingRouteMetadata(body);
   if(!routing.valid)return null;
