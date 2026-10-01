@@ -6,6 +6,7 @@ import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePub
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
+import { localizeOwnerFacingText, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -412,8 +413,10 @@ export function extractRepoPaths(body){
 }
 
 export function formatResultComment(row){
-  const summary=String(row?.summary||'Objective completed.').trim().slice(0,5000);
-  return `[RESULT] TigerIQ Core ${row?.status==='completed'?'completed':'blocked'} ${row?.id}.\n\n${summary}\n\nEvidence: Core objective \`${row?.id}\`, status \`${row?.status}\`.`;
+  const completed=row?.status==='completed';
+  const status=ownerStatusLabel(completed?'COMPLETED':'BLOCKED');
+  const summary=localizeOwnerFacingText(String(row?.summary||'Công việc đã kết thúc.').trim().slice(0,5000));
+  return `[KẾT QUẢ] TigerIQ Core ${completed?'đã hoàn tất':'bị chặn'} ${row?.id}.\n\n${summary}\n\nBằng chứng: Core objective \`${row?.id}\` · Trạng thái: ${status}.`;
 }
 
 export const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
@@ -1078,7 +1081,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     if(!row.metadata?.githubClaimReported){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
-      await commentIssue(fetchImpl,owner,repo,number,`[CLAIM] TigerIQ Core accepted this issue as ${row.id}. Automatic processing is active.`,token);
+      await commentIssue(fetchImpl,owner,repo,number,`[TIẾP NHẬN] TigerIQ Core đã nhận công việc này dưới mã ${row.id}. Hệ thống đang tự xử lý.`,token);
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubClaimReported:true})]);
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
