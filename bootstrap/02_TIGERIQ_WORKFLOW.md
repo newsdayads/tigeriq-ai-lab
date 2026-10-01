@@ -241,7 +241,7 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 
 
 ## 20.1. App Chrome LOCAL-only — ranh giới cứng
-- App Chrome là hệ **LOCAL-only trên PC01**. Nguồn triển khai hiện hành và runtime authority nằm tại `D:\TigerIQ\Apps\ChromeController\LocalOnly\Current`; marker ranh giới là `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
+- App Chrome là hệ **LOCAL-only trên PC01**. Nguồn triển khai hiện hành và runtime authority nằm tại `D:\TigerIQ\Apps\ChromeController\LocalOnly\Source`; marker ranh giới là `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`.
 - GitHub/Core/Coding Lane/OpenClaw/automation **KHÔNG được** tạo Work Order, claim, route, sửa, đóng gói, deploy, restart hoặc tự phục hồi source/runtime/config/controller của App Chrome.
 - Mọi `RESOURCE_SCOPE=APP_CHROME_*`, tiêu đề `[APP-CHROME]`, path `apps/chrome-controller/**` hoặc request `appchrome-install-request.json` phải fail-closed ở hệ điều phối.
 - Khi anh Sơn giao sửa App Chrome, đường thực thi duy nhất là **Owner → Vy trực tiếp → PC01 local**: backup local → sửa local → publish local → kiểm thử local → rollback nếu lỗi → lưu evidence local.
