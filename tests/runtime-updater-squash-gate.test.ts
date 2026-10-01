@@ -98,50 +98,49 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');
   });
 
-  it('persists GitHub REST cooldown across updater loops/restarts and covers direct gh bypasses',()=>{
+  it('persists GitHub REST cooldown across updater loops/restarts without App Chrome GitHub mutation',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("$githubApiBackoffState='D:\\TigerIQ\\State\\github-api-rate-limit-backoff.json'");
     expect(src).toContain('function Load-GithubApiBackoff');
     expect(src).toContain('function Save-GithubApiBackoff');
     expect(src).toContain("schema='TIGERIQ_GITHUB_API_BACKOFF_V1'");
     expect(src).toContain('function Test-GithubApiBackoff');
-    expect(src).toContain('if($script:githubApiBackoffUntil -le $now){Load-GithubApiBackoff}');
-    expect(src).toContain("Save-GithubApiBackoff ((Get-Date).ToUniversalTime().AddMinutes(15)) 'rate_limit_text'");
     expect(src).toContain('function Set-GithubApiBackoffFromText');
     expect(src).toContain('function Invoke-GithubApiJson');
-    expect(src).toContain('$null=Set-GithubApiBackoffFromText $raw');
-    const appReport=src.slice(src.indexOf('function Report-AppChromeResume'),src.indexOf('function Invoke-AppChromeOwnerResume'));
-    expect(appReport).toContain('if(Test-GithubApiBackoff){return $false}');
-    expect(appReport).toContain('$null=Set-GithubApiBackoffFromText $raw');
     const openclawReport=src.slice(src.indexOf('function Report-OpenClawCanary'),src.indexOf('function Invoke-OpenClawCanary'));
     expect(openclawReport).toContain('if(Test-GithubApiBackoff){return $false}');
     expect(openclawReport).toContain('$null=Set-GithubApiBackoffFromText $raw');
+    const appReport=src.slice(src.indexOf('function Report-AppChromeResume'),src.indexOf('function Invoke-AppChromeOwnerResume'));
+    expect(appReport).toContain('return $false');
+    expect(appReport).not.toContain('gh issue comment');
     const helper=src.slice(src.indexOf('function Invoke-AppChromeZeroTouchHelper'),src.indexOf('function Task-Exists'));
-    expect(helper).toContain('$null=Set-GithubApiBackoffFromText $raw');
-    const wait=src.indexOf("result='WAIT_GITHUB_API_RATE_LIMIT'");
-    const noChange=src.indexOf("result='NO_CHANGE'",wait);
-    expect(wait).toBeGreaterThan(-1);
-    expect(noChange).toBeGreaterThan(wait);
-    expect(src.slice(wait,noChange)).toContain('$remoteDesktopGuard=Reconcile-RemoteDesktopGuard');
-    expect(src.slice(wait,noChange)).toContain('Start-Sleep -Seconds $IntervalSeconds;continue');
-    expect(src).toContain('$appChromeInstallPollIntervalSec=120');
-    expect(src).toContain('$appChromeResumePollIntervalSec=900');
+    expect(helper).toContain('APP_CHROME_EXTERNAL_LOCAL_ONLY');
+    expect(helper).not.toContain('powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $appChromeZeroTouchScript');
     expect(src).toContain('Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"');
     expect(src).toContain('Gates-Pass $head');
   });
 
-  it('keeps App Chrome lifecycle self-heal wired into updater and bootstrap watchdog',()=>{
+  it('keeps App Chrome observation-only and removes Core/bootstrap self-heal mutation',()=>{
     const updater=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     const watchdog=readFileSync('scripts/tigeriq-core/bootstrap-watchdog.ps1','utf8');
-    expect(updater).toContain('app-chrome-unified-task.xml');
-    expect(updater).toContain('function Sync-AppChromeTaskBlueprint');
-    expect(updater).toContain('APPCHROME_TASK_BLUEPRINT_CURRENT');
-    expect(updater).toContain('appChromeTaskBlueprintState=Sync-AppChromeTaskBlueprint');
-    expect(updater).toContain('refreshed_restarted');
-    expect(watchdog).toContain('function Ensure-AppChromeTask');
-    expect(watchdog).toContain('APPCHROME_TASK_BLUEPRINT_HASH_MISMATCH');
-    expect(watchdog).toContain('APPCHROME_TASK_RESTORED_FROM_BLUEPRINT');
-    expect(watchdog).toContain("if($t.key -eq 'appchrome')");
+    expect(updater).toContain("$appChromeExternalLocalOnly=$true");
+    const sync=updater.slice(updater.indexOf('function Sync-AppChromeTaskBlueprint'),updater.indexOf('function Retire-LegacyOpenClawLifecycleOwner'));
+    expect(sync).toContain('APP_CHROME_EXTERNAL_LOCAL_ONLY');
+    expect(sync).not.toContain('Export-ScheduledTask');
+    const resume=updater.slice(updater.indexOf('function Invoke-AppChromeOwnerResume'),updater.indexOf('function Invoke-AppChromeZeroTouchHelper'));
+    expect(resume).toContain('APP_CHROME_EXTERNAL_LOCAL_ONLY');
+    expect(resume).not.toContain('/api/resume');
+    expect(resume).not.toContain('/api/start-all');
+    const health=updater.slice(updater.indexOf('function Ensure-AppChromeTransportHealth'),updater.indexOf('function Runtime-Watchdog'));
+    expect(health).toContain("action='observe_only'");
+    expect(health).not.toContain('Stop-ScheduledTask');
+    expect(health).not.toContain('Start-ScheduledTask');
+    expect(watchdog).toContain("$appChromeExternalLocalOnly=$true");
+    const ensure=watchdog.slice(watchdog.indexOf('function Ensure-AppChromeTask'),watchdog.indexOf('while($true)'));
+    expect(ensure).toContain('APP_CHROME_EXTERNAL_LOCAL_ONLY');
+    expect(ensure).not.toContain('Register-ScheduledTask');
+    expect(ensure).not.toContain('Enable-ScheduledTask');
+    expect(watchdog).not.toContain("@{key='appchrome';task=$appChromeTask;ports=@(8798,8799)}");
   });
 
 });

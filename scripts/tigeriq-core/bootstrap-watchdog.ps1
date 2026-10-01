@@ -11,9 +11,9 @@ $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $watchdogStartedAt=Get-Date
 $targets=@(
   @{key='updater';task=$updaterTask;ports=@()},
-  @{key='openclaw';task='TigerIQ OpenClaw Gateway';ports=@(18789)},
-  @{key='appchrome';task=$appChromeTask;ports=@(8798,8799)}
+  @{key='openclaw';task='TigerIQ OpenClaw Gateway';ports=@(18789)}
 )
+$appChromeExternalLocalOnly=$true
 $failures=@{}
 $lastHeal=@{}
 foreach($t in $targets){$failures[$t.key]=0;$lastHeal[$t.key]=[DateTime]::MinValue}
@@ -92,32 +92,7 @@ function Test-AppChromeTaskContract($task){
   return ($launcherOk -and $powershellOk)
 }
 function Ensure-AppChromeTask(){
-  try{
-    $task=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction SilentlyContinue
-    if($task -and (Test-AppChromeTaskContract $task)){
-      if([string]$task.State -eq 'Disabled'){
-        Enable-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop|Out-Null
-        return @{action='enabled';reason='APPCHROME_TASK_REENABLED';task=$appChromeTask}
-      }
-      return @{action='none';reason='TASK_PRESENT_VALID';task=$appChromeTask}
-    }
-    if(-not(Test-Path -LiteralPath $appChromeTaskBlueprint)){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_MISSING';task=$appChromeTask}}
-    if(-not(Test-Path -LiteralPath $appChromeTaskBlueprintHash)){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_HASH_MISSING';task=$appChromeTask}}
-    $expected=(Get-Content -LiteralPath $appChromeTaskBlueprintHash -Raw).Trim().ToLowerInvariant()
-    $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $appChromeTaskBlueprint).Hash.ToLowerInvariant()
-    if(-not $expected -or $expected -ne $actual){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_HASH_MISMATCH';task=$appChromeTask}}
-    $xml=Get-Content -LiteralPath $appChromeTaskBlueprint -Raw
-    $allowedXml=[bool]($xml -match [regex]::Escape('D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome.ps1') -or $xml -match [regex]::Escape('D:\TigerIQ\Apps\ChromeController\Runtime\Start-Unified-AppChrome-1372.ps1'))
-    if(-not $allowedXml){return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_ACTION_INVALID';task=$appChromeTask}}
-    try{[xml]$null=$xml}catch{return @{action='blocked';reason='APPCHROME_TASK_BLUEPRINT_XML_INVALID';task=$appChromeTask}}
-    $repair=if($task){'repaired'}else{'installed'}
-    Register-ScheduledTask -TaskName $appChromeTask -Xml $xml -Force|Out-Null
-    $restored=Get-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
-    if(-not(Test-AppChromeTaskContract $restored)){return @{action='blocked';reason='APPCHROME_TASK_RESTORE_CONTRACT_INVALID';task=$appChromeTask}}
-    if([string]$restored.State -eq 'Disabled'){Enable-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop|Out-Null}
-    Start-ScheduledTask -TaskName $appChromeTask -ErrorAction Stop
-    return @{action=$repair;reason='APPCHROME_TASK_RESTORED_FROM_BLUEPRINT';task=$appChromeTask;sha256=$actual}
-  }catch{return @{action='blocked';reason=('APPCHROME_TASK_RESTORE_'+$_.Exception.GetType().Name);task=$appChromeTask}}
+  return @{action='none';reason='APP_CHROME_EXTERNAL_LOCAL_ONLY';authority='OWNER_TO_VY_DIRECT_LOCAL_PC01';task=$appChromeTask}
 }
 while($true){
   $rows=@()
