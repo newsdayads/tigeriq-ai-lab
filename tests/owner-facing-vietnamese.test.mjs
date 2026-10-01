@@ -114,6 +114,6 @@ describe('Owner-facing Vietnamese output gate', () => {
 
   it('rejects bare #<number> without title in owner-facing output', () => {
     const output = localizeOwnerFacingText('Work #2657 is pending');
-    expect(output).not.toContain('Work #2657 is pending');
+    expect(output).not.toContain('#2657');
   });
 });
