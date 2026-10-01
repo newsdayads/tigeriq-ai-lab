@@ -89,7 +89,6 @@ export function ownerFacingHandoffLifecycle(item = {}) {
   const lifecycle = normalizeWorkItemLifecycle(item);
   return {
     ...lifecycle,
-    stageCode: lifecycle.stage,
     stage: ownerStatusLabel(lifecycle.stage),
     blocker: localizeOwnerFacingText(lifecycle.blocker),
     nextAction: localizeOwnerFacingText(lifecycle.nextAction),
