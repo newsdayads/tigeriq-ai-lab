@@ -58,7 +58,10 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain('tech-popover');
     expect(dashboard).toContain("matchMedia('(hover:hover) and (pointer:fine)').matches");
     expect(dashboard).toContain("detailModal.className='detail-modal state-'+state.group");
-    expect(dashboard).toContain("return'Cần hệ thống xử lý lỗi'");
+    expect(dashboard).toContain("if(state.group==='attention')return error||detail||job||jobId||'';");
+    expect(dashboard).toContain("if(state.group==='waiting')return detail||job||jobId||'';");
+    expect(dashboard).toContain("if(state.group==='paused')return detail||'';");
+    expect(dashboard).toContain("if(jobId&&job&&job!==jobId)return jobId+' · '+job;");
 
     expect(dashboard).toContain('id="topLive"');
     expect(dashboard).toContain('id="topIssueCount"');
@@ -69,7 +72,11 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain('workers.addEventListener(\'click\'');
     expect(dashboard).not.toContain('title="${esc(techTitle(x))}"');
     expect(dashboard).toContain('white-space:normal;overflow:visible;text-overflow:clip');
-    expect(dashboard).toContain("return'Sẵn sàng nhận việc'");
+    expect(dashboard).toContain("${activity?`<div class=\"employee-task\">${esc(activity)}</div>`:''}");
+    expect(dashboard).toContain('detailJob.hidden=!activity');
+    expect(dashboard).not.toContain("return'Sẵn sàng nhận việc'");
+    expect(dashboard).not.toContain("return'Đang chờ'");
+    expect(dashboard).not.toContain("return'Cần hệ thống xử lý lỗi'");
     expect(dashboard).toContain('syshealth.addEventListener(\'click\'');
 
     expect(dashboard).not.toContain("workers.style.setProperty('--worker-cols'");
