@@ -266,9 +266,15 @@ describe('GitHub Core intake guardrails',()=>{
     ].join('\n');
     expect(parseExecutableIssue({...base,number:1874,title:'review',body:reviewBody})).toBeNull();
     expect(parseExecutableIssue({...base,number:1875,title:'default review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03\n','')})).toBeNull();
-    expect(parseExecutableIssue({...base,number:1876,title:'API review',body:reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')})).toMatchObject({
+    const fallbackReview=reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')
+      +'\nREVIEW_FALLBACK_EMPLOYEE=NV17\nREVIEW_FALLBACK_REASON=NV03_UNAVAILABLE';
+    expect(parseExecutableIssue({...base,number:1876,title:'API review fallback',body:fallbackReview})).toMatchObject({
       capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:'NV17'
     });
+    const staleNv10=reviewBody
+      .replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV10')
+      +'\nTARGET_EMPLOYEE=NV10\nASSIGNED_EXECUTOR=NV10';
+    expect(parseExecutableIssue({...base,number:1877,title:'stale generic NV10 review',body:staleNv10})).toBeNull();
   });
 
   it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
