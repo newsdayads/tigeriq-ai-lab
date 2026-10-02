@@ -179,6 +179,24 @@ test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_
   assert.strictEqual(spec.targetWorker,null);
 });
 
+test('stability v2 safe intake creates objective without generic API auto-work helper job',async()=>{
+  const pool=coreBacklogPool();
+  const body=SAFE_AUTO_POLICY_BASE
+    .replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=API_WORKFORCE_FUNCTIONAL_STABILITY_V2')
+    .replace('CAPABILITY=coding','CAPABILITY=reasoning')
+    .replace('EXECUTION_SURFACE=CODING','EXECUTION_SURFACE=CORE_REASONING')
+    +'\nMUTATION_OWNER=CORE_DYNAMIC_LEASE';
+  const issue={number:2891,state:'open',title:'[P1][API WORKFORCE][STABILITY V2] deterministic',body,labels:[],comments:0,html_url:'https://example/2891'};
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  assert.strictEqual(spec.resourceScope,'API_WORKFORCE_FUNCTIONAL_STABILITY_V2');
+  assert.strictEqual(spec.dispatchLane,'CORE_REASONING');
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.jobs.length,0,'deterministic stability planner must own job materialization; no generic helper auto-work');
+});
+
 test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, UI owner, hard gate, active owner, and terminal-blocked',()=>{
   const base={number:2500,state:'open',title:'[P1][CORE] candidate',body:SAFE_AUTO_POLICY_BASE,labels:[]};
   const cases=[
