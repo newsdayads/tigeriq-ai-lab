@@ -333,6 +333,46 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
+  it('executes the Cloudflare manager JSON helper behavior and verifies provider wiring',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const extractFunction=(name)=>{
+      const start=core.indexOf(`function ${name}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const open=core.indexOf('{',start);
+      let depth=0,end=-1;
+      for(let i=open;i<core.length;i++){
+        if(core[i]==='{')depth++;
+        else if(core[i]==='}'&&--depth===0){end=i+1;break;}
+      }
+      expect(end).toBeGreaterThan(open);
+      return core.slice(start,end);
+    };
+    const schema={type:'object',required:['status','summary','jobs']};
+    const factory=new Function(
+      'isManagerPrompt','GEMINI_MANAGER_RESPONSE_SCHEMA',
+      `${extractFunction('cloudflareRequestBody')}\n${extractFunction('cloudflareResponseText')}\nreturn {cloudflareRequestBody,cloudflareResponseText};`,
+    );
+    const {cloudflareRequestBody,cloudflareResponseText}=factory(
+      prompt=>String(prompt||'').trimStart().startsWith('You are TigerIQ AI Manager.'),
+      schema,
+    );
+
+    const managerPrompt='You are TigerIQ AI Manager. Return one decision.';
+    expect(cloudflareRequestBody(managerPrompt)).toEqual({
+      prompt:managerPrompt,
+      response_format:{type:'json_schema',json_schema:schema},
+    });
+    const ordinaryPrompt='Summarize this bounded task.';
+    expect(cloudflareRequestBody(ordinaryPrompt)).toEqual({prompt:ordinaryPrompt});
+    expect(cloudflareRequestBody(ordinaryPrompt)).not.toHaveProperty('response_format');
+    const structured={status:'continue',summary:'ok',jobs:[]};
+    expect(cloudflareResponseText(structured)).toBe(JSON.stringify(structured));
+    expect(cloudflareResponseText('raw provider text')).toBe('raw provider text');
+
+    expect(core).toContain("body:JSON.stringify(cloudflareRequestBody(prompt))");
+    expect(core).toContain("const text = cloudflareResponseText(b?.result?.response)");
+  });
+
   it('constrains Gemini manager output to the strict Core manager schema',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain('const GEMINI_MANAGER_RESPONSE_SCHEMA={');
