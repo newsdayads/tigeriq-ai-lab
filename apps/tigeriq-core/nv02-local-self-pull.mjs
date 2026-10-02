@@ -305,10 +305,55 @@ export function nv02TakeoverStatus(issue, comments = [], {
   const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
   if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN', target, resourceScope };
   if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
+
+  const scopeClaim = activeResourceClaims(comments, nowMs)
+    .find((claim) => claim.resourceScope === resourceScope && claim.worker && claim.worker !== 'NV02') || null;
   const codingFallback = codingLaneFallbackStatus(meta, comments, { nowMs, staleMs });
-  if (codingFallback?.eligible) return { ...codingFallback, resourceScope };
-  // Independent Coding Lane reservation is authoritative until its own evidence opens fallback.
-  // Do not fall through to generic stale-assignee takeover merely because a target worker is old.
+  if (codingFallback?.eligible) return {
+    ...codingFallback,
+    resourceScope,
+    activeClaim: scopeClaim || codingFallback.activeClaim || null,
+    needsRelease: Boolean(scopeClaim || codingFallback.needsRelease),
+  };
+
+  if (codingFallback && !['INDEPENDENT_CODING_LANE_HARD_BLOCKED','INDEPENDENT_CODING_LANE_COMPLETED'].includes(codingFallback.reason)) {
+    const hardWait = /owner|hold|dependency|production|paid|credential|security|destructive|irreversible|external[_ -]?wait|browser[_ -]?auth|authorization|required|human[_ -]?policy|scope[_ -]?violation|out[_ -]?of[_ -]?scope|policy[_ -]?(?:block|reject)/i;
+    const workerWait = /worker|transport|timeout|stall|retry|offline|unavailable|no[_ -]?heartbeat|capabil/i;
+    let override = null;
+    const consider = (text, at) => {
+      const body = String(text || '');
+      const state = String(body.match(/^(?:STATE|CURRENT_STATE)=(.+)$/mi)?.[1] || '').trim().toUpperCase();
+      const reason = String(body.match(/^(?:BLOCKER|BLOCKED_REASON|REASON)=(.+)$/mi)?.[1] || '').trim();
+      const rounds = Number(body.match(/^(?:NO_PROGRESS_ROUNDS|STALL_COUNT|STALLED_ROUNDS)=(\d+)$/mi)?.[1] || 0);
+      let reasonCode = '';
+      if (state === 'STALLED') reasonCode = 'ASSIGNEE_STALLED';
+      else if (state === 'BLOCKED' && !hardWait.test(reason) && workerWait.test(reason || body)) reasonCode = 'ASSIGNEE_BLOCKED_WORKER_OR_TRANSPORT';
+      else if (rounds >= noProgressThreshold) reasonCode = 'NO_PROGRESS_ROUNDS_EXHAUSTED';
+      if (!reasonCode) return;
+      const atMs = Number(at) || 0;
+      if (!override || atMs >= override.at) override = { reason: reasonCode, at: atMs, rounds };
+    };
+    const issueAt = Date.parse(String(issue?.updated_at || issue?.created_at || ''));
+    consider(String(issue?.body || ''), Number.isFinite(issueAt) ? issueAt : 0);
+    for (const comment of comments) consider(comment?.body, commentAtMs(comment));
+    const latestLaneAt = Number(codingFallback?.latest?.at || 0);
+    if (override && (!latestLaneAt || override.at >= latestLaneAt)) {
+      return {
+        eligible: true,
+        reason: override.reason,
+        target: target || 'CODING_LANE',
+        resourceScope,
+        activeClaim: scopeClaim,
+        needsRelease: Boolean(scopeClaim),
+        latestProgressAt: latestLaneAt,
+        rounds: override.rounds,
+        codingFallback,
+      };
+    }
+  }
+
+  // Independent Coding Lane reservation is authoritative until its own evidence,
+  // or newer explicit C16 stall/block/no-progress evidence, opens fallback.
   if (codingFallback) return { ...codingFallback, target, resourceScope };
   if (!target || target === 'NV02') return { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
 
@@ -351,7 +396,6 @@ export function nv02TakeoverStatus(issue, comments = [], {
     rounds,
   };
 }
-
 export async function releaseStaleAssigneeLease({ issue, takeover, postComment, nowMs = Date.now() }) {
   if (!takeover?.eligible || !takeover?.needsRelease || !takeover?.activeClaim) return { released: false, reason: 'NO_RELEASE_REQUIRED' };
   const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
