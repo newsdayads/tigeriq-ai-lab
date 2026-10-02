@@ -1651,7 +1651,7 @@ function getDynamicMaxParallel() {
   return Math.max(3, Math.min(20, healthyCount));
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
-let continuousVerifyPending = null, continuousVerifyRunning = false, continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
+let continuousVerifyPending = null, continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
 
 const CORE_RUNTIME_UPDATER_STATE=process.env.TIGERIQ_CORE_RUNTIME_UPDATER_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-updater.json';
 const CORE_RUNTIME_SOURCE_STATE=process.env.TIGERIQ_CORE_RUNTIME_SOURCE_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-source.json';
@@ -1662,7 +1662,7 @@ function readSelfAuditJsonState(path){
   try{return JSON.parse(readFileSync(path,'utf8'));}catch{return null;}
 }
 function queueContinuousVerify(trigger){
-  if(!shouldQueueContinuousVerify(trigger,{pendingKey:continuousVerifyPending?.key||'',lastRunKey:continuousVerifyLastRunKey}))return false;
+  if(!shouldQueueContinuousVerify(trigger,{pendingKey:continuousVerifyPending?.key||'',runningKey:continuousVerifyRunningKey,lastRunKey:continuousVerifyLastRunKey}))return false;
   continuousVerifyPending={...trigger,attempt:Number(trigger?.attempt||0),queuedAt:nowIso()};
   return true;
 }
@@ -1687,6 +1687,7 @@ async function runPendingContinuousVerify(){
   const trigger=continuousVerifyPending;
   continuousVerifyPending=null;
   continuousVerifyRunning=true;
+  continuousVerifyRunningKey=trigger.key;
   activeDeepAudit=true;
   lastDeepAudit=Date.now();
   try{
@@ -1705,6 +1706,7 @@ async function runPendingContinuousVerify(){
   }finally{
     activeDeepAudit=false;
     continuousVerifyRunning=false;
+    continuousVerifyRunningKey='';
   }
 }
 function selfAuditStateFresh(state,nowMs=Date.now()){
