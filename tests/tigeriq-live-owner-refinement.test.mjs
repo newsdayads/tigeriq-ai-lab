@@ -29,7 +29,8 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('transform:translate(-50%,-50%) scale(1)');
     expect(html).toContain('Hỏi / Duyệt với Vy ↗');
     expect(html).toContain('navigator.clipboard?.writeText');
-    expect(html).toContain('chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/project?prompt=');
+    expect(html).toContain('https://chatgpt.com/?prompt=');
+    expect(html).not.toContain('g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab');
   });
 
   it('does not expose the old negative owner-gate worker label', () => {
