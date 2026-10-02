@@ -505,6 +505,7 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
   await t.test('Core health gate rejects unhealthy, limited, cooled-down or busy API resources',()=>{
     const now=Date.parse('2026-09-24T02:30:00Z');
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:true}},now),true);
+    assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'READY',work_state:'ON_DEMAND',status:'ON_DEMAND',quota_state:{usable:true}},now),true);
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ERROR',work_state:'ERROR',status:'ERROR'},now),false);
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'RATE_LIMITED'},now),false);
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',quota_state:{usable:false}},now),false);
