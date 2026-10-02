@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   compareQueueRows,
+  buildWorkSections,
+  ghAllPages,
   fetchPc01Live,
   rankQueueRows,
   normalizeRuntimeWorkerActivity,
@@ -10,6 +12,7 @@ import {
   parseOpenWorkIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
+  verifiedPortfolioProgress,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -64,6 +67,14 @@ describe('TigerIQ Live Work Order projection', () => {
       'STATE=SUPERSEDED',
       'PRIORITY=P0',
     ].join('\n')))).toBe(null);
+  });
+
+  it('projects canonical terminal-blocked labels as blocked even when the issue is not queue-admitted', () => {
+    const row = parseOpenWorkIssue(issue(2006, '[P1] Label blocked only', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=READY',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }));
+    expect(row).toMatchObject({ status: 'BLOCKED' });
   });
 
   it('keeps explicit dependency-wait state out of QUEUED', () => {
@@ -445,6 +456,53 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('exposes only an explicit blocker for owner-facing compact cards', () => {
+    const blocked = parseOpenWorkIssue(issue(3213, '[P1] Blocked compact card', [
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+      'NEXT=Reprobe after provider recovery',
+    ].join('\n')));
+    expect(blocked).toMatchObject({ blocker: 'WAIT_PROVIDER', nextStep: 'Reprobe after provider recovery' });
+
+    const normal = parseOpenWorkIssue(issue(3214, '[P1] Normal compact card', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=NONE',
+    ].join('\n')));
+    expect(normal.blocker).toBe(null);
+
+    const cleared = parseOpenWorkIssue(issue(3215, '[P1] Cleared blocker compact card', [
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n')), { lifecycle: { state: 'READY', blockerCleared: true, step: 'Reprobe now' } });
+    expect(cleared).toMatchObject({ status: 'QUEUED', blocker: null });
+
+    const activeAfterClear = parseOpenWorkIssue(issue(3216, '[P1] Active after clear', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n')), {
+      active: { status: 'WORKING', currentStep: 'Fresh runtime work', updatedAt: '2026-10-02T01:40:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Old clear', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(activeAfterClear).toMatchObject({ status: 'WORKING', blocker: null });
+
+    const newerClear = parseOpenWorkIssue(issue(3218, '[P1] Clear after stale runtime', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n')), {
+      active: { status: 'BLOCKED', currentStep: 'Stale runtime blocker', updatedAt: '2026-10-02T01:30:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Cleared after runtime', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(newerClear).toMatchObject({ status: 'QUEUED', blocker: null });
+
+    const reblocked = parseOpenWorkIssue(issue(3217, '[P1] Reblocked after clear', [
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }], updated_at: '2026-10-02T01:45:00Z' }), {
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Older clear', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(reblocked).toMatchObject({ status: 'BLOCKED', blocker: 'WAIT_PROVIDER' });
+  });
+
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
     const unsafe = parseOpenWorkIssue(issue(3207, '[P1] Planned step', [
       'CURRENT_STATE=READY',
@@ -470,6 +528,124 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(progressForIssue(issue(3102, '[P1] Lifecycle guess forbidden', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: null, source: 'none' });
     expect(progressForIssue(issue(3103, '[P1] Verified checklist', 'PROGRESS_VERIFIED=true\n- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist_verified' });
     expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
+  });
+
+
+  it('paginates open issues and proves complete enumeration only after the final short page', async () => {
+    const seen = [];
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      seen.push(value);
+      const page = Number(new URL(value).searchParams.get('page') || 1);
+      const rows = page === 1
+        ? Array.from({ length: 100 }, (_, index) => ({ number: index + 1 }))
+        : [{ number: 101 }];
+      return new Response(JSON.stringify(rows), { status: 200 });
+    };
+    const result = await ghAllPages('/repos/tigeriq-test/pagination-only/issues?state=open&sort=updated&direction=desc', fetchImpl);
+    expect(result).toMatchObject({ complete: true });
+    expect(result.rows).toHaveLength(101);
+    expect(seen.some((url) => url.includes('per_page=100') && url.includes('page=2'))).toBe(true);
+  });
+
+  it('counts actionable blocked, queued and unknown work directly in openSummary', async () => {
+    const blocked = issue(3981, '[P1] Blocked summary row', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n'));
+    const queued = issue(3982, '[P1] Queued summary row', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'CURRENT_STATE=READY',
+    ].join('\n'));
+    const unknown = issue(3983, '[P1] Unknown summary row', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=BLOCKED',
+    ].join('\n'));
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      if (value.includes('/issues?state=open')) return new Response(JSON.stringify([blocked, queued, unknown]), { status: 200 });
+      if (/\/issues\/(?:3981|3983)\/comments\?/.test(value)) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+      throw new Error('unexpected_url:' + value);
+    };
+    const result = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+    expect(result.openSummary).toMatchObject({
+      open: 3,
+      actionable: 3,
+      blocked: 1,
+      queued: 1,
+      unknown: 1,
+      waiting: 3,
+      system: 0,
+    });
+  });
+
+  it('fails closed for portfolio percent when buildWorkSections falls back to a stale GitHub snapshot', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-02T01:00:00Z'));
+      let failOpenIssues = false;
+      const workIssue = issue(3991, '[P1] Verified current work', [
+        'TIGERIQ_EXECUTABLE=false',
+        'CURRENT_STATE=READY',
+        'PROGRESS_SOURCE=VERIFIED',
+        'PROGRESS_PERCENT=60',
+      ].join('\n'));
+      const fetchImpl = async (url) => {
+        const value = String(url);
+        if (value.includes('/issues?state=open')) {
+          if (failOpenIssues) throw new Error('github_open_issues_down');
+          return new Response(JSON.stringify([workIssue]), { status: 200 });
+        }
+        if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+        if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+        if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+        throw new Error('unexpected_url:' + value);
+      };
+      const fresh = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+      expect(fresh.portfolioProgress).toMatchObject({ percent: 60, source: 'verified_issue_average' });
+      expect(fresh.workProjection).toMatchObject({ stale: false, openIssueEnumerationComplete: true });
+
+      failOpenIssues = true;
+      vi.setSystemTime(new Date('2026-10-02T01:01:00Z'));
+      const stale = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+      expect(stale.workProjection.stale).toBe(true);
+      expect(stale.portfolioProgress).toMatchObject({ percent: null, source: 'incomplete_enumeration' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('publishes portfolio percent only when every current-scope work item has verified progress', () => {
+    const partial = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+      { workKind: 'WORK', progressPercent: null, progressSource: 'none' },
+      { workKind: 'SYSTEM', progressPercent: null, progressSource: 'none' },
+    ]);
+    expect(partial).toMatchObject({ percent: null, scopeItems: 2, verifiedItems: 1, coveragePercent: 50 });
+
+    const complete = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+      { workKind: 'WORK', progressPercent: 80, progressSource: 'explicit_verified' },
+    ]);
+    expect(complete).toMatchObject({ percent: 65, source: 'verified_issue_average', scopeItems: 2, verifiedItems: 2, coveragePercent: 100 });
+
+    const incompleteEnumeration = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+    ], { complete: false });
+    expect(incompleteEnumeration).toMatchObject({ percent: null, source: 'incomplete_enumeration', scopeItems: 1, verifiedItems: 1 });
+
+    const excludesGoalAndSystem = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 80, progressSource: 'explicit_verified' },
+      { workKind: 'GOAL', progressPercent: null, progressSource: 'none' },
+      { workKind: 'SYSTEM', progressPercent: null, progressSource: 'none' },
+    ], { complete: true });
+    expect(excludesGoalAndSystem).toMatchObject({ percent: 80, scopeItems: 1, verifiedItems: 1 });
   });
 
   it('marks completed history as 100 percent', () => {
