@@ -196,7 +196,8 @@ function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/)
 function verifiedProgress(row){
   const pct=Number(row?.progressPercent);
   const source=String(row?.progressSource||'');
-  return {pct,verified:['explicit_verified','checklist_verified','terminal'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<=100};
+  const evidenceFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  return {pct,verified:evidenceFresh&&['explicit_verified','checklist_verified','terminal'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<=100};
 }
 function statusRank(v){return ({OWNER_GATE:0,WORKING:1,REVIEW:2,VERIFY:3,QUEUED:4,BLOCKED:5,WAITING:6,UNKNOWN:7,OPEN:8,DONE:9})[String(v||'').toUpperCase()]??8}
 function workStatus(row){
@@ -280,7 +281,8 @@ function renderOwnerSummary(){
   $('sumOwner').textContent=Number.isFinite(Number(s.owner))?Number(s.owner):actionable.filter(row=>workStatus(row)==='OWNER_GATE').length;
   $('sumBlocked').textContent=Number.isFinite(Number(s.blocked))?Number(s.blocked):blocked;
   const pct=Number(p?.percent);
-  const verified=Number.isFinite(pct)&&pct>=0&&pct<=100&&p?.source==='verified_issue_average';
+  const evidenceFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  const verified=evidenceFresh&&Number.isFinite(pct)&&pct>=0&&pct<=100&&p?.source==='verified_issue_average';
   $('overallPct').textContent=verified?pct+'%':'—';
   $('overallFill').style.width=verified?pct+'%':'0%';
   const scope=Number(p?.scopeItems||actionable.length||0),covered=Number(p?.verifiedItems||0);
@@ -295,7 +297,7 @@ function drawerProgressMarkup(row){
 }
 function effectiveBlocker(row){
   if(row?.blocker)return String(row.blocker);
-  if(workStatus(row)==='BLOCKED')return String(row?.waitReason||row?.currentStep||'Chưa có lý do blocker xác minh');
+  if(workStatus(row)==='BLOCKED')return String(row?.waitReason||'Chưa có lý do blocker xác minh');
   return '';
 }
 function populateDrawer(row){
@@ -343,6 +345,7 @@ function render(){
   const labels={action:'Cần xử lý',owner:'Chờ anh Sơn',running:'Đang làm',review:'Rà soát / Xác minh',waiting:'Chờ / Blocked',system:'Hệ thống / Chính sách',done:'Hoàn tất'};
   $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
   const box=$('workList');box.innerHTML='';
+  refreshOpenDrawer();
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
     const el=document.createElement('article');
