@@ -547,7 +547,7 @@ describe('coding lane AI JSON transport',()=>{
   it('keeps the current reviewer eligible for repair failover and reselects review independence after handoff',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     expect(src).toContain("generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth");
-    expect(src).toContain("generateAndWriteRepair(worker,j,branch,review.issues,cooldownExcludes,mutationAuth");
+    expect(src).toContain("generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth");
     expect(src).not.toContain("[reviewer.id,...cooldownExcludes],mutationAuth");
     expect(src).toContain("if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes])");
     expect(src).toContain("if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes])");

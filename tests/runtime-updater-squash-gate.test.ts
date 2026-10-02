@@ -1,4 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {describe,expect,it} from 'vitest';
 
 describe('runtime updater squash merge gate resolution',()=>{
@@ -12,14 +15,14 @@ describe('runtime updater squash merge gate resolution',()=>{
 
   it('stages Web Control bootstrap files before Web-only restart and after rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain("$webRuntime='D:\\TigerIQ\\Runtime\\WebControl24x7'");
+    expect(src).toContain("else{'D:\\TigerIQ\\Runtime\\WebControl24x7'}");
     expect(src).toContain('function Sync-WebRuntime');
     expect(src).toContain("src='apps\\tigeriq-core\\web-control-server.mjs'");
     expect(src).toContain("src='apps\\tigeriq-core\\web-control-truth.js'");
     expect(src).toContain("src='apps\\tigeriq-core\\web-control.html'");
     expect(src).toContain("src='scripts\\tigeriq-core\\run-web-control-bundle.ps1'");
     expect(src).toContain("if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask");
-    expect(src).toContain("if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
+    expect(src).toContain("if(-not $CanaryMode -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask");
   });
 
   it('restarts the full Core scheduled task so updated launcher logic is reloaded',()=>{
@@ -49,8 +52,8 @@ describe('runtime updater squash merge gate resolution',()=>{
 
   it('isolates runtime source from the developer worktree with SHA rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain("$controlRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
-    expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
+    expect(src).toContain("else{'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'}");
+    expect(src).toContain("else{'D:\\TigerIQ\\Runtime\\CoreSource'}");
     expect(src).toContain('worktree add --detach $runtimeRepo $targetSha');
     expect(src).toContain('git -C $runtimeRepo status --porcelain');
     expect(src).toContain('git -C $runtimeRepo reset --hard $targetSha');
@@ -59,6 +62,55 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('Sync-Launchers');
     expect(src).not.toContain('checkout -B core-runtime-sync origin/main');
     expect(src).not.toContain('merge --ff-only origin/main');
+  });
+
+  it('synthetic candidate failure executes the updater rollback handler and restores known-good runtime',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const candidateTry=src.indexOf('$previousRuntimeSha=$local\n    try{\n      Ensure-RuntimeSource $remote\n      Ensure-NodeModules $runtimeRepo');
+    const candidateCatch=src.indexOf('$null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact');
+    expect(candidateTry).toBeGreaterThanOrEqual(0);
+    expect(candidateCatch).toBeGreaterThan(candidateTry);
+    expect(src).toContain('function Invoke-RuntimeRollback');
+    expect(src).toContain("throw ('ROLLED_BACK:'+ $failure)");
+
+    const dir=mkdtempSync(join(tmpdir(),'tigeriq-updater-rollback-'));
+    const git=(...args:string[])=>execFileSync('git',args,{cwd:dir,encoding:'utf8'}).trim();
+    try{
+      git('init');
+      git('config','user.email','canary@tigeriq.local');
+      git('config','user.name','TigerIQ Canary');
+      writeFileSync(join(dir,'runtime.txt'),'known-good\n');
+      git('add','runtime.txt');git('commit','-m','known good');
+      const previousSha=git('rev-parse','HEAD');
+      writeFileSync(join(dir,'runtime.txt'),'candidate-bad\n');
+      git('add','runtime.txt');git('commit','-m','candidate');
+      const candidateSha=git('rev-parse','HEAD');
+      expect(candidateSha).not.toBe(previousSha);
+
+      const raw=execFileSync('pwsh',[
+        '-NoProfile','-File','scripts/tigeriq-core/update-core-runtime.ps1',
+        '-RollbackCanaryRuntimeRepo',dir,
+        '-RollbackCanaryPreviousSha',previousSha,
+        '-RollbackCanaryCandidateSha',candidateSha,
+      ],{encoding:'utf8'});
+      const line=raw.trim().split(/\r?\n/).filter(Boolean).at(-1);
+      const evidence=JSON.parse(String(line));
+
+      expect(evidence.result).toBe('ROLLED_BACK');
+      expect(evidence.failure).toBe('SYNTHETIC_CANDIDATE_FAILURE');
+      expect(evidence.candidateHeadBeforeFailure).toBe(candidateSha);
+      expect(evidence.rollback.restoredHead).toBe(previousSha);
+      expect(evidence.rollback.restartActions).toEqual(['core','web','coding']);
+      expect(git('rev-parse','HEAD')).toBe(previousSha);
+      expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('known-good\n');
+
+      const runtimeState=JSON.parse(readFileSync(join(dir,'.canary-core-runtime-source.json'),'utf8'));
+      expect(runtimeState.currentSha).toBe(previousSha);
+      expect(runtimeState.previousSha).toBe(candidateSha);
+      expect(runtimeState.gateSha).toBe(previousSha);
+    } finally {
+      rmSync(dir,{recursive:true,force:true});
+    }
   });
 
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{

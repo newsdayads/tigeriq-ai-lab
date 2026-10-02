@@ -70,7 +70,7 @@ test('runtime impact isolates Web Control and Coding Lane from Core restart',()=
 test('service enforces independent reviewer and gate-before-merge',()=>{
   assert.match(service,/pickResource\(\[worker\.id,\.\.\.cooldownExcludes\]\)/);
   assert.match(service,/waitGates\(branch,pr\.number\)/);
-  assert.match(service,/review\.decision==='approve'/);
+  assert.match(service,/runReviewReworkLifecycle\(\{/);
   assert.match(service,/mergePr\(pr\.number,approvedHead,j\.title\)/);
   assert.doesNotMatch(service,/refs\/heads\/main.*method:'PATCH'/s);
 });

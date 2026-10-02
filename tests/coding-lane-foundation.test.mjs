@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -691,13 +691,63 @@ test('Gemini internal 429 exhaustion still fails over to next provider',async()=
 });
 
 
+test('review changes execute repair then a fresh gate/review cycle before approval',async()=>{
+  assert.deepStrictEqual(
+    reviewReworkDecision({decision:'changes_requested',issues:['fix exact-head evidence']},0,{maxCycles:3}),
+    {action:'repair',issues:['fix exact-head evidence'],nextStatus:'waiting_ci'},
+  );
+  const events=[];
+  const reviews=[
+    {decision:'changes_requested',issues:['fix exact-head evidence']},
+    {decision:'approve',issues:[]},
+  ];
+  const result=await runReviewReworkLifecycle({
+    maxCycles:3,
+    waitGatesFn:async({reviewCycle})=>{
+      events.push('gates:'+reviewCycle);
+      return {sha:'head-'+reviewCycle};
+    },
+    onGatesPassed:async({reviewCycle,gates})=>events.push('gates_passed:'+reviewCycle+':'+gates.sha),
+    reviewFn:async({reviewCycle,gates})=>{
+      events.push('review:'+reviewCycle+':'+gates.sha);
+      return reviews[reviewCycle];
+    },
+    repairFn:async({reviewCycle,gates,issues})=>{
+      events.push('repair:'+reviewCycle+':'+gates.sha+':'+issues.join(','));
+    },
+    onWaitingCi:async({reviewCycle})=>events.push('waiting_ci:'+reviewCycle),
+  });
+  assert.strictEqual(result.review.decision,'approve');
+  assert.strictEqual(result.gates.sha,'head-1');
+  assert.deepStrictEqual(events,[
+    'gates:0',
+    'gates_passed:0:head-0',
+    'review:0:head-0',
+    'repair:0:head-0:fix exact-head evidence',
+    'waiting_ci:0',
+    'gates:1',
+    'gates_passed:1:head-1',
+    'review:1:head-1',
+  ]);
+
+  await assert.rejects(
+    ()=>runReviewReworkLifecycle({
+      maxCycles:1,
+      waitGatesFn:async()=>({sha:'head-final'}),
+      reviewFn:async()=>({decision:'changes_requested',issues:['still wrong']}),
+      repairFn:async()=>{throw new Error('repair must not run after final unresolved review');},
+    }),
+    /REVIEW_CHANGES_UNRESOLVED/,
+  );
+});
+
 test('runJob wires authoritative GitHub context into generation, review, and repairs',()=>{
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const run=src.slice(src.indexOf('async function runJob'),src.indexOf('async function failJob'));
   assert.ok(run.includes("generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)"));
   assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,[\`CI gate failure on same PR #\${pr.number}\`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)"));
   assert.ok(run.includes("reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext)"));
-  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,review.issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)"));
+  assert.ok(run.includes("generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)"));
 });
 
 test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{

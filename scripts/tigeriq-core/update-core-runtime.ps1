@@ -1,12 +1,18 @@
-param([int]$IntervalSeconds=120)
+param(
+  [int]$IntervalSeconds=120,
+  [string]$RollbackCanaryRuntimeRepo='',
+  [string]$RollbackCanaryPreviousSha='',
+  [string]$RollbackCanaryCandidateSha=''
+)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$controlRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
-$runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
-$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
-$updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
-$launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
-$state='D:\TigerIQ\State\core-runtime-updater.json'
+$rollbackCanaryMode=[bool]($RollbackCanaryRuntimeRepo -and $RollbackCanaryPreviousSha -and $RollbackCanaryCandidateSha)
+$controlRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Workspace\tigeriq-ai-lab'}
+$runtimeRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Runtime\CoreSource'}
+$runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'D:\TigerIQ\State\core-runtime-source.json'}
+$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'}
+$launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'D:\TigerIQ\Runtime\CoreLaunchers'}
+$state=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater-state.json'}else{'D:\TigerIQ\State\core-runtime-updater.json'}
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
 $openclawCanaryState='D:\TigerIQ\State\openclaw-runtime-canary.json'
 $openclawCanaryScript=(Join-Path $runtimeRepo 'apps\openclaw-tigeriq-runtime\canary.mjs')
@@ -22,7 +28,7 @@ $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
-$liveStatusBridgeDir='D:\TigerIQ\Runtime\LiveStatusBridge'
+$liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
 $liveStatusBridgeRuntime=(Join-Path $liveStatusBridgeDir 'server.mjs')
 $liveStatusBridgeState=(Join-Path $liveStatusBridgeDir 'state.json')
@@ -39,14 +45,14 @@ $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'
 $bootstrapWatchdogRuntime='D:\TigerIQ\Runtime\BootstrapWatchdog\bootstrap-watchdog.ps1'
-$webRuntime='D:\TigerIQ\Runtime\WebControl24x7'
+$webRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-web-control'}else{'D:\TigerIQ\Runtime\WebControl24x7'}
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
 $legacyCorePath=(Join-Path $controlRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
 $codingPath=(Join-Path $runtimeRepo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
 $legacyCodingPath=(Join-Path $controlRepo 'apps\tigeriq-coding-lane\coding-entry.mjs').ToLowerInvariant()
 $webPath=(Join-Path $webRuntime 'web-control-server.mjs').ToLowerInvariant()
-$mutex=New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')
+$mutex=if($rollbackCanaryMode){$null}else{New-Object Threading.Mutex($false,'Global\TigerIQCoreRuntimeUpdaterV2')}
 $healthFailures=@{core=0;web=0;coding=0;openclaw=0;appchrome=0}
 $lastHeal=@{core=[DateTime]::MinValue;web=[DateTime]::MinValue;coding=[DateTime]::MinValue;openclaw=[DateTime]::MinValue;appchrome=[DateTime]::MinValue}
 $healCooldownSec=300
@@ -655,6 +661,48 @@ function Runtime-Watchdog(){
   )
   return @{ok=(@($events|Where-Object{-not $_.healthy}).Count-eq 0);updaterRunning=$true;services=$events;checkedAt=(Get-Date).ToUniversalTime().ToString('o')}
 }
+function Invoke-RuntimeRollback([string]$previousRuntimeSha,[string]$remote,[hashtable]$impact,[switch]$CanaryMode){
+  $restartActions=New-Object System.Collections.Generic.List[string]
+  if($previousRuntimeSha){
+    git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'RUNTIME_ROLLBACK_RESET_FAILED'}
+    Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha
+    if(-not $CanaryMode){
+      Sync-Launchers
+      $script:liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+      $script:liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+      if($impact.updater){Sync-UpdaterRuntime}
+    }
+  }else{
+    if($CanaryMode){throw 'ROLLBACK_CANARY_PREVIOUS_SHA_REQUIRED'}
+    git -C $controlRepo worktree remove --force $runtimeRepo 2>$null|Out-Null
+    Remove-Item -LiteralPath $runtimeSourceState -Force -ErrorAction SilentlyContinue
+  }
+  if($impact.core){
+    $restartActions.Add('core')
+    if(-not $CanaryMode){$null=Restart-Core $null}
+  }
+  if($impact.web){
+    $restartActions.Add('web')
+    if(-not $CanaryMode -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
+  }
+  if($impact.coding){
+    $restartActions.Add('coding')
+    if(-not $CanaryMode -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+  }
+  if($impact.openclaw){
+    $restartActions.Add('openclaw')
+    if(-not $CanaryMode -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
+  }
+  return [ordered]@{
+    previousRuntimeSha=$previousRuntimeSha
+    candidateSha=$remote
+    restoredHead=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{$null}
+    restartActions=@($restartActions)
+    runtimeSourceState=$runtimeSourceState
+  }
+}
+
 function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
@@ -668,6 +716,23 @@ function Restart-UpdaterAfterExit(){
   $cmd="Start-Sleep -Seconds 4; Start-ScheduledTask -TaskName '$updaterTask'"
   Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-Command',$cmd) -WindowStyle Hidden|Out-Null
 }
+if($rollbackCanaryMode){
+  $impact=@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$false}
+  $candidateHead=$null
+  try{
+    git -C $runtimeRepo reset --hard $RollbackCanaryCandidateSha|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'ROLLBACK_CANARY_CANDIDATE_RESET_FAILED'}
+    $candidateHead=Head $runtimeRepo 'HEAD'
+    if($candidateHead -ne $RollbackCanaryCandidateSha){throw 'ROLLBACK_CANARY_CANDIDATE_HEAD_MISMATCH'}
+    throw 'SYNTHETIC_CANDIDATE_FAILURE'
+  }catch{
+    $failure=$_.Exception.Message
+    $rollback=Invoke-RuntimeRollback $RollbackCanaryPreviousSha $RollbackCanaryCandidateSha $impact -CanaryMode
+    [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;candidateHeadBeforeFailure=$candidateHead;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
+    exit 0
+  }
+}
+
 while($true){
   $locked=$false
   try{
@@ -710,17 +775,17 @@ while($true){
     $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
     $previousRuntimeSha=$local
-    Ensure-RuntimeSource $remote
-    Ensure-NodeModules $runtimeRepo
-    $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
-    $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
-    $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
-    Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
-    Sync-Launchers
-    $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
-    if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
-    $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
     try{
+      Ensure-RuntimeSource $remote
+      Ensure-NodeModules $runtimeRepo
+      $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+      $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+      $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
+      Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+      Sync-Launchers
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
+      if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
+      $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
@@ -736,22 +801,9 @@ while($true){
         if($impact.openclaw){Save-OpenClawAppliedState $tree}
       }
     }catch{
-      if($previousRuntimeSha){
-        git -C $runtimeRepo reset --hard $previousRuntimeSha|Out-Null
-        Save-RuntimeSourceState $previousRuntimeSha $remote $previousRuntimeSha
-        Sync-Launchers
-        $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
-        $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
-        if($impact.updater){Sync-UpdaterRuntime}
-      }else{
-        git -C $controlRepo worktree remove --force $runtimeRepo 2>$null|Out-Null
-        Remove-Item -LiteralPath $runtimeSourceState -Force -ErrorAction SilentlyContinue
-      }
-      if($impact.core){$null=Restart-Core $null}
-      if($impact.web -and (Task-Exists $webTask)){Sync-WebRuntime;$null=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
-      if($impact.coding -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
-      if($impact.openclaw -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
-      throw ('ROLLED_BACK:'+ $_.Exception.Message)
+      $failure=$_.Exception.Message
+      $null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact
+      throw ('ROLLED_BACK:'+ $failure)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
