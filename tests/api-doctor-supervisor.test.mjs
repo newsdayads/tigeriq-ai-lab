@@ -7,6 +7,7 @@ import {
   apiDoctorExistingHandoffAction,
   apiDoctorHandoffMatchesFailureClass,
   apiDoctorHealthEvidenceEvents,
+  apiDoctorLocalRefreshHealth,
   apiDoctorRepairSignature,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -129,6 +130,37 @@ describe('#1255 NV10 API Doctor policy',()=>{
       summary:'x',attention:['NV18'],sourceRepair:['NV18'],
     });
   });
+
+  it('keeps NV10 liveness separate from functional readiness',()=>{
+    const now=Date.parse('2026-10-02T02:00:00Z');
+    expect(apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:'ONLINE',latestFunctionalEvent:null,nowMs:now,
+    })).toBe('READY');
+    expect(apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:'ERROR',cooldownUntil:'2026-10-02T02:05:00Z',
+      latestFunctionalEvent:'RESOURCE_FAILURE',nowMs:now,
+    })).toBe('ERROR');
+    expect(apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:'ERROR',cooldownUntil:'2026-10-02T01:59:00Z',
+      latestFunctionalEvent:'RESOURCE_FAILURE',nowMs:now,
+    })).toBe('READY');
+    expect(apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:'READY',latestFunctionalEvent:'RESOURCE_SUCCESS',nowMs:now,
+    })).toBe('ONLINE');
+    expect(apiDoctorLocalRefreshHealth({
+      modelAvailable:false,currentHealth:'ONLINE',latestFunctionalEvent:'RESOURCE_SUCCESS',nowMs:now,
+    })).toBe('OFFLINE');
+  });
+
+  it('classifies malformed API Doctor output as invalid_response rather than provider outage',()=>{
+    try {
+      parseApiDoctorDecision('not-json');
+      throw new Error('expected parse failure');
+    } catch (error) {
+      expect(error.message).toBe('API_DOCTOR_JSON_MISSING');
+      expect(error.kind).toBe('invalid_response');
+    }
+  });
 });
 
 describe('#1255 routing/runtime integration',()=>{
@@ -159,6 +191,9 @@ describe('#1255 routing/runtime integration',()=>{
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
+    expect(core).toContain('apiDoctorLocalRefreshHealth({');
+    expect(core).toContain("type in ('RESOURCE_SUCCESS','RESOURCE_FAILURE')");
+    expect(core).toContain("coalesce(task_kind,'')<>'probe'");
     expect(core).toContain('async function runApiDoctorScan()');
     expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
     expect(core).toContain("think:false");
