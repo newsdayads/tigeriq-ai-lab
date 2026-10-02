@@ -12,6 +12,7 @@ import {
   parseOpenWorkIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
+  projectionTransportStale,
   verifiedPortfolioProgress,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
@@ -530,6 +531,12 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
   });
 
+
+  it('treats shared GitHub stale/backoff cache hits as stale projection evidence', () => {
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 3, backoffHits: 1 })).toBe(true);
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 2, backoffHits: 2 })).toBe(true);
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 2, backoffHits: 1 })).toBe(false);
+  });
 
   it('paginates open issues and proves complete enumeration only after the final short page', async () => {
     const seen = [];
