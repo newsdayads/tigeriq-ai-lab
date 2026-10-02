@@ -24,14 +24,17 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).not.toContain('<b>Tiếp:</b>');
   });
 
-  it('centers the detail modal and uses project-first ChatGPT handoff with explicit fallback', () => {
+  it('centers the detail modal and uses deterministic owner-project handoff with explicit fallback', () => {
     expect(html).toContain('left:50%;right:auto');
     expect(html).toContain('transform:translate(-50%,-50%) scale(1)');
-    expect(html).toContain('Hỏi / Duyệt trong TigerIQ ↗');
+    expect(html).toContain('Mở TigerIQ + copy yêu cầu ↗');
     expect(html).toContain('Chat thường dự phòng ↗');
     expect(html).toContain('navigator.clipboard?.writeText');
-    expect(html).toContain('TIGERIQ_CHATGPT_PROJECT_URL');
-    expect(html).toContain('g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/project');
+    expect(html).toContain('TIGERIQ_OWNER_CHATGPT_PROJECT_URL');
+    expect(html).toContain('g-p-6a925c470aa08191a10595e215d04f4e/project');
+    expect(html).not.toContain('g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab');
+    expect(html).toContain('openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL,prompt)');
+    expect(html).not.toContain("TIGERIQ_OWNER_CHATGPT_PROJECT_URL+'?prompt='");
     expect(html).toContain('drawerAskVyFallback');
     expect(html).toContain('https://chatgpt.com/?prompt=');
     expect(html).toContain('bootstrap/00_TIGERIQ_LOADER.md');
