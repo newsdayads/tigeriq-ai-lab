@@ -352,7 +352,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain('apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability})');
     expect(core).toContain("let candidates=q.rows");
     expect(core).toContain(".filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))");
-    expect(core).toContain("!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready");
+    expect(core).toContain("!apiDoctorResourceEligibleForCapability({employeeId:row.employee_id,healthState:row.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready");
     expect(core).toContain('async function runApiDoctorScan()');
     expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
     expect(core).toContain("think:false");
