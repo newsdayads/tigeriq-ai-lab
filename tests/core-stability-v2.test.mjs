@@ -6,6 +6,7 @@ import {
   STABILITY_V2_RESOURCE_SCOPE,
   stabilityV2EmployeeAllowlist,
   stabilityV2ExpectedGroups,
+  stabilityV2OutputContract,
   stabilityV2Plan,
 } from '../apps/tigeriq-core/stability-v2.mjs';
 
@@ -106,6 +107,32 @@ test('done status is not enough: capability, kind and success marker must match 
   }
 });
 
+test('stability output contract rejects nonempty garbage before it can count as provider success',()=>{
+  const spec=groups[0].specs[0];
+  assert.deepEqual(
+    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:spec.title,text:'1.1.1.1 nonempty garbage'}),
+    {handled:true,ok:false,marker:spec.marker,code:'STABILITY_V2_OUTPUT_CONTRACT_MISMATCH'},
+  );
+  assert.deepEqual(
+    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:spec.title,text:`${spec.marker} valid answer`}),
+    {handled:true,ok:true,marker:spec.marker,code:null},
+  );
+});
+
+test('stability output contract does not affect ordinary non-stability jobs',()=>{
+  assert.deepEqual(
+    stabilityV2OutputContract({resourceScope:'OTHER_SCOPE',title:'ordinary',text:'anything nonempty'}),
+    {handled:false,ok:true,marker:null,code:null},
+  );
+});
+
+test('unknown Stability V2 title fails closed at routed output contract',()=>{
+  assert.deepEqual(
+    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:'STAB-R1-UNKNOWN',text:'nonempty'}),
+    {handled:true,ok:false,marker:null,code:'STABILITY_V2_JOB_CONTRACT_UNKNOWN'},
+  );
+});
+
 test('any attempted route outside NV11-NV20 fails closed even when final worker is allowed',()=>{
   const jobs=completedGroups(1);
   jobs[1]={...jobs[1],result:{...jobs[1].result,failures:[{employeeId:'NV10',provider:'ollama',kind:'timeout'}]}};
@@ -168,6 +195,9 @@ test('production wiring suppresses GitHub helper auto-work and applies allowlist
   const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
   assert.match(core,/reconcileStabilityV2Objective\(o\)/);
   assert.match(core,/stabilityV2EmployeeAllowlist\(j\.objective_metadata\)/);
+  assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),options\)/);
+  assert.match(core,/resourceScope:j\.objective_metadata\?\.resourceScope/);
+  assert.match(core,/jobTitle:j\.title/);
   assert.match(core,/STABILITY_V2_BATCH_MATERIALIZED/);
   assert.match(intake,/!isStabilityV2ResourceScope\(spec\.resourceScope\)/);
 });
