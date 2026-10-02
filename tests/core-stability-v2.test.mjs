@@ -24,9 +24,11 @@ function completedGroups(count,{startMs=baseMs}={}){
         id:`J-${groupIndex}-${index}`,
         title:spec.title,
         capability:spec.capability,
+        kind:'ai',
         status:'done',
         employee_id:employees[index%employees.length],
         provider:group.batch===1?providers[index]:providers[index%providers.length],
+        result:{text:`${spec.marker} verified`,failures:[]},
         created_at:new Date(startMs+group.round*1000+group.batch*100+index).toISOString(),
       });
     }
@@ -88,6 +90,28 @@ test('batch1 requires three independent providers',()=>{
   const plan=stabilityV2Plan({resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,nowMs:baseMs+10000});
   assert.equal(plan.action,'block');
   assert.equal(plan.reason,'batch1_provider_diversity_failed');
+});
+
+test('done status is not enough: capability, kind and success marker must match the canonical job contract',()=>{
+  for(const mutate of [
+    row=>({...row,capability:'reasoning'}),
+    row=>({...row,kind:'readonly'}),
+    row=>({...row,result:{text:'provider refusal without marker',failures:[]}}),
+  ]){
+    const jobs=completedGroups(1);
+    jobs[0]=mutate(jobs[0]);
+    const plan=stabilityV2Plan({resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,nowMs:baseMs+10000});
+    assert.equal(plan.action,'block');
+    assert.equal(plan.reason,'job_contract_mismatch');
+  }
+});
+
+test('any attempted route outside NV11-NV20 fails closed even when final worker is allowed',()=>{
+  const jobs=completedGroups(1);
+  jobs[1]={...jobs[1],result:{...jobs[1].result,failures:[{employeeId:'NV10',provider:'ollama',kind:'timeout'}]}};
+  const plan=stabilityV2Plan({resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,nowMs:baseMs+10000});
+  assert.equal(plan.action,'block');
+  assert.equal(plan.reason,'out_of_scope_employee');
 });
 
 test('next round waits for both 5-minute spacing and later deep-audit cadence',()=>{
