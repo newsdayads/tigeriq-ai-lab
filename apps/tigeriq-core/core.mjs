@@ -18,7 +18,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -737,20 +737,52 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure)
   const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
   const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
   const prior=await apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature);
-  if(prior)return {created:false,signature,codingObjectiveId:prior.data?.codingObjectiveId||null,priorAt:prior.ts};
-  const objective=[
-    `API Doctor source-contract repair for ${resource.employee_id} / ${resource.provider}.`,
-    `Failure class: ${failureClass}. Evidence: ${message.slice(0,300)}.`,
-    '',
-    'CANONICAL ALLOWED PATHS (MUST NOT EXPAND):',
-    'apps/tigeriq-core/core.mjs',
-    'tests/api-doctor-provider-contract.test.mjs',
-    '',
-    'Goal: fix only the provider response/adapter behavior that causes healthy credentials/probes to fail real Core work. Preserve zero-cost/free-only behavior. Add focused regression coverage. Branch -> PR -> exact-head checks -> independent review. No direct main, credentials, billing, Production, browser auth, paid action, or destructive action.'
+  if(prior)return {created:false,signature,repairIssueNumber:Number(prior.data?.repairIssueNumber||0)||null,repairIssueUrl:prior.data?.repairIssueUrl||null,priorAt:prior.ts};
+  const repairKey=createHash('sha256').update(signature).digest('hex').slice(0,12);
+  const resourceScope=`API_DOCTOR_PROVIDER_REPAIR_${String(resource.employee_id||'NV').toUpperCase()}_${repairKey}`;
+  const title=`[P1][API DOCTOR][REPAIR] ${resource.employee_id} ${resource.provider} source-contract`;
+  const body=[
+    'TIGERIQ_JOB_V1',
+    'PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny',
+    'SOURCE=API_DOCTOR_CANONICAL_REPAIR_LIFECYCLE_V2',
+    'OWNER_DIRECT=true',
+    'OWNER_POLICY=AUTO',
+    'PRIORITY=P1',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=coding',
+    'EXECUTION_SURFACE=CODING',
+    'AUTONOMOUS_CODE=true',
+    `RESOURCE_SCOPE=${resourceScope}`,
+    'INDEPENDENT_REPAIR_REQUIRED=true',
+    'AUTO_CONTROL_REPAIR=true',
+    'OWNER_PROXY=NV02',
+    'ZERO_COST=true',
+    'NO_DIRECT_MAIN=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true',
+    'APP_CHROME_MUTATION=FORBIDDEN',
+    'ONE_RESOURCE_SCOPE_ONE_WRITER=true',
+    'REVIEW_REQUIRED=true',
+    'REVIEWER_DIFFERENT_RESOURCE=true',
+    `API_DOCTOR_SIGNATURE=${signature}`,
+    `TARGET_EMPLOYEE=${resource.employee_id}`,
+    `TARGET_PROVIDER=${resource.provider}`,
+    `FAILURE_CLASS=${failureClass}`,
+    `FAILURE_EVIDENCE=${message.slice(0,300)}`,
+    'ALLOW_PATH_PREFIX=apps/tigeriq-core/,tests/',
+    'ACCEPTANCE=Fix only the evidenced provider source-contract defect; focused regression passes; branch -> PR -> exact-head checks -> independent review -> merge -> runtime validation; real normal Core job must pass before recovery.',
+    'DONE=false',
+    'STATE=READY_AUTO_EXECUTION',
   ].join('\n');
-  const response=await fetchJson(`${CODING_LANE_URL}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective,priority:'P0'})},10000);
-  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),codingObjectiveId:response?.id||null});
-  return {created:true,signature,codingObjectiveId:response?.id||null};
+  const issue=await githubCreateAutonomousRcaIssue({title,body});
+  const repairIssueNumber=Number(issue?.number)||null;
+  const repairIssueUrl=String(issue?.html_url||'');
+  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),repairIssueNumber,repairIssueUrl,resourceScope,codingObjectiveId:null});
+  return {created:true,signature,repairIssueNumber,repairIssueUrl,resourceScope};
 }
 async function invokeApiDoctorLocal(prompt){
   const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
@@ -831,6 +863,18 @@ async function runApiDoctorScan(){
       row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
     }
     if(existingHandoff){
+      const repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
+      if(repairIssueNumber>0){
+        const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
+        const repairGate=apiDoctorRepairWorkOrderGate({issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason});
+        row.repairIssueNumber=repairIssueNumber;
+        row.repairIssueUrl=existingHandoff.data?.repairIssueUrl||null;
+        row.repairIssueState=repairIssue.state;
+        row.repairIssueStateReason=repairIssue.stateReason||null;
+        if(repairGate.action!=='validate_repair'){
+          row.action='wait_repair';row.reason=repairGate.reason;row.handoff='deduped';actions.push(row);continue;
+        }
+      }
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
       if(handoffPlan.action==='validate_repair'){
         row.action='validate_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;
@@ -1911,6 +1955,17 @@ async function githubCreateAutonomousRcaIssue(spec){
     },
     body:JSON.stringify({title:spec.title,body:spec.body}),
   },10000);
+}
+
+async function githubApiDoctorRepairIssueStatus(issueNumber){
+  const n=Number(issueNumber||0);
+  if(!Number.isInteger(n)||n<=0)return{state:'unknown',stateReason:null};
+  if(!GITHUB_TOKEN)return{state:'unknown',stateReason:null};
+  try{
+    const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
+    const issue=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Doctor'}},10000);
+    return{state:String(issue?.state||'unknown').toLowerCase(),stateReason:issue?.state_reason?String(issue.state_reason).toLowerCase():null};
+  }catch{return{state:'unknown',stateReason:null};}
 }
 
 async function githubAutonomousRcaIssueState(issueNumber){
