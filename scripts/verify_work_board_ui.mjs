@@ -63,6 +63,7 @@ assert.match(publicView, /max-width:700px/);
 assert.match(publicView, /workDrawer/);
 assert.match(publicView, /event\.key==='Tab'/);
 assert.match(publicView, /function verifiedProgress/);
+assert.match(publicView, /workKind==='WORK'/);
 assert.match(publicView, /evidenceFresh=.*staleAll/);
 assert.match(publicView, /refreshOpenDrawer\(\);\s*if\(!rows\.length\)/);
 assert.match(publicView, /'terminal'/);
