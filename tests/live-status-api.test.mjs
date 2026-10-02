@@ -14,6 +14,9 @@ import {
   progressForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
+  verifiedCompletionProgress,
+  completionScopeReferenceNumbers,
+  optionalBodyNumber,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -352,6 +355,13 @@ describe('TigerIQ Live Work Order projection', () => {
       status: 'GOAL', ownerGate: false, workKind: 'GOAL',
     });
     expect(parseOpenWorkIssue(issue(3203, '[P0][APP-CHROME][EVIDENCE] Acceptance', 'CURRENT_STATE=READY_LIVE_ACCEPTANCE\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
+      status: 'VERIFY', ownerGate: false, workKind: 'WORK',
+    });
+    expect(parseOpenWorkIssue(issue(3207, '[P1] Live acceptance pending before Owner gate', [
+      'CURRENT_STATE=READY_LIVE_ACCEPTANCE',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'TIGERIQ_EXECUTABLE=false',
+    ].join('\n')))).toMatchObject({
       status: 'VERIFY', ownerGate: false, workKind: 'WORK',
     });
     expect(parseOpenWorkIssue(issue(3204, '[P0][APP-CHROME] Working', 'STATE=WORKING\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
@@ -759,6 +769,117 @@ describe('TigerIQ Live Work Order projection', () => {
     });
     const fallback = projectExternalRoleClaims(base, [{ ...claimedIssue, labels: [] }]);
     expect(fallback.workers[0].currentJobId).toBe('GH-1766');
+  });
+
+
+  it('uses current canonical phase instead of stale historical owner-gate flags', () => {
+    const row = parseOpenWorkIssue(issue(2803, '[P1][API WORKFORCE] Stability reopened', [
+      'CURRENT_STATE=API_STABILITY_V2_IN_PROGRESS',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
+      '',
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+    ].join('\n')));
+    expect(row).toMatchObject({ status: 'OPEN', ownerGate: false, technicalComplete: false });
+  });
+
+  it('marks a true owner final gate as technically complete and exposes canonical issue evidence', () => {
+    const row = parseOpenWorkIssue(issue(2828, '[P1][TIGERIQ LIVE][ACCEPTANCE] Final gate', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+      'TECHNICAL_ACCEPTANCE=PASS',
+    ].join('\n'), {
+      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/2828',
+      updated_at: '2026-10-02T05:29:55Z',
+    }));
+    expect(row).toMatchObject({
+      status: 'OWNER_GATE',
+      ownerGate: true,
+      technicalComplete: true,
+      currentStep: 'Đã xong kỹ thuật · chờ anh Sơn duyệt',
+      latestCompletedStep: 'Đã xong kỹ thuật và có bằng chứng canonical',
+      evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/2828',
+      evidenceAt: '2026-10-02T05:29:55.000Z',
+    });
+  });
+
+  it('keeps current canonical live phases authoritative over stale owner flags', () => {
+    for (const phase of ['LIVE_VERIFIED', 'LIVE_ACCEPTANCE_PASS', 'READY_LIVE_ACCEPTANCE']) {
+      const row = parseOpenWorkIssue(issue(3230, '[P1] Current live phase wins', [
+        'CURRENT_STATE=' + phase,
+        'OWNER_ACCEPTANCE_REQUIRED=true',
+        'OWNER_GATE=true',
+        'OWNER_APPROVAL_REQUIRED=true',
+      ].join('\n')));
+      expect(row.ownerGate).toBe(false);
+      expect(row.status).toBe('VERIFY');
+      expect(row.ownerApprovalRequired).toBe(false);
+    }
+  });
+
+  it('extracts only structural issue references for the current completion scope', () => {
+    expect(completionScopeReferenceNumbers([
+      'PARENT=#2803 - parent',
+      'CHILD_UI=#2827',
+      'CHILD_STABILITY=#2891',
+      'FINAL_ACCEPTANCE=#2892 - final',
+      'DEPENDS_ON=#2889 - registry|#2890 - doctor',
+      'CURRENT_BLOCKER=#2941 - fallback',
+      'RELATED=#2710 - do not count',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/1772',
+      'NEXT=#2999 - do not count free-form next',
+    ].join('\n'))).toEqual([2803, 2827, 2891, 2892, 2889, 2890, 2941]);
+  });
+
+  it('does not synthesize technical completion from an owner phase without explicit pass evidence', () => {
+    const missing = parseOpenWorkIssue(issue(3220, '[P1] Owner approval without technical proof', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+    ].join('\n')));
+    expect(missing).toMatchObject({ status: 'OWNER_GATE', ownerGate: true, technicalComplete: false });
+    const failed = parseOpenWorkIssue(issue(3221, '[P1] Owner approval after failed technical gate', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+      'TECHNICAL_ACCEPTANCE=FAIL',
+      'LIVE_DATA_API=PASS',
+    ].join('\n')));
+    expect(failed).toMatchObject({ status: 'OWNER_GATE', technicalComplete: false });
+  });
+
+  it('preserves missing API Workforce evidence as unavailable instead of zero', () => {
+    expect(optionalBodyNumber('STABILITY_ROUNDS_COUNTED=0', 'STABILITY_ROUNDS_COUNTED')).toBe(0);
+    expect(optionalBodyNumber('', 'STABILITY_ROUNDS_COUNTED')).toBe(null);
+    expect(optionalBodyNumber('STABILITY_ROUNDS_COUNTED=abc', 'STABILITY_ROUNDS_COUNTED')).toBe(null);
+    expect(optionalBodyNumber('REAL_JOBS_COUNTED=12', ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED'])).toBe(12);
+  });
+
+  it('computes terminal completion separately from unverifiable in-flight percent', () => {
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', status: 'WORKING' }, { workKind: 'WORK', status: 'WAITING' }],
+      [{ workKind: 'WORK', status: 'DONE' }, { workKind: 'WORK', status: 'DONE' }],
+      { complete: true },
+    )).toMatchObject({
+      percent: 50,
+      source: 'terminal_completion',
+      scopeItems: 4,
+      completedItems: 2,
+      remainingItems: 2,
+    });
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', priority: 'P1', status: 'WORKING' }, { workKind: 'WORK', priority: 'P5', status: 'WAITING' }],
+      [{ workKind: 'WORK', priority: 'P1', status: 'DONE' }, { workKind: 'SYSTEM', priority: 'P1', status: 'DONE' }, { workKind: 'WORK', priority: 'P5', status: 'DONE' }],
+      { complete: true },
+    )).toMatchObject({ percent: 50, scopeItems: 2, completedItems: 1 });
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', status: 'WORKING' }],
+      [{ workKind: 'WORK', status: 'DONE' }],
+      { complete: false, completedCount: 25 },
+    )).toMatchObject({ percent: null, source: 'incomplete_enumeration', completedItems: 25 });
   });
 
 

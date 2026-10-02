@@ -495,6 +495,8 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   const completedAt = issue.closed_at || issue.updated_at || null;
   const completedMs = Date.parse(completedAt || '');
   if (!Number.isFinite(completedMs) || completedMs > now) return null;
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind !== 'WORK') return null;
   const priority = issuePriority(issue);
   return {
     number: Number(issue.number),
@@ -504,6 +506,7 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     sourcePriority: priority,
     employeeId: issueEmployeeId(issue),
     status: 'DONE',
+    workKind: 'WORK',
     progressPercent: 100,
     progressSource: 'terminal',
     progressDetail: '5/5 gate',
@@ -515,20 +518,29 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
 
 async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
   const now = Date.now();
-  if (Array.isArray(recentWorkCache.data) && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
+  if (recentWorkCache.data && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
     return recentWorkCache.data;
   }
   try {
-    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl);
-    const rows = (Array.isArray(issues) ? issues : [])
+    const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 10);
+    const candidates = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
       .map((issue) => parseRecentCompletedIssue(issue, now))
-      .filter(Boolean)
-      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0))
-      .slice(0, RECENT_WORK_LIMIT);
-    recentWorkCache = { at: now, data: rows };
-    return rows;
+      .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
+      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+    const rows = candidates.slice(0, RECENT_WORK_LIMIT);
+    const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
+    const value = {
+      rows,
+      completedCount: rows.length,
+      complete: boundedScopeComplete,
+      stale: false,
+      scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
+    };
+    recentWorkCache = { at: now, data: value };
+    return value;
   } catch {
-    return Array.isArray(recentWorkCache.data) ? recentWorkCache.data : [];
+    if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
+    return { rows: [], completedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
   }
 }
 
@@ -544,6 +556,46 @@ function queueWaitReason(issue) {
 function queueDependencies(issue) {
   const raw = bodyValue(issue?.body || '', 'DEPENDS_ON');
   return [...new Set((raw.match(/#?\d+/g) || []).map((value) => Number(value.replace('#', ''))).filter(Boolean))].slice(0, 16);
+}
+
+
+const COMPLETION_SCOPE_REF_KEYS = /^(?:PARENT|DEPENDS_ON|CHILD(?:_[A-Z0-9]+)?|FINAL_ACCEPTANCE|BLOCKER|CURRENT_BLOCKER|ACTIVE_CHILD)$/i;
+export function completionScopeReferenceNumbers(body = '') {
+  const refs = new Set();
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/i);
+    if (!match || !COMPLETION_SCOPE_REF_KEYS.test(String(match[1] || ''))) continue;
+    for (const token of String(match[2] || '').matchAll(/#(\d{1,8})(?!\d)/g)) refs.add(Number(token[1]));
+  }
+  return [...refs];
+}
+
+async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, fetchImpl = fetch) {
+  const currentOpen = new Set((Array.isArray(openRows) ? openRows : [])
+    .filter((row) => row?.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5')
+    .map((row) => Number(row.number)).filter(Boolean));
+  const sourceIssues = (Array.isArray(openIssues) ? openIssues : []).filter((issue) => currentOpen.has(Number(issue?.number)));
+  const refs = new Set(sourceIssues.flatMap((issue) => completionScopeReferenceNumbers(issue?.body || '')));
+  for (const number of currentOpen) refs.delete(number);
+  if (refs.size > 100) return { rows: [], complete: false, reason: 'scope_reference_limit', referenced: refs.size };
+  const resolved = await Promise.all([...refs].map(async (number) => {
+    const issue = await githubIssue(owner, repo, number, issueMap, fetchImpl);
+    return { number, issue };
+  }));
+  if (resolved.some(({ issue }) => !issue)) {
+    return { rows: [], complete: false, reason: 'scope_reference_unresolved', referenced: refs.size };
+  }
+  const rows = resolved
+    .map(({ issue }) => parseRecentCompletedIssue(issue))
+    .filter((row) => row && !currentOpen.has(Number(row.number)))
+    .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+  return {
+    rows,
+    complete: true,
+    referenced: refs.size,
+    completedItems: rows.length,
+    scope: 'current_open_plus_structural_references',
+  };
 }
 
 export function parseQueueIssue(issue) {
@@ -783,7 +835,27 @@ function ownerAcceptancePolicy(body = '') {
 }
 
 function ownerAcceptancePhase(phase = '') {
-  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW)?|LIVE_VERIFIED|LIVE_ACCEPTANCE_PASS|READY_LIVE_ACCEPTANCE)/.test(String(phase || '').toUpperCase());
+  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL)/.test(String(phase || '').toUpperCase());
+}
+
+export function optionalBodyNumber(body = '', keys = []) {
+  for (const key of (Array.isArray(keys) ? keys : [keys])) {
+    const raw = bodyValue(body, key);
+    if (/^\d+$/.test(raw)) return Number(raw);
+  }
+  return null;
+}
+
+function ownerGateTechnicalComplete(body = '', phase = '') {
+  const technical = bodyValue(body, 'TECHNICAL_ACCEPTANCE').toUpperCase();
+  if (technical && technical !== 'PASS') return false;
+  const finalAcceptance = bodyValue(body, 'FINAL_ACCEPTANCE_2828').toUpperCase();
+  const realDataAcceptance = bodyValue(body, 'REAL_DATA_LIVE_ACCEPTANCE').toUpperCase();
+  const liveDataApi = bodyValue(body, 'LIVE_DATA_API').toUpperCase();
+  return technical === 'PASS'
+    || /TECHNICAL_PASS/.test(finalAcceptance)
+    || realDataAcceptance === 'PASS'
+    || liveDataApi === 'PASS';
 }
 
 function issueDisplayOwner(issue) {
@@ -810,24 +882,26 @@ export function classifyOpenIssue(issue) {
   const body = String(issue?.body || '');
   const phase = issueCanonicalState(issue);
   const acceptance = ownerAcceptancePolicy(body);
-  const ownerAcceptancePending = acceptance.required && !acceptance.accepted && ownerAcceptancePhase(phase);
 
   const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
     || bodyFlag(body, 'CANONICAL_POLICY')
     || bodyFlag(body, 'REFERENCE_ONLY');
 
-  const ownerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE)(?:_|$)/.test(phase)
-    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+  const phaseOwnerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE|READY_FOR_OWNER_APPROVAL)(?:_|$)/.test(phase);
+  const legacyOwnerGate = !phase && (
+    bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
     || bodyFlag(body, 'OWNER_GATE')
     || bodyFlag(body, 'OWNER_HOLD')
-    || ownerAcceptancePending;
+    || (acceptance.required && !acceptance.accepted)
+  );
+  const ownerGate = phase ? phaseOwnerGate : legacyOwnerGate;
 
   const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
 
   return {
     workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
     ownerGate,
-    ownerApprovalRequired: acceptance.required && !acceptance.accepted,
+    ownerApprovalRequired: ownerGate && acceptance.required && !acceptance.accepted,
     ownerAccepted: acceptance.accepted,
   };
 }
@@ -892,6 +966,25 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
   return { percent: null, source: 'none', detail: null };
 }
 
+export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
+  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5');
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5' && String(row.status || '').toUpperCase() === 'DONE');
+  const explicitCompleted = Number(options.completedCount);
+  const completedItems = Number.isFinite(explicitCompleted) && explicitCompleted >= 0 ? explicitCompleted : done.length;
+  const scopeItems = open.length + completedItems;
+  if (options.complete === false) {
+    return { percent: null, source: 'incomplete_enumeration', scopeItems, completedItems };
+  }
+  return {
+    percent: scopeItems ? Math.round((completedItems / scopeItems) * 100) : null,
+    source: 'terminal_completion',
+    scopeItems,
+    completedItems,
+    remainingItems: open.length,
+    basis: 'current_non_p5_open_plus_recent_' + RECENT_WORK_LIMIT + '_completed',
+  };
+}
+
 export function verifiedPortfolioProgress(rows = [], options = {}) {
   const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind === 'WORK');
   const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
@@ -946,8 +1039,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
+  const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
   const currentStep = classification.ownerGate
-    ? bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
+    ? technicalComplete
+      ? 'Đã xong kỹ thuật · chờ anh Sơn duyệt'
+      : bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
     : active?.currentStep
       || queued?.waitReason
       || lifecycle?.step
@@ -956,10 +1052,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
     || bodyValue(body, 'LATEST_COMPLETED_STEP')
     || bodyValue(body, 'LAST_DONE')
+    || (technicalComplete ? 'Đã xong kỹ thuật và có bằng chứng canonical' : null)
     || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
-    || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
+    || (classification.ownerGate ? 'Duyệt bản live' : null);
   const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
   const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
   const issueAt = Date.parse(issue?.updated_at || '') || 0;
@@ -973,12 +1070,15 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
       || safeEvidenceUrl(active?.prUrl)
       || null;
   const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
-  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || null;
+  const canonicalOwnerEvidenceUrl = technicalComplete ? safeEvidenceUrl(issue.html_url || '') : null;
+  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || canonicalOwnerEvidenceUrl || null;
   const evidenceAt = activeEvidenceUrl
     ? safeEvidenceTimestamp(active?.updatedAt)
     : bodyEvidenceUrl
       ? safeEvidenceTimestamp(bodyValue(body, 'EVIDENCE_AT') || bodyValue(body, 'EVIDENCE_TIMESTAMP'))
-      : null;
+      : technicalComplete
+        ? safeEvidenceTimestamp(issue.updated_at)
+        : null;
 
   return {
     number,
@@ -997,6 +1097,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ownerApprovalRequired: classification.ownerApprovalRequired,
     ownerApprovalPending: classification.ownerGate,
     ownerAccepted: classification.ownerAccepted,
+    technicalComplete,
     currentState: phase || null,
     currentStep,
     latestCompletedStep,
@@ -1228,7 +1329,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       }
     }
 
-    const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWork = recentWorkSnapshot.rows;
     const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
     const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
     const resolvedQueue = specs.map((row) => {
@@ -1296,6 +1398,34 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       done: recentWork.length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
+    const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
+    const completionProgress = verifiedCompletionProgress(actionable, completionScope.rows, {
+      complete: issuesComplete === true && !projectionStale && completionScope.complete === true,
+    });
+    completionProgress.scope = completionScope.scope || 'current_open_plus_structural_references';
+    completionProgress.referencedItems = completionScope.referenced || 0;
+    const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
+    const stabilityBody = String(stabilityIssue?.body || '');
+    const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
+      const n = Number(String(worker?.employeeId || '').replace(/\D/g, ''));
+      return n >= 11 && n <= 20 && Boolean(String(worker?.provider || '').trim());
+    });
+    const apiRuntimeVerified = base?.liveConnected === true && apiWorkers.length > 0;
+    const healthyProviders = new Set(apiRuntimeVerified
+      ? apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
+        .map((worker) => String(worker?.provider || '').trim()).filter(Boolean)
+      : []);
+    const apiWorkforceSummary = {
+      verified: apiRuntimeVerified,
+      healthyProviders: apiRuntimeVerified ? healthyProviders.size : null,
+      healthyTarget: optionalBodyNumber(stabilityBody, ['REQUIRED_HEALTHY_PROVIDER_COUNT','HEALTHY_PROVIDER_COUNT']) ?? 3,
+      stabilityRounds: optionalBodyNumber(stabilityBody, 'STABILITY_ROUNDS_COUNTED'),
+      stabilityRoundsRequired: optionalBodyNumber(stabilityBody, 'ROUND_COUNT_REQUIRED') ?? 3,
+      realJobs: optionalBodyNumber(stabilityBody, ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED']),
+      realJobsRequired: optionalBodyNumber(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') ?? 15,
+      blocker: cleanText(bodyValue(stabilityBody, 'CURRENT_BLOCKER') || bodyValue(stabilityBody, 'BLOCKED_BY') || (stabilityIssue ? 'Theo dõi #2891' : ''), 120) || null,
+      issueNumber: stabilityIssue ? 2891 : null,
+    };
 
     return {
       ...base,
@@ -1303,6 +1433,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       openWork: openWork.map(ownerFacingWorkRow),
       openSummary,
       portfolioProgress,
+      completionProgress,
+      apiWorkforceSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
