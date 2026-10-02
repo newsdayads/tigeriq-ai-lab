@@ -12,7 +12,7 @@ import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolution
 import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
-import { FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
+import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
@@ -590,7 +590,7 @@ async function candidates(capability='general',options={}){
 async function claimResource(capability,jobId,excluded=[],options={}){
   const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
-  const [stats,functionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
+  const [stats,initialFunctionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
   const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
   let candidates=q.rows
@@ -598,8 +598,24 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}));
   if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
-  const rows=candidates.map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
-  const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  let functionalEvidence=initialFunctionalEvidence;
+  const projectRows=()=>candidates.map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
+  let rows=projectRows();
+  let decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  if(!decision.chosen){
+    const reprobe=functionalReprobeCandidates(rows,{nowMs:Date.now(),maxProbes:FUNCTIONAL_REPROBE_MAX});
+    if(reprobe.length){
+      const outcomes=[];
+      for(const item of reprobe){
+        try{const result=await probeResource(item.resourceId);outcomes.push({...item,ok:Boolean(result?.ok)});}
+        catch(error){outcomes.push({...item,ok:false,kind:String(error?.kind||'outage')});}
+      }
+      functionalEvidence=await routingFunctionalEvidence(pool,candidates.map(x=>x.resource_id));
+      rows=projectRows();
+      decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+      await event('ROUTING_FUNCTIONAL_REPROBE',{jobId,taskKind,profile,capability,maxProbes:FUNCTIONAL_REPROBE_MAX,outcomes,recoveredResourceId:decision.chosen?.resourceId||null});
+    }
+  }
   if(!decision.chosen)return null;
   const client=await pool.connect();
   try{
@@ -1689,6 +1705,7 @@ async function collectSelfAuditSnapshot(store=pool){
 
   const queueJobs=queueJobsResult.rows||[];
   const idleResources=idleResourcesResult.rows||[];
+  const selfAuditFunctionalEvidence=await routingFunctionalEvidence(store,idleResources.map(resource=>resource.resource_id));
   const dispatchableJobs=[];
   const eligibleResourceIds=new Set();
   for(const job of queueJobs){
@@ -1707,7 +1724,7 @@ async function collectSelfAuditSnapshot(store=pool){
       if(employeeAllowlist&&!employeeAllowlist.has(employeeId))return false;
       if(reviewerResourceIds.has(resourceId))return false;
       return true;
-    });
+    }).map(resource=>withFunctionalRoutingEvidence(resource,selfAuditFunctionalEvidence));
     const decision=rankCandidates(candidateResources,{
       profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now
     });
