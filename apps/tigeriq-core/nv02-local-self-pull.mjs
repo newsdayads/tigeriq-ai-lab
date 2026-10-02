@@ -203,6 +203,47 @@ function takeoverWorkerBlocked(issue, comments, target) {
   return false;
 }
 
+function codingLaneFallbackStatus(meta, comments = []) {
+  if (!independentCodingLaneReservation(meta)) return null;
+  const ordered = [...(Array.isArray(comments) ? comments : [])]
+    .sort((a, b) => (commentAtMs(a) - commentAtMs(b)) || (Number(a?.id || 0) - Number(b?.id || 0)));
+  let latest = null;
+  const failedObjectives = new Set();
+  for (const comment of ordered) {
+    const text = String(comment?.body || '');
+    const objectiveId = text.match(/\b(CODEOBJ-[0-9A-Za-z-]+)\b/i)?.[1]?.toUpperCase() || '';
+    const terminalFailure = /\[BLOCKED_FINAL\]|RETRY_BUDGET_EXHAUSTED/i.test(text);
+    const failed = terminalFailure
+      || (objectiveId && (/\bis failed\b/i.test(text) || /CODING_ALL_BATCHES_NOOP/i.test(text)));
+    const completed = objectiveId && (/\bis completed\b/i.test(text) || /\[RESULT\].*completed/i.test(text));
+    const active = objectiveId && (
+      /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
+      || /\[KÍCH HOẠT LẠI\]/i.test(text)
+      || /accepted this issue as\s+CODEOBJ-/i.test(text)
+      || /Automatic coding pipeline is active/i.test(text)
+    );
+    if (failed && objectiveId) failedObjectives.add(objectiveId);
+    if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at: commentAtMs(comment) };
+    else if (completed) latest = { kind: 'completed', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+    else if (active) latest = { kind: 'active', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+  }
+  if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
+  if (latest.kind === 'active') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
+  if (!latest.terminalFailure && failedObjectives.size < NV02_TAKEOVER_NO_PROGRESS_ROUNDS) {
+    return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN', latest, failureCount: failedObjectives.size };
+  }
+  return {
+    eligible: true,
+    reason: latest.terminalFailure ? 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED' : 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED',
+    target: 'CODING_LANE',
+    needsRelease: false,
+    activeClaim: null,
+    failureCount: failedObjectives.size,
+    latest,
+  };
+}
+
 export function nv02TakeoverStatus(issue, comments = [], {
   nowMs = Date.now(),
   staleMs = NV02_TAKEOVER_STALE_MS,
@@ -212,9 +253,17 @@ export function nv02TakeoverStatus(issue, comments = [], {
   const target = nv02AssignedWorker(issue);
   const capability = String(meta.CAPABILITY || 'general').toLowerCase();
   const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
-  if (!target || target === 'NV02') return { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
   if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN', target, resourceScope };
   if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
+  const codingFallback = codingLaneFallbackStatus(meta, comments);
+  if (codingFallback?.eligible) return { ...codingFallback, resourceScope };
+  if (!target || target === 'NV02') return {
+    eligible: false,
+    reason: codingFallback?.reason || 'NO_FOREIGN_ASSIGNEE',
+    target,
+    resourceScope,
+    codingFallback,
+  };
 
   const rounds = noProgressRounds(issue, comments);
   const explicitStalled = [String(issue?.body || ''), ...comments.map((x) => String(x?.body || ''))]
@@ -277,9 +326,11 @@ export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependenc
   if (!dependenciesReady(meta, dependencies)) return { eligible: false, reason: 'DEPENDENCY_NOT_READY' };
   const capability = String(meta.CAPABILITY || 'general').toLowerCase();
   const primary = NV02_PRIMARY_CAPABILITIES.has(capability);
-  if (independentCodingLaneReservation(meta)) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
   const target = explicitTarget(meta);
   const takeover = takeoverStatuses instanceof Map ? takeoverStatuses.get(Number(issue?.number)) : takeoverStatuses?.[Number(issue?.number)];
+  if (independentCodingLaneReservation(meta) && !takeover?.eligible) {
+    return { eligible: false, reason: takeover?.reason || 'INDEPENDENT_CODING_LANE_RESERVED' };
+  }
   if (target && !/^NV02$/i.test(target) && !takeover?.eligible) return { eligible: false, reason: takeover?.reason || 'TARGET_EMPLOYEE_LOCKED' };
   if (hardGate(meta) || HARD_GATE_MARKERS.test(capability)) return { eligible: false, reason: 'HARD_GATE_UNSAFE' };
   if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN' };
