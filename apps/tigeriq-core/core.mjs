@@ -866,7 +866,10 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
   const runtimeCurrentRevision=apiDoctorSha(runtimeSourceState?.currentSha);
   const deployedRevision=apiDoctorSha(updaterState?.installedSha);
-  const deployedAt=String(updaterState?.updatedAt||'').trim();
+  // core-runtime-updater.updatedAt advances on every NO_CHANGE cycle, so it is
+  // not a stable deployment cutover timestamp. core-runtime-source.updatedAt
+  // changes only when currentSha is applied and is the durable cutover evidence.
+  const deployedAt=String(runtimeSourceState?.updatedAt||'').trim();
   const deploymentGate=apiDoctorRepairDeploymentGate({
     issueNumber,state:issue?.state,stateReason:issue?.state_reason,issueClosedAt:issue?.closed_at,
     runtimeCurrentSha:runtimeCurrentRevision,runtimeInstalledSha:deployedRevision,runtimeUpdatedAt:deployedAt,
