@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
+import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -1722,16 +1723,28 @@ async function managerTick() {
     for(const spec of decision.jobs){
       if(!spec?.title||!spec?.prompt) continue;
       const capability=['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general';
+      const title=String(spec.title).slice(0,200);
+      const promptText=String(spec.prompt).slice(0,12000);
       const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
       if(capability==='pc_operator'){
-        const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),capability,currentPhase]);
+        const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,title,promptText,capability,currentPhase]);
         if(inserted.rowCount===0){
           const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1',[id])).rows[0]||{};
           await event('OPENCLAW_JOB_DEDUPED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase,status:existing.status||'unknown',attempts:Number(existing.attempts)||0,maxAttempts:Number(existing.max_attempts)||2});
           continue;
         }
       }else{
-        await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6)',[id,o.id,String(spec.title).slice(0,200),String(spec.prompt).slice(0,12000),capability,currentPhase]);
+        const identity=managerLogicalJobIdentity({objectiveId:o.id,phaseIndex:currentPhase,title});
+        const existing=(await pool.query(
+          'select id,status,attempts,max_attempts from tigeriq_jobs where objective_id=$1 and phase_index=$2 and lower(trim(title))=$3 order by created_at desc limit 1',
+          [identity.objectiveId,identity.phaseIndex,identity.normalizedTitle],
+        )).rows[0]||null;
+        const disposition=managerJobMaterializationDecision(existing?.status);
+        if(disposition.action==='dedupe'){
+          await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
+          continue;
+        }
+        await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6)',[id,o.id,title,promptText,capability,currentPhase]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
