@@ -838,7 +838,7 @@ function ownerAcceptancePhase(phase = '') {
   return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL)/.test(String(phase || '').toUpperCase());
 }
 
-function optionalBodyNumber(body = '', keys = []) {
+export function optionalBodyNumber(body = '', keys = []) {
   for (const key of (Array.isArray(keys) ? keys : [keys])) {
     const raw = bodyValue(body, key);
     if (/^\d+$/.test(raw)) return Number(raw);
