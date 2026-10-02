@@ -75,7 +75,7 @@ public final class ControllerClient {
         JSONObject request = new JSONObject();
         if (provider != null && !provider.trim().isEmpty()) request.put("provider", provider.trim());
         request.put("capabilities", new JSONArray(capabilities));
-        return authenticatedPost("/api/node/employee", request);
+        return authenticatedPost("/api/mobile/assignment", request);
     }
 
     public JSONObject probeStatus(String controllerUrl) throws Exception {
