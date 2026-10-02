@@ -49,8 +49,8 @@ export function classifyApiDoctorFailure(input={}){
   const message=safeText(input.message||input.error||'',500).toLowerCase();
   const status=Number(input.status||0);
   if(/credential|password|2fa|security|production|browser[-_ ]?auth|destructive|irreversible|paid[-_ ]?action|account[-_ ]?setting/.test(kind+' '+message))return 'hard_blocked';
+  if(kind==='external_blocked'||status===402||/token_quota_reached|\bhttp[_ -]?402\b|payment required|free[- ]?tier.*exhaust|billing/.test(message))return 'external_blocked';
   if(status===401||status===403||kind==='auth'||/\bhttp[_ -]?(401|403)\b/.test(message))return 'auth';
-  if(status===402||/\bhttp[_ -]?402\b|payment required|free[- ]?tier.*exhaust|billing/.test(message))return 'external_blocked';
   if(status===429||kind==='rate_limit'||/\bhttp[_ -]?429\b|rate.?limit|quota/.test(message))return 'rate_limit';
   if(kind==='timeout'||/timeout|timed out|abort/.test(message))return 'timeout';
   if(kind==='invalid_response'||kind==='model-output'||/empty_response|schema|invalid_response|unexpected_response|json/.test(message))return 'source_contract';
