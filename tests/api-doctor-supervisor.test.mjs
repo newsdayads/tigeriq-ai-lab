@@ -21,6 +21,7 @@ import {
 import {deriveRoutingProfile,rankCandidates} from '../apps/tigeriq-core/smart-router.mjs';
 import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
+import {cloudflareRequestBody,cloudflareResponseText} from '../apps/tigeriq-core/manager-json.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
   it('classifies quota/payment/contract failures without calling them credential failures',()=>{
@@ -333,14 +334,19 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
-  it('uses Cloudflare JSON Mode for manager calls and serializes structured response objects',()=>{
-    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-    expect(core).toContain("function cloudflareRequestBody(prompt='')");
-    expect(core).toContain("isManagerPrompt(prompt)?{type:'json_schema',json_schema:GEMINI_MANAGER_RESPONSE_SCHEMA}:null");
-    expect(core).toContain("body:JSON.stringify(cloudflareRequestBody(prompt))");
-    expect(core).toContain("function cloudflareResponseText(response)");
-    expect(core).toContain("if(response&&typeof response==='object')return JSON.stringify(response)");
-    expect(core).toContain("const text = cloudflareResponseText(b?.result?.response)");
+  it('builds Cloudflare manager JSON payloads without changing ordinary prompts and normalizes response text',()=>{
+    const schema={type:'object',required:['status','summary','jobs']};
+    const managerPrompt='You are TigerIQ AI Manager. Return one decision.';
+    expect(cloudflareRequestBody(managerPrompt,schema)).toEqual({
+      prompt:managerPrompt,
+      response_format:{type:'json_schema',json_schema:schema},
+    });
+    const ordinaryPrompt='Summarize this bounded task.';
+    expect(cloudflareRequestBody(ordinaryPrompt,schema)).toEqual({prompt:ordinaryPrompt});
+    expect(cloudflareRequestBody(ordinaryPrompt,schema)).not.toHaveProperty('response_format');
+    const structured={status:'continue',summary:'ok',jobs:[]};
+    expect(cloudflareResponseText(structured)).toBe(JSON.stringify(structured));
+    expect(cloudflareResponseText('raw provider text')).toBe('raw provider text');
   });
 
   it('constrains Gemini manager output to the strict Core manager schema',()=>{
