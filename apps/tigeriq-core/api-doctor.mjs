@@ -120,6 +120,17 @@ export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass)
   return handoffClass===current;
 }
 
+export function apiDoctorRepairLifecycleRelevant({
+  hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',
+}={}){
+  if(!hasHandoff)return false;
+  const current=String(currentFailureClass||'').trim().toLowerCase();
+  const action=String(currentAction||'').trim().toLowerCase();
+  if(current==='rate_limit'&&['wait','probe'].includes(action))return false;
+  if(Number(repairIssueNumber||0)>0)return true;
+  return String(handoffFailureClass||'').trim().toLowerCase()==='source_contract'&&['source_contract','unknown',''].includes(current);
+}
+
 export function apiDoctorRepairSignature({employeeId,provider,failureClass,message}={}){
   const normalized=safeText(message,180).toLowerCase().replace(/\d+/g,'#').replace(/\s+/g,' ');
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
@@ -134,6 +145,34 @@ export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stat
   if(normalizedState==='closed'&&normalizedReason==='completed')return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
   if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
   return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
+}
+
+export function apiDoctorRepairDeploymentGate({
+  issueNumber=0,state='unknown',stateReason=null,issueClosedAt=null,
+  runtimeCurrentSha='',runtimeInstalledSha='',runtimeUpdatedAt=null,
+  updaterResult='',updaterCandidateSha='',
+}={}){
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason});
+  if(issueGate.action!=='validate_repair')return issueGate;
+  const closedMs=Date.parse(String(issueClosedAt||''));
+  const runtimeMs=Date.parse(String(runtimeUpdatedAt||''));
+  if(!Number.isFinite(closedMs)||!Number.isFinite(runtimeMs)||runtimeMs<closedMs){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'};
+  }
+  const current=String(runtimeCurrentSha||'').trim().toLowerCase();
+  const installed=String(runtimeInstalledSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(current)||!/^[0-9a-f]{40}$/.test(installed)||current!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
+  }
+  const result=String(updaterResult||'').trim().toUpperCase();
+  if(!['UPDATED','NO_CHANGE'].includes(result)){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'};
+  }
+  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
+  if(candidate&&candidate!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'};
+  }
+  return {action:'validate_repair',reason:'canonical_repair_runtime_applied'};
 }
 
 export function buildApiDoctorRepairWorkOrder({

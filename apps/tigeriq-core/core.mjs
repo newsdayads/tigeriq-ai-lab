@@ -18,7 +18,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -772,17 +772,16 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
 
   const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
-  const runtimeIdentity=resolveRuntimeSourceIdentity({
-    explicitExpectedSha:process.env.TIGERIQ_EXPECTED_SOURCE_SHA,
-    explicitInstalledSha:process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA,
-    runtimeSourceState,
-    updaterState,
-  });
-  const deployedRevision=apiDoctorSha(runtimeIdentity.installedSha);
   const runtimeCurrentRevision=apiDoctorSha(runtimeSourceState?.currentSha);
-  const deployedAt=String(runtimeSourceState?.updatedAt||'').trim();
-  if(!deployedRevision||runtimeCurrentRevision!==deployedRevision||!Number.isFinite(Date.parse(deployedAt))){
-    return {ready:false,reason:'repair_runtime_revision_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision:deployedRevision||null};
+  const deployedRevision=apiDoctorSha(updaterState?.installedSha);
+  const deployedAt=String(updaterState?.updatedAt||'').trim();
+  const deploymentGate=apiDoctorRepairDeploymentGate({
+    issueNumber,state:issue?.state,stateReason:issue?.state_reason,issueClosedAt:issue?.closed_at,
+    runtimeCurrentSha:runtimeCurrentRevision,runtimeInstalledSha:deployedRevision,runtimeUpdatedAt:deployedAt,
+    updaterResult:updaterState?.result||'',updaterCandidateSha:updaterState?.candidateSha||'',
+  });
+  if(deploymentGate.action!=='validate_repair'){
+    return {ready:false,reason:deploymentGate.reason,issueNumber,repairPrNumber,repairRevision,deployedRevision:deployedRevision||null};
   }
 
   let repairContained=repairRevision===deployedRevision;
@@ -825,11 +824,11 @@ async function githubCreateApiDoctorRepairIssue(spec){
     body:JSON.stringify({title:spec.title,body:spec.body}),
   },10000);
 }
-async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
-  const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
-  const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
+async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure,{signatureOverride='',messageOverride=''}={}){
+  const message=String(messageOverride||latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
+  const signature=String(signatureOverride||apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message}));
   const prior=await apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature);
-  if(prior)return {created:false,signature,repairIssueNumber:Number(prior.data?.repairIssueNumber||0)||null,repairIssueUrl:prior.data?.repairIssueUrl||null,codingObjectiveId:prior.data?.codingObjectiveId||null,priorAt:prior.ts};
+  if(prior&&Number(prior.data?.repairIssueNumber||0)>0)return {created:false,signature,repairIssueNumber:Number(prior.data.repairIssueNumber),repairIssueUrl:prior.data?.repairIssueUrl||null,codingObjectiveId:prior.data?.codingObjectiveId||null,priorAt:prior.ts};
   const spec=buildApiDoctorRepairWorkOrder({
     employeeId:resource.employee_id,
     provider:resource.provider,
@@ -904,6 +903,8 @@ async function runApiDoctorScan(){
       actions.push(row);continue;
     }
     const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
+    const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
+    const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
     let handoffPlan=null;
     if(handoffCandidate){
       let lifecycle;
@@ -950,12 +951,25 @@ async function runApiDoctorScan(){
         row.action='recovered';row.reason='live_work_success_after_repair_deploy';row.recovered=true;actions.push(row);continue;
       }
     }
-    const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
+    const repairLifecycleRelevant=apiDoctorRepairLifecycleRelevant({
+      hasHandoff:Boolean(handoffCandidate),repairIssueNumber:canonicalRepairIssueNumber,handoffFailureClass,
+      currentFailureClass:plan.failureClass,currentAction:plan.action,
+    });
+    const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
     if(handoffCandidate&&!existingHandoff){
-      row.handoff='ignored_stale_failure_class';
-      row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
+      row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class';
+      row.handoffFailureClass=handoffFailureClass||'unknown';
     }
     if(existingHandoff){
+      let repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
+      if(repairIssueNumber<=0&&handoffFailureClass==='source_contract'){
+        const migrated=await createApiDoctorRepairHandoff(resource,handoffFailureClass,latestFailure,{
+          signatureOverride:existingHandoff.data?.signature||'',
+          messageOverride:existingHandoff.data?.message||'',
+        });
+        repairIssueNumber=Number(migrated.repairIssueNumber||0);
+        row.action='wait_repair';row.reason='legacy_handoff_migrated_to_canonical_p1';row.handoff=migrated.created?'migrated_legacy':'deduped';row.repairIssueNumber=repairIssueNumber||null;row.repairIssueUrl=migrated.repairIssueUrl||null;actions.push(row);continue;
+      }
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
       if(handoffPlan.action==='validate_repair'){
         row.action='validate_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;row.repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0)||null;

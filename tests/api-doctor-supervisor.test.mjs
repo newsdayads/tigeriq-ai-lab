@@ -8,6 +8,8 @@ import {
   apiDoctorHandoffMatchesFailureClass,
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
+  apiDoctorRepairDeploymentGate,
+  apiDoctorRepairLifecycleRelevant,
   apiDoctorRepairSignature,
   apiDoctorRepairWorkOrderGate,
   apiDoctorResourceEligibleForCapability,
@@ -136,6 +138,51 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairWorkOrderGate({issueNumber:9901,state:'closed',stateReason:'not_planned'})).toEqual({
       action:'wait_repair',reason:'canonical_repair_work_order_not_completed',
     });
+  });
+
+  it('keeps canonical and legacy source repair lifecycle active after a healthy reprobe',()=>{
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:9901,handoffFailureClass:'source_contract',
+      currentFailureClass:'unknown',currentAction:'idle',
+    })).toBe(true);
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:0,handoffFailureClass:'source_contract',
+      currentFailureClass:'unknown',currentAction:'idle',
+    })).toBe(true);
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:9901,handoffFailureClass:'source_contract',
+      currentFailureClass:'rate_limit',currentAction:'wait',
+    })).toBe(false);
+  });
+
+  it('fails closed until updater terminal evidence proves the repair runtime is installed',()=>{
+    const closedAt='2026-10-02T07:00:00Z';
+    const sha='a'.repeat(40);
+    expect(apiDoctorRepairDeploymentGate({
+      issueNumber:9901,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:sha,runtimeInstalledSha:'b'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'UPDATED',
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'});
+    expect(apiDoctorRepairDeploymentGate({
+      issueNumber:9901,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:sha,runtimeInstalledSha:sha,runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'FAILED',
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'});
+    expect(apiDoctorRepairDeploymentGate({
+      issueNumber:9901,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:sha,runtimeInstalledSha:sha,runtimeUpdatedAt:'2026-10-02T06:59:59Z',
+      updaterResult:'UPDATED',
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'});
+    expect(apiDoctorRepairDeploymentGate({
+      issueNumber:9901,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:sha,runtimeInstalledSha:sha,runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'NO_CHANGE',updaterCandidateSha:'b'.repeat(40),
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'});
+    expect(apiDoctorRepairDeploymentGate({
+      issueNumber:9901,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:sha,runtimeInstalledSha:sha,runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'UPDATED',updaterCandidateSha:sha,
+    })).toEqual({action:'validate_repair',reason:'canonical_repair_runtime_applied'});
   });
 
   it('builds a canonical P1 delegated repair Work Order accepted by protected-path coding intake',()=>{
@@ -314,8 +361,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
     expect(core).toContain("apiDoctorCurrentFailure(events)");
     expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
-    expect(core).toContain("row.handoff='ignored_stale_failure_class'");
-    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=apiDoctorHandoffMatchesFailureClass"));
+    expect(core).toContain("row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class'");
+    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass"));
     expect(core).not.toContain("evidence:'stale_failure_class_reprobe_success'");
     expect(core).toContain("row.staleHandoffProbe='ok_wait_repair_lifecycle'");
     expect(core).toContain("healthState:resource.health_state");
@@ -329,10 +376,17 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation')");
     expect(core).toContain("apiDoctorRepairLifecycleEvidence(handoffCandidate)");
+    expect(core).toContain("apiDoctorRepairLifecycleRelevant({");
+    expect(core).toContain("legacy_handoff_migrated_to_canonical_p1");
+    expect(core).toContain("signatureOverride:existingHandoff.data?.signature||''");
+    expect(core).toContain("prior&&Number(prior.data?.repairIssueNumber||0)>0");
     expect(core).toContain("GITHUB_CODING_RESULT_REPORTED");
     expect(core).toContain("from tigeriq_coding_jobs where objective_id=$1 and status='completed'");
     expect(core).toContain("/compare/${repairRevision}...${deployedRevision}");
-    expect(core).toContain("runtimeCurrentRevision!==deployedRevision");
+    expect(core).toContain("const deployedRevision=apiDoctorSha(updaterState?.installedSha)");
+    expect(core).toContain("apiDoctorRepairDeploymentGate({");
+    expect(core).toContain("updaterResult:updaterState?.result||''");
+    expect(core).toContain("updaterCandidateSha:updaterState?.candidateSha||''");
     expect(core).toContain("successAfterAt:new Date(cutoverMs).toISOString()");
     expect(core).toContain("evidence:'live_work_success_after_repair_deploy'");
     expect(core).toContain("normalWorkSuccessAt:successAfter?.ts||null");
