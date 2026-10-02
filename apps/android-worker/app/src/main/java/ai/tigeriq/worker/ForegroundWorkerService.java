@@ -63,7 +63,9 @@ public final class ForegroundWorkerService extends Service {
         } catch (Exception error) {
             String message = error.getMessage();
             if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
-            writeRuntime("OFFLINE", 0L, message.length() > 160 ? message.substring(0, 160) : message);
+            long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_LAST_HEARTBEAT_AT, 0L);
+            writeRuntime("OFFLINE", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
         }
     }
 
@@ -85,7 +87,7 @@ public final class ForegroundWorkerService extends Service {
     private void ensureChannel() {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager manager = getSystemService(NotificationManager.class);
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "TigerIQ Worker", NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "TigerIQ AI Worker", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("Persistent TigerIQ worker runtime status");
         manager.createNotificationChannel(channel);
     }
@@ -95,8 +97,8 @@ public final class ForegroundWorkerService extends Service {
             ? new Notification.Builder(this, CHANNEL_ID)
             : new Notification.Builder(this);
         return builder
-            .setContentTitle("TigerIQ Worker")
-            .setContentText("Worker runtime active")
+            .setContentTitle("TigerIQ AI Worker")
+            .setContentText("Worker đang hoạt động nền")
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
             .setOngoing(true)
             .build();
