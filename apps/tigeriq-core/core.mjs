@@ -671,19 +671,29 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     }
   }
   if(!decision.chosen)return null;
+  const rankedClaimCandidates=[decision.chosen,...(Array.isArray(decision.candidates)?decision.candidates:[])]
+    .filter(item=>item?.resourceId&&item?.eligible!==false)
+    .filter((item,index,all)=>all.findIndex(x=>x.resourceId===item.resourceId)===index)
+    .slice(0,20);
   const client=await pool.connect();
   try{
     await client.query('begin');
-    const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);
-    const r=locked.rows[0];
+    let r=null,selectedCandidate=null;
+    for(const candidate of rankedClaimCandidates){
+      const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[candidate.resourceId]);
+      const row=locked.rows[0];
+      if(!row)continue;
+      const freshEvidence=(await routingFunctionalEvidence(client,[row.resource_id])).get(row.resource_id)||emptyFunctionalRoutingEvidence();
+      const freshResource=withFunctionalRoutingEvidence(row,new Map([[row.resource_id,freshEvidence]]));
+      if(!apiDoctorResourceEligibleForCapability({employeeId:row.employee_id,healthState:row.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready)continue;
+      r=row;selectedCandidate=candidate;break;
+    }
     if(!r){await client.query('commit');return null;}
-    const freshEvidence=(await routingFunctionalEvidence(client,[r.resource_id])).get(r.resource_id)||emptyFunctionalRoutingEvidence();
-    const freshResource=withFunctionalRoutingEvidence(r,new Map([[r.resource_id,freshEvidence]]));
-    if(!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
     await client.query('commit');
-    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:decision.chosen};
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:selectedCandidate||decision.chosen};
     await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
+    if(selectedCandidate?.resourceId!==decision.chosen.resourceId)await event('ROUTING_CLAIM_FALLBACK',{jobId,taskKind,profile,fromResourceId:decision.chosen.resourceId,toResourceId:r.resource_id,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider});
     await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
     return {...r,routingProfile:profile,routingDecision:evidence};
   }catch(e){await client.query('rollback');throw e;}finally{client.release();}
