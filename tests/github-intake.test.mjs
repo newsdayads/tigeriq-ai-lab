@@ -74,6 +74,11 @@ function coreBacklogPool(options={}){
       if(row){row.status=params[1];row.summary=params[2];row.metadata={...row.metadata,...JSON.parse(params[3])};}
       return {rowCount:row?1:0,rows:[]};
     }
+    if(q.startsWith('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+      const row=objectives.find(o=>o.id===params[0]);
+      if(row)row.metadata={...row.metadata,...JSON.parse(params[1])};
+      return {rowCount:row?1:0,rows:[]};
+    }
     if(q.startsWith('update tigeriq_jobs j')){
       const terminal=new Set(objectives.filter(o=>['completed','blocked'].includes(o.status)).map(o=>o.id));
       const changed=[];
@@ -317,6 +322,33 @@ test('generic stale terminal-blocked label clears once on fresh source revision 
   assert.strictEqual(labelClears,1);
   assert.strictEqual(pool.objectives.length,2);
   assert.strictEqual(pool.jobs.length,2);
+});
+
+test('terminal outcome sync preserves old revision so a fresh executable source revision rearms exactly once',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2891,state:'open',title:'[P1][CORE] terminal revision rearm',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','TERMINAL_REVISION_REARM')+'\nLIVE_ACCEPTANCE_REQUIRED=true',labels:[],comments:0,html_url:'https://example/2891',updated_at:'2026-10-02T15:20:49Z'};
+  let out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  const prior=pool.objectives[0];
+  const priorRevision=prior.metadata.sourceRevision;
+  prior.status='blocked';
+  prior.metadata={...prior.metadata,githubClaimReported:false,githubResultReported:true,githubTerminalLabelSynced:true,liveAcceptanceRequired:true};
+  issue.body+='\nREARMED_AT=2026-10-02T15:22:53Z';
+  issue.updated_at='2026-10-02T15:22:53Z';
+  const fetchImpl=async(url)=>{
+    if(String(url).includes('/issues/2891/comments'))return response([]);
+    if(String(url).endsWith('/issues/2891'))return response(issue);
+    return response({});
+  };
+  await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[issue],issueNumbers:[2891]});
+  assert.strictEqual(prior.metadata.sourceRevision,priorRevision,'terminal objective must retain the revision it executed');
+  out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives.length,2);
+  assert.notStrictEqual(pool.objectives[1].metadata.sourceRevision,priorRevision);
+  const repeat=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(repeat.created,0);
+  assert.strictEqual(pool.objectives.length,2);
 });
 
 test('generic stale terminal label is not cleared for explicit non-executable coordination work',async()=>{
