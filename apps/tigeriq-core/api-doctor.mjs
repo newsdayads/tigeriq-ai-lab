@@ -26,6 +26,16 @@ export function apiDoctorLocalRefreshHealth({
   return String(latestFunctionalEvent||'').toUpperCase()==='RESOURCE_SUCCESS'?'ONLINE':'READY';
 }
 
+export function apiDoctorResourceEligibleForCapability({
+  employeeId='',
+  healthState='READY',
+  capability='general',
+}={}){
+  if(String(employeeId||'').trim().toUpperCase()!=='NV10')return true;
+  if(String(capability||'').trim().toLowerCase()===API_DOCTOR_CAPABILITY)return true;
+  return String(healthState||'').trim().toUpperCase()==='ONLINE';
+}
+
 export function apiDoctorHealthEvidenceEvents(events=[]){
   return (Array.isArray(events)?events:[]).filter(row=>{
     const taskKind=String(row?.task_kind||row?.data?.taskKind||'').trim().toLowerCase();
