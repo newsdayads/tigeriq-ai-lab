@@ -8,7 +8,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
-import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -1692,10 +1692,8 @@ async function collectSelfAuditSnapshot(store=pool){
   });
   const {expectedSha,installedSha}=runtimeIdentity;
 
-  const functionalFailures=(functionalRows.rows||[])
-    .map(row=>`${String(row.contract_id||'UNKNOWN')}:${String(row.signature||'')}`)
-    .filter(Boolean)
-    .slice(0,20);
+  const runtimeSourceAligned=Boolean(expectedSha&&installedSha&&expectedSha===installedSha);
+  const functionalFailures=selfAuditFunctionalFailureKeys(functionalRows.rows,{runtimeSourceAligned});
 
   const bootstrapFresh=bootstrapState?selfAuditStateFresh(bootstrapState,now):false;
   const updaterFresh=updaterState?selfAuditStateFresh(updaterState,now):false;

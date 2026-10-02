@@ -23,9 +23,17 @@ export function resolveRuntimeSourceIdentity({
 }={}){
   const canonicalSourceSha=String(runtimeSourceState?.currentSha||updaterState?.installedSha||'').trim();
   const expectedSha=String(explicitExpectedSha||canonicalSourceSha||'').trim();
-  const installedSha=String(explicitInstalledSha||updaterState?.installedSha||runtimeSourceState?.currentSha||'').trim();
+  const installedSha=String(explicitInstalledSha||runtimeSourceState?.currentSha||updaterState?.installedSha||'').trim();
   const gateSha=String(runtimeSourceState?.gateSha||updaterState?.gateSha||'').trim();
   return {expectedSha,installedSha,gateSha,canonicalSourceSha};
+}
+
+export function selfAuditFunctionalFailureKeys(rows=[],{runtimeSourceAligned=false}={}){
+  return (Array.isArray(rows)?rows:[])
+    .filter(row=>!(runtimeSourceAligned&&String(row?.contract_id||'')==='RUNTIME_SOURCE_SHA'))
+    .map(row=>`${String(row?.contract_id||'UNKNOWN')}:${String(row?.signature||'')}`)
+    .filter(Boolean)
+    .slice(0,20);
 }
 
 function anomaly(contractId,key,evidence){

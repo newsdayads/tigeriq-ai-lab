@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {evaluateSelfAudit,resolveRuntimeSourceIdentity} from '../apps/tigeriq-core/self-audit.mjs';
+import {evaluateSelfAudit,resolveRuntimeSourceIdentity,selfAuditFunctionalFailureKeys} from '../apps/tigeriq-core/self-audit.mjs';
 
 describe('#2850 runtime source identity',()=>{
   it('does not treat a squash-merge gate head as the canonical installed SHA',()=>{
@@ -47,5 +47,29 @@ describe('#2850 runtime source identity',()=>{
     });
     expect(identity.expectedSha).toBe('explicit-expected');
     expect(identity.installedSha).toBe('explicit-installed');
+  });
+
+  it('uses runtime source state as installed identity while updater state is still catching up',()=>{
+    const identity=resolveRuntimeSourceIdentity({
+      runtimeSourceState:{currentSha:'new-merge-sha',gateSha:'new-merge-sha'},
+      updaterState:{installedSha:'old-merge-sha',gateSha:'old-gate-sha'},
+    });
+    expect(identity.expectedSha).toBe('new-merge-sha');
+    expect(identity.installedSha).toBe('new-merge-sha');
+    expect(evaluateSelfAudit({runtime:identity}).anomalies.some(x=>x.contractId==='RUNTIME_SOURCE_SHA')).toBe(false);
+  });
+
+  it('drops persisted runtime mismatch from service integrity once live runtime source is aligned',()=>{
+    const rows=[
+      {contract_id:'RUNTIME_SOURCE_SHA',signature:'stale-runtime'},
+      {contract_id:'UPDATER_WATCHDOG_HEALTH',signature:'real-watchdog'},
+    ];
+    expect(selfAuditFunctionalFailureKeys(rows,{runtimeSourceAligned:true})).toEqual([
+      'UPDATER_WATCHDOG_HEALTH:real-watchdog',
+    ]);
+    expect(selfAuditFunctionalFailureKeys(rows,{runtimeSourceAligned:false})).toEqual([
+      'RUNTIME_SOURCE_SHA:stale-runtime',
+      'UPDATER_WATCHDOG_HEALTH:real-watchdog',
+    ]);
   });
 });
