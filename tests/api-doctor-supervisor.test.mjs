@@ -389,10 +389,11 @@ describe('#1255 routing/runtime integration',()=>{
     const managerPrompt='You are TigerIQ AI Manager. Return one decision.';
     expect(cloudflareRequestBody(managerPrompt)).toEqual({
       prompt:managerPrompt,
+      temperature:0,
       response_format:{type:'json_schema',json_schema:schema},
     });
     const ordinaryPrompt='Summarize this bounded task.';
-    expect(cloudflareRequestBody(ordinaryPrompt)).toEqual({prompt:ordinaryPrompt});
+    expect(cloudflareRequestBody(ordinaryPrompt)).toEqual({prompt:ordinaryPrompt,temperature:0});
     expect(cloudflareRequestBody(ordinaryPrompt)).not.toHaveProperty('response_format');
     const structured={status:'continue',summary:'ok',jobs:[]};
     expect(cloudflareResponseText(structured)).toBe(JSON.stringify(structured));

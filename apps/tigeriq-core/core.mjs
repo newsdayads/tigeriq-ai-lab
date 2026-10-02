@@ -289,7 +289,7 @@ export function hasWatsonxTextShape(body){
 }
 function cloudflareRequestBody(prompt=''){
   const responseFormat=isManagerPrompt(prompt)?{type:'json_schema',json_schema:GEMINI_MANAGER_RESPONSE_SCHEMA}:null;
-  return {prompt,...(responseFormat?{response_format:responseFormat}:{})};
+  return {prompt,temperature:0,...(responseFormat?{response_format:responseFormat}:{})};
 }
 function cloudflareResponseText(response){
   if(typeof response==='string')return response;
