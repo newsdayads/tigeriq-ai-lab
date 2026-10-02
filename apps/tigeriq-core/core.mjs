@@ -18,7 +18,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairRuntimeGate, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairRuntimeGate, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -736,9 +736,9 @@ async function runApiDoctorPostRepairValidation(resource,existingHandoff){
     return {ok:false,jobId:id,reason:String(error?.kind||error?.message||error).slice(0,120)};
   }
 }
-async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure){
-  const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
-  const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
+async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure,{signatureOverride='',messageOverride=''}={}){
+  const message=String(messageOverride||latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
+  const signature=String(signatureOverride||apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message}));
   const prior=await apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature);
   if(prior&&Number(prior.data?.repairIssueNumber||0)>0)return {created:false,signature,repairIssueNumber:Number(prior.data.repairIssueNumber),repairIssueUrl:prior.data?.repairIssueUrl||null,priorAt:prior.ts};
   const repairKey=createHash('sha256').update(signature).digest('hex').slice(0,12);
@@ -877,11 +877,10 @@ async function runApiDoctorScan(){
     }
     const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
     const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
-    const rateLimitOverride=plan.failureClass==='rate_limit'&&['wait','probe'].includes(plan.action);
-    const repairLifecycleRelevant=Boolean(handoffCandidate)&&!rateLimitOverride&&(
-      canonicalRepairIssueNumber>0||
-      (handoffFailureClass==='source_contract'&&['source_contract','unknown'].includes(String(plan.failureClass||'').toLowerCase()))
-    );
+    const repairLifecycleRelevant=apiDoctorRepairLifecycleRelevant({
+      hasHandoff:Boolean(handoffCandidate),repairIssueNumber:canonicalRepairIssueNumber,handoffFailureClass,
+      currentFailureClass:plan.failureClass,currentAction:plan.action,
+    });
     const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
     if(handoffCandidate&&!existingHandoff){
       row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class';
@@ -889,8 +888,8 @@ async function runApiDoctorScan(){
     }
     if(existingHandoff){
       let repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
-      if(repairIssueNumber<=0&&plan.failureClass==='source_contract'){
-        const migrated=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
+      if(repairIssueNumber<=0&&handoffFailureClass==='source_contract'){
+        const migrated=await createApiDoctorRepairHandoff(resource,handoffFailureClass,latestFailure,{signatureOverride:existingHandoff.data?.signature||'',messageOverride:existingHandoff.data?.message||''});
         repairIssueNumber=Number(migrated.repairIssueNumber||0);
         row.action='wait_repair';row.reason='legacy_handoff_migrated_to_canonical_p1';row.handoff=migrated.created?'migrated_legacy':'deduped';row.repairIssueNumber=repairIssueNumber||null;row.repairIssueUrl=migrated.repairIssueUrl||null;actions.push(row);continue;
       }
