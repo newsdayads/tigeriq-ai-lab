@@ -349,7 +349,7 @@ function render(){
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
-    el.dataset.workNumber=String(row.number);
+    el.setAttribute('data-work-number',String(row.number));
     el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
