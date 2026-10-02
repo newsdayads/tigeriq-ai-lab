@@ -217,13 +217,13 @@ body.drawer-open{overflow:hidden}
     <section class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
-  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button">Hỏi / Duyệt trong TigerIQ ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
+  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
-const TIGERIQ_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/project';
+const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
 let currentFilter='action';
 const lastVisualState=new Map();
@@ -516,7 +516,7 @@ function openChatGptHandoff(url,prompt){
 $('drawerAskVy').addEventListener('click',()=>{
   if(!drawerRow)return;
   const prompt=buildVyHandoffPrompt(drawerRow);
-  openChatGptHandoff(TIGERIQ_CHATGPT_PROJECT_URL+'?prompt='+encodeURIComponent(prompt),prompt);
+  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL,prompt);
 });
 $('drawerAskVyFallback').addEventListener('click',()=>{
   if(!drawerRow)return;
