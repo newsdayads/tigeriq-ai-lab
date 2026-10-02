@@ -136,6 +136,25 @@ export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stat
   return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
 }
 
+export function apiDoctorRepairRuntimeGate({
+  issueNumber=0,state='unknown',stateReason=null,issueClosedAt=null,
+  runtimeCurrentSha='',runtimeInstalledSha='',runtimeUpdatedAt=null,
+}={}){
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason});
+  if(issueGate.action!=='validate_repair')return issueGate;
+  const closedMs=Date.parse(String(issueClosedAt||''));
+  const runtimeMs=Date.parse(String(runtimeUpdatedAt||''));
+  if(!Number.isFinite(closedMs)||!Number.isFinite(runtimeMs)||runtimeMs<closedMs){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'};
+  }
+  const current=String(runtimeCurrentSha||'').trim().toLowerCase();
+  const installed=String(runtimeInstalledSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(current)||current!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
+  }
+  return {action:'validate_repair',reason:'canonical_repair_runtime_applied'};
+}
+
 export function buildApiDoctorPrompt(items=[]){
   const compact=(Array.isArray(items)?items:[]).slice(0,10).map(x=>({
     employeeId:safeText(x.employeeId,16),
