@@ -109,26 +109,27 @@ test('done status is not enough: capability, kind and success marker must match 
 
 test('stability output contract rejects nonempty garbage before it can count as provider success',()=>{
   const spec=groups[0].specs[0];
+  const jobId='STAB-OBJ-X-R1-B1-J1';
   assert.deepEqual(
-    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:spec.title,text:'1.1.1.1 nonempty garbage'}),
+    stabilityV2OutputContract({jobId,prompt:spec.prompt,text:'1.1.1.1 nonempty garbage'}),
     {handled:true,ok:false,marker:spec.marker,code:'STABILITY_V2_OUTPUT_CONTRACT_MISMATCH'},
   );
   assert.deepEqual(
-    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:spec.title,text:`${spec.marker} valid answer`}),
+    stabilityV2OutputContract({jobId,prompt:spec.prompt,text:`${spec.marker} valid answer`}),
     {handled:true,ok:true,marker:spec.marker,code:null},
   );
 });
 
 test('stability output contract does not affect ordinary non-stability jobs',()=>{
   assert.deepEqual(
-    stabilityV2OutputContract({resourceScope:'OTHER_SCOPE',title:'ordinary',text:'anything nonempty'}),
+    stabilityV2OutputContract({jobId:'JOB-ordinary',prompt:'ordinary',text:'anything nonempty'}),
     {handled:false,ok:true,marker:null,code:null},
   );
 });
 
-test('unknown Stability V2 title fails closed at routed output contract',()=>{
+test('STAB job without a canonical prompt marker fails closed at routed output contract',()=>{
   assert.deepEqual(
-    stabilityV2OutputContract({resourceScope:STABILITY_V2_RESOURCE_SCOPE,title:'STAB-R1-UNKNOWN',text:'nonempty'}),
+    stabilityV2OutputContract({jobId:'STAB-OBJ-X-BAD',prompt:'missing canonical marker',text:'nonempty'}),
     {handled:true,ok:false,marker:null,code:'STABILITY_V2_JOB_CONTRACT_UNKNOWN'},
   );
 });
@@ -195,9 +196,7 @@ test('production wiring suppresses GitHub helper auto-work and applies allowlist
   const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
   assert.match(core,/reconcileStabilityV2Objective\(o\)/);
   assert.match(core,/stabilityV2EmployeeAllowlist\(j\.objective_metadata\)/);
-  assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),options\)/);
-  assert.match(core,/resourceScope:j\.objective_metadata\?\.resourceScope/);
-  assert.match(core,/jobTitle:j\.title/);
+  assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),\{jobId,prompt\}\)/);
   assert.match(core,/STABILITY_V2_BATCH_MATERIALIZED/);
   assert.match(intake,/!isStabilityV2ResourceScope\(spec\.resourceScope\)/);
 });
