@@ -50,20 +50,41 @@ function backoffError(){
   return error;
 }
 
+function abortError(signal){
+  if(signal?.reason instanceof Error)return signal.reason;
+  const error=new Error('ABORT_ERR');
+  error.name='AbortError';
+  return error;
+}
+async function awaitWithSignal(promise,signal){
+  if(!signal)return promise;
+  if(signal.aborted)throw abortError(signal);
+  return new Promise((resolve,reject)=>{
+    const onAbort=()=>{cleanup();reject(abortError(signal))};
+    const cleanup=()=>signal.removeEventListener?.('abort',onAbort);
+    signal.addEventListener?.('abort',onAbort,{once:true});
+    Promise.resolve(promise).then(
+      value=>{cleanup();resolve(value)},
+      error=>{cleanup();reject(error)},
+    );
+  });
+}
+
 export async function githubRequestJson(fetchImpl,url,token='',init={}){
-  const method=String(init.method||'GET').toUpperCase();
+  const {freshMs:requestedFreshMs,allowStaleOnRateLimit=true,...fetchInit}=init||{};
+  const method=String(fetchInit.method||'GET').toUpperCase();
   const headers={
     accept:'application/vnd.github+json',
     'user-agent':'TigerIQ-GitHub-Shared/1.0',
     'x-github-api-version':'2022-11-28',
-    ...(init.headers||{}),
+    ...(fetchInit.headers||{}),
   };
   if(token)headers.authorization=`Bearer ${token}`;
   stats.requests++;
   if(method!=='GET'){
     if(blockedUntil>Date.now()){stats.backoffHits++;throw backoffError()}
     stats.writes++;stats.network++;
-    const response=await fetchImpl(url,{...init,method,headers,signal:init.signal||AbortSignal.timeout(12000)});
+    const response=await fetchImpl(url,{...fetchInit,method,headers,signal:fetchInit.signal||AbortSignal.timeout(12000)});
     updateRate(response.headers);
     const raw=response.status===204?'':await response.text();
     let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
@@ -72,22 +93,23 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   }
 
   const key=fetchIdentity(fetchImpl)+':'+String(url);
+  const inflightKey=key+':stale='+(allowStaleOnRateLimit?'1':'0');
   const now=Date.now();
   const prior=cache.get(key);
   if(blockedUntil>now){
     stats.backoffHits++;
-    if(prior){stats.staleHits++;return prior.body}
+    if(prior&&allowStaleOnRateLimit){stats.staleHits++;return prior.body}
     throw backoffError();
   }
-  const freshMs=Math.max(0,Number(init.freshMs??DEFAULT_FRESH_MS));
+  const freshMs=Math.max(0,Number(requestedFreshMs??DEFAULT_FRESH_MS));
   if(prior&&now-prior.at<freshMs){stats.memoryHits++;return prior.body}
-  if(inflight.has(key))return inflight.get(key);
+  if(inflight.has(inflightKey))return awaitWithSignal(inflight.get(inflightKey),fetchInit.signal);
 
   const request=(async()=>{
     const conditional={...headers};
     if(prior?.etag)conditional['if-none-match']=prior.etag;
     stats.network++;
-    const response=await fetchImpl(url,{...init,method:'GET',headers:conditional,signal:init.signal||AbortSignal.timeout(12000)});
+    const response=await fetchImpl(url,{...fetchInit,method:'GET',headers:conditional,signal:fetchInit.signal||AbortSignal.timeout(12000)});
     updateRate(response.headers);
     if(response.status===304&&prior){
       stats.notModified++;
@@ -99,14 +121,14 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
     let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
     if(!response.ok){
       const limited=applyRateLimitFailure(response,body,raw);
-      if(limited&&prior){stats.staleHits++;return prior.body}
+      if(limited&&prior&&allowStaleOnRateLimit){stats.staleHits++;return prior.body}
       throw makeError(response.status,body,raw,response.headers);
     }
     cache.set(key,{at:Date.now(),etag:response.headers?.get?.('etag')||'',body});
     return body;
   })();
-  inflight.set(key,request);
-  try{return await request}finally{inflight.delete(key)}
+  inflight.set(inflightKey,request);
+  try{return await awaitWithSignal(request,fetchInit.signal)}finally{inflight.delete(inflightKey)}
 }
 
 export function invalidateGithubCache(match=''){
@@ -116,4 +138,11 @@ export function invalidateGithubCache(match=''){
 
 export function githubTransportSnapshot(){
   return {...stats,cacheEntries:cache.size,inflight:inflight.size,freshMs:DEFAULT_FRESH_MS,lowWatermark:RATE_LIMIT_LOW_WATERMARK,blockedUntil:blockedUntil?new Date(blockedUntil).toISOString():null,backoffActive:blockedUntil>Date.now()};
+}
+
+export function resetGithubSharedClientForTests(){
+  cache.clear();
+  inflight.clear();
+  blockedUntil=0;
+  Object.assign(stats,{requests:0,network:0,memoryHits:0,notModified:0,writes:0,backoffHits:0,staleHits:0,lastRemaining:null,lastReset:null,lastRequestAt:null});
 }
