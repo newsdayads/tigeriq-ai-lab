@@ -30,6 +30,17 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(parsed.workforce.find(x=>x.employee_id==='NV09')?.name).toBe('Qwen3-Coder Local');
   });
 
+  it('keeps NV00 in the backend roster but hides it from API Health cards and sorts operational groups deterministically',()=>{
+    const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
+    expect(dashboard).toContain("function visibleResource(x){return String(x?.employee_id||'').toUpperCase()!=='NV00'}");
+    expect(dashboard).toContain("USABLE_STATES=new Set(['BUSY','READY','IDLE','ONLINE','ON_DEMAND'])");
+    expect(dashboard).toContain("DEGRADED_STATES=new Set(['RATE_LIMITED','WAITING'])");
+    expect(dashboard).toContain('resourcePriorityGroup(a)-resourcePriorityGroup(b)||operationalRank(a)-operationalRank(b)');
+    expect(dashboard).toContain('let list=allResources.filter(visibleResource)');
+    expect(dashboard).toContain("blocker=String(x.blocker||x.waitReason||'').trim()");
+    expect(dashboard).toContain('Blocker:</b> ${esc(blocker)}');
+  });
+
   it('exposes workforce in Core status and renders full roster filters in API Health',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
