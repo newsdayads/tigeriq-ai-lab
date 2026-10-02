@@ -58,6 +58,29 @@ const GITHUB_REPO = process.env.TIGERIQ_GITHUB_REPO?.trim() || 'tigeriq-ai-lab';
 const GEMINI_MIN_INTERVAL_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS || 4500));
 const GEMINI_BACKOFF_BASE_MS = Math.max(4500, Number(process.env.TIGERIQ_GEMINI_BACKOFF_BASE_MS || 4500));
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS || 4));
+const GEMINI_MANAGER_RESPONSE_SCHEMA={
+  type:'object',
+  properties:{
+    status:{type:'string',enum:['continue','complete','blocked']},
+    summary:{type:'string'},
+    jobs:{
+      type:'array',
+      maxItems:3,
+      items:{
+        type:'object',
+        properties:{
+          title:{type:'string'},
+          prompt:{type:'string'},
+          capability:{type:'string',enum:['general','reasoning','review','pc_operator']},
+        },
+        required:['title','prompt'],
+        additionalProperties:true,
+      },
+    },
+  },
+  required:['status','summary','jobs'],
+  additionalProperties:true,
+};
 const OLLAMA_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_OLLAMA_TIMEOUT_MS || 30000));
 const NV14_FALLBACK_MODEL = process.env.TIGERIQ_NV14_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 const NV16_FAILURE_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.TIGERIQ_NV16_FAILURE_THRESHOLD || 0.5)));
@@ -276,9 +299,14 @@ async function invokeProvider(r, prompt) {
     case 'inception': return openAiCompat('https://api.inceptionlabs.ai/v1/chat/completions',process.env.INCEPTION_API_KEY,r.model,prompt,{},90000,r);
     case 'nvidia': return openAiCompat('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,{},90000,r);
     case 'gemini': return geminiRateController.run(async()=>{
+      const managerGenerationConfig=isManagerPrompt(prompt)?{
+        temperature:0,
+        responseMimeType:'application/json',
+        responseJsonSchema:GEMINI_MANAGER_RESPONSE_SCHEMA,
+      }:null;
       const b = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`, {
         method:'POST', headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
-        body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],...(isManagerPrompt(prompt)?{generationConfig:{responseMimeType:'application/json'}}:{})}) });
+        body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],...(managerGenerationConfig?{generationConfig:managerGenerationConfig}:{})}) });
       const text = b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');
       if (!String(text||'').trim()) { const e=new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
       return String(text);
