@@ -83,6 +83,12 @@ public final class ControllerClient {
         return get(controllerUrl, "/api/mobile/health");
     }
 
+    public JSONObject updateManifest() throws Exception {
+        SecureCredentialStore.Credential credential = store.load();
+        if (credential == null) throw new IllegalStateException("worker is not paired");
+        return authenticatedGet("/api/mobile/update/manifest", credential);
+    }
+
     public JSONObject heartbeat(int batteryPct, Double temperatureC, String agentVersion) throws Exception {
         JSONObject request = new JSONObject();
         request.put("status", "online");
@@ -103,6 +109,26 @@ public final class ControllerClient {
         request.put("leaseToken", required(leaseToken, "leaseToken"));
         request.put("result", result);
         return authenticatedPost("/api/mobile/tasks/result", request);
+    }
+
+    private JSONObject authenticatedGet(String path, SecureCredentialStore.Credential credential) throws Exception {
+        String controllerUrl = ControllerUrlPolicy.requireTrusted(credential.controllerUrl);
+        URL url = new URL(controllerUrl + path);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("X-TigerIQ-Credential-Id", credential.credentialId);
+        connection.setRequestProperty("Authorization", "Bearer " + credential.token);
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String payload = read(stream);
+        connection.disconnect();
+        if (status < 200 || status >= 300) {
+            throw new ControllerException(status, payload.length() > 512 ? payload.substring(0, 512) : payload);
+        }
+        return payload.isEmpty() ? new JSONObject() : new JSONObject(payload);
     }
 
     private JSONObject authenticatedPost(String path, JSONObject body) throws Exception {
