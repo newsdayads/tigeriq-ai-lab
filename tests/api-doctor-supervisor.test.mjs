@@ -9,6 +9,7 @@ import {
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
   apiDoctorRepairSignature,
+  apiDoctorResourceEligibleForCapability,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
   parseApiDoctorDecision,
@@ -161,6 +162,40 @@ describe('#1255 NV10 API Doctor policy',()=>{
       expect(error.kind).toBe('invalid_response');
     }
   });
+
+  it('keeps READY NV10 api_doctor-only until a functional success restores ONLINE',()=>{
+    const ready=apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:'ERROR',cooldownUntil:'2026-10-02T01:59:00Z',
+      latestFunctionalEvent:'RESOURCE_FAILURE',nowMs:Date.parse('2026-10-02T02:00:00Z'),
+    });
+    expect(ready).toBe('READY');
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'api_doctor'})).toBe(true);
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'general'})).toBe(false);
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'review'})).toBe(false);
+
+    const online=apiDoctorLocalRefreshHealth({
+      modelAvailable:true,currentHealth:ready,latestFunctionalEvent:'RESOURCE_SUCCESS',
+    });
+    expect(online).toBe('ONLINE');
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:online,capability:'general'})).toBe(true);
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV12',healthState:'READY',capability:'general'})).toBe(true);
+  });
+
+  it('bounds API Doctor repair scheduling without blocking a healthy peer worker',()=>{
+    const now=Date.parse('2026-10-02T02:00:00Z');
+    const doctorPlan=apiDoctorExistingHandoffAction({
+      existingHandoff:true,successAfterHandoff:false,healthState:'ERROR',
+      cooldownUntil:null,validationAttempts:2,maxValidationAttempts:2,nowMs:now,
+    });
+    expect(doctorPlan).toEqual({action:'wait_repair',reason:'post_repair_validation_budget_exhausted'});
+
+    const resources=[
+      {employeeId:'NV11',resourceId:'res:groq:x',provider:'groq',model:'x',enabled:true,healthState:'ERROR',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:1},
+      {employeeId:'NV12',resourceId:'res:gemini:x',provider:'gemini',model:'x',enabled:true,healthState:'ONLINE',zeroOutOfPocket:true,costTier:'FREE',capabilities:['general','reasoning'],rank:2},
+    ].filter(r=>['READY','ONLINE'].includes(String(r.healthState||'').toUpperCase()));
+    const decision=rankCandidates(resources,{capability:'general',taskKind:'ai'});
+    expect(decision.chosen?.employeeId).toBe('NV12');
+  });
 });
 
 describe('#1255 routing/runtime integration',()=>{
@@ -194,8 +229,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain('apiDoctorLocalRefreshHealth({');
     expect(core).toContain("type in ('RESOURCE_SUCCESS','RESOURCE_FAILURE')");
     expect(core).toContain("coalesce(task_kind,'')<>'probe'");
-    expect(core).toContain("String(capability||'').toLowerCase()===API_DOCTOR_CAPABILITY");
-    expect(core).toContain("String(x.health_state||'').toUpperCase()==='ONLINE'");
+    expect(core).toContain('apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability})');
+    expect(core).toContain("let candidates=q.rows");
+    expect(core).toContain(".filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))");
+    expect(core).toContain("if(!r||!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability}))");
     expect(core).toContain('async function runApiDoctorScan()');
     expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
     expect(core).toContain("think:false");
