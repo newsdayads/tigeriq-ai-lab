@@ -8,10 +8,18 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
+/**
+ * Read-only semantic probe for AI provider UIs.
+ *
+ * Non-provider events are intentionally kept separate from the last provider snapshot so
+ * Android Launcher / Recents cannot erase evidence captured from ChatGPT or Gemini.
+ */
 public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String PREFS = "tigeriq-accessibility-pilot";
     public static final String KEY_LAST_PACKAGE = "lastPackage";
     public static final String KEY_LAST_EVENT_AT = "lastEventAt";
+    public static final String KEY_PROVIDER_PACKAGE = "providerPackage";
+    public static final String KEY_PROVIDER_EVENT_AT = "providerEventAt";
     public static final String KEY_ROOT_AVAILABLE = "rootAvailable";
     public static final String KEY_NODE_COUNT = "nodeCount";
     public static final String KEY_EDITABLE_COUNT = "editableCount";
@@ -24,8 +32,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // Gate A/B probe is intentionally READ-ONLY. It proves whether the provider UI exposes
-        // a semantic accessibility tree before TigerIQ enables any autonomous send/click action.
         CharSequence packageName = event == null ? null : event.getPackageName();
         if (packageName == null) return;
 
@@ -37,10 +43,13 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .putLong(KEY_LAST_EVENT_AT, System.currentTimeMillis())
             .apply();
 
-        if (!isPilotProvider(value)) {
-            writeProbe(false, 0, 0, 0);
-            return;
-        }
+        // Important: launcher/recents/keyboard events must not zero the last AI snapshot.
+        if (!isPilotProvider(value)) return;
+
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_PROVIDER_PACKAGE, value)
+            .putLong(KEY_PROVIDER_EVENT_AT, System.currentTimeMillis())
+            .apply();
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
@@ -84,7 +93,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        // No-op; bounded recovery is introduced only after physical probe evidence exists.
+        // No-op; bounded provider recovery is introduced after semantic probe evidence is proven.
     }
 
     public boolean semanticTreeAvailable() {

@@ -1,6 +1,6 @@
 package ai.tigeriq.worker;
 
 public final class WorkerVersion {
-    public static final String NAME = "0.8.0-pairing-fix";
+    public static final String NAME = "0.9.0-brand-probe";
     private WorkerVersion() {}
 }

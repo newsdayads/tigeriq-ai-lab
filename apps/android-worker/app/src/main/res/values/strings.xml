@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TigerIQ Worker</string>
-    <string name="accessibility_description">TigerIQ Worker semantic execution bridge. Enable only on dedicated worker devices.</string>
+    <string name="app_name">TigerIQ AI Worker</string>
+    <string name="accessibility_description">Cầu nối ngữ nghĩa TigerIQ AI Worker. Chỉ bật trên thiết bị Worker được ủy quyền.</string>
 </resources>
