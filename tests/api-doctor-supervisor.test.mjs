@@ -156,6 +156,17 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairRuntimeGate({
       issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
       runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'WAIT_GITHUB_API_RATE_LIMIT',updaterCandidateSha:'b'.repeat(40),
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'});
+    expect(apiDoctorRepairRuntimeGate({
+      issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'NO_CHANGE',updaterCandidateSha:'b'.repeat(40),
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'});
+    expect(apiDoctorRepairRuntimeGate({
+      issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+      updaterResult:'UPDATED',updaterCandidateSha:'a'.repeat(40),
     })).toEqual({action:'validate_repair',reason:'canonical_repair_runtime_applied'});
   });
 
@@ -288,6 +299,13 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
     expect(core).toContain("'NO_PC01_SHELL=true'");
     expect(core).toContain("'NO_BROWSER_AUTH=true'");
+    expect(core).toContain("AFFECTED_EMPLOYEE=");
+    expect(core).not.toContain("`TARGET_EMPLOYEE=${resource.employee_id}`");
+    expect(core).toContain("githubFindOpenApiDoctorRepairIssue(resourceScope)");
+    expect(core).toContain("API_DOCTOR_REPAIR_INTENT");
+    expect(core).toContain("normalSuccessSince");
+    expect(core).toContain("updaterCandidateSha:runtimeUpdaterState?.candidateSha");
+
     expect(core).toContain("repairLifecycleRelevant");
     expect(core).toContain("apiDoctorRepairLifecycleRelevant({");
     expect(core).toContain("signatureOverride:existingHandoff.data?.signature");
