@@ -797,6 +797,23 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('does not synthesize technical completion from an owner phase without explicit pass evidence', () => {
+    const missing = parseOpenWorkIssue(issue(3220, '[P1] Owner approval without technical proof', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+    ].join('\n')));
+    expect(missing).toMatchObject({ status: 'OWNER_GATE', ownerGate: true, technicalComplete: false });
+    const failed = parseOpenWorkIssue(issue(3221, '[P1] Owner approval after failed technical gate', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+      'TECHNICAL_ACCEPTANCE=FAIL',
+      'LIVE_DATA_API=PASS',
+    ].join('\n')));
+    expect(failed).toMatchObject({ status: 'OWNER_GATE', technicalComplete: false });
+  });
+
   it('computes terminal completion separately from unverifiable in-flight percent', () => {
     expect(verifiedCompletionProgress(
       [{ workKind: 'WORK', status: 'WORKING' }, { workKind: 'WORK', status: 'WAITING' }],
@@ -811,9 +828,14 @@ describe('TigerIQ Live Work Order projection', () => {
     });
     expect(verifiedCompletionProgress(
       [{ workKind: 'WORK', status: 'WORKING' }],
+      [{ workKind: 'WORK', status: 'DONE' }, { workKind: 'SYSTEM', status: 'DONE' }],
+      { complete: true },
+    )).toMatchObject({ percent: 50, scopeItems: 2, completedItems: 1 });
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', status: 'WORKING' }],
       [{ workKind: 'WORK', status: 'DONE' }],
-      { complete: false },
-    )).toMatchObject({ percent: null, source: 'incomplete_enumeration' });
+      { complete: false, completedCount: 25 },
+    )).toMatchObject({ percent: null, source: 'incomplete_enumeration', completedItems: 25 });
   });
 
 
