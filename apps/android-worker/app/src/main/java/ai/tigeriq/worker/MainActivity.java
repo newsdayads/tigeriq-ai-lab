@@ -266,7 +266,7 @@ public final class MainActivity extends Activity {
                 int versionCode = manifest.optInt("versionCode", 0);
                 String versionName = manifest.optString("versionName", "");
                 String driveUrl = manifest.optString("driveUrl", "");
-                boolean newer = available && versionCode > BuildConfig.VERSION_CODE;
+                boolean newer = available && versionCode > currentVersionCode();
                 runOnUiThread(() -> {
                     button.setEnabled(true);
                     button.setText("Kiểm tra cập nhật");
@@ -292,6 +292,16 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private long currentVersionCode() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) return info.getLongVersionCode();
+            return info.versionCode;
+        } catch (Exception ignored) {
+            return 0L;
+        }
     }
 
     private void probeController(Button button) {
