@@ -2,7 +2,9 @@ import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {
   FUNCTIONAL_FAILURE_STREAK_LIMIT,
+  FUNCTIONAL_REPROBE_MAX,
   FUNCTIONAL_SUCCESS_TTL_MS,
+  functionalReprobeCandidates,
   functionalRoutingReadiness,
   rankCandidates,
 } from '../apps/tigeriq-core/smart-router.mjs';
@@ -55,6 +57,36 @@ describe('#2806 functional routing readiness',()=>{
     expect(rankCandidates([resource],{nowMs:now}).chosen).toBeNull();
   });
 
+  it('bounds immediate reprobe candidates and can recover a stale-only pool before terminal no-resource',()=>{
+    const missing=base({resource_id:'res:missing',rank:5,functionalEvidence:{lastSuccessAt:null,lastFailureAt:null,failureStreak:0}});
+    const staleOne=base({resource_id:'res:stale-one',rank:10,functionalEvidence:{lastSuccessAt:stale,lastFailureAt:null,failureStreak:0}});
+    const staleTwo=base({resource_id:'res:stale-two',rank:20,functionalEvidence:{lastSuccessAt:stale,lastFailureAt:null,failureStreak:0}});
+    const degraded=base({resource_id:'res:degraded',rank:1,functionalEvidence:{lastSuccessAt:recent,lastFailureAt:new Date(now-5_000).toISOString(),failureStreak:FUNCTIONAL_FAILURE_STREAK_LIMIT}});
+    const plan=functionalReprobeCandidates([degraded,staleTwo,missing,staleOne],{nowMs:now,maxProbes:2});
+    expect(plan).toEqual([
+      expect.objectContaining({resourceId:'res:missing',reason:'functional_success_missing'}),
+      expect.objectContaining({resourceId:'res:stale-one',reason:'functional_success_stale'}),
+    ]);
+    expect(plan).toHaveLength(2);
+    expect(FUNCTIONAL_REPROBE_MAX).toBeGreaterThanOrEqual(2);
+
+    const before=rankCandidates([staleOne],{nowMs:now,requireFunctionalEvidence:true});
+    expect(before.chosen).toBeNull();
+    const after=rankCandidates([
+      {...staleOne,functionalEvidence:{lastSuccessAt:new Date(now-500).toISOString(),lastFailureAt:null,failureStreak:0}},
+    ],{nowMs:now,requireFunctionalEvidence:true});
+    expect(after.chosen?.resourceId).toBe('res:stale-one');
+  });
+
+  it('fails closed instead of taking the LEGACY path when a caller requires functional evidence',()=>{
+    const noEvidence={...base({resource_id:'res:no-evidence'})};
+    delete noEvidence.functionalEvidence;
+    const strict=rankCandidates([noEvidence],{nowMs:now,requireFunctionalEvidence:true});
+    expect(strict.chosen).toBeNull();
+    expect(strict.candidates[0]?.reasons).toContain('functional_success_missing');
+    expect(functionalRoutingReadiness(noEvidence,{nowMs:now})).toMatchObject({ready:true,state:'LEGACY'});
+  });
+
   it('always skips non-routable health or credential states without blocking a healthy peer',()=>{
     const broken=[
       base({resource_id:'res:rate',employee_id:'NV12',health_state:'RATE_LIMITED'}),
@@ -74,6 +106,10 @@ describe('#2806 functional routing readiness',()=>{
     expect(core).toContain('apiDoctorHealthEvidenceEvents(events)');
     expect(core).toContain('functionalProbeDue');
     expect(core).toContain('FUNCTIONAL_SUCCESS_TTL_MS');
+    expect(core).toContain("event('ROUTING_FUNCTIONAL_REPROBE'");
+    expect(core).toContain('functionalReprobeCandidates(rows');
+    expect(core).toContain('selfAuditFunctionalEvidence=await routingFunctionalEvidence');
+    expect(core).toContain('requireFunctionalEvidence:true');
     expect(core).toContain('routingFunctionalEvidence(client,[r.resource_id])');
     expect(core).toContain('functionalRoutingReadiness(freshResource,{requireEvidence:true})');
   });
