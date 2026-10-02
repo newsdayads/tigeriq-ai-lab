@@ -382,6 +382,15 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("prior&&Number(prior.data?.repairIssueNumber||0)>0");
     expect(core).toContain("GITHUB_CODING_RESULT_REPORTED");
     expect(core).toContain("from tigeriq_coding_jobs where objective_id=$1 and status='completed'");
+    expect(core).toContain("apiDoctorOwnerProxyRepairPrEvidence");
+    expect(core).toContain("ALLOW_PATH_PREFIX=");
+    expect(core).toContain("/timeline?per_page=100");
+    expect(core).toContain("/files?per_page=100");
+    expect(core).toContain("[TIGERIQ_INDEPENDENT_REVIEW_V1]");
+    expect(core).toContain("REVIEW=(?:PASS|ĐẠT)");
+    expect(core).toContain("owner_proxy_cross_reference");
+    expect(core).toContain("files.length>=100");
+    expect(core).toContain("repairEvidenceSource=fallback.evidenceSource");
     expect(core).toContain("/compare/${repairRevision}...${deployedRevision}");
     expect(core).toContain("const deployedRevision=apiDoctorSha(updaterState?.installedSha)");
     expect(core).toContain("apiDoctorRepairDeploymentGate({");
