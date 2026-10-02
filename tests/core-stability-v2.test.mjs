@@ -206,7 +206,10 @@ test('production wiring suppresses GitHub helper auto-work and applies allowlist
   assert.match(core,/reconcileStabilityV2Objective\(o\)/);
   assert.match(core,/stabilityV2EmployeeAllowlist\(j\.objective_metadata\)/);
   assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),\{jobId,prompt\}\)/);
-  assert.match(core,/stabilityV2PeerExclusions\(jobId\)/);
+  assert.match(core,/stabilityV2PeerExclusions\(jobId,client\)/);
+  assert.match(core,/select id from tigeriq_objectives where id=\$1 for update/);
+  assert.match(core,/update tigeriq_jobs set employee_id=\$2,resource_id=\$3,provider=\$4 where id=\$1/);
+  assert.match(core,/transactionExcludedProviders\.has\(String\(candidate\.provider/);
   assert.match(core,/excludedProviders\.has\(String\(x\.provider/);
   assert.match(core,/attemptedProviders=\[\.\.\.new Set\(failures\.map/);
   assert.match(core,/excludedProviders=\[\.\.\.new Set\(\[\.\.\.peerExclusions\.providers,\.\.\.attemptedProviders\]\)\]/);
