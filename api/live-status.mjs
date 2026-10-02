@@ -495,6 +495,8 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   const completedAt = issue.closed_at || issue.updated_at || null;
   const completedMs = Date.parse(completedAt || '');
   if (!Number.isFinite(completedMs) || completedMs > now) return null;
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind !== 'WORK') return null;
   const priority = issuePriority(issue);
   return {
     number: Number(issue.number),
@@ -504,6 +506,7 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     sourcePriority: priority,
     employeeId: issueEmployeeId(issue),
     status: 'DONE',
+    workKind: 'WORK',
     progressPercent: 100,
     progressSource: 'terminal',
     progressDetail: '5/5 gate',
@@ -515,20 +518,26 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
 
 async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
   const now = Date.now();
-  if (Array.isArray(recentWorkCache.data) && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
+  if (recentWorkCache.data && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
     return recentWorkCache.data;
   }
   try {
-    const issues = await gh('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl);
-    const rows = (Array.isArray(issues) ? issues : [])
+    const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 50);
+    const allRows = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
       .map((issue) => parseRecentCompletedIssue(issue, now))
       .filter(Boolean)
-      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0))
-      .slice(0, RECENT_WORK_LIMIT);
-    recentWorkCache = { at: now, data: rows };
-    return rows;
+      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+    const value = {
+      rows: allRows.slice(0, RECENT_WORK_LIMIT),
+      completedCount: allRows.length,
+      complete: pageSet.complete === true,
+      stale: false,
+    };
+    recentWorkCache = { at: now, data: value };
+    return value;
   } catch {
-    return Array.isArray(recentWorkCache.data) ? recentWorkCache.data : [];
+    if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
+    return { rows: [], completedCount: 0, complete: false, stale: true };
   }
 }
 
@@ -787,12 +796,15 @@ function ownerAcceptancePhase(phase = '') {
 }
 
 function ownerGateTechnicalComplete(body = '', phase = '') {
-  const state = String(phase || '').toUpperCase();
   const technical = bodyValue(body, 'TECHNICAL_ACCEPTANCE').toUpperCase();
+  if (technical && technical !== 'PASS') return false;
   const finalAcceptance = bodyValue(body, 'FINAL_ACCEPTANCE_2828').toUpperCase();
+  const realDataAcceptance = bodyValue(body, 'REAL_DATA_LIVE_ACCEPTANCE').toUpperCase();
+  const liveDataApi = bodyValue(body, 'LIVE_DATA_API').toUpperCase();
   return technical === 'PASS'
     || /TECHNICAL_PASS/.test(finalAcceptance)
-    || /(?:WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL|OWNER_REVIEW_REQUIRED)/.test(state);
+    || realDataAcceptance === 'PASS'
+    || liveDataApi === 'PASS';
 }
 
 function issueDisplayOwner(issue) {
@@ -825,8 +837,7 @@ export function classifyOpenIssue(issue) {
     || bodyFlag(body, 'CANONICAL_POLICY')
     || bodyFlag(body, 'REFERENCE_ONLY');
 
-  const phaseOwnerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE|READY_FOR_OWNER_APPROVAL)(?:_|$)/.test(phase)
-    || ownerAcceptancePhase(phase);
+  const phaseOwnerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE|READY_FOR_OWNER_APPROVAL)(?:_|$)/.test(phase);
   const legacyOwnerGate = !phase && (
     bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
     || bodyFlag(body, 'OWNER_GATE')
@@ -906,8 +917,9 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
 
 export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
   const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK');
-  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && String(row.status || '').toUpperCase() === 'DONE');
-  const completedItems = done.length;
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.status || '').toUpperCase() === 'DONE');
+  const explicitCompleted = Number(options.completedCount);
+  const completedItems = Number.isFinite(explicitCompleted) && explicitCompleted >= 0 ? explicitCompleted : done.length;
   const scopeItems = open.length + completedItems;
   if (options.complete === false) {
     return { percent: null, source: 'incomplete_enumeration', scopeItems, completedItems };
@@ -1266,7 +1278,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       }
     }
 
-    const recentWork = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWork = recentWorkSnapshot.rows;
     const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
     const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
     const resolvedQueue = specs.map((row) => {
@@ -1334,17 +1347,24 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       done: recentWork.length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
-    const completionProgress = verifiedCompletionProgress(actionable, recentWork, { complete: issuesComplete === true && !projectionStale });
+    const completionProgress = verifiedCompletionProgress(actionable, recentWork, {
+      complete: issuesComplete === true && !projectionStale && recentWorkSnapshot.complete === true && recentWorkSnapshot.stale !== true,
+      completedCount: recentWorkSnapshot.completedCount,
+    });
     const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
     const stabilityBody = String(stabilityIssue?.body || '');
     const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
       const n = Number(String(worker?.employeeId || '').replace(/\D/g, ''));
-      return n >= 11 && n <= 20 && String(worker?.kind || 'api') === 'api';
+      return n >= 11 && n <= 20 && Boolean(String(worker?.provider || '').trim());
     });
-    const healthyProviders = new Set(apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
-      .map((worker) => String(worker?.provider || worker?.employeeId || '')).filter(Boolean));
+    const apiRuntimeVerified = base?.liveConnected === true && apiWorkers.length > 0;
+    const healthyProviders = new Set(apiRuntimeVerified
+      ? apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
+        .map((worker) => String(worker?.provider || '').trim()).filter(Boolean)
+      : []);
     const apiWorkforceSummary = {
-      healthyProviders: healthyProviders.size,
+      verified: apiRuntimeVerified,
+      healthyProviders: apiRuntimeVerified ? healthyProviders.size : null,
       healthyTarget: Number(bodyValue(stabilityBody, 'REQUIRED_HEALTHY_PROVIDER_COUNT') || bodyValue(stabilityBody, 'HEALTHY_PROVIDER_COUNT') || 3),
       stabilityRounds: Number(bodyValue(stabilityBody, 'STABILITY_ROUNDS_COUNTED') || 0),
       stabilityRoundsRequired: Number(bodyValue(stabilityBody, 'ROUND_COUNT_REQUIRED') || 3),
