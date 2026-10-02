@@ -864,6 +864,32 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
   return { percent: null, source: 'none', detail: null };
 }
 
+export function verifiedPortfolioProgress(rows = []) {
+  const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind !== 'SYSTEM');
+  const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
+    && Number.isFinite(Number(row.progressPercent)));
+  const scopeItems = scope.length;
+  const verifiedItems = verified.length;
+  const coveragePercent = scopeItems ? Math.round((verifiedItems / scopeItems) * 100) : null;
+  if (!scopeItems || verifiedItems !== scopeItems) {
+    return {
+      percent: null,
+      source: 'incomplete_verified_coverage',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
+  const percent = Math.round(verified.reduce((sum, row) => sum + Math.max(0, Math.min(100, Number(row.progressPercent))), 0) / scopeItems);
+  return {
+    percent,
+    source: 'verified_issue_average',
+    scopeItems,
+    verifiedItems,
+    coveragePercent: 100,
+  };
+}
+
 export function parseOpenWorkIssue(issue, overlays = {}) {
   if (!issue || issue.pull_request || issue.state !== 'open') return null;
   const number = Number(issue.number);
@@ -1199,16 +1225,21 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
       running: actionable.filter((row) => row.status === 'WORKING').length,
       review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
+      blocked: actionable.filter((row) => row.status === 'BLOCKED').length,
+      queued: actionable.filter((row) => row.status === 'QUEUED').length,
+      unknown: actionable.filter((row) => row.status === 'UNKNOWN').length,
       waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
       done: recentWork.length,
     };
+    const portfolioProgress = verifiedPortfolioProgress(actionable);
 
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
       openWork: openWork.map(ownerFacingWorkRow),
       openSummary,
+      portfolioProgress,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
