@@ -502,6 +502,15 @@ describe('TigerIQ Live Work Order projection', () => {
       lifecycle: { state: 'READY', blockerCleared: true, step: 'Older clear', createdAt: '2026-10-02T01:35:00Z' },
     });
     expect(reblocked).toMatchObject({ status: 'BLOCKED', blocker: 'WAIT_PROVIDER' });
+
+    const freshRuntimeBlockedAfterClear = parseOpenWorkIssue(issue(3219, '[P1] Runtime block after clear', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=OLD_PROVIDER_BLOCK',
+    ].join('\n'), { updated_at: '2026-10-02T01:30:00Z' }), {
+      active: { status: 'BLOCKED', currentStep: 'New PR checks failed', updatedAt: '2026-10-02T01:40:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Old blocker cleared', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(freshRuntimeBlockedAfterClear).toMatchObject({ status: 'BLOCKED', blocker: null });
   });
 
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
