@@ -120,6 +120,7 @@ export function readMobileReleaseManifest(path=releaseManifestPath()) {
       downloadPath:'/api/mobile/update/apk',
       publishedAt:text(parsed.publishedAt,80),
       apkPath:text(parsed.apkPath,500),
+      driveUrl:text(parsed.driveUrl,500),
     };
   } catch { return {available:false}; }
 }
