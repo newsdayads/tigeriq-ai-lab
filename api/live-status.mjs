@@ -962,7 +962,10 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
   const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
-  const blocker = status === 'BLOCKED' && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const blockerBodyCurrent = !lifecycle?.blockerCleared || (lifecycleAt > 0 && issueAt > lifecycleAt);
+  const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
     : null;
   const activeEvidenceUrl = classification.ownerGate
@@ -1072,6 +1075,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     if (cached) {
       ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
       issuesComplete = issuesComplete === true;
+      if (githubProjectionCache.data?.projectionStale === true) {
+        projectionStale = true;
+        projectionReason = githubProjectionCache.data?.projectionReason || 'GitHub cached projection marked stale';
+      }
     } else {
       try {
         const transportBefore = githubTransportSnapshot();
@@ -1093,7 +1100,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         githubProjectionCache = {
           at: now,
           verifiedAt: new Date().toISOString(),
-          data: { issues, pulls, runPayload, issuesComplete },
+          data: { issues, pulls, runPayload, issuesComplete, projectionStale, projectionReason },
         };
       } catch (error) {
         if (!githubProjectionCache.data) throw error;
