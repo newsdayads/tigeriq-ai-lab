@@ -212,8 +212,12 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
   for (const comment of ordered) {
     const text = String(comment?.body || '');
     const objectiveId = text.match(/\b(CODEOBJ-[0-9A-Za-z-]+)\b/i)?.[1]?.toUpperCase() || '';
-    const terminalFailure = /RETRY_BUDGET_EXHAUSTED/i.test(text)
-      || (objectiveId && /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text));
+    const terminalHardBlock = /\[BLOCKED_FINAL\].*\breason=HARD_BLOCKER\b/i.test(text)
+      || /\b(?:OWNER_HOLD|DEPENDENCY_NOT_READY|PRODUCTION|PAID|CREDENTIAL|SECURITY|DESTRUCTIVE|IRREVERSIBLE|APP_CHROME)\b/i.test(text);
+    const terminalFailure = !terminalHardBlock && (
+      /RETRY_BUDGET_EXHAUSTED/i.test(text)
+      || (objectiveId && /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text))
+    );
     const retryScheduled = objectiveId && (
       /\[RETRY_SCHEDULED\]/i.test(text)
       || /\[LÊN LỊCH THỬ LẠI\]/i.test(text)
@@ -230,7 +234,8 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
     const failed = terminalFailure
       || (objectiveId && !active && !retryScheduled && (/\bis failed\b/i.test(text) || /CODING_ALL_BATCHES_NOOP/i.test(text)));
     if (failed && objectiveId) failedObjectives.add(objectiveId);
-    if (active) latest = { kind: 'active', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+    if (terminalHardBlock) latest = { kind: 'hard_blocked', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+    else if (active) latest = { kind: 'active', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
     else if (retryScheduled) {
       const nextAt = Date.parse(String(text.match(/\bnextAt=([^\s]+)/i)?.[1] || ''));
       latest = { kind: 'scheduled', objectiveId, terminalFailure: false, at: commentAtMs(comment), nextAt: Number.isFinite(nextAt) ? nextAt : 0 };
@@ -238,6 +243,7 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
     else if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at: commentAtMs(comment) };
   }
   if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
+  if (latest.kind === 'hard_blocked') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_HARD_BLOCKED', latest };
   if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
   const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
   // Active Coding Lane remains authoritative only while its latest progress is fresh.
@@ -297,9 +303,10 @@ export function nv02TakeoverStatus(issue, comments = [], {
   if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
   const codingFallback = codingLaneFallbackStatus(meta, comments, { nowMs, staleMs });
   if (codingFallback?.eligible) return { ...codingFallback, resourceScope };
-  if (!target || target === 'NV02') return codingFallback
-    ? { ...codingFallback, target, resourceScope }
-    : { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
+  // Independent Coding Lane reservation is authoritative until its own evidence opens fallback.
+  // Do not fall through to generic stale-assignee takeover merely because a target worker is old.
+  if (codingFallback) return { ...codingFallback, target, resourceScope };
+  if (!target || target === 'NV02') return { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
 
   const rounds = noProgressRounds(issue, comments);
   const explicitStalled = [String(issue?.body || ''), ...comments.map((x) => String(x?.body || ''))]
