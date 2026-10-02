@@ -130,11 +130,14 @@ a{color:inherit;text-decoration:none}
 .drawer-actions{margin-top:auto;padding:12px 16px max(12px,env(safe-area-inset-bottom));border-top:1px solid #203953;display:grid;grid-template-columns:1fr 1fr;gap:8px}.drawer-btn{display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:10px;border:1px solid #315578;background:#0d2037;color:#dcecff;font:800 12px/1 inherit;cursor:pointer}.drawer-btn.primary{background:#136ac8;border-color:#2f8feb;color:white}.drawer-btn[hidden]{display:none}
 body.drawer-open{overflow:hidden}
 @media(prefers-reduced-motion:reduce){.work-row.status-working,.summary-fill,.drawer,.drawer-backdrop{animation:none!important;transition:none!important}}
+@media(max-width:1100px){.owner-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
+@media(max-width:700px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
+@media(max-width:420px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}.summary-tile{min-height:64px}}
 
 </style>
 </head>
 <body>
-<main class="wrap">
+<main id="appMain" class="wrap">
 <header class="top">
   <div class="brand"><h1>TigerIQ Live</h1><p>Danh sách công việc · chỉ xem</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
@@ -169,7 +172,7 @@ body.drawer-open{overflow:hidden}
 <footer class="page-foot" aria-label="STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái">Dữ liệu tự cập nhật 10 giây · % chỉ hiển thị khi đã xác minh</footer>
 </main>
 <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
-<aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+<aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
   <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
   <div class="drawer-body">
     <section class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
@@ -190,8 +193,22 @@ let drawerReturnFocus=null;
 const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
+function verifiedProgress(row){
+  const pct=Number(row?.progressPercent);
+  const source=String(row?.progressSource||'');
+  return {pct,verified:['explicit_verified','checklist_verified','terminal'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<=100};
+}
 function statusRank(v){return ({OWNER_GATE:0,WORKING:1,REVIEW:2,VERIFY:3,QUEUED:4,BLOCKED:5,WAITING:6,UNKNOWN:7,OPEN:8,DONE:9})[String(v||'').toUpperCase()]??8}
-function workStatus(row){return String(row?.status||'WAITING').toUpperCase()}
+function workStatus(row){
+  const raw=String(row?.status||'WAITING').trim().toUpperCase();
+  const map={
+    'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING',
+    'BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN',
+    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
+    'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE'
+  };
+  return map[raw]||raw;
+}
 function workPriority(row){
   const direct=String(row?.effectivePriority||row?.priority||'').toUpperCase();
   if(/^P[0-5]$/.test(direct))return direct;
@@ -247,49 +264,76 @@ function updateCounts(){
 }
 function renderOwnerSummary(){
   const s=snapshot?.openSummary||{};
-  const p=snapshot?.portfolioProgress||{};
-  $('sumOpen').textContent=Number(s.actionable||0);
-  $('sumRunning').textContent=Number(s.running||0);
-  $('sumReview').textContent=Number(s.review||0);
-  $('sumOwner').textContent=Number(s.owner||0);
-  $('sumBlocked').textContent=Number(s.blocked||0);
-  const pct=Number(p.percent);
-  const verified=Number.isFinite(pct)&&pct>=0&&pct<=100&&p.source==='verified_issue_average';
+  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
+  const actionable=openRows.filter(row=>row?.workKind!=='SYSTEM'&&workStatus(row)!=='SYSTEM');
+  const blocked=actionable.filter(row=>workStatus(row)==='BLOCKED').length;
+  const apiProgress=snapshot?.portfolioProgress||null;
+  const completeEnumeration=snapshot?.workProjection?.openIssueEnumerationComplete===true;
+  const locallyVerified=actionable.filter(row=>verifiedProgress(row).verified);
+  const localProgress=completeEnumeration&&actionable.length&&locallyVerified.length===actionable.length
+    ?{percent:Math.round(locallyVerified.reduce((sum,row)=>sum+verifiedProgress(row).pct,0)/actionable.length),source:'verified_issue_average',scopeItems:actionable.length,verifiedItems:locallyVerified.length}
+    :{percent:null,source:completeEnumeration?'incomplete_verified_coverage':'incomplete_enumeration',scopeItems:actionable.length,verifiedItems:locallyVerified.length};
+  const p=apiProgress&&typeof apiProgress==='object'?apiProgress:localProgress;
+  $('sumOpen').textContent=Number.isFinite(Number(s.actionable))?Number(s.actionable):actionable.length;
+  $('sumRunning').textContent=Number.isFinite(Number(s.running))?Number(s.running):actionable.filter(row=>workStatus(row)==='WORKING').length;
+  $('sumReview').textContent=Number.isFinite(Number(s.review))?Number(s.review):actionable.filter(row=>['REVIEW','VERIFY'].includes(workStatus(row))).length;
+  $('sumOwner').textContent=Number.isFinite(Number(s.owner))?Number(s.owner):actionable.filter(row=>workStatus(row)==='OWNER_GATE').length;
+  $('sumBlocked').textContent=Number.isFinite(Number(s.blocked))?Number(s.blocked):blocked;
+  const pct=Number(p?.percent);
+  const verified=Number.isFinite(pct)&&pct>=0&&pct<=100&&p?.source==='verified_issue_average';
   $('overallPct').textContent=verified?pct+'%':'—';
   $('overallFill').style.width=verified?pct+'%':'0%';
-  const scope=Number(p.scopeItems||s.actionable||0),covered=Number(p.verifiedItems||0);
+  const scope=Number(p?.scopeItems||actionable.length||0),covered=Number(p?.verifiedItems||0);
   $('overallScope').textContent=scope?covered+'/'+scope+' việc có % xác minh':'chưa có scope';
   $('overallNote').textContent=verified?'Toàn bộ scope hiện tại đã có tiến độ xác minh':'Chưa đủ bằng chứng để tính % tổng · đã xác minh '+covered+'/'+scope+' việc';
 }
 function drawerProgressMarkup(row){
-  const pct=Number(row?.progressPercent);
-  const verified=['explicit_verified','checklist_verified'].includes(String(row?.progressSource||''))&&Number.isFinite(pct)&&pct>=0&&pct<=100;
+  const {pct,verified}=verifiedProgress(row);
   return verified
     ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
     :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
 }
-function openDrawer(row,trigger){
-  drawerRow=row;drawerReturnFocus=trigger||document.activeElement;
+function effectiveBlocker(row){
+  if(row?.blocker)return String(row.blocker);
+  if(workStatus(row)==='BLOCKED')return String(row?.waitReason||row?.currentStep||'Chưa có lý do blocker xác minh');
+  return '';
+}
+function populateDrawer(row){
+  drawerRow=row;
   $('drawerKicker').textContent='#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('drawerProgress').innerHTML=drawerProgressMarkup(row);
   $('drawerCurrent').textContent=row.currentStep||'Chưa có bằng chứng hiện tại';
   $('drawerNext').textContent=row.nextStep||'Chưa xác định';
-  $('drawerBlocker').textContent=row.blocker||'Không có';
+  $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
   $('drawerWorker').textContent=workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||'Chưa có bằng chứng';
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
   const url=row.url||row.evidenceUrl||'';
-  $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;
+  $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;else $('drawerGithub').removeAttribute('href');
+}
+function openDrawer(row,trigger){
+  drawerReturnFocus=trigger||document.activeElement;populateDrawer(row);
+  $('appMain').setAttribute('inert','');
+  $('workDrawer').removeAttribute('inert');
   $('drawerBackdrop').classList.add('open');$('workDrawer').classList.add('open');
   $('drawerBackdrop').setAttribute('aria-hidden','false');$('workDrawer').setAttribute('aria-hidden','false');
   document.body.classList.add('drawer-open');$('drawerClose').focus();
 }
 function closeDrawer(){
+  const number=drawerRow?.number;
   $('drawerBackdrop').classList.remove('open');$('workDrawer').classList.remove('open');
   $('drawerBackdrop').setAttribute('aria-hidden','true');$('workDrawer').setAttribute('aria-hidden','true');
+  $('workDrawer').setAttribute('inert','');$('appMain').removeAttribute('inert');
   document.body.classList.remove('drawer-open');drawerRow=null;
-  if(drawerReturnFocus&&typeof drawerReturnFocus.focus==='function')drawerReturnFocus.focus();
+  const target=drawerReturnFocus?.isConnected?drawerReturnFocus:document.querySelector('[data-work-number="'+number+'"]');
+  if(target&&typeof target.focus==='function')target.focus();
+}
+function refreshOpenDrawer(){
+  if(!drawerRow||!$('workDrawer').classList.contains('open'))return;
+  const rows=[...(snapshot?.openWork||[]),...(snapshot?.recentWork||[])];
+  const fresh=rows.find(row=>Number(row?.number)===Number(drawerRow.number));
+  if(fresh)populateDrawer(fresh);else closeDrawer();
 }
 function render(){
   if(!snapshot)return;
@@ -305,11 +349,11 @@ function render(){
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    el.dataset.workNumber=String(row.number);
     el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
-    const pct=Number(row?.progressPercent);
-    const verifiedProgress=['explicit_verified','checklist_verified'].includes(String(row?.progressSource||''));
+    const {pct,verified:verifiedProgress}=verifiedProgress(row);
     const progress=verifiedProgress&&Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
@@ -317,7 +361,7 @@ function render(){
     const summary=summaryText?'<div class="work-summary"><b>Đang:</b> '+esc(summaryText)+'</div>':'<div class="work-summary"><b>Đang:</b> CHƯA CÓ BẰNG CHỨNG</div>';
     const doneText=String(row?.latestCompletedStep||'').trim();
     const nextText=String(row?.nextStep||'').trim();
-    const blockerText=String(row?.blocker||'').trim();
+    const blockerText=effectiveBlocker(row).trim();
     const nextLine='<div class="work-next"><b>Tiếp:</b> '+esc(nextText||'Chưa xác định')+'</div>';
     const blockerLine=blockerText?'<div class="work-blocker"><b>Blocker:</b> '+esc(blockerText)+'</div>':'';
     const signature=status+'|'+(verifiedProgress&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+nextText+'|'+blockerText;
@@ -330,6 +374,7 @@ function render(){
     box.append(el);
     if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
   });
+  refreshOpenDrawer();
 }
 function show(value){
   snapshot=value;
