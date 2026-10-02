@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   compareQueueRows,
+  buildWorkSections,
+  ghAllPages,
   fetchPc01Live,
   rankQueueRows,
   normalizeRuntimeWorkerActivity,
@@ -528,6 +530,59 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
   });
 
+
+  it('paginates open issues and proves complete enumeration only after the final short page', async () => {
+    const seen = [];
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      seen.push(value);
+      const page = Number(new URL(value).searchParams.get('page') || 1);
+      const rows = page === 1
+        ? Array.from({ length: 100 }, (_, index) => ({ number: index + 1 }))
+        : [{ number: 101 }];
+      return new Response(JSON.stringify(rows), { status: 200 });
+    };
+    const result = await ghAllPages('/repos/newsdayads/tigeriq-ai-lab/issues?state=open&sort=updated&direction=desc', fetchImpl);
+    expect(result).toMatchObject({ complete: true });
+    expect(result.rows).toHaveLength(101);
+    expect(seen.some((url) => url.includes('per_page=100') && url.includes('page=2'))).toBe(true);
+  });
+
+  it('fails closed for portfolio percent when buildWorkSections falls back to a stale GitHub snapshot', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-02T01:00:00Z'));
+      let failOpenIssues = false;
+      const workIssue = issue(3991, '[P1] Verified current work', [
+        'TIGERIQ_EXECUTABLE=false',
+        'CURRENT_STATE=READY',
+        'PROGRESS_SOURCE=VERIFIED',
+        'PROGRESS_PERCENT=60',
+      ].join('\n'));
+      const fetchImpl = async (url) => {
+        const value = String(url);
+        if (value.includes('/issues?state=open')) {
+          if (failOpenIssues) throw new Error('github_open_issues_down');
+          return new Response(JSON.stringify([workIssue]), { status: 200 });
+        }
+        if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+        if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+        if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+        throw new Error('unexpected_url:' + value);
+      };
+      const fresh = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+      expect(fresh.portfolioProgress).toMatchObject({ percent: 60, source: 'verified_issue_average' });
+      expect(fresh.workProjection).toMatchObject({ stale: false, openIssueEnumerationComplete: true });
+
+      failOpenIssues = true;
+      vi.setSystemTime(new Date('2026-10-02T01:01:00Z'));
+      const stale = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+      expect(stale.workProjection.stale).toBe(true);
+      expect(stale.portfolioProgress).toMatchObject({ percent: null, source: 'incomplete_enumeration' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('publishes portfolio percent only when every current-scope work item has verified progress', () => {
     const partial = verifiedPortfolioProgress([
