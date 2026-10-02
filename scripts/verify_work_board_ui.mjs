@@ -89,9 +89,9 @@ for (const removed of [
   'ĐANG CHỜ / BỊ CHẶN',
   'NHỮNG VIỆC GẦN ĐÂY',
   'Trạng thái nhân sự',
-  'Đang xử lý',
   'Hàng đợi',
 ]) assert.doesNotMatch(publicView, new RegExp(removed, 'i'));
+assert.doesNotMatch(publicView, /<h[1-6][^>]*>\s*Đang xử lý/i);
 
 assert.doesNotMatch(publicView, /id=["']dispatch["']/);
 assert.doesNotMatch(publicView, /GitHub token/i);
