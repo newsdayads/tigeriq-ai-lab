@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {isRetryableManagerOutputError,managerExhaustionRetryPlan,managerLocalRequestBody,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
+import {isRetryableManagerOutputError,managerExhaustionRetryPlan,managerLocalRequestBody,managerProviderBodyForHost,managerResponseFormatForHost,managerShouldUseLocalFallback,parseManagerJson,runBoundedManagerDecision} from '../apps/tigeriq-core/manager-json.mjs';
 
 const valid=(summary='ok')=>JSON.stringify({status:'complete',summary,jobs:[]});
 const resource=id=>({id,provider:id==='NV11'?'groq':'openrouter'});
@@ -31,6 +31,12 @@ describe('manager JSON parsing',()=>{
     expect(managerResponseFormatForHost('integrate.api.nvidia.com',prompt)).toEqual({type:'json_object'});
     expect(managerResponseFormatForHost('api.cloudflare.com',prompt)).toBeNull();
     expect(managerResponseFormatForHost('api.groq.com','ordinary job')).toBeNull();
+  });
+  it('disables NVIDIA reasoning for manager JSON so the answer stays in content',()=>{
+    const prompt='You are TigerIQ AI Manager. Return ONLY JSON.';
+    expect(managerProviderBodyForHost('integrate.api.nvidia.com',prompt)).toEqual({chat_template_kwargs:{enable_thinking:false}});
+    expect(managerProviderBodyForHost('integrate.api.nvidia.com','ordinary job')).toEqual({});
+    expect(managerProviderBodyForHost('api.groq.com',prompt)).toEqual({});
   });
   it('builds a lean deterministic local-manager request',()=>{
     expect(managerLocalRequestBody('qwen3:4b','manager prompt')).toEqual({
