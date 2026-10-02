@@ -281,13 +281,25 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     else if(prev.status==='cancelled')previous=publicJob(prev,{status:'CANCELLED',executable:false});
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
-  const issues=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues?state=open&per_page=100&sort=created&direction=asc',token);
-  const current=[];
+  const current=[],missingWorkers=[];
   for(const workerId of WORKERS){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
-    if(!item||!['ui_assigned','ui_running'].includes(String(item.status||'')))item=await materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows:issues});
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
+    else missingWorkers.push(workerId);
+  }
+  if(missingWorkers.length){
+    let issues,sourceError;
+    try{issues=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues?state=open&per_page=100&sort=created&direction=asc',token);}
+    catch(error){sourceError=error;}
+    if(Array.isArray(issues)){
+      for(const workerId of missingWorkers){
+        const item=await materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows:issues});
+        if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
+      }
+    }else if(!current.length){
+      throw sourceError||new Error('CORE_UI_GITHUB_SOURCE_UNAVAILABLE');
+    }
   }
   const b=bindings(),nextJobs=[];
   for(const item of current){
