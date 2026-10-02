@@ -7,6 +7,7 @@ import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lif
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { isStabilityV2ResourceScope } from './stability-v2.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -947,7 +948,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       const prompt=pcOperatorPrompt;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
-    }else if(spec.admissionMode==='SAFE_P1_P5_POLICY'&&spec.dispatchLane==='CORE_REASONING'){
+    }else if(spec.admissionMode==='SAFE_P1_P5_POLICY'&&spec.dispatchLane==='CORE_REASONING'&&!isStabilityV2ResourceScope(spec.resourceScope)){
       const jobId=`JOB-GH-${spec.number}-API-AUTOWORK`;
       const prompt=spec.requiresCodingHandoff
         ? `Coordinate GitHub Work Order #${spec.number} without repository mutation. Determine the bounded implementation handoff needed, preserve RESOURCE_SCOPE=${spec.resourceScope}, and return concrete acceptance/evidence requirements for the coding executor. Do not perform independent review of implementation produced under this Work Order.`
