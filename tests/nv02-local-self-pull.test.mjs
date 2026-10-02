@@ -177,6 +177,36 @@ describe('NV02 local GitHub self-pull contract', () => {
     })?.result).toMatchObject({ eligible: true, mode: 'STALE_ASSIGNEE_TAKEOVER' });
   });
 
+  it('keeps independent Coding Lane reservation authoritative and never falls back through a hard terminal', () => {
+    const reserved = {
+      ...issue(18, '[P1] reserved coding', safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nTARGET_EMPLOYEE=NV11\nRESOURCE_SCOPE=API_REPAIR_18')),
+      updated_at: '2026-10-02T11:00:00Z',
+    };
+    const status = nv02TakeoverStatus(reserved, [], { nowMs: Date.parse('2026-10-02T12:00:00Z') });
+    expect(status).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_RESERVED',
+      target: 'NV11',
+    });
+    expect(selectNv02WorkOrder([reserved], {
+      takeoverStatuses: new Map([[18, status]]),
+    })).toBeNull();
+
+    const hardBlocked = nv02TakeoverStatus(reserved, [{
+      id: 1,
+      created_at: '2026-10-02T12:01:00Z',
+      body: '[BLOCKED_FINAL] CODEOBJ-hard reason=HARD_BLOCKER. DENY_CONTROL_PLANE_MUTATION',
+    }], { nowMs: Date.parse('2026-10-02T12:20:00Z') });
+    expect(hardBlocked).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_HARD_BLOCKED',
+      target: 'NV11',
+    });
+    expect(selectNv02WorkOrder([reserved], {
+      takeoverStatuses: new Map([[18, hardBlocked]]),
+    })).toBeNull();
+  });
+
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
     const fallback = issue(30, '[P1] fallback', safe('PRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=F30'));
     const primary = issue(31, '[P2] primary', safe('PRIORITY=P2\nCAPABILITY=general\nRESOURCE_SCOPE=F31'));
