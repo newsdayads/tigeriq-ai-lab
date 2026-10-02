@@ -72,7 +72,6 @@ async function awaitWithSignal(promise,signal){
 
 export async function githubRequestJson(fetchImpl,url,token='',init={}){
   const {freshMs:requestedFreshMs,allowStaleOnRateLimit=true,signal:callerSignal,...fetchInit}=init||{};
-  if(callerSignal?.aborted)throw abortError(callerSignal);
   const method=String(fetchInit.method||'GET').toUpperCase();
   const headers={
     accept:'application/vnd.github+json',
@@ -104,11 +103,15 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   const freshMs=Math.max(0,Number(requestedFreshMs??DEFAULT_FRESH_MS));
   if(prior&&now-prior.at<freshMs){stats.memoryHits++;return prior.body}
 
-  const unwrap=(result)=>{
-    if(result?.stale===true&&!allowStaleOnRateLimit)throw backoffError();
-    return result?.body;
+  const useResult=async(request)=>{
+    try{return await awaitWithSignal(request,callerSignal)}
+    catch(error){
+      if(error?.rateLimited&&prior&&allowStaleOnRateLimit){stats.staleHits++;return prior.body}
+      throw error;
+    }
   };
-  if(inflight.has(key))return unwrap(await awaitWithSignal(inflight.get(key),callerSignal));
+  if(inflight.has(key))return useResult(inflight.get(key));
+  if(callerSignal?.aborted)throw abortError(callerSignal);
 
   const request=(async()=>{
     const conditional={...headers};
@@ -120,22 +123,21 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
       stats.notModified++;
       prior.at=Date.now();
       cache.set(key,prior);
-      return {body:prior.body,stale:false};
+      return prior.body;
     }
     const raw=await response.text();
     let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
     if(!response.ok){
       const limited=applyRateLimitFailure(response,body,raw);
-      if(limited&&prior){stats.staleHits++;return {body:prior.body,stale:true}}
-      throw makeError(response.status,body,raw,response.headers);
+      const error=makeError(response.status,body,raw,response.headers);
+      error.rateLimited=limited;
+      throw error;
     }
     cache.set(key,{at:Date.now(),etag:response.headers?.get?.('etag')||'',body});
-    return {body,stale:false};
+    return body;
   })();
   inflight.set(key,request);
-  try{return unwrap(await awaitWithSignal(request,callerSignal))}finally{
-    if(inflight.get(key)===request)inflight.delete(key);
-  }
+  try{return await useResult(request)}finally{if(inflight.get(key)===request)inflight.delete(key)}
 }
 
 export function invalidateGithubCache(match=''){
