@@ -90,8 +90,28 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(nv02TakeoverStatus(work, rearmed, {
       nowMs: Date.parse('2026-10-02T12:30:00Z'),
     })).toMatchObject({
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
+      target: 'CODING_LANE',
+    });
+
+    const heartbeat = [...rearmed, {
+      id: 7,
+      created_at: '2026-10-02T12:20:00Z',
+      body: '⚙️ [TIẾN ĐỘ] CODEOBJ-d heartbeat ok',
+    }];
+    expect(nv02TakeoverStatus(work, heartbeat, {
+      nowMs: Date.parse('2026-10-02T12:30:00Z'),
+    })).toMatchObject({
       eligible: false,
       reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
+    });
+    expect(nv02TakeoverStatus(work, heartbeat, {
+      nowMs: Date.parse('2026-10-02T12:36:00Z'),
+    })).toMatchObject({
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
+      target: 'CODING_LANE',
     });
 
     const terminal = nv02TakeoverStatus(work, [{
