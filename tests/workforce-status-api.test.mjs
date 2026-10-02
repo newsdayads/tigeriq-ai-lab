@@ -6,6 +6,7 @@ import {
   resetWorkforceRegistryForTests,
 } from '../apps/tigeriq-core/workforce-registry.mjs';
 import {
+  githubRequestJson,
   resetGithubSharedClientForTests,
 } from '../apps/tigeriq-core/github-shared-client.mjs';
 
@@ -113,6 +114,30 @@ describe('Core workforce registry transport', () => {
     expect(authorization).toBe('');
   });
 
+  it('keeps non-GitHub registry overrides isolated from GitHub rate-limit backoff', async () => {
+    const githubFetch=async()=>new Response(JSON.stringify({message:'API rate limit exceeded'}),{
+      status:429,
+      headers:{'content-type':'application/json','retry-after':'60'}
+    });
+    await expect(githubRequestJson(githubFetch,'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/335','abc',{freshMs:0,allowStaleOnRateLimit:false}))
+      .rejects.toThrow('GITHUB_HTTP_429');
+
+    let calls=0;
+    const issue=await fetchRegistryIssue({
+      token:'secret-repo-token',
+      url:'https://registry.example.test/issue/335',
+      fetchImpl:async()=>{
+        calls++;
+        return new Response(JSON.stringify({number:335,body:registryBody('104')}),{
+          status:200,
+          headers:{'content-type':'application/json'}
+        });
+      },
+    });
+    expect(calls).toBe(1);
+    expect(issue.body).toContain('REGISTRY_ROOT_VERSION=104');
+  });
+
   it('revalidates with ETag/304 after the outer registry cache is bypassed', async () => {
     let calls=0;
     let conditional='';
@@ -175,6 +200,49 @@ describe('Core workforce registry transport', () => {
     expect(stale.workforceMeta.version).toBe('101');
     expect(stale.workforceMeta.stale).toBe(true);
     expect(stale.workforceMeta.error).toMatch(/GITHUB_HTTP_403|GITHUB_RATE_LIMIT_BACKOFF_ACTIVE/);
+  });
+
+  it('coalesces strict and stale-tolerant callers onto one network request', async () => {
+    let calls=0;
+    let release;
+    const fetchImpl=async()=>{
+      calls++;
+      if(calls===1){
+        return new Response(JSON.stringify({value:'cached'}),{
+          status:200,
+          headers:{'content-type':'application/json','etag':'"shared"','x-ratelimit-remaining':'4999','x-ratelimit-reset':'1999999999'}
+        });
+      }
+      return new Promise(resolve=>{
+        release=()=>resolve(new Response(JSON.stringify({message:'API rate limit exceeded'}),{
+          status:429,
+          headers:{'content-type':'application/json','retry-after':'60'}
+        }));
+      });
+    };
+    await githubRequestJson(fetchImpl,'https://api.github.com/repos/test/repo/issues/335','abc',{freshMs:0});
+    const tolerant=githubRequestJson(fetchImpl,'https://api.github.com/repos/test/repo/issues/335','abc',{freshMs:0,allowStaleOnRateLimit:true});
+    await Promise.resolve();
+    const strict=githubRequestJson(fetchImpl,'https://api.github.com/repos/test/repo/issues/335','abc',{freshMs:0,allowStaleOnRateLimit:false});
+    await Promise.resolve();
+    expect(calls).toBe(2);
+    release();
+    await expect(tolerant).resolves.toEqual({value:'cached'});
+    await expect(strict).rejects.toThrow('GITHUB_HTTP_429');
+    expect(calls).toBe(2);
+  });
+
+  it('does not launch a new GET when the caller signal is already aborted', async () => {
+    let calls=0;
+    const controller=new AbortController();
+    controller.abort(new Error('already_aborted'));
+    await expect(githubRequestJson(
+      async()=>{calls++;return new Response('{}',{status:200})},
+      'https://api.github.com/repos/test/repo/issues/335',
+      'abc',
+      {freshMs:0,signal:controller.signal},
+    )).rejects.toThrow('already_aborted');
+    expect(calls).toBe(0);
   });
 
   it('respects a caller timeout while joining an existing strict in-flight registry request', async () => {
