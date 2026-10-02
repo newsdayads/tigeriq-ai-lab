@@ -280,7 +280,8 @@ public final class MainActivity extends Activity {
     }
 
     private void pairController(Button button) {
-        profileStore.saveProvider(selectedProvider());
+        final String provider = selectedProvider();
+        profileStore.saveProvider(provider);
         button.setEnabled(false);
         button.setText("Đang ghép…");
 
@@ -300,17 +301,17 @@ public final class MainActivity extends Activity {
                         nodeId,
                         Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE,
                         WorkerVersion.NAME,
-                        capabilities()
+                        capabilities(provider)
                     );
                 }
 
-                JSONObject registration = client.requestCoreAssignedEmployee(selectedProvider(), capabilities());
+                JSONObject registration = client.requestCoreAssignedEmployee(provider, capabilities(provider));
                 JSONObject employee = registration.getJSONObject("employee");
                 profileStore.saveAssignedEmployee(
                     employee.getString("employeeId"),
                     employee.getString("department"),
                     employee.getString("role"),
-                    employee.optString("provider", selectedProvider())
+                    employee.optString("provider", provider)
                 );
                 client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
                 writeNetworkProbe(true);
@@ -402,7 +403,7 @@ public final class MainActivity extends Activity {
         boolean ready = missing == null;
         readinessView.setText(
             ready
-                ? "SẴN SÀNG\n" + profile.employeeId + " · " + profile.provider + " · PC01 ONLINE"
+                ? "SẴN SÀNG KIỂM TRA AI\n" + profile.employeeId + " · " + profile.provider + " · PC01 TRỰC TUYẾN"
                 : "CHƯA SẴN SÀNG\nThiếu: " + missing
         );
         readinessView.setTextColor(ready ? GREEN : RED);
@@ -526,8 +527,8 @@ public final class MainActivity extends Activity {
         return manager == null ? 0 : Math.max(0, Math.min(100, manager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)));
     }
 
-    private String[] capabilities() {
-        return "Gemini".equals(selectedProvider())
+    private String[] capabilities(String provider) {
+        return "Gemini".equals(provider)
             ? new String[]{"android-ui", "research", "gemini-ui"}
             : new String[]{"android-ui", "research", "chatgpt-ui"};
     }
@@ -584,8 +585,8 @@ public final class MainActivity extends Activity {
     }
 
     private String translateControllerState(String state) {
-        if ("ONLINE".equals(state)) return "ONLINE";
-        if ("OFFLINE".equals(state)) return "OFFLINE";
+        if ("ONLINE".equals(state)) return "TRỰC TUYẾN";
+        if ("OFFLINE".equals(state)) return "NGOẠI TUYẾN";
         return "CHƯA XÁC ĐỊNH";
     }
 
