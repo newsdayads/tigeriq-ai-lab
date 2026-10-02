@@ -783,7 +783,16 @@ function ownerAcceptancePolicy(body = '') {
 }
 
 function ownerAcceptancePhase(phase = '') {
-  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW)?|LIVE_VERIFIED|LIVE_ACCEPTANCE_PASS|READY_LIVE_ACCEPTANCE)/.test(String(phase || '').toUpperCase());
+  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL|LIVE_VERIFIED|LIVE_ACCEPTANCE_PASS|READY_LIVE_ACCEPTANCE)/.test(String(phase || '').toUpperCase());
+}
+
+function ownerGateTechnicalComplete(body = '', phase = '') {
+  const state = String(phase || '').toUpperCase();
+  const technical = bodyValue(body, 'TECHNICAL_ACCEPTANCE').toUpperCase();
+  const finalAcceptance = bodyValue(body, 'FINAL_ACCEPTANCE_2828').toUpperCase();
+  return technical === 'PASS'
+    || /TECHNICAL_PASS/.test(finalAcceptance)
+    || /(?:WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL|OWNER_REVIEW_REQUIRED)/.test(state);
 }
 
 function issueDisplayOwner(issue) {
@@ -816,11 +825,14 @@ export function classifyOpenIssue(issue) {
     || bodyFlag(body, 'CANONICAL_POLICY')
     || bodyFlag(body, 'REFERENCE_ONLY');
 
-  const ownerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE)(?:_|$)/.test(phase)
-    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+  const phaseOwnerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE|READY_FOR_OWNER_APPROVAL)(?:_|$)/.test(phase)
+    || ownerAcceptancePhase(phase);
+  const legacyOwnerGate = !phase && (
+    bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
     || bodyFlag(body, 'OWNER_GATE')
     || bodyFlag(body, 'OWNER_HOLD')
-    || ownerAcceptancePending;
+  );
+  const ownerGate = phaseOwnerGate || legacyOwnerGate || ownerAcceptancePending;
 
   const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
 
@@ -892,6 +904,24 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
   return { percent: null, source: 'none', detail: null };
 }
 
+export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
+  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK');
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && String(row.status || '').toUpperCase() === 'DONE');
+  const completedItems = done.length;
+  const scopeItems = open.length + completedItems;
+  if (options.complete === false) {
+    return { percent: null, source: 'incomplete_enumeration', scopeItems, completedItems };
+  }
+  return {
+    percent: scopeItems ? Math.round((completedItems / scopeItems) * 100) : null,
+    source: 'terminal_completion',
+    scopeItems,
+    completedItems,
+    remainingItems: open.length,
+    basis: 'open_work_plus_recent_completed',
+  };
+}
+
 export function verifiedPortfolioProgress(rows = [], options = {}) {
   const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind === 'WORK');
   const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
@@ -946,8 +976,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
+  const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
   const currentStep = classification.ownerGate
-    ? bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
+    ? technicalComplete
+      ? 'Đã xong kỹ thuật · chờ anh Sơn duyệt'
+      : bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
     : active?.currentStep
       || queued?.waitReason
       || lifecycle?.step
@@ -956,10 +989,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
     || bodyValue(body, 'LATEST_COMPLETED_STEP')
     || bodyValue(body, 'LAST_DONE')
+    || (technicalComplete ? 'Đã xong kỹ thuật và có bằng chứng canonical' : null)
     || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
-    || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
+    || (classification.ownerGate ? 'Duyệt bản live' : null);
   const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
   const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
   const issueAt = Date.parse(issue?.updated_at || '') || 0;
@@ -973,12 +1007,15 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
       || safeEvidenceUrl(active?.prUrl)
       || null;
   const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
-  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || null;
+  const canonicalOwnerEvidenceUrl = technicalComplete ? safeEvidenceUrl(issue.html_url || '') : null;
+  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || canonicalOwnerEvidenceUrl || null;
   const evidenceAt = activeEvidenceUrl
     ? safeEvidenceTimestamp(active?.updatedAt)
     : bodyEvidenceUrl
       ? safeEvidenceTimestamp(bodyValue(body, 'EVIDENCE_AT') || bodyValue(body, 'EVIDENCE_TIMESTAMP'))
-      : null;
+      : technicalComplete
+        ? safeEvidenceTimestamp(issue.updated_at)
+        : null;
 
   return {
     number,
@@ -997,6 +1034,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ownerApprovalRequired: classification.ownerApprovalRequired,
     ownerApprovalPending: classification.ownerGate,
     ownerAccepted: classification.ownerAccepted,
+    technicalComplete,
     currentState: phase || null,
     currentStep,
     latestCompletedStep,
@@ -1296,6 +1334,25 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       done: recentWork.length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
+    const completionProgress = verifiedCompletionProgress(actionable, recentWork, { complete: issuesComplete === true && !projectionStale });
+    const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
+    const stabilityBody = String(stabilityIssue?.body || '');
+    const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
+      const n = Number(String(worker?.employeeId || '').replace(/\D/g, ''));
+      return n >= 11 && n <= 20 && String(worker?.kind || 'api') === 'api';
+    });
+    const healthyProviders = new Set(apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
+      .map((worker) => String(worker?.provider || worker?.employeeId || '')).filter(Boolean));
+    const apiWorkforceSummary = {
+      healthyProviders: healthyProviders.size,
+      healthyTarget: Number(bodyValue(stabilityBody, 'REQUIRED_HEALTHY_PROVIDER_COUNT') || bodyValue(stabilityBody, 'HEALTHY_PROVIDER_COUNT') || 3),
+      stabilityRounds: Number(bodyValue(stabilityBody, 'STABILITY_ROUNDS_COUNTED') || 0),
+      stabilityRoundsRequired: Number(bodyValue(stabilityBody, 'ROUND_COUNT_REQUIRED') || 3),
+      realJobs: Number(bodyValue(stabilityBody, 'REAL_JOBS_COMPLETED') || bodyValue(stabilityBody, 'REAL_JOBS_COUNTED') || 0),
+      realJobsRequired: Number(bodyValue(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') || 15),
+      blocker: cleanText(bodyValue(stabilityBody, 'CURRENT_BLOCKER') || bodyValue(stabilityBody, 'BLOCKED_BY') || (stabilityIssue ? 'Theo dõi #2891' : ''), 120) || null,
+      issueNumber: stabilityIssue ? 2891 : null,
+    };
 
     return {
       ...base,
@@ -1303,6 +1360,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       openWork: openWork.map(ownerFacingWorkRow),
       openSummary,
       portfolioProgress,
+      completionProgress,
+      apiWorkforceSummary,
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
