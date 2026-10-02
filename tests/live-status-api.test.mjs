@@ -10,6 +10,7 @@ import {
   parseOpenWorkIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
+  verifiedPortfolioProgress,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -470,6 +471,22 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(progressForIssue(issue(3102, '[P1] Lifecycle guess forbidden', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: null, source: 'none' });
     expect(progressForIssue(issue(3103, '[P1] Verified checklist', 'PROGRESS_VERIFIED=true\n- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist_verified' });
     expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
+  });
+
+
+  it('publishes portfolio percent only when every current-scope work item has verified progress', () => {
+    const partial = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+      { workKind: 'WORK', progressPercent: null, progressSource: 'none' },
+      { workKind: 'SYSTEM', progressPercent: null, progressSource: 'none' },
+    ]);
+    expect(partial).toMatchObject({ percent: null, scopeItems: 2, verifiedItems: 1, coveragePercent: 50 });
+
+    const complete = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+      { workKind: 'WORK', progressPercent: 80, progressSource: 'explicit_verified' },
+    ]);
+    expect(complete).toMatchObject({ percent: 65, source: 'verified_issue_average', scopeItems: 2, verifiedItems: 2, coveragePercent: 100 });
   });
 
   it('marks completed history as 100 percent', () => {
