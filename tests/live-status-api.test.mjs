@@ -454,8 +454,17 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')));
     expect(blocked).toMatchObject({ blocker: 'WAIT_PROVIDER', nextStep: 'Reprobe after provider recovery' });
 
-    const normal = parseOpenWorkIssue(issue(3214, '[P1] Normal compact card', 'CURRENT_STATE=READY'));
+    const normal = parseOpenWorkIssue(issue(3214, '[P1] Normal compact card', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=NONE',
+    ].join('\n')));
     expect(normal.blocker).toBe(null);
+
+    const cleared = parseOpenWorkIssue(issue(3215, '[P1] Cleared blocker compact card', [
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n')), { lifecycle: { state: 'READY', blockerCleared: true, step: 'Reprobe now' } });
+    expect(cleared).toMatchObject({ status: 'QUEUED', blocker: null });
   });
 
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
@@ -499,6 +508,11 @@ describe('TigerIQ Live Work Order projection', () => {
       { workKind: 'WORK', progressPercent: 80, progressSource: 'explicit_verified' },
     ]);
     expect(complete).toMatchObject({ percent: 65, source: 'verified_issue_average', scopeItems: 2, verifiedItems: 2, coveragePercent: 100 });
+
+    const incompleteEnumeration = verifiedPortfolioProgress([
+      { workKind: 'WORK', progressPercent: 50, progressSource: 'checklist_verified' },
+    ], { complete: false });
+    expect(incompleteEnumeration).toMatchObject({ percent: null, source: 'incomplete_enumeration', scopeItems: 1, verifiedItems: 1 });
   });
 
   it('marks completed history as 100 percent', () => {
