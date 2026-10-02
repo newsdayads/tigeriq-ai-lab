@@ -10,6 +10,7 @@ import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.m
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, shouldQueueContinuousVerify } from './continuous-verify.mjs';
 import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -21,7 +22,7 @@ import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoc
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
-import { publishGithubEvent } from './github-event-bus.mjs';
+import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { objectiveCompletionGate } from './github-intake.mjs';
 import { sanitizeRuntimePayload, buildWorkSections } from '../../api/live-status.mjs';
@@ -1650,6 +1651,7 @@ function getDynamicMaxParallel() {
   return Math.max(3, Math.min(20, healthyCount));
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
+let continuousVerifyPending = null, continuousVerifyRunning = false, continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
 
 const CORE_RUNTIME_UPDATER_STATE=process.env.TIGERIQ_CORE_RUNTIME_UPDATER_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-updater.json';
 const CORE_RUNTIME_SOURCE_STATE=process.env.TIGERIQ_CORE_RUNTIME_SOURCE_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-source.json';
@@ -1658,6 +1660,52 @@ const SELF_AUDIT_STATE_FRESH_MS=Math.max(60000,Number(process.env.TIGERIQ_SELF_A
 
 function readSelfAuditJsonState(path){
   try{return JSON.parse(readFileSync(path,'utf8'));}catch{return null;}
+}
+function queueContinuousVerify(trigger){
+  if(!shouldQueueContinuousVerify(trigger,{pendingKey:continuousVerifyPending?.key||'',lastRunKey:continuousVerifyLastRunKey}))return false;
+  continuousVerifyPending={...trigger,attempt:Number(trigger?.attempt||0),queuedAt:nowIso()};
+  return true;
+}
+subscribeGithubEvents(envelope=>{
+  const trigger=githubContinuousVerifyTrigger(envelope);
+  if(!queueContinuousVerify(trigger))return;
+  void event('CONTINUOUS_VERIFY_TRIGGER_QUEUED',{
+    kind:trigger.kind,key:trigger.key,sourceSha:trigger.sourceSha||null,deliveryId:envelope.deliveryId||null
+  }).catch(()=>{});
+});
+function observeRuntimeContinuousVerify(){
+  const state=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const currentSha=String(state?.currentSha||'').trim();
+  if(!currentSha)return null;
+  if(!continuousVerifyRuntimeSha){continuousVerifyRuntimeSha=currentSha;return null;}
+  const trigger=runtimeContinuousVerifyTrigger(continuousVerifyRuntimeSha,currentSha);
+  continuousVerifyRuntimeSha=currentSha;
+  return queueContinuousVerify(trigger)?trigger:null;
+}
+async function runPendingContinuousVerify(){
+  if(continuousVerifyRunning||activeDeepAudit||!continuousVerifyPending)return false;
+  const trigger=continuousVerifyPending;
+  continuousVerifyPending=null;
+  continuousVerifyRunning=true;
+  activeDeepAudit=true;
+  lastDeepAudit=Date.now();
+  try{
+    const result=await runSelfAuditScan({store:pool,nowMs:lastDeepAudit});
+    continuousVerifyLastRunKey=trigger.key;
+    await event('CONTINUOUS_VERIFY_RUN',{
+      kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,sourceSha:trigger.sourceSha||null,currentSha:trigger.currentSha||null,
+      contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized:result.materialized,deduped:result.deduped,resolved:result.resolved
+    });
+    return true;
+  }catch(error){
+    if((trigger.attempt||0)<1)continuousVerifyPending={...trigger,attempt:(trigger.attempt||0)+1,queuedAt:nowIso()};
+    else continuousVerifyLastRunKey=trigger.key;
+    await event('CONTINUOUS_VERIFY_RUN_FAILED',{kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,error:String(error?.message||error).slice(0,240)});
+    return false;
+  }finally{
+    activeDeepAudit=false;
+    continuousVerifyRunning=false;
+  }
 }
 function selfAuditStateFresh(state,nowMs=Date.now()){
   const ts=Date.parse(String(state?.updatedAt||state?.updated_at||''));
@@ -1931,7 +1979,7 @@ async function selfAuditStatus(){
 export async function startSelfCheck(runtime={}){
   const now=runtime?.now?runtime.now():Date.now();
   const lightInterval=runtime?.lightIntervalMs??10*60*1000;
-  const deepInterval=runtime?.deepIntervalMs??5*60*1000;
+  const deepInterval=runtime?.deepIntervalMs??CONTINUOUS_VERIFY_CADENCE_MS;
   const store=runtime?.store||pool;
   if(!lastLightAudit||now-lastLightAudit>=lightInterval){
     lastLightAudit=now;
@@ -1941,7 +1989,7 @@ export async function startSelfCheck(runtime={}){
       else await store.query("insert into tigeriq_events(type,data) values($1,$2)",['SELF_CHECK_LIGHT',JSON.stringify(healthMetrics)]);
     }catch(err){console.error(JSON.stringify({event:'SELF_CHECK_LIGHT_ERROR',error:String(err?.message||err)}));}
   }
-  if(!activeDeepAudit&&(!lastDeepAudit||now-lastDeepAudit>=deepInterval)){
+  if(!activeDeepAudit&&cadenceContinuousVerifyDue({nowMs:now,lastRunMs:lastDeepAudit,cadenceMs:deepInterval})){
     activeDeepAudit=true;lastDeepAudit=now;
     try{
       if(typeof runtime.audit==='function')await runtime.audit();
@@ -1967,6 +2015,9 @@ async function loop(){
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
+      const runtimeTrigger=observeRuntimeContinuousVerify();
+      if(runtimeTrigger)await event('CONTINUOUS_VERIFY_TRIGGER_QUEUED',{kind:runtimeTrigger.kind,key:runtimeTrigger.key,previousSha:runtimeTrigger.previousSha||null,currentSha:runtimeTrigger.currentSha||null});
+      await runPendingContinuousVerify();
       await startSelfCheck({ now: () => Date.now(), store: pool });
       let dispatchedCount = 0;
       const currentMaxParallel = getDynamicMaxParallel();
