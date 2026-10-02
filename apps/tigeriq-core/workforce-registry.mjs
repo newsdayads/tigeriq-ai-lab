@@ -68,8 +68,8 @@ export function workforceSnapshot(){
   return { workforce:cache.workforce.map(x=>({...x})), workforceMeta:{...cache.meta} };
 }
 
-export async function fetchRegistryIssue({fetchImpl=fetch,token=process.env.TIGERIQ_GITHUB_TOKEN?.trim()||process.env.GITHUB_TOKEN?.trim()||''}={}){
-  return githubRequestJson(fetchImpl,REGISTRY_URL,token,{freshMs:CACHE_MS,signal:AbortSignal.timeout(3500)});
+export async function fetchRegistryIssue({fetchImpl=fetch,token=process.env.TIGERIQ_GITHUB_TOKEN?.trim()||process.env.GITHUB_TOKEN?.trim()||'',freshMs=CACHE_MS}={}){
+  return githubRequestJson(fetchImpl,REGISTRY_URL,token,{freshMs:Math.max(0,Number(freshMs)||0),signal:AbortSignal.timeout(3500)});
 }
 
 export async function refreshRegistryWorkforce(force=false){
@@ -77,7 +77,7 @@ export async function refreshRegistryWorkforce(force=false){
   if(cache.refreshing || (!force && now<cache.expiresAt)) return workforceSnapshot();
   cache.refreshing=true;
   try {
-    const issue=await fetchRegistryIssue();
+    const issue=await fetchRegistryIssue({freshMs:force?0:CACHE_MS});
     const parsed=parseRegistryBody(issue?.body||'');
     cache={ workforce:parsed.workforce, meta:{source:'registry-335-live',version:parsed.version,fetchedAt:new Date().toISOString(),stale:false,error:null}, expiresAt:now+CACHE_MS, refreshing:false };
   } catch(error) {
