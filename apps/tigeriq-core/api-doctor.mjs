@@ -125,6 +125,17 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
+export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null}={}){
+  const number=Number(issueNumber||0);
+  if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
+  const normalizedState=String(state||'unknown').toLowerCase();
+  const normalizedReason=String(stateReason||'').toLowerCase();
+  if(normalizedState==='open')return {action:'wait_repair',reason:'canonical_repair_work_order_open'};
+  if(normalizedState==='closed'&&normalizedReason==='completed')return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
+  if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
+  return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
+}
+
 export function buildApiDoctorRepairWorkOrder({
   employeeId='',
   provider='',
@@ -145,7 +156,8 @@ export function buildApiDoctorRepairWorkOrder({
   const body=[
     'TIGERIQ_JOB_V1',
     'SOURCE=API_DOCTOR',
-    'PARENT=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
+    'PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny',
+    'RELATED=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
     'EXECUTION_POLICY=#1456',
     'ACTIVE_EXECUTION=true',
     'CANONICAL_SPEC=#1255',
