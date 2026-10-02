@@ -13,7 +13,7 @@ assert.equal(deployedView, publicView, 'Vercel public command-center must match 
 
 assert.match(publicView, /TigerIQ Live/);
 assert.match(publicView, /DANH SÁCH CÔNG VIỆC/);
-assert.match(publicView, /STT · Work Order · Tên việc · NV thực hiện \/ Owner · Trạng thái/);
+assert.match(publicView, /aria-label="STT · Work Order · Tên việc · NV thực hiện \/ Owner · Trạng thái"/);
 assert.match(publicView, /width:19px;height:19px/);
 assert.match(publicView, /padStart\(2,'0'\)/);
 assert.match(publicView, /function displayTitle/);
@@ -54,6 +54,36 @@ assert.match(publicView, /card-flash/);
 assert.match(publicView, /prefers-reduced-motion:reduce/);
 assert.match(publicView, /lastVisualState/);
 assert.match(publicView, /currentStep/);
+assert.match(publicView, /owner-summary/);
+assert.match(publicView, /portfolioProgress/);
+assert.match(publicView, /Chưa xác minh/);
+assert.match(publicView, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(publicView, /max-width:1100px/);
+assert.match(publicView, /max-width:700px/);
+assert.match(publicView, /workDrawer/);
+assert.match(publicView, /event\.key==='Tab'/);
+assert.match(publicView, /function verifiedProgress/);
+assert.match(publicView, /workKind==='WORK'/);
+assert.match(publicView, /evidenceFresh=.*staleAll/);
+assert.match(publicView, /refreshOpenDrawer\(\);\s*if\(!rows\.length\)/);
+assert.match(publicView, /'terminal'/);
+assert.match(publicView, /function effectiveBlocker/);
+assert.match(publicView, /function refreshOpenDrawer/);
+assert.match(publicView, /setAttribute\('inert'/);
+assert.match(publicView, /removeAttribute\('inert'/);
+assert.match(publicView, /data-work-number/);
+assert.match(publicView, /ĐANG XỬ LÝ':'WORKING/);
+assert.match(publicView, /DỮ LIỆU CŨ.*staleTime/);
+assert.match(publicView, /row\.url\|\|row\.evidenceUrl/);
+assert.match(publicView, /Mở GitHub/);
+assert.match(publicView, /openDrawer/);
+assert.match(publicView, /role','button'/);
+assert.match(publicView, /working-live/);
+assert.match(publicView, /prefers-reduced-motion:reduce/);
+assert.doesNotMatch(publicView, /createElement\(targetUrl\?'a':'article'\)/);
+assert.doesNotMatch(publicView, /<b>Vừa xong:<\/b>/);
+assert.doesNotMatch(publicView, /<b>Bằng chứng:<\/b>/);
+assert.doesNotMatch(publicView, /<b>Duyệt anh Sơn:<\/b>/);
 
 for (const removed of [
   'KẾ TIẾP CÓ THỂ CHẠY',
@@ -62,9 +92,9 @@ for (const removed of [
   'ĐANG CHỜ / BỊ CHẶN',
   'NHỮNG VIỆC GẦN ĐÂY',
   'Trạng thái nhân sự',
-  'Đang xử lý',
   'Hàng đợi',
 ]) assert.doesNotMatch(publicView, new RegExp(removed, 'i'));
+assert.doesNotMatch(publicView, /<h[1-6][^>]*>\s*Đang xử lý/i);
 
 assert.doesNotMatch(publicView, /id=["']dispatch["']/);
 assert.doesNotMatch(publicView, /GitHub token/i);

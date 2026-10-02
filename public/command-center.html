@@ -12,7 +12,7 @@
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
 body{font-family:inherit;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
 a{color:inherit;text-decoration:none}
-.wrap{width:min(760px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom))}
+.wrap{width:min(1540px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom))}
 .top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 14px}
 .brand h1{font-size:22px;line-height:1.1;margin:0}
 .brand p{font-size:12px;color:var(--muted);margin:5px 0 0}
@@ -38,8 +38,8 @@ a{color:inherit;text-decoration:none}
 .filter[data-filter="system"].active{border-color:#556273;background:#1c2631;color:#c1ccd7}
 .filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
 .filter b{font-weight:900;color:inherit;margin-left:3px}
-.work-list{display:grid;gap:7px}
-.work-row{display:block;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
+.work-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.work-row{display:block;cursor:pointer;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
 .work-row::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#314b67;opacity:.9}
 .work-row.status-working::before{background:var(--green)}
 .work-row.status-review::before,.work-row.status-waiting::before{background:var(--amber)}
@@ -108,21 +108,54 @@ a{color:inherit;text-decoration:none}
 }
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
-@media(max-width:520px){
-  .brand h1{font-size:20px}
-  .work-row{padding:9px 10px}
-  .work-top{gap:5px}
-  .state{margin-left:auto}
-}
+@media(max-width:1100px){.work-list{grid-template-columns:repeat(2,minmax(0,1fr))}.owner-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
+@media(max-width:700px){.work-list{grid-template-columns:1fr}.owner-summary{grid-template-columns:1fr 1fr}.summary-main{grid-column:1/-1}.drawer{width:100%;max-width:none}.brand h1{font-size:20px}.work-row{padding:9px 10px}.work-top{gap:5px}.state{margin-left:auto}}
+@media(max-width:420px){.owner-summary{grid-template-columns:1fr 1fr}.summary-tile{min-height:64px}}
+
+.owner-summary{display:grid;grid-template-columns:minmax(280px,2fr) repeat(5,minmax(100px,1fr));gap:8px;margin:0 0 12px}
+.summary-main,.summary-tile{border:1px solid #203953;background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:11px 12px;min-width:0}
+.summary-main{display:grid;gap:7px}.summary-label{font-size:10px;color:#9db1c8;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.summary-value{font-size:24px;font-weight:900;line-height:1;color:#f2f7fd}.summary-value small{font-size:11px;color:#91a4ba;font-weight:700}
+.summary-track{height:8px;background:#16283b;border-radius:999px;overflow:hidden}.summary-fill{height:100%;width:0;background:linear-gradient(90deg,#46d48f,#58d8c6);border-radius:999px;transition:width .45s ease}
+.summary-note{font-size:10px;color:#8198b1}.summary-tile{display:flex;flex-direction:column;justify-content:center;gap:3px}.summary-tile b{font-size:20px}.summary-tile span{font-size:10px;color:#91a4ba}
+.progress.unverified{color:#71849a}.progress.unverified .progress-track{background:repeating-linear-gradient(90deg,#16283b 0 12px,#1b3047 12px 20px)}.progress.unverified .progress-fill{display:none}.progress.unverified .progress-text{min-width:78px;color:#91a4ba}
+.work-next,.work-blocker{font-size:10.75px;line-height:1.4;margin-top:4px;color:#8fa5bc}.work-next b{color:#bcd0e4}.work-blocker{color:#ff9fa7}.work-blocker b{color:#ffb8bf}
+.work-row.status-working{animation:working-live 2.8s ease-in-out infinite}
+@keyframes working-live{0%,100%{box-shadow:0 8px 24px rgba(0,0,0,.12)}50%{box-shadow:0 8px 24px rgba(0,0,0,.12),0 0 0 1px rgba(70,212,143,.16),0 0 18px rgba(70,212,143,.08)}}
+.drawer-backdrop{position:fixed;inset:0;background:rgba(2,8,16,.54);backdrop-filter:blur(2px);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}.drawer{position:fixed;z-index:41;top:0;right:0;height:100dvh;width:min(460px,92vw);background:linear-gradient(180deg,#0c1d33,#081423);border-left:1px solid #285175;box-shadow:-24px 0 60px rgba(0,0,0,.42);transform:translateX(102%);transition:transform .24s ease;display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}.drawer-head{padding:16px;border-bottom:1px solid #203953;display:flex;gap:10px;align-items:flex-start}.drawer-head-main{min-width:0;flex:1}.drawer-kicker{font-size:11px;color:#91a4ba;font-weight:850}.drawer-title{font-size:18px;line-height:1.3;font-weight:850;margin-top:6px}.drawer-close{border:1px solid #34516e;background:#102139;color:#dce8f4;border-radius:9px;width:34px;height:34px;font-size:20px;cursor:pointer}
+.drawer-body{padding:14px 16px;overflow:auto;display:grid;gap:12px}.drawer-section{border:1px solid #1d3b59;background:#0b1829;border-radius:12px;padding:11px 12px}.drawer-section h3{font-size:11px;margin:0 0 8px;color:#8fc8ff;text-transform:uppercase;letter-spacing:.04em}
+.drawer-row{display:grid;grid-template-columns:90px 1fr;gap:8px;font-size:11px;line-height:1.5;margin-top:5px}.drawer-row span:first-child{color:#839ab2}.drawer-row span:last-child{color:#d9e6f2;overflow-wrap:anywhere}
+.drawer-actions{margin-top:auto;padding:12px 16px max(12px,env(safe-area-inset-bottom));border-top:1px solid #203953;display:grid;grid-template-columns:1fr 1fr;gap:8px}.drawer-btn{display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:10px;border:1px solid #315578;background:#0d2037;color:#dcecff;font:800 12px/1 inherit;cursor:pointer}.drawer-btn.primary{background:#136ac8;border-color:#2f8feb;color:white}.drawer-btn[hidden]{display:none}
+body.drawer-open{overflow:hidden}
+@media(prefers-reduced-motion:reduce){.work-row.status-working,.summary-fill,.drawer,.drawer-backdrop{animation:none!important;transition:none!important}}
+@media(max-width:1100px){.owner-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
+@media(max-width:700px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
+@media(max-width:420px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}.summary-tile{min-height:64px}}
+
 </style>
 </head>
 <body>
-<main class="wrap">
+<main id="appMain" class="wrap">
 <header class="top">
   <div class="brand"><h1>TigerIQ Live</h1><p>Danh sách công việc · chỉ xem</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
+<section id="ownerSummary" class="owner-summary" aria-label="Tổng quan tiến độ">
+  <div class="summary-main">
+    <div class="summary-label">Tổng tiến độ · scope hiện tại</div>
+    <div class="summary-value"><span id="overallPct">—</span> <small id="overallScope">chưa xác minh</small></div>
+    <div class="summary-track"><div id="overallFill" class="summary-fill"></div></div>
+    <div id="overallNote" class="summary-note">Đang kiểm tra bằng chứng tiến độ…</div>
+  </div>
+  <div class="summary-tile"><span>Còn lại</span><b id="sumOpen">0</b></div>
+  <div class="summary-tile"><span>Đang làm</span><b id="sumRunning">0</b></div>
+  <div class="summary-tile"><span>Rà soát</span><b id="sumReview">0</b></div>
+  <div class="summary-tile"><span>Chờ anh Sơn</span><b id="sumOwner">0</b></div>
+  <div class="summary-tile"><span>Blocked</span><b id="sumBlocked">0</b></div>
+</section>
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
@@ -136,8 +169,18 @@ a{color:inherit;text-decoration:none}
   </nav>
   <div id="workList" class="work-list"></div>
 </section>
-<footer class="page-foot">STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái · tự cập nhật 10 giây</footer>
+<footer class="page-foot" aria-label="STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái">Dữ liệu tự cập nhật 10 giây · % chỉ hiển thị khi đã xác minh</footer>
 </main>
+<div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
+<aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
+  <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
+  <div class="drawer-body">
+    <section class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
+    <section class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Tiếp theo</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Blocker</span><span id="drawerBlocker">Không có</span></div></section>
+    <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
+  </div>
+  <div class="drawer-actions"><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
+</aside>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
@@ -145,11 +188,28 @@ const LAST_GOOD_MAX_MS=30*60*1000;
 let snapshot=null;
 let currentFilter='action';
 const lastVisualState=new Map();
+let drawerRow=null;
+let drawerReturnFocus=null;
 const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
+function verifiedProgress(row){
+  const pct=Number(row?.progressPercent);
+  const source=String(row?.progressSource||'');
+  const evidenceFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  return {pct,verified:evidenceFresh&&['explicit_verified','checklist_verified','terminal'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<=100};
+}
 function statusRank(v){return ({OWNER_GATE:0,WORKING:1,REVIEW:2,VERIFY:3,QUEUED:4,BLOCKED:5,WAITING:6,UNKNOWN:7,OPEN:8,DONE:9})[String(v||'').toUpperCase()]??8}
-function workStatus(row){return String(row?.status||'WAITING').toUpperCase()}
+function workStatus(row){
+  const raw=String(row?.status||'WAITING').trim().toUpperCase();
+  const map={
+    'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING',
+    'BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN',
+    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
+    'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE'
+  };
+  return map[raw]||raw;
+}
 function workPriority(row){
   const direct=String(row?.effectivePriority||row?.priority||'').toUpperCase();
   if(/^P[0-5]$/.test(direct))return direct;
@@ -181,7 +241,7 @@ function normalizeRows(value){
   if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -194,7 +254,7 @@ function hydrate(raw){
 function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  const actionable=openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
   $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
@@ -203,59 +263,134 @@ function updateCounts(){
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
+function renderOwnerSummary(){
+  const s=snapshot?.openSummary||{};
+  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
+  const actionable=openRows.filter(row=>row?.workKind==='WORK'&&workStatus(row)!=='SYSTEM');
+  const blocked=actionable.filter(row=>workStatus(row)==='BLOCKED').length;
+  const apiProgress=snapshot?.portfolioProgress||null;
+  const completeEnumeration=snapshot?.workProjection?.openIssueEnumerationComplete===true;
+  const locallyVerified=actionable.filter(row=>verifiedProgress(row).verified);
+  const localProgress=completeEnumeration&&actionable.length&&locallyVerified.length===actionable.length
+    ?{percent:Math.round(locallyVerified.reduce((sum,row)=>sum+verifiedProgress(row).pct,0)/actionable.length),source:'verified_issue_average',scopeItems:actionable.length,verifiedItems:locallyVerified.length}
+    :{percent:null,source:completeEnumeration?'incomplete_verified_coverage':'incomplete_enumeration',scopeItems:actionable.length,verifiedItems:locallyVerified.length};
+  const p=apiProgress&&typeof apiProgress==='object'?apiProgress:localProgress;
+  $('sumOpen').textContent=Number.isFinite(Number(s.actionable))?Number(s.actionable):actionable.length;
+  $('sumRunning').textContent=Number.isFinite(Number(s.running))?Number(s.running):actionable.filter(row=>workStatus(row)==='WORKING').length;
+  $('sumReview').textContent=Number.isFinite(Number(s.review))?Number(s.review):actionable.filter(row=>['REVIEW','VERIFY'].includes(workStatus(row))).length;
+  $('sumOwner').textContent=Number.isFinite(Number(s.owner))?Number(s.owner):actionable.filter(row=>workStatus(row)==='OWNER_GATE').length;
+  $('sumBlocked').textContent=Number.isFinite(Number(s.blocked))?Number(s.blocked):blocked;
+  const pct=Number(p?.percent);
+  const evidenceFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  const verified=evidenceFresh&&Number.isFinite(pct)&&pct>=0&&pct<=100&&p?.source==='verified_issue_average';
+  $('overallPct').textContent=verified?pct+'%':'—';
+  $('overallFill').style.width=verified?pct+'%':'0%';
+  const scope=Number(p?.scopeItems||actionable.length||0),covered=Number(p?.verifiedItems||0);
+  $('overallScope').textContent=scope?covered+'/'+scope+' việc có % xác minh':'chưa có scope';
+  $('overallNote').textContent=verified?'Toàn bộ scope hiện tại đã có tiến độ xác minh':'Chưa đủ bằng chứng để tính % tổng · đã xác minh '+covered+'/'+scope+' việc';
+}
+function drawerProgressMarkup(row){
+  const {pct,verified}=verifiedProgress(row);
+  return verified
+    ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+    :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
+}
+function effectiveBlocker(row){
+  if(row?.blocker)return String(row.blocker);
+  if(workStatus(row)==='BLOCKED')return String(row?.waitReason||'Chưa có lý do blocker xác minh');
+  return '';
+}
+function populateDrawer(row){
+  drawerRow=row;
+  $('drawerKicker').textContent='#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row));
+  $('drawerTitle').textContent=displayTitle(row.title);
+  $('drawerProgress').innerHTML=drawerProgressMarkup(row);
+  $('drawerCurrent').textContent=row.currentStep||'Chưa có bằng chứng hiện tại';
+  $('drawerNext').textContent=row.nextStep||'Chưa xác định';
+  $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
+  $('drawerWorker').textContent=workerFrom(row);
+  $('drawerDone').textContent=row.latestCompletedStep||'Chưa có bằng chứng';
+  $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
+  const url=row.url||row.evidenceUrl||'';
+  $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;else $('drawerGithub').removeAttribute('href');
+}
+function openDrawer(row,trigger){
+  drawerReturnFocus=trigger||document.activeElement;populateDrawer(row);
+  $('appMain').setAttribute('inert','');
+  $('workDrawer').removeAttribute('inert');
+  $('drawerBackdrop').classList.add('open');$('workDrawer').classList.add('open');
+  $('drawerBackdrop').setAttribute('aria-hidden','false');$('workDrawer').setAttribute('aria-hidden','false');
+  document.body.classList.add('drawer-open');$('drawerClose').focus();
+}
+function closeDrawer(){
+  const number=drawerRow?.number;
+  $('drawerBackdrop').classList.remove('open');$('workDrawer').classList.remove('open');
+  $('drawerBackdrop').setAttribute('aria-hidden','true');$('workDrawer').setAttribute('aria-hidden','true');
+  $('workDrawer').setAttribute('inert','');$('appMain').removeAttribute('inert');
+  document.body.classList.remove('drawer-open');drawerRow=null;
+  const target=drawerReturnFocus?.isConnected?drawerReturnFocus:document.querySelector('[data-work-number="'+number+'"]');
+  if(target&&typeof target.focus==='function')target.focus();
+}
+function refreshOpenDrawer(){
+  if(!drawerRow||!$('workDrawer').classList.contains('open'))return;
+  const rows=[...(snapshot?.openWork||[]),...(snapshot?.recentWork||[])];
+  const fresh=rows.find(row=>Number(row?.number)===Number(drawerRow.number));
+  if(fresh)populateDrawer(fresh);else closeDrawer();
+}
 function render(){
   if(!snapshot)return;
+  renderOwnerSummary();
   updateCounts();
   const rows=normalizeRows(snapshot);
   const labels={action:'Cần xử lý',owner:'Chờ anh Sơn',running:'Đang làm',review:'Rà soát / Xác minh',waiting:'Chờ / Blocked',system:'Hệ thống / Chính sách',done:'Hoàn tất'};
   $('workMeta').textContent=labels[currentFilter]+' · '+rows.length+' việc';
   const box=$('workList');box.innerHTML='';
+  refreshOpenDrawer();
   if(!rows.length){box.innerHTML='<div class="empty">Không có Work Order trong nhóm này.</div>';return}
   rows.forEach((row,index)=>{
-    const targetUrl=row?.evidenceUrl||row?.url||null;
-    const el=document.createElement(targetUrl?'a':'article');
+    const el=document.createElement('article');
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
-    if(targetUrl){el.href=targetUrl;el.target='_blank';el.rel='noopener'}
+    el.setAttribute('data-work-number',String(row.number));
+    el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
-    const pct=Number(row?.progressPercent);
-    const verifiedProgress=['explicit_verified','checklist_verified'].includes(String(row?.progressSource||''));
-    const progress=verifiedProgress&&Number.isFinite(pct)&&pct>=0&&pct<=100
-      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ checklist đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
-      :'';
+    const {pct,verified:progressVerified}=verifiedProgress(row);
+    const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
+      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+      :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
     const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
     const summary=summaryText?'<div class="work-summary"><b>Đang:</b> '+esc(summaryText)+'</div>':'<div class="work-summary"><b>Đang:</b> CHƯA CÓ BẰNG CHỨNG</div>';
     const doneText=String(row?.latestCompletedStep||'').trim();
     const nextText=String(row?.nextStep||'').trim();
-    const proofTime=row?.evidenceAt?new Date(row.evidenceAt).toLocaleString('vi-VN',{hour12:false}):'CHƯA CÓ';
-    const approval=row?.ownerAccepted?'ĐÃ DUYỆT':row?.ownerApprovalPending?'ĐANG CHỜ ANH SƠN':row?.ownerApprovalRequired?'CÓ · sau khi live verify':'KHÔNG';
-    const facts='<div class="work-facts">'
-      +'<div><b>Vừa xong:</b> '+esc(doneText||'CHƯA CÓ BẰNG CHỨNG')+'</div>'
-      +'<div><b>Tiếp:</b> '+esc(nextText||'CHƯA XÁC ĐỊNH')+'</div>'
-      +'<div class="proof"><b>Bằng chứng:</b> '+esc(proofTime)+(row?.evidenceUrl?' · chạm thẻ để mở':'')+'</div>'
-      +'<div class="'+(row?.ownerApprovalPending?'owner-pending':'')+'"><b>Duyệt anh Sơn:</b> '+esc(approval)+'</div>'
-      +'</div>';
-    const signature=status+'|'+(verifiedProgress&&Number.isFinite(pct)?pct:'')+'|'+summaryText+'|'+doneText+'|'+nextText+'|'+proofTime+'|'+approval;
+    const blockerText=effectiveBlocker(row).trim();
+    const nextLine='<div class="work-next"><b>Tiếp:</b> '+esc(nextText||'Chưa xác định')+'</div>';
+    const blockerLine=blockerText?'<div class="work-blocker"><b>Blocker:</b> '+esc(blockerText)+'</div>':'';
+    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+nextText+'|'+blockerText;
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+summary+facts+progress+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
+    el.addEventListener('click',()=>openDrawer(row,el));
+    el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
     if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
   });
+  refreshOpenDrawer();
 }
 function show(value){
   snapshot=value;
   const projection=value?.workProjection||{};
   const stale=Boolean(value?.staleAll||projection.stale);
   const live=$('liveLabel').parentElement;live.classList.toggle('warn',!value?.liveConnected||stale);
-  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(value?.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+  const verifiedAt=projection?.verifiedAt||value?.generatedAt||null;
+  const staleTime=verifiedAt?new Date(verifiedAt).toLocaleTimeString('vi-VN',{hour12:false}):'';
+  $('liveLabel').textContent=stale?('DỮ LIỆU CŨ'+(staleTime?' · '+staleTime:'')):(value?.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
   if(stale){
     $('err').classList.add('stale');
-    $('err').textContent='Nguồn dữ liệu tạm lỗi. Đang giữ danh sách xác minh gần nhất; không xóa về 0.';
-    $('err').style.display='block';
+    $('err').textContent='Nguồn live đang gián đoạn; đang giữ snapshot xác minh gần nhất.';
+    $('err').style.display=value?.openWork?.length?'none':'block';
   }else{$('err').classList.remove('stale');$('err').style.display='none'}
   render();
 }
@@ -275,6 +410,20 @@ document.querySelectorAll('.filter').forEach(button=>button.addEventListener('cl
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
+$('drawerClose').addEventListener('click',closeDrawer);
+$('drawerCloseBottom').addEventListener('click',closeDrawer);
+$('drawerBackdrop').addEventListener('click',closeDrawer);
+document.addEventListener('keydown',event=>{
+  const drawer=$('workDrawer');if(!drawer.classList.contains('open'))return;
+  if(event.key==='Escape'){closeDrawer();return}
+  if(event.key==='Tab'){
+    const focusable=[...drawer.querySelectorAll('a[href]:not([hidden]),button:not([disabled])')].filter(x=>x.offsetParent!==null);
+    if(!focusable.length)return;
+    const first=focusable[0],last=focusable.at(-1);
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  }
+});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 load();
 setInterval(()=>{if(!document.hidden)load()},10000);
