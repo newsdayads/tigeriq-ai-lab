@@ -14,6 +14,7 @@ import {
   progressForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
+  verifiedCompletionProgress,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -759,6 +760,60 @@ describe('TigerIQ Live Work Order projection', () => {
     });
     const fallback = projectExternalRoleClaims(base, [{ ...claimedIssue, labels: [] }]);
     expect(fallback.workers[0].currentJobId).toBe('GH-1766');
+  });
+
+
+  it('uses current canonical phase instead of stale historical owner-gate flags', () => {
+    const row = parseOpenWorkIssue(issue(2803, '[P1][API WORKFORCE] Stability reopened', [
+      'CURRENT_STATE=API_STABILITY_V2_IN_PROGRESS',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
+      '',
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+    ].join('\n')));
+    expect(row).toMatchObject({ status: 'OPEN', ownerGate: false, technicalComplete: false });
+  });
+
+  it('marks a true owner final gate as technically complete and exposes canonical issue evidence', () => {
+    const row = parseOpenWorkIssue(issue(2828, '[P1][TIGERIQ LIVE][ACCEPTANCE] Final gate', [
+      'CURRENT_STATE=WAIT_OWNER_APPROVAL',
+      'OWNER_APPROVAL_REQUIRED=true',
+      'OWNER_GATE=true',
+      'TECHNICAL_ACCEPTANCE=PASS',
+    ].join('\n'), {
+      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/2828',
+      updated_at: '2026-10-02T05:29:55Z',
+    }));
+    expect(row).toMatchObject({
+      status: 'OWNER_GATE',
+      ownerGate: true,
+      technicalComplete: true,
+      currentStep: 'Đã xong kỹ thuật · chờ anh Sơn duyệt',
+      latestCompletedStep: 'Đã xong kỹ thuật và có bằng chứng canonical',
+      evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/2828',
+      evidenceAt: '2026-10-02T05:29:55.000Z',
+    });
+  });
+
+  it('computes terminal completion separately from unverifiable in-flight percent', () => {
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', status: 'WORKING' }, { workKind: 'WORK', status: 'WAITING' }],
+      [{ workKind: 'WORK', status: 'DONE' }, { workKind: 'WORK', status: 'DONE' }],
+      { complete: true },
+    )).toMatchObject({
+      percent: 50,
+      source: 'terminal_completion',
+      scopeItems: 4,
+      completedItems: 2,
+      remainingItems: 2,
+    });
+    expect(verifiedCompletionProgress(
+      [{ workKind: 'WORK', status: 'WORKING' }],
+      [{ workKind: 'WORK', status: 'DONE' }],
+      { complete: false },
+    )).toMatchObject({ percent: null, source: 'incomplete_enumeration' });
   });
 
 
