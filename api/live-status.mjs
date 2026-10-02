@@ -946,7 +946,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
   const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
-  const blocker = status === 'BLOCKED' && !lifecycle?.blockerCleared && rawBlocker && !/^(?:NONE|NULL|N\/A|NO|KHÔNG)(?:\b|\s|$)/i.test(rawBlocker)
+  const blocker = status === 'BLOCKED' && !lifecycle?.blockerCleared && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
     : null;
   const activeEvidenceUrl = classification.ownerGate
@@ -1055,6 +1055,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
     if (cached) {
       ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+      issuesComplete = issuesComplete === true;
     } else {
       try {
         const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
