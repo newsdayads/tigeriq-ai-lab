@@ -1085,7 +1085,9 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     };
     if(sourceLiveRequired&&row.metadata?.liveAcceptanceRequired!==true)policyPatch.liveAcceptanceRequired=true;
     if(sourceFinalReviewRequired&&row.metadata?.finalReviewRequired!==true)policyPatch.finalReviewRequired=true;
-    // A terminal objective must keep the source revision it actually executed. Otherwise\n    // outcome sync can consume a fresh revision before intake sees it and deadlock rearm.\n    if((sourceLiveRequired||sourceFinalReviewRequired)&&revisionChanged&&row.status==='active'){
+    // A terminal objective must keep the source revision it actually executed. Otherwise
+    // outcome sync can consume a fresh revision before intake sees it and deadlock rearm.
+    if((sourceLiveRequired||sourceFinalReviewRequired)&&revisionChanged&&row.status==='active'){
       policyPatch.sourceRevision=currentSourceRevision;
       policyPatch.liveAcceptancePass=false;
       policyPatch.liveAcceptanceRevision=null;
