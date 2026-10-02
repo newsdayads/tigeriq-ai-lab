@@ -200,10 +200,45 @@ export async function startWorkforceController(options: WorkforceControllerOptio
         const role = text(data.role, 128);
         const provider = text(data.provider, 128) || undefined;
         const capabilities = stringList(data.capabilities);
-        if (!employeeId || !displayName || !department || !role || !capabilities.length) {
-          throw new HttpError(400, 'invalid_employee');
-        }
+        if (!capabilities.length) throw new HttpError(400, 'invalid_employee');
         if (!options.runtime.registry.getNode(authenticated.nodeId)) throw new HttpError(404, 'node_not_found');
+
+        // Mobile Worker v0.6+ may ask Core to assign the logical AI employee.
+        // Existing explicit registration remains supported for older clients and admin flows.
+        if (!employeeId) {
+          const existingForNode = options.runtime.registry.listEmployees()
+            .find((employee) => employee.nodeId === authenticated.nodeId);
+          if (existingForNode) {
+            return json(response, 200, { ok: true, employee: existingForNode, idempotent: true, assignedByCore: true });
+          }
+
+          let suffix = 101;
+          while (suffix <= 9999 && options.runtime.registry.getEmployee(`NV${suffix}`)) suffix += 1;
+          if (suffix > 9999) throw new HttpError(503, 'mobile_employee_id_exhausted');
+          const assignedEmployeeId = `NV${suffix}`;
+          const assignedDepartment = 'Engineering';
+          const assignedRole = 'Android Worker Pilot';
+          options.runtime.registry.registerEmployee({
+            employeeId: assignedEmployeeId,
+            displayName: `${assignedEmployeeId} · ${assignedRole}`,
+            department: assignedDepartment,
+            role: assignedRole,
+            nodeId: authenticated.nodeId,
+            provider,
+            capabilities,
+            availability: 'idle' satisfies EmployeeAvailability,
+            healthScore: 100,
+            concurrencyLimit: 1,
+          });
+          await options.runtime.checkpoint();
+          return json(response, 201, {
+            ok: true,
+            employee: options.runtime.registry.getEmployee(assignedEmployeeId),
+            assignedByCore: true,
+          });
+        }
+
+        if (!displayName || !department || !role) throw new HttpError(400, 'invalid_employee');
         const existing = options.runtime.registry.getEmployee(employeeId);
         if (existing) {
           if (existing.nodeId !== authenticated.nodeId) throw new HttpError(409, 'employee_owned_by_another_node');
