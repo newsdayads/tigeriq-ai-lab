@@ -125,6 +125,17 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
+export function apiDoctorRepairLifecycleRelevant({
+  hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',
+}={}){
+  if(!hasHandoff)return false;
+  const current=String(currentFailureClass||'').trim().toLowerCase();
+  const action=String(currentAction||'').trim().toLowerCase();
+  if(current==='rate_limit'&&['wait','probe'].includes(action))return false;
+  if(Number(repairIssueNumber||0)>0)return true;
+  return String(handoffFailureClass||'').trim().toLowerCase()==='source_contract'&&['source_contract','unknown',''].includes(current);
+}
+
 export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null}={}){
   const number=Number(issueNumber||0);
   if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
