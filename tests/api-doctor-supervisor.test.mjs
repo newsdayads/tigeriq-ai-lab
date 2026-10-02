@@ -11,10 +11,12 @@ import {
   apiDoctorRepairSignature,
   apiDoctorResourceEligibleForCapability,
   buildApiDoctorPrompt,
+  buildApiDoctorRepairWorkOrder,
   classifyApiDoctorFailure,
   parseApiDoctorDecision,
 } from '../apps/tigeriq-core/api-doctor.mjs';
 import {deriveRoutingProfile,rankCandidates} from '../apps/tigeriq-core/smart-router.mjs';
+import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
   it('classifies quota/payment/contract failures without calling them credential failures',()=>{
@@ -120,6 +122,50 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const a=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12'});
     const b=apiDoctorRepairSignature({employeeId:'NV18',provider:'watsonx',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 77'});
     expect(a).toBe(b);
+  });
+
+  it('builds a canonical P1 delegated repair Work Order accepted by protected-path coding intake',()=>{
+    const signature=apiDoctorRepairSignature({
+      employeeId:'NV15',provider:'cloudflare',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12',
+    });
+    const spec=buildApiDoctorRepairWorkOrder({
+      employeeId:'NV15',
+      provider:'cloudflare',
+      resourceId:'res:cloudflare:test',
+      failureClass:'source_contract',
+      message:'EMPTY_RESPONSE attempt 12',
+      signature,
+    });
+    expect(spec.priority).toBe('P1');
+    expect(spec.body).toContain('PRIORITY=P1');
+    expect(spec.body).not.toContain('PRIORITY=P0');
+    expect(spec.body).toContain('OWNER_PROXY=NV02');
+    expect(spec.body).toContain('AUTO_CONTROL_REPAIR=true');
+    expect(spec.body).toContain('INDEPENDENT_REPAIR_REQUIRED=true');
+    expect(spec.body).toContain('ACTIVE_EXECUTION=true');
+    expect(spec.body).toContain('CANONICAL_SPEC=#1255');
+    expect(spec.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
+    expect(spec.body).toContain('ALLOW_PATH_PREFIX=apps/tigeriq-core/core.mjs,tests/api-doctor-supervisor.test.mjs');
+    expect(spec.body).toContain('RECOVERED requires a later normal Core work success');
+    const parsed=parseCodingIssue({
+      number:9901,
+      title:spec.title,
+      body:spec.body,
+      state:'open',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/9901',
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed?.priority).toBe('P1');
+    expect(parsed?.controlRepair?.delegated).toBe(true);
+    expect(parsed?.scopeLease?.paths).toContain('apps/tigeriq-core/core.mjs');
+  });
+
+  it('refuses to build source repair work for non-source external or rate-limit classes',()=>{
+    for(const failureClass of ['rate_limit','auth','external_blocked','configuration','hard_blocked']){
+      expect(()=>buildApiDoctorRepairWorkOrder({
+        employeeId:'NV16',provider:'huggingface',failureClass,message:'external gate',
+      })).toThrow('API_DOCTOR_REPAIR_WORK_ORDER_INVALID');
+    }
   });
 
   it('builds a compact strict NV10 prompt and parses the bounded response',()=>{
@@ -238,6 +284,12 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("think:false");
     expect(core).toContain('num_predict:160');
     expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
+    expect(core).toContain("apiDoctorOpenRepairIssueBySignature");
+    expect(core).toContain("githubCreateApiDoctorRepairIssue");
+    expect(core).toContain("repairIssueNumber");
+    expect(core).toContain("priority:'P1'");
+    expect(core).toContain("lifecycle:'github_work_order'");
+    expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
     expect(core).toContain("row.action='wait_repair'");
@@ -258,11 +310,12 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature)");
 
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
-    expect(core).toContain("coalesce(task_kind,'')<>'api_doctor'");
+    expect(core).toContain("coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation')");
     expect(core).toContain("taskKind:'api_doctor_validation'");
     expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
     expect(core).toContain("maxValidationAttempts:2");
-    expect(core).toContain("post_repair_live_validation_job");
+    expect(core).toContain("validation_pass_wait_normal_work");
+    expect(core).not.toContain("evidence:'post_repair_live_validation_job'");
     expect(core).toContain("API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2'");
     expect(core).toContain("data->>'policyVersion'=$3");
     expect(core).toContain("Provide one short useful sentence confirming this provider can complete a normal TigerIQ Core reasoning request.");
