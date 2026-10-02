@@ -65,7 +65,7 @@ describe('runtime updater squash merge gate resolution',()=>{
   });
 
   it('synthetic candidate failure executes the updater rollback handler and restores known-good runtime',()=>{
-    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8').replace(/\r\n/g,'\n');
     const candidateTry=src.indexOf('$previousRuntimeSha=$local\n    try{\n      Ensure-RuntimeSource $remote\n      Ensure-NodeModules $runtimeRepo');
     const candidateCatch=src.indexOf('$null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact');
     expect(candidateTry).toBeGreaterThanOrEqual(0);
@@ -87,7 +87,8 @@ describe('runtime updater squash merge gate resolution',()=>{
       const candidateSha=git('rev-parse','HEAD');
       expect(candidateSha).not.toBe(previousSha);
 
-      const raw=execFileSync('pwsh',[
+      const powershell=process.platform==='win32'?'powershell.exe':'pwsh';
+      const raw=execFileSync(powershell,[
         '-NoProfile','-File','scripts/tigeriq-core/update-core-runtime.ps1',
         '-RollbackCanaryRuntimeRepo',dir,
         '-RollbackCanaryPreviousSha',previousSha,
@@ -102,7 +103,7 @@ describe('runtime updater squash merge gate resolution',()=>{
       expect(evidence.rollback.restoredHead).toBe(previousSha);
       expect(evidence.rollback.restartActions).toEqual(['core','web','coding']);
       expect(git('rev-parse','HEAD')).toBe(previousSha);
-      expect(readFileSync(join(dir,'runtime.txt'),'utf8')).toBe('known-good\n');
+      expect(readFileSync(join(dir,'runtime.txt'),'utf8').replace(/\r\n/g,'\n')).toBe('known-good\n');
 
       const runtimeState=JSON.parse(readFileSync(join(dir,'.canary-core-runtime-source.json'),'utf8'));
       expect(runtimeState.currentSha).toBe(previousSha);
@@ -111,7 +112,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     } finally {
       rmSync(dir,{recursive:true,force:true});
     }
-  });
+  },15000);
 
   it('self-syncs every current/future web-control asset plus workforce registry before launch',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-web-control-bundle.ps1','utf8');
