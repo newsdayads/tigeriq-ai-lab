@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
 /** Clear pilot onboarding/status surface for one TigerIQ Android worker node. */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1001;
-    private static final String DEFAULT_CONTROLLER = "http://100.97.23.87:8790";
+    private static final String DEFAULT_CONTROLLER = "http://100.97.23.87:8795";
     private static final String SETUP_PREFS = "tigeriq-worker-setup";
     private static final String KEY_NETWORK_OK = "networkOk";
     private static final String KEY_NETWORK_PROBE_AT = "networkProbeAt";
@@ -153,7 +153,7 @@ public final class MainActivity extends Activity {
         );
         root.addView(setupCard, marginParams(0, dp(8), 0, dp(10)));
 
-        TextView controllerTarget = text("Controller cố định: PC01 · 100.97.23.87:8790", 12, false);
+        TextView controllerTarget = text("TigerIQ Core cố định: PC01 · 100.97.23.87:8795", 12, false);
         controllerTarget.setTextColor(MUTED);
         root.addView(controllerTarget);
 
@@ -163,7 +163,11 @@ public final class MainActivity extends Activity {
 
         Button guide = secondaryButton("Xem đúng thứ tự cài đặt");
         guide.setOnClickListener(v -> showConnectionGuide());
-        root.addView(guide, marginParams(0, 0, 0, dp(20)));
+        root.addView(guide, marginParams(0, 0, 0, dp(8)));
+
+        Button update = secondaryButton("Kiểm tra cập nhật");
+        update.setOnClickListener(v -> checkForUpdate((Button) v));
+        root.addView(update, marginParams(0, 0, 0, dp(20)));
 
         root.addView(sectionTitle("Kiểm tra AI trên máy"));
         LinearLayout tools = card();
@@ -182,7 +186,7 @@ public final class MainActivity extends Activity {
         root.addView(statusCard, marginParams(0, dp(8), 0, dp(12)));
 
         TextView boundary = text(
-            "v0.6 Pilot Setup: kiểm tra kết nối + Accessibility + cây giao diện AI. Chưa bật tự gửi lệnh hoặc tự đọc nội dung hội thoại.",
+            "v0.7 Core Mobile: kiểm tra kết nối + Accessibility + cây giao diện AI. Chưa bật tự gửi lệnh hoặc tự đọc nội dung hội thoại.",
             12, false
         );
         boundary.setTextColor(MUTED);
@@ -252,6 +256,54 @@ public final class MainActivity extends Activity {
         return stateView;
     }
 
+    private void checkForUpdate(Button button) {
+        button.setEnabled(false);
+        button.setText("Đang kiểm tra…");
+        networkExecutor.execute(() -> {
+            try {
+                JSONObject manifest = new ControllerClient(new SecureCredentialStore(this)).updateManifest();
+                boolean available = manifest.optBoolean("available", false);
+                int versionCode = manifest.optInt("versionCode", 0);
+                String versionName = manifest.optString("versionName", "");
+                String driveUrl = manifest.optString("driveUrl", "");
+                boolean newer = available && versionCode > currentVersionCode();
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("Kiểm tra cập nhật");
+                    if (!newer) {
+                        Toast.makeText(this, "Đang dùng bản mới nhất.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    new AlertDialog.Builder(this)
+                        .setTitle("Có bản " + versionName)
+                        .setMessage("Bản mới đã được TigerIQ Core xác minh. Mở file phát hành để cập nhật đè lên bản hiện tại.")
+                        .setNegativeButton("Để sau", null)
+                        .setPositiveButton("Mở bản cập nhật", (dialog, which) -> {
+                            if (!driveUrl.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(driveUrl)));
+                            else Toast.makeText(this, "Core chưa có link phát hành.", Toast.LENGTH_LONG).show();
+                        })
+                        .show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("Kiểm tra cập nhật");
+                    Toast.makeText(this, "Chỉ kiểm tra cập nhật sau khi đã ghép TigerIQ Core.", Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private long currentVersionCode() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) return info.getLongVersionCode();
+            return info.versionCode;
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
     private void probeController(Button button) {
         button.setEnabled(false);
         button.setText("Đang kiểm tra…");
@@ -262,7 +314,7 @@ public final class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false)) throw new IllegalStateException("controller did not return ok");
                 writeNetworkProbe(true);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "Đã thấy PC01 Controller qua mạng riêng", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Đã thấy TigerIQ Core trên PC01 qua mạng riêng", Toast.LENGTH_SHORT).show();
                     button.setEnabled(true);
                     button.setText("Kiểm tra");
                     refreshStatus();
@@ -445,7 +497,7 @@ public final class MainActivity extends Activity {
         if (!networkOk) return "kết nối PC01/Tailscale";
         if (!paired) return "ghép TigerIQ Core";
         if (!assigned) return "Core cấp mã nhân viên";
-        if (!"ONLINE".equals(controllerState)) return "Controller online";
+        if (!"ONLINE".equals(controllerState)) return "TigerIQ Core trực tuyến";
         return null;
     }
 

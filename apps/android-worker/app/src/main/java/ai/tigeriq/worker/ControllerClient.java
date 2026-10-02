@@ -13,8 +13,8 @@ import java.nio.charset.StandardCharsets;
 
 /** Controller transport for self-pairing, employee registration, heartbeat, task leasing and results. */
 public final class ControllerClient {
-    private static final int CONNECT_TIMEOUT_MS = 10_000;
-    private static final int READ_TIMEOUT_MS = 20_000;
+    private static final int CONNECT_TIMEOUT_MS = 4_000;
+    private static final int READ_TIMEOUT_MS = 8_000;
 
     private final SecureCredentialStore store;
 
@@ -24,7 +24,7 @@ public final class ControllerClient {
 
     public JSONObject requestPairingChallenge(String controllerUrl) throws Exception {
         controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
-        return post(controllerUrl, "/api/node/pairing-challenge", new JSONObject(), null);
+        return post(controllerUrl, "/api/mobile/pairing-challenge", new JSONObject(), null);
     }
 
     public JSONObject pair(
@@ -47,7 +47,7 @@ public final class ControllerClient {
         request.put("agentVersion", required(agentVersion, "agentVersion"));
         request.put("capabilities", new JSONArray(capabilities));
 
-        JSONObject response = post(controllerUrl, "/api/node/pair", request, null);
+        JSONObject response = post(controllerUrl, "/api/mobile/pair", request, null);
         JSONObject credential = response.getJSONObject("credential");
         store.save(controllerUrl, credential.getString("credentialId"), credential.getString("token"));
         return response;
@@ -68,7 +68,7 @@ public final class ControllerClient {
         request.put("role", required(role, "role"));
         if (provider != null && !provider.trim().isEmpty()) request.put("provider", provider.trim());
         request.put("capabilities", new JSONArray(capabilities));
-        return authenticatedPost("/api/node/employee", request);
+        return authenticatedPost("/api/mobile/assignment", request);
     }
 
     public JSONObject requestCoreAssignedEmployee(String provider, String[] capabilities) throws Exception {
@@ -80,7 +80,13 @@ public final class ControllerClient {
 
     public JSONObject probeStatus(String controllerUrl) throws Exception {
         controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
-        return get(controllerUrl, "/api/workforce/status");
+        return get(controllerUrl, "/api/mobile/health");
+    }
+
+    public JSONObject updateManifest() throws Exception {
+        SecureCredentialStore.Credential credential = store.load();
+        if (credential == null) throw new IllegalStateException("worker is not paired");
+        return authenticatedGet("/api/mobile/update/manifest", credential);
     }
 
     public JSONObject heartbeat(int batteryPct, Double temperatureC, String agentVersion) throws Exception {
@@ -89,11 +95,11 @@ public final class ControllerClient {
         request.put("batteryPct", Math.max(0, Math.min(100, batteryPct)));
         if (temperatureC != null) request.put("temperatureC", temperatureC);
         if (agentVersion != null && !agentVersion.trim().isEmpty()) request.put("agentVersion", agentVersion.trim());
-        return authenticatedPost("/api/node/heartbeat", request);
+        return authenticatedPost("/api/mobile/heartbeat", request);
     }
 
     public JSONObject pollLease() throws Exception {
-        return authenticatedPost("/api/node/tasks/lease", new JSONObject());
+        return authenticatedPost("/api/mobile/tasks/lease", new JSONObject());
     }
 
     public JSONObject submitResult(String taskId, String leaseId, String leaseToken, JSONObject result) throws Exception {
@@ -102,7 +108,27 @@ public final class ControllerClient {
         request.put("leaseId", required(leaseId, "leaseId"));
         request.put("leaseToken", required(leaseToken, "leaseToken"));
         request.put("result", result);
-        return authenticatedPost("/api/node/tasks/result", request);
+        return authenticatedPost("/api/mobile/tasks/result", request);
+    }
+
+    private JSONObject authenticatedGet(String path, SecureCredentialStore.Credential credential) throws Exception {
+        String controllerUrl = ControllerUrlPolicy.requireTrusted(credential.controllerUrl);
+        URL url = new URL(controllerUrl + path);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("X-TigerIQ-Credential-Id", credential.credentialId);
+        connection.setRequestProperty("Authorization", "Bearer " + credential.token);
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String payload = read(stream);
+        connection.disconnect();
+        if (status < 200 || status >= 300) {
+            throw new ControllerException(status, payload.length() > 512 ? payload.substring(0, 512) : payload);
+        }
+        return payload.isEmpty() ? new JSONObject() : new JSONObject(payload);
     }
 
     private JSONObject authenticatedPost(String path, JSONObject body) throws Exception {
