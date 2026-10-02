@@ -208,7 +208,8 @@ test('production wiring suppresses GitHub helper auto-work and applies allowlist
   assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),\{jobId,prompt\}\)/);
   assert.match(core,/stabilityV2PeerExclusions\(jobId\)/);
   assert.match(core,/excludedProviders\.has\(String\(x\.provider/);
-  assert.match(core,/excludedProviders:peerExclusions\.providers/);
+  assert.match(core,/attemptedProviders=\[\.\.\.new Set\(failures\.map/);
+  assert.match(core,/excludedProviders=\[\.\.\.new Set\(\[\.\.\.peerExclusions\.providers,\.\.\.attemptedProviders\]\)\]/);
   assert.match(core,/STABILITY_V2_BATCH_MATERIALIZED/);
   assert.match(intake,/!isStabilityV2ResourceScope\(spec\.resourceScope\)/);
 });
