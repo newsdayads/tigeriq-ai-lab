@@ -90,9 +90,8 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(nv02TakeoverStatus(work, rearmed, {
       nowMs: Date.parse('2026-10-02T12:30:00Z'),
     })).toMatchObject({
-      eligible: true,
-      reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
-      target: 'CODING_LANE',
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
     });
 
     const heartbeat = [...rearmed, {
@@ -110,8 +109,32 @@ describe('NV02 local GitHub self-pull contract', () => {
       nowMs: Date.parse('2026-10-02T12:36:00Z'),
     })).toMatchObject({
       eligible: true,
-      reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
+      reason: 'INDEPENDENT_CODING_LANE_PROGRESS_STALE',
       target: 'CODING_LANE',
+    });
+
+    const reopened = [...failed, {
+      id: 8,
+      created_at: '2026-10-02T12:21:00Z',
+      body: '⚙️ [TIẾP NHẬN] CODEOBJ-reopen reason=CODING_ALL_BATCHES_NOOP prior=CODEOBJ-c',
+    }];
+    expect(nv02TakeoverStatus(work, reopened, {
+      nowMs: Date.parse('2026-10-02T12:50:00Z'),
+    })).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
+    });
+
+    const localizedDone = [...failed, {
+      id: 9,
+      created_at: '2026-10-02T12:22:00Z',
+      body: '✅ [KẾT QUẢ] CODEOBJ-d is completed',
+    }];
+    expect(nv02TakeoverStatus(work, localizedDone, {
+      nowMs: Date.parse('2026-10-02T12:50:00Z'),
+    })).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_COMPLETED',
     });
 
     const terminal = nv02TakeoverStatus(work, [{
@@ -205,6 +228,32 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([reserved], {
       takeoverStatuses: new Map([[18, hardBlocked]]),
     })).toBeNull();
+
+    for (const reason of ['BROWSER_AUTH', 'AUTHORIZATION_REQUIRED', 'HUMAN_POLICY', 'SCOPE_VIOLATION', 'OUT_OF_SCOPE', 'POLICY_BLOCK']) {
+      const localizedHard = nv02TakeoverStatus(reserved, [{
+        id: 2,
+        created_at: '2026-10-02T12:02:00Z',
+        body: `⚠️ [BỊ CHẶN] CODEOBJ-hard reason=${reason}`,
+      }], { nowMs: Date.parse('2026-10-02T12:30:00Z') });
+      expect(localizedHard).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_HARD_BLOCKED' });
+    }
+
+    const supersededFinal = nv02TakeoverStatus(reserved, [{
+      id: 3,
+      created_at: '2026-10-02T12:03:00Z',
+      body: '⚠️ [BỊ CHẶN] CODEOBJ-old reason=ISSUE_CLOSED_OR_SUPERSEDED',
+    }], { nowMs: Date.parse('2026-10-02T12:30:00Z') });
+    expect(supersededFinal).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_HARD_BLOCKED' });
+
+    const supersededWork = {
+      ...reserved,
+      number: 19,
+      state: 'open',
+      body: safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nRESOURCE_SCOPE=API_REPAIR_19\nCURRENT_STATE=SUPERSEDED\nTIGERIQ_EXECUTABLE=true\nDONE=false'),
+    };
+    expect(nv02EligibleWorkOrder(supersededWork, {
+      takeoverStatuses: new Map([[19, { eligible: true, reason: 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED' }]]),
+    })).toMatchObject({ eligible: false, reason: 'WORK_ORDER_SUPERSEDED_OR_CANCELLED' });
   });
 
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
