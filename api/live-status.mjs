@@ -64,7 +64,7 @@ async function gh(path, fetchImpl = fetch) {
   const token = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
   return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000)});
 }
-async function ghAllPages(path, fetchImpl = fetch, maxPages = 10) {
+export async function ghAllPages(path, fetchImpl = fetch, maxPages = 10) {
   const rows = [];
   for (let page = 1; page <= maxPages; page += 1) {
     const joiner = path.includes('?') ? '&' : '?';
