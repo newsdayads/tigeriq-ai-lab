@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
 import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -278,6 +279,10 @@ test('generic stale terminal-blocked label clears once on fresh source revision 
   assert.strictEqual(pool.objectives.length,2);
   assert.strictEqual(pool.jobs.length,2);
   assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT_CLEAR'&&e.data?.reason==='STALE_TERMINAL_LABEL_REARM').length,1);
+  const projected=parseOpenWorkIssue(issue);
+  assert.ok(projected);
+  assert.notStrictEqual(projected.status,'BLOCKED');
+  assert.strictEqual(projected.status,'OPEN');
 
   out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
