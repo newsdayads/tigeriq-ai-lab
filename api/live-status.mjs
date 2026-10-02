@@ -838,6 +838,14 @@ function ownerAcceptancePhase(phase = '') {
   return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL)/.test(String(phase || '').toUpperCase());
 }
 
+function optionalBodyNumber(body = '', keys = []) {
+  for (const key of (Array.isArray(keys) ? keys : [keys])) {
+    const raw = bodyValue(body, key);
+    if (/^\d+$/.test(raw)) return Number(raw);
+  }
+  return null;
+}
+
 function ownerGateTechnicalComplete(body = '', phase = '') {
   const technical = bodyValue(body, 'TECHNICAL_ACCEPTANCE').toUpperCase();
   if (technical && technical !== 'PASS') return false;
@@ -1410,11 +1418,11 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const apiWorkforceSummary = {
       verified: apiRuntimeVerified,
       healthyProviders: apiRuntimeVerified ? healthyProviders.size : null,
-      healthyTarget: Number(bodyValue(stabilityBody, 'REQUIRED_HEALTHY_PROVIDER_COUNT') || bodyValue(stabilityBody, 'HEALTHY_PROVIDER_COUNT') || 3),
-      stabilityRounds: Number(bodyValue(stabilityBody, 'STABILITY_ROUNDS_COUNTED') || 0),
-      stabilityRoundsRequired: Number(bodyValue(stabilityBody, 'ROUND_COUNT_REQUIRED') || 3),
-      realJobs: Number(bodyValue(stabilityBody, 'REAL_JOBS_COMPLETED') || bodyValue(stabilityBody, 'REAL_JOBS_COUNTED') || 0),
-      realJobsRequired: Number(bodyValue(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') || 15),
+      healthyTarget: optionalBodyNumber(stabilityBody, ['REQUIRED_HEALTHY_PROVIDER_COUNT','HEALTHY_PROVIDER_COUNT']) ?? 3,
+      stabilityRounds: optionalBodyNumber(stabilityBody, 'STABILITY_ROUNDS_COUNTED'),
+      stabilityRoundsRequired: optionalBodyNumber(stabilityBody, 'ROUND_COUNT_REQUIRED') ?? 3,
+      realJobs: optionalBodyNumber(stabilityBody, ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED']),
+      realJobsRequired: optionalBodyNumber(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') ?? 15,
       blocker: cleanText(bodyValue(stabilityBody, 'CURRENT_BLOCKER') || bodyValue(stabilityBody, 'BLOCKED_BY') || (stabilityIssue ? 'Theo dõi #2891' : ''), 120) || null,
       issueNumber: stabilityIssue ? 2891 : null,
     };
