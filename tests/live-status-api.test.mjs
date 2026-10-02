@@ -446,6 +446,18 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('exposes only an explicit blocker for owner-facing compact cards', () => {
+    const blocked = parseOpenWorkIssue(issue(3213, '[P1] Blocked compact card', [
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+      'NEXT=Reprobe after provider recovery',
+    ].join('\n')));
+    expect(blocked).toMatchObject({ blocker: 'WAIT_PROVIDER', nextStep: 'Reprobe after provider recovery' });
+
+    const normal = parseOpenWorkIssue(issue(3214, '[P1] Normal compact card', 'CURRENT_STATE=READY'));
+    expect(normal.blocker).toBe(null);
+  });
+
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
     const unsafe = parseOpenWorkIssue(issue(3207, '[P1] Planned step', [
       'CURRENT_STATE=READY',
