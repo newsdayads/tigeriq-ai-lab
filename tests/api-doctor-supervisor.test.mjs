@@ -529,3 +529,16 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain('[decision.chosen.resourceId]);');
   });
 });
+
+
+describe('#2980 watsonx token quota classification',()=>{
+  it('treats token_quota_reached as an external quota blocker while preserving ordinary 403 auth',()=>{
+    expect(classifyApiDoctorFailure({kind:'external_blocked',message:'HTTP_403'})).toBe('external_blocked');
+    expect(classifyApiDoctorFailure({kind:'auth',message:'HTTP_403 token_quota_reached'})).toBe('external_blocked');
+    expect(classifyApiDoctorFailure({kind:'auth',message:'HTTP_403'})).toBe('auth');
+
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain("if (code === 'token_quota_reached') return 'external_blocked';");
+    expect(core).toContain('classifyHttp(res.status,body)');
+  });
+});

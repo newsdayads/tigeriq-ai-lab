@@ -125,7 +125,13 @@ const credentialEnvByProvider = { groq:['GROQ_API_KEY'], gemini:['GEMINI_API_KEY
 const credentialPresent = (r) => r.provider === 'ollama' || (credentialEnvByProvider[r.provider] || []).every(k => process.env[k]);
 const reqReady = (r) => r.req.every(([k,v]) => process.env[k] && (v === undefined || process.env[k] === v));
 
-function classifyHttp(status) {
+function providerErrorCode(body={}) {
+  const nested=Array.isArray(body?.errors)?body.errors.find(item=>item&&typeof item==='object'&&item.code):null;
+  return String(body?.code||body?.error?.code||nested?.code||'').trim().toLowerCase();
+}
+function classifyHttp(status, body={}) {
+  const code=providerErrorCode(body);
+  if (code === 'token_quota_reached') return 'external_blocked';
   if (status === 429) return 'rate_limit';
   if (status === 402) return 'configuration';
   if (status === 401 || status === 403) return 'auth';
@@ -141,7 +147,7 @@ async function fetchJson(url, init = {}, timeoutMs = 90000, onResponse = null) {
     if(onResponse)await onResponse(res);
     const text = await res.text();
     let body; try { body = text ? JSON.parse(text) : {}; } catch { body = { text }; }
-    if (!res.ok) { const e = new Error(`HTTP_${res.status}`); e.kind = classifyHttp(res.status); e.status=res.status; e.body=body; throw e; }
+    if (!res.ok) { const e = new Error(`HTTP_${res.status}`); e.kind = classifyHttp(res.status,body); e.status=res.status; e.body=body; throw e; }
     return body;
   } catch (e) { if (e.name === 'AbortError') { e.kind = 'timeout'; } throw e; }
   finally { clearTimeout(t); }
