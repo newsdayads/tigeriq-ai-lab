@@ -342,8 +342,10 @@ function renderOwnerSummary(){
     : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
 }
 function renderNowRunning(){
-  const rows=(snapshot?.activeWork||[]).filter(row=>workStatus(row)==='WORKING');
   const el=$('nowRunning');
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!fresh){el.innerHTML='<div class="focus-empty"><b>Việc đang chạy ngay lúc này</b><span>Dữ liệu runtime đã cũ · chưa xác nhận job đang chạy.</span></div>';return}
+  const rows=(snapshot?.activeWork||[]).filter(row=>workStatus(row)==='WORKING');
   if(!rows.length){el.innerHTML='<div class="focus-empty"><b>Việc đang chạy ngay lúc này</b><span>Không có job runtime đang chạy.</span></div>';return}
   const row=rows[0];
   el.innerHTML='<div class="focus-card"><span class="focus-dot"></span><div><b>Việc đang chạy ngay lúc này</b><div>#'+esc(row.number||'—')+' · '+esc(row.employeeId||'—')+'</div><small>'+esc(row.currentStep||'Đang xử lý')+'</small></div></div>';
@@ -352,12 +354,14 @@ function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
   const el=$('apiWorkforce');
   if(!a||!a.issueNumber){el.innerHTML='';return}
-  const healthValue=a.verified===true?esc(a.healthyProviders)+'/'+esc(a.healthyTarget||3):'—';
+  const healthValue=a.verified===true&&Number.isFinite(Number(a.healthyProviders))?esc(a.healthyProviders)+'/'+esc(a.healthyTarget||3):'—';
+  const roundsValue=Number.isFinite(Number(a.stabilityRounds))?esc(a.stabilityRounds)+'/'+esc(a.stabilityRoundsRequired||3):'—/'+esc(a.stabilityRoundsRequired||3);
+  const jobsValue=Number.isFinite(Number(a.realJobs))?esc(a.realJobs)+'/'+esc(a.realJobsRequired||15):'—/'+esc(a.realJobsRequired||15);
   el.innerHTML='<div class="api-summary-head"><b>API Workforce</b><span>#'+esc(a.issueNumber)+'</span></div>'
     +'<div class="api-summary-grid">'
     +'<div><span>Provider khỏe</span><b>'+healthValue+'</b></div>'
-    +'<div><span>Vòng ổn định</span><b>'+esc(a.stabilityRounds||0)+'/'+esc(a.stabilityRoundsRequired||3)+'</b></div>'
-    +'<div><span>Job thật</span><b>'+esc(a.realJobs||0)+'/'+esc(a.realJobsRequired||15)+'</b></div>'
+    +'<div><span>Vòng ổn định</span><b>'+roundsValue+'</b></div>'
+    +'<div><span>Job thật</span><b>'+jobsValue+'</b></div>'
     +'</div>'
     +'<div class="api-summary-blocker"><span>Hiện tại:</span> '+esc(a.blocker||'Đang theo dõi độ ổn định')+'</div>';
 }
