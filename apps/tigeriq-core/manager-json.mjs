@@ -15,16 +15,6 @@ export function managerProviderBodyForHost(host,prompt){
   return {};
 }
 
-export function cloudflareRequestBody(prompt='',managerSchema={}){
-  const responseFormat=isManagerPrompt(prompt)?{type:'json_schema',json_schema:managerSchema}:null;
-  return {prompt,...(responseFormat?{response_format:responseFormat}:{})};
-}
-export function cloudflareResponseText(response){
-  if(typeof response==='string')return response;
-  if(response&&typeof response==='object')return JSON.stringify(response);
-  return '';
-}
-
 export function managerLocalRequestBody(model,prompt){
   return {
     model:String(model||'qwen3:4b'),
