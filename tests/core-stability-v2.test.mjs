@@ -1,0 +1,149 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  STABILITY_V2_EMPLOYEE_ALLOWLIST,
+  STABILITY_V2_RESOURCE_SCOPE,
+  stabilityV2EmployeeAllowlist,
+  stabilityV2ExpectedGroups,
+  stabilityV2Plan,
+} from '../apps/tigeriq-core/stability-v2.mjs';
+
+const groups=stabilityV2ExpectedGroups();
+const baseMs=Date.parse('2026-10-02T17:00:00Z');
+const providers=['groq','cloudflare','nvidia'];
+const employees=['NV11','NV15','NV20'];
+
+function completedGroups(count,{startMs=baseMs}={}){
+  const rows=[];
+  for(let groupIndex=0;groupIndex<count;groupIndex++){
+    const group=groups[groupIndex];
+    for(let index=0;index<group.specs.length;index++){
+      const spec=group.specs[index];
+      rows.push({
+        id:`J-${groupIndex}-${index}`,
+        title:spec.title,
+        capability:spec.capability,
+        status:'done',
+        employee_id:employees[index%employees.length],
+        provider:group.batch===1?providers[index]:providers[index%providers.length],
+        created_at:new Date(startMs+group.round*1000+group.batch*100+index).toISOString(),
+      });
+    }
+  }
+  return rows;
+}
+
+test('stability v2 starts with exactly three Round 1 general jobs',()=>{
+  const plan=stabilityV2Plan({resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs:[],nowMs:baseMs,lastDeepAuditMs:baseMs});
+  assert.equal(plan.action,'materialize');
+  assert.equal(plan.round,1);
+  assert.equal(plan.batch,1);
+  assert.equal(plan.capability,'general');
+  assert.equal(plan.specs.length,3);
+  assert.deepEqual(plan.specs.map(x=>x.title),[
+    'STAB-R1-General-Batch1-Job1',
+    'STAB-R1-General-Batch1-Job2',
+    'STAB-R1-General-Batch1-Job3',
+  ]);
+});
+
+test('malformed helper STAB job fails closed instead of becoming counted work',()=>{
+  const plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,
+    jobs:[{id:'helper',title:'STAB-R1-Create General Batch (3 jobs)',status:'done'}],
+    nowMs:baseMs,
+  });
+  assert.equal(plan.action,'block');
+  assert.equal(plan.reason,'malformed_stability_job');
+});
+
+test('duplicate logical stability title fails closed',()=>{
+  const title='STAB-R1-General-Batch1-Job1';
+  const plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,
+    jobs:[{id:'a',title,status:'done'},{id:'b',title,status:'done'}],
+    nowMs:baseMs,
+  });
+  assert.equal(plan.action,'block');
+  assert.equal(plan.reason,'duplicate_stability_job');
+});
+
+test('Round 1 batch2 materializes only after three-provider batch1 success',()=>{
+  const plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,
+    jobs:completedGroups(1),
+    nowMs:baseMs+10000,
+    lastDeepAuditMs:baseMs,
+  });
+  assert.equal(plan.action,'materialize');
+  assert.equal(plan.round,1);
+  assert.equal(plan.batch,2);
+  assert.equal(plan.capability,'reasoning');
+  assert.equal(plan.specs.length,2);
+});
+
+test('batch1 requires three independent providers',()=>{
+  const jobs=completedGroups(1).map(row=>({...row,provider:'cloudflare'}));
+  const plan=stabilityV2Plan({resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,nowMs:baseMs+10000});
+  assert.equal(plan.action,'block');
+  assert.equal(plan.reason,'batch1_provider_diversity_failed');
+});
+
+test('next round waits for both 5-minute spacing and later deep-audit cadence',()=>{
+  const jobs=completedGroups(2);
+  const firstR1=Math.min(...jobs.filter(row=>row.title.startsWith('STAB-R1-')).map(row=>Date.parse(row.created_at)));
+  const due=firstR1+300000;
+
+  let plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,
+    nowMs:due-1,lastDeepAuditMs:due+1000,
+  });
+  assert.equal(plan.action,'wait');
+  assert.equal(plan.reason,'round_spacing');
+
+  plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,
+    nowMs:due+1000,lastDeepAuditMs:due-1,
+  });
+  assert.equal(plan.action,'wait');
+  assert.equal(plan.reason,'deep_audit_cadence_pending');
+
+  plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,jobs,
+    nowMs:due+1000,lastDeepAuditMs:due,
+  });
+  assert.equal(plan.action,'materialize');
+  assert.equal(plan.round,2);
+  assert.equal(plan.batch,1);
+  assert.equal(plan.capability,'reasoning');
+});
+
+test('all three canonical rounds complete at exactly 15 STAB jobs',()=>{
+  const jobs=completedGroups(6);
+  assert.equal(jobs.length,15);
+  const plan=stabilityV2Plan({
+    resourceScope:STABILITY_V2_RESOURCE_SCOPE,
+    jobs,
+    nowMs:baseMs+900000,
+    lastDeepAuditMs:baseMs+900000,
+  });
+  assert.deepEqual(plan,{handled:true,action:'complete',reason:'three_rounds_complete',rounds:3,totalJobs:15});
+});
+
+test('stability worker allowlist is NV11 through NV20 and excludes NV10',()=>{
+  const allow=stabilityV2EmployeeAllowlist({resourceScope:STABILITY_V2_RESOURCE_SCOPE});
+  assert.deepEqual(allow,[...STABILITY_V2_EMPLOYEE_ALLOWLIST]);
+  assert.equal(allow.includes('NV10'),false);
+  assert.equal(allow.includes('NV11'),true);
+  assert.equal(allow.includes('NV20'),true);
+});
+
+test('production wiring suppresses GitHub helper auto-work and applies allowlist to normal STAB jobs',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  assert.match(core,/reconcileStabilityV2Objective\(o\)/);
+  assert.match(core,/stabilityV2EmployeeAllowlist\(j\.objective_metadata\)/);
+  assert.match(core,/STABILITY_V2_BATCH_MATERIALIZED/);
+  assert.match(intake,/!isStabilityV2ResourceScope\(spec\.resourceScope\)/);
+});
