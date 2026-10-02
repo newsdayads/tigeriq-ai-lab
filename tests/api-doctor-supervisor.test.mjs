@@ -9,6 +9,7 @@ import {
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
   apiDoctorRepairSignature,
+  apiDoctorRepairWorkOrderGate,
   apiDoctorResourceEligibleForCapability,
   buildApiDoctorPrompt,
   classifyApiDoctorFailure,
@@ -114,6 +115,14 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorHandoffMatchesFailureClass(oldHandoff,'rate_limit')).toBe(false);
     expect(apiDoctorHandoffMatchesFailureClass(oldHandoff,'source_contract')).toBe(true);
     expect(apiDoctorHandoffMatchesFailureClass({data:{}},'rate_limit')).toBe(false);
+  });
+
+  it('gates canonical provider repair validation on completed P1 work orders',()=>{
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'open'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_open'});
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:'completed'})).toEqual({action:'validate_repair',reason:'canonical_repair_work_order_completed'});
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:'not_planned'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_not_completed'});
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'unknown'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'});
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:0,state:'closed'})).toEqual({action:'legacy',reason:'legacy_repair_handoff'});
   });
 
   it('uses a stable dedupe signature for the same provider/failure class',()=>{
@@ -238,6 +247,11 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("think:false");
     expect(core).toContain('num_predict:160');
     expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
+    expect(core).toContain("PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny");
+    expect(core).toContain("'PRIORITY=P1'");
+    expect(core).toContain("repairIssueNumber");
+    expect(core).toContain("githubApiDoctorRepairIssueStatus(repairIssueNumber)");
+    expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
     expect(core).toContain("row.action='wait_repair'");
