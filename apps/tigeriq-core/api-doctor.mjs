@@ -4,6 +4,38 @@ export const API_DOCTOR_CAPABILITY='api_doctor';
 
 const safeText=(value,max=240)=>String(value??'').trim().slice(0,max);
 
+function apiDoctorDecisionError(code){
+  const error=new Error(code);
+  error.code=code;
+  error.kind='invalid_response';
+  return error;
+}
+
+export function apiDoctorLocalRefreshHealth({
+  modelAvailable=true,
+  currentHealth='READY',
+  cooldownUntil=null,
+  latestFunctionalEvent=null,
+  nowMs=Date.now(),
+}={}){
+  if(!modelAvailable)return 'OFFLINE';
+  const health=String(currentHealth||'READY').toUpperCase();
+  const cooldownMs=cooldownUntil?Date.parse(String(cooldownUntil)):NaN;
+  const cooling=Number.isFinite(cooldownMs)&&cooldownMs>Number(nowMs);
+  if(cooling&&['ERROR','RATE_LIMITED'].includes(health))return health;
+  return String(latestFunctionalEvent||'').toUpperCase()==='RESOURCE_SUCCESS'?'ONLINE':'READY';
+}
+
+export function apiDoctorResourceEligibleForCapability({
+  employeeId='',
+  healthState='READY',
+  capability='general',
+}={}){
+  if(String(employeeId||'').trim().toUpperCase()!=='NV10')return true;
+  if(String(capability||'').trim().toLowerCase()===API_DOCTOR_CAPABILITY)return true;
+  return String(healthState||'').trim().toUpperCase()==='ONLINE';
+}
+
 export function apiDoctorHealthEvidenceEvents(events=[]){
   return (Array.isArray(events)?events:[]).filter(row=>{
     const taskKind=String(row?.task_kind||row?.data?.taskKind||'').trim().toLowerCase();
@@ -113,10 +145,10 @@ export function buildApiDoctorPrompt(items=[]){
 export function parseApiDoctorDecision(text){
   const raw=String(text||'').trim().replace(/^\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`$/,'');
   const a=raw.indexOf('{'),b=raw.lastIndexOf('}');
-  if(a<0||b<a)throw new Error('API_DOCTOR_JSON_MISSING');
-  let value;try{value=JSON.parse(raw.slice(a,b+1));}catch{throw new Error('API_DOCTOR_JSON_INVALID')}
-  if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.summary!=='string')throw new Error('API_DOCTOR_SCHEMA_INVALID');
-  for(const key of ['attention','sourceRepair'])if(value[key]!==undefined&&!Array.isArray(value[key]))throw new Error('API_DOCTOR_SCHEMA_INVALID');
+  if(a<0||b<a)throw apiDoctorDecisionError('API_DOCTOR_JSON_MISSING');
+  let value;try{value=JSON.parse(raw.slice(a,b+1));}catch{throw apiDoctorDecisionError('API_DOCTOR_JSON_INVALID')}
+  if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.summary!=='string')throw apiDoctorDecisionError('API_DOCTOR_SCHEMA_INVALID');
+  for(const key of ['attention','sourceRepair'])if(value[key]!==undefined&&!Array.isArray(value[key]))throw apiDoctorDecisionError('API_DOCTOR_SCHEMA_INVALID');
   return {
     summary:safeText(value.summary,500),
     attention:[...new Set((value.attention||[]).map(x=>safeText(x,16)).filter(Boolean))].slice(0,10),
