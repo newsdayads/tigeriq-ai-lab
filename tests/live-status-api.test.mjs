@@ -548,6 +548,43 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(seen.some((url) => url.includes('per_page=100') && url.includes('page=2'))).toBe(true);
   });
 
+  it('counts actionable blocked, queued and unknown work directly in openSummary', async () => {
+    const blocked = issue(3981, '[P1] Blocked summary row', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=BLOCKED',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n'));
+    const queued = issue(3982, '[P1] Queued summary row', [
+      ...coreQueueFlags(),
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'CURRENT_STATE=READY',
+    ].join('\n'));
+    const unknown = issue(3983, '[P1] Unknown summary row', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=BLOCKED',
+    ].join('\n'));
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      if (value.includes('/issues?state=open')) return new Response(JSON.stringify([blocked, queued, unknown]), { status: 200 });
+      if (/\/issues\/(?:3981|3983)\/comments\?/.test(value)) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+      throw new Error('unexpected_url:' + value);
+    };
+    const result = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+    expect(result.openSummary).toMatchObject({
+      open: 3,
+      actionable: 3,
+      blocked: 1,
+      queued: 1,
+      unknown: 1,
+      waiting: 3,
+      system: 0,
+    });
+  });
+
   it('fails closed for portfolio percent when buildWorkSections falls back to a stale GitHub snapshot', async () => {
     vi.useFakeTimers();
     try {
