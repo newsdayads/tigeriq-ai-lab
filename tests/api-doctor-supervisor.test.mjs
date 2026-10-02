@@ -8,6 +8,7 @@ import {
   apiDoctorHandoffMatchesFailureClass,
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
+  apiDoctorRepairLifecycleRelevant,
   apiDoctorRepairSignature,
   apiDoctorRepairRuntimeGate,
   apiDoctorRepairWorkOrderGate,
@@ -125,6 +126,21 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:null})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_not_completed'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'unknown'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:0,state:'closed'})).toEqual({action:'legacy',reason:'legacy_repair_handoff'});
+  });
+
+  it('keeps source-contract repair lifecycle relevant after a healthy probe clears the current failure',()=>{
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:2904,handoffFailureClass:'source_contract',
+      currentFailureClass:'unknown',currentAction:'idle',
+    })).toBe(true);
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:0,handoffFailureClass:'source_contract',
+      currentFailureClass:'unknown',currentAction:'idle',
+    })).toBe(true);
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:2904,handoffFailureClass:'source_contract',
+      currentFailureClass:'rate_limit',currentAction:'wait',
+    })).toBe(false);
   });
 
   it('waits for the completed repair revision to be installed before validation',()=>{
@@ -273,6 +289,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("'NO_PC01_SHELL=true'");
     expect(core).toContain("'NO_BROWSER_AUTH=true'");
     expect(core).toContain("repairLifecycleRelevant");
+    expect(core).toContain("apiDoctorRepairLifecycleRelevant({");
+    expect(core).toContain("signatureOverride:existingHandoff.data?.signature");
+    expect(core).toContain("handoffFailureClass==='source_contract'");
+
     expect(core).toContain("apiDoctorRepairRuntimeGate({");
     expect(core).toContain("legacy_handoff_migrated_to_canonical_p1");
     expect(core).toContain("post_repair_validation_pass_wait_normal_work");
