@@ -68,7 +68,8 @@ async function ghAllPages(path, fetchImpl = fetch, maxPages = 10) {
   const rows = [];
   for (let page = 1; page <= maxPages; page += 1) {
     const joiner = path.includes('?') ? '&' : '?';
-    const batch = await gh(path + joiner + 'per_page=100&page=' + page, fetchImpl);
+    const pageArgs = /(?:^|[?&])per_page=/.test(path) ? 'page=' + page : 'per_page=100&page=' + page;
+    const batch = await gh(path + joiner + pageArgs, fetchImpl);
     if (!Array.isArray(batch)) throw new Error('github_collection_invalid');
     rows.push(...batch);
     if (batch.length < 100) return { rows, complete: true };
@@ -1060,7 +1061,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     } else {
       try {
         const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
-          ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&sort=updated&direction=desc', fetchImpl),
+          ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
           known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
           known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
         ]);
