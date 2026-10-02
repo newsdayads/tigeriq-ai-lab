@@ -77,6 +77,12 @@ async function body(req,maxBytes=65536) {
 function send(res,status,payload) {
   res.writeHead(status,jsonHeaders);res.end(JSON.stringify(payload));return true;
 }
+function isTailnetPeer(req) {
+  const raw=String(req.socket?.remoteAddress||'').replace(/^::ffff:/,'');
+  if(raw==='127.0.0.1'||raw==='::1')return true;
+  const parts=raw.split('.').map(Number);
+  return parts.length===4 && parts.every(Number.isInteger) && parts[0]===100 && parts[1]>=64 && parts[1]<=127;
+}
 function mobileAuthHeaders(req) {
   const credentialId=text(req.headers['x-tigeriq-credential-id'],160);
   const match=String(req.headers.authorization||'').match(/^Bearer\s+(.+)$/i);
@@ -133,6 +139,7 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
     }
 
     if(req.method==='POST'&&url.pathname==='/api/mobile/pairing-challenge'){
+      if(!isTailnetPeer(req))return send(res,403,{ok:false,error:'tailnet_required'});
       await pool.query('delete from tigeriq_mobile_pairing_challenges where expires_at<now()-interval \'1 hour\'');
       const challengeId=randomToken(18), challenge=randomToken(32);
       const expiresAt=new Date(Date.now()+challengeTtlMs).toISOString();
@@ -144,6 +151,7 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
     }
 
     if(req.method==='POST'&&url.pathname==='/api/mobile/pair'){
+      if(!isTailnetPeer(req))return send(res,403,{ok:false,error:'tailnet_required'});
       const input=await body(req);
       const challengeId=text(input.challengeId,160), nodeId=text(input.nodeId,160);
       const publicKey=text(input.publicKey,4096), proof=text(input.proof,1024);
@@ -200,7 +208,14 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
     if(!device)return send(res,401,{ok:false,error:'mobile_unauthorized'});
 
     if(req.method==='POST'&&url.pathname==='/api/mobile/assignment'){
-      return send(res,200,{ok:true,employee:{employeeId:device.employee_id,department:device.department,role:device.role,provider:device.provider,nodeId:device.node_id}});
+      const input=await body(req);
+      const provider=normalizeMobileProvider(input.provider||device.provider);
+      const capabilities=stringList(input.capabilities);
+      await pool.query(
+        'update tigeriq_mobile_devices set provider=$2,capabilities=case when $3::jsonb=\'[]\'::jsonb then capabilities else $3::jsonb end,updated_at=now() where node_id=$1',
+        [device.node_id,provider,JSON.stringify(capabilities)]
+      );
+      return send(res,200,{ok:true,employee:{employeeId:device.employee_id,department:device.department,role:device.role,provider,nodeId:device.node_id}});
     }
     if(req.method==='POST'&&url.pathname==='/api/mobile/heartbeat'){
       const input=await body(req);
