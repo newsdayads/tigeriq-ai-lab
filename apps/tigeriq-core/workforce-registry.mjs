@@ -1,3 +1,5 @@
+import { githubRequestJson } from './github-shared-client.mjs';
+
 const DEFAULT_REGISTRY_URL = 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/335';
 const REGISTRY_URL = process.env.TIGERIQ_REGISTRY_URL?.trim() || DEFAULT_REGISTRY_URL;
 const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
@@ -66,14 +68,16 @@ export function workforceSnapshot(){
   return { workforce:cache.workforce.map(x=>({...x})), workforceMeta:{...cache.meta} };
 }
 
+export async function fetchRegistryIssue({fetchImpl=fetch,token=process.env.TIGERIQ_GITHUB_TOKEN?.trim()||process.env.GITHUB_TOKEN?.trim()||''}={}){
+  return githubRequestJson(fetchImpl,REGISTRY_URL,token,{freshMs:CACHE_MS,signal:AbortSignal.timeout(3500)});
+}
+
 export async function refreshRegistryWorkforce(force=false){
   const now=Date.now();
   if(cache.refreshing || (!force && now<cache.expiresAt)) return workforceSnapshot();
   cache.refreshing=true;
   try {
-    const response=await fetch(REGISTRY_URL,{ headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-Web-Control/1.0'}, signal:AbortSignal.timeout(3500), cache:'no-store' });
-    if(!response.ok) throw new Error(`REGISTRY_HTTP_${response.status}`);
-    const issue=await response.json();
+    const issue=await fetchRegistryIssue();
     const parsed=parseRegistryBody(issue?.body||'');
     cache={ workforce:parsed.workforce, meta:{source:'registry-335-live',version:parsed.version,fetchedAt:new Date().toISOString(),stale:false,error:null}, expiresAt:now+CACHE_MS, refreshing:false };
   } catch(error) {
