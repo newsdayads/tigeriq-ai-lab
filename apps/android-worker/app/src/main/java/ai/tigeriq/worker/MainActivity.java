@@ -656,13 +656,13 @@ public final class MainActivity extends Activity {
 
     private void openChatGpt() {
         if (openInstalledPackage("com.openai.chatgpt")) return;
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://chatgpt.com/")));
+        Toast.makeText(this, "Chưa tìm thấy ứng dụng ChatGPT trên máy", Toast.LENGTH_LONG).show();
     }
 
     private void openGemini() {
         if (openInstalledPackage("com.google.android.apps.bard")) return;
         if (openInstalledPackage("com.google.android.googlequicksearchbox")) return;
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://gemini.google.com/app")));
+        Toast.makeText(this, "Chưa tìm thấy ứng dụng Gemini trên máy", Toast.LENGTH_LONG).show();
     }
 
     private boolean openInstalledPackage(String packageName) {
