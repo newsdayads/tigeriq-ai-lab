@@ -721,13 +721,14 @@ export function sourceWorkOrderNumber(objective=''){
 export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
   const body=String(issue?.body||'');
   const state=String(issue?.state||'').trim().toLowerCase();
+  const stateReason=String(issue?.state_reason||'').trim().toLowerCase();
   const executableFalse=/^\s*TIGERIQ_EXECUTABLE\s*=\s*false\s*$/im.test(body);
   const terminalState=/^\s*STATE\s*=\s*(?:SUPERSEDED|CANCELLED)\s*$/im.test(body);
   const supersededBy=/^\s*SUPERSEDED_BY\s*=\s*\S+/im.test(body);
   if(state!=='open'||executableFalse||terminalState||supersededBy){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
-    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,executableFalse,terminalState,supersededBy};
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableFalse,terminalState,supersededBy};
     throw error;
   }
   return true;
@@ -747,6 +748,15 @@ export async function assertCanonicalSourceWorkOrderExecutable(objective,{fetchI
   }
   assertSourceWorkOrderExecutable(issue,issueNumber);
   return {checked:true,issueNumber};
+}
+
+export function codingObjectiveSourcePreflightDecision(error){
+  const code=String(error?.code||error?.message||'SOURCE_WORK_ORDER_PREFLIGHT_FAILED');
+  if(code!=='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE')return {action:'defer',code};
+  const state=String(error?.detail?.state||'').toLowerCase();
+  const stateReason=String(error?.detail?.stateReason||'').toLowerCase();
+  if(state==='closed'&&stateReason==='completed')return {action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'};
+  return {action:'block',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'};
 }
 
 async function initDb(){if(!pool)return;await pool.query(`
@@ -777,6 +787,19 @@ export function managerBlockKind(summary=''){
 async function managerTick(){
   const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and (next_attempt_at is null or next_attempt_at<=now()) and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
+  try{
+    await assertCanonicalSourceWorkOrderExecutable(o.objective);
+  }catch(error){
+    const preflight=codingObjectiveSourcePreflightDecision(error);
+    if(preflight.action==='complete'){
+      await pool.query("update tigeriq_coding_objectives set status='completed',summary=$2,next_attempt_at=null,updated_at=now() where id=$1 and status='active'",[o.id,'Source Work Order already closed completed; stale no-job coding objective retired.']);
+    }else if(preflight.action==='block'){
+      await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,next_attempt_at=null,updated_at=now() where id=$1 and status='active'",[o.id,'Source Work Order is no longer executable; stale no-job coding objective blocked.']);
+    }else{
+      await pool.query("update tigeriq_coding_objectives set summary=$2,next_attempt_at=now()+interval '30 seconds',updated_at=now() where id=$1 and status='active'",[o.id,`Source Work Order preflight deferred: ${preflight.code}`]);
+    }
+    return;
+  }
   let manager=pickResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
