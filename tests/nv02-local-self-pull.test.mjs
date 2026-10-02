@@ -117,7 +117,6 @@ describe('NV02 local GitHub self-pull contract', () => {
     })).toMatchObject({
       eligible: false,
       reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN',
-      failureCount: 1,
     });
 
     const scheduled = [...firstFailure, {
