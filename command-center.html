@@ -267,11 +267,13 @@ function displayTitle(value){
   return title||String(value||'Chưa có tên việc');
 }
 function shortNext(row){
-  if(workStatus(row)==='OWNER_GATE')return 'Duyệt bản live';
   const raw=String(row?.nextStep||'').trim();
-  if(!raw)return 'Chưa xác định';
-  if(/#\d+\s*[-=]?>\s*#\d+/.test(raw))return 'Hoàn tất chuỗi phụ thuộc';
-  return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw;
+  if(raw){
+    if(/#\d+\s*[-=]?>\s*#\d+/.test(raw))return 'Hoàn tất chuỗi phụ thuộc';
+    if(workStatus(row)==='OWNER_GATE'&&/(?:anh sơn|owner).*(?:duyệt|review).*(?:live|giao diện)/i.test(raw))return 'Duyệt bản live';
+    return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw;
+  }
+  return workStatus(row)==='OWNER_GATE'?'Duyệt quyết định':'Chưa xác định';
 }
 function normalizeRows(value){
   const fallbackOpen=()=>{
@@ -300,7 +302,8 @@ function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
   const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
+  const visibleActionable=actionable.filter(x=>workPriority(x)!=='P5');
+  $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
   $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
@@ -339,19 +342,20 @@ function renderOwnerSummary(){
     : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
 }
 function renderNowRunning(){
-  const rows=(snapshot?.activeWork||[]).filter(row=>String(row?.runtimeStatus||'').toUpperCase()==='WORKING');
+  const rows=(snapshot?.activeWork||[]).filter(row=>workStatus(row)==='WORKING');
   const el=$('nowRunning');
   if(!rows.length){el.innerHTML='<div class="focus-empty"><b>Việc đang chạy ngay lúc này</b><span>Không có job runtime đang chạy.</span></div>';return}
   const row=rows[0];
-  el.innerHTML='<div class="focus-card"><span class="focus-dot"></span><div><b>Việc đang chạy ngay lúc này</b><div>#'+esc(row.issueNumber||'—')+' · '+esc(row.employeeId||'—')+'</div><small>'+esc(row.currentStep||'Đang xử lý')+'</small></div></div>';
+  el.innerHTML='<div class="focus-card"><span class="focus-dot"></span><div><b>Việc đang chạy ngay lúc này</b><div>#'+esc(row.number||'—')+' · '+esc(row.employeeId||'—')+'</div><small>'+esc(row.currentStep||'Đang xử lý')+'</small></div></div>';
 }
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
   const el=$('apiWorkforce');
   if(!a||!a.issueNumber){el.innerHTML='';return}
+  const healthValue=a.verified===true?esc(a.healthyProviders)+'/'+esc(a.healthyTarget||3):'—';
   el.innerHTML='<div class="api-summary-head"><b>API Workforce</b><span>#'+esc(a.issueNumber)+'</span></div>'
     +'<div class="api-summary-grid">'
-    +'<div><span>Provider khỏe</span><b>'+esc(a.healthyProviders||0)+'/'+esc(a.healthyTarget||3)+'</b></div>'
+    +'<div><span>Provider khỏe</span><b>'+healthValue+'</b></div>'
     +'<div><span>Vòng ổn định</span><b>'+esc(a.stabilityRounds||0)+'/'+esc(a.stabilityRoundsRequired||3)+'</b></div>'
     +'<div><span>Job thật</span><b>'+esc(a.realJobs||0)+'/'+esc(a.realJobsRequired||15)+'</b></div>'
     +'</div>'
@@ -376,7 +380,7 @@ function populateDrawer(row){
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
     :drawerProgressMarkup(row);
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
-  $('drawerNext').textContent=row.nextStep||shortNext(row);
+  $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
   $('drawerWorker').textContent=workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||(row?.technicalComplete?'Đã có bằng chứng canonical':'Chưa có bằng chứng');
@@ -492,9 +496,10 @@ $('drawerAskVy').addEventListener('click',()=>{
   if(!drawerRow)return;
   const prompt='TigerIQ #'+drawerRow.number+' — '+displayTitle(drawerRow.title)+' — kiểm tra trạng thái hiện tại, tóm tắt thật ngắn phần cần anh Sơn duyệt và nêu blocker nếu có.';
   const url='https://chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/project?prompt='+encodeURIComponent(prompt);
-  const opened=window.open(url,'_blank','noopener');
   if(navigator.clipboard?.writeText)navigator.clipboard.writeText(prompt).catch(()=>{});
-  if(!opened)location.href=url;
+  const link=document.createElement('a');
+  link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+  document.body.appendChild(link);link.click();link.remove();
 });
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
