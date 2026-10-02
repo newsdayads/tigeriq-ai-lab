@@ -65,7 +65,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       { id: 4, created_at: '2026-10-02T12:03:00Z', body: '[RETRY_DISPATCHED] CODEOBJ-c prior=CODEOBJ-b attempt=2/2' },
       { id: 5, created_at: '2026-10-02T12:04:00Z', body: '[PROGRESS] CODEOBJ-c is failed. Implementer: NV11; reviewer: pending. reason=CODING_ALL_BATCHES_NOOP' },
     ];
-    const takeover = nv02TakeoverStatus(work, failed);
+    const takeover = nv02TakeoverStatus(work, failed, { nowMs: Date.parse('2026-10-02T12:04:30Z') });
     expect(takeover).toMatchObject({
       eligible: true,
       target: 'CODING_LANE',
@@ -82,7 +82,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       created_at: '2026-10-02T12:05:00Z',
       body: '[RECOVERY_REARMED] CODEOBJ-d source=abcdef prior=CODEOBJ-c reason=CODING_ALL_BATCHES_NOOP',
     }];
-    const activeAgain = nv02TakeoverStatus(work, rearmed);
+    const activeAgain = nv02TakeoverStatus(work, rearmed, { nowMs: Date.parse('2026-10-02T12:06:00Z') });
     expect(activeAgain).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE' });
     expect(selectNv02WorkOrder([work], {
       takeoverStatuses: new Map([[15, activeAgain]]),
@@ -92,7 +92,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       id: 7,
       created_at: '2026-10-02T12:06:00Z',
       body: '[BLOCKED_FINAL] CODEOBJ-z reason=RETRY_BUDGET_EXHAUSTED. CODING_ALL_BATCHES_NOOP',
-    }]);
+    }], { nowMs: Date.parse('2026-10-02T12:06:30Z') });
     expect(terminal).toMatchObject({
       eligible: true,
       reason: 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED',
@@ -103,6 +103,46 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([hard], {
       takeoverStatuses: new Map([[16, terminal]]),
     })).toBeNull();
+  });
+
+  it('keeps a scheduled Coding Lane retry reserved, then falls back when the failed attempt goes stale', () => {
+    const work = issue(17, '[P1] api repair stale', safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nRESOURCE_SCOPE=API_REPAIR_17'));
+    const firstFailure = [{
+      id: 1,
+      created_at: '2026-10-02T12:00:00Z',
+      body: '⚙️ [TIẾN ĐỘ] CODEOBJ-a is failed. Implementer: NV11; reviewer: pending.',
+    }];
+    expect(nv02TakeoverStatus(work, firstFailure, {
+      nowMs: Date.parse('2026-10-02T12:05:00Z'),
+    })).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN',
+      failureCount: 1,
+    });
+
+    const scheduled = [...firstFailure, {
+      id: 2,
+      created_at: '2026-10-02T12:06:00Z',
+      body: '⏳ [LÊN LỊCH THỬ LẠI] prior=CODEOBJ-a attempt=1/2 nextAt=2026-10-02T12:10:00Z reason=CODING_ALL_BATCHES_NOOP',
+    }];
+    expect(nv02TakeoverStatus(work, scheduled, {
+      nowMs: Date.parse('2026-10-02T12:07:00Z'),
+    })).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
+    });
+
+    const stale = nv02TakeoverStatus(work, firstFailure, {
+      nowMs: Date.parse('2026-10-02T12:16:00Z'),
+    });
+    expect(stale).toMatchObject({
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_FAILED_STALE',
+      target: 'CODING_LANE',
+    });
+    expect(selectNv02WorkOrder([work], {
+      takeoverStatuses: new Map([[17, stale]]),
+    })?.result).toMatchObject({ eligible: true, mode: 'STALE_ASSIGNEE_TAKEOVER' });
   });
 
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
