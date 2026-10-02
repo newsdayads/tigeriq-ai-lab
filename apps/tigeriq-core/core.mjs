@@ -585,7 +585,7 @@ async function candidates(capability='general',options={}){
   const rows=q.rows
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))
     .map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
-  return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
 }
 async function claimResource(capability,jobId,excluded=[],options={}){
   const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
@@ -601,7 +601,7 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   let functionalEvidence=initialFunctionalEvidence;
   const projectRows=()=>candidates.map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
   let rows=projectRows();
-  let decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  let decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
   if(!decision.chosen){
     const reprobe=functionalReprobeCandidates(rows,{nowMs:Date.now(),maxProbes:FUNCTIONAL_REPROBE_MAX});
     if(reprobe.length){
@@ -612,7 +612,7 @@ async function claimResource(capability,jobId,excluded=[],options={}){
       }
       functionalEvidence=await routingFunctionalEvidence(pool,candidates.map(x=>x.resource_id));
       rows=projectRows();
-      decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+      decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
       await event('ROUTING_FUNCTIONAL_REPROBE',{jobId,taskKind,profile,capability,maxProbes:FUNCTIONAL_REPROBE_MAX,outcomes,recoveredResourceId:decision.chosen?.resourceId||null});
     }
   }
@@ -1726,7 +1726,7 @@ async function collectSelfAuditSnapshot(store=pool){
       return true;
     }).map(resource=>withFunctionalRoutingEvidence(resource,selfAuditFunctionalEvidence));
     const decision=rankCandidates(candidateResources,{
-      profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now
+      profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now,requireFunctionalEvidence:true
     });
     const eligible=decision.candidates.filter(x=>x.eligible);
     if(!eligible.length)continue;
