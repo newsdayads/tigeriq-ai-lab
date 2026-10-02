@@ -558,6 +558,46 @@ function queueDependencies(issue) {
   return [...new Set((raw.match(/#?\d+/g) || []).map((value) => Number(value.replace('#', ''))).filter(Boolean))].slice(0, 16);
 }
 
+
+const COMPLETION_SCOPE_REF_KEYS = /^(?:PARENT|DEPENDS_ON|CHILD(?:_[A-Z0-9]+)?|FINAL_ACCEPTANCE|BLOCKER|CURRENT_BLOCKER|ACTIVE_CHILD)$/i;
+export function completionScopeReferenceNumbers(body = '') {
+  const refs = new Set();
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/i);
+    if (!match || !COMPLETION_SCOPE_REF_KEYS.test(String(match[1] || ''))) continue;
+    for (const token of String(match[2] || '').matchAll(/#(\d{1,8})(?!\d)/g)) refs.add(Number(token[1]));
+  }
+  return [...refs];
+}
+
+async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, fetchImpl = fetch) {
+  const currentOpen = new Set((Array.isArray(openRows) ? openRows : [])
+    .filter((row) => row?.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5')
+    .map((row) => Number(row.number)).filter(Boolean));
+  const sourceIssues = (Array.isArray(openIssues) ? openIssues : []).filter((issue) => currentOpen.has(Number(issue?.number)));
+  const refs = new Set(sourceIssues.flatMap((issue) => completionScopeReferenceNumbers(issue?.body || '')));
+  for (const number of currentOpen) refs.delete(number);
+  if (refs.size > 100) return { rows: [], complete: false, reason: 'scope_reference_limit', referenced: refs.size };
+  const resolved = await Promise.all([...refs].map(async (number) => {
+    const issue = await githubIssue(owner, repo, number, issueMap, fetchImpl);
+    return { number, issue };
+  }));
+  if (resolved.some(({ issue }) => !issue)) {
+    return { rows: [], complete: false, reason: 'scope_reference_unresolved', referenced: refs.size };
+  }
+  const rows = resolved
+    .map(({ issue }) => parseRecentCompletedIssue(issue))
+    .filter((row) => row && !currentOpen.has(Number(row.number)))
+    .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+  return {
+    rows,
+    complete: true,
+    referenced: refs.size,
+    completedItems: rows.length,
+    scope: 'current_open_plus_structural_references',
+  };
+}
+
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
   const coreSpec = parseExecutableIssue(issue);
@@ -834,7 +874,6 @@ export function classifyOpenIssue(issue) {
   const body = String(issue?.body || '');
   const phase = issueCanonicalState(issue);
   const acceptance = ownerAcceptancePolicy(body);
-  const ownerAcceptancePending = acceptance.required && !acceptance.accepted && ownerAcceptancePhase(phase);
 
   const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
     || bodyFlag(body, 'CANONICAL_POLICY')
@@ -845,15 +884,16 @@ export function classifyOpenIssue(issue) {
     bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
     || bodyFlag(body, 'OWNER_GATE')
     || bodyFlag(body, 'OWNER_HOLD')
+    || (acceptance.required && !acceptance.accepted)
   );
-  const ownerGate = phaseOwnerGate || legacyOwnerGate || ownerAcceptancePending;
+  const ownerGate = phase ? phaseOwnerGate : legacyOwnerGate;
 
   const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
 
   return {
     workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
     ownerGate,
-    ownerApprovalRequired: acceptance.required && !acceptance.accepted,
+    ownerApprovalRequired: ownerGate && acceptance.required && !acceptance.accepted,
     ownerAccepted: acceptance.accepted,
   };
 }
@@ -1350,10 +1390,12 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       done: recentWork.length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
-    const completionProgress = verifiedCompletionProgress(actionable, recentWork, {
-      complete: issuesComplete === true && !projectionStale && recentWorkSnapshot.complete === true && recentWorkSnapshot.stale !== true,
-      completedCount: recentWorkSnapshot.completedCount,
+    const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
+    const completionProgress = verifiedCompletionProgress(actionable, completionScope.rows, {
+      complete: issuesComplete === true && !projectionStale && completionScope.complete === true,
     });
+    completionProgress.scope = completionScope.scope || 'current_open_plus_structural_references';
+    completionProgress.referencedItems = completionScope.referenced || 0;
     const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
     const stabilityBody = String(stabilityIssue?.body || '');
     const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
