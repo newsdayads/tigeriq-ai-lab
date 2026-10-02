@@ -388,6 +388,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("/files?per_page=100");
     expect(core).toContain("[TIGERIQ_INDEPENDENT_REVIEW_V1]");
     expect(core).toContain("REVIEW=(?:PASS|ĐẠT)");
+    expect(core).toContain("TIGERIQ_CORE_UI_TERMINAL_V1");
+    expect(core).toContain("REVIEW_INDEPENDENT=true");
+    expect(core).toContain("TARGET_PR=#${prNumber}");
+    expect(core).toContain("worker&&worker!==ownerProxy");
     expect(core).toContain("owner_proxy_cross_reference");
     expect(core).toContain("files.length>=100");
     expect(core).toContain("repairEvidenceSource=fallback.evidenceSource");
