@@ -87,6 +87,12 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([work], {
       takeoverStatuses: new Map([[15, activeAgain]]),
     })).toBeNull();
+    expect(nv02TakeoverStatus(work, rearmed, {
+      nowMs: Date.parse('2026-10-02T12:30:00Z'),
+    })).toMatchObject({
+      eligible: false,
+      reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
+    });
 
     const terminal = nv02TakeoverStatus(work, [{
       id: 7,
@@ -128,7 +134,14 @@ describe('NV02 local GitHub self-pull contract', () => {
       nowMs: Date.parse('2026-10-02T12:07:00Z'),
     })).toMatchObject({
       eligible: false,
-      reason: 'INDEPENDENT_CODING_LANE_ACTIVE',
+      reason: 'INDEPENDENT_CODING_LANE_RETRY_SCHEDULED',
+    });
+    expect(nv02TakeoverStatus(work, scheduled, {
+      nowMs: Date.parse('2026-10-02T12:26:00Z'),
+    })).toMatchObject({
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_SCHEDULE_MISSED',
+      target: 'CODING_LANE',
     });
 
     const stale = nv02TakeoverStatus(work, firstFailure, {
