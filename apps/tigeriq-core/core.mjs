@@ -8,7 +8,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
-import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, syntheticSelfAuditCanary } from './self-audit.mjs';
+import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -1684,8 +1684,13 @@ async function collectSelfAuditSnapshot(store=pool){
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
   const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const bootstrapState=readSelfAuditJsonState(BOOTSTRAP_WATCHDOG_STATE);
-  const expectedSha=String(process.env.TIGERIQ_EXPECTED_SOURCE_SHA||runtimeSourceState?.gateSha||updaterState?.gateSha||runtimeSourceState?.currentSha||'').trim();
-  const installedSha=String(process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA||updaterState?.installedSha||runtimeSourceState?.currentSha||'').trim();
+  const runtimeIdentity=resolveRuntimeSourceIdentity({
+    explicitExpectedSha:process.env.TIGERIQ_EXPECTED_SOURCE_SHA,
+    explicitInstalledSha:process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA,
+    runtimeSourceState,
+    updaterState,
+  });
+  const {expectedSha,installedSha}=runtimeIdentity;
 
   const functionalFailures=(functionalRows.rows||[])
     .map(row=>`${String(row.contract_id||'UNKNOWN')}:${String(row.signature||'')}`)
@@ -1719,7 +1724,7 @@ async function collectSelfAuditSnapshot(store=pool){
     })),
     reviews,
     dependencies,
-    runtime:{expectedSha,installedSha},
+    runtime:{expectedSha,installedSha,gateSha:runtimeIdentity.gateSha,canonicalSourceSha:runtimeIdentity.canonicalSourceSha},
     service:{healthy:true,functionalFailures},
     watchdog:{
       ...(typeof updaterHealthy==='boolean'?{updaterHealthy}:{}),
