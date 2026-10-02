@@ -52,10 +52,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .apply();
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) {
-            writeProbe(false, 0, 0, 0);
-            return;
-        }
+        if (root == null) return;
+
+        CharSequence rootPackage = root.getPackageName();
+        if (rootPackage == null || !value.equals(rootPackage.toString())) return;
 
         int nodes = 0;
         int editable = 0;
