@@ -12,6 +12,8 @@ describe('Android Worker v0.9 UI/runtime contract', () => {
     expect(manifest).toContain('<package android:name="com.google.android.apps.bard" />');
     expect(manifest).toContain('<package android:name="com.tailscale.ipn" />');
     expect(main).toContain('if (openInstalledPackage("com.openai.chatgpt")) return;');
+    expect(main).not.toContain('Uri.parse("https://chatgpt.com/")');
+    expect(main).not.toContain('Uri.parse("https://gemini.google.com/app")');
   });
 
   it('preserves the last provider snapshot when launcher/recents events arrive', () => {
@@ -19,6 +21,7 @@ describe('Android Worker v0.9 UI/runtime contract', () => {
     expect(probe).toContain('KEY_PROVIDER_EVENT_AT');
     expect(probe).toContain('if (!isPilotProvider(value)) return;');
     expect(probe).not.toContain('if (!isPilotProvider(value)) {\n            writeProbe(false');
+    expect(probe).toContain('if (rootPackage == null || !value.equals(rootPackage.toString())) return;');
   });
 
   it('uses canonical TigerIQ palette and dynamic runtime version', () => {
