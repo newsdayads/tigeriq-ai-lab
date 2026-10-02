@@ -478,16 +478,25 @@ describe('TigerIQ Live Work Order projection', () => {
       'CURRENT_STATE=READY',
       'BLOCKER=WAIT_PROVIDER',
     ].join('\n')), {
-      active: { status: 'WORKING', currentStep: 'Fresh runtime work' },
-      lifecycle: { state: 'READY', blockerCleared: true, step: 'Old clear' },
+      active: { status: 'WORKING', currentStep: 'Fresh runtime work', updatedAt: '2026-10-02T01:40:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Old clear', createdAt: '2026-10-02T01:35:00Z' },
     });
     expect(activeAfterClear).toMatchObject({ status: 'WORKING', blocker: null });
+
+    const newerClear = parseOpenWorkIssue(issue(3218, '[P1] Clear after stale runtime', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=WAIT_PROVIDER',
+    ].join('\n')), {
+      active: { status: 'BLOCKED', currentStep: 'Stale runtime blocker', updatedAt: '2026-10-02T01:30:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Cleared after runtime', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(newerClear).toMatchObject({ status: 'QUEUED', blocker: null });
 
     const reblocked = parseOpenWorkIssue(issue(3217, '[P1] Reblocked after clear', [
       'CURRENT_STATE=BLOCKED',
       'BLOCKER=WAIT_PROVIDER',
-    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }), {
-      lifecycle: { state: 'READY', blockerCleared: true, step: 'Older clear' },
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }], updated_at: '2026-10-02T01:45:00Z' }), {
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Older clear', createdAt: '2026-10-02T01:35:00Z' },
     });
     expect(reblocked).toMatchObject({ status: 'BLOCKED', blocker: 'WAIT_PROVIDER' });
   });
