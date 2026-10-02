@@ -10,11 +10,40 @@ function capability(body){
   const explicit=String(bodyValue(body,'CAPABILITY')||'').trim().toLowerCase();
   if(explicit)return explicit;
   if(isReviewOnlySpec(body))return 'review';
+  if(exactBodyFlag(body,'FINAL_REVIEW_REQUIRED','true')&&exactBodyFlag(body,'NO_CODE_CHANGE','true'))return 'review';
   if(exactBodyFlag(body,'AUTONOMOUS_CODE','true'))return 'coding';
   return 'general';
 }
 
 export function preferredEmployee(body){return employee(bodyValue(body,'PREFERRED_REVIEWER'));}
+
+function reviewSpecialistRoute(body,workerId){
+  const id=employee(workerId);
+  if(!id)return {allowed:false,reason:'REVIEWER_INVALID'};
+  const specialty=String(bodyValue(body,'REVIEW_SPECIALTY')||'').trim().toUpperCase();
+  const ownerReviewer=employee(bodyValue(body,'OWNER_REVIEWER'));
+  const fallbackEmployee=employee(bodyValue(body,'REVIEW_FALLBACK_EMPLOYEE'));
+  const fallbackReason=String(bodyValue(body,'REVIEW_FALLBACK_REASON')||'').trim();
+  if(ownerReviewer===id)return {allowed:true,reason:'OWNER_EXPLICIT_REVIEWER'};
+  if(id==='NV10'&&['API_DOCTOR','SRE'].includes(specialty))return {allowed:true,reason:'NV10_SPECIALIZED_'+specialty};
+  if(id!=='NV10'&&fallbackEmployee===id&&fallbackReason)return {allowed:true,reason:'NV03_UNAVAILABLE_FALLBACK:'+fallbackReason};
+  return {allowed:false,reason:'GENERIC_REVIEW_NV03_PRIMARY'};
+}
+
+function primaryReviewRoute(priority,cap,requestedReviewer=''){
+  return {
+    ...priority,
+    capability:cap,
+    surface:'CORE_UI_REVIEW',
+    assignedExecutor:'',
+    preferredEmployee:'NV03',
+    route:'UI',
+    workerId:'NV03',
+    autonomous:true,
+    requestedReviewer:employee(requestedReviewer)||null,
+    reviewRoutingReason:'NV03_PRIMARY_GENERIC_REVIEW',
+  };
+}
 
 export function classifyWorkOrder(body){
   const text=String(body||'');
@@ -30,7 +59,12 @@ export function classifyWorkOrder(body){
     if(assigned==='NV06')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'OPENCLAW',workerId:assigned,autonomous:true};
     if(assigned==='NV09')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CODING',workerId:assigned,autonomous:true};
     if(UI_ROLE_WORKERS.includes(assigned))return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'UI',workerId:assigned,autonomous:CORE_ROUTED_UI_WORKERS.includes(assigned)};
-    return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:cap==='review'?'CORE_REVIEW':'CORE_REASONING',workerId:assigned,autonomous:true};
+    if(cap==='review'){
+      const specialist=reviewSpecialistRoute(text,assigned);
+      if(!specialist.allowed)return primaryReviewRoute(priority,cap,assigned);
+      return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CORE_REVIEW',workerId:assigned,autonomous:true,reviewRoutingReason:specialist.reason};
+    }
+    return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CORE_REASONING',workerId:assigned,autonomous:true};
   }
   if(cap==='pc_operator')return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'OPENCLAW',workerId:'NV06',autonomous:true};
   if(surface==='CODING'||cap==='coding'||(exactBodyFlag(text,'AUTONOMOUS_CODE','true')&&!exactBodyFlag(text,'NO_CODE_CHANGE','true'))){
@@ -39,9 +73,11 @@ export function classifyWorkOrder(body){
   if(cap==='review'){
     if(preferred){
       if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:CORE_ROUTED_UI_WORKERS.includes(preferred)};
-      return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:preferred,autonomous:true};
+      const specialist=reviewSpecialistRoute(text,preferred);
+      if(specialist.allowed)return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:preferred,autonomous:true,reviewRoutingReason:specialist.reason};
+      return primaryReviewRoute(priority,cap,preferred);
     }
-    return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:'',route:'UI',workerId:'NV03',autonomous:true};
+    return primaryReviewRoute(priority,cap);
   }
   if(cap==='research'||cap==='deep_research'||surface==='RESEARCH'){
     if(preferred){
