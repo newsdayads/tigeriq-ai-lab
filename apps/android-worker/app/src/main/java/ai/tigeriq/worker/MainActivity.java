@@ -73,7 +73,6 @@ public final class MainActivity extends Activity {
         requestNotificationPermissionIfNeeded();
         startWorkerService();
         refreshStatus();
-        syncRuntime(null, false);
     }
 
     @Override
