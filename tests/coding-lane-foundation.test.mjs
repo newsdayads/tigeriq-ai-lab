@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -573,6 +573,34 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(issues.includes('CI Verify: failure (completed)'));
   });
 });
+test('manager preflight retires stale terminal source objectives before AI scheduling',()=>{
+  let completedError=null;
+  try{assertSourceWorkOrderExecutable({number:2796,state:'closed',state_reason:'completed',body:'TIGERIQ_EXECUTABLE=true'},2796)}
+  catch(error){completedError=error}
+  assert.ok(completedError);
+  assert.strictEqual(completedError.detail.stateReason,'completed');
+  assert.deepStrictEqual(codingObjectiveSourcePreflightDecision(completedError),{action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'});
+
+  let cancelledError=null;
+  try{assertSourceWorkOrderExecutable({number:2800,state:'closed',state_reason:'not_planned',body:'TIGERIQ_EXECUTABLE=true'},2800)}
+  catch(error){cancelledError=error}
+  assert.deepStrictEqual(codingObjectiveSourcePreflightDecision(cancelledError),{action:'block',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'});
+
+  assert.deepStrictEqual(
+    codingObjectiveSourcePreflightDecision(Object.assign(new Error('SOURCE_WORK_ORDER_LOOKUP_FAILED'),{code:'SOURCE_WORK_ORDER_LOOKUP_FAILED'})),
+    {action:'defer',code:'SOURCE_WORK_ORDER_LOOKUP_FAILED'},
+  );
+
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const selectAt=src.indexOf("const o=q.rows[0];if(!o)return;");
+  const preflightAt=src.indexOf('await assertCanonicalSourceWorkOrderExecutable(o.objective);',selectAt);
+  const managerAt=src.indexOf('let manager=pickResource();if(!manager)return',selectAt);
+  assert.ok(selectAt>=0&&preflightAt>selectAt&&managerAt>preflightAt);
+  assert.ok(src.includes("status='completed',summary=$2,next_attempt_at=null"));
+  assert.ok(src.includes("status='blocked',summary=$2,next_attempt_at=null"));
+  assert.ok(src.includes("next_attempt_at=now()+interval '30 seconds'"));
+});
+
 test('in-process stale-running watchdog is bounded and fail-closed',async t=>{
   const stale={id:'CODE-stale',status:'running',started_at:'2026-09-27T00:00:00.000Z',branch:null,pr_number:null,stale_recovery_count:0};
   const now=Date.parse('2026-09-27T00:20:00.000Z');
