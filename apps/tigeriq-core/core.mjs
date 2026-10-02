@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -191,8 +191,9 @@ async function invokeLocalManager(prompt) {
 }
 
 async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, timeoutMs = 90000, resource = null) {
-  const requestBody={ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false };
-  const responseFormat=managerResponseFormatForHost(new URL(endpoint).hostname,prompt);
+  const host=new URL(endpoint).hostname;
+  const requestBody={ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...managerProviderBodyForHost(host,prompt) };
+  const responseFormat=managerResponseFormatForHost(host,prompt);
   if(responseFormat)requestBody.response_format=responseFormat;
   const body = await fetchJson(endpoint, {
     method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
