@@ -16,7 +16,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -536,7 +536,7 @@ async function candidates(capability='general',options={}){
   const taskKind=String(options.taskKind||'general');
   const stats=await taskPerformance(taskKind);
   const rows=q.rows
-    .filter(x=>String(x.employee_id||'').toUpperCase()!==OLLAMA_EMPLOYEE_ID||String(capability||'').toLowerCase()===API_DOCTOR_CAPABILITY||String(x.health_state||'').toUpperCase()==='ONLINE')
+    .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))
     .map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
   return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
 }
@@ -546,7 +546,9 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const stats=await taskPerformance(taskKind);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
   const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
-  let candidates=q.rows.filter(x=>!excluded.includes(x.resource_id));
+  let candidates=q.rows
+    .filter(x=>!excluded.includes(x.resource_id))
+    .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}));
   if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
   const rows=candidates.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
@@ -556,7 +558,8 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   try{
     await client.query('begin');
     const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);
-    const r=locked.rows[0];if(!r){await client.query('commit');return null;}
+    const r=locked.rows[0];
+    if(!r||!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability})){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
     await client.query('commit');
     const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:decision.chosen};
