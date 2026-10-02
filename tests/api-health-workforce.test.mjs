@@ -33,10 +33,23 @@ describe('#1600 full API Health workforce roster',()=>{
   it('keeps NV00 in the backend roster but hides it from API Health cards and sorts operational groups deterministically',()=>{
     const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
     expect(dashboard).toContain("function visibleResource(x){return String(x?.employee_id||'').toUpperCase()!=='NV00'}");
-    expect(dashboard).toContain("USABLE_STATES=new Set(['BUSY','READY','IDLE','ONLINE','ON_DEMAND'])");
-    expect(dashboard).toContain("DEGRADED_STATES=new Set(['RATE_LIMITED','WAITING'])");
-    expect(dashboard).toContain('resourcePriorityGroup(a)-resourcePriorityGroup(b)||operationalRank(a)-operationalRank(b)');
+    expect(dashboard).toContain("if(s==='BUSY')return{group:'working',label:'ĐANG LÀM',rank:0}");
+    expect(dashboard).toContain("group:'attention',label:'CẦN XỬ LÝ',rank:1");
+    expect(dashboard).toContain("group:'ready',label:'SẴN SÀNG',rank:2");
+    expect(dashboard).toContain("group:'waiting',label:'ĐANG CHỜ',rank:3");
+    expect(dashboard).toContain('simpleState(a).rank-simpleState(b).rank||operationalRank(a)-operationalRank(b)');
+    expect(dashboard).toContain("String(job?.status||'').toLowerCase()!=='running'");
+    expect(dashboard).toContain("status:'BUSY',current_job_id:job.id");
+    expect(dashboard).toContain('applyCoreJobs(applyLiveWorkforce(');
     expect(dashboard).toContain('let list=allResources.filter(visibleResource)');
+    expect(dashboard).toContain('grid-template-columns:repeat(4,minmax(0,1fr))!important');
+    expect(dashboard).toContain('@media(max-width:720px){.workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}}');
+    expect(dashboard).toContain('employee-avatar');
+    expect(dashboard).toContain("NV02:'💬'");
+    expect(dashboard).toContain("NV03:'🔎'");
+    expect(dashboard).toContain('employee-state');
+    expect(dashboard).toContain('employee-task');
+    expect(dashboard).not.toContain("workers.style.setProperty('--worker-cols'");
     expect(dashboard).toContain("blocker=String(x.blocker||x.waitReason||'').trim()");
     expect(dashboard).toContain('Blocker:</b> ${esc(blocker)}');
   });
