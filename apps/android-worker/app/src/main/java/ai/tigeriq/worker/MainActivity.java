@@ -163,7 +163,11 @@ public final class MainActivity extends Activity {
 
         Button guide = secondaryButton("Xem đúng thứ tự cài đặt");
         guide.setOnClickListener(v -> showConnectionGuide());
-        root.addView(guide, marginParams(0, 0, 0, dp(20)));
+        root.addView(guide, marginParams(0, 0, 0, dp(8)));
+
+        Button update = secondaryButton("Kiểm tra cập nhật");
+        update.setOnClickListener(v -> checkForUpdate((Button) v));
+        root.addView(update, marginParams(0, 0, 0, dp(20)));
 
         root.addView(sectionTitle("Kiểm tra AI trên máy"));
         LinearLayout tools = card();
@@ -250,6 +254,44 @@ public final class MainActivity extends Activity {
 
         parent.addView(row, marginParams(0, 0, 0, dp(16)));
         return stateView;
+    }
+
+    private void checkForUpdate(Button button) {
+        button.setEnabled(false);
+        button.setText("Đang kiểm tra…");
+        networkExecutor.execute(() -> {
+            try {
+                JSONObject manifest = new ControllerClient(new SecureCredentialStore(this)).updateManifest();
+                boolean available = manifest.optBoolean("available", false);
+                int versionCode = manifest.optInt("versionCode", 0);
+                String versionName = manifest.optString("versionName", "");
+                String driveUrl = manifest.optString("driveUrl", "");
+                boolean newer = available && versionCode > BuildConfig.VERSION_CODE;
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("Kiểm tra cập nhật");
+                    if (!newer) {
+                        Toast.makeText(this, "Đang dùng bản mới nhất.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    new AlertDialog.Builder(this)
+                        .setTitle("Có bản " + versionName)
+                        .setMessage("Bản mới đã được TigerIQ Core xác minh. Mở file phát hành để cập nhật đè lên bản hiện tại.")
+                        .setNegativeButton("Để sau", null)
+                        .setPositiveButton("Mở bản cập nhật", (dialog, which) -> {
+                            if (!driveUrl.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(driveUrl)));
+                            else Toast.makeText(this, "Core chưa có link phát hành.", Toast.LENGTH_LONG).show();
+                        })
+                        .show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("Kiểm tra cập nhật");
+                    Toast.makeText(this, "Chỉ kiểm tra cập nhật sau khi đã ghép TigerIQ Core.", Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void probeController(Button button) {
