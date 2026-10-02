@@ -194,6 +194,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain('apiDoctorLocalRefreshHealth({');
     expect(core).toContain("type in ('RESOURCE_SUCCESS','RESOURCE_FAILURE')");
     expect(core).toContain("coalesce(task_kind,'')<>'probe'");
+    expect(core).toContain("String(capability||'').toLowerCase()===API_DOCTOR_CAPABILITY");
+    expect(core).toContain("String(x.health_state||'').toUpperCase()==='ONLINE'");
     expect(core).toContain('async function runApiDoctorScan()');
     expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
     expect(core).toContain("think:false");
