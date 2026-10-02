@@ -133,6 +133,11 @@ function selfReviewConflict(meta, capability) {
   return reviewWork && implementer === 'NV02';
 }
 
+function independentCodingLaneReservation(meta) {
+  const ownerProxy = String(meta.OWNER_PROXY || '').trim().toUpperCase();
+  return ownerProxy === 'NV02' || meta.INDEPENDENT_REPAIR_REQUIRED === 'true';
+}
+
 function hardGate(meta) {
   const values = Object.entries(meta)
     .filter(([key]) => !['CAPABILITY', 'MUTATION_OWNER', 'TARGET_EMPLOYEE', 'ASSIGNED_EXECUTOR', 'EXECUTOR', 'PRIMARY_EMPLOYEE', 'PREFERRED_REVIEWER'].includes(key))
@@ -272,6 +277,7 @@ export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependenc
   if (!dependenciesReady(meta, dependencies)) return { eligible: false, reason: 'DEPENDENCY_NOT_READY' };
   const capability = String(meta.CAPABILITY || 'general').toLowerCase();
   const primary = NV02_PRIMARY_CAPABILITIES.has(capability);
+  if (independentCodingLaneReservation(meta)) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
   const target = explicitTarget(meta);
   const takeover = takeoverStatuses instanceof Map ? takeoverStatuses.get(Number(issue?.number)) : takeoverStatuses?.[Number(issue?.number)];
   if (target && !/^NV02$/i.test(target) && !takeover?.eligible) return { eligible: false, reason: takeover?.reason || 'TARGET_EMPLOYEE_LOCKED' };

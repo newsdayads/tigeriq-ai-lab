@@ -120,9 +120,162 @@ export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass)
   return handoffClass===current;
 }
 
+export function apiDoctorRepairLifecycleRelevant({
+  hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',
+}={}){
+  if(!hasHandoff)return false;
+  const current=String(currentFailureClass||'').trim().toLowerCase();
+  const action=String(currentAction||'').trim().toLowerCase();
+  if(current==='rate_limit'&&['wait','probe'].includes(action))return false;
+  if(Number(repairIssueNumber||0)>0)return true;
+  return String(handoffFailureClass||'').trim().toLowerCase()==='source_contract'&&['source_contract','unknown',''].includes(current);
+}
+
 export function apiDoctorRepairSignature({employeeId,provider,failureClass,message}={}){
   const normalized=safeText(message,180).toLowerCase().replace(/\d+/g,'#').replace(/\s+/g,' ');
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
+}
+
+export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null}={}){
+  const number=Number(issueNumber||0);
+  if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
+  const normalizedState=String(state||'unknown').toLowerCase();
+  const normalizedReason=String(stateReason||'').toLowerCase();
+  if(normalizedState==='open')return {action:'wait_repair',reason:'canonical_repair_work_order_open'};
+  if(normalizedState==='closed'&&normalizedReason==='completed')return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
+  if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
+  return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
+}
+
+export function apiDoctorRepairDeploymentGate({
+  issueNumber=0,state='unknown',stateReason=null,issueClosedAt=null,
+  runtimeCurrentSha='',runtimeInstalledSha='',runtimeUpdatedAt=null,
+  updaterResult='',updaterCandidateSha='',
+}={}){
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason});
+  if(issueGate.action!=='validate_repair')return issueGate;
+  const closedMs=Date.parse(String(issueClosedAt||''));
+  const runtimeMs=Date.parse(String(runtimeUpdatedAt||''));
+  if(!Number.isFinite(closedMs)||!Number.isFinite(runtimeMs)||runtimeMs<closedMs){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'};
+  }
+  const current=String(runtimeCurrentSha||'').trim().toLowerCase();
+  const installed=String(runtimeInstalledSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(current)||!/^[0-9a-f]{40}$/.test(installed)||current!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
+  }
+  const result=String(updaterResult||'').trim().toUpperCase();
+  if(!['UPDATED','NO_CHANGE'].includes(result)){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'};
+  }
+  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
+  if(candidate&&candidate!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'};
+  }
+  return {action:'validate_repair',reason:'canonical_repair_runtime_applied'};
+}
+
+export function buildApiDoctorRepairWorkOrder({
+  employeeId='',
+  provider='',
+  resourceId='',
+  failureClass='source_contract',
+  message='',
+  signature='',
+}={}){
+  const employee=safeText(employeeId,32).toUpperCase();
+  const providerName=safeText(provider,64).toLowerCase();
+  const cls=safeText(failureClass,64).toLowerCase();
+  if(!/^NV\d{2}$/.test(employee)||!providerName||cls!=='source_contract')throw new Error('API_DOCTOR_REPAIR_WORK_ORDER_INVALID');
+  const repairSignature=signature||apiDoctorRepairSignature({employeeId:employee,provider:providerName,failureClass:cls,message});
+  const scopeToken=`${employee}_${providerName}`.toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64);
+  const resourceScope=`API_DOCTOR_SOURCE_REPAIR_${scopeToken}`;
+  const evidence=safeText(message||cls,300);
+  const title=`[P1][API DOCTOR][SOURCE REPAIR][${employee}] ${providerName} source-contract repair`;
+  const body=[
+    'TIGERIQ_JOB_V1',
+    'SOURCE=API_DOCTOR',
+    'PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny',
+    'RELATED=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
+    'EXECUTION_POLICY=#1456',
+    'ACTIVE_EXECUTION=true',
+    'CANONICAL_SPEC=#1255',
+    'CURRENT_STATE=READY_AUTO_EXECUTION',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'OWNER_POLICY=AUTO',
+    'PRIORITY=P1',
+    'CAPABILITY=coding',
+    'EXECUTION_SURFACE=CODING',
+    'AUTONOMOUS_CODE=true',
+    `RESOURCE_SCOPE=${resourceScope}`,
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'OWNER_PROXY=NV02',
+    'AUTO_CONTROL_REPAIR=true',
+    'INDEPENDENT_REPAIR_REQUIRED=true',
+    'ZERO_COST=true',
+    'NO_DIRECT_MAIN=true',
+    'NO_PC01_SHELL=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true',
+    'NO_BROWSER_AUTH=true',
+    'APP_CHROME_MUTATION=FORBIDDEN',
+    'ONE_RESOURCE_SCOPE_ONE_WRITER=true',
+    'ALLOW_PATH_PREFIX=apps/tigeriq-core/core.mjs,tests/api-doctor-supervisor.test.mjs',
+    `API_DOCTOR_REPAIR_SIGNATURE=${repairSignature}`,
+    `API_DOCTOR_RESOURCE_ID=${safeText(resourceId,220)}`,
+    `API_DOCTOR_EMPLOYEE_ID=${employee}`,
+    `API_DOCTOR_PROVIDER=${providerName}`,
+    `API_DOCTOR_FAILURE_CLASS=${cls}`,
+    '',
+    '## GOAL',
+    `Repair only the ${employee}/${providerName} provider source-contract defect evidenced by: ${evidence}`,
+    '',
+    '## CURRENT_STATE',
+    'READY_AUTO_EXECUTION',
+    '',
+    '## IN_SCOPE',
+    '- Provider adapter/response handling in apps/tigeriq-core/core.mjs.',
+    '- Focused regression coverage in tests/api-doctor-supervisor.test.mjs.',
+    '',
+    '## OUT_OF_SCOPE',
+    '- Credentials, billing, account/security settings, Production, App Chrome, destructive actions.',
+    '- Any path outside ALLOW_PATH_PREFIX.',
+    '',
+    '## NON_NEGOTIABLE_RULES',
+    '- Keep P1 lifecycle; never elevate repair to P0.',
+    '- Branch -> PR -> exact-head checks -> independent review -> merge -> runtime/live verify.',
+    '- RECOVERED requires a later normal Core work success; probe/validation alone is insufficient.',
+    '',
+    '## DEPENDENCIES',
+    '- Existing API Doctor handoff evidence for this signature.',
+    '',
+    '## EXECUTION_ORDER',
+    '1. Reproduce the source-contract failure with focused evidence.',
+    '2. Implement the smallest safe source fix.',
+    '3. Run focused regression and required exact-head gates.',
+    '4. Obtain independent review and runtime/live validation.',
+    '',
+    '## ACCEPTANCE',
+    '- Protected Core mutation is admitted only through delegated owner-proxy repair intent.',
+    '- Real normal Core work succeeds after the repair before RECOVERED is emitted.',
+    '- No duplicate repair Work Order exists for the same open signature.',
+    '',
+    '## RECOVERY_RULE',
+    'Fail closed; keep the provider quarantined/waiting when evidence is insufficient.',
+    '',
+    '## STOP_CONDITIONS',
+    'DONE_WITH_EVIDENCE | REAL_BLOCKER | EXTERNAL_WAIT',
+    '',
+    '## EVIDENCE_FORMAT',
+    'PR/head/checks/review/merge/runtime SHA + normal-work job/resource success evidence.',
+    '',
+    'DONE=false',
+  ].join('\n');
+  return {title,body,priority:'P1',resourceScope,signature:repairSignature};
 }
 
 export function buildApiDoctorPrompt(items=[]){

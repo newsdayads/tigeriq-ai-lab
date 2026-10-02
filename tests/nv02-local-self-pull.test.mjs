@@ -11,6 +11,7 @@ import {
   resourceOwnershipConflict,
   selectNv02WorkOrder,
   nv02LeaseAuthority,
+  nv02EligibleWorkOrder,
   nv02AuthorityRevision,
   nv02AuthoritativeResumeGuard,
   nv02TakeoverStatus,
@@ -48,6 +49,9 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([base(7, 'CAPABILITY=analysis\nTARGET_EMPLOYEE=CODING')])).toBeNull();
     expect(selectNv02WorkOrder([base(8, 'CAPABILITY=review\nREVIEW_INDEPENDENT=true\nIMPLEMENTER=NV02')])).toBeNull();
     expect(selectNv02WorkOrder([base(9, 'CAPABILITY=coding\nMUTATION_OWNER=CODING')])).not.toBeNull();
+    expect(nv02EligibleWorkOrder(base(12, 'CAPABILITY=coding\nOWNER_PROXY=NV02'))).toMatchObject({eligible:false,reason:'INDEPENDENT_CODING_LANE_RESERVED'});
+    expect(nv02EligibleWorkOrder(base(13, 'CAPABILITY=coding\nINDEPENDENT_REPAIR_REQUIRED=true'))).toMatchObject({eligible:false,reason:'INDEPENDENT_CODING_LANE_RESERVED'});
+    expect(selectNv02WorkOrder([base(14, 'CAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true')])).toBeNull();
     expect(selectNv02WorkOrder([base(10, 'CAPABILITY=security')])).toBeNull();
     expect(selectNv02WorkOrder([base(11, 'TARGET_EMPLOYEE=NV02\nASSIGNED_EXECUTOR=NV09')])).toBeNull();
   });
