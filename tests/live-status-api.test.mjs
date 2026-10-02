@@ -355,6 +355,13 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(parseOpenWorkIssue(issue(3203, '[P0][APP-CHROME][EVIDENCE] Acceptance', 'CURRENT_STATE=READY_LIVE_ACCEPTANCE\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
       status: 'VERIFY', ownerGate: false, workKind: 'WORK',
     });
+    expect(parseOpenWorkIssue(issue(3207, '[P1] Live acceptance pending before Owner gate', [
+      'CURRENT_STATE=READY_LIVE_ACCEPTANCE',
+      'OWNER_ACCEPTANCE_REQUIRED=true',
+      'TIGERIQ_EXECUTABLE=false',
+    ].join('\n')))).toMatchObject({
+      status: 'VERIFY', ownerGate: false, workKind: 'WORK',
+    });
     expect(parseOpenWorkIssue(issue(3204, '[P0][APP-CHROME] Working', 'STATE=WORKING\nTIGERIQ_EXECUTABLE=false'))).toMatchObject({
       status: 'UNKNOWN', ownerGate: false, workKind: 'WORK',
     });
@@ -827,8 +834,8 @@ describe('TigerIQ Live Work Order projection', () => {
       remainingItems: 2,
     });
     expect(verifiedCompletionProgress(
-      [{ workKind: 'WORK', status: 'WORKING' }],
-      [{ workKind: 'WORK', status: 'DONE' }, { workKind: 'SYSTEM', status: 'DONE' }],
+      [{ workKind: 'WORK', priority: 'P1', status: 'WORKING' }, { workKind: 'WORK', priority: 'P5', status: 'WAITING' }],
+      [{ workKind: 'WORK', priority: 'P1', status: 'DONE' }, { workKind: 'SYSTEM', priority: 'P1', status: 'DONE' }, { workKind: 'WORK', priority: 'P5', status: 'DONE' }],
       { complete: true },
     )).toMatchObject({ percent: 50, scopeItems: 2, completedItems: 1 });
     expect(verifiedCompletionProgress(
