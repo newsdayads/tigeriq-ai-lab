@@ -40,6 +40,7 @@ describe('Continuous Capability Verification trigger policy', () => {
   it('D5 dedupes a pending or already-run trigger key', () => {
     const trigger={trigger:true,key:'runtime:sha-b'};
     expect(shouldQueueContinuousVerify(trigger,{pendingKey:'runtime:sha-b'})).toBe(false);
+    expect(shouldQueueContinuousVerify(trigger,{runningKey:'runtime:sha-b'})).toBe(false);
     expect(shouldQueueContinuousVerify(trigger,{lastRunKey:'runtime:sha-b'})).toBe(false);
     expect(shouldQueueContinuousVerify(trigger,{lastRunKey:'runtime:sha-a'})).toBe(true);
   });
