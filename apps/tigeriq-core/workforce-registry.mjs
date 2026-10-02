@@ -86,12 +86,22 @@ export async function fetchRegistryIssue({
   url=REGISTRY_URL,
   signal=AbortSignal.timeout(3500),
 }={}){
-  const safeToken=tokenAllowedForRegistryUrl(url)?token:'';
-  return githubRequestJson(fetchImpl,url,safeToken,{
-    freshMs:Math.max(0,Number(freshMs)||0),
+  if(tokenAllowedForRegistryUrl(url)){
+    return githubRequestJson(fetchImpl,url,token,{
+      freshMs:Math.max(0,Number(freshMs)||0),
+      signal,
+      allowStaleOnRateLimit:false,
+    });
+  }
+  const response=await fetchImpl(url,{
+    headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-Web-Control/1.0'},
     signal,
-    allowStaleOnRateLimit:false,
+    cache:'no-store',
   });
+  const raw=await response.text();
+  let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
+  if(!response.ok)throw new Error(`REGISTRY_HTTP_${response.status}:${String(body?.message||raw||'').slice(0,300)}`);
+  return body;
 }
 
 export async function refreshRegistryWorkforce(force=false,{
