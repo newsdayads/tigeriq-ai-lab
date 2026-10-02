@@ -67,6 +67,14 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')))).toBe(null);
   });
 
+  it('projects canonical terminal-blocked labels as blocked even when the issue is not queue-admitted', () => {
+    const row = parseOpenWorkIssue(issue(2006, '[P1] Label blocked only', [
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=READY',
+    ].join('\n'), { labels: [{ name: 'tigeriq:terminal-blocked' }] }));
+    expect(row).toMatchObject({ status: 'BLOCKED' });
+  });
+
   it('keeps explicit dependency-wait state out of QUEUED', () => {
     const row = parseQueueIssue(issue(2005, '[P0] Chờ dependency', [
       ...coreQueueFlags(),
