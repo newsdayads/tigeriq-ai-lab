@@ -312,6 +312,40 @@ test('generic stale terminal label is not cleared for explicit non-executable co
   assert.strictEqual(pool.jobs.length,0);
 });
 
+test('outcome sync retires a stale active objective when current source becomes explicitly non-executable without mutating GitHub source',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({
+    id:'OBJ-GH-2811-R-old',
+    status:'active',
+    summary:'stale active coordination objective',
+    metadata:{source:'github',issueNumber:2811,sourceRevision:'oldrevision',resourceScope:'API_HEALTH_PARENT',githubClaimReported:true},
+  });
+  pool.jobs.push({id:'JOB-2811-Q',objective_id:'OBJ-GH-2811-R-old',status:'queued'});
+  pool.jobs.push({id:'JOB-2811-W',objective_id:'OBJ-GH-2811-R-old',status:'waiting_resource'});
+  const issue={
+    number:2811,state:'open',state_reason:null,title:'[P1][API HEALTH][UI] parent owner gate',
+    body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','API_HEALTH_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
+    labels:[],comments:0,updated_at:'2026-10-02T05:26:46Z',html_url:'https://example/2811',
+  };
+  let mutations=0;
+  const fetchImpl=async(url,init={})=>{
+    const method=String(init.method||'GET').toUpperCase();
+    if(method!=='GET')mutations++;
+    if(method==='GET'&&/\/issues\/2811(?:$|\?)/.test(String(url)))return response(issue);
+    return response([]);
+  };
+  const out=await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[issue],issueNumbers:[2811]});
+  assert.deepStrictEqual(out,{claims:0,results:0});
+  assert.strictEqual(pool.objectives[0].status,'blocked');
+  assert.strictEqual(pool.objectives[0].metadata.githubSourceExecutionExcluded,true);
+  assert.strictEqual(pool.objectives[0].metadata.githubSourceExecutionExclusionReason,'EXPLICIT_EXECUTION_DISABLED');
+  assert.strictEqual(pool.objectives[0].metadata.githubResultReported,true);
+  assert.strictEqual(pool.objectives[0].metadata.githubTerminalLabelSynced,true);
+  assert.strictEqual(pool.jobs[0].status,'failed');
+  assert.strictEqual(pool.jobs[1].status,'failed');
+  assert.strictEqual(mutations,0,'retiring stale Core work must not label/comment/close the still-open Owner-gated issue');
+});
+
 test('safe P1-P5 same RESOURCE_SCOPE is blocked by an active writer',async()=>{
   const pool=coreBacklogPool();
   pool.objectives.push({id:'OBJ-OTHER',status:'active',metadata:{source:'github',issueNumber:2400,resourceScope:'SAFE_AUTO_TEST'}});

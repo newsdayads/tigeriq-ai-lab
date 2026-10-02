@@ -1042,6 +1042,23 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     const sourceBody=String(sourceIssueForGate?.body||'');
     const currentSourceRevision=githubIssueSourceRevision(sourceIssueForGate||{});
+    const sourceExecutionExclusion=explicitAutoExecutionExclusion(sourceBody);
+    if(row.status==='active'&&sourceExecutionExclusion){
+      const summary=`source is non-executable (${sourceExecutionExclusion}); retired stale active objective without mutating GitHub source`;
+      const exclusionPatch={
+        sourceRevision:currentSourceRevision||String(row.metadata?.sourceRevision||''),
+        githubSourceExecutionExcluded:true,
+        githubSourceExecutionExclusionReason:sourceExecutionExclusion,
+        githubResultReported:true,
+        githubTerminalLabelSynced:true,
+      };
+      await pool.query("update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb,updated_at=now() where id=$1",[row.id,'blocked',summary,JSON.stringify(exclusionPatch)]);
+      row.status='blocked';
+      row.summary=summary;
+      row.metadata={...row.metadata,...exclusionPatch};
+      await cleanupTerminalObjectiveJobs({pool});
+      continue;
+    }
     const sourceLiveRequired=hasExactFlag(sourceBody,'LIVE_ACCEPTANCE_REQUIRED');
     const sourceFinalReviewRequired=hasExactFlag(sourceBody,'FINAL_REVIEW_REQUIRED')||hasExactFlag(sourceBody,'FINAL_LIVE_REVIEW_REQUIRED');
     let dependencyGate;
