@@ -311,3 +311,40 @@ test('concurrent terminal replay creates one evidence comment and one terminal t
   assert.equal(a.evidenceRef,b.evidenceRef);
   assert.equal(b.alreadyTerminal,true);
 });
+
+
+test('active Core UI assignment remains projectable when GitHub list/read is temporarily unavailable',async()=>{
+  const pool=fakePool();
+  const review=issue(28150,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=REVIEW_OUTAGE_KEEP'),'Outage keep assignment');
+  let githubAvailable=true;
+  const fetchImpl=async url=>{
+    if(!githubAvailable)return response({message:'rate limited'},403);
+    if(url.includes('/issues?'))return response([review]);
+    if(url.endsWith('/issues/28150'))return response(review);
+    return response([]);
+  };
+  let snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(snap.nextJobs[0].jobId,'GH-28150');
+  assert.equal(snap.nextJobs[0].workerId,'NV03');
+
+  githubAvailable=false;
+  snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.objectives.length,1);
+  assert.equal(snap.assignmentState,'READY_ASSIGNED');
+  assert.equal(snap.nextJobs[0].jobId,'GH-28150');
+  assert.equal(snap.nextJobs[0].workerId,'NV03');
+  assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+});
+
+test('Core UI fails closed on GitHub source outage when there is no active DB assignment',async()=>{
+  const pool=fakePool();
+  const fetchImpl=async()=>response({message:'rate limited'},403);
+  await assert.rejects(
+    ()=>buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'}),
+    /GITHUB_HTTP_403/,
+  );
+  assert.equal(pool.jobs.length,0);
+  assert.equal(pool.objectives.length,0);
+});
