@@ -180,7 +180,7 @@ public final class MainActivity extends Activity {
         aiCard.addView(help);
 
         LinearLayout aiActions = horizontal();
-        Button openAi = primaryButton("Mở " + profileStore.load().provider);
+        Button openAi = primaryButton("Mở AI đã chọn");
         openAi.setOnClickListener(v -> openSelectedProvider());
         aiActions.addView(openAi, weightedParams(1f, 0, dp(10), dp(4), 0));
         Button refreshAi = secondaryButton("Đọc kết quả");
@@ -385,7 +385,7 @@ public final class MainActivity extends Activity {
             } catch (Exception error) {
                 errorText = safeError(error);
                 if (!coreReachable) writeNetworkProbe(false);
-                if (new SecureCredentialStore(this).load() != null) {
+                if (hasCredential()) {
                     writeRuntimeStatus("OFFLINE", existingHeartbeat(), errorText);
                 }
             }
@@ -604,6 +604,14 @@ public final class MainActivity extends Activity {
     private long existingHeartbeat() {
         return getSharedPreferences(ForegroundWorkerService.PREFS, Context.MODE_PRIVATE)
             .getLong(ForegroundWorkerService.KEY_LAST_HEARTBEAT_AT, 0L);
+    }
+
+    private boolean hasCredential() {
+        try {
+            return new SecureCredentialStore(this).load() != null;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean accessibilityEnabled() {
