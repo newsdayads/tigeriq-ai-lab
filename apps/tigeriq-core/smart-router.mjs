@@ -2,8 +2,40 @@ export const ROUTING_PROFILES = Object.freeze(['AUTO','CODING','FAST','CHEAP','L
 export const ROUTING_PROFILE_LABELS = Object.freeze({
   AUTO:'Tự động',CODING:'Lập trình',FAST:'Nhanh',CHEAP:'Tiết kiệm',LOCAL:'Cục bộ',RESEARCH:'Nghiên cứu',REVIEW:'Kiểm tra độc lập',
 });
-const TERMINAL_HEALTH = new Set(['OFFLINE','DISABLED']);
+const ROUTABLE_HEALTH = new Set(['READY','ONLINE']);
+const ROUTABLE_CREDENTIAL = new Set(['LOCAL','READY']);
 const FREE_TIERS = new Set(['FREE','LOCAL','ZERO']);
+export const FUNCTIONAL_SUCCESS_TTL_MS = 15*60*1000;
+export const FUNCTIONAL_FAILURE_STREAK_LIMIT = 3;
+
+function timestampMs(value) {
+  const parsed=value?Date.parse(String(value)):NaN;
+  return Number.isFinite(parsed)?parsed:NaN;
+}
+
+export function functionalRoutingReadiness(resource,{nowMs=Date.now(),successTtlMs=FUNCTIONAL_SUCCESS_TTL_MS,failureStreakLimit=FUNCTIONAL_FAILURE_STREAK_LIMIT,requireEvidence=false}={}) {
+  const health=String(resource?.health_state??resource?.healthState??'').toUpperCase();
+  if(!ROUTABLE_HEALTH.has(health))return {ready:false,state:'BLOCKED',reason:'health'};
+  const credential=String(resource?.credential_state??resource?.credentialState??'').toUpperCase();
+  if(credential&&!ROUTABLE_CREDENTIAL.has(credential))return {ready:false,state:'BLOCKED',reason:'credential'};
+  const evidence=resource?.functionalEvidence??resource?.functional_evidence??null;
+  if(!evidence)return requireEvidence
+    ? {ready:false,state:'STALE',reason:'functional_success_missing'}
+    : {ready:true,state:'LEGACY',reason:'functional_evidence_unavailable'};
+  const failureStreak=Math.max(0,Number(evidence.failureStreak??evidence.failure_streak??0));
+  const lastSuccessAt=evidence.lastSuccessAt??evidence.last_success_at??null;
+  const lastFailureAt=evidence.lastFailureAt??evidence.last_failure_at??null;
+  if(failureStreak>=Math.max(1,Number(failureStreakLimit)||FUNCTIONAL_FAILURE_STREAK_LIMIT)){
+    return {ready:false,state:'DEGRADED',reason:'functional_failure_streak',failureStreak,lastSuccessAt,lastFailureAt};
+  }
+  const successMs=timestampMs(lastSuccessAt);
+  if(!Number.isFinite(successMs))return {ready:false,state:'STALE',reason:'functional_success_missing',failureStreak,lastSuccessAt,lastFailureAt};
+  const failureMs=timestampMs(lastFailureAt);
+  if(Number.isFinite(failureMs)&&failureMs>successMs)return {ready:false,state:'DEGRADED',reason:'functional_failure_newer',failureStreak,lastSuccessAt,lastFailureAt};
+  const ageMs=Math.max(0,Number(nowMs)-successMs);
+  if(ageMs>Math.max(1000,Number(successTtlMs)||FUNCTIONAL_SUCCESS_TTL_MS))return {ready:false,state:'STALE',reason:'functional_success_stale',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
+  return {ready:true,state:'READY',reason:'functional_success_recent',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
+}
 
 function resourcePart(value, fallback) {
   return String(value||fallback).trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||fallback;
@@ -122,7 +154,8 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   const reasons=[];
   const reviewerExclusions=new Set([reviewerResourceId,...(Array.isArray(reviewerResourceIds)?reviewerResourceIds:[])].filter(Boolean).map(String));
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
-  if(TERMINAL_HEALTH.has(String(resource.health_state??resource.healthState??'').toUpperCase()))return {eligible:false,resourceId,score:Infinity,reasons:['health']};
+  const readiness=functionalRoutingReadiness(resource,{nowMs,requireEvidence:Boolean(resource.functionalEvidence??resource.functional_evidence)});
+  if(!readiness.ready)return {eligible:false,resourceId,score:Infinity,reasons:[readiness.reason]};
   if(cooldownActive(resource,nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['cooldown']};
   if(!quotaUsable(resource.quota_state??resource.quotaState??{},nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['quota']};
   if(!isFree(resource))return {eligible:false,resourceId,score:Infinity,reasons:['paid_fallback_forbidden']};
