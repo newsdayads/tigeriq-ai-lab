@@ -333,6 +333,16 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
+  it('uses Cloudflare JSON Mode for manager calls and serializes structured response objects',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain("function cloudflareRequestBody(prompt='')");
+    expect(core).toContain("isManagerPrompt(prompt)?{type:'json_schema',json_schema:GEMINI_MANAGER_RESPONSE_SCHEMA}:null");
+    expect(core).toContain("body:JSON.stringify(cloudflareRequestBody(prompt))");
+    expect(core).toContain("function cloudflareResponseText(response)");
+    expect(core).toContain("if(response&&typeof response==='object')return JSON.stringify(response)");
+    expect(core).toContain("const text = cloudflareResponseText(b?.result?.response)");
+  });
+
   it('constrains Gemini manager output to the strict Core manager schema',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain('const GEMINI_MANAGER_RESPONSE_SCHEMA={');
