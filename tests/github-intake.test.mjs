@@ -223,6 +223,32 @@ test('safe coding Work Order materializes one API coordination job without takin
   assert.match(pool.jobs[0].prompt,/without repository mutation/);
 });
 
+test('blocked Core coordination for coding handoff clears terminal label and leaves source Work Order non-terminal',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2474,state:'open',state_reason:null,title:'[P1][CORE] coding handoff blocked coordination',body:SAFE_AUTO_POLICY_BASE,labels:[{name:'tigeriq:terminal-blocked'}],comments:0,html_url:'https://example/2474'};
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec?.requiresCodingHandoff);
+  pool.objectives.push({
+    id:'OBJ-GH-2474',
+    status:'blocked',
+    summary:'coordination reviewer unavailable',
+    metadata:{
+      source:'github',issueNumber:2474,resourceScope:'SAFE_AUTO_TEST',sourceRevision:spec.sourceRevision,
+      requiresCodingHandoff:true,githubClaimReported:true,githubResultReported:true,githubTerminalLabelSynced:false,
+    },
+  });
+  let labelAdds=0,labelClears=0;
+  const fetchImpl=async(url,init={})=>{
+    const method=String(init.method||'GET').toUpperCase();
+    if(method==='POST'&&url.endsWith('/issues/2474/labels')){labelAdds++;return response([]);}
+    if(method==='DELETE'&&url.includes('/issues/2474/labels/')){labelClears++;return response({},true,204);}
+    return response({});
+  };
+  await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[issue],issueNumbers:[2474]});
+  assert.strictEqual(labelAdds,0);
+  assert.strictEqual(labelClears,1);
+});
+
 test('safe P1-P5 duplicate event does not create a second objective or job',async()=>{
   const pool=coreBacklogPool();
   const issue={number:2474,state:'open',title:'[P1][CORE] dedupe',body:SAFE_AUTO_POLICY_BASE,labels:[],comments:0,html_url:'https://example/2474'};
