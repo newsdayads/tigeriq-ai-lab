@@ -2,7 +2,7 @@ import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
-import { githubRequestJson } from '../apps/tigeriq-core/github-shared-client.mjs';
+import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
@@ -63,6 +63,10 @@ function repoParts() {
 async function gh(path, fetchImpl = fetch) {
   const token = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
   return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000)});
+}
+export function projectionTransportStale(before = {}, after = {}) {
+  return Number(after.staleHits || 0) > Number(before.staleHits || 0)
+    || Number(after.backoffHits || 0) > Number(before.backoffHits || 0);
 }
 export async function ghAllPages(path, fetchImpl = fetch, maxPages = 10) {
   const rows = [];
@@ -957,7 +961,10 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
   const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
-  const blocker = status === 'BLOCKED' && !lifecycle?.blockerCleared && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const blockerBodyCurrent = !lifecycle?.blockerCleared || (lifecycleAt > 0 && issueAt > lifecycleAt);
+  const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
     : null;
   const activeEvidenceUrl = classification.ownerGate
@@ -1067,8 +1074,13 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     if (cached) {
       ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
       issuesComplete = issuesComplete === true;
+      if (githubProjectionCache.data?.projectionStale === true) {
+        projectionStale = true;
+        projectionReason = githubProjectionCache.data?.projectionReason || 'GitHub cached projection marked stale';
+      }
     } else {
       try {
+        const transportBefore = githubTransportSnapshot();
         const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
           ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
           known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
@@ -1078,10 +1090,16 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         issuesComplete = issuePages.complete;
         pulls = openPullPayload;
         runPayload = workflowPayload;
+        const transportAfter = githubTransportSnapshot();
+        if (projectionTransportStale(transportBefore, transportAfter)) {
+          projectionStale = true;
+          projectionReason = 'GitHub shared cache/backoff served stale data';
+          issuesComplete = false;
+        }
         githubProjectionCache = {
           at: now,
           verifiedAt: new Date().toISOString(),
-          data: { issues, pulls, runPayload, issuesComplete },
+          data: { issues, pulls, runPayload, issuesComplete, projectionStale, projectionReason },
         };
       } catch (error) {
         if (!githubProjectionCache.data) throw error;
