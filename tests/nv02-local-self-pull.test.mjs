@@ -56,6 +56,55 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(selectNv02WorkOrder([base(11, 'TARGET_EMPLOYEE=NV02\nASSIGNED_EXECUTOR=NV09')])).toBeNull();
   });
 
+  it('opens terminal Coding Lane failures to NV02 without racing a fresh rearm', () => {
+    const work = issue(15, '[P1] api repair', safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nRESOURCE_SCOPE=API_REPAIR_15'));
+    const failed = [
+      { id: 1, created_at: '2026-10-02T12:00:00Z', body: '[PROGRESS] CODEOBJ-a is failed. Implementer: NV11; reviewer: pending. reason=CODING_ALL_BATCHES_NOOP' },
+      { id: 2, created_at: '2026-10-02T12:01:00Z', body: '[RETRY_DISPATCHED] CODEOBJ-b prior=CODEOBJ-a attempt=1/2' },
+      { id: 3, created_at: '2026-10-02T12:02:00Z', body: '[PROGRESS] CODEOBJ-b is failed. Implementer: NV12; reviewer: pending. reason=CODING_ALL_BATCHES_NOOP' },
+      { id: 4, created_at: '2026-10-02T12:03:00Z', body: '[RETRY_DISPATCHED] CODEOBJ-c prior=CODEOBJ-b attempt=2/2' },
+      { id: 5, created_at: '2026-10-02T12:04:00Z', body: '[PROGRESS] CODEOBJ-c is failed. Implementer: NV11; reviewer: pending. reason=CODING_ALL_BATCHES_NOOP' },
+    ];
+    const takeover = nv02TakeoverStatus(work, failed);
+    expect(takeover).toMatchObject({
+      eligible: true,
+      target: 'CODING_LANE',
+      reason: 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED',
+      failureCount: 3,
+      needsRelease: false,
+    });
+    expect(selectNv02WorkOrder([work], {
+      takeoverStatuses: new Map([[15, takeover]]),
+    })?.result).toMatchObject({ eligible: true, mode: 'STALE_ASSIGNEE_TAKEOVER' });
+
+    const rearmed = [...failed, {
+      id: 6,
+      created_at: '2026-10-02T12:05:00Z',
+      body: '[RECOVERY_REARMED] CODEOBJ-d source=abcdef prior=CODEOBJ-c reason=CODING_ALL_BATCHES_NOOP',
+    }];
+    const activeAgain = nv02TakeoverStatus(work, rearmed);
+    expect(activeAgain).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE' });
+    expect(selectNv02WorkOrder([work], {
+      takeoverStatuses: new Map([[15, activeAgain]]),
+    })).toBeNull();
+
+    const terminal = nv02TakeoverStatus(work, [{
+      id: 7,
+      created_at: '2026-10-02T12:06:00Z',
+      body: '[BLOCKED_FINAL] CODEOBJ-z reason=RETRY_BUDGET_EXHAUSTED. CODING_ALL_BATCHES_NOOP',
+    }]);
+    expect(terminal).toMatchObject({
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED',
+      target: 'CODING_LANE',
+    });
+
+    const hard = issue(16, '[P1] api repair hard gate', safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nRESOURCE_SCOPE=API_REPAIR_16\nGOAL=production credential change'));
+    expect(selectNv02WorkOrder([hard], {
+      takeoverStatuses: new Map([[16, terminal]]),
+    })).toBeNull();
+  });
+
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
     const fallback = issue(30, '[P1] fallback', safe('PRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=F30'));
     const primary = issue(31, '[P2] primary', safe('PRIORITY=P2\nCAPABILITY=general\nRESOURCE_SCOPE=F31'));
