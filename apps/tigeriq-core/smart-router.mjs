@@ -168,13 +168,14 @@ function cooldownActive(resource, nowMs) {
   return Number.isFinite(until)&&until>nowMs;
 }
 
-export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
+export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
   const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.model,resource.account_binding??resource.accountBinding??'default',resource.runtime_binding??resource.runtimeBinding??'core'));
   const reasons=[];
   const reviewerExclusions=new Set([reviewerResourceId,...(Array.isArray(reviewerResourceIds)?reviewerResourceIds:[])].filter(Boolean).map(String));
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
-  const readiness=functionalRoutingReadiness(resource,{nowMs,requireEvidence:Boolean(resource.functionalEvidence??resource.functional_evidence)});
+  const hasFunctionalEvidence=Boolean(resource.functionalEvidence??resource.functional_evidence);
+  const readiness=functionalRoutingReadiness(resource,{nowMs,requireEvidence:Boolean(requireFunctionalEvidence||hasFunctionalEvidence)});
   if(!readiness.ready)return {eligible:false,resourceId,score:Infinity,reasons:[readiness.reason]};
   if(cooldownActive(resource,nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['cooldown']};
   if(!quotaUsable(resource.quota_state??resource.quotaState??{},nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['quota']};
@@ -210,9 +211,9 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
-export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
+export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
-  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs})}));
+  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs,requireFunctionalEvidence})}));
   const eligible=evaluated.filter(x=>x.eligible).sort((a,b)=>a.score-b.score||a.resourceId.localeCompare(b.resourceId));
   const chosen=eligible[0]||null;
   return {
