@@ -203,7 +203,7 @@ function takeoverWorkerBlocked(issue, comments, target) {
   return false;
 }
 
-function codingLaneFallbackStatus(meta, comments = []) {
+function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), staleMs = NV02_TAKEOVER_STALE_MS } = {}) {
   if (!independentCodingLaneReservation(meta)) return null;
   const ordered = [...(Array.isArray(comments) ? comments : [])]
     .sort((a, b) => (commentAtMs(a) - commentAtMs(b)) || (Number(a?.id || 0) - Number(b?.id || 0)));
@@ -212,10 +212,11 @@ function codingLaneFallbackStatus(meta, comments = []) {
   for (const comment of ordered) {
     const text = String(comment?.body || '');
     const objectiveId = text.match(/\b(CODEOBJ-[0-9A-Za-z-]+)\b/i)?.[1]?.toUpperCase() || '';
-    const terminalFailure = /\[BLOCKED_FINAL\]|RETRY_BUDGET_EXHAUSTED/i.test(text);
+    const terminalFailure = /RETRY_BUDGET_EXHAUSTED/i.test(text)
+      || (objectiveId && /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text));
     const active = objectiveId && (
-      /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
-      || /\[KÍCH HOẠT LẠI\]/i.test(text)
+      /\[(?:CLAIM|RETRY_DISPATCHED|RETRY_SCHEDULED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
+      || /\[(?:KÍCH HOẠT LẠI|LÊN LỊCH THỬ LẠI)\]/i.test(text)
       || /accepted this issue as\s+CODEOBJ-/i.test(text)
       || /Automatic coding pipeline is active/i.test(text)
     );
@@ -228,14 +229,24 @@ function codingLaneFallbackStatus(meta, comments = []) {
     else if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at: commentAtMs(comment) };
   }
   if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
-  if (latest.kind === 'active') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
   if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
-  if (!latest.terminalFailure && failedObjectives.size < NV02_TAKEOVER_NO_PROGRESS_ROUNDS) {
+  if (latest.kind === 'active' && !stale) {
+    return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  }
+  if (latest.kind === 'failed' && !latest.terminalFailure
+      && failedObjectives.size < NV02_TAKEOVER_NO_PROGRESS_ROUNDS && !stale) {
     return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN', latest, failureCount: failedObjectives.size };
   }
   return {
     eligible: true,
-    reason: latest.terminalFailure ? 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED' : 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED',
+    reason: latest.kind === 'active'
+      ? 'INDEPENDENT_CODING_LANE_STALE'
+      : latest.terminalFailure
+        ? 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED'
+        : failedObjectives.size >= NV02_TAKEOVER_NO_PROGRESS_ROUNDS
+          ? 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED'
+          : 'INDEPENDENT_CODING_LANE_FAILED_STALE',
     target: 'CODING_LANE',
     needsRelease: false,
     activeClaim: null,
@@ -243,7 +254,6 @@ function codingLaneFallbackStatus(meta, comments = []) {
     latest,
   };
 }
-
 export function nv02TakeoverStatus(issue, comments = [], {
   nowMs = Date.now(),
   staleMs = NV02_TAKEOVER_STALE_MS,
@@ -255,7 +265,7 @@ export function nv02TakeoverStatus(issue, comments = [], {
   const resourceScope = String(meta.RESOURCE_SCOPE || '').trim();
   if (selfReviewConflict(meta, capability)) return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN', target, resourceScope };
   if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
-  const codingFallback = codingLaneFallbackStatus(meta, comments);
+  const codingFallback = codingLaneFallbackStatus(meta, comments, { nowMs, staleMs });
   if (codingFallback?.eligible) return { ...codingFallback, resourceScope };
   if (!target || target === 'NV02') return {
     eligible: false,
