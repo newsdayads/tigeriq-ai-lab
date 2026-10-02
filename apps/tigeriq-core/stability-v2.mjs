@@ -43,6 +43,14 @@ export function stabilityV2JobSpec(round,batch,capability,ordinal){
   return {round,batch,ordinal,capability,title,prompt,marker};
 }
 
+export function stabilityV2OutputContract({jobId='',prompt='',text=''}={}){
+  if(!String(jobId||'').startsWith('STAB-'))return {handled:false,ok:true,marker:null,code:null};
+  const marker=String(prompt||'').match(/\bSTAB_R[1-3]_B[12]_J[1-3]_OK\b/)?.[0]||null;
+  if(!marker)return {handled:true,ok:false,marker:null,code:'STABILITY_V2_JOB_CONTRACT_UNKNOWN'};
+  if(String(text??'').includes(marker))return {handled:true,ok:true,marker,code:null};
+  return {handled:true,ok:false,marker,code:'STABILITY_V2_OUTPUT_CONTRACT_MISMATCH'};
+}
+
 const terminalFailure=(status)=>['failed','blocked','cancelled','canceled'].includes(String(status||'').toLowerCase());
 const done=(status)=>String(status||'').toLowerCase()==='done';
 
