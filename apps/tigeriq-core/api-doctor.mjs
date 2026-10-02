@@ -131,7 +131,7 @@ export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stat
   const normalizedState=String(state||'unknown').toLowerCase();
   const normalizedReason=String(stateReason||'').toLowerCase();
   if(normalizedState==='open')return {action:'wait_repair',reason:'canonical_repair_work_order_open'};
-  if(normalizedState==='closed'&&['completed',''].includes(normalizedReason))return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
+  if(normalizedState==='closed'&&normalizedReason==='completed')return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
   if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
   return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
 }
