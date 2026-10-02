@@ -367,6 +367,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("row.staleHandoffProbe='ok_wait_repair_lifecycle'");
     expect(core).toContain("healthState:resource.health_state");
     expect(core).toContain("data->>'evidence'='live_work_success_after_repair_deploy'");
+    expect(core).toContain("const deployedAt=String(runtimeSourceState?.updatedAt||'').trim()");
+    expect(core).not.toContain("const deployedAt=String(updaterState?.updatedAt||'').trim()");
     expect(core).toContain("return recovered?null:handoff");
     expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
     expect(core).toContain("type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2");
@@ -388,6 +390,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("/files?per_page=100");
     expect(core).toContain("[TIGERIQ_INDEPENDENT_REVIEW_V1]");
     expect(core).toContain("REVIEW=(?:PASS|ĐẠT)");
+    expect(core).toContain("TIGERIQ_CORE_UI_TERMINAL_V1");
+    expect(core).toContain("REVIEW_INDEPENDENT=true");
+    expect(core).toContain("TARGET_PR=#${prNumber}");
+    expect(core).toContain("worker&&worker!==ownerProxy");
     expect(core).toContain("owner_proxy_cross_reference");
     expect(core).toContain("files.length>=100");
     expect(core).toContain("repairEvidenceSource=fallback.evidenceSource");
