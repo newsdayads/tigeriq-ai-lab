@@ -44,3 +44,14 @@ test('production manager eligibility query uses the shared pending status policy
   const randomJob=source.indexOf("capability==='pc_operator'?pcOperatorJobId");
   assert.ok(guard>=0&&randomJob>guard,'pending-batch guard must run before random-ID job creation');
 });
+
+test('manager prompt permits normal Core AI work under read-only safety guards',()=>{
+  const start=source.indexOf('const basePrompt=`You are TigerIQ AI Manager.');
+  const end=source.indexOf('`;',start);
+  assert.ok(start>=0&&end>start,'manager base prompt must exist');
+  const prompt=source.slice(start,end);
+  assert.match(prompt,/NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general\/reasoning\/review jobs/);
+  assert.match(prompt,/live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist/);
+  assert.match(prompt,/Use status=blocked only for a real unsatisfied dependency, resource, or safety gate/);
+});
+
