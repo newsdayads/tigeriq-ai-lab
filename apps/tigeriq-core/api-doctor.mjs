@@ -125,6 +125,108 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
+export function buildApiDoctorRepairWorkOrder({
+  employeeId='',
+  provider='',
+  resourceId='',
+  failureClass='source_contract',
+  message='',
+  signature='',
+}={}){
+  const employee=safeText(employeeId,32).toUpperCase();
+  const providerName=safeText(provider,64).toLowerCase();
+  const cls=safeText(failureClass,64).toLowerCase();
+  if(!/^NV\d{2}$/.test(employee)||!providerName||cls!=='source_contract')throw new Error('API_DOCTOR_REPAIR_WORK_ORDER_INVALID');
+  const repairSignature=signature||apiDoctorRepairSignature({employeeId:employee,provider:providerName,failureClass:cls,message});
+  const scopeToken=`${employee}_${providerName}`.toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64);
+  const resourceScope=`API_DOCTOR_SOURCE_REPAIR_${scopeToken}`;
+  const evidence=safeText(message||cls,300);
+  const title=`[P1][API DOCTOR][SOURCE REPAIR][${employee}] ${providerName} source-contract repair`;
+  const body=[
+    'TIGERIQ_JOB_V1',
+    'SOURCE=API_DOCTOR',
+    'PARENT=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
+    'EXECUTION_POLICY=#1456',
+    'ACTIVE_EXECUTION=true',
+    'CANONICAL_SPEC=#1255',
+    'CURRENT_STATE=READY_AUTO_EXECUTION',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'OWNER_POLICY=AUTO',
+    'PRIORITY=P1',
+    'CAPABILITY=coding',
+    'EXECUTION_SURFACE=CODING',
+    'AUTONOMOUS_CODE=true',
+    `RESOURCE_SCOPE=${resourceScope}`,
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'OWNER_PROXY=NV02',
+    'AUTO_CONTROL_REPAIR=true',
+    'INDEPENDENT_REPAIR_REQUIRED=true',
+    'ZERO_COST=true',
+    'NO_DIRECT_MAIN=true',
+    'NO_PC01_SHELL=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true',
+    'NO_BROWSER_AUTH=true',
+    'APP_CHROME_MUTATION=FORBIDDEN',
+    'ONE_RESOURCE_SCOPE_ONE_WRITER=true',
+    'ALLOW_PATH_PREFIX=apps/tigeriq-core/core.mjs,tests/api-doctor-supervisor.test.mjs',
+    `API_DOCTOR_REPAIR_SIGNATURE=${repairSignature}`,
+    `API_DOCTOR_RESOURCE_ID=${safeText(resourceId,220)}`,
+    `API_DOCTOR_EMPLOYEE_ID=${employee}`,
+    `API_DOCTOR_PROVIDER=${providerName}`,
+    `API_DOCTOR_FAILURE_CLASS=${cls}`,
+    '',
+    '## GOAL',
+    `Repair only the ${employee}/${providerName} provider source-contract defect evidenced by: ${evidence}`,
+    '',
+    '## CURRENT_STATE',
+    'READY_AUTO_EXECUTION',
+    '',
+    '## IN_SCOPE',
+    '- Provider adapter/response handling in apps/tigeriq-core/core.mjs.',
+    '- Focused regression coverage in tests/api-doctor-supervisor.test.mjs.',
+    '',
+    '## OUT_OF_SCOPE',
+    '- Credentials, billing, account/security settings, Production, App Chrome, destructive actions.',
+    '- Any path outside ALLOW_PATH_PREFIX.',
+    '',
+    '## NON_NEGOTIABLE_RULES',
+    '- Keep P1 lifecycle; never elevate repair to P0.',
+    '- Branch -> PR -> exact-head checks -> independent review -> merge -> runtime/live verify.',
+    '- RECOVERED requires a later normal Core work success; probe/validation alone is insufficient.',
+    '',
+    '## DEPENDENCIES',
+    '- Existing API Doctor handoff evidence for this signature.',
+    '',
+    '## EXECUTION_ORDER',
+    '1. Reproduce the source-contract failure with focused evidence.',
+    '2. Implement the smallest safe source fix.',
+    '3. Run focused regression and required exact-head gates.',
+    '4. Obtain independent review and runtime/live validation.',
+    '',
+    '## ACCEPTANCE',
+    '- Protected Core mutation is admitted only through delegated owner-proxy repair intent.',
+    '- Real normal Core work succeeds after the repair before RECOVERED is emitted.',
+    '- No duplicate repair Work Order exists for the same open signature.',
+    '',
+    '## RECOVERY_RULE',
+    'Fail closed; keep the provider quarantined/waiting when evidence is insufficient.',
+    '',
+    '## STOP_CONDITIONS',
+    'DONE_WITH_EVIDENCE | REAL_BLOCKER | EXTERNAL_WAIT',
+    '',
+    '## EVIDENCE_FORMAT',
+    'PR/head/checks/review/merge/runtime SHA + normal-work job/resource success evidence.',
+    '',
+    'DONE=false',
+  ].join('\n');
+  return {title,body,priority:'P1',resourceScope,signature:repairSignature};
+}
+
 export function buildApiDoctorPrompt(items=[]){
   const compact=(Array.isArray(items)?items:[]).slice(0,10).map(x=>({
     employeeId:safeText(x.employeeId,16),
