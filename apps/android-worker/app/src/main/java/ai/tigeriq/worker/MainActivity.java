@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
 /** Clear pilot onboarding/status surface for one TigerIQ Android worker node. */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1001;
-    private static final String DEFAULT_CONTROLLER = "http://100.97.23.87:8790";
+    private static final String DEFAULT_CONTROLLER = "http://100.97.23.87:8795";
     private static final String SETUP_PREFS = "tigeriq-worker-setup";
     private static final String KEY_NETWORK_OK = "networkOk";
     private static final String KEY_NETWORK_PROBE_AT = "networkProbeAt";
@@ -153,7 +153,7 @@ public final class MainActivity extends Activity {
         );
         root.addView(setupCard, marginParams(0, dp(8), 0, dp(10)));
 
-        TextView controllerTarget = text("Controller cố định: PC01 · 100.97.23.87:8790", 12, false);
+        TextView controllerTarget = text("TigerIQ Core cố định: PC01 · 100.97.23.87:8795", 12, false);
         controllerTarget.setTextColor(MUTED);
         root.addView(controllerTarget);
 
@@ -182,7 +182,7 @@ public final class MainActivity extends Activity {
         root.addView(statusCard, marginParams(0, dp(8), 0, dp(12)));
 
         TextView boundary = text(
-            "v0.6 Pilot Setup: kiểm tra kết nối + Accessibility + cây giao diện AI. Chưa bật tự gửi lệnh hoặc tự đọc nội dung hội thoại.",
+            "v0.7 Core Mobile: kiểm tra kết nối + Accessibility + cây giao diện AI. Chưa bật tự gửi lệnh hoặc tự đọc nội dung hội thoại.",
             12, false
         );
         boundary.setTextColor(MUTED);
@@ -262,7 +262,7 @@ public final class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false)) throw new IllegalStateException("controller did not return ok");
                 writeNetworkProbe(true);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "Đã thấy PC01 Controller qua mạng riêng", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Đã thấy TigerIQ Core trên PC01 qua mạng riêng", Toast.LENGTH_SHORT).show();
                     button.setEnabled(true);
                     button.setText("Kiểm tra");
                     refreshStatus();
@@ -445,7 +445,7 @@ public final class MainActivity extends Activity {
         if (!networkOk) return "kết nối PC01/Tailscale";
         if (!paired) return "ghép TigerIQ Core";
         if (!assigned) return "Core cấp mã nhân viên";
-        if (!"ONLINE".equals(controllerState)) return "Controller online";
+        if (!"ONLINE".equals(controllerState)) return "TigerIQ Core trực tuyến";
         return null;
     }
 
