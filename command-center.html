@@ -241,7 +241,7 @@ function normalizeRows(value){
   if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -254,7 +254,7 @@ function hydrate(raw){
 function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  const actionable=openRows.filter(x=>x?.workKind!=='SYSTEM'&&workStatus(x)!=='SYSTEM');
+  const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
   $('actionCount').textContent=Number.isFinite(Number(s.actionable))?s.actionable:actionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
@@ -266,7 +266,7 @@ function updateCounts(){
 function renderOwnerSummary(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
-  const actionable=openRows.filter(row=>row?.workKind!=='SYSTEM'&&workStatus(row)!=='SYSTEM');
+  const actionable=openRows.filter(row=>row?.workKind==='WORK'&&workStatus(row)!=='SYSTEM');
   const blocked=actionable.filter(row=>workStatus(row)==='BLOCKED').length;
   const apiProgress=snapshot?.portfolioProgress||null;
   const completeEnumeration=snapshot?.workProjection?.openIssueEnumerationComplete===true;
