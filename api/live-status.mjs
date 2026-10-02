@@ -923,6 +923,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
+  const blocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || null;
   const activeEvidenceUrl = classification.ownerGate
     ? null
     : safeEvidenceUrl(active?.evidenceUrl)
@@ -957,6 +958,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     currentStep,
     latestCompletedStep,
     nextStep,
+    blocker,
     evidenceUrl,
     evidenceAt,
     progressPercent: progress.percent,
