@@ -9,6 +9,7 @@ import {
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
   apiDoctorRepairSignature,
+  apiDoctorRepairRuntimeGate,
   apiDoctorRepairWorkOrderGate,
   apiDoctorResourceEligibleForCapability,
   buildApiDoctorPrompt,
@@ -124,6 +125,22 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:null})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_not_completed'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'unknown'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:0,state:'closed'})).toEqual({action:'legacy',reason:'legacy_repair_handoff'});
+  });
+
+  it('waits for the completed repair revision to be installed before validation',()=>{
+    const closedAt='2026-10-02T07:00:00Z';
+    expect(apiDoctorRepairRuntimeGate({
+      issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),runtimeUpdatedAt:'2026-10-02T06:59:59Z',
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'});
+    expect(apiDoctorRepairRuntimeGate({
+      issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'b'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+    })).toEqual({action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'});
+    expect(apiDoctorRepairRuntimeGate({
+      issueNumber:2902,state:'closed',stateReason:'completed',issueClosedAt:closedAt,
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),runtimeUpdatedAt:'2026-10-02T07:01:00Z',
+    })).toEqual({action:'validate_repair',reason:'canonical_repair_runtime_applied'});
   });
 
   it('uses a stable dedupe signature for the same provider/failure class',()=>{
@@ -253,6 +270,10 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("repairIssueNumber");
     expect(core).toContain("githubApiDoctorRepairIssueStatus(repairIssueNumber)");
     expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
+    expect(core).toContain("'NO_PC01_SHELL=true'");
+    expect(core).toContain("'NO_BROWSER_AUTH=true'");
+    expect(core).toContain("repairLifecycleRelevant");
+    expect(core).toContain("apiDoctorRepairRuntimeGate({");
     expect(core).toContain("legacy_handoff_migrated_to_canonical_p1");
     expect(core).toContain("post_repair_validation_pass_wait_normal_work");
     expect(core).toContain("coalesce(task_kind,'')<>'api_doctor_validation'");
