@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { cloudflareRequestBody, cloudflareResponseText, isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
@@ -279,6 +279,16 @@ export function hasWatsonxTextShape(body){
     Array.isArray(chatContent)
   );
 }
+function cloudflareRequestBody(prompt=''){
+  const responseFormat=isManagerPrompt(prompt)?{type:'json_schema',json_schema:GEMINI_MANAGER_RESPONSE_SCHEMA}:null;
+  return {prompt,...(responseFormat?{response_format:responseFormat}:{})};
+}
+function cloudflareResponseText(response){
+  if(typeof response==='string')return response;
+  if(response&&typeof response==='object')return JSON.stringify(response);
+  return '';
+}
+
 export function watsonxRetryDecision(body,attempt,maxRetries=2){
   if(!hasWatsonxTextShape(body))return{action:'fail',code:'WATSONX_SHAPE_MISMATCH'};
   const text=watsonxTextFromBody(body);
@@ -315,7 +325,7 @@ async function invokeProvider(r, prompt) {
       const account = process.env.CLOUDFLARE_ACCOUNT_ID;
       const b = await fetchJson(`https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/${r.model}`, {
         method:'POST', headers:{'content-type':'application/json',authorization:`Bearer ${process.env.CLOUDFLARE_AUTH_TOKEN}`},
-        body:JSON.stringify(cloudflareRequestBody(prompt,GEMINI_MANAGER_RESPONSE_SCHEMA)) });
+        body:JSON.stringify(cloudflareRequestBody(prompt)) });
       const text = cloudflareResponseText(b?.result?.response);
       if (!String(text||'').trim()) { const e=new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
       return String(text);
