@@ -42,6 +42,7 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("status:'BUSY',current_job_id:job.id");
     expect(dashboard).toContain('applyCoreJobs(applyLiveWorkforce(');
     expect(dashboard).toContain('let list=allResources.filter(visibleResource)');
+    expect(dashboard).toContain('name:reg.name||r.name');
     expect(dashboard).toContain('grid-template-columns:repeat(4,minmax(0,1fr))!important');
     expect(dashboard).toContain('@media(max-width:720px){.workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}}');
     expect(dashboard).toContain('employee-avatar');
