@@ -9,6 +9,7 @@ import {
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
   apiDoctorRepairSignature,
+  apiDoctorRepairWorkOrderGate,
   apiDoctorResourceEligibleForCapability,
   buildApiDoctorPrompt,
   buildApiDoctorRepairWorkOrder,
@@ -17,6 +18,7 @@ import {
 } from '../apps/tigeriq-core/api-doctor.mjs';
 import {deriveRoutingProfile,rankCandidates} from '../apps/tigeriq-core/smart-router.mjs';
 import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
   it('classifies quota/payment/contract failures without calling them credential failures',()=>{
@@ -124,6 +126,18 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(a).toBe(b);
   });
 
+  it('gates canonical repair lifecycle on completed repair Work Order',()=>{
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:9901,state:'open',stateReason:null})).toEqual({
+      action:'wait_repair',reason:'canonical_repair_work_order_open',
+    });
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:9901,state:'closed',stateReason:'completed'})).toEqual({
+      action:'validate_repair',reason:'canonical_repair_work_order_completed',
+    });
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:9901,state:'closed',stateReason:'not_planned'})).toEqual({
+      action:'wait_repair',reason:'canonical_repair_work_order_not_completed',
+    });
+  });
+
   it('builds a canonical P1 delegated repair Work Order accepted by protected-path coding intake',()=>{
     const signature=apiDoctorRepairSignature({
       employeeId:'NV15',provider:'cloudflare',failureClass:'source_contract',message:'EMPTY_RESPONSE attempt 12',
@@ -158,6 +172,9 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(parsed?.priority).toBe('P1');
     expect(parsed?.controlRepair?.delegated).toBe(true);
     expect(parsed?.scopeLease?.paths).toContain('apps/tigeriq-core/core.mjs');
+    expect(nv02EligibleWorkOrder({
+      number:9901,title:spec.title,body:spec.body,state:'open',
+    })).toMatchObject({eligible:false,reason:'INDEPENDENT_CODING_LANE_RESERVED'});
   });
 
   it('refuses to build source repair work for non-source external or rate-limit classes',()=>{
@@ -299,18 +316,28 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
     expect(core).toContain("row.handoff='ignored_stale_failure_class'");
     expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=apiDoctorHandoffMatchesFailureClass"));
-    expect(core).toContain("evidence:'stale_failure_class_reprobe_success'");
-    expect(core).toContain("row.staleHandoffRetired=true");
+    expect(core).not.toContain("evidence:'stale_failure_class_reprobe_success'");
+    expect(core).toContain("row.staleHandoffProbe='ok_wait_repair_lifecycle'");
     expect(core).toContain("healthState:resource.health_state");
-    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2");
+    expect(core).toContain("data->>'evidence'='live_work_success_after_repair_deploy'");
     expect(core).toContain("return recovered?null:handoff");
     expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
     expect(core).toContain("type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2");
-    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3");
+    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_work_success_after_repair_deploy'");
     expect(core).not.toContain("apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature)");
 
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
     expect(core).toContain("coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation')");
+    expect(core).toContain("apiDoctorRepairLifecycleEvidence(handoffCandidate)");
+    expect(core).toContain("GITHUB_CODING_RESULT_REPORTED");
+    expect(core).toContain("from tigeriq_coding_jobs where objective_id=$1 and status='completed'");
+    expect(core).toContain("/compare/${repairRevision}...${deployedRevision}");
+    expect(core).toContain("runtimeCurrentRevision!==deployedRevision");
+    expect(core).toContain("successAfterAt:new Date(cutoverMs).toISOString()");
+    expect(core).toContain("evidence:'live_work_success_after_repair_deploy'");
+    expect(core).toContain("normalWorkSuccessAt:successAfter?.ts||null");
+    expect(core).toContain("page=${page}");
+    expect(core).toContain("if(issues.length<100)return null");
     expect(core).toContain("taskKind:'api_doctor_validation'");
     expect(core).toContain("API_DOCTOR_POST_REPAIR_VALIDATION");
     expect(core).toContain("maxValidationAttempts:2");

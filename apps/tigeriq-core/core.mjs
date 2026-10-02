@@ -18,7 +18,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -696,14 +696,14 @@ async function apiDoctorLatestUnresolvedResourceHandoff(resourceId){
   const handoff=await apiDoctorLatestResourceHandoff(resourceId);
   if(!handoff)return null;
   const signature=String(handoff.data?.signature||'');
-  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) and coalesce(data->>'evidence','') in ('live_work_success_after_handoff','stale_failure_class_reprobe_success') order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
 async function apiDoctorLatestUnresolvedSignatureHandoff(resourceId,signature){
   if(!signature)return null;
   const handoff=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2 order by seq desc limit 1",[resourceId,signature])).rows[0]||null;
   if(!handoff)return null;
-  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and coalesce(data->>'evidence','') in ('live_work_success_after_handoff','stale_failure_class_reprobe_success') order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
 async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
@@ -733,12 +733,88 @@ async function runApiDoctorPostRepairValidation(resource,existingHandoff){
     return {ok:false,jobId:id,reason:String(error?.kind||error?.message||error).slice(0,120)};
   }
 }
-async function apiDoctorOpenRepairIssueBySignature(signature){
+function apiDoctorGithubHeaders(){
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
-  const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=open&per_page=100&sort=updated&direction=desc`;
-  const rows=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Doctor'}},10000);
+  return {Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Doctor'};
+}
+function apiDoctorSha(value){
+  const sha=String(value||'').trim().toLowerCase();
+  return /^[0-9a-f]{40}$/.test(sha)?sha:'';
+}
+async function apiDoctorRepairLifecycleEvidence(existingHandoff){
+  const issueNumber=Number(existingHandoff?.data?.repairIssueNumber||0);
+  if(!Number.isInteger(issueNumber)||issueNumber<=0)return {ready:false,reason:'canonical_repair_work_order_missing'};
+  const base=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}`;
+  const headers=apiDoctorGithubHeaders();
+  const issue=await fetchJson(`${base}/issues/${issueNumber}`,{headers},10000);
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state:issue?.state,stateReason:issue?.state_reason});
+  if(issueGate.action!=='validate_repair')return {ready:false,reason:issueGate.reason,issueNumber};
+
+  const resultEvent=(await pool.query(
+    "select data from tigeriq_events where type='GITHUB_CODING_RESULT_REPORTED' and data->>'issueNumber'=$1 and data->>'status'='completed' order by seq desc limit 1",
+    [String(issueNumber)]
+  )).rows[0]||null;
+  const codingObjectiveId=String(resultEvent?.data?.codingObjectiveId||'').trim();
+  if(!codingObjectiveId)return {ready:false,reason:'repair_coding_result_missing',issueNumber};
+
+  const codingJob=(await pool.query(
+    "select pr_number,head_sha,result,completed_at from tigeriq_coding_jobs where objective_id=$1 and status='completed' order by completed_at desc nulls last limit 1",
+    [codingObjectiveId]
+  )).rows[0]||null;
+  const repairPrNumber=Number(codingJob?.pr_number||0);
+  if(!Number.isInteger(repairPrNumber)||repairPrNumber<=0)return {ready:false,reason:'repair_pr_missing',issueNumber,codingObjectiveId};
+
+  const repairPr=await fetchJson(`${base}/pulls/${repairPrNumber}`,{headers},10000);
+  if(!(repairPr?.merged===true||repairPr?.merged_at))return {ready:false,reason:'repair_pr_not_merged',issueNumber,repairPrNumber};
+  if(String(repairPr?.base?.ref||'')!=='main')return {ready:false,reason:'repair_pr_not_main',issueNumber,repairPrNumber};
+  const repairRevision=apiDoctorSha(repairPr?.merge_commit_sha);
+  if(!repairRevision)return {ready:false,reason:'repair_merge_revision_missing',issueNumber,repairPrNumber};
+
+  const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
+  const runtimeIdentity=resolveRuntimeSourceIdentity({
+    explicitExpectedSha:process.env.TIGERIQ_EXPECTED_SOURCE_SHA,
+    explicitInstalledSha:process.env.TIGERIQ_INSTALLED_SHA||process.env.TIGERIQ_RUNTIME_SHA,
+    runtimeSourceState,
+    updaterState,
+  });
+  const deployedRevision=apiDoctorSha(runtimeIdentity.installedSha);
+  const runtimeCurrentRevision=apiDoctorSha(runtimeSourceState?.currentSha);
+  const deployedAt=String(runtimeSourceState?.updatedAt||'').trim();
+  if(!deployedRevision||runtimeCurrentRevision!==deployedRevision||!Number.isFinite(Date.parse(deployedAt))){
+    return {ready:false,reason:'repair_runtime_revision_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision:deployedRevision||null};
+  }
+
+  let repairContained=repairRevision===deployedRevision;
+  if(!repairContained){
+    const compare=await fetchJson(`${base}/compare/${repairRevision}...${deployedRevision}`,{headers},10000);
+    repairContained=['ahead','identical'].includes(String(compare?.status||'').toLowerCase());
+  }
+  if(!repairContained)return {ready:false,reason:'repair_revision_not_deployed',issueNumber,repairPrNumber,repairRevision,deployedRevision};
+
+  const cutoverMs=Math.max(
+    Date.parse(String(existingHandoff?.ts||'')),
+    Date.parse(String(issue?.closed_at||'')),
+    Date.parse(deployedAt),
+  );
+  if(!Number.isFinite(cutoverMs))return {ready:false,reason:'repair_cutover_time_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision};
+  return {
+    ready:true,reason:'repair_issue_completed_revision_deployed',issueNumber,repairPrNumber,codingObjectiveId,
+    repairRevision,deployedRevision,deployedAt,issueClosedAt:String(issue?.closed_at||''),successAfterAt:new Date(cutoverMs).toISOString(),
+  };
+}
+async function apiDoctorOpenRepairIssueBySignature(signature){
+  const base=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}`;
+  const headers=apiDoctorGithubHeaders();
   const marker=`API_DOCTOR_REPAIR_SIGNATURE=${signature}`;
-  return (Array.isArray(rows)?rows:[]).find(issue=>!issue?.pull_request&&String(issue?.body||'').split(/\r?\n/).some(line=>line.trim()===marker))||null;
+  for(let page=1;;page+=1){
+    const url=`${base}/issues?state=open&per_page=100&page=${page}&sort=updated&direction=desc`;
+    const rows=await fetchJson(url,{headers},10000);
+    const issues=Array.isArray(rows)?rows:[];
+    const match=issues.find(issue=>!issue?.pull_request&&String(issue?.body||'').split(/\r?\n/).some(line=>line.trim()===marker));
+    if(match)return match;
+    if(issues.length<100)return null;
+  }
 }
 async function githubCreateApiDoctorRepairIssue(spec){
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
@@ -830,20 +906,48 @@ async function runApiDoctorScan(){
     const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
     let handoffPlan=null;
     if(handoffCandidate){
-      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",[resource.resource_id,handoffCandidate.ts])).rows[0];
+      let lifecycle;
+      try{
+        lifecycle=await apiDoctorRepairLifecycleEvidence(handoffCandidate);
+      }catch(error){
+        lifecycle={ready:false,reason:'repair_lifecycle_lookup_failed',error:String(error?.kind||error?.message||error).slice(0,120)};
+      }
+      row.repairLifecycle=lifecycle.reason;
+      if(lifecycle.issueNumber)row.repairIssueNumber=lifecycle.issueNumber;
+      if(lifecycle.repairPrNumber)row.repairPrNumber=lifecycle.repairPrNumber;
+      if(lifecycle.repairRevision)row.repairRevision=lifecycle.repairRevision;
+      if(lifecycle.deployedRevision)row.deployedRevision=lifecycle.deployedRevision;
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
-      handoffPlan=apiDoctorExistingHandoffAction({
-        existingHandoff:true,
-        successAfterHandoff:Boolean(successAfter),
-        healthState:resource.health_state,
-        cooldownUntil:resource.cooldown_until,
-        validationAttempts,
-        maxValidationAttempts:2,
-      });
+      let successAfter=null;
+      if(lifecycle.ready){
+        successAfter=(await pool.query(
+          "select ts,data from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
+          [resource.resource_id,lifecycle.successAfterAt]
+        )).rows[0]||null;
+        handoffPlan=apiDoctorExistingHandoffAction({
+          existingHandoff:true,
+          successAfterHandoff:Boolean(successAfter),
+          healthState:resource.health_state,
+          cooldownUntil:resource.cooldown_until,
+          validationAttempts,
+          maxValidationAttempts:2,
+        });
+      }else{
+        handoffPlan={action:'wait_repair',reason:lifecycle.reason};
+      }
       if(handoffPlan.action==='recovered'){
-        const signature=handoffCandidate.data?.signature;
-        if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
-        row.action='recovered';row.reason=handoffPlan.reason;row.recovered=true;actions.push(row);continue;
+        const signature=String(handoffCandidate.data?.signature||'');
+        const alreadyRecovered=signature?await pool.query(
+          "select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and data->>'signature'=$1 and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",
+          [signature]
+        ):null;
+        if(signature&&!alreadyRecovered?.rows?.[0])await event('API_DOCTOR_RECOVERED',{
+          employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',
+          signature,evidence:'live_work_success_after_repair_deploy',repairIssueNumber:lifecycle.issueNumber,
+          repairPrNumber:lifecycle.repairPrNumber,repairRevision:lifecycle.repairRevision,deployedRevision:lifecycle.deployedRevision,
+          deployedAt:lifecycle.deployedAt,normalWorkSuccessAt:successAfter?.ts||null,
+        });
+        row.action='recovered';row.reason='live_work_success_after_repair_deploy';row.recovered=true;actions.push(row);continue;
       }
     }
     const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
@@ -880,11 +984,7 @@ async function runApiDoctorScan(){
       row.probe='ok';
     }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
     if(probeOk&&handoffCandidate&&!existingHandoff){
-      const staleSignature=String(handoffCandidate.data?.signature||'');
-      if(staleSignature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',staleSignature)){
-        await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature:staleSignature,evidence:'stale_failure_class_reprobe_success'});
-      }
-      row.staleHandoffRetired=true;
+      row.staleHandoffProbe='ok_wait_repair_lifecycle';
     }
     if(plan.action==='probe_then_handoff'&&probeOk&&repeatedSourceFailures>=2){
       const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
