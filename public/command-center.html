@@ -153,7 +153,7 @@ body.drawer-open{overflow:hidden}
 .technical-pass{border:1px solid #27736a;background:#0f3a35;color:#94ecdf;border-radius:10px;padding:9px 10px;font-size:11px;font-weight:850}
 .drawer{top:50%;left:50%;right:auto;height:min(760px,calc(100dvh - 32px));width:min(780px,calc(100vw - 32px));border:1px solid #285175;border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.55);transform:translate(-50%,-46%) scale(.985);opacity:0;pointer-events:none}
 .drawer.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
-.drawer-actions{grid-template-columns:1.25fr 1fr .8fr}.drawer-btn.ask-vy{background:#3a235d;border-color:#7654a9;color:#eadcff}
+.drawer-actions{grid-template-columns:1.35fr 1fr 1fr .8fr}.drawer-btn.ask-vy{background:#3a235d;border-color:#7654a9;color:#eadcff}.drawer-btn.fallback-chat{background:#111d2b;color:#b9c9da}
 @media(max-width:1100px){.owner-summary{grid-template-columns:1fr}.summary-strip{grid-template-columns:repeat(6,minmax(88px,1fr));overflow-x:auto}}
 @media(max-width:700px){
   .wrap{padding-left:10px;padding-right:10px}
@@ -162,7 +162,7 @@ body.drawer-open{overflow:hidden}
   .summary-chip{padding:6px 7px;min-height:44px}.summary-chip span{font-size:8px}.summary-chip b{font-size:15px}
   .filters{position:sticky;top:0;z-index:12;background:linear-gradient(180deg,#07111f 78%,rgba(7,17,31,.88));padding-top:6px}
   .drawer{width:calc(100vw - 24px);height:calc(100dvh - 24px);border-radius:16px}
-  .drawer-actions{grid-template-columns:1fr 1fr}.drawer-btn.primary{grid-column:1/-1}
+  .drawer-actions{grid-template-columns:1fr 1fr}.drawer-btn.ask-vy{grid-column:1/-1}.drawer-btn.primary{grid-column:1/-1}
   .api-summary-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:390px){.drawer{width:calc(100vw - 24px)}.summary-chip span{font-size:7.7px}.api-summary-grid b{font-size:14px}}
@@ -217,12 +217,13 @@ body.drawer-open{overflow:hidden}
     <section class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
-  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button">Hỏi / Duyệt với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
+  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
+const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
 let currentFilter='action';
 const lastVisualState=new Map();
@@ -496,14 +497,31 @@ document.querySelectorAll('.filter').forEach(button=>button.addEventListener('cl
 }));
 $('drawerClose').addEventListener('click',closeDrawer);
 $('drawerCloseBottom').addEventListener('click',closeDrawer);
-$('drawerAskVy').addEventListener('click',()=>{
-  if(!drawerRow)return;
-  const prompt='TigerIQ #'+drawerRow.number+' — '+displayTitle(drawerRow.title)+' — kiểm tra trạng thái hiện tại, tóm tắt thật ngắn phần cần anh Sơn duyệt và nêu blocker nếu có.';
-  const url='https://chatgpt.com/?prompt='+encodeURIComponent(prompt);
+function buildVyHandoffPrompt(row){
+  const issue='#'+row.number;
+  return [
+    'LÀM — NO YAPPING.',
+    'TigerIQ Owner review '+issue+' — '+displayTitle(row.title)+'.',
+    'Bắt buộc trước khi kết luận: dùng GitHub connector đọc newsdayads/tigeriq-ai-lab@main theo thứ tự bootstrap/00_TIGERIQ_LOADER.md rồi 5 Bootstrap canonical, issue #504, docs/CURRENT_STATE.md, issue #280, issue #335, sau đó '+issue+' và PR/evidence liên quan trực tiếp.',
+    'Không dùng chat history, memory, Drive hoặc local copy nếu xung đột canonical. Nếu không đọc được nguồn bắt buộc: BỊ CHẶN / SOURCE_UNAVAILABLE.',
+    'Tóm tắt cực ngắn theo KẾT QUẢ → BỊ CHẶN (nếu có) → BƯỚC TIẾP THEO; nêu đúng phần cần anh Sơn duyệt.'
+  ].join('\\n');
+}
+function openChatGptHandoff(url,prompt){
   if(navigator.clipboard?.writeText)navigator.clipboard.writeText(prompt).catch(()=>{});
   const link=document.createElement('a');
   link.href=url;link.target='_blank';link.rel='noopener noreferrer';
   document.body.appendChild(link);link.click();link.remove();
+}
+$('drawerAskVy').addEventListener('click',()=>{
+  if(!drawerRow)return;
+  const prompt=buildVyHandoffPrompt(drawerRow);
+  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL,prompt);
+});
+$('drawerAskVyFallback').addEventListener('click',()=>{
+  if(!drawerRow)return;
+  const prompt=buildVyHandoffPrompt(drawerRow);
+  openChatGptHandoff('https://chatgpt.com/?prompt='+encodeURIComponent(prompt),prompt);
 });
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
