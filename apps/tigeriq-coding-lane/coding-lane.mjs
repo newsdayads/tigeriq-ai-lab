@@ -368,7 +368,7 @@ export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(Number.isFinite(cooldownUntil)&&cooldownUntil>nowMs)return false;
   if(state.current_job_id??state.currentJobId)return false;
   if(work==='BUSY')return false;
-  return health==='ONLINE'||['IDLE','READY'].includes(status);
+  return health==='ONLINE'||(health==='READY'&&work==='ON_DEMAND')||['IDLE','READY'].includes(status);
 }
 
 export function setCoreResourceHealthSnapshot(snapshot,nowMs=Date.now()){
