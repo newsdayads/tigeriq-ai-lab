@@ -16,7 +16,7 @@ import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failure
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -424,7 +424,25 @@ async function refreshResources() {
       else if(cooldownActive&&['ERROR','RATE_LIMITED'].includes(old?.health_state))health=old.health_state;
       else health=recentlyVerified?'ONLINE':'READY';
     }
-    else if (r.provider === 'ollama') { try { await fetchJson('http://127.0.0.1:11434/api/tags',{},3000); health='ONLINE'; } catch { health='OFFLINE'; } }
+    else if (r.provider === 'ollama') {
+      try {
+        const tags=await fetchJson('http://127.0.0.1:11434/api/tags',{},3000);
+        const models=Array.isArray(tags?.models)?tags.models:[];
+        const modelAvailable=models.some(x=>String(x?.name||x?.model||'')===String(r.model||''));
+        const latestFunctionalEvent=(await pool.query(
+          "select type from tigeriq_events where resource_id=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_FAILURE') and coalesce(task_kind,'')<>'probe' order by seq desc limit 1",
+          [r.resourceId],
+        )).rows[0]?.type||null;
+        health=apiDoctorLocalRefreshHealth({
+          modelAvailable,
+          currentHealth:old?.health_state,
+          cooldownUntil:old?.cooldown_until,
+          latestFunctionalEvent,
+        });
+      } catch {
+        health='OFFLINE';
+      }
+    }
     else if (old?.health_state === 'ONLINE' && old?.last_seen_at && (Date.now()-new Date(old.last_seen_at).getTime()) < 900000) health='ONLINE';
     else if (old?.health_state === 'RATE_LIMITED' || old?.health_state === 'ERROR' || old?.health_state === 'OFFLINE') health=old.health_state;
     if (r.provider !== 'ollama' && old?.health_state === 'RATE_LIMITED' && old?.cooldown_until && new Date(old.cooldown_until) > new Date()) health='RATE_LIMITED';
