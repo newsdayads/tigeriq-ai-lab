@@ -341,10 +341,20 @@ export function githubDependencyAdmissionBlocked(body){
   return false;
 }
 
+export function explicitAutoExecutionExclusion(body=''){
+  const text=String(body||'');
+  if(hasExactFlag(text,'TIGERIQ_EXECUTABLE','false'))return 'EXPLICIT_EXECUTION_DISABLED';
+  const autoQueue=bodyValue(text,'AUTO_QUEUE').trim().toUpperCase();
+  if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return 'AUTO_QUEUE_EXCLUDED';
+  return '';
+}
+
 export function safeAutoWorkAdmission(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return {eligible:false,reason:'NOT_OPEN_ISSUE'};
   const body=String(issue.body||'');
   const title=String(issue.title||'');
+  const explicitExclusion=explicitAutoExecutionExclusion(body);
+  if(explicitExclusion)return {eligible:false,reason:explicitExclusion};
   const priority=bodyValue(body,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
   const ownerPolicy=bodyValue(body,'OWNER_POLICY').toUpperCase();
@@ -755,9 +765,45 @@ async function recordRoutingFaultClear(pool,data){
     return false;
   }
 }
+export async function reconcileStaleTerminalBlockedRearms({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',issues=[]}={}){
+  const out=[];
+  for(const issue of Array.isArray(issues)?issues:[]){
+    const terminalBlocked=issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked');
+    if(!terminalBlocked){out.push(issue);continue;}
+    const labelsWithoutTerminal=(Array.isArray(issue.labels)?issue.labels:[]).filter((label)=>{
+      const name=typeof label==='string'?label:String(label?.name||'');
+      return name.toLowerCase()!=='tigeriq:terminal-blocked';
+    });
+    const candidate={...issue,labels:labelsWithoutTerminal};
+    // Never clear a machine terminal label for an issue that is explicitly non-executable,
+    // dependency-held, owner-gated, unsafe, or otherwise ineligible even without the label.
+    const admission=safeAutoWorkAdmission(candidate);
+    if(!admission.eligible){out.push(issue);continue;}
+    const currentRevision=githubIssueSourceRevision(issue);
+    const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(issue.number)])).rows[0]||null;
+    const priorRevision=String(prior?.metadata?.sourceRevision||'');
+    const stale=Boolean(prior&&prior.status!=='active'&&priorRevision&&priorRevision!==currentRevision);
+    if(!stale){out.push(issue);continue;}
+    const cleared=await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:issue.number,token}));
+    if(!cleared){out.push(issue);continue;}
+    await recordRoutingFaultClear(pool,{
+      source:'github-intake',
+      issueNumber:Number(issue.number),
+      resourceScope:admission.resourceScope||null,
+      reason:'STALE_TERMINAL_LABEL_REARM',
+      priorSourceRevision:priorRevision,
+      sourceRevision:currentRevision,
+      terminalBlockedCleared:true,
+    });
+    out.push(candidate);
+  }
+  return out;
+}
+
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
-  const rows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
+  const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
+  const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:fetchedRows});
   const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
   const openIssueIndex=indexOpenGithubIssues(rows);
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
