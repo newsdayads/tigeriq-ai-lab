@@ -19,7 +19,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { isStabilityV2ResourceScope, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
+import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
@@ -666,8 +666,11 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const [stats,initialFunctionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
   const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
+  const excludedProviders=new Set((Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map((id)=>String(id||'').trim().toLowerCase()).filter(Boolean));
+  const stabilityIdentity=stabilityV2BatchIdentityFromJobId(jobId);
   let candidates=q.rows
     .filter(x=>!excluded.includes(x.resource_id))
+    .filter(x=>!excludedProviders.has(String(x.provider||'').trim().toLowerCase()))
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}));
   if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
@@ -697,8 +700,18 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const client=await pool.connect();
   try{
     await client.query('begin');
+    const transactionExcludedResourceIds=new Set();
+    const transactionExcludedProviders=new Set(excludedProviders);
+    if(stabilityIdentity?.batch===1){
+      await client.query("select id from tigeriq_objectives where id=$1 for update",[stabilityIdentity.objectiveId]);
+      const peerExclusions=await stabilityV2PeerExclusions(jobId,client);
+      for(const resourceId of peerExclusions.resourceIds)transactionExcludedResourceIds.add(resourceId);
+      for(const provider of peerExclusions.providers)transactionExcludedProviders.add(provider);
+    }
     let r=null,selectedCandidate=null;
     for(const candidate of rankedClaimCandidates){
+      if(transactionExcludedResourceIds.has(String(candidate.resourceId||'')))continue;
+      if(transactionExcludedProviders.has(String(candidate.provider||'').trim().toLowerCase()))continue;
       const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[candidate.resourceId]);
       const row=locked.rows[0];
       if(!row)continue;
@@ -709,8 +722,9 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     }
     if(!r){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
+    if(stabilityIdentity?.batch===1)await client.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4 where id=$1",[jobId,r.employee_id,r.resource_id,r.provider]);
     await client.query('commit');
-    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:selectedCandidate||decision.chosen};
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],excludedProviders:[...transactionExcludedProviders],candidates:decision.candidates,chosen:selectedCandidate||decision.chosen};
     await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
     if(selectedCandidate?.resourceId!==decision.chosen.resourceId)await event('ROUTING_CLAIM_FALLBACK',{jobId,taskKind,profile,fromResourceId:decision.chosen.resourceId,toResourceId:r.resource_id,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider});
     await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
@@ -729,8 +743,22 @@ function validateRoutedOutput(text,{jobId='',prompt=''}={}){
   }
   return text;
 }
+
+async function stabilityV2PeerExclusions(jobId,store=pool){
+  const identity=stabilityV2BatchIdentityFromJobId(jobId);
+  if(!identity||identity.batch!==1)return {resourceIds:[],providers:[]};
+  const q=await store.query("select id,resource_id,provider from tigeriq_jobs where objective_id=$1 and id<>$2 and resource_id is not null",[identity.objectiveId,jobId]);
+  const peers=(q.rows||[]).filter(row=>{
+    const peer=stabilityV2BatchIdentityFromJobId(row.id);
+    return peer&&peer.round===identity.round&&peer.batch===identity.batch;
+  });
+  return {
+    resourceIds:[...new Set(peers.map(row=>String(row.resource_id||'').trim()).filter(Boolean))],
+    providers:[...new Set(peers.map(row=>String(row.provider||'').trim().toLowerCase()).filter(Boolean))],
+  };
+}
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 async function runNv09Canary(inputPrompt=''){
   const r=nv09Resource;

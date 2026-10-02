@@ -51,6 +51,12 @@ export function stabilityV2OutputContract({jobId='',prompt='',text=''}={}){
   return {handled:true,ok:false,marker,code:'STABILITY_V2_OUTPUT_CONTRACT_MISMATCH'};
 }
 
+export function stabilityV2BatchIdentityFromJobId(jobId=''){
+  const match=String(jobId||'').match(/^STAB-(.+)-R([1-3])-B([12])-J([1-3])$/);
+  if(!match)return null;
+  return {objectiveId:match[1],round:Number(match[2]),batch:Number(match[3]),ordinal:Number(match[4])};
+}
+
 const terminalFailure=(status)=>['failed','blocked','cancelled','canceled'].includes(String(status||'').toLowerCase());
 const done=(status)=>String(status||'').toLowerCase()==='done';
 

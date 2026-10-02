@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   STABILITY_V2_EMPLOYEE_ALLOWLIST,
   STABILITY_V2_RESOURCE_SCOPE,
+  stabilityV2BatchIdentityFromJobId,
   stabilityV2EmployeeAllowlist,
   stabilityV2ExpectedGroups,
   stabilityV2OutputContract,
@@ -107,6 +108,14 @@ test('done status is not enough: capability, kind and success marker must match 
   }
 });
 
+test('stability batch identity parses the canonical job id and rejects non-stability ids',()=>{
+  assert.deepEqual(
+    stabilityV2BatchIdentityFromJobId('STAB-OBJ-GH-2891-R88e638a46d08-20261002193228-R3-B1-J3'),
+    {objectiveId:'OBJ-GH-2891-R88e638a46d08-20261002193228',round:3,batch:1,ordinal:3},
+  );
+  assert.equal(stabilityV2BatchIdentityFromJobId('JOB-ordinary'),null);
+});
+
 test('stability output contract rejects nonempty garbage before it can count as provider success',()=>{
   const spec=groups[0].specs[0];
   const jobId='STAB-OBJ-X-R1-B1-J1';
@@ -197,6 +206,13 @@ test('production wiring suppresses GitHub helper auto-work and applies allowlist
   assert.match(core,/reconcileStabilityV2Objective\(o\)/);
   assert.match(core,/stabilityV2EmployeeAllowlist\(j\.objective_metadata\)/);
   assert.match(core,/validateRoutedOutput\(await invokeProvider\(r,prompt\),\{jobId,prompt\}\)/);
+  assert.match(core,/stabilityV2PeerExclusions\(jobId,client\)/);
+  assert.match(core,/select id from tigeriq_objectives where id=\$1 for update/);
+  assert.match(core,/update tigeriq_jobs set employee_id=\$2,resource_id=\$3,provider=\$4 where id=\$1/);
+  assert.match(core,/transactionExcludedProviders\.has\(String\(candidate\.provider/);
+  assert.match(core,/excludedProviders\.has\(String\(x\.provider/);
+  assert.match(core,/attemptedProviders=\[\.\.\.new Set\(failures\.map/);
+  assert.match(core,/excludedProviders=\[\.\.\.new Set\(\[\.\.\.peerExclusions\.providers,\.\.\.attemptedProviders\]\)\]/);
   assert.match(core,/STABILITY_V2_BATCH_MATERIALIZED/);
   assert.match(intake,/!isStabilityV2ResourceScope\(spec\.resourceScope\)/);
 });
