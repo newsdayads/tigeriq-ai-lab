@@ -838,10 +838,11 @@ function actionableStatus(issue, overlays = {}) {
 
   const active = overlays.active || null;
   const queued = overlays.queued || null;
-  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
-  if (hasTerminalBlockedLabel(issue)) return 'BLOCKED';
   if (active?.status) return String(active.status).toUpperCase();
   if (queued?.status) return String(queued.status).toUpperCase();
+  const canonicalBlocked = /BLOCKED/.test(issueCanonicalState(issue));
+  if (hasTerminalBlockedLabel(issue) && (!lifecycle?.blockerCleared || canonicalBlocked)) return 'BLOCKED';
+  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
@@ -878,7 +879,7 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
 }
 
 export function verifiedPortfolioProgress(rows = [], options = {}) {
-  const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind !== 'SYSTEM');
+  const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind === 'WORK');
   const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
     && Number.isFinite(Number(row.progressPercent)));
   const scopeItems = scope.length;
@@ -1252,7 +1253,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
 
-    const actionable = openWork.filter((row) => row.workKind !== 'SYSTEM');
+    const actionable = openWork.filter((row) => row.workKind === 'WORK');
     const openSummary = {
       open: openWork.length,
       actionable: actionable.length,
@@ -1266,7 +1267,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
       done: recentWork.length,
     };
-    const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete !== false });
+    const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
 
     return {
       ...base,
@@ -1291,7 +1292,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         reason: projectionReason,
         queueLimit: QUEUE_LIMIT,
         nextExecutableIssue: nextExecutable?.number || null,
-        openIssueEnumerationComplete: issuesComplete !== false,
+        openIssueEnumerationComplete: issuesComplete === true && !projectionStale,
       },
     };
   } catch (error) {
