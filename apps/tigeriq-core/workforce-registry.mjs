@@ -1,3 +1,5 @@
+import { githubRequestJson } from './github-shared-client.mjs';
+
 const DEFAULT_REGISTRY_URL = 'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/335';
 const REGISTRY_URL = process.env.TIGERIQ_REGISTRY_URL?.trim() || DEFAULT_REGISTRY_URL;
 const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
@@ -55,25 +57,64 @@ function parseRegistryBody(body) {
   return { workforce:completeRoster(assignments,retired), version };
 }
 
-let cache={
-  workforce:completeRoster(fallbackAssignments),
-  meta:{ source:'registry-335-fallback-v52', version:'52', fetchedAt:null, stale:true, error:null },
-  expiresAt:0,
-  refreshing:false,
-};
+function initialRegistryCache(){
+  return {
+    workforce:completeRoster(fallbackAssignments),
+    meta:{ source:'registry-335-fallback-v52', version:'52', fetchedAt:null, stale:true, error:null },
+    expiresAt:0,
+    refreshing:false,
+  };
+}
+
+let cache=initialRegistryCache();
 
 export function workforceSnapshot(){
   return { workforce:cache.workforce.map(x=>({...x})), workforceMeta:{...cache.meta} };
 }
 
-export async function refreshRegistryWorkforce(force=false){
+function tokenAllowedForRegistryUrl(url){
+  try{
+    const parsed=new URL(String(url||''));
+    return parsed.protocol==='https:'&&parsed.hostname.toLowerCase()==='api.github.com';
+  }catch{return false}
+}
+
+export async function fetchRegistryIssue({
+  fetchImpl=fetch,
+  token=process.env.TIGERIQ_GITHUB_TOKEN?.trim()||process.env.GITHUB_TOKEN?.trim()||'',
+  freshMs=0,
+  url=REGISTRY_URL,
+  signal=AbortSignal.timeout(3500),
+}={}){
+  if(tokenAllowedForRegistryUrl(url)){
+    return githubRequestJson(fetchImpl,url,token,{
+      freshMs:Math.max(0,Number(freshMs)||0),
+      signal,
+      allowStaleOnRateLimit:false,
+    });
+  }
+  const response=await fetchImpl(url,{
+    headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-Web-Control/1.0'},
+    signal,
+    cache:'no-store',
+  });
+  const raw=await response.text();
+  let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
+  if(!response.ok)throw new Error(`REGISTRY_HTTP_${response.status}:${String(body?.message||raw||'').slice(0,300)}`);
+  return body;
+}
+
+export async function refreshRegistryWorkforce(force=false,{
+  fetchImpl=fetch,
+  token=process.env.TIGERIQ_GITHUB_TOKEN?.trim()||process.env.GITHUB_TOKEN?.trim()||'',
+  url=REGISTRY_URL,
+  signal=AbortSignal.timeout(3500),
+}={}){
   const now=Date.now();
   if(cache.refreshing || (!force && now<cache.expiresAt)) return workforceSnapshot();
   cache.refreshing=true;
   try {
-    const response=await fetch(REGISTRY_URL,{ headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-Web-Control/1.0'}, signal:AbortSignal.timeout(3500), cache:'no-store' });
-    if(!response.ok) throw new Error(`REGISTRY_HTTP_${response.status}`);
-    const issue=await response.json();
+    const issue=await fetchRegistryIssue({fetchImpl,token,url,freshMs:0,signal});
     const parsed=parseRegistryBody(issue?.body||'');
     cache={ workforce:parsed.workforce, meta:{source:'registry-335-live',version:parsed.version,fetchedAt:new Date().toISOString(),stale:false,error:null}, expiresAt:now+CACHE_MS, refreshing:false };
   } catch(error) {
@@ -82,6 +123,10 @@ export async function refreshRegistryWorkforce(force=false){
     cache.refreshing=false;
   }
   return workforceSnapshot();
+}
+
+export function resetWorkforceRegistryForTests(){
+  cache=initialRegistryCache();
 }
 
 export function normalizeRuntimeResources(resources, workforce){
