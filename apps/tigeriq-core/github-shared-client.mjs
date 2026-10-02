@@ -71,7 +71,8 @@ async function awaitWithSignal(promise,signal){
 }
 
 export async function githubRequestJson(fetchImpl,url,token='',init={}){
-  const {freshMs:requestedFreshMs,allowStaleOnRateLimit=true,...fetchInit}=init||{};
+  const {freshMs:requestedFreshMs,allowStaleOnRateLimit=true,signal:callerSignal,...fetchInit}=init||{};
+  if(callerSignal?.aborted)throw abortError(callerSignal);
   const method=String(fetchInit.method||'GET').toUpperCase();
   const headers={
     accept:'application/vnd.github+json',
@@ -84,7 +85,7 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   if(method!=='GET'){
     if(blockedUntil>Date.now()){stats.backoffHits++;throw backoffError()}
     stats.writes++;stats.network++;
-    const response=await fetchImpl(url,{...fetchInit,method,headers,signal:fetchInit.signal||AbortSignal.timeout(12000)});
+    const response=await fetchImpl(url,{...fetchInit,method,headers,signal:callerSignal||AbortSignal.timeout(12000)});
     updateRate(response.headers);
     const raw=response.status===204?'':await response.text();
     let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
@@ -93,7 +94,6 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   }
 
   const key=fetchIdentity(fetchImpl)+':'+String(url);
-  const inflightKey=key+':stale='+(allowStaleOnRateLimit?'1':'0');
   const now=Date.now();
   const prior=cache.get(key);
   if(blockedUntil>now){
@@ -103,32 +103,39 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   }
   const freshMs=Math.max(0,Number(requestedFreshMs??DEFAULT_FRESH_MS));
   if(prior&&now-prior.at<freshMs){stats.memoryHits++;return prior.body}
-  if(inflight.has(inflightKey))return awaitWithSignal(inflight.get(inflightKey),fetchInit.signal);
+
+  const unwrap=(result)=>{
+    if(result?.stale===true&&!allowStaleOnRateLimit)throw backoffError();
+    return result?.body;
+  };
+  if(inflight.has(key))return unwrap(await awaitWithSignal(inflight.get(key),callerSignal));
 
   const request=(async()=>{
     const conditional={...headers};
     if(prior?.etag)conditional['if-none-match']=prior.etag;
     stats.network++;
-    const response=await fetchImpl(url,{...fetchInit,method:'GET',headers:conditional,signal:fetchInit.signal||AbortSignal.timeout(12000)});
+    const response=await fetchImpl(url,{...fetchInit,method:'GET',headers:conditional,signal:AbortSignal.timeout(12000)});
     updateRate(response.headers);
     if(response.status===304&&prior){
       stats.notModified++;
       prior.at=Date.now();
       cache.set(key,prior);
-      return prior.body;
+      return {body:prior.body,stale:false};
     }
     const raw=await response.text();
     let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
     if(!response.ok){
       const limited=applyRateLimitFailure(response,body,raw);
-      if(limited&&prior&&allowStaleOnRateLimit){stats.staleHits++;return prior.body}
+      if(limited&&prior){stats.staleHits++;return {body:prior.body,stale:true}}
       throw makeError(response.status,body,raw,response.headers);
     }
     cache.set(key,{at:Date.now(),etag:response.headers?.get?.('etag')||'',body});
-    return body;
+    return {body,stale:false};
   })();
-  inflight.set(inflightKey,request);
-  try{return await awaitWithSignal(request,fetchInit.signal)}finally{inflight.delete(inflightKey)}
+  inflight.set(key,request);
+  try{return unwrap(await awaitWithSignal(request,callerSignal))}finally{
+    if(inflight.get(key)===request)inflight.delete(key);
+  }
 }
 
 export function invalidateGithubCache(match=''){
