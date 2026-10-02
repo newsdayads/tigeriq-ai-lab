@@ -34,10 +34,10 @@ describe('#1600 full API Health workforce roster',()=>{
     const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
     expect(dashboard).toContain("function visibleResource(x){return String(x?.employee_id||'').toUpperCase()!=='NV00'}");
     expect(dashboard).toContain("if(s==='BUSY')return{group:'working',label:'ĐANG LÀM',rank:0}");
-    expect(dashboard).toContain("group:'attention',label:'CẦN XỬ LÝ',rank:1");
-    expect(dashboard).toContain("group:'ready',label:'SẴN SÀNG',rank:2");
-    expect(dashboard).toContain("group:'waiting',label:'ĐANG CHỜ',rank:3");
-    expect(dashboard).toContain('simpleState(a).rank-simpleState(b).rank||operationalRank(a)-operationalRank(b)');
+    expect(dashboard).toContain("group:'ready',label:'SẴN SÀNG',rank:1");
+    expect(dashboard).toContain("group:'waiting',label:'ĐANG CHỜ',rank:2");
+    expect(dashboard).toContain("group:'attention',label:'LỖI',rank:3");
+    expect(dashboard).toContain('simpleState(a).rank-simpleState(b).rank||operationalRank(a)-operationalRank(b)||nvNum(a)-nvNum(b)');
     expect(dashboard).toContain("String(job?.status||'').toLowerCase()!=='running'");
     expect(dashboard).toContain("status:'BUSY',current_job_id:job.id");
     expect(dashboard).toContain('applyCoreJobs(applyLiveWorkforce(');
@@ -49,6 +49,16 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("NV03:'🔎'");
     expect(dashboard).toContain('employee-state');
     expect(dashboard).toContain('employee-task');
+    expect(dashboard).toContain('employee-card-head');
+    expect(dashboard).toContain('employee-identity');
+    expect(dashboard).toContain("NV02:'💬'");
+    expect(dashboard).toContain("const STATE_ICON={working:'▶',ready:'✓',waiting:'◷',attention:'!',paused:'Ⅱ'}");
+    expect(dashboard).toContain('color:#e0c6ff;background:#2b1d4f');
+    expect(dashboard).toContain('tech-popover');
+    expect(dashboard).toContain("matchMedia('(hover:hover) and (pointer:fine)').matches");
+    expect(dashboard).toContain("detailModal.className='detail-modal state-'+state.group");
+    expect(dashboard).toContain("return'Cần hệ thống xử lý lỗi'");
+
     expect(dashboard).toContain('id="topLive"');
     expect(dashboard).toContain('id="topIssueCount"');
     expect(dashboard).not.toContain('<h1>TigerIQ API Health');
