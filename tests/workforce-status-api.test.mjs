@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fetchWorkforceStatus, sanitizeWorkforceSnapshot } from '../api/workforce-status.mjs';
+import { fetchRegistryIssue } from '../apps/tigeriq-core/workforce-registry.mjs';
 
 afterEach(() => {
   delete process.env.TIGERIQ_WORKFORCE_STATUS_URL;
@@ -61,5 +62,27 @@ describe('Workforce status ingress', () => {
     expect(sanitized.employees.utilization).toBe(1);
     expect(sanitized.employees.providers.x).toBe(0);
     expect(sanitized.tasks.failed).toBe(0);
+  });
+});
+
+
+describe('Core workforce registry transport', () => {
+  it('uses the shared authenticated GitHub transport for registry #335', async () => {
+    let authorization = '';
+    let apiVersion = '';
+    const issue = await fetchRegistryIssue({
+      token:'abc',
+      fetchImpl:async (_url, init={}) => {
+        authorization=String(init?.headers?.authorization||'');
+        apiVersion=String(init?.headers?.['x-github-api-version']||'');
+        return new Response(JSON.stringify({number:335,body:'REGISTRY_ROOT_VERSION=99\n| NV11 | Groq | READY |'}),{
+          status:200,
+          headers:{'content-type':'application/json','x-ratelimit-remaining':'4999','x-ratelimit-reset':'1999999999'}
+        });
+      },
+    });
+    expect(authorization).toBe('Bearer abc');
+    expect(apiVersion).toBe('2022-11-28');
+    expect(issue.number).toBe(335);
   });
 });
