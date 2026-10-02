@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  managerJobMaterializationDecision,
+  managerLogicalJobIdentity,
+  normalizeManagerLogicalTitle,
+} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {
   CONTINUOUS_VERIFY_CADENCE_MS,
   cadenceContinuousVerifyDue,
   continuousVerifyRelevantPath,
@@ -78,5 +83,30 @@ describe('Continuous Capability Verification trigger policy', () => {
     for(const anomaly of canary.anomalies){
       expect(anomalyMaterializationDecision(null,anomaly)).toMatchObject({materialize:true,reason:'NEW_SIGNATURE'});
     }
+  });
+});
+
+
+describe('Manager logical job materialization policy', () => {
+  it('dedupes the same logical title inside one objective and phase', () => {
+    expect(normalizeManagerLogicalTitle('  STAB-R1-Job1  ')).toBe('stab-r1-job1');
+    const a=managerLogicalJobIdentity({objectiveId:'OBJ-1',phaseIndex:0,title:'STAB-R1-Job1'});
+    const b=managerLogicalJobIdentity({objectiveId:'OBJ-1',phaseIndex:0,title:' stab-r1-job1 '});
+    expect(a).toEqual(b);
+    expect(managerJobMaterializationDecision('queued')).toMatchObject({action:'dedupe'});
+    expect(managerJobMaterializationDecision('running')).toMatchObject({action:'dedupe'});
+    expect(managerJobMaterializationDecision('done')).toMatchObject({action:'dedupe'});
+    expect(managerJobMaterializationDecision('waiting_resource')).toMatchObject({action:'dedupe'});
+  });
+
+  it('allows a new materialization after a terminal failed logical job', () => {
+    expect(managerJobMaterializationDecision('failed')).toMatchObject({action:'create',reason:'previous_failed'});
+    expect(managerJobMaterializationDecision('')).toMatchObject({action:'create',reason:'no_existing_job'});
+  });
+
+  it('keeps different phases distinct', () => {
+    const r1=managerLogicalJobIdentity({objectiveId:'OBJ-1',phaseIndex:0,title:'Job1'});
+    const r2=managerLogicalJobIdentity({objectiveId:'OBJ-1',phaseIndex:1,title:'Job1'});
+    expect(r1.phaseIndex).not.toBe(r2.phaseIndex);
   });
 });
