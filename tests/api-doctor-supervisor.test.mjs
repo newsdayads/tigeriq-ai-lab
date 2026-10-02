@@ -333,6 +333,35 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
+  it('does not let an empty Watsonx chat field mask later valid response text',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const extractFunction=(name)=>{
+      const start=core.indexOf(`function ${name}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const open=core.indexOf('{',start);
+      let depth=0,end=-1;
+      for(let i=open;i<core.length;i++){
+        if(core[i]==='{')depth++;
+        else if(core[i]==='}'&&--depth===0){end=i+1;break;}
+      }
+      expect(end).toBeGreaterThan(open);
+      return core.slice(start,end);
+    };
+    const factory=new Function(
+      `${extractFunction('watsonxTextFromBody')}\n${extractFunction('hasWatsonxTextShape')}\n${extractFunction('watsonxRetryDecision')}\nreturn {watsonxTextFromBody,watsonxRetryDecision};`,
+    );
+    const {watsonxTextFromBody,watsonxRetryDecision}=factory();
+
+    const fallbackBody={choices:[{message:{content:''},text:'usable fallback'}]};
+    expect(watsonxTextFromBody(fallbackBody)).toBe('usable fallback');
+    expect(watsonxRetryDecision(fallbackBody,0,2)).toEqual({action:'success',text:'usable fallback'});
+
+    const emptyBody={choices:[{message:{content:''},text:''}]};
+    expect(watsonxRetryDecision(emptyBody,0,2)).toEqual({action:'retry',code:'WATSONX_TRANSIENT_EMPTY'});
+    expect(watsonxRetryDecision(emptyBody,2,2)).toEqual({action:'fail',code:'EMPTY_RESPONSE'});
+    expect(watsonxRetryDecision({unexpected:true},0,2)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
+  });
+
   it('executes the Cloudflare manager JSON helper behavior and verifies provider wiring',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const extractFunction=(name)=>{

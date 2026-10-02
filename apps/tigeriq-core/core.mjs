@@ -262,8 +262,9 @@ export function watsonxTextFromBody(body){
       ?chatContent.map(part=>typeof part==='string'?part:(typeof part?.text==='string'?part.text:'')).join('')
       :null;
   const candidates=[chatText,firstChoice?.text,firstResult?.generated_text,firstResult?.text,firstResult?.output,body?.generated_text,body?.output];
-  const found=candidates.find(value=>typeof value==='string');
-  return found===undefined?null:found;
+  const found=candidates.find(value=>typeof value==='string'&&value.trim());
+  if(found!==undefined)return found;
+  return candidates.some(value=>typeof value==='string')?'':null;
 }
 export function hasWatsonxTextShape(body){
   const firstResult=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;
