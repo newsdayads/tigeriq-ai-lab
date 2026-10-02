@@ -267,13 +267,9 @@ export function nv02TakeoverStatus(issue, comments = [], {
   if (!capabilityDirectPath(meta, capability)) return { eligible: false, reason: 'NO_NV02_DIRECT_EXECUTION_PATH', target, resourceScope };
   const codingFallback = codingLaneFallbackStatus(meta, comments, { nowMs, staleMs });
   if (codingFallback?.eligible) return { ...codingFallback, resourceScope };
-  if (!target || target === 'NV02') return {
-    eligible: false,
-    reason: codingFallback?.reason || 'NO_FOREIGN_ASSIGNEE',
-    target,
-    resourceScope,
-    codingFallback,
-  };
+  if (!target || target === 'NV02') return codingFallback
+    ? { ...codingFallback, target, resourceScope }
+    : { eligible: false, reason: 'NO_FOREIGN_ASSIGNEE', target, resourceScope };
 
   const rounds = noProgressRounds(issue, comments);
   const explicitStalled = [String(issue?.body || ''), ...comments.map((x) => String(x?.body || ''))]
