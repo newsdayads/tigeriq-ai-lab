@@ -353,8 +353,8 @@ function render(){
     el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
-    const {pct,verified:verifiedProgress}=verifiedProgress(row);
-    const progress=verifiedProgress&&Number.isFinite(pct)&&pct>=0&&pct<=100
+    const {pct,verified:progressVerified}=verifiedProgress(row);
+    const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
     const summaryText=String(row?.currentStep||(row?.workKind==='SYSTEM'?'Policy/SOT/reference — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':'')).trim();
@@ -364,7 +364,7 @@ function render(){
     const blockerText=effectiveBlocker(row).trim();
     const nextLine='<div class="work-next"><b>Tiếp:</b> '+esc(nextText||'Chưa xác định')+'</div>';
     const blockerLine=blockerText?'<div class="work-blocker"><b>Blocker:</b> '+esc(blockerText)+'</div>':'';
-    const signature=status+'|'+(verifiedProgress&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+nextText+'|'+blockerText;
+    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+nextText+'|'+blockerText;
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
