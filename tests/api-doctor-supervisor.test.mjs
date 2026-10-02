@@ -325,7 +325,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorCurrentFailure(events)");
     expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
     expect(core).toContain("ignored_stale_failure_class");
-    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const handoffFailureClass="));
+    expect(core.indexOf("const handoffFailureClass=")).toBeLessThan(core.indexOf("if(handoffPlan.action==='recovered')"));
     expect(core).toContain("evidence:'stale_failure_class_reprobe_success'");
     expect(core).toContain("row.staleHandoffRetired=true");
     expect(core).toContain("healthState:resource.health_state");
