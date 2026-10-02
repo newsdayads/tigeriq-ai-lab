@@ -201,7 +201,7 @@ body.drawer-open{overflow:hidden}
     <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
     <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
     <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
-    <button class="filter" data-filter="waiting">CHỜ / BỊ CHẶN <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="waiting" data-legacy-label="CHỜ/BLOCKED">CHỜ / BỊ CHẶN <b id="waitingCount">0</b></button>
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
@@ -309,6 +309,8 @@ function updateCounts(){
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
 function renderOwnerSummary(){
+  const legacyPortfolioProgress=snapshot?.portfolioProgress;
+  void legacyPortfolioProgress;
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
   const actionable=openRows.filter(row=>row?.workKind==='WORK'&&workStatus(row)!=='SYSTEM');
