@@ -1052,7 +1052,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         githubResultReported:true,
         githubTerminalLabelSynced:true,
       };
-      await pool.query("update tigeriq_objectives set status='blocked',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1",[row.id,summary,JSON.stringify(exclusionPatch)]);
+      await pool.query("update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb,updated_at=now() where id=$1",[row.id,'blocked',summary,JSON.stringify(exclusionPatch)]);
       row.status='blocked';
       row.summary=summary;
       row.metadata={...row.metadata,...exclusionPatch};
