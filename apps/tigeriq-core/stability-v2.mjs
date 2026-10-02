@@ -40,7 +40,7 @@ export function stabilityV2JobSpec(round,batch,capability,ordinal){
   const prompt=capability==='reasoning'
     ? `TigerIQ Stability V2 normal reasoning work. Compute ${round*100+batch*10+ordinal} + 7. Return "${marker}" followed by the numeric answer and one concise sentence. Do not coordinate, create, or request other jobs.`
     : `TigerIQ Stability V2 normal general work. Return "${marker}" followed by one concise sentence explaining why idempotency prevents duplicate effects. Do not coordinate, create, or request other jobs.`;
-  return {round,batch,ordinal,capability,title,prompt};
+  return {round,batch,ordinal,capability,title,prompt,marker};
 }
 
 const terminalFailure=(status)=>['failed','blocked','cancelled','canceled'].includes(String(status||'').toLowerCase());
@@ -117,9 +117,23 @@ export function stabilityV2Plan({
       return {handled:true,action:'wait',reason:'batch_running',round:group.round,batch:group.batch,nextCheckAtMs:Number(nowMs)+5000};
     }
 
+    const specByTitle=new Map(group.specs.map(spec=>[spec.title,spec]));
+    const contractMismatch=groupRows.filter(row=>{
+      const spec=specByTitle.get(String(row.title||''));
+      const text=String(row?.result?.text||'');
+      return !spec
+        || String(row?.kind||'').toLowerCase()!=='ai'
+        || String(row?.capability||'').toLowerCase()!==spec.capability
+        || !text.includes(spec.marker);
+    });
+    if(contractMismatch.length){
+      return {handled:true,action:'block',reason:'job_contract_mismatch',round:group.round,batch:group.batch,jobIds:contractMismatch.map(row=>row.id).filter(Boolean)};
+    }
+
     const outOfScope=groupRows.filter(row=>row.employee_id&&!STABILITY_V2_EMPLOYEE_ALLOWLIST.includes(String(row.employee_id).toUpperCase()));
-    if(outOfScope.length){
-      return {handled:true,action:'block',reason:'out_of_scope_employee',round:group.round,batch:group.batch,jobIds:outOfScope.map(row=>row.id).filter(Boolean)};
+    const outOfScopeAttempts=groupRows.filter(row=>(Array.isArray(row?.result?.failures)?row.result.failures:[]).some(f=>f?.employeeId&&!STABILITY_V2_EMPLOYEE_ALLOWLIST.includes(String(f.employeeId).toUpperCase())));
+    if(outOfScope.length||outOfScopeAttempts.length){
+      return {handled:true,action:'block',reason:'out_of_scope_employee',round:group.round,batch:group.batch,jobIds:[...new Set([...outOfScope,...outOfScopeAttempts].map(row=>row.id).filter(Boolean))]};
     }
     if(group.batch===1){
       const providers=new Set(groupRows.map(row=>String(row.provider||'').trim()).filter(Boolean));
