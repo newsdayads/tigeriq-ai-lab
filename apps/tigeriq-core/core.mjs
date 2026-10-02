@@ -774,7 +774,7 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure,
     'REVIEW_REQUIRED=true',
     'REVIEWER_DIFFERENT_RESOURCE=true',
     `API_DOCTOR_SIGNATURE=${signature}`,
-    `TARGET_EMPLOYEE=${resource.employee_id}`,
+    `AFFECTED_EMPLOYEE=${resource.employee_id}`,
     `TARGET_PROVIDER=${resource.provider}`,
     `FAILURE_CLASS=${failureClass}`,
     `FAILURE_EVIDENCE=${message.slice(0,300)}`,
@@ -783,11 +783,20 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure,
     'DONE=false',
     'STATE=READY_AUTO_EXECUTION',
   ].join('\n');
-  const issue=await githubCreateAutonomousRcaIssue({title,body});
+  let issue=await githubFindOpenApiDoctorRepairIssue(resourceScope);
+  const reconciledExisting=Boolean(issue);
+  if(!issue){
+    await event('API_DOCTOR_REPAIR_INTENT',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,resourceScope,message:message.slice(0,300)});
+    try{issue=await githubCreateAutonomousRcaIssue({title,body});}
+    catch(error){
+      issue=await githubFindOpenApiDoctorRepairIssue(resourceScope);
+      if(!issue)throw error;
+    }
+  }
   const repairIssueNumber=Number(issue?.number)||null;
   const repairIssueUrl=String(issue?.html_url||'');
-  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),repairIssueNumber,repairIssueUrl,resourceScope,codingObjectiveId:null,supersedesLegacyHandoffAt:prior?.ts||null});
-  return {created:true,signature,repairIssueNumber,repairIssueUrl,resourceScope};
+  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),repairIssueNumber,repairIssueUrl,resourceScope,codingObjectiveId:null,reconciledExisting,supersedesLegacyHandoffAt:prior?.ts||null});
+  return {created:!reconciledExisting,signature,repairIssueNumber,repairIssueUrl,resourceScope,reconciledExisting};
 }
 async function invokeApiDoctorLocal(prompt){
   const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
@@ -844,9 +853,32 @@ async function runApiDoctorScan(){
       actions.push(row);continue;
     }
     const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
+    const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
+    const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
     let handoffPlan=null;
     if(handoffCandidate){
-      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and coalesce(task_kind,'')<>'api_doctor_validation' and ts>$2 order by seq desc limit 1",[resource.resource_id,handoffCandidate.ts])).rows[0];
+      let normalSuccessSince=handoffCandidate.ts;
+      let canonicalGate=null;
+      if(canonicalRepairIssueNumber>0){
+        const repairIssue=await githubApiDoctorRepairIssueStatus(canonicalRepairIssueNumber);
+        const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+        const runtimeUpdaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
+        const runtimeUpdatedAt=[runtimeSourceState?.updatedAt,runtimeUpdaterState?.updatedAt].filter(Boolean).sort().at(-1)||null;
+        canonicalGate=apiDoctorRepairRuntimeGate({
+          issueNumber:canonicalRepairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason,issueClosedAt:repairIssue.closedAt,
+          runtimeCurrentSha:runtimeSourceState?.currentSha||'',runtimeInstalledSha:runtimeUpdaterState?.installedSha||'',runtimeUpdatedAt,
+          updaterResult:runtimeUpdaterState?.result||'',updaterCandidateSha:runtimeUpdaterState?.candidateSha||'',
+        });
+        row.repairIssueNumber=canonicalRepairIssueNumber;row.repairIssueState=repairIssue.state;row.repairIssueStateReason=repairIssue.stateReason||null;
+        if(canonicalGate.action==='validate_repair'){
+          const closedMs=Date.parse(String(repairIssue.closedAt||''));
+          const runtimeMs=Date.parse(String(runtimeUpdatedAt||''));
+          normalSuccessSince=new Date(Math.max(closedMs,runtimeMs)).toISOString();
+        }else normalSuccessSince=null;
+      }else if(handoffFailureClass==='source_contract'){
+        normalSuccessSince=null;
+      }
+      const successAfter=normalSuccessSince?(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and coalesce(task_kind,'')<>'api_doctor_validation' and ts>$2 order by seq desc limit 1",[resource.resource_id,normalSuccessSince])).rows[0]:null;
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
       handoffPlan=apiDoctorExistingHandoffAction({
         existingHandoff:true,
@@ -857,26 +889,11 @@ async function runApiDoctorScan(){
         maxValidationAttempts:2,
       });
       if(handoffPlan.action==='recovered'){
-        const repairIssueNumber=Number(handoffCandidate.data?.repairIssueNumber||0);
-        if(repairIssueNumber>0){
-          const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
-          const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
-          const runtimeUpdaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
-          const runtimeUpdatedAt=[runtimeSourceState?.updatedAt,runtimeUpdaterState?.updatedAt].filter(Boolean).sort().at(-1)||null;
-          const repairGate=apiDoctorRepairRuntimeGate({
-            issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason,issueClosedAt:repairIssue.closedAt,
-            runtimeCurrentSha:runtimeSourceState?.currentSha||'',runtimeInstalledSha:runtimeUpdaterState?.installedSha||'',runtimeUpdatedAt,
-          });
-          row.repairIssueNumber=repairIssueNumber;row.repairIssueState=repairIssue.state;row.repairIssueStateReason=repairIssue.stateReason||null;
-          if(repairGate.action!=='validate_repair'){row.action='wait_repair';row.reason=repairGate.reason;row.handoff='deduped';actions.push(row);continue;}
-        }
         const signature=handoffCandidate.data?.signature;
         if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_normal_core_work_success_after_completed_repair'});
         row.action='recovered';row.reason='live_normal_core_work_success_after_completed_repair';row.recovered=true;actions.push(row);continue;
       }
     }
-    const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
-    const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
     const repairLifecycleRelevant=apiDoctorRepairLifecycleRelevant({
       hasHandoff:Boolean(handoffCandidate),repairIssueNumber:canonicalRepairIssueNumber,handoffFailureClass,
       currentFailureClass:plan.failureClass,currentAction:plan.action,
@@ -902,6 +919,7 @@ async function runApiDoctorScan(){
         const repairGate=apiDoctorRepairRuntimeGate({
           issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason,issueClosedAt:repairIssue.closedAt,
           runtimeCurrentSha:runtimeSourceState?.currentSha||'',runtimeInstalledSha:runtimeUpdaterState?.installedSha||'',runtimeUpdatedAt,
+          updaterResult:runtimeUpdaterState?.result||'',updaterCandidateSha:runtimeUpdaterState?.candidateSha||'',
         });
         row.repairIssueNumber=repairIssueNumber;
         row.repairIssueUrl=existingHandoff.data?.repairIssueUrl||null;
@@ -1980,6 +1998,18 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
   }
   await event('SELF_AUDIT_SCAN',{contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized,deduped,resolved});
   return {materialized,deduped,resolved};
+}
+
+async function githubFindOpenApiDoctorRepairIssue(resourceScope){
+  if(!GITHUB_TOKEN)return null;
+  const scope=String(resourceScope||'').trim();
+  if(!scope)return null;
+  try{
+    const q=encodeURIComponent(`repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue is:open "${scope}"`);
+    const url=`https://api.github.com/search/issues?q=${q}&per_page=10`;
+    const result=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Doctor'}},10000);
+    return (Array.isArray(result?.items)?result.items:[]).find(item=>String(item?.body||'').includes(`RESOURCE_SCOPE=${scope}`))||null;
+  }catch{return null;}
 }
 
 async function githubCreateAutonomousRcaIssue(spec){
