@@ -170,6 +170,7 @@ test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_
   assert.strictEqual(spec.capability,'reasoning');
   assert.strictEqual(spec.dispatchLane,'CORE_REASONING');
   assert.strictEqual(spec.requiresCodingHandoff,true);
+  assert.strictEqual(spec.keepOpenOnStepComplete,true);
   assert.strictEqual(spec.targetWorker,null);
 });
 
@@ -214,6 +215,7 @@ test('safe coding Work Order materializes one API coordination job without takin
   assert.strictEqual(pool.objectives[0].metadata.requestedCapability,'coding');
   assert.strictEqual(pool.objectives[0].metadata.capability,'reasoning');
   assert.strictEqual(pool.objectives[0].metadata.executionSurface,'CORE_REASONING_COORDINATION');
+  assert.strictEqual(pool.objectives[0].metadata.keepOpenOnStepComplete,true);
   assert.match(pool.objectives[0].objective,/must not mutate source or claim coding\/review ownership/);
   assert.strictEqual(pool.jobs.length,1);
   assert.strictEqual(pool.jobs[0].kind,'github_api_autowork');
