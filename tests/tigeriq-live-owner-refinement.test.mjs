@@ -37,6 +37,18 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain("row?.technicalComplete?'ĐÃ XONG KỸ THUẬT':'CHỜ ANH SƠN'");
   });
 
+  it('uses projected WORKING rows and excludes unverified provider fallback health', () => {
+    expect(html).toContain("workStatus(row)==='WORKING'");
+    expect(html).toContain("a.verified===true");
+    expect(html).toContain("const healthValue=");
+  });
+
+  it('preserves explicit owner next actions and opens ChatGPT exactly once', () => {
+    expect(html).toContain("const raw=String(row?.nextStep||'').trim()");
+    expect(html).toContain("link.target='_blank';link.rel='noopener noreferrer'");
+    expect(html).not.toContain("if(!opened)location.href=url");
+  });
+
   it('renders actual runtime focus and API workforce stability summary', () => {
     expect(html).toContain('Việc đang chạy ngay lúc này');
     expect(html).toContain('apiWorkforceSummary');
