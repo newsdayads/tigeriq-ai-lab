@@ -36,6 +36,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       FAILED: 'LỖI',
       ERROR: 'LỖI',
       EXTERNAL_WAIT: 'CHỜ BÊN NGOÀI',
+      OWNER_GATE: 'CHỜ ANH SƠN DUYỆT',
       OWNER_APPROVAL_REQUIRED: 'CHỜ ANH SƠN DUYỆT',
     };
     for (const [machine, expected] of Object.entries(cases)) {
@@ -44,7 +45,7 @@ describe('Owner-facing Vietnamese output gate', () => {
   });
 
   it('localizes required Owner-facing terms and leaves no bare English status', () => {
-    const input = 'final review PASS; deep cross-check DONE; live acceptance READY; canary WAITING; fallback BLOCKED; routing ERROR; EXTERNAL_WAIT; OWNER_APPROVAL_REQUIRED';
+    const input = 'final review PASS; deep cross-check DONE; live acceptance READY; canary WAITING; fallback BLOCKED; routing ERROR; EXTERNAL_WAIT; OWNER_GATE; OWNER_APPROVAL_REQUIRED';
     const output = localizeOwnerFacingText(input);
     expect(output).toContain('rà soát cuối ĐẠT');
     expect(output).toContain('kiểm tra chéo chuyên sâu HOÀN TẤT');
@@ -53,7 +54,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(output).toContain('phương án dự phòng BỊ CHẶN');
     expect(output).toContain('định tuyến LỖI');
     expect(output).toContain('CHỜ BÊN NGOÀI');
-    expect(output).toContain('CHỜ ANH SƠN DUYỆT');
+    expect(output.match(/CHỜ ANH SƠN DUYỆT/g)).toHaveLength(2);
     expect(containsBareEnglishOwnerStatus(output)).toBe(false);
   });
 
@@ -99,6 +100,18 @@ describe('Owner-facing Vietnamese output gate', () => {
       detail: 'định tuyến LỖI',
     });
     expect(JSON.stringify(row)).not.toMatch(/\b(?:PASS|DONE|COMPLETED|WORKING|RUNNING|READY|QUEUED|WAITING|WAIT_RESOURCE|BLOCKED|FAILED|ERROR|EXTERNAL_WAIT|OWNER_APPROVAL_REQUIRED)\b/);
+  });
+
+  it('localizes OWNER_GATE rows before Live/API serialization', () => {
+    const row = ownerFacingWorkRow({
+      number: 2828,
+      status: 'OWNER_GATE',
+      currentStep: 'Chờ anh Sơn duyệt',
+    });
+    expect(row.status).toBe('CHỜ ANH SƠN DUYỆT');
+    expect(row.statusIcon).toBe('🔒');
+    expect(containsBareEnglishOwnerStatus(JSON.stringify(row))).toBe(false);
+    expect(containsBareEnglishOwnerStatus('OWNER_GATE')).toBe(true);
   });
 
   it('localizes checkpoint/handoff lifecycle for Owner', () => {
@@ -148,6 +161,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(ownerStatusIcon('DONE')).toBe('✅');
     expect(ownerStatusIcon('WORKING')).toBe('⚙️');
     expect(ownerStatusIcon('BLOCKED')).toBe('⚠️');
+    expect(ownerStatusIcon('OWNER_GATE')).toBe('🔒');
     expect(ownerStatusIcon('OWNER_APPROVAL_REQUIRED')).toBe('🔒');
 
     const progress = verifiedOwnerProgress({ passed: 7, total: 10, verified: true });
