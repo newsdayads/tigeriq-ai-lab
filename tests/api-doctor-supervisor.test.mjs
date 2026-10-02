@@ -447,6 +447,6 @@ describe('#1255 routing/runtime integration',()=>{
     expect((core.match(/Number\(error\?\.status\)===413/g)||[]).length).toBe(1);
     expect(core).not.toContain("Number(error?.status)>=400");
     expect(core).toContain("host==='openrouter.ai'?{reasoning:{enabled:false}}:{}");
-    expect((core.match(/reasoning:\\{enabled:false\\}/g)||[]).length).toBe(1);
+    expect(core.split('reasoning:{enabled:false}').length-1).toBe(1);
   });
 });
