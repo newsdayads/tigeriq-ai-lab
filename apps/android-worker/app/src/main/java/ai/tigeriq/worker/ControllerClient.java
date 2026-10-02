@@ -71,6 +71,18 @@ public final class ControllerClient {
         return authenticatedPost("/api/node/employee", request);
     }
 
+    public JSONObject requestCoreAssignedEmployee(String provider, String[] capabilities) throws Exception {
+        JSONObject request = new JSONObject();
+        if (provider != null && !provider.trim().isEmpty()) request.put("provider", provider.trim());
+        request.put("capabilities", new JSONArray(capabilities));
+        return authenticatedPost("/api/node/employee", request);
+    }
+
+    public JSONObject probeStatus(String controllerUrl) throws Exception {
+        controllerUrl = ControllerUrlPolicy.requireTrusted(controllerUrl);
+        return get(controllerUrl, "/api/workforce/status");
+    }
+
     public JSONObject heartbeat(int batteryPct, Double temperatureC, String agentVersion) throws Exception {
         JSONObject request = new JSONObject();
         request.put("status", "online");
@@ -97,6 +109,23 @@ public final class ControllerClient {
         SecureCredentialStore.Credential credential = store.load();
         if (credential == null) throw new IllegalStateException("worker is not paired");
         return post(ControllerUrlPolicy.requireTrusted(credential.controllerUrl), path, body, credential);
+    }
+
+    private static JSONObject get(String controllerUrl, String path) throws Exception {
+        URL url = new URL(ControllerUrlPolicy.requireTrusted(controllerUrl) + path);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setRequestProperty("Accept", "application/json");
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String payload = read(stream);
+        connection.disconnect();
+        if (status < 200 || status >= 300) {
+            throw new ControllerException(status, payload.length() > 512 ? payload.substring(0, 512) : payload);
+        }
+        return payload.isEmpty() ? new JSONObject() : new JSONObject(payload);
     }
 
     private static JSONObject post(

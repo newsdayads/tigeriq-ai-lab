@@ -44,20 +44,20 @@ jobs:
           test -z "${TIGERIQ_ANDROID_STORE_PASSWORD_FILE:-}"
           test -z "${TIGERIQ_ANDROID_KEY_PASSWORD_FILE:-}"
           gradle --no-daemon :app:tigerIqStableSigningStatus | grep TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED
-      - name: Run Gate A unit tests
+      - name: Run Android worker unit tests
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:testDebugUnitTest
-      - name: Enforce Gate A accessibility probe remains read-only
+      - name: Enforce Gate B0 accessibility probe remains read-only
         run: |
           set -euo pipefail
           probe='apps/android-worker/app/src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java'
           grep -Fq 'com.openai.chatgpt' "$probe"
           grep -Fq 'KEY_NODE_COUNT' "$probe"
           if grep -E 'ACTION_CLICK|ACTION_SET_TEXT|performAction\(' "$probe"; then
-            echo 'GATE_A_READ_ONLY_PROBE_FAIL: autonomous UI action found before physical evidence gate' >&2
+            echo 'GATE_B0_READ_ONLY_PROBE_FAIL: autonomous UI action found before physical evidence gate' >&2
             exit 1
           fi
-          echo 'GATE_A_READ_ONLY_ACCESSIBILITY_PROBE_PASS'
+          echo 'GATE_B0_READ_ONLY_ACCESSIBILITY_PROBE_PASS'
       - name: Build debug and unsigned release APKs
         working-directory: apps/android-worker
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease

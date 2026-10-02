@@ -136,6 +136,69 @@ describe('Workforce Controller API', () => {
     expect(status.workforce.employees.departments.Research).toBe(1);
   });
 
+  it('lets Core assign the first mobile NV identity and keeps the assignment idempotent', async () => {
+    const app = await fixture();
+    const challengeResponse = await fetch(`${app.url}/api/admin/pairing-challenge`, {
+      method: 'POST', headers: { 'x-tigeriq-admin-secret': 'admin-secret' },
+    });
+    const challengeBody = await json(challengeResponse);
+    const signed = deviceProof(challengeBody.pairing.challenge);
+
+    const pairResponse = await fetch(`${app.url}/api/node/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: challengeBody.pairing.challengeId,
+        nodeId: 'PHONE-ZFLIP7-01',
+        publicKey: signed.publicKey,
+        proof: signed.proof,
+        kind: 'android',
+        platform: 'Samsung Z Flip 7 / Android 16',
+        agentVersion: '0.6.0-pilot-setup',
+        capabilities: ['android-ui', 'research', 'chatgpt-ui'],
+      }),
+    });
+    expect(pairResponse.status).toBe(201);
+    const paired = await json(pairResponse);
+    const nodeHeaders = {
+      'content-type': 'application/json',
+      'x-tigeriq-credential-id': paired.credential.credentialId,
+      authorization: `Bearer ${paired.credential.token}`,
+    };
+
+    const assignedResponse = await fetch(`${app.url}/api/node/employee`, {
+      method: 'POST',
+      headers: nodeHeaders,
+      body: JSON.stringify({
+        provider: 'ChatGPT',
+        capabilities: ['android-ui', 'research', 'chatgpt-ui'],
+      }),
+    });
+    expect(assignedResponse.status).toBe(201);
+    const assigned = await json(assignedResponse);
+    expect(assigned.assignedByCore).toBe(true);
+    expect(assigned.employee.employeeId).toBe('NV101');
+    expect(assigned.employee.department).toBe('Engineering');
+    expect(assigned.employee.role).toBe('Android Worker Pilot');
+    expect(assigned.employee.provider).toBe('ChatGPT');
+    expect(assigned.employee.nodeId).toBe('PHONE-ZFLIP7-01');
+
+    const repeatResponse = await fetch(`${app.url}/api/node/employee`, {
+      method: 'POST',
+      headers: nodeHeaders,
+      body: JSON.stringify({
+        provider: 'ChatGPT',
+        capabilities: ['android-ui', 'research', 'chatgpt-ui'],
+      }),
+    });
+    expect(repeatResponse.status).toBe(200);
+    const repeat = await json(repeatResponse);
+    expect(repeat.idempotent).toBe(true);
+    expect(repeat.assignedByCore).toBe(true);
+    expect(repeat.employee.employeeId).toBe('NV101');
+    expect(app.registry.listEmployees()).toHaveLength(1);
+  });
+
   it('recognizes Tailscale CGNAT peers and keeps self-pair closed unless explicitly enabled', async () => {
     expect(isTailscaleAddress('100.64.0.1')).toBe(true);
     expect(isTailscaleAddress('100.97.23.87')).toBe(true);
