@@ -18,7 +18,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairSignature, apiDoctorRepairRuntimeGate, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -762,6 +762,8 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure)
     'OWNER_PROXY=NV02',
     'ZERO_COST=true',
     'NO_DIRECT_MAIN=true',
+    'NO_PC01_SHELL=true',
+    'NO_BROWSER_AUTH=true',
     'NO_PRODUCTION_RELEASE=true',
     'NO_PAID_COST=true',
     'NO_CREDENTIAL_CHANGE=true',
@@ -858,7 +860,13 @@ async function runApiDoctorScan(){
         const repairIssueNumber=Number(handoffCandidate.data?.repairIssueNumber||0);
         if(repairIssueNumber>0){
           const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
-          const repairGate=apiDoctorRepairWorkOrderGate({issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason});
+          const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+          const runtimeUpdaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
+          const runtimeUpdatedAt=[runtimeSourceState?.updatedAt,runtimeUpdaterState?.updatedAt].filter(Boolean).sort().at(-1)||null;
+          const repairGate=apiDoctorRepairRuntimeGate({
+            issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason,issueClosedAt:repairIssue.closedAt,
+            runtimeCurrentSha:runtimeSourceState?.currentSha||'',runtimeInstalledSha:runtimeUpdaterState?.installedSha||'',runtimeUpdatedAt,
+          });
           row.repairIssueNumber=repairIssueNumber;row.repairIssueState=repairIssue.state;row.repairIssueStateReason=repairIssue.stateReason||null;
           if(repairGate.action!=='validate_repair'){row.action='wait_repair';row.reason=repairGate.reason;row.handoff='deduped';actions.push(row);continue;}
         }
@@ -867,10 +875,17 @@ async function runApiDoctorScan(){
         row.action='recovered';row.reason='live_normal_core_work_success_after_completed_repair';row.recovered=true;actions.push(row);continue;
       }
     }
-    const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
+    const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
+    const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
+    const rateLimitOverride=plan.failureClass==='rate_limit'&&['wait','probe'].includes(plan.action);
+    const repairLifecycleRelevant=Boolean(handoffCandidate)&&!rateLimitOverride&&(
+      canonicalRepairIssueNumber>0||
+      (handoffFailureClass==='source_contract'&&['source_contract','unknown'].includes(String(plan.failureClass||'').toLowerCase()))
+    );
+    const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
     if(handoffCandidate&&!existingHandoff){
-      row.handoff='ignored_stale_failure_class';
-      row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
+      row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class';
+      row.handoffFailureClass=handoffFailureClass||'unknown';
     }
     if(existingHandoff){
       let repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
@@ -881,11 +896,20 @@ async function runApiDoctorScan(){
       }
       if(repairIssueNumber>0){
         const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
-        const repairGate=apiDoctorRepairWorkOrderGate({issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason});
+        const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+        const runtimeUpdaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
+        const runtimeUpdatedAt=[runtimeSourceState?.updatedAt,runtimeUpdaterState?.updatedAt]
+          .filter(Boolean).sort().at(-1)||null;
+        const repairGate=apiDoctorRepairRuntimeGate({
+          issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason,issueClosedAt:repairIssue.closedAt,
+          runtimeCurrentSha:runtimeSourceState?.currentSha||'',runtimeInstalledSha:runtimeUpdaterState?.installedSha||'',runtimeUpdatedAt,
+        });
         row.repairIssueNumber=repairIssueNumber;
         row.repairIssueUrl=existingHandoff.data?.repairIssueUrl||null;
         row.repairIssueState=repairIssue.state;
         row.repairIssueStateReason=repairIssue.stateReason||null;
+        row.repairRuntimeCurrentSha=runtimeSourceState?.currentSha||null;
+        row.repairRuntimeInstalledSha=runtimeUpdaterState?.installedSha||null;
         if(repairGate.action!=='validate_repair'){
           row.action='wait_repair';row.reason=repairGate.reason;row.handoff='deduped';actions.push(row);continue;
         }
@@ -921,7 +945,7 @@ async function runApiDoctorScan(){
       probeOk=Boolean(probe?.ok);
       row.probe='ok';
     }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
-    if(probeOk&&handoffCandidate&&!existingHandoff){
+    if(probeOk&&handoffCandidate&&!existingHandoff&&Number(handoffCandidate.data?.repairIssueNumber||0)<=0){
       const staleSignature=String(handoffCandidate.data?.signature||'');
       if(staleSignature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',staleSignature)){
         await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature:staleSignature,evidence:'stale_failure_class_reprobe_success'});
@@ -1981,8 +2005,8 @@ async function githubApiDoctorRepairIssueStatus(issueNumber){
   try{
     const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
     const issue=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Doctor'}},10000);
-    return{state:String(issue?.state||'unknown').toLowerCase(),stateReason:issue?.state_reason?String(issue.state_reason).toLowerCase():null};
-  }catch{return{state:'unknown',stateReason:null};}
+    return{state:String(issue?.state||'unknown').toLowerCase(),stateReason:issue?.state_reason?String(issue.state_reason).toLowerCase():null,closedAt:issue?.closed_at||null,updatedAt:issue?.updated_at||null};
+  }catch{return{state:'unknown',stateReason:null,closedAt:null,updatedAt:null};}
 }
 
 async function githubAutonomousRcaIssueState(issueNumber){
