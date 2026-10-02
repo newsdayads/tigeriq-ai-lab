@@ -64,6 +64,18 @@ async function gh(path, fetchImpl = fetch) {
   const token = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
   return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000)});
 }
+async function ghAllPages(path, fetchImpl = fetch, maxPages = 10) {
+  const rows = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const joiner = path.includes('?') ? '&' : '?';
+    const batch = await gh(path + joiner + 'per_page=100&page=' + page, fetchImpl);
+    if (!Array.isArray(batch)) throw new Error('github_collection_invalid');
+    rows.push(...batch);
+    if (batch.length < 100) return { rows, complete: true };
+  }
+  return { rows, complete: false };
+}
+
 
 function cell(value = '') {
   return String(value).replace(/`/g, '').replace(/\*\*/g, '').trim();
@@ -826,9 +838,10 @@ function actionableStatus(issue, overlays = {}) {
 
   const active = overlays.active || null;
   const queued = overlays.queued || null;
+  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
+  if (hasTerminalBlockedLabel(issue)) return 'BLOCKED';
   if (active?.status) return String(active.status).toUpperCase();
   if (queued?.status) return String(queued.status).toUpperCase();
-  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
@@ -864,13 +877,22 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
   return { percent: null, source: 'none', detail: null };
 }
 
-export function verifiedPortfolioProgress(rows = []) {
+export function verifiedPortfolioProgress(rows = [], options = {}) {
   const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind !== 'SYSTEM');
   const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
     && Number.isFinite(Number(row.progressPercent)));
   const scopeItems = scope.length;
   const verifiedItems = verified.length;
   const coveragePercent = scopeItems ? Math.round((verifiedItems / scopeItems) * 100) : null;
+  if (options.complete === false) {
+    return {
+      percent: null,
+      source: 'incomplete_enumeration',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
   if (!scopeItems || verifiedItems !== scopeItems) {
     return {
       percent: null,
@@ -923,7 +945,10 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const nextStep = bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Anh Sơn kiểm tra và duyệt trên giao diện live' : null);
-  const blocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || null;
+  const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
+  const blocker = status === 'BLOCKED' && !lifecycle?.blockerCleared && rawBlocker && !/^(?:NONE|NULL|N\/A|NO|KHÔNG)(?:\b|\s|$)/i.test(rawBlocker)
+    ? rawBlocker
+    : null;
   const activeEvidenceUrl = classification.ownerGate
     ? null
     : safeEvidenceUrl(active?.evidenceUrl)
@@ -1024,26 +1049,32 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   let issues;
   let pulls;
   let runPayload;
+  let issuesComplete = true;
   try {
     const now = Date.now();
     const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
     if (cached) {
-      ({ issues, pulls, runPayload } = githubProjectionCache.data);
+      ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
     } else {
       try {
-        [issues, pulls, runPayload] = await Promise.all([
-          gh('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
+        const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
+          ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&sort=updated&direction=desc', fetchImpl),
           known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
           known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
         ]);
+        issues = issuePages.rows;
+        issuesComplete = issuePages.complete;
+        pulls = openPullPayload;
+        runPayload = workflowPayload;
         githubProjectionCache = {
           at: now,
           verifiedAt: new Date().toISOString(),
-          data: { issues, pulls, runPayload },
+          data: { issues, pulls, runPayload, issuesComplete },
         };
       } catch (error) {
         if (!githubProjectionCache.data) throw error;
-        ({ issues, pulls, runPayload } = githubProjectionCache.data);
+        ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+        issuesComplete = issuesComplete !== false;
         projectionStale = true;
         projectionReason = String(error instanceof Error ? error.message : error).slice(0, 120);
       }
@@ -1234,7 +1265,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
       done: recentWork.length,
     };
-    const portfolioProgress = verifiedPortfolioProgress(actionable);
+    const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete !== false });
 
     return {
       ...base,
@@ -1259,6 +1290,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         reason: projectionReason,
         queueLimit: QUEUE_LIMIT,
         nextExecutableIssue: nextExecutable?.number || null,
+        openIssueEnumerationComplete: issuesComplete !== false,
       },
     };
   } catch (error) {
