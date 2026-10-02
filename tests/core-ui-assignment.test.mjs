@@ -205,7 +205,7 @@ test('Core UI bounds exact-head patches before sending to UI worker',async()=>{
   assert.equal(pool.objectives[0].metadata.exactContextTruncated,true);
   const prompt=pool.jobs[0].prompt;
   const context=prompt.split('EXACT_HEAD_CONTEXT_BEGIN')[1].split('EXACT_HEAD_CONTEXT_END')[0];
-  const patchPayload=[...context.matchAll(/PATCH_BEGIN\\n([\\s\\S]*?)\\nPATCH_END/g)].map(m=>m[1]).join('');
+  const patchPayload=[...context.matchAll(/PATCH_BEGIN\n([\s\S]*?)\nPATCH_END/g)].map(m=>m[1]).join('');
   assert.equal(patchPayload.length,24000);
   assert.ok(patchPayload.length<=24000);
   assert.ok(prompt.length<39000);
