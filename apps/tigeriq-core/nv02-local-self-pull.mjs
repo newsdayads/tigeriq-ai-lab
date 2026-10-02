@@ -214,39 +214,57 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
     const objectiveId = text.match(/\b(CODEOBJ-[0-9A-Za-z-]+)\b/i)?.[1]?.toUpperCase() || '';
     const terminalFailure = /RETRY_BUDGET_EXHAUSTED/i.test(text)
       || (objectiveId && /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text));
-    const active = objectiveId && (
-      /\[(?:CLAIM|RETRY_DISPATCHED|RETRY_SCHEDULED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
-      || /\[(?:KÍCH HOẠT LẠI|LÊN LỊCH THỬ LẠI)\]/i.test(text)
+    const retryScheduled = objectiveId && (
+      /\[RETRY_SCHEDULED\]/i.test(text)
+      || /\[LÊN LỊCH THỬ LẠI\]/i.test(text)
+    );
+    const active = objectiveId && !retryScheduled && (
+      /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
+      || /\[KÍCH HOẠT LẠI\]/i.test(text)
       || /accepted this issue as\s+CODEOBJ-/i.test(text)
       || /Automatic coding pipeline is active/i.test(text)
     );
     const completed = objectiveId && (/\bis completed\b/i.test(text) || /\[RESULT\].*completed/i.test(text));
     const failed = terminalFailure
-      || (objectiveId && !active && (/\bis failed\b/i.test(text) || /CODING_ALL_BATCHES_NOOP/i.test(text)));
+      || (objectiveId && !active && !retryScheduled && (/\bis failed\b/i.test(text) || /CODING_ALL_BATCHES_NOOP/i.test(text)));
     if (failed && objectiveId) failedObjectives.add(objectiveId);
     if (active) latest = { kind: 'active', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
-    else if (completed) latest = { kind: 'completed', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+    else if (retryScheduled) {
+      const nextAt = Date.parse(String(text.match(/\bnextAt=([^\s]+)/i)?.[1] || ''));
+      latest = { kind: 'scheduled', objectiveId, terminalFailure: false, at: commentAtMs(comment), nextAt: Number.isFinite(nextAt) ? nextAt : 0 };
+    } else if (completed) latest = { kind: 'completed', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
     else if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at: commentAtMs(comment) };
   }
   if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
-  const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
   if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
-  if (latest.kind === 'active' && !stale) {
-    return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  // A dispatched/rearmed objective remains authoritative until Coding Lane emits terminal evidence.
+  // Age alone must not create a second writer while that objective may still be live.
+  if (latest.kind === 'active') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  if (latest.kind === 'scheduled') {
+    const deadline = (latest.nextAt || latest.at) + staleMs;
+    if (deadline > nowMs) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_SCHEDULED', latest };
+    return {
+      eligible: true,
+      reason: 'INDEPENDENT_CODING_LANE_SCHEDULE_MISSED',
+      target: 'CODING_LANE',
+      needsRelease: false,
+      activeClaim: null,
+      failureCount: failedObjectives.size,
+      latest,
+    };
   }
+  const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
   if (latest.kind === 'failed' && !latest.terminalFailure
       && failedObjectives.size < NV02_TAKEOVER_NO_PROGRESS_ROUNDS && !stale) {
     return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN', latest, failureCount: failedObjectives.size };
   }
   return {
     eligible: true,
-    reason: latest.kind === 'active'
-      ? 'INDEPENDENT_CODING_LANE_STALE'
-      : latest.terminalFailure
-        ? 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED'
-        : failedObjectives.size >= NV02_TAKEOVER_NO_PROGRESS_ROUNDS
-          ? 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED'
-          : 'INDEPENDENT_CODING_LANE_FAILED_STALE',
+    reason: latest.terminalFailure
+      ? 'INDEPENDENT_CODING_LANE_TERMINAL_FAILED'
+      : failedObjectives.size >= NV02_TAKEOVER_NO_PROGRESS_ROUNDS
+        ? 'INDEPENDENT_CODING_LANE_RETRIES_EXHAUSTED'
+        : 'INDEPENDENT_CODING_LANE_FAILED_STALE',
     target: 'CODING_LANE',
     needsRelease: false,
     activeClaim: null,
