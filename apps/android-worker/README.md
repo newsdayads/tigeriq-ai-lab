@@ -1,10 +1,18 @@
 # TigerIQ Android Worker — MVP Contract
 
-Status: #2949 GATE A PILOT PROBE / NOT YET REAL-DEVICE VERIFIED
+Status: #2949 GATE B0 PILOT SETUP / Z FLIP 7 PHYSICAL VERIFICATION REQUIRED
 
-## Gate A pilot probe
+## Gate B0 pilot setup
 
-Current candidate is deliberately minimal: it can manually open ChatGPT/Gemini and, when Accessibility is enabled, record only semantic-tree counts (root present, node/editable/clickable counts). It does **not** auto-click, auto-send, or collect conversation text. This exists to get real Z Flip 7 evidence before implementing provider-specific automation.
+v0.6 turns the earlier probe screen into a guided real-device setup:
+- device/node identity is generated automatically;
+- Owner selects only the AI provider (ChatGPT or Gemini);
+- TigerIQ Core assigns the logical NV id, department and pilot role during pairing;
+- the app verifies reachability to PC01 through the canonical private Controller address before pairing;
+- Accessibility, Controller, heartbeat and semantic-tree evidence are shown as separate real states;
+- no hidden employee/profile fallback is presented as a real assignment.
+
+The semantic probe remains deliberately read-only. It does **not** auto-click, auto-send, or collect conversation text until physical Z Flip evidence supports the next adapter implementation.
 
 Master authority: #2949 / `MOBILE_WORKER_MASTER_V1`.
 
