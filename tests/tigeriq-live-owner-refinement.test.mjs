@@ -49,6 +49,13 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).not.toContain("if(!opened)location.href=url");
   });
 
+  it('gates runtime focus on fresh data and renders missing API evidence as unavailable', () => {
+    expect(html).toContain("const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale)");
+    expect(html).toContain('Dữ liệu runtime đã cũ · chưa xác nhận job đang chạy.');
+    expect(html).toContain('Number.isFinite(Number(a.stabilityRounds))');
+    expect(html).toContain('Number.isFinite(Number(a.realJobs))');
+  });
+
   it('renders actual runtime focus and API workforce stability summary', () => {
     expect(html).toContain('Việc đang chạy ngay lúc này');
     expect(html).toContain('apiWorkforceSummary');
