@@ -192,18 +192,41 @@ async function invokeLocalManager(prompt) {
   return text;
 }
 
+function shrinkGroq413Prompt(prompt) {
+  const text=String(prompt??'');
+  if(text.length<=1024)return text;
+  const marker='\n\n[...truncated after HTTP_413 for one bounded retry...]\n\n';
+  const target=Math.max(1024,Math.min(12000,Math.floor(text.length/2)));
+  if(target>=text.length)return text;
+  const usable=Math.max(1,target-marker.length);
+  const head=Math.ceil(usable*0.6);
+  const tail=Math.max(0,usable-head);
+  return `${text.slice(0,head)}${marker}${tail?text.slice(-tail):''}`;
+}
 async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, timeoutMs = 90000, resource = null) {
   const host=new URL(endpoint).hostname;
-  const requestBody={ model, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...managerProviderBodyForHost(host,prompt) };
-  const responseFormat=managerResponseFormatForHost(host,prompt);
-  if(responseFormat)requestBody.response_format=responseFormat;
-  const body = await fetchJson(endpoint, {
-    method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
-    body: JSON.stringify(requestBody),
-  }, timeoutMs, resource?res=>syncQuotaFromHeaders(resource,res):null);
-  const text = body?.choices?.[0]?.message?.content;
-  if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
-  return String(text);
+  let requestPrompt=String(prompt??'');
+  let groq413RetryUsed=false;
+  while(true){
+    const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...managerProviderBodyForHost(host,prompt) };
+    const responseFormat=managerResponseFormatForHost(host,prompt);
+    if(responseFormat)requestBody.response_format=responseFormat;
+    try{
+      const body = await fetchJson(endpoint, {
+        method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
+        body: JSON.stringify(requestBody),
+      }, timeoutMs, resource?res=>syncQuotaFromHeaders(resource,res):null);
+      const text = body?.choices?.[0]?.message?.content;
+      if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
+      return String(text);
+    }catch(error){
+      if(host==='api.groq.com'&&!groq413RetryUsed&&Number(error?.status)===413){
+        const shrunk=shrinkGroq413Prompt(requestPrompt);
+        if(shrunk!==requestPrompt){requestPrompt=shrunk;groq413RetryUsed=true;continue;}
+      }
+      throw error;
+    }
+  }
 }
 export function watsonxTextFromBody(body){
   const firstResult=Array.isArray(body?.results)&&body.results.length?body.results[0]:null;

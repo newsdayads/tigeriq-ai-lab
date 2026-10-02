@@ -415,5 +415,11 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("now()+interval '2 minutes',0,1");
     expect(core).toContain("set employee_id=$2,resource_id=$3,provider=$4,routing_profile='LOCAL',lease_until=now()+interval '2 minutes'");
     expect(core).not.toContain("retryDue=['READY','ERROR','RATE_LIMITED','OFFLINE']");
+    expect(core).toContain('function shrinkGroq413Prompt(prompt)');
+    expect(core).toContain('let groq413RetryUsed=false');
+    expect(core).toContain("host==='api.groq.com'&&!groq413RetryUsed&&Number(error?.status)===413");
+    expect(core).toContain('if(shrunk!==requestPrompt){requestPrompt=shrunk;groq413RetryUsed=true;continue;}');
+    expect((core.match(/Number\(error\?\.status\)===413/g)||[]).length).toBe(1);
+    expect(core).not.toContain("Number(error?.status)>=400");
   });
 });
