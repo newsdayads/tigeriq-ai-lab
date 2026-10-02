@@ -333,6 +333,16 @@ describe('#1255 routing/runtime integration',()=>{
     expect(decision.candidates.map(x=>x.employeeId)).toEqual(['NV12']);
   });
 
+  it('constrains Gemini manager output to the strict Core manager schema',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain('const GEMINI_MANAGER_RESPONSE_SCHEMA={');
+    expect(core).toContain("required:['status','summary','jobs']");
+    expect(core).toContain("required:['title','prompt']");
+    expect(core).toContain("responseJsonSchema:GEMINI_MANAGER_RESPONSE_SCHEMA");
+    expect(core).toContain("temperature:0");
+    expect(core).toContain("managerGenerationConfig?{generationConfig:managerGenerationConfig}:{}");
+  });
+
   it('wires the autonomous scan, low-token think=false NV10 job, durable handoff and telemetry',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY]");
