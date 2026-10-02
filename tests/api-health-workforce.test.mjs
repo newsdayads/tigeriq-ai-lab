@@ -49,6 +49,18 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("NV03:'🔎'");
     expect(dashboard).toContain('employee-state');
     expect(dashboard).toContain('employee-task');
+    expect(dashboard).toContain('id="topLive"');
+    expect(dashboard).toContain('id="topIssueCount"');
+    expect(dashboard).not.toContain('<h1>TigerIQ API Health');
+    expect(dashboard.indexOf('id="workers"')).toBeLessThan(dashboard.indexOf('id="metrics"'));
+    expect(dashboard).toContain('detail-backdrop');
+    expect(dashboard).toContain('openEmployeeDetail');
+    expect(dashboard).toContain('workers.addEventListener(\'click\'');
+    expect(dashboard).not.toContain('title="${esc(techTitle(x))}"');
+    expect(dashboard).toContain('white-space:normal;overflow:visible;text-overflow:clip');
+    expect(dashboard).toContain("return'Sẵn sàng nhận việc'");
+    expect(dashboard).toContain('syshealth.addEventListener(\'click\'');
+
     expect(dashboard).not.toContain("workers.style.setProperty('--worker-cols'");
     expect(dashboard).toContain("blocker=String(x.blocker||x.waitReason||'').trim()");
     expect(dashboard).toContain('Blocker:</b> ${esc(blocker)}');
