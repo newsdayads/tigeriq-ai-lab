@@ -42,7 +42,7 @@ test('explicit UI preference routes NV03/NV04 autonomously while NV02 stays exte
   s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV02');
   assert.equal(s.route,'UI');assert.equal(s.workerId,'NV02');assert.equal(s.autonomous,false);
   s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV17\nEXECUTION_SURFACE=CORE_READ_ONLY');
-  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');assert.equal(s.autonomous,true);
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.surface,'CORE_UI_REVIEW');assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
 });
 
 test('assigned P0 remains Owner-only and never binds an employee',()=>{
@@ -83,4 +83,43 @@ test('external role claim lease expires and release clears it',()=>{
   assert.equal(activeRoleClaim(comments,Date.parse('2026-09-25T00:21:00Z')),null);
   const released=[...comments,{id:2,created_at:'2026-09-25T00:01:00Z',body:'[TIGERIQ_ROLE_RELEASE_V1]\nWORKER=NV02\nRESOURCE_SCOPE=ABC'}];
   assert.equal(activeRoleClaim(released,now+120000),null);
+});
+
+
+test('generic review ignores stale NV10 target and routes to NV03 primary',()=>{
+  const body=[
+    'PRIORITY=P1',
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REASONING',
+    'TARGET_EMPLOYEE=NV10',
+    'ASSIGNED_EXECUTOR=NV10',
+    'PREFERRED_REVIEWER=NV10',
+  ].join('\n');
+  const s=classifyWorkOrder(body);
+  assert.equal(s.route,'UI');
+  assert.equal(s.workerId,'NV03');
+  assert.equal(s.surface,'CORE_UI_REVIEW');
+  assert.equal(s.requestedReviewer,'NV10');
+  assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
+});
+
+test('NV10 review requires explicit API Doctor or SRE specialty or Owner reviewer marker',()=>{
+  let s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nTARGET_EMPLOYEE=NV10\nREVIEW_SPECIALTY=API_DOCTOR');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV10');assert.equal(s.reviewRoutingReason,'NV10_SPECIALIZED_API_DOCTOR');
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nTARGET_EMPLOYEE=NV10\nREVIEW_SPECIALTY=SRE');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV10');assert.equal(s.reviewRoutingReason,'NV10_SPECIALIZED_SRE');
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nTARGET_EMPLOYEE=NV10\nOWNER_REVIEWER=NV10');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV10');assert.equal(s.reviewRoutingReason,'OWNER_EXPLICIT_REVIEWER');
+});
+
+test('API reviewer fallback is explicit and carries an NV03 unavailable reason',()=>{
+  let s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV17\nREVIEW_FALLBACK_EMPLOYEE=NV17\nREVIEW_FALLBACK_REASON=NV03_UNAVAILABLE');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');assert.match(s.reviewRoutingReason,/NV03_UNAVAILABLE_FALLBACK/);
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nPREFERRED_REVIEWER=NV17');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
+});
+
+test('read-only final review without explicit capability uses NV03 review route',()=>{
+  const s=classifyWorkOrder('PRIORITY=P1\nFINAL_REVIEW_REQUIRED=true\nNO_CODE_CHANGE=true');
+  assert.equal(s.capability,'review');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.surface,'CORE_UI_REVIEW');
 });
