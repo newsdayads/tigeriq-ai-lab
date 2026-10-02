@@ -16,6 +16,7 @@ import {
   verifiedPortfolioProgress,
   verifiedCompletionProgress,
   completionScopeReferenceNumbers,
+  optionalBodyNumber,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -848,6 +849,13 @@ describe('TigerIQ Live Work Order projection', () => {
       'LIVE_DATA_API=PASS',
     ].join('\n')));
     expect(failed).toMatchObject({ status: 'OWNER_GATE', technicalComplete: false });
+  });
+
+  it('preserves missing API Workforce evidence as unavailable instead of zero', () => {
+    expect(optionalBodyNumber('STABILITY_ROUNDS_COUNTED=0', 'STABILITY_ROUNDS_COUNTED')).toBe(0);
+    expect(optionalBodyNumber('', 'STABILITY_ROUNDS_COUNTED')).toBe(null);
+    expect(optionalBodyNumber('STABILITY_ROUNDS_COUNTED=abc', 'STABILITY_ROUNDS_COUNTED')).toBe(null);
+    expect(optionalBodyNumber('REAL_JOBS_COUNTED=12', ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED'])).toBe(12);
   });
 
   it('computes terminal completion separately from unverifiable in-flight percent', () => {
