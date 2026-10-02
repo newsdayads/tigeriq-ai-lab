@@ -1666,6 +1666,17 @@ function queueContinuousVerify(trigger){
   continuousVerifyPending={...trigger,attempt:Number(trigger?.attempt||0),queuedAt:nowIso()};
   return true;
 }
+async function continuousVerifyAlreadyTerminal(key){
+  const value=String(key||'').trim();
+  if(!value)return false;
+  const row=(await pool.query(
+    "select type,data from tigeriq_events where type in ('CONTINUOUS_VERIFY_RUN','CONTINUOUS_VERIFY_RUN_FAILED') and data->>'key'=$1 order by seq desc limit 1",
+    [value]
+  )).rows[0];
+  if(!row)return false;
+  if(row.type==='CONTINUOUS_VERIFY_RUN')return true;
+  return row.type==='CONTINUOUS_VERIFY_RUN_FAILED'&&Number(row?.data?.attempt||0)>=1;
+}
 subscribeGithubEvents(envelope=>{
   const trigger=githubContinuousVerifyTrigger(envelope);
   if(!queueContinuousVerify(trigger))return;
@@ -1675,10 +1686,18 @@ subscribeGithubEvents(envelope=>{
 });
 function observeRuntimeContinuousVerify(){
   const state=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const updater=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
   const currentSha=String(state?.currentSha||'').trim();
+  const installedSha=String(updater?.installedSha||'').trim();
   if(!currentSha)return null;
-  if(!continuousVerifyRuntimeSha){continuousVerifyRuntimeSha=currentSha;return null;}
-  const trigger=runtimeContinuousVerifyTrigger(continuousVerifyRuntimeSha,currentSha);
+  if(!continuousVerifyRuntimeSha){
+    if(installedSha!==currentSha)return null;
+    const recentPrevious=String(updater?.result||'')==='UPDATED'&&updater?.impact?.core===true?String(updater?.previousSha||'').trim():'';
+    continuousVerifyRuntimeSha=recentPrevious||currentSha;
+    if(continuousVerifyRuntimeSha===currentSha)return null;
+  }
+  const trigger=runtimeContinuousVerifyTrigger(continuousVerifyRuntimeSha,currentSha,{installedSha,coreImpact:updater?.impact?.core});
+  if(trigger.kind==='RUNTIME_INSTALL_PENDING')return null;
   continuousVerifyRuntimeSha=currentSha;
   return queueContinuousVerify(trigger)?trigger:null;
 }
@@ -1686,6 +1705,7 @@ async function runPendingContinuousVerify(){
   if(continuousVerifyRunning||activeDeepAudit||!continuousVerifyPending)return false;
   const trigger=continuousVerifyPending;
   continuousVerifyPending=null;
+  if(await continuousVerifyAlreadyTerminal(trigger.key)){continuousVerifyLastRunKey=trigger.key;return false;}
   continuousVerifyRunning=true;
   continuousVerifyRunningKey=trigger.key;
   activeDeepAudit=true;
