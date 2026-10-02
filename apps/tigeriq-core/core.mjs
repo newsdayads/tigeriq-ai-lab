@@ -19,6 +19,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
+import { isStabilityV2ResourceScope, stabilityV2EmployeeAllowlist, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
@@ -1349,7 +1350,8 @@ async function claimJob() {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
-    const employeeAllowlist=j.kind==='github_api_autowork'?['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:[];
+    const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
+    const employeeAllowlist=j.kind==='github_api_autowork'?['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
     const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
     const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
@@ -1627,6 +1629,74 @@ async function reconcileCoreOpenClawBoundedObjectives(){
   return reconciled;
 }
 
+async function reconcileStabilityV2Objective(o){
+  const resourceScope=String(o?.metadata?.resourceScope||'');
+  if(!isStabilityV2ResourceScope(resourceScope))return false;
+  const rows=(await pool.query(`select id,title,capability,kind,status,employee_id,resource_id,provider,created_at,started_at,completed_at,failure,result
+    from tigeriq_jobs where objective_id=$1 order by created_at,id`,[o.id])).rows;
+  const plan=stabilityV2Plan({
+    resourceScope,
+    jobs:rows,
+    nowMs:Date.now(),
+    lastDeepAuditMs:lastDeepAudit,
+    roundMinSpacingMs:300000,
+    cadenceMs:CONTINUOUS_VERIFY_CADENCE_MS,
+  });
+  if(!plan.handled)return false;
+  if(plan.action==='materialize'){
+    const client=await pool.connect();
+    const jobIds=[];
+    try{
+      await client.query('begin');
+      for(const spec of plan.specs){
+        const id=`STAB-${o.id}-R${spec.round}-B${spec.batch}-J${spec.ordinal}`;
+        const inserted=await client.query(
+          "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,phase_index,max_attempts) values($1,$2,$3,$4,$5,'ai','queued',0,3) on conflict(id) do nothing",
+          [id,o.id,spec.title,spec.prompt,spec.capability],
+        );
+        if(inserted.rowCount!==1)throw new Error('STABILITY_V2_BATCH_INSERT_CONFLICT');
+        jobIds.push(id);
+      }
+      await client.query(
+        "update tigeriq_objectives set summary=$2,next_check_at=now()+interval '5 seconds',updated_at=now(),metadata=jsonb_set(metadata,'{stabilityV2}',coalesce(metadata->'stabilityV2','{}'::jsonb)||$3::jsonb,true) where id=$1 and status='active'",
+        [o.id,`stability v2 round ${plan.round} batch ${plan.batch} materialized`,JSON.stringify({state:'batch_running',round:plan.round,batch:plan.batch})],
+      );
+      await client.query('commit');
+    }catch(error){
+      await client.query('rollback');
+      throw error;
+    }finally{client.release();}
+    for(const jobId of jobIds)await event('JOB_CREATED',{objectiveId:o.id,jobId,phaseIndex:0,stabilityV2:true,round:plan.round,batch:plan.batch});
+    await event('STABILITY_V2_BATCH_MATERIALIZED',{objectiveId:o.id,round:plan.round,batch:plan.batch,capability:plan.capability,jobIds});
+    return true;
+  }
+  if(plan.action==='wait'){
+    const nextCheckAt=new Date(Math.max(Date.now()+1000,Number(plan.nextCheckAtMs)||Date.now()+5000));
+    await pool.query(
+      "update tigeriq_objectives set summary=$2,next_check_at=$3,updated_at=now(),metadata=jsonb_set(metadata,'{stabilityV2}',coalesce(metadata->'stabilityV2','{}'::jsonb)||$4::jsonb,true) where id=$1 and status='active'",
+      [o.id,`stability v2 waiting: ${plan.reason}`,nextCheckAt,JSON.stringify({state:'waiting',reason:plan.reason,round:plan.round||null,batch:plan.batch||null,nextCheckAt:nextCheckAt.toISOString()})],
+    );
+    return true;
+  }
+  if(plan.action==='block'){
+    await pool.query(
+      "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now(),metadata=jsonb_set(metadata,'{stabilityV2}',coalesce(metadata->'stabilityV2','{}'::jsonb)||$3::jsonb,true) where id=$1 and status='active'",
+      [o.id,`stability v2 fail-closed: ${plan.reason}`,JSON.stringify({state:'blocked',reason:plan.reason,round:plan.round||null,batch:plan.batch||null})],
+    );
+    await event('STABILITY_V2_BLOCKED',{objectiveId:o.id,reason:plan.reason,round:plan.round||null,batch:plan.batch||null,jobIds:plan.jobIds||[],providers:plan.providers||[]});
+    return true;
+  }
+  if(plan.action==='complete'){
+    await pool.query(
+      "update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 day',updated_at=now(),metadata=jsonb_set(metadata,'{stabilityV2}',coalesce(metadata->'stabilityV2','{}'::jsonb)||$3::jsonb,true) where id=$1 and status='active'",
+      [o.id,'stability v2 three rounds complete; awaiting durable live acceptance publication and independent final review',JSON.stringify({state:'rounds_complete',rounds:3,totalJobs:15})],
+    );
+    await event('STABILITY_V2_ROUNDS_COMPLETE',{objectiveId:o.id,rounds:3,totalJobs:15});
+    return true;
+  }
+  return true;
+}
+
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI')
@@ -1635,6 +1705,7 @@ async function managerTick() {
   const o=q.rows[0]; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
   if(await reconcileGithubCoreReviewObjective(o)) return;
+  if(await reconcileStabilityV2Objective(o)) return;
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
