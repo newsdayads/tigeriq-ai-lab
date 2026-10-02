@@ -307,6 +307,12 @@ test('runtime watchdog includes OpenClaw and App Chrome transport but does not m
   assert.match(watchdog,/18789/);
 });
 
+test('api/live-status changes restart Core because Core imports the projection module in-process',()=>{
+  const impact=script.slice(script.indexOf('function Get-Impact'),script.indexOf('function Restart-UpdaterAfterExit'));
+  assert.match(impact,/\$_ -eq 'api\/live-status\.mjs'/);
+  assert.match(script,/if\(\$impact\.core\)\{\$coreHealth=Restart-Core/);
+});
+
 test('OpenClaw runtime changes restart Core because direct PC actions import the shared runtime in-process',()=>{
   const impact=script.slice(script.indexOf('function Get-Impact'),script.indexOf('function Restart-UpdaterAfterExit'));
   const openclaw=impact.indexOf("$openclaw=[bool]");
