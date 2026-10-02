@@ -150,6 +150,7 @@ export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stat
 export function apiDoctorRepairRuntimeGate({
   issueNumber=0,state='unknown',stateReason=null,issueClosedAt=null,
   runtimeCurrentSha='',runtimeInstalledSha='',runtimeUpdatedAt=null,
+  updaterResult='',updaterCandidateSha='',
 }={}){
   const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason});
   if(issueGate.action!=='validate_repair')return issueGate;
@@ -162,6 +163,14 @@ export function apiDoctorRepairRuntimeGate({
   const installed=String(runtimeInstalledSha||'').trim().toLowerCase();
   if(!/^[0-9a-f]{40}$/.test(current)||current!==installed){
     return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
+  }
+  const result=String(updaterResult||'').trim().toUpperCase();
+  if(!['UPDATED','NO_CHANGE'].includes(result)){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'};
+  }
+  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
+  if(candidate&&candidate!==installed){
+    return {action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'};
   }
   return {action:'validate_repair',reason:'canonical_repair_runtime_applied'};
 }
