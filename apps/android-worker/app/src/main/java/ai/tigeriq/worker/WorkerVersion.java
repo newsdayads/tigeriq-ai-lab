@@ -1,6 +1,6 @@
 package ai.tigeriq.worker;
 
 public final class WorkerVersion {
-    public static final String NAME = "0.7.0-core-mobile";
+    public static final String NAME = "0.8.0-pairing-fix";
     private WorkerVersion() {}
 }
