@@ -212,47 +212,51 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
   for (const comment of ordered) {
     const text = String(comment?.body || '');
     const objectiveId = text.match(/\b(CODEOBJ-[0-9A-Za-z-]+)\b/i)?.[1]?.toUpperCase() || '';
-    const terminalHardBlock = /\[BLOCKED_FINAL\].*\breason=HARD_BLOCKER\b/i.test(text)
-      || /\b(?:OWNER_HOLD|DEPENDENCY_NOT_READY|PRODUCTION|PAID|CREDENTIAL|SECURITY|DESTRUCTIVE|IRREVERSIBLE|APP_CHROME)\b/i.test(text);
-    const terminalFailure = !terminalHardBlock && (
-      /RETRY_BUDGET_EXHAUSTED/i.test(text)
-      || (objectiveId && /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text))
+    const at = commentAtMs(comment);
+    const blockedMarker = /\[(?:BLOCKED_FINAL|BỊ CHẶN)\]/i.test(text);
+    const hardReason = /\b(?:HARD_BLOCKER|OWNER_HOLD|DEPENDENCY_NOT_READY|BROWSER_AUTH|AUTHORIZATION_REQUIRED|HUMAN_POLICY|SCOPE_VIOLATION|OUT_OF_SCOPE|POLICY_BLOCK|POLICY_REJECT|SECURITY|CREDENTIAL|PAID|DESTRUCTIVE|IRREVERSIBLE|PRODUCTION|APP_CHROME|ISSUE_CLOSED_OR_SUPERSEDED|SUPERSEDED|CANCELLED|CANCELED)\b/i.test(text)
+      || /REVIEW_(?:REJECTED|CHANGES).*HUMAN/i.test(text);
+    const terminalHardBlock = blockedMarker && hardReason;
+    const retryScheduled = objectiveId && /\[(?:RETRY_SCHEDULED|LÊN LỊCH THỬ LẠI)\]/i.test(text);
+    const completed = objectiveId && (
+      /\bis completed\b/i.test(text)
+      || /\[(?:RESULT|KẾT QUẢ)\][\s\S]*\b(?:completed|done|hoàn tất)\b/i.test(text)
     );
-    const retryScheduled = objectiveId && (
-      /\[RETRY_SCHEDULED\]/i.test(text)
-      || /\[LÊN LỊCH THỬ LẠI\]/i.test(text)
-    );
-    const nonProgressTerminal = /\bis failed\b|\bis completed\b|CODING_ALL_BATCHES_NOOP|RETRY_BUDGET_EXHAUSTED|\[(?:BLOCKED_FINAL|BỊ CHẶN|RESULT|KẾT QUẢ)\]/i.test(text);
-    const active = objectiveId && !retryScheduled && (
-      /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
-      || /\[KÍCH HOẠT LẠI\]/i.test(text)
+    const structuralActive = objectiveId && !retryScheduled && (
+      /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED|REOPEN_REARMED|KÍCH HOẠT LẠI|TIẾP NHẬN)\]/i.test(text)
       || /accepted this issue as\s+CODEOBJ-/i.test(text)
       || /Automatic coding pipeline is active/i.test(text)
-      || (!nonProgressTerminal && /\[(?:PROGRESS|TIẾN ĐỘ|HEARTBEAT)\]/i.test(text))
     );
-    const completed = objectiveId && (/\bis completed\b/i.test(text) || /\[RESULT\].*completed/i.test(text));
-    const failed = terminalFailure
-      || (objectiveId && !active && !retryScheduled && (/\bis failed\b/i.test(text) || /CODING_ALL_BATCHES_NOOP/i.test(text)));
-    if (failed && objectiveId) failedObjectives.add(objectiveId);
-    if (terminalHardBlock) latest = { kind: 'hard_blocked', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
-    else if (active) latest = { kind: 'active', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
+    const terminalFailure = !terminalHardBlock && (
+      /RETRY_BUDGET_EXHAUSTED/i.test(text)
+      || (objectiveId && blockedMarker)
+    );
+    const progressActive = objectiveId && !structuralActive && !retryScheduled && !completed && !terminalHardBlock && !terminalFailure
+      && !/\bis failed\b|CODING_ALL_BATCHES_NOOP/i.test(text)
+      && /\[(?:PROGRESS|TIẾN ĐỘ|HEARTBEAT)\]/i.test(text);
+    const failed = objectiveId && !structuralActive && !progressActive && !retryScheduled && !completed && (
+      terminalFailure || /\bis failed\b|CODING_ALL_BATCHES_NOOP/i.test(text)
+    );
+    if (failed) failedObjectives.add(objectiveId);
+    if (terminalHardBlock) latest = { kind: 'hard_blocked', objectiveId, terminalFailure: false, at };
+    else if (completed) latest = { kind: 'completed', objectiveId, terminalFailure: false, at };
+    else if (structuralActive) latest = { kind: 'active', objectiveId, terminalFailure: false, at, staleEligible: false };
     else if (retryScheduled) {
       const nextAt = Date.parse(String(text.match(/\bnextAt=([^\s]+)/i)?.[1] || ''));
-      latest = { kind: 'scheduled', objectiveId, terminalFailure: false, at: commentAtMs(comment), nextAt: Number.isFinite(nextAt) ? nextAt : 0 };
-    } else if (completed) latest = { kind: 'completed', objectiveId, terminalFailure: false, at: commentAtMs(comment) };
-    else if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at: commentAtMs(comment) };
+      latest = { kind: 'scheduled', objectiveId, terminalFailure: false, at, nextAt: Number.isFinite(nextAt) ? nextAt : 0 };
+    } else if (progressActive) latest = { kind: 'active', objectiveId, terminalFailure: false, at, staleEligible: true };
+    else if (failed) latest = { kind: 'failed', objectiveId, terminalFailure, at };
   }
   if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
   if (latest.kind === 'hard_blocked') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_HARD_BLOCKED', latest };
   if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
   const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
-  // Active Coding Lane remains authoritative only while its latest progress is fresh.
-  // Once progress/heartbeat is stale for the bounded C16 window, NV02 may take over,
-  // subject to the existing same-scope lease mutex in nv02EligibleWorkOrder/claim.
-  if (latest.kind === 'active' && !stale) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  if (latest.kind === 'active' && (!latest.staleEligible || !stale)) {
+    return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  }
   if (latest.kind === 'active') return {
     eligible: true,
-    reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
+    reason: 'INDEPENDENT_CODING_LANE_PROGRESS_STALE',
     target: 'CODING_LANE',
     needsRelease: false,
     activeClaim: null,
@@ -363,6 +367,10 @@ export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependenc
   const meta = nv02WorkOrderMeta(issue);
   const priority = nv02PrioritySummary(issue) || String(meta.PRIORITY || '').toUpperCase();
   if (!PRIORITIES.has(priority)) return { eligible: false, reason: priority === 'P0' ? 'P0_FORBIDDEN' : 'PRIORITY_OUT_OF_RANGE' };
+  if (issue?.state === 'closed') return { eligible: false, reason: 'WORK_ORDER_CLOSED' };
+  const lifecycleState = `${meta.CURRENT_STATE || ''} ${meta.STATE || ''}`.toUpperCase();
+  if (/SUPERSEDED|CANCELLED|CANCELED|RETIRED/.test(lifecycleState)) return { eligible: false, reason: 'WORK_ORDER_SUPERSEDED_OR_CANCELLED' };
+  if (/^(?:true|yes|1)$/i.test(String(meta.DONE || '')) && !/REARM|READY/.test(lifecycleState)) return { eligible: false, reason: 'WORK_ORDER_TERMINAL' };
   if (meta.TIGERIQ_EXECUTABLE !== 'true') return { eligible: false, reason: 'NOT_EXECUTABLE' };
   if (meta.AUTO_QUEUE === 'EXCLUDED') return { eligible: false, reason: 'AUTO_QUEUE_EXCLUDED' };
   if (meta.OWNER_HOLD === 'true') return { eligible: false, reason: 'OWNER_HOLD' };
