@@ -12,6 +12,7 @@ import {
   parseOpenWorkIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
+  projectionTransportStale,
   verifiedPortfolioProgress,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
@@ -501,6 +502,15 @@ describe('TigerIQ Live Work Order projection', () => {
       lifecycle: { state: 'READY', blockerCleared: true, step: 'Older clear', createdAt: '2026-10-02T01:35:00Z' },
     });
     expect(reblocked).toMatchObject({ status: 'BLOCKED', blocker: 'WAIT_PROVIDER' });
+
+    const freshRuntimeBlockedAfterClear = parseOpenWorkIssue(issue(3219, '[P1] Runtime block after clear', [
+      'CURRENT_STATE=READY',
+      'BLOCKER=OLD_PROVIDER_BLOCK',
+    ].join('\n'), { updated_at: '2026-10-02T01:30:00Z' }), {
+      active: { status: 'BLOCKED', currentStep: 'New PR checks failed', updatedAt: '2026-10-02T01:40:00Z' },
+      lifecycle: { state: 'READY', blockerCleared: true, step: 'Old blocker cleared', createdAt: '2026-10-02T01:35:00Z' },
+    });
+    expect(freshRuntimeBlockedAfterClear).toMatchObject({ status: 'BLOCKED', blocker: null });
   });
 
   it('keeps planned NEXT_ACTION separate from current work and rejects unsafe evidence URLs', () => {
@@ -520,6 +530,12 @@ describe('TigerIQ Live Work Order projection', () => {
       'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/pull/2367',
     ].join('\n')));
     expect(safe.evidenceUrl).toBe('https://github.com/newsdayads/tigeriq-ai-lab/pull/2367');
+  });
+
+  it('treats shared GitHub stale/backoff cache hits as stale projection evidence', () => {
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 3, backoffHits: 1 })).toBe(true);
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 2, backoffHits: 2 })).toBe(true);
+    expect(projectionTransportStale({ staleHits: 2, backoffHits: 1 }, { staleHits: 2, backoffHits: 1 })).toBe(false);
   });
 
   it('shows progress only when an explicit checklist/percent is marked verified', () => {
