@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
 import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
   assert.strictEqual(isZeroCost([{ name: 'zero-cost-reversible' }]), true);
@@ -183,6 +184,10 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nASSIGNED_EXECUTOR=NV02'},'OWNER_OR_UI_ROUTE'],
     [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nMUTATION_OWNER=NV12'},'MUTATION_OWNER_CONFLICT'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nTIGERIQ_EXECUTABLE=false'},'EXPLICIT_EXECUTION_DISABLED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED'},'AUTO_QUEUE_EXCLUDED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION'},'AUTO_QUEUE_EXCLUDED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_UNTIL_DEPENDENCY'},'AUTO_QUEUE_EXCLUDED'],
     [{...base,labels:[{name:'tigeriq:terminal-blocked'}]},'TERMINAL_BLOCKED'],
   ];
   for(const [issue,reason] of cases)assert.deepStrictEqual({eligible:safeAutoWorkAdmission(issue).eligible,reason:safeAutoWorkAdmission(issue).reason},{eligible:false,reason});
@@ -225,6 +230,86 @@ test('safe P1-P5 duplicate event does not create a second objective or job',asyn
   assert.strictEqual(second.created,0);
   assert.strictEqual(pool.objectives.length,1);
   assert.strictEqual(pool.jobs.length,1);
+});
+
+test('generic terminal-blocked exact current revision stays blocked',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2871,state:'open',title:'[P1][CORE] exact terminal',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_EXACT'),labels:[],comments:0,html_url:'https://example/2871',updated_at:'2026-10-02T05:00:00Z'};
+  let out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(pool.objectives.length,1);
+  pool.objectives[0].status='blocked';
+  issue.labels=[{name:'tigeriq:terminal-blocked'}];
+  let labelClears=0;
+  const fetchImpl=async(url,init={})=>{
+    if(String(init.method||'GET').toUpperCase()==='DELETE'&&url.includes('/issues/2871/labels/')){
+      labelClears++;
+      issue.labels=[];
+      return response({},true,204);
+    }
+    return response({});
+  };
+  out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(labelClears,0);
+  assert.strictEqual(pool.objectives.length,1);
+});
+
+test('generic stale terminal-blocked label clears once on fresh source revision and materializes exactly one rearm',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2872,state:'open',title:'[P1][CORE] stale terminal rearm',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_REARM'),labels:[],comments:0,html_url:'https://example/2872',updated_at:'2026-10-02T05:00:00Z'};
+  let out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.strictEqual(out.created,1);
+  pool.objectives[0].status='blocked';
+  issue.body+='\nREARM_GENERATION=2';
+  issue.updated_at='2026-10-02T05:05:00Z';
+  issue.labels=[{name:'tigeriq:terminal-blocked'}];
+  let labelClears=0;
+  const fetchImpl=async(url,init={})=>{
+    if(String(init.method||'GET').toUpperCase()==='DELETE'&&url.includes('/issues/2872/labels/')){
+      labelClears++;
+      issue.labels=[];
+      return response({},true,204);
+    }
+    return response({});
+  };
+  out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(labelClears,1);
+  assert.strictEqual(pool.objectives.length,2);
+  assert.strictEqual(pool.jobs.length,2);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT_CLEAR'&&e.data?.reason==='STALE_TERMINAL_LABEL_REARM').length,1);
+  const projected=parseOpenWorkIssue(issue);
+  assert.ok(projected);
+  assert.notStrictEqual(projected.status,'BLOCKED');
+  assert.strictEqual(projected.status,'OPEN');
+
+  out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(labelClears,1);
+  assert.strictEqual(pool.objectives.length,2);
+  assert.strictEqual(pool.jobs.length,2);
+});
+
+test('generic stale terminal label is not cleared for explicit non-executable coordination work',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:2873,state:'open',title:'[P1][CORE] coordination parent',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',labels:[],comments:0,html_url:'https://example/2873',updated_at:'2026-10-02T05:00:00Z'};
+  pool.objectives.push({id:'OBJ-GH-2873',status:'blocked',metadata:{source:'github',issueNumber:2873,resourceScope:'GENERIC_TERMINAL_PARENT',sourceRevision:'older'}});
+  issue.body+='\nREARM_GENERATION=2';
+  issue.labels=[{name:'tigeriq:terminal-blocked'}];
+  let labelClears=0;
+  const fetchImpl=async(url,init={})=>{
+    if(String(init.method||'GET').toUpperCase()==='DELETE'&&url.includes('/issues/2873/labels/')){
+      labelClears++;
+      return response({},true,204);
+    }
+    return response({});
+  };
+  const out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(labelClears,0);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.jobs.length,0);
 });
 
 test('safe P1-P5 same RESOURCE_SCOPE is blocked by an active writer',async()=>{
