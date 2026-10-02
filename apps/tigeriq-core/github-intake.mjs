@@ -1233,9 +1233,12 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.metadata={...row.metadata,githubClaimReported:true}; claims++;
     }
     if(row.status==='blocked'&&row.metadata?.githubTerminalLabelSynced!==true){
-      await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubTerminalLabelSynced:true})]);
-      row.metadata={...row.metadata,githubTerminalLabelSynced:true};
+      const codingHandoffNonTerminal=row.metadata?.requiresCodingHandoff===true;
+      if(codingHandoffNonTerminal)await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      else await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      const labelPatch={githubTerminalLabelSynced:true,...(codingHandoffNonTerminal?{githubCodingHandoffBlockedNonTerminal:true}:{})};
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(labelPatch)]);
+      row.metadata={...row.metadata,...labelPatch};
     }
     const terminalCompletionGate=objectiveCompletionGate(row.metadata);
     if(row.status==='completed'&&!terminalCompletionGate.allow){
