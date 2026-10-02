@@ -710,6 +710,9 @@ async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
   const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0];
   return Number(row?.count||0);
 }
+async function apiDoctorPostRepairValidationSucceeded(resourceId,handoffAt){
+  return Boolean((await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3 and data->>'ok'='true' order by seq desc limit 1",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0]);
+}
 async function runApiDoctorPostRepairValidation(resource,existingHandoff){
   const r=resources.find(x=>x.resourceId===resource.resource_id);
   if(!r)return {ok:false,reason:'resource_definition_missing'};
@@ -737,7 +740,7 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure)
   const message=String(latestFailure?.data?.message||latestFailure?.data?.kind||failureClass||'source_contract');
   const signature=apiDoctorRepairSignature({employeeId:resource.employee_id,provider:resource.provider,failureClass,message});
   const prior=await apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature);
-  if(prior)return {created:false,signature,repairIssueNumber:Number(prior.data?.repairIssueNumber||0)||null,repairIssueUrl:prior.data?.repairIssueUrl||null,priorAt:prior.ts};
+  if(prior&&Number(prior.data?.repairIssueNumber||0)>0)return {created:false,signature,repairIssueNumber:Number(prior.data.repairIssueNumber),repairIssueUrl:prior.data?.repairIssueUrl||null,priorAt:prior.ts};
   const repairKey=createHash('sha256').update(signature).digest('hex').slice(0,12);
   const resourceScope=`API_DOCTOR_PROVIDER_REPAIR_${String(resource.employee_id||'NV').toUpperCase()}_${repairKey}`;
   const title=`[P1][API DOCTOR][REPAIR] ${resource.employee_id} ${resource.provider} source-contract`;
@@ -781,7 +784,7 @@ async function createApiDoctorRepairHandoff(resource,failureClass,latestFailure)
   const issue=await githubCreateAutonomousRcaIssue({title,body});
   const repairIssueNumber=Number(issue?.number)||null;
   const repairIssueUrl=String(issue?.html_url||'');
-  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),repairIssueNumber,repairIssueUrl,resourceScope,codingObjectiveId:null});
+  await event('API_DOCTOR_REPAIR_HANDOFF',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,failureClass,message:message.slice(0,300),repairIssueNumber,repairIssueUrl,resourceScope,codingObjectiveId:null,supersedesLegacyHandoffAt:prior?.ts||null});
   return {created:true,signature,repairIssueNumber,repairIssueUrl,resourceScope};
 }
 async function invokeApiDoctorLocal(prompt){
@@ -841,7 +844,7 @@ async function runApiDoctorScan(){
     const handoffCandidate=await apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id);
     let handoffPlan=null;
     if(handoffCandidate){
-      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and ts>$2 order by seq desc limit 1",[resource.resource_id,handoffCandidate.ts])).rows[0];
+      const successAfter=(await pool.query("select 1 from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'')<>'probe' and coalesce(task_kind,'')<>'api_doctor' and coalesce(task_kind,'')<>'api_doctor_validation' and ts>$2 order by seq desc limit 1",[resource.resource_id,handoffCandidate.ts])).rows[0];
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
       handoffPlan=apiDoctorExistingHandoffAction({
         existingHandoff:true,
@@ -852,9 +855,16 @@ async function runApiDoctorScan(){
         maxValidationAttempts:2,
       });
       if(handoffPlan.action==='recovered'){
+        const repairIssueNumber=Number(handoffCandidate.data?.repairIssueNumber||0);
+        if(repairIssueNumber>0){
+          const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
+          const repairGate=apiDoctorRepairWorkOrderGate({issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason});
+          row.repairIssueNumber=repairIssueNumber;row.repairIssueState=repairIssue.state;row.repairIssueStateReason=repairIssue.stateReason||null;
+          if(repairGate.action!=='validate_repair'){row.action='wait_repair';row.reason=repairGate.reason;row.handoff='deduped';actions.push(row);continue;}
+        }
         const signature=handoffCandidate.data?.signature;
-        if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_work_success_after_handoff'});
-        row.action='recovered';row.reason=handoffPlan.reason;row.recovered=true;actions.push(row);continue;
+        if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'live_normal_core_work_success_after_completed_repair'});
+        row.action='recovered';row.reason='live_normal_core_work_success_after_completed_repair';row.recovered=true;actions.push(row);continue;
       }
     }
     const existingHandoff=apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
@@ -863,7 +873,12 @@ async function runApiDoctorScan(){
       row.handoffFailureClass=String(handoffCandidate.data?.failureClass||'unknown');
     }
     if(existingHandoff){
-      const repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
+      let repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0);
+      if(repairIssueNumber<=0&&plan.failureClass==='source_contract'){
+        const migrated=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
+        repairIssueNumber=Number(migrated.repairIssueNumber||0);
+        row.action='wait_repair';row.reason='legacy_handoff_migrated_to_canonical_p1';row.handoff=migrated.created?'migrated_legacy':'deduped';row.repairIssueNumber=repairIssueNumber||null;row.repairIssueUrl=migrated.repairIssueUrl||null;actions.push(row);continue;
+      }
       if(repairIssueNumber>0){
         const repairIssue=await githubApiDoctorRepairIssueStatus(repairIssueNumber);
         const repairGate=apiDoctorRepairWorkOrderGate({issueNumber:repairIssueNumber,state:repairIssue.state,stateReason:repairIssue.stateReason});
@@ -876,6 +891,10 @@ async function runApiDoctorScan(){
         }
       }
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,existingHandoff.ts);
+      const validationPassed=await apiDoctorPostRepairValidationSucceeded(resource.resource_id,existingHandoff.ts);
+      if(validationPassed){
+        row.action='wait_repair';row.reason='post_repair_validation_pass_wait_normal_work';row.handoff='deduped';row.validationAttempts=validationAttempts;actions.push(row);continue;
+      }
       if(handoffPlan.action==='validate_repair'){
         row.action='validate_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;
         try{
@@ -889,9 +908,7 @@ async function runApiDoctorScan(){
         const validation=await runApiDoctorPostRepairValidation(resource,existingHandoff);
         row.validationJobId=validation.jobId||null;row.validation=validation.ok?'ok':'failed';
         if(validation.ok){
-          const signature=existingHandoff.data?.signature;
-          if(signature&&!await apiDoctorEventBySignature('API_DOCTOR_RECOVERED',signature))await event('API_DOCTOR_RECOVERED',{employeeId:resource.employee_id,resourceId:resource.resource_id,provider:resource.provider,taskKind:'api_doctor',signature,evidence:'post_repair_live_validation_job'});
-          row.action='recovered';row.reason='post_repair_live_validation_job';row.recovered=true;
+          row.action='wait_repair';row.reason='post_repair_validation_pass_wait_normal_work';row.validationPassed=true;
         }
         actions.push(row);continue;
       }
