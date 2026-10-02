@@ -839,11 +839,20 @@ function actionableStatus(issue, overlays = {}) {
 
   const active = overlays.active || null;
   const queued = overlays.queued || null;
+  const activeAt = Date.parse(active?.updatedAt || '') || 0;
+  const queuedAt = Date.parse(queued?.updatedAt || '') || 0;
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const canonicalBlocked = /BLOCKED/.test(issueCanonicalState(issue));
+  const terminalBlocked = hasTerminalBlockedLabel(issue);
+
+  if (terminalBlocked && (canonicalBlocked || issueAt >= Math.max(activeAt, queuedAt, lifecycleAt))) return 'BLOCKED';
+  if (active?.status && activeAt >= Math.max(queuedAt, lifecycleAt)) return String(active.status).toUpperCase();
+  if (queued?.status && queuedAt >= Math.max(activeAt, lifecycleAt)) return String(queued.status).toUpperCase();
+  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
   if (active?.status) return String(active.status).toUpperCase();
   if (queued?.status) return String(queued.status).toUpperCase();
-  const canonicalBlocked = /BLOCKED/.test(issueCanonicalState(issue));
-  if (hasTerminalBlockedLabel(issue) && (!lifecycle?.blockerCleared || canonicalBlocked)) return 'BLOCKED';
-  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
+  if (terminalBlocked) return 'BLOCKED';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
