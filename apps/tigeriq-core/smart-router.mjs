@@ -7,6 +7,7 @@ const ROUTABLE_CREDENTIAL = new Set(['LOCAL','READY']);
 const FREE_TIERS = new Set(['FREE','LOCAL','ZERO']);
 export const FUNCTIONAL_SUCCESS_TTL_MS = 15*60*1000;
 export const FUNCTIONAL_FAILURE_STREAK_LIMIT = 3;
+export const FUNCTIONAL_REPROBE_MAX = 3;
 
 function timestampMs(value) {
   const parsed=value?Date.parse(String(value)):NaN;
@@ -35,6 +36,25 @@ export function functionalRoutingReadiness(resource,{nowMs=Date.now(),successTtl
   const ageMs=Math.max(0,Number(nowMs)-successMs);
   if(ageMs>Math.max(1000,Number(successTtlMs)||FUNCTIONAL_SUCCESS_TTL_MS))return {ready:false,state:'STALE',reason:'functional_success_stale',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
   return {ready:true,state:'READY',reason:'functional_success_recent',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
+}
+
+export function functionalReprobeCandidates(resources,{nowMs=Date.now(),maxProbes=FUNCTIONAL_REPROBE_MAX}={}) {
+  const limit=Math.max(0,Math.min(10,Number(maxProbes)||0));
+  if(!limit)return [];
+  return (Array.isArray(resources)?resources:[])
+    .map((resource,index)=>({resource,index,readiness:functionalRoutingReadiness(resource,{nowMs,requireEvidence:true})}))
+    .filter(({resource,readiness})=>{
+      if(resource?.enabled===false||cooldownActive(resource,nowMs))return false;
+      return ['functional_success_missing','functional_success_stale','functional_failure_newer'].includes(String(readiness.reason||''));
+    })
+    .sort((a,b)=>Number(a.resource?.rank??50)-Number(b.resource?.rank??50)||a.index-b.index)
+    .slice(0,limit)
+    .map(({resource,readiness})=>({
+      resourceId:String(resource.resource_id??resource.resourceId??''),
+      employeeId:resource.employee_id??resource.employeeId??null,
+      reason:readiness.reason,
+    }))
+    .filter(x=>x.resourceId);
 }
 
 function resourcePart(value, fallback) {
