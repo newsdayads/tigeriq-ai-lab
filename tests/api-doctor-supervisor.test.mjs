@@ -121,6 +121,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'open'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_open'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:'completed'})).toEqual({action:'validate_repair',reason:'canonical_repair_work_order_completed'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:'not_planned'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_not_completed'});
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'closed',stateReason:null})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_not_completed'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:2901,state:'unknown'})).toEqual({action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'});
     expect(apiDoctorRepairWorkOrderGate({issueNumber:0,state:'closed'})).toEqual({action:'legacy',reason:'legacy_repair_handoff'});
   });
@@ -252,6 +253,11 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("repairIssueNumber");
     expect(core).toContain("githubApiDoctorRepairIssueStatus(repairIssueNumber)");
     expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
+    expect(core).toContain("legacy_handoff_migrated_to_canonical_p1");
+    expect(core).toContain("post_repair_validation_pass_wait_normal_work");
+    expect(core).toContain("coalesce(task_kind,'')<>'api_doctor_validation'");
+    expect(core).toContain("live_normal_core_work_success_after_completed_repair");
+    expect(core).not.toContain("evidence:'post_repair_live_validation_job'");
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
     expect(core).toContain("row.action='wait_repair'");
