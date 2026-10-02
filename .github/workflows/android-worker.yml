@@ -23,7 +23,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Ensure Android SDK 35 from hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_path="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager_path" ]; then
+            sdkmanager_path="$(command -v sdkmanager || true)"
+          fi
+          test -n "$sdkmanager_path"
+          "$sdkmanager_path" "platforms;android-35" "build-tools;35.0.0"
+          echo 'ANDROID_SDK_35_READY'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
