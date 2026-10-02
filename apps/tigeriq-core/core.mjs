@@ -242,7 +242,7 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
   while(true){
     const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...(host==='openrouter.ai'?{reasoning:{enabled:false}}:{}), ...managerProviderBodyForHost(host,prompt) };
     const responseFormat=managerResponseFormatForHost(host,prompt);
-    if(responseFormat)requestBody.response_format=responseFormat;
+    if(responseFormat){\n      requestBody.response_format=responseFormat;\n      if(host==='api.groq.com'&&isManagerPrompt(prompt))requestBody.reasoning_format='hidden';\n    }
     try{
       const body = await fetchJson(endpoint, {
         method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
