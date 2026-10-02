@@ -218,11 +218,13 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
       /\[RETRY_SCHEDULED\]/i.test(text)
       || /\[LÊN LỊCH THỬ LẠI\]/i.test(text)
     );
+    const nonProgressTerminal = /\bis failed\b|\bis completed\b|CODING_ALL_BATCHES_NOOP|RETRY_BUDGET_EXHAUSTED|\[(?:BLOCKED_FINAL|BỊ CHẶN|RESULT|KẾT QUẢ)\]/i.test(text);
     const active = objectiveId && !retryScheduled && (
       /\[(?:CLAIM|RETRY_DISPATCHED|RECOVERY_REARMED|STALE_RESULT_REARMED)\]/i.test(text)
       || /\[KÍCH HOẠT LẠI\]/i.test(text)
       || /accepted this issue as\s+CODEOBJ-/i.test(text)
       || /Automatic coding pipeline is active/i.test(text)
+      || (!nonProgressTerminal && /\[(?:PROGRESS|TIẾN ĐỘ|HEARTBEAT)\]/i.test(text))
     );
     const completed = objectiveId && (/\bis completed\b/i.test(text) || /\[RESULT\].*completed/i.test(text));
     const failed = terminalFailure
@@ -237,9 +239,20 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
   }
   if (!latest) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RESERVED' };
   if (latest.kind === 'completed') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_COMPLETED', latest };
-  // A dispatched/rearmed objective remains authoritative until Coding Lane emits terminal evidence.
-  // Age alone must not create a second writer while that objective may still be live.
-  if (latest.kind === 'active') return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
+  // Active Coding Lane remains authoritative only while its latest progress is fresh.
+  // Once progress/heartbeat is stale for the bounded C16 window, NV02 may take over,
+  // subject to the existing same-scope lease mutex in nv02EligibleWorkOrder/claim.
+  if (latest.kind === 'active' && !stale) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE', latest };
+  if (latest.kind === 'active') return {
+    eligible: true,
+    reason: 'INDEPENDENT_CODING_LANE_ACTIVE_STALE',
+    target: 'CODING_LANE',
+    needsRelease: false,
+    activeClaim: null,
+    failureCount: failedObjectives.size,
+    latest,
+  };
   if (latest.kind === 'scheduled') {
     const deadline = (latest.nextAt || latest.at) + staleMs;
     if (deadline > nowMs) return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_SCHEDULED', latest };
@@ -253,7 +266,6 @@ function codingLaneFallbackStatus(meta, comments = [], { nowMs = Date.now(), sta
       latest,
     };
   }
-  const stale = latest.at > 0 && nowMs - latest.at >= staleMs;
   if (latest.kind === 'failed' && !latest.terminalFailure
       && failedObjectives.size < NV02_TAKEOVER_NO_PROGRESS_ROUNDS && !stale) {
     return { eligible: false, reason: 'INDEPENDENT_CODING_LANE_RETRY_BUDGET_OPEN', latest, failureCount: failedObjectives.size };
