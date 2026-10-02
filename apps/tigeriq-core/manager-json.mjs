@@ -8,6 +8,12 @@ const STRUCTURED_JSON_HOSTS=new Set(['api.groq.com','openrouter.ai','api.cohere.
 export function managerResponseFormatForHost(host,prompt){
   return isManagerPrompt(prompt)&&STRUCTURED_JSON_HOSTS.has(String(host||'').toLowerCase())?{type:'json_object'}:null;
 }
+export function managerProviderBodyForHost(host,prompt){
+  const normalized=String(host||'').toLowerCase();
+  if(!isManagerPrompt(prompt))return {};
+  if(normalized==='integrate.api.nvidia.com')return {chat_template_kwargs:{enable_thinking:false}};
+  return {};
+}
 
 export function managerLocalRequestBody(model,prompt){
   return {
