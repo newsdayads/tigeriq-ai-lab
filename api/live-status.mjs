@@ -522,22 +522,25 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
     return recentWorkCache.data;
   }
   try {
-    const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 50);
-    const allRows = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
+    const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 10);
+    const candidates = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
       .map((issue) => parseRecentCompletedIssue(issue, now))
-      .filter(Boolean)
+      .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
       .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+    const rows = candidates.slice(0, RECENT_WORK_LIMIT);
+    const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
     const value = {
-      rows: allRows.slice(0, RECENT_WORK_LIMIT),
-      completedCount: allRows.length,
-      complete: pageSet.complete === true,
+      rows,
+      completedCount: rows.length,
+      complete: boundedScopeComplete,
       stale: false,
+      scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
     };
     recentWorkCache = { at: now, data: value };
     return value;
   } catch {
     if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
-    return { rows: [], completedCount: 0, complete: false, stale: true };
+    return { rows: [], completedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
   }
 }
 
@@ -792,7 +795,7 @@ function ownerAcceptancePolicy(body = '') {
 }
 
 function ownerAcceptancePhase(phase = '') {
-  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL|LIVE_VERIFIED|LIVE_ACCEPTANCE_PASS|READY_LIVE_ACCEPTANCE)/.test(String(phase || '').toUpperCase());
+  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL)/.test(String(phase || '').toUpperCase());
 }
 
 function ownerGateTechnicalComplete(body = '', phase = '') {
@@ -916,8 +919,8 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
 }
 
 export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
-  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK');
-  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.status || '').toUpperCase() === 'DONE');
+  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5');
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5' && String(row.status || '').toUpperCase() === 'DONE');
   const explicitCompleted = Number(options.completedCount);
   const completedItems = Number.isFinite(explicitCompleted) && explicitCompleted >= 0 ? explicitCompleted : done.length;
   const scopeItems = open.length + completedItems;
@@ -930,7 +933,7 @@ export function verifiedCompletionProgress(openRows = [], completedRows = [], op
     scopeItems,
     completedItems,
     remainingItems: open.length,
-    basis: 'open_work_plus_recent_completed',
+    basis: 'current_non_p5_open_plus_recent_' + RECENT_WORK_LIMIT + '_completed',
   };
 }
 
