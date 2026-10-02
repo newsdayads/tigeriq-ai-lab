@@ -448,5 +448,15 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("Number(error?.status)>=400");
     expect(core).toContain("host==='openrouter.ai'?{reasoning:{enabled:false}}:{}");
     expect(core.split('reasoning:{enabled:false}').length-1).toBe(1);
+    expect(core).toContain('const rankedClaimCandidates=[decision.chosen,...(Array.isArray(decision.candidates)?decision.candidates:[])]');
+    expect(core).toContain('.filter(item=>item?.resourceId&&item?.eligible!==false)');
+    expect(core).toContain('.filter((item,index,all)=>all.findIndex(x=>x.resourceId===item.resourceId)===index)');
+    expect(core).toContain('.slice(0,20)');
+    expect(core).toContain('for(const candidate of rankedClaimCandidates)');
+    expect(core).toContain('if(!row)continue;');
+    expect(core).toContain('selectedCandidate=candidate;break;');
+    expect(core).toContain("chosen:selectedCandidate||decision.chosen");
+    expect(core).toContain("ROUTING_CLAIM_FALLBACK");
+    expect(core).not.toContain('[decision.chosen.resourceId]);');
   });
 });
