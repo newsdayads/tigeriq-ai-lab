@@ -108,7 +108,7 @@ a{color:inherit;text-decoration:none}
 }
 .empty{border:1px dashed #2a425d;border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);font-size:12px}
 .page-foot{padding:14px 2px 0;color:#6d8097;font-size:9px;line-height:1.5;text-align:center}
-@media(max-width:1100px){.work-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.work-list{grid-template-columns:repeat(2,minmax(0,1fr))}.owner-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
 @media(max-width:700px){.work-list{grid-template-columns:1fr}.owner-summary{grid-template-columns:1fr 1fr}.summary-main{grid-column:1/-1}.drawer{width:100%;max-width:none}.brand h1{font-size:20px}.work-row{padding:9px 10px}.work-top{gap:5px}.state{margin-left:auto}}
 @media(max-width:420px){.owner-summary{grid-template-columns:1fr 1fr}.summary-tile{min-height:64px}}
 
@@ -279,7 +279,7 @@ function openDrawer(row,trigger){
   $('drawerWorker').textContent=workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||'Chưa có bằng chứng';
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
-  const url=row.evidenceUrl||row.url||'';
+  const url=row.url||row.evidenceUrl||'';
   $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;
   $('drawerBackdrop').classList.add('open');$('workDrawer').classList.add('open');
   $('drawerBackdrop').setAttribute('aria-hidden','false');$('workDrawer').setAttribute('aria-hidden','false');
@@ -336,7 +336,9 @@ function show(value){
   const projection=value?.workProjection||{};
   const stale=Boolean(value?.staleAll||projection.stale);
   const live=$('liveLabel').parentElement;live.classList.toggle('warn',!value?.liveConnected||stale);
-  $('liveLabel').textContent=stale?'DỮ LIỆU CŨ':(value?.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
+  const verifiedAt=projection?.verifiedAt||value?.generatedAt||null;
+  const staleTime=verifiedAt?new Date(verifiedAt).toLocaleTimeString('vi-VN',{hour12:false}):'';
+  $('liveLabel').textContent=stale?('DỮ LIỆU CŨ'+(staleTime?' · '+staleTime:'')):(value?.liveConnected?'PC01 LIVE':'DỰ PHÒNG');
   if(stale){
     $('err').classList.add('stale');
     $('err').textContent='Nguồn live đang gián đoạn; đang giữ snapshot xác minh gần nhất.';
@@ -363,7 +365,17 @@ document.querySelectorAll('.filter').forEach(button=>button.addEventListener('cl
 $('drawerClose').addEventListener('click',closeDrawer);
 $('drawerCloseBottom').addEventListener('click',closeDrawer);
 $('drawerBackdrop').addEventListener('click',closeDrawer);
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('workDrawer').classList.contains('open'))closeDrawer()});
+document.addEventListener('keydown',event=>{
+  const drawer=$('workDrawer');if(!drawer.classList.contains('open'))return;
+  if(event.key==='Escape'){closeDrawer();return}
+  if(event.key==='Tab'){
+    const focusable=[...drawer.querySelectorAll('a[href]:not([hidden]),button:not([disabled])')].filter(x=>x.offsetParent!==null);
+    if(!focusable.length)return;
+    const first=focusable[0],last=focusable.at(-1);
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  }
+});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 load();
 setInterval(()=>{if(!document.hidden)load()},10000);
