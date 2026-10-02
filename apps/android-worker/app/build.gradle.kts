@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0-onboarding"
+        versionCode = 5
+        versionName = "0.5.0-mobile-probe"
     }
 
     if (stableSigningEnabled) {
@@ -62,4 +62,9 @@ tasks.register("tigerIqStableSigningStatus") {
     doLast {
         println(if (stableSigningEnabled) "TIGERIQ_STABLE_SIGNING_CONFIGURED" else "TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED")
     }
+}
+
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }
