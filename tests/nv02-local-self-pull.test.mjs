@@ -256,6 +256,62 @@ describe('NV02 local GitHub self-pull contract', () => {
     })).toMatchObject({ eligible: false, reason: 'WORK_ORDER_SUPERSEDED_OR_CANCELLED' });
   });
 
+  it('opens independent reservation only on newer explicit C16 stall or no-progress evidence', () => {
+    const work = {
+      ...issue(20, '[P1] C16 reserved', safe('PRIORITY=P1\nCAPABILITY=coding\nOWNER_PROXY=NV02\nINDEPENDENT_REPAIR_REQUIRED=true\nTARGET_EMPLOYEE=NV11\nRESOURCE_SCOPE=C16_SCOPE')),
+      updated_at: '2026-10-02T12:00:00Z',
+    };
+    const active = [{
+      id: 1,
+      created_at: '2026-10-02T12:00:00Z',
+      body: '[RECOVERY_REARMED] CODEOBJ-c16 prior=CODEOBJ-old reason=CODING_ALL_BATCHES_NOOP',
+    }];
+    expect(nv02TakeoverStatus(work, active, {
+      nowMs: Date.parse('2026-10-02T12:20:00Z'),
+    })).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE' });
+
+    const stalled = [...active, {
+      id: 2,
+      created_at: '2026-10-02T12:05:00Z',
+      body: '[PROGRESS]\nWORKER=NV11\nSTATE=STALLED\nBLOCKER=TRANSPORT_OFFLINE',
+    }, {
+      id: 3,
+      created_at: '2026-10-02T12:05:01Z',
+      body: '[TIGERIQ_ROLE_CLAIM_V1]\nCLAIM_ID=NV11-C16\nWORKER=NV11\nRESOURCE_SCOPE=C16_SCOPE\nLEASE_UNTIL=2026-10-02T13:00:00Z',
+    }];
+    const stalledTakeover = nv02TakeoverStatus(work, stalled, {
+      nowMs: Date.parse('2026-10-02T12:06:00Z'),
+    });
+    expect(stalledTakeover).toMatchObject({
+      eligible: true,
+      reason: 'ASSIGNEE_STALLED',
+      needsRelease: true,
+      activeClaim: { worker: 'NV11', resourceScope: 'C16_SCOPE' },
+    });
+    expect(selectNv02WorkOrder([work], {
+      heldScopes: activeResourceScopes(stalled, Date.parse('2026-10-02T12:06:00Z')),
+      takeoverStatuses: new Map([[20, stalledTakeover]]),
+    })?.result.mode).toBe('STALE_ASSIGNEE_TAKEOVER');
+
+    const rounds = [...active, {
+      id: 4,
+      created_at: '2026-10-02T12:07:00Z',
+      body: '[PROGRESS]\nWORKER=NV11\nNO_PROGRESS_ROUNDS=3',
+    }];
+    expect(nv02TakeoverStatus(work, rounds, {
+      nowMs: Date.parse('2026-10-02T12:08:00Z'),
+    })).toMatchObject({ eligible: true, reason: 'NO_PROGRESS_ROUNDS_EXHAUSTED', rounds: 3 });
+
+    const rearmedAfterStall = [...stalled, {
+      id: 5,
+      created_at: '2026-10-02T12:09:00Z',
+      body: '[REOPEN_REARMED] CODEOBJ-c16-new prior=CODEOBJ-c16',
+    }];
+    expect(nv02TakeoverStatus(work, rearmedAfterStall, {
+      nowMs: Date.parse('2026-10-02T12:10:00Z'),
+    })).toMatchObject({ eligible: false, reason: 'INDEPENDENT_CODING_LANE_ACTIVE' });
+  });
+
   it('prefers primary role over safe fallback and rejects active duplicate owner', () => {
     const fallback = issue(30, '[P1] fallback', safe('PRIORITY=P1\nCAPABILITY=research\nRESOURCE_SCOPE=F30'));
     const primary = issue(31, '[P2] primary', safe('PRIORITY=P2\nCAPABILITY=general\nRESOURCE_SCOPE=F31'));
