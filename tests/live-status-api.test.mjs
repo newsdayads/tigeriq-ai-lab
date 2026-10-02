@@ -15,6 +15,7 @@ import {
   projectionTransportStale,
   verifiedPortfolioProgress,
   verifiedCompletionProgress,
+  completionScopeReferenceNumbers,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   runtimeWorkRows,
@@ -802,6 +803,34 @@ describe('TigerIQ Live Work Order projection', () => {
       evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/2828',
       evidenceAt: '2026-10-02T05:29:55.000Z',
     });
+  });
+
+  it('keeps current canonical live phases authoritative over stale owner flags', () => {
+    for (const phase of ['LIVE_VERIFIED', 'LIVE_ACCEPTANCE_PASS', 'READY_LIVE_ACCEPTANCE']) {
+      const row = parseOpenWorkIssue(issue(3230, '[P1] Current live phase wins', [
+        'CURRENT_STATE=' + phase,
+        'OWNER_ACCEPTANCE_REQUIRED=true',
+        'OWNER_GATE=true',
+        'OWNER_APPROVAL_REQUIRED=true',
+      ].join('\n')));
+      expect(row.ownerGate).toBe(false);
+      expect(row.status).toBe('VERIFY');
+      expect(row.ownerApprovalRequired).toBe(false);
+    }
+  });
+
+  it('extracts only structural issue references for the current completion scope', () => {
+    expect(completionScopeReferenceNumbers([
+      'PARENT=#2803 - parent',
+      'CHILD_UI=#2827',
+      'CHILD_STABILITY=#2891',
+      'FINAL_ACCEPTANCE=#2892 - final',
+      'DEPENDS_ON=#2889 - registry|#2890 - doctor',
+      'CURRENT_BLOCKER=#2941 - fallback',
+      'RELATED=#2710 - do not count',
+      'EVIDENCE_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/1772',
+      'NEXT=#2999 - do not count free-form next',
+    ].join('\n'))).toEqual([2803, 2827, 2891, 2892, 2889, 2890, 2941]);
   });
 
   it('does not synthesize technical completion from an owner phase without explicit pass evidence', () => {
