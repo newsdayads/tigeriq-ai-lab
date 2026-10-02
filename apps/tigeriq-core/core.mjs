@@ -764,6 +764,40 @@ function apiDoctorSha(value){
   const sha=String(value||'').trim().toLowerCase();
   return /^[0-9a-f]{40}$/.test(sha)?sha:'';
 }
+function apiDoctorAllowedRepairPaths(issueBody=''){
+  const line=String(issueBody||'').split(/\r?\n/).find(x=>x.trim().startsWith('ALLOW_PATH_PREFIX='))||'';
+  return line.slice(line.indexOf('=')+1).split(',').map(x=>x.trim()).filter(Boolean);
+}
+async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,headers}){
+  const body=String(issue?.body||'');
+  if(!/^OWNER_PROXY=\S+/m.test(body)||!/^NO_DIRECT_MAIN=true$/m.test(body))return null;
+  const allowed=apiDoctorAllowedRepairPaths(body);
+  if(!allowed.length)return null;
+  const timeline=await fetchJson(`${base}/issues/${issueNumber}/timeline?per_page=100`,{headers:{...headers,Accept:'application/vnd.github+json'}},10000);
+  const candidates=(Array.isArray(timeline)?timeline:[])
+    .filter(e=>e?.event==='cross-referenced'&&e?.source?.issue?.pull_request?.merged_at)
+    .sort((a,b)=>Date.parse(String(b?.created_at||''))-Date.parse(String(a?.created_at||'')));
+  for(const eventRow of candidates){
+    const prNumber=Number(eventRow?.source?.issue?.number||0);
+    if(!Number.isInteger(prNumber)||prNumber<=0)continue;
+    const pr=await fetchJson(`${base}/pulls/${prNumber}`,{headers},10000);
+    if(!(pr?.merged===true||pr?.merged_at)||String(pr?.base?.ref||'')!=='main')continue;
+    const headSha=apiDoctorSha(pr?.head?.sha);
+    if(!headSha)continue;
+    const files=await fetchJson(`${base}/pulls/${prNumber}/files?per_page=100`,{headers},10000);
+    if(!Array.isArray(files)||!files.length||files.length>=100)continue;
+    const scopeOk=files.every(file=>allowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
+    if(!scopeOk)continue;
+    const comments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
+    const reviewOk=(Array.isArray(comments)?comments:[]).some(comment=>{
+      const reviewBody=String(comment?.body||'');
+      return reviewBody.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&/REVIEW=(?:PASS|ĐẠT)/.test(reviewBody)&&reviewBody.includes(`TARGET_HEAD=${headSha}`);
+    });
+    if(!reviewOk)continue;
+    return {repairPrNumber:prNumber,codingObjectiveId:'OWNER_PROXY_GITHUB_PR',evidenceSource:'owner_proxy_cross_reference'};
+  }
+  return null;
+}
 async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const issueNumber=Number(existingHandoff?.data?.repairIssueNumber||0);
   if(!Number.isInteger(issueNumber)||issueNumber<=0)return {ready:false,reason:'canonical_repair_work_order_missing'};
@@ -777,15 +811,23 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
     "select data from tigeriq_events where type='GITHUB_CODING_RESULT_REPORTED' and data->>'issueNumber'=$1 and data->>'status'='completed' order by seq desc limit 1",
     [String(issueNumber)]
   )).rows[0]||null;
-  const codingObjectiveId=String(resultEvent?.data?.codingObjectiveId||'').trim();
-  if(!codingObjectiveId)return {ready:false,reason:'repair_coding_result_missing',issueNumber};
-
-  const codingJob=(await pool.query(
-    "select pr_number,head_sha,result,completed_at from tigeriq_coding_jobs where objective_id=$1 and status='completed' order by completed_at desc nulls last limit 1",
-    [codingObjectiveId]
-  )).rows[0]||null;
-  const repairPrNumber=Number(codingJob?.pr_number||0);
-  if(!Number.isInteger(repairPrNumber)||repairPrNumber<=0)return {ready:false,reason:'repair_pr_missing',issueNumber,codingObjectiveId};
+  let codingObjectiveId=String(resultEvent?.data?.codingObjectiveId||'').trim();
+  let repairPrNumber=0;
+  let repairEvidenceSource='coding_lane';
+  if(codingObjectiveId){
+    const codingJob=(await pool.query(
+      "select pr_number,head_sha,result,completed_at from tigeriq_coding_jobs where objective_id=$1 and status='completed' order by completed_at desc nulls last limit 1",
+      [codingObjectiveId]
+    )).rows[0]||null;
+    repairPrNumber=Number(codingJob?.pr_number||0);
+    if(!Number.isInteger(repairPrNumber)||repairPrNumber<=0)return {ready:false,reason:'repair_pr_missing',issueNumber,codingObjectiveId};
+  }else{
+    const fallback=await apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,headers});
+    if(!fallback)return {ready:false,reason:'repair_coding_result_missing',issueNumber};
+    repairPrNumber=fallback.repairPrNumber;
+    codingObjectiveId=fallback.codingObjectiveId;
+    repairEvidenceSource=fallback.evidenceSource;
+  }
 
   const repairPr=await fetchJson(`${base}/pulls/${repairPrNumber}`,{headers},10000);
   if(!(repairPr?.merged===true||repairPr?.merged_at))return {ready:false,reason:'repair_pr_not_merged',issueNumber,repairPrNumber};
@@ -821,7 +863,7 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   );
   if(!Number.isFinite(cutoverMs))return {ready:false,reason:'repair_cutover_time_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision};
   return {
-    ready:true,reason:'repair_issue_completed_revision_deployed',issueNumber,repairPrNumber,codingObjectiveId,
+    ready:true,reason:'repair_issue_completed_revision_deployed',issueNumber,repairPrNumber,codingObjectiveId,repairEvidenceSource,
     repairRevision,deployedRevision,deployedAt,issueClosedAt:String(issue?.closed_at||''),successAfterAt:new Date(cutoverMs).toISOString(),
   };
 }
