@@ -15,6 +15,19 @@ const contractById=new Map(SELF_AUDIT_CONTRACTS.map(x=>[x.id,x]));
 const upper=v=>String(v??'').trim().toUpperCase();
 const arr=v=>Array.isArray(v)?v:[];
 
+export function resolveRuntimeSourceIdentity({
+  explicitExpectedSha='',
+  explicitInstalledSha='',
+  runtimeSourceState=null,
+  updaterState=null,
+}={}){
+  const canonicalSourceSha=String(runtimeSourceState?.currentSha||updaterState?.installedSha||'').trim();
+  const expectedSha=String(explicitExpectedSha||canonicalSourceSha||'').trim();
+  const installedSha=String(explicitInstalledSha||updaterState?.installedSha||runtimeSourceState?.currentSha||'').trim();
+  const gateSha=String(runtimeSourceState?.gateSha||updaterState?.gateSha||'').trim();
+  return {expectedSha,installedSha,gateSha,canonicalSourceSha};
+}
+
 function anomaly(contractId,key,evidence){
   const contract=contractById.get(contractId);
   if(!contract)throw new Error('UNKNOWN_SELF_AUDIT_CONTRACT:'+contractId);
