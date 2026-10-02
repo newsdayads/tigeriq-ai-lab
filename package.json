@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test tests/core-ui-assignment.test.mjs",
     "test:e2e": "playwright test",
     "test:chief": "node scripts/test-chief-router.mjs",
     "test:vercel-policy": "node scripts/verify-vercel-deployment-policy.mjs",
