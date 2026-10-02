@@ -542,7 +542,7 @@ describe('TigerIQ Live Work Order projection', () => {
         : [{ number: 101 }];
       return new Response(JSON.stringify(rows), { status: 200 });
     };
-    const result = await ghAllPages('/repos/newsdayads/tigeriq-ai-lab/issues?state=open&sort=updated&direction=desc', fetchImpl);
+    const result = await ghAllPages('/repos/tigeriq-test/pagination-only/issues?state=open&sort=updated&direction=desc', fetchImpl);
     expect(result).toMatchObject({ complete: true });
     expect(result.rows).toHaveLength(101);
     expect(seen.some((url) => url.includes('per_page=100') && url.includes('page=2'))).toBe(true);
