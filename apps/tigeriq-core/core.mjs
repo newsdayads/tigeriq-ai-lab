@@ -12,7 +12,7 @@ import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolution
 import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
-import { ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
+import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
@@ -531,19 +531,66 @@ async function taskPerformance(taskKind='general'){
   const q=await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retry,count(*) filter(where type='ROUTING_FAILOVER')::int as failover,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' and (task_kind=$1 or task_kind is null or $1='general') group by resource_id`,[taskKind]);
   return new Map(q.rows.map(x=>[x.resource_id,{success:Number(x.success||0),failure:Number(x.failure||0),retry:Number(x.retry||0),failover:Number(x.failover||0),avgLatencyMs:Number(x.avg_latency_ms||0)}]));
 }
+function emptyFunctionalRoutingEvidence(){return{lastSuccessAt:null,lastFailureAt:null,failureStreak:0};}
+async function routingFunctionalEvidence(store=pool,resourceIds=[]){
+  const ids=[...new Set((Array.isArray(resourceIds)?resourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))];
+  const params=ids.length?[ids]:[];
+  const filter=ids.length?' and r.resource_id=any($1::text[])':'';
+  const q=await store.query(`select r.resource_id,e.ts,e.type,e.task_kind,e.data
+    from tigeriq_ai_resources r
+    left join lateral (
+      select ev.ts,ev.type,ev.task_kind,ev.data
+      from tigeriq_events ev
+      where ev.resource_id=r.resource_id
+        and ev.type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL')
+        and ev.ts>=now()-interval '24 hours'
+      order by ev.seq desc
+      limit 20
+    ) e on true
+    where r.enabled=true${filter}
+    order by r.resource_id,e.ts desc`,params);
+  const grouped=new Map();
+  for(const row of q.rows||[]){
+    const resourceId=String(row.resource_id||'');
+    if(!grouped.has(resourceId))grouped.set(resourceId,[]);
+    if(row.ts)grouped.get(resourceId).push(row);
+  }
+  const evidence=new Map();
+  for(const [resourceId,events] of grouped){
+    const usable=apiDoctorHealthEvidenceEvents(events);
+    let lastSuccessAt=null,lastFailureAt=null,failureStreak=0,successSeen=false;
+    for(const row of usable){
+      if(row.type==='RESOURCE_SUCCESS'||row.type==='RESOURCE_PROBE_OK'){
+        if(!lastSuccessAt)lastSuccessAt=row.ts;
+        successSeen=true;
+        continue;
+      }
+      if(row.type==='RESOURCE_FAILURE'||row.type==='RESOURCE_PROBE_FAIL'){
+        if(!lastFailureAt)lastFailureAt=row.ts;
+        if(!successSeen)failureStreak++;
+      }
+    }
+    evidence.set(resourceId,{lastSuccessAt,lastFailureAt,failureStreak});
+  }
+  return evidence;
+}
+function withFunctionalRoutingEvidence(resource,evidence){
+  return {...resource,functionalEvidence:evidence.get(String(resource.resource_id||''))||emptyFunctionalRoutingEvidence()};
+}
+
 async function candidates(capability='general',options={}){
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
   const taskKind=String(options.taskKind||'general');
-  const stats=await taskPerformance(taskKind);
+  const [stats,functionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
   const rows=q.rows
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))
-    .map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
-  return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+    .map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
+  return rankCandidates(rows,{profile:deriveRoutingProfile({requested:options.profile,taskKind,capability}),capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
 }
 async function claimResource(capability,jobId,excluded=[],options={}){
   const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
-  const stats=await taskPerformance(taskKind);
+  const [stats,initialFunctionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
   const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
   let candidates=q.rows
@@ -551,15 +598,34 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}));
   if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
-  const rows=candidates.map(x=>({...x,taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
-  const decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[]});
+  let functionalEvidence=initialFunctionalEvidence;
+  const projectRows=()=>candidates.map(x=>({...withFunctionalRoutingEvidence(x,functionalEvidence),taskStats:{[taskKind]:stats.get(x.resource_id)||{}}}));
+  let rows=projectRows();
+  let decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
+  if(!decision.chosen){
+    const reprobe=functionalReprobeCandidates(rows,{nowMs:Date.now(),maxProbes:FUNCTIONAL_REPROBE_MAX});
+    if(reprobe.length){
+      const outcomes=[];
+      for(const item of reprobe){
+        try{const result=await probeResource(item.resourceId);outcomes.push({...item,ok:Boolean(result?.ok)});}
+        catch(error){outcomes.push({...item,ok:false,kind:String(error?.kind||'outage')});}
+      }
+      functionalEvidence=await routingFunctionalEvidence(pool,candidates.map(x=>x.resource_id));
+      rows=projectRows();
+      decision=rankCandidates(rows,{profile,capability,taskKind,reviewerResourceId:options.reviewerResourceId||null,reviewerResourceIds:options.reviewerResourceIds||[],requireFunctionalEvidence:true});
+      await event('ROUTING_FUNCTIONAL_REPROBE',{jobId,taskKind,profile,capability,maxProbes:FUNCTIONAL_REPROBE_MAX,outcomes,recoveredResourceId:decision.chosen?.resourceId||null});
+    }
+  }
   if(!decision.chosen)return null;
   const client=await pool.connect();
   try{
     await client.query('begin');
     const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[decision.chosen.resourceId]);
     const r=locked.rows[0];
-    if(!r||!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability})){await client.query('commit');return null;}
+    if(!r){await client.query('commit');return null;}
+    const freshEvidence=(await routingFunctionalEvidence(client,[r.resource_id])).get(r.resource_id)||emptyFunctionalRoutingEvidence();
+    const freshResource=withFunctionalRoutingEvidence(r,new Map([[r.resource_id,freshEvidence]]));
+    if(!apiDoctorResourceEligibleForCapability({employeeId:r.employee_id,healthState:r.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
     await client.query('commit');
     const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],candidates:decision.candidates,chosen:decision.chosen};
@@ -604,7 +670,7 @@ async function runNv09Canary(inputPrompt=''){
   }
 }
 async function probeResource(resourceOrEmployeeId){const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);if(!r)throw new Error('RESOURCE_NOT_FOUND');if(!reqReady(r)&&!['ollama','openclaw'].includes(r.provider))throw new Error('RESOURCE_CREDENTIAL_NOT_READY');const started=Date.now();try{if(r.provider==='openclaw'){if(!openClawResourceActivated())throw Object.assign(new Error('OPENCLAW_RESOURCE_NOT_ACTIVATED'),{kind:'configuration'});const gateway=await probeOpenClawGateway();if(!gateway.ok)throw Object.assign(new Error('OPENCLAW_GATEWAY_UNAVAILABLE'),{kind:'outage'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'PC_OPERATOR'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}const marker='TIGERIQ_RESOURCE_PROBE_'+r.id,text=await invokeProvider(r,'Return exactly '+marker);if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});const latency=Date.now()-started;await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};}catch(error){const result=await markResourceFailure(r,null,error,'RESOURCE_PROBE_FAIL',false,{taskKind:'probe',profile:'FAST'});const e=new Error('RESOURCE_PROBE_FAILED');e.kind=result.kind;throw e;}}
-async function probeReadyResources(){const rows=(await pool.query("select resource_id,runtime_binding,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const now=Date.now();for(const row of rows){if(row.runtime_binding==='ollama_on_demand')continue;const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=900000;if(!neverSeen&&!staleOnline)continue;try{await probeResource(row.resource_id);}catch{}}}
+async function probeReadyResources(){const rows=(await pool.query("select resource_id,runtime_binding,credential_state,health_state,current_job_id,last_seen_at,cooldown_until from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and current_job_id is null order by rank")).rows;const functionalEvidence=await routingFunctionalEvidence();const now=Date.now();for(const row of rows){if(row.runtime_binding==='ollama_on_demand')continue;const cooldownMs=row.cooldown_until?Date.parse(String(row.cooldown_until)):NaN;if(Number.isFinite(cooldownMs)&&cooldownMs>now)continue;const neverSeen=!row.last_seen_at,staleOnline=row.health_state==='ONLINE'&&row.last_seen_at&&(now-new Date(row.last_seen_at).getTime())>=FUNCTIONAL_SUCCESS_TTL_MS;const readiness=functionalRoutingReadiness(withFunctionalRoutingEvidence(row,functionalEvidence),{nowMs:now,requireEvidence:true});const functionalProbeDue=['READY','ONLINE'].includes(String(row.health_state||'').toUpperCase())&&!readiness.ready&&String(readiness.reason||'').startsWith('functional_');if(!neverSeen&&!staleOnline&&!functionalProbeDue)continue;try{await probeResource(row.resource_id);}catch{}}}
 async function apiDoctorRecentResourceEvents(resourceId){
   return (await pool.query(`select seq,ts,type,task_kind,data from tigeriq_events where resource_id=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') and ts>=now()-interval '12 hours' order by seq desc limit 30`,[resourceId])).rows;
 }
@@ -1639,6 +1705,7 @@ async function collectSelfAuditSnapshot(store=pool){
 
   const queueJobs=queueJobsResult.rows||[];
   const idleResources=idleResourcesResult.rows||[];
+  const selfAuditFunctionalEvidence=await routingFunctionalEvidence(store,idleResources.map(resource=>resource.resource_id));
   const dispatchableJobs=[];
   const eligibleResourceIds=new Set();
   for(const job of queueJobs){
@@ -1657,9 +1724,9 @@ async function collectSelfAuditSnapshot(store=pool){
       if(employeeAllowlist&&!employeeAllowlist.has(employeeId))return false;
       if(reviewerResourceIds.has(resourceId))return false;
       return true;
-    });
+    }).map(resource=>withFunctionalRoutingEvidence(resource,selfAuditFunctionalEvidence));
     const decision=rankCandidates(candidateResources,{
-      profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now
+      profile,capability,taskKind,reviewerResourceIds:[...reviewerResourceIds],nowMs:now,requireFunctionalEvidence:true
     });
     const eligible=decision.candidates.filter(x=>x.eligible);
     if(!eligible.length)continue;

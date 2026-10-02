@@ -2,8 +2,60 @@ export const ROUTING_PROFILES = Object.freeze(['AUTO','CODING','FAST','CHEAP','L
 export const ROUTING_PROFILE_LABELS = Object.freeze({
   AUTO:'Tự động',CODING:'Lập trình',FAST:'Nhanh',CHEAP:'Tiết kiệm',LOCAL:'Cục bộ',RESEARCH:'Nghiên cứu',REVIEW:'Kiểm tra độc lập',
 });
-const TERMINAL_HEALTH = new Set(['OFFLINE','DISABLED']);
+const ROUTABLE_HEALTH = new Set(['READY','ONLINE']);
+const ROUTABLE_CREDENTIAL = new Set(['LOCAL','READY']);
 const FREE_TIERS = new Set(['FREE','LOCAL','ZERO']);
+export const FUNCTIONAL_SUCCESS_TTL_MS = 15*60*1000;
+export const FUNCTIONAL_FAILURE_STREAK_LIMIT = 3;
+export const FUNCTIONAL_REPROBE_MAX = 3;
+
+function timestampMs(value) {
+  const parsed=value?Date.parse(String(value)):NaN;
+  return Number.isFinite(parsed)?parsed:NaN;
+}
+
+export function functionalRoutingReadiness(resource,{nowMs=Date.now(),successTtlMs=FUNCTIONAL_SUCCESS_TTL_MS,failureStreakLimit=FUNCTIONAL_FAILURE_STREAK_LIMIT,requireEvidence=false}={}) {
+  const health=String(resource?.health_state??resource?.healthState??'').toUpperCase();
+  if(!ROUTABLE_HEALTH.has(health))return {ready:false,state:'BLOCKED',reason:'health'};
+  const credential=String(resource?.credential_state??resource?.credentialState??'').toUpperCase();
+  if(credential&&!ROUTABLE_CREDENTIAL.has(credential))return {ready:false,state:'BLOCKED',reason:'credential'};
+  const evidence=resource?.functionalEvidence??resource?.functional_evidence??null;
+  if(!evidence)return requireEvidence
+    ? {ready:false,state:'STALE',reason:'functional_success_missing'}
+    : {ready:true,state:'LEGACY',reason:'functional_evidence_unavailable'};
+  const failureStreak=Math.max(0,Number(evidence.failureStreak??evidence.failure_streak??0));
+  const lastSuccessAt=evidence.lastSuccessAt??evidence.last_success_at??null;
+  const lastFailureAt=evidence.lastFailureAt??evidence.last_failure_at??null;
+  if(failureStreak>=Math.max(1,Number(failureStreakLimit)||FUNCTIONAL_FAILURE_STREAK_LIMIT)){
+    return {ready:false,state:'DEGRADED',reason:'functional_failure_streak',failureStreak,lastSuccessAt,lastFailureAt};
+  }
+  const successMs=timestampMs(lastSuccessAt);
+  if(!Number.isFinite(successMs))return {ready:false,state:'STALE',reason:'functional_success_missing',failureStreak,lastSuccessAt,lastFailureAt};
+  const failureMs=timestampMs(lastFailureAt);
+  if(Number.isFinite(failureMs)&&failureMs>successMs)return {ready:false,state:'DEGRADED',reason:'functional_failure_newer',failureStreak,lastSuccessAt,lastFailureAt};
+  const ageMs=Math.max(0,Number(nowMs)-successMs);
+  if(ageMs>Math.max(1000,Number(successTtlMs)||FUNCTIONAL_SUCCESS_TTL_MS))return {ready:false,state:'STALE',reason:'functional_success_stale',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
+  return {ready:true,state:'READY',reason:'functional_success_recent',ageMs,failureStreak,lastSuccessAt,lastFailureAt};
+}
+
+export function functionalReprobeCandidates(resources,{nowMs=Date.now(),maxProbes=FUNCTIONAL_REPROBE_MAX}={}) {
+  const limit=Math.max(0,Math.min(10,Number(maxProbes)||0));
+  if(!limit)return [];
+  return (Array.isArray(resources)?resources:[])
+    .map((resource,index)=>({resource,index,readiness:functionalRoutingReadiness(resource,{nowMs,requireEvidence:true})}))
+    .filter(({resource,readiness})=>{
+      if(resource?.enabled===false||cooldownActive(resource,nowMs))return false;
+      return ['functional_success_missing','functional_success_stale','functional_failure_newer'].includes(String(readiness.reason||''));
+    })
+    .sort((a,b)=>Number(a.resource?.rank??50)-Number(b.resource?.rank??50)||a.index-b.index)
+    .slice(0,limit)
+    .map(({resource,readiness})=>({
+      resourceId:String(resource.resource_id??resource.resourceId??''),
+      employeeId:resource.employee_id??resource.employeeId??null,
+      reason:readiness.reason,
+    }))
+    .filter(x=>x.resourceId);
+}
 
 function resourcePart(value, fallback) {
   return String(value||fallback).trim().toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||fallback;
@@ -116,13 +168,15 @@ function cooldownActive(resource, nowMs) {
   return Number.isFinite(until)&&until>nowMs;
 }
 
-export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
+export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
   const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.model,resource.account_binding??resource.accountBinding??'default',resource.runtime_binding??resource.runtimeBinding??'core'));
   const reasons=[];
   const reviewerExclusions=new Set([reviewerResourceId,...(Array.isArray(reviewerResourceIds)?reviewerResourceIds:[])].filter(Boolean).map(String));
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
-  if(TERMINAL_HEALTH.has(String(resource.health_state??resource.healthState??'').toUpperCase()))return {eligible:false,resourceId,score:Infinity,reasons:['health']};
+  const hasFunctionalEvidence=Boolean(resource.functionalEvidence??resource.functional_evidence);
+  const readiness=functionalRoutingReadiness(resource,{nowMs,requireEvidence:Boolean(requireFunctionalEvidence||hasFunctionalEvidence)});
+  if(!readiness.ready)return {eligible:false,resourceId,score:Infinity,reasons:[readiness.reason]};
   if(cooldownActive(resource,nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['cooldown']};
   if(!quotaUsable(resource.quota_state??resource.quotaState??{},nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['quota']};
   if(!isFree(resource))return {eligible:false,resourceId,score:Infinity,reasons:['paid_fallback_forbidden']};
@@ -157,9 +211,9 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
-export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now()}={}) {
+export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
-  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs})}));
+  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs,requireFunctionalEvidence})}));
   const eligible=evaluated.filter(x=>x.eligible).sort((a,b)=>a.score-b.score||a.resourceId.localeCompare(b.resourceId));
   const chosen=eligible[0]||null;
   return {
