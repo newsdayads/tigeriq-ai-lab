@@ -789,10 +789,37 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     const scopeOk=files.every(file=>allowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
     if(!scopeOk)continue;
     const comments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
-    const reviewOk=(Array.isArray(comments)?comments:[]).some(comment=>{
+    let reviewOk=(Array.isArray(comments)?comments:[]).some(comment=>{
       const reviewBody=String(comment?.body||'');
       return reviewBody.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&/REVIEW=(?:PASS|ĐẠT)/.test(reviewBody)&&reviewBody.includes(`TARGET_HEAD=${headSha}`);
     });
+    if(!reviewOk){
+      const ownerProxy=(body.match(/^OWNER_PROXY=(\S+)$/m)||[])[1]||'';
+      const reviewIssues=(Array.isArray(timeline)?timeline:[]).filter(row=>{
+        const source=row?.source?.issue;
+        const reviewBody=String(source?.body||'');
+        return row?.event==='cross-referenced'&&!source?.pull_request
+          &&reviewBody.includes(`TARGET_PR=#${prNumber}`)
+          &&reviewBody.includes(`TARGET_HEAD=${headSha}`)
+          &&/^REVIEW_ONLY=true$/m.test(reviewBody)
+          &&/^REVIEW_INDEPENDENT=true$/m.test(reviewBody);
+      });
+      for(const reviewRef of reviewIssues){
+        const reviewIssueNumber=Number(reviewRef?.source?.issue?.number||0);
+        if(!Number.isInteger(reviewIssueNumber)||reviewIssueNumber<=0)continue;
+        const reviewComments=await fetchJson(`${base}/issues/${reviewIssueNumber}/comments?per_page=100`,{headers},10000);
+        reviewOk=(Array.isArray(reviewComments)?reviewComments:[]).some(comment=>{
+          const reviewBody=String(comment?.body||'');
+          const worker=(reviewBody.match(/^WORKER=(\S+)$/m)||[])[1]||'';
+          return reviewBody.includes('TIGERIQ_CORE_UI_TERMINAL_V1')
+            &&reviewBody.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')
+            &&/REVIEW=(?:PASS|ĐẠT)/.test(reviewBody)
+            &&reviewBody.includes(`TARGET_HEAD=${headSha}`)
+            &&worker&&worker!==ownerProxy;
+        });
+        if(reviewOk)break;
+      }
+    }
     if(!reviewOk)continue;
     return {repairPrNumber:prNumber,codingObjectiveId:'OWNER_PROXY_GITHUB_PR',evidenceSource:'owner_proxy_cross_reference'};
   }
