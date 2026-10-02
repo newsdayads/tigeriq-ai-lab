@@ -125,6 +125,17 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
+export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null}={}){
+  const number=Number(issueNumber||0);
+  if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
+  const normalizedState=String(state||'unknown').toLowerCase();
+  const normalizedReason=String(stateReason||'').toLowerCase();
+  if(normalizedState==='open')return {action:'wait_repair',reason:'canonical_repair_work_order_open'};
+  if(normalizedState==='closed'&&['completed',''].includes(normalizedReason))return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
+  if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
+  return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
+}
+
 export function buildApiDoctorPrompt(items=[]){
   const compact=(Array.isArray(items)?items:[]).slice(0,10).map(x=>({
     employeeId:safeText(x.employeeId,16),
