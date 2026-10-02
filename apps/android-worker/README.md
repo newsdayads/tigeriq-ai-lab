@@ -1,6 +1,12 @@
 # TigerIQ Android Worker — MVP Contract
 
-Status: SOURCE SKELETON / NOT YET REAL-DEVICE VERIFIED
+Status: #2949 GATE A PILOT PROBE / NOT YET REAL-DEVICE VERIFIED
+
+## Gate A pilot probe
+
+Current candidate is deliberately minimal: it can manually open ChatGPT/Gemini and, when Accessibility is enabled, record only semantic-tree counts (root present, node/editable/clickable counts). It does **not** auto-click, auto-send, or collect conversation text. This exists to get real Z Flip 7 evidence before implementing provider-specific automation.
+
+Master authority: #2949 / `MOBILE_WORKER_MASTER_V1`.
 
 ## Purpose
 One Android device can act as one persistent TigerIQ employee workstation. The Android app does not own company hierarchy or business decisions. It is an execution runtime that receives bounded Task Packets from TigerIQ Control Plane and returns structured Result/Evidence.
