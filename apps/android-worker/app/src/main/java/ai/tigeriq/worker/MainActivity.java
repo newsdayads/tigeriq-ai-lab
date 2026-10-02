@@ -130,6 +130,9 @@ public final class MainActivity extends Activity {
         Button accessibility = secondaryButton("Bật quyền điều khiển hỗ trợ");
         accessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         tools.addView(accessibility);
+        Button chatgpt = secondaryButton("Mở ChatGPT");
+        chatgpt.setOnClickListener(v -> openChatGpt());
+        tools.addView(chatgpt, marginParams(0, dp(8), 0, 0));
         Button gemini = secondaryButton("Mở Gemini");
         gemini.setOnClickListener(v -> openGemini());
         tools.addView(gemini, marginParams(0, dp(8), 0, 0));
@@ -144,7 +147,7 @@ public final class MainActivity extends Activity {
         statusCard.addView(refresh, marginParams(0, dp(12), 0, 0));
         root.addView(statusCard, marginParams(0, dp(8), 0, dp(12)));
 
-        TextView boundary = text("Gemini chỉ được mở thủ công ở giai đoạn này. Tự gửi prompt và lấy kết quả chỉ bật sau khi Controller, pairing và policy đều PASS.", 12, false);
+        TextView boundary = text("Gate A/B: ChatGPT/Gemini chỉ mở thủ công để đo cây Accessibility. Chưa có auto-click, auto-send hoặc đọc nội dung hội thoại.", 12, false);
         boundary.setTextColor(MUTED);
         root.addView(boundary);
         return scroll;
@@ -224,9 +227,9 @@ public final class MainActivity extends Activity {
                     JSONObject pairing = client.requestPairingChallenge(target).getJSONObject("pairing");
                     client.pair(target, pairing.getString("challengeId"), pairing.getString("challenge"), nodeId,
                         Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE,
-                        WorkerVersion.NAME, new String[]{"android-ui", "research", "gemini"});
+                        WorkerVersion.NAME, new String[]{"android-ui", "research", "chatgpt-ui", "gemini-ui"});
                 }
-                client.registerEmployee(profile.employeeId, profile.employeeId + " · " + profile.role, profile.department, profile.role, profile.provider, new String[]{"research", "gemini"});
+                client.registerEmployee(profile.employeeId, profile.employeeId + " · " + profile.role, profile.department, profile.role, profile.provider, new String[]{"research", "chatgpt-ui", "gemini-ui"});
                 client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
                 writeControllerStatus("ONLINE", System.currentTimeMillis(), "");
                 runOnUiThread(() -> {
@@ -252,6 +255,10 @@ public final class MainActivity extends Activity {
         String currentState = getSharedPreferences(ForegroundWorkerService.PREFS, MODE_PRIVATE).getString(ForegroundWorkerService.KEY_CONTROLLER_STATE, "UNPAIRED");
         long lastHeartbeat = getSharedPreferences(ForegroundWorkerService.PREFS, MODE_PRIVATE).getLong(ForegroundWorkerService.KEY_LAST_HEARTBEAT_AT, 0L);
         String lastPackage = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE).getString(AccessibilityBridgeService.KEY_LAST_PACKAGE, "Chưa quan sát");
+        boolean semanticRoot = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE).getBoolean(AccessibilityBridgeService.KEY_ROOT_AVAILABLE, false);
+        int semanticNodes = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE).getInt(AccessibilityBridgeService.KEY_NODE_COUNT, 0);
+        int editableNodes = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE).getInt(AccessibilityBridgeService.KEY_EDITABLE_COUNT, 0);
+        int clickableNodes = getSharedPreferences(AccessibilityBridgeService.PREFS, MODE_PRIVATE).getInt(AccessibilityBridgeService.KEY_CLICKABLE_COUNT, 0);
         String lastError = getSharedPreferences(ForegroundWorkerService.PREFS, MODE_PRIVATE).getString(ForegroundWorkerService.KEY_LAST_ERROR, "");
         boolean paired;
         try { paired = new SecureCredentialStore(this).load() != null; } catch (Exception ignored) { paired = false; }
@@ -276,13 +283,15 @@ public final class MainActivity extends Activity {
             + "\nController: " + (paired ? "ĐÃ GHÉP · " + currentState : "CHƯA GHÉP")
             + "\nHeartbeat: " + heartbeat
             + "\nỨng dụng đang thấy: " + lastPackage
+            + "\nCây Accessibility: " + (semanticRoot ? "CÓ" : "CHƯA THẤY")
+            + "\nNode: " + semanticNodes + " · Editable: " + editableNodes + " · Clickable: " + clickableNodes
             + (lastError == null || lastError.isEmpty() ? "" : "\nLỗi gần nhất: " + lastError));
     }
 
     private void showConnectionGuide() {
         new AlertDialog.Builder(this)
             .setTitle("Kết nối TigerIQ Worker")
-            .setMessage("1. Lưu hồ sơ nhân viên.\n\n2. Bật quyền điều khiển hỗ trợ trong Cài đặt Android, rồi quay lại app.\n\n3. Mở Tailscale, đăng nhập đúng tailnet TigerIQ và bảo đảm thiết bị hiện Connected.\n\n4. Khi PC01 Controller đã ONLINE, bấm Ghép Controller. App tự tạo khóa thiết bị và chỉ lưu credential mã hóa trên máy.\n\n5. Khi màn hình hiện NHÂN VIÊN ONLINE, Worker mới có thể nhận task an toàn.\n\nGemini chỉ được mở thủ công trước khi gate provider được duyệt.")
+            .setMessage("1. Lưu hồ sơ nhân viên.\n\n2. Bật quyền điều khiển hỗ trợ trong Cài đặt Android, rồi quay lại app.\n\n3. Gate A/B có thể bấm Mở ChatGPT hoặc Mở Gemini để kiểm tra cây Accessibility; app chỉ đếm node, không auto-click và không đọc nội dung chat.\n\n4. Mở Tailscale khi cần ghép Controller.\n\n5. Khi PC01 Controller đã ONLINE, bấm Ghép Controller. App tự tạo khóa thiết bị và chỉ lưu credential mã hóa trên máy.")
             .setPositiveButton("Đã hiểu", null)
             .show();
     }
@@ -330,6 +339,12 @@ public final class MainActivity extends Activity {
         if (launch != null) { startActivity(launch); return; }
         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.tailscale.ipn"))); }
         catch (Exception ignored) { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.tailscale.ipn"))); }
+    }
+
+    private void openChatGpt() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (launch != null) { launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(launch); return; }
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://chatgpt.com/")));
     }
 
     private void openGemini() {
