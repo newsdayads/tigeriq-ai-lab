@@ -52,11 +52,11 @@ export function runtimeContinuousVerifyTrigger(previousSha = '', currentSha = ''
   };
 }
 
-export function shouldQueueContinuousVerify(trigger, { pendingKey='', lastRunKey='' } = {}) {
+export function shouldQueueContinuousVerify(trigger, { pendingKey='', runningKey='', lastRunKey='' } = {}) {
   if (!trigger?.trigger) return false;
   const key = text(trigger.key);
   if (!key) return false;
-  return key !== text(pendingKey) && key !== text(lastRunKey);
+  return key !== text(pendingKey) && key !== text(runningKey) && key !== text(lastRunKey);
 }
 
 export function cadenceContinuousVerifyDue({
