@@ -770,6 +770,12 @@ export async function reconcileStaleTerminalBlockedRearms({pool,fetchImpl=fetch,
   for(const issue of Array.isArray(issues)?issues:[]){
     const terminalBlocked=issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked');
     if(!terminalBlocked){out.push(issue);continue;}
+    // pc_operator has a stricter terminal/rearm state machine below. Generic stale-label
+    // reconciliation must never pre-clear its durable label or duplicate that lifecycle.
+    if(bodyValue(issue?.body||'','CAPABILITY').trim().toLowerCase()==='pc_operator'){
+      out.push(issue);
+      continue;
+    }
     const labelsWithoutTerminal=(Array.isArray(issue.labels)?issue.labels:[]).filter((label)=>{
       const name=typeof label==='string'?label:String(label?.name||'');
       return name.toLowerCase()!=='tigeriq:terminal-blocked';
