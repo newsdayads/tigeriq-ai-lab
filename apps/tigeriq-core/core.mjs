@@ -667,6 +667,7 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
   const employeeAllowlist=new Set((Array.isArray(options.employeeAllowlist)?options.employeeAllowlist:[]).map((id)=>String(id||'').trim().toUpperCase()).filter(Boolean));
   const excludedProviders=new Set((Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map((id)=>String(id||'').trim().toLowerCase()).filter(Boolean));
+  const stabilityIdentity=stabilityV2BatchIdentityFromJobId(jobId);
   let candidates=q.rows
     .filter(x=>!excluded.includes(x.resource_id))
     .filter(x=>!excludedProviders.has(String(x.provider||'').trim().toLowerCase()))
@@ -699,8 +700,18 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   const client=await pool.connect();
   try{
     await client.query('begin');
+    const transactionExcludedResourceIds=new Set();
+    const transactionExcludedProviders=new Set(excludedProviders);
+    if(stabilityIdentity?.batch===1){
+      await client.query("select id from tigeriq_objectives where id=$1 for update",[stabilityIdentity.objectiveId]);
+      const peerExclusions=await stabilityV2PeerExclusions(jobId,client);
+      for(const resourceId of peerExclusions.resourceIds)transactionExcludedResourceIds.add(resourceId);
+      for(const provider of peerExclusions.providers)transactionExcludedProviders.add(provider);
+    }
     let r=null,selectedCandidate=null;
     for(const candidate of rankedClaimCandidates){
+      if(transactionExcludedResourceIds.has(String(candidate.resourceId||'')))continue;
+      if(transactionExcludedProviders.has(String(candidate.provider||'').trim().toLowerCase()))continue;
       const locked=await client.query(`select * from tigeriq_ai_resources where resource_id=$1 and enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null and (cooldown_until is null or cooldown_until<=now()) for update skip locked`,[candidate.resourceId]);
       const row=locked.rows[0];
       if(!row)continue;
@@ -711,8 +722,9 @@ async function claimResource(capability,jobId,excluded=[],options={}){
     }
     if(!r){await client.query('commit');return null;}
     await client.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1",[r.resource_id,jobId]);
+    if(stabilityIdentity?.batch===1)await client.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4 where id=$1",[jobId,r.employee_id,r.resource_id,r.provider]);
     await client.query('commit');
-    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],excludedProviders:[...excludedProviders],candidates:decision.candidates,chosen:selectedCandidate||decision.chosen};
+    const evidence={profile,taskKind,capability,preferredEmployeeId:preferredEmployeeId||null,employeeAllowlist:[...employeeAllowlist],excludedProviders:[...transactionExcludedProviders],candidates:decision.candidates,chosen:selectedCandidate||decision.chosen};
     await pool.query("update tigeriq_jobs set routing_profile=$2,routing_decision=$3 where id=$1",[jobId,profile,JSON.stringify(evidence)]).catch(()=>{});
     if(selectedCandidate?.resourceId!==decision.chosen.resourceId)await event('ROUTING_CLAIM_FALLBACK',{jobId,taskKind,profile,fromResourceId:decision.chosen.resourceId,toResourceId:r.resource_id,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider});
     await event('ROUTING_DECISION',{jobId,employeeId:r.employee_id,resourceId:r.resource_id,provider:r.provider,taskKind,profile,decision:evidence});
@@ -732,10 +744,10 @@ function validateRoutedOutput(text,{jobId='',prompt=''}={}){
   return text;
 }
 
-async function stabilityV2PeerExclusions(jobId){
+async function stabilityV2PeerExclusions(jobId,store=pool){
   const identity=stabilityV2BatchIdentityFromJobId(jobId);
   if(!identity||identity.batch!==1)return {resourceIds:[],providers:[]};
-  const q=await pool.query("select id,resource_id,provider from tigeriq_jobs where objective_id=$1 and id<>$2 and resource_id is not null",[identity.objectiveId,jobId]);
+  const q=await store.query("select id,resource_id,provider from tigeriq_jobs where objective_id=$1 and id<>$2 and resource_id is not null",[identity.objectiveId,jobId]);
   const peers=(q.rows||[]).filter(row=>{
     const peer=stabilityV2BatchIdentityFromJobId(row.id);
     return peer&&peer.round===identity.round&&peer.batch===identity.batch;
