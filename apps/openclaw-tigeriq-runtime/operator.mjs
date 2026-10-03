@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
-import { PAD_UI_ACTIONS, executePadUiAction } from './pad-ui.mjs';
+import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer } from './pad-ui.mjs';
 import { PAPERCLIP_LAB_ACTIONS, executePaperclipLabAction } from './paperclip-lab.mjs';
 
 const win = path.win32;
@@ -637,7 +637,7 @@ async function signAndroidWorkerV020CiArtifact() {
     throw new Error('TIGERIQ_ANDROID_APKSIGNER_JAR_SHA256_MISMATCH');
   }
 
-  const signed = await executePadUiAction({ action: 'pad_android_sign_v020' });
+  const signed = await executePadV020Signer();
   if (!signed?.broker?.available) throw new Error('TIGERIQ_V020_USER_SESSION_BROKER_UNAVAILABLE');
   const receipt = signed?.result;
   if (!receipt) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_RECEIPT_MISSING');
