@@ -173,13 +173,18 @@ public final class ForegroundWorkerService extends Service {
             }
             if (run.active()) return;
 
-            JSONObject leased = client.pollLease();
-            if (!leased.optBoolean("leased", false)) return;
-            MobileTaskStore.Snapshot bound = MobileTaskStore.bind(this, leased.getJSONObject("task"));
-            ChatGptB1RunStore.startTask(this, bound.runId, bound.taskId, bound.prompt, bound.expectedToken);
-            lastLeaseRenewAt = System.currentTimeMillis();
-            launchChatGpt();
-            taskResumeAttempted = true;
+            if (!WorkerUpdateEngine.beginTaskLease()) return;
+            try {
+                JSONObject leased = client.pollLease();
+                if (!leased.optBoolean("leased", false)) return;
+                MobileTaskStore.Snapshot bound = MobileTaskStore.bind(this, leased.getJSONObject("task"));
+                ChatGptB1RunStore.startTask(this, bound.runId, bound.taskId, bound.prompt, bound.expectedToken);
+                lastLeaseRenewAt = System.currentTimeMillis();
+                launchChatGpt();
+                taskResumeAttempted = true;
+            } finally {
+                WorkerUpdateEngine.endTaskLease();
+            }
         } catch (Exception error) {
             String message = error.getMessage();
             if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
