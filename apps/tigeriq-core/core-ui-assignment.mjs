@@ -188,6 +188,18 @@ function completion({jobId,workerId,priority,issueRef,closedAt,updatedAt,verifie
   return {jobId,workItemId:'CORE-UI-'+jobId,workerId,status:'DONE',executable:false,priority,issueRef,coreSelected:true,completedAt,completionRevision,evidence:[{source:'GITHUB',ref:issueRef,verifiedAt,jobId,completedAt,completionRevision}]};
 }
 async function gh(fetchImpl,url,token=''){const headers={accept:'application/vnd.github+json','user-agent':'TigerIQ-Core-UI-Assignment/3.0','x-github-api-version':'2022-11-28'};if(token)headers.authorization='Bearer '+token;const r=await fetchImpl(url,{headers,signal:AbortSignal.timeout(12000)});if(!r.ok)throw new Error('GITHUB_HTTP_'+r.status);return r.json();}
+const CORE_UI_OPEN_ISSUE_PAGE_SIZE=100;
+const CORE_UI_OPEN_ISSUE_MAX_PAGES=20;
+async function readOpenIssues(fetchImpl,owner,repo,token){
+  const out=[];
+  for(let page=1;page<=CORE_UI_OPEN_ISSUE_MAX_PAGES;page++){
+    const rows=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues?state=open&per_page='+CORE_UI_OPEN_ISSUE_PAGE_SIZE+'&sort=created&direction=asc&page='+page,token);
+    if(!Array.isArray(rows))throw new Error('CORE_UI_GITHUB_ISSUES_INVALID');
+    out.push(...rows);
+    if(rows.length<CORE_UI_OPEN_ISSUE_PAGE_SIZE)return out;
+  }
+  throw new Error('CORE_UI_GITHUB_ISSUES_PAGE_LIMIT');
+}
 async function ghWrite(fetchImpl,url,token,method,payload){if(!token)throw new Error('GITHUB_TOKEN_REQUIRED');const headers={accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Core-UI-Assignment/3.0','x-github-api-version':'2022-11-28',authorization:'Bearer '+token};const r=await fetchImpl(url,{method,headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(12000)});if(!r.ok)throw new Error('GITHUB_WRITE_HTTP_'+r.status);return r.status===204?{}:r.json();}
 async function readIssue(fetchImpl,owner,repo,token,n){return gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token);}
 async function readComments(fetchImpl,owner,repo,token,n,count){if(Number(count||0)<=0)return[];try{return await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token);}catch{return[];}}
@@ -290,7 +302,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
   }
   if(missingWorkers.length){
     let issues,sourceError;
-    try{issues=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues?state=open&per_page=100&sort=created&direction=asc',token);}
+    try{issues=await readOpenIssues(fetchImpl,owner,repo,token);}
     catch(error){sourceError=error;}
     if(Array.isArray(issues)){
       for(const workerId of missingWorkers){
