@@ -12,6 +12,7 @@ export const PAD_UI_ACTIONS = Object.freeze([
   'pad_set_value',
   'pad_click',
   'pad_keys',
+  'pad_android_sign_v020',
 ]);
 const PAD_UI_ACTION_SET = new Set(PAD_UI_ACTIONS);
 export const PAD_UI_BROKER_ROOT = 'D:\\TigerIQ\\State\\pad-ui-broker';
