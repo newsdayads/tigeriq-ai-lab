@@ -42,6 +42,7 @@ public final class WorkerUpdateEngine {
         Context app = context.getApplicationContext();
         Result deferred = beginUpdate(app, userInitiated);
         if (deferred != null) return deferred;
+        boolean installPending = false;
         try {
             ControllerClient client = new ControllerClient(new SecureCredentialStore(app));
         JSONObject manifest = client.updateManifest();
@@ -83,18 +84,21 @@ public final class WorkerUpdateEngine {
         write(app, "VERIFIED", "", targetVersion, -1, userInitiated, expectedSha256, expectedSigner);
 
             int sessionId = commitInstall(app, apk, targetVersion, userInitiated);
+            installPending = true;
             write(app, "INSTALL_COMMITTED", "", targetVersion, sessionId, userInitiated, expectedSha256, expectedSigner);
             return new Result("INSTALL_COMMITTED", targetVersion, true);
         } finally {
-            synchronized (OPERATION_GATE) {
-                updateInProgress = false;
+            if (!installPending) {
+                synchronized (OPERATION_GATE) {
+                    updateInProgress = false;
+                }
             }
         }
     }
 
     private static Result beginUpdate(Context app, boolean userInitiated) {
         synchronized (OPERATION_GATE) {
-            if (updateInProgress) {
+            if (updateInProgress || installPending(app)) {
                 return new Result("UPDATE_IN_PROGRESS", 0, false);
             }
             if (taskLeaseInProgress || MobileTaskStore.read(app).present()) {
@@ -115,12 +119,21 @@ public final class WorkerUpdateEngine {
         }
     }
 
-    public static boolean beginTaskLease() {
+    public static boolean beginTaskLease(Context context) {
         synchronized (OPERATION_GATE) {
-            if (updateInProgress || taskLeaseInProgress) return false;
+            if (updateInProgress || taskLeaseInProgress || installPending(context)) return false;
             taskLeaseInProgress = true;
             return true;
         }
+    }
+
+    private static boolean installPending(Context context) {
+        String state = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_STATE, "");
+        return "INSTALL_COMMITTED".equals(state)
+            || "PENDING_USER_ACTION".equals(state)
+            || "PENDING_USER_ACTION_OPENED".equals(state)
+            || "INSTALL_SUCCESS_CALLBACK".equals(state);
     }
 
     public static void endTaskLease() {
@@ -161,6 +174,13 @@ public final class WorkerUpdateEngine {
             .putString(KEY_STATE, state)
             .putString(KEY_LAST_ERROR, safe(error))
             .apply();
+        if (state != null && (state.startsWith("INSTALL_FAILED_")
+            || "UPDATE_FAILED".equals(state)
+            || "AUTO_UPDATE_FAILED".equals(state))) {
+            synchronized (OPERATION_GATE) {
+                updateInProgress = false;
+            }
+        }
     }
 
     public static void markPackageReplaced(Context context) {
@@ -169,6 +189,9 @@ public final class WorkerUpdateEngine {
             .putString(KEY_LAST_ERROR, "")
             .putLong(KEY_LAST_PACKAGE_REPLACED_AT, System.currentTimeMillis())
             .apply();
+        synchronized (OPERATION_GATE) {
+            updateInProgress = false;
+        }
     }
 
     public static boolean wasUserInitiated(Context context) {
