@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.18.0-update-engine"
+        versionCode = 19
+        versionName = "0.19.0-core-mobile-jobs"
     }
 
     if (stableSigningEnabled) {
