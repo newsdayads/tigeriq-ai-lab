@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createMobileWorkerApi, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { createMobileWorkerApi, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -29,6 +29,13 @@ describe('mobile worker api helpers',()=>{
     expect(verifyCoreEnqueueAuth(req('Bearer wrong'),'core-secret')).toBe(false);
     expect(verifyCoreEnqueueAuth(req(''),'core-secret')).toBe(false);
     expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'')).toBe(false);
+  });
+
+  it('fails closed on stale or wrong leases before terminal retry idempotency',()=>{
+    const now=Date.parse('2026-10-03T07:30:00Z');
+    expect(mobileTaskLeaseFresh({currentLeaseId:'ML-current',leaseId:'ML-current',leaseExpiresAt:'2026-10-03T07:35:00Z',now})).toBe(true);
+    expect(mobileTaskLeaseFresh({currentLeaseId:'ML-current',leaseId:'ML-stale',leaseExpiresAt:'2026-10-03T07:35:00Z',now})).toBe(false);
+    expect(mobileTaskLeaseFresh({currentLeaseId:'ML-current',leaseId:'ML-current',leaseExpiresAt:'2026-10-03T07:29:59Z',now})).toBe(false);
   });
 
   it('rejects a wrong worker before terminal idempotent retry acceptance',async()=>{
