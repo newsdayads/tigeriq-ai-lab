@@ -199,6 +199,15 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("'gh.exe'");
   });
 
+  it('surfaces only bounded Android build-tool discovery failure classes', async () => {
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT');
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR');
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_BINARY_MISSING' })).toBe('ANDROID_APKSIGNER_DISCOVERY_BINARY_MISSING');
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_NO_SDK_ROOT');
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_NO_BUILD_TOOLS_DIR');
+    expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_BINARY_MISSING' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_BINARY_MISSING');
+  });
+
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'task_list'");
