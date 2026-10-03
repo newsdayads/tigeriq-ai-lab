@@ -939,6 +939,37 @@ async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
   };
 }
 
+async function coreGateCV020Request(path,method='GET'){
+  const token=String(process.env.TIGERIQ_CORE_TOKEN||'').trim();
+  if(!token)throw new Error('TIGERIQ_GATE_C_V020_CORE_TOKEN_MISSING');
+  const port=Number(process.env.TIGERIQ_CORE_PORT||8795);
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error('TIGERIQ_GATE_C_V020_CORE_PORT_INVALID');
+  let response;
+  try{
+    response=await fetch(`http://127.0.0.1:${port}${path}`,{
+      method,
+      headers:{authorization:`Bearer ${token}`,accept:'application/json'},
+    });
+  }catch{
+    throw new Error('TIGERIQ_GATE_C_V020_CORE_UNREACHABLE');
+  }
+  let payload={};
+  try{payload=await response.json();}catch{throw new Error('TIGERIQ_GATE_C_V020_RESPONSE_INVALID');}
+  if(!response.ok){
+    const reason=String(payload?.error||'');
+    const allowed=new Set(['gate_c_v020_device_unavailable','gate_c_v020_device_ambiguous','gate_c_v020_device_stale']);
+    if(!allowed.has(reason))throw new Error('TIGERIQ_GATE_C_V020_REQUEST_FAILED');
+    return {status:'GATE_C_V020_BLOCKED',reason,httpStatus:response.status};
+  }
+  if(!payload||payload.ok!==true)throw new Error('TIGERIQ_GATE_C_V020_RESPONSE_INVALID');
+  return payload;
+}
+async function enqueueAndroidWorkerGateCV020(){
+  return await coreGateCV020Request('/api/mobile/gate-c/v020/enqueue','POST');
+}
+async function readAndroidWorkerGateCV020Status(){
+  return await coreGateCV020Request('/api/mobile/gate-c/v020/status','GET');
+}
 
 const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
 async function boundedLocalJson(url,{method='GET',payload,fetchImpl=fetch}={}){
@@ -1015,6 +1046,10 @@ export async function executePcAction(input, options = {}) {
     data = await grantAndroidWorkerV020SignerReadAcl();
   } else if (action === 'android_worker_export_v020_signed_apk_chunk') {
     data = await exportAndroidWorkerV020SignedApkChunk(input || {});
+  } else if (action === 'android_worker_gate_c_v020_enqueue_10') {
+    data = await enqueueAndroidWorkerGateCV020();
+  } else if (action === 'android_worker_gate_c_v020_status') {
+    data = await readAndroidWorkerGateCV020Status();
   } else if (action === 'chrome_ui_reconcile_cancelled_job') {
     data = await reconcileCancelledCoreUiJob(input || {}, { fetchImpl: options?.fetchImpl });
   } else if (action === 'tigeriq_live_3150_production_deploy') {
@@ -1061,6 +1096,7 @@ export async function executePcAction(input, options = {}) {
       userContextSigner: action === 'android_worker_sign_v020_user_context',
       signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
       signedApkExport: action === 'android_worker_export_v020_signed_apk_chunk',
+      androidGateCV020: ['android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v020_status'].includes(action),
       coreUiCancelledReconcile: action === 'chrome_ui_reconcile_cancelled_job',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,

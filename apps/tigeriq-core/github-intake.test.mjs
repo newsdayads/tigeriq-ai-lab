@@ -175,6 +175,16 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"chrome_ui_reconcile_cancelled_job","workerId":"NV02"}',true)).toMatchObject({
       present:true,valid:false,reason:'CORE_UI_WORKER_INVALID'
     });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_status"}',false)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_gate_c_v020_status'},mutating:false
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_enqueue_10"}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_gate_c_v020_enqueue_10'},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_enqueue_10"}',false)).toMatchObject({
+      present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'
+    });
+
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_release_build"}',true)).toMatchObject({
       present:true,valid:true,action:{action:'android_worker_release_build'},mutating:true
     });

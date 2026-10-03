@@ -234,6 +234,17 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'password=secret unknown failure' })).toBe('UNCLASSIFIED');
   });
 
+  it('keeps Gate C v0.20 verification as two fixed Core-local typed actions with no caller-selected target', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_gate_c_v020_enqueue_10'");
+    expect(source).toContain("action === 'android_worker_gate_c_v020_status'");
+    expect(source).toContain("'/api/mobile/gate-c/v020/enqueue'");
+    expect(source).toContain("'/api/mobile/gate-c/v020/status'");
+    expect(source).toContain('TIGERIQ_CORE_TOKEN');
+    expect(source).not.toContain('input?.employeeId');
+    expect(source).not.toContain('input?.prompt');
+  });
+
   it('keeps Android stable release build as one fixed typed local action', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_release_build'");
