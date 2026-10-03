@@ -1919,7 +1919,7 @@ function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::
 async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw,'utf8')>maxBytes)throw new Error('BODY_TOO_LARGE');}return raw;}
 async function readBody(req){const raw=await readRawBody(req,65536);return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
-const mobileWorkerApi=createMobileWorkerApi({pool,event});
+const mobileWorkerApi=createMobileWorkerApi({pool,event,coreToken:TOKEN});
 function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
