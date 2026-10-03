@@ -4,6 +4,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -87,6 +89,50 @@ public final class ControllerClient {
         SecureCredentialStore.Credential credential = store.load();
         if (credential == null) throw new IllegalStateException("worker is not paired");
         return authenticatedGet("/api/mobile/update/manifest", credential);
+    }
+
+    public File downloadUpdateApk(File destination) throws Exception {
+        if (destination == null) throw new IllegalArgumentException("destination is required");
+        SecureCredentialStore.Credential credential = store.load();
+        if (credential == null) throw new IllegalStateException("worker is not paired");
+        String controllerUrl = ControllerUrlPolicy.requireTrusted(credential.controllerUrl);
+        URL url = new URL(controllerUrl + "/api/mobile/update/apk");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(30_000);
+        connection.setRequestProperty("Accept", "application/vnd.android.package-archive");
+        connection.setRequestProperty("X-TigerIQ-Credential-Id", credential.credentialId);
+        connection.setRequestProperty("Authorization", "Bearer " + credential.token);
+        int status = connection.getResponseCode();
+        if (status < 200 || status >= 300) {
+            InputStream errorStream = connection.getErrorStream();
+            String payload = read(errorStream);
+            connection.disconnect();
+            throw new ControllerException(status, payload.length() > 512 ? payload.substring(0, 512) : payload);
+        }
+        File parent = destination.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.exists()) {
+            connection.disconnect();
+            throw new IllegalStateException("update directory unavailable");
+        }
+        try (InputStream input = connection.getInputStream();
+             FileOutputStream output = new FileOutputStream(destination, false)) {
+            byte[] buffer = new byte[32 * 1024];
+            long total = 0L;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > 200L * 1024L * 1024L) {
+                    throw new IllegalStateException("update APK too large");
+                }
+                output.write(buffer, 0, read);
+            }
+            output.getFD().sync();
+        } finally {
+            connection.disconnect();
+        }
+        return destination;
     }
 
     public JSONObject reportEvidence(JSONObject evidence) throws Exception {
