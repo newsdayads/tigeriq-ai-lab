@@ -154,6 +154,8 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('surfaces only allowlisted Android release failure classes', () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'Exception: APKSIGNER_MISSING: Android SDK build-tools are required' })).toBe('APKSIGNER_MISSING');
     expect(androidReleaseBuildFailureClass({ stdout: 'ANDROID_RELEASE_BUILD_FAILED' })).toBe('ANDROID_RELEASE_BUILD_FAILED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'GRADLE_COMMAND_MISSING: no existing Gradle runtime' })).toBe('GRADLE_COMMAND_MISSING');
+    expect(androidReleaseBuildFailureClass({ stderr: 'DPAPI_SIGNER_RECEIPT_INVALID' })).toBe('DPAPI_SIGNER_RECEIPT_INVALID');
     expect(androidReleaseBuildFailureClass({ stderr: 'password=secret unknown failure' })).toBe('UNCLASSIFIED');
   });
 
