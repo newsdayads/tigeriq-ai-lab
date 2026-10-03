@@ -123,7 +123,10 @@ $outputDir = Split-Path -Parent $OutputApk
 if ([string]::IsNullOrWhiteSpace($outputDir)) { $outputDir = (Get-Location).Path }
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 $output = Join-Path (Resolve-Path -LiteralPath $outputDir).Path (Split-Path -Leaf $OutputApk)
-$aligned = Join-Path (Split-Path -Parent $output) ((Split-Path -LeafBase $output) + '.aligned.tmp.apk')
+if ([IO.Path]::GetFullPath($output) -eq [IO.Path]::GetFullPath($unsigned)) {
+  throw 'OUTPUT_APK_MUST_DIFFER_FROM_UNSIGNED_APK'
+}
+$aligned = Join-Path (Split-Path -Parent $output) ([IO.Path]::GetFileNameWithoutExtension($output) + '.aligned.tmp.apk')
 
 Remove-Item -LiteralPath $aligned, $output, ($output + '.idsig') -Force -ErrorAction SilentlyContinue
 
