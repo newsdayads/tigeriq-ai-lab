@@ -47,6 +47,13 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('STABLE_PROJECT_CONTEXT');
     expect(adapter).toContain('treeContainsExactLabelOutsideClickableNavigation');
     expect(service).toContain('findComposerInput(root) != null');
+    expect(service).toContain('driveProjectNavigationIfNeeded');
+    expect(adapter).toContain('findExactProjectControl');
+    expect(adapter).toContain('findNavigationMenuControl');
+    expect(service).toContain('AUTO_MENU_CLICK');
+    expect(service).toContain('AUTO_PROJECT_CLICK');
+    expect(service).toContain('KEY_AUTO_PROJECT_CLICK_AT');
+    expect(service).toContain('autoProjectClickAt >= run.startedAt');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
@@ -143,8 +150,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 16 for stable Project context verification', () => {
-    expect(gradle).toContain('versionCode = 16');
-    expect(gradle).toContain('versionName = "0.16.0-stable-project-context"');
+  it('publishes versionCode 17 for self-navigating Project binding', () => {
+    expect(gradle).toContain('versionCode = 17');
+    expect(gradle).toContain('versionName = "0.17.0-auto-project-navigation"');
   });
 });
