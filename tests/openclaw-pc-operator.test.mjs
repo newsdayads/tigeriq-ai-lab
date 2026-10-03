@@ -251,6 +251,16 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain('input?.prompt');
   });
 
+  it('maps only allowlisted Gate C v0.20 blockers to fixed public statuses', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("gate_c_v020_device_unavailable:'GATE_C_V020_DEVICE_UNAVAILABLE'");
+    expect(source).toContain("gate_c_v020_device_ambiguous:'GATE_C_V020_DEVICE_AMBIGUOUS'");
+    expect(source).toContain("gate_c_v020_device_stale:'GATE_C_V020_DEVICE_STALE'");
+    expect(source).not.toContain("status:'GATE_C_V020_BLOCKED'");
+    expect(source).not.toContain("return {status:blockedStatus,reason");
+    expect(source).toContain("TIGERIQ_GATE_C_V020_REQUEST_FAILED");
+  });
+
   it('keeps Android stable release build as one fixed typed local action', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_release_build'");
