@@ -1,12 +1,30 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+const deploymentEnabled = config?.git?.deploymentEnabled;
+const oneShotMarker = new URL('../release/3150-one-shot.txt', import.meta.url);
+const oneShotIgnore = 'git diff --quiet HEAD^ HEAD -- release/3150-one-shot.txt';
+const oneShotKeys = deploymentEnabled && typeof deploymentEnabled === 'object' && !Array.isArray(deploymentEnabled)
+  ? Object.keys(deploymentEnabled).sort()
+  : [];
+const oneShotRelease =
+  oneShotKeys.length === 2
+  && oneShotKeys[0] === '**'
+  && oneShotKeys[1] === 'main'
+  && deploymentEnabled['**'] === false
+  && deploymentEnabled.main === true
+  && config?.ignoreCommand === oneShotIgnore
+  && existsSync(oneShotMarker)
+  && readFileSync(oneShotMarker, 'utf8').trim() === 'TIGERIQ_LIVE_3150_ONE_SHOT_GIT_RELEASE';
 
-if (config?.git?.deploymentEnabled !== false) {
+if (deploymentEnabled !== false && !oneShotRelease) {
   throw new Error(
-    'TigerIQ Vercel policy violation: vercel.json must keep git.deploymentEnabled=false. ' +
-      'Deploy previews/production explicitly only when needed.'
+    'TigerIQ Vercel policy violation: Git deployment must be disabled, except the exact bounded #3150 one-shot main release contract.'
   );
+}
+
+if (deploymentEnabled === false && config?.ignoreCommand === oneShotIgnore) {
+  throw new Error('TigerIQ Vercel policy violation: one-shot ignoreCommand must not remain after Git deployment is disabled.');
 }
 
 if (config?.cleanUrls !== true) {
@@ -32,4 +50,8 @@ if (existsSync(new URL('../public/index.html', import.meta.url))) {
   );
 }
 
-console.log('Vercel deployment/routing policy PASS: Git auto-deploy disabled and cleanUrls root routing is loop-safe.');
+console.log(
+  oneShotRelease
+    ? 'Vercel deployment/routing policy PASS: exact bounded #3150 main-only one-shot release enabled.'
+    : 'Vercel deployment/routing policy PASS: Git auto-deploy disabled and cleanUrls root routing is loop-safe.'
+);
