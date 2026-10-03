@@ -233,6 +233,29 @@ public final class ChatGptB1Automation {
         return false;
     }
 
+    public static boolean treeContainsExactLabelOutsideClickableNavigation(
+        AccessibilityNodeInfo root,
+        String label,
+        int maxParents
+    ) {
+        String wanted = normalize(label);
+        if (root == null || wanted.isEmpty()) return false;
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!nodeHasExactLabel(node, wanted)) continue;
+            AccessibilityNodeInfo current = node;
+            boolean clickableAncestor = false;
+            for (int depth = 0; current != null && depth <= maxParents; depth++) {
+                if (current.isClickable()) {
+                    clickableAncestor = true;
+                    break;
+                }
+                current = current.getParent();
+            }
+            if (!clickableAncestor) return true;
+        }
+        return false;
+    }
+
     public static boolean nodeOrAncestorContainsLabel(
         AccessibilityNodeInfo source,
         String label,

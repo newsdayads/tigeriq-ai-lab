@@ -36,8 +36,12 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
     private static final int MAX_B1_RECOVERIES = 2;
+    private static final int PROJECT_STABLE_MIN_SAMPLES = 3;
+    private static final long PROJECT_STABLE_MIN_MS = 1200L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
+    private int projectContextSamples = 0;
+    private long projectContextFirstSeenAt = 0L;
 
     private final Runnable b1TickRunnable = new Runnable() {
         @Override
@@ -50,6 +54,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo current = getRootInActiveWindow();
             CharSequence pkg = current == null ? null : current.getPackageName();
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                maybeBindProjectFromStableContext(current);
                 ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
             } else {
                 scheduleB1RecoveryIfNeeded();
@@ -107,6 +112,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
             maybeBindRequiredProject(event, root);
+            maybeBindProjectFromStableContext(root);
             ensureB1Ticker();
         }
 
@@ -167,6 +173,66 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         );
 
         if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
+    }
+
+    private void maybeBindProjectFromStableContext(AccessibilityNodeInfo root) {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) {
+            resetProjectContextCandidate();
+            return;
+        }
+
+        boolean exactProject = root != null
+            && ChatGptB1Automation.treeContainsExactLabel(root, ChatGptB1RunStore.REQUIRED_PROJECT);
+        boolean projectTitleContext = root != null
+            && ChatGptB1Automation.treeContainsExactLabelOutsideClickableNavigation(
+                root,
+                ChatGptB1RunStore.REQUIRED_PROJECT,
+                3
+            );
+        boolean composerReady = root != null && ChatGptB1Automation.findComposerInput(root) != null;
+
+        if (!exactProject || !composerReady || !projectTitleContext) {
+            if (projectContextSamples > 0 || exactProject) {
+                writeProjectDiag(
+                    "CONTEXT_WAIT",
+                    "exactProject=" + exactProject
+                        + "; titleContext=" + projectTitleContext
+                        + "; composer=" + composerReady
+                        + "; samples=" + projectContextSamples
+                );
+            }
+            resetProjectContextCandidate();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (projectContextSamples == 0) projectContextFirstSeenAt = now;
+        projectContextSamples += 1;
+        long stableMs = Math.max(0L, now - projectContextFirstSeenAt);
+
+        writeProjectDiag(
+            "CONTEXT_CANDIDATE",
+            "exactProject=true; titleContext=true; composer=true"
+                + "; samples=" + projectContextSamples
+                + "; stableMs=" + stableMs
+        );
+
+        if (projectContextSamples >= PROJECT_STABLE_MIN_SAMPLES && stableMs >= PROJECT_STABLE_MIN_MS) {
+            writeProjectDiag(
+                "STABLE_PROJECT_CONTEXT",
+                "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
+                    + "; samples=" + projectContextSamples
+                    + "; stableMs=" + stableMs
+            );
+            ChatGptB1RunStore.markProjectBound(this);
+            resetProjectContextCandidate();
+        }
+    }
+
+    private void resetProjectContextCandidate() {
+        projectContextSamples = 0;
+        projectContextFirstSeenAt = 0L;
     }
 
     private void writeProjectDiag(String mode, String detail) {
