@@ -1,22 +1,27 @@
 # WO-037 — Android Worker stable signing identity
 
 ## Goal
-Stop Android Worker upgrades from depending on disposable CI debug certificates. Establish one persistent TigerIQ Worker signing identity that stays private on company-controlled runtime storage and can sign every later pilot/release APK with the same certificate.
+Keep every Android Worker update on the already-established TigerIQ stable signing lineage. The canonical certificate SHA-256 is `63e027c013222139982b4f4ff43aff8734eac4b249fe85e94a3eadfde19c8293` and has been physically proven for in-place updates from v0.7 onward.
 
-## Design
-- private keystore lives under `F:\TigerIQ\Secrets\android-worker-signing` by default; never repository, logs or CI artifacts;
-- password values live in separate ACL-restricted local files and are never passed as source-code literals;
-- Gradle reads only **paths** from `TIGERIQ_ANDROID_KEYSTORE`, `TIGERIQ_ANDROID_KEY_ALIAS`, `TIGERIQ_ANDROID_STORE_PASSWORD_FILE`, `TIGERIQ_ANDROID_KEY_PASSWORD_FILE`;
-- partial signing configuration fails closed;
-- CI has no TigerIQ private key. CI builds an unsigned release artifact and separately proves the signing wiring with a disposable CI-only key by signing two consecutive builds and requiring the same certificate fingerprint;
-- PC01 provisioning creates the persistent key once and pins its SHA-256 certificate fingerprint. Future provisioning fails if the identity changes.
+## Current design
+- the stable identity already exists; **never generate a replacement key** for later releases;
+- signer material remains outside GitHub/CI and is supplied to the release script only through an explicitly selected local signing directory;
+- the release script requires `TIGERIQ_ANDROID_SIGNING_DIR` or `-SecretsDir`; there is no assumed `F:\TigerIQ` location;
+- the selected directory must contain the recovered canonical keystore/password files and a fingerprint pinned to the canonical certificate;
+- Gradle receives only signing **paths** through `TIGERIQ_ANDROID_KEYSTORE`, `TIGERIQ_ANDROID_KEY_ALIAS`, `TIGERIQ_ANDROID_STORE_PASSWORD_FILE`, and `TIGERIQ_ANDROID_KEY_PASSWORD_FILE`;
+- partial or wrong-signer configuration fails closed;
+- CI never receives the TigerIQ private key and continues to build unsigned release artifacts plus disposable signing-contract proof.
 
-## Gates
-1. Android Worker CI builds debug + unsigned release without TigerIQ secrets;
-2. disposable CI signing proof shows two consecutive signed release builds use one certificate;
-3. static tests verify private-path/env boundary and no embedded passwords/keystore;
-4. exact-head CI + Android Worker + Queue Hygiene + Vercel Verify PASS before merge;
-5. merge is only `READY_FOR_STABLE_SIGNING_PROVISION`; actual TigerIQ signing identity is not claimed until PC01 creates it and two real stable-signed APKs verify the same certificate.
+## Recovery rule
+PC01 currently has legacy protected signer material outside the old documented `F:\TigerIQ\Secrets\android-worker-signing` location. If the canonical signer cannot be exposed through an already-authorized execution path, stop at `CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED`. Do **not** call key generation, copy secrets into the repo, switch signer identity, or publish an unsigned/wrong-signed APK.
 
-## Pilot migration
-The currently installed Z Flip 7 pilot may require **one** uninstall/reinstall when moving from the earlier disposable debug certificate to the permanent TigerIQ signing identity. After that migration, later Worker versions must update in place using the same signing certificate.
+## Release gates
+1. Android source exact-head checks pass;
+2. independent source review passes;
+3. release tooling confirms the canonical certificate fingerprint;
+4. signed APK verifies against the canonical certificate and records SHA-256;
+5. publication happens only after the signing execution path is explicitly authorized;
+6. physical Z Flip acceptance remains separate from source/signing evidence.
+
+## Pilot lineage
+v0.6 and earlier used disposable debug identities. v0.7 established the stable TigerIQ certificate and required the one-time migration. v0.7+ must preserve the same certificate so subsequent versions update in place.
