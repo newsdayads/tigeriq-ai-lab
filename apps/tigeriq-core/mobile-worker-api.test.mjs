@@ -3,7 +3,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -21,6 +21,14 @@ describe('mobile worker api helpers',()=>{
   it('normalizes the two pilot providers',()=>{
     expect(normalizeMobileProvider('Gemini')).toBe('Gemini');
     expect(normalizeMobileProvider('anything-else')).toBe('ChatGPT');
+  });
+
+  it('requires the existing Core token for mobile task enqueue',()=>{
+    const req=(authorization)=>({headers:{authorization}});
+    expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'core-secret')).toBe(true);
+    expect(verifyCoreEnqueueAuth(req('Bearer wrong'),'core-secret')).toBe(false);
+    expect(verifyCoreEnqueueAuth(req(''),'core-secret')).toBe(false);
+    expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'')).toBe(false);
   });
 
   it('keeps terminal mobile task commits exactly-once across retries',()=>{
