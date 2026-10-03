@@ -1,12 +1,22 @@
 param(
   [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
-  [string]$SecretsDir = 'F:\TigerIQ\Secrets\android-worker-signing',
-  [string]$ReleaseRoot = 'F:\TigerIQ\Releases\android-worker',
-  [string]$Alias = 'tigeriq-worker-stable'
+  [string]$SecretsDir = $env:TIGERIQ_ANDROID_SIGNING_DIR,
+  [string]$ReleaseRoot = 'D:\TigerIQ\Releases\AndroidWorker\signed',
+  [string]$Alias = $env:TIGERIQ_ANDROID_KEY_ALIAS
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$CanonicalCertificateSha256 = '63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293'
+if ([string]::IsNullOrWhiteSpace($SecretsDir)) {
+  throw 'STABLE_SIGNING_DIR_REQUIRED: provide TIGERIQ_ANDROID_SIGNING_DIR or -SecretsDir for the existing canonical signer.'
+}
+if ([string]::IsNullOrWhiteSpace($Alias)) {
+  $aliasFile = Join-Path $SecretsDir 'key-alias.txt'
+  if (Test-Path -LiteralPath $aliasFile -PathType Leaf) { $Alias = [IO.File]::ReadAllText($aliasFile).Trim() }
+}
+if ([string]::IsNullOrWhiteSpace($Alias)) { throw 'STABLE_SIGNING_ALIAS_REQUIRED' }
 
 $keystore = Join-Path $SecretsDir 'tigeriq-worker.jks'
 $storePasswordFile = Join-Path $SecretsDir 'store-password.txt'
@@ -47,7 +57,8 @@ $certLine = $verify | Where-Object { $_ -match 'Signer #1 certificate SHA-256 di
 if (-not $certLine) { throw 'APK_CERTIFICATE_FINGERPRINT_NOT_FOUND' }
 $actual = (($certLine -split ':',2)[1]).Trim().Replace(':','').ToUpperInvariant()
 $expected = ([IO.File]::ReadAllText($fingerprintFile).Trim().Replace(':','').ToUpperInvariant())
-if ($actual -ne $expected) { throw 'APK_SIGNING_IDENTITY_MISMATCH' }
+if ($expected -ne $CanonicalCertificateSha256) { throw 'CANONICAL_SIGNING_IDENTITY_MISMATCH: pinned signer directory is not the established TigerIQ Android signer.' }
+if ($actual -ne $CanonicalCertificateSha256) { throw 'APK_SIGNING_IDENTITY_MISMATCH' }
 
 $sha256 = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
 $versionLine = Select-String -Path (Join-Path $workerDir 'app\build.gradle.kts') -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
