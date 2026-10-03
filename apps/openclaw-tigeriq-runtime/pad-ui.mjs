@@ -19,6 +19,8 @@ const REQUESTS_DIR = win.join(PAD_UI_BROKER_ROOT, 'requests');
 const RESPONSES_DIR = win.join(PAD_UI_BROKER_ROOT, 'responses');
 const HEARTBEAT_PATH = win.join(PAD_UI_BROKER_ROOT, 'heartbeat.json');
 const MAX_BROKER_WAIT_MS = 12000;
+const MAX_V020_SIGNER_WAIT_MS = 130000;
+const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020';
 const ALLOWED_KEYS = new Set(['ENTER', 'ESC', 'TAB', 'CTRL+A', 'CTRL+F', 'CTRL+N', 'F5']);
 
 function cleanText(value, max, label) {
@@ -101,9 +103,7 @@ async function waitForResponse(responsePath, timeoutMs) {
   throw new Error('TIGERIQ_PAD_BROKER_TIMEOUT');
 }
 
-export async function executePadUiAction(raw = {}) {
-  const request = assertPadUiRequest(raw);
-  if (request.action === 'pad_health') return await getPadUiBrokerHealth();
+async function executePadBrokerRequest(request, timeoutMs = MAX_BROKER_WAIT_MS) {
   const health = await getPadUiBrokerHealth();
   if (!health.available) throw new Error('TIGERIQ_PAD_BROKER_UNAVAILABLE');
 
@@ -115,7 +115,7 @@ export async function executePadUiAction(raw = {}) {
   const envelope = { schema: 'TIGERIQ_PAD_UI_REQUEST_V1', id, requestedAt: new Date().toISOString(), ...request };
   await fs.writeFile(requestPath, JSON.stringify(envelope), { encoding: 'utf8', flag: 'wx' });
   try {
-    const response = await waitForResponse(responsePath, MAX_BROKER_WAIT_MS);
+    const response = await waitForResponse(responsePath, timeoutMs);
     if (response?.id !== id) throw new Error('TIGERIQ_PAD_BROKER_RESPONSE_MISMATCH');
     if (response?.ok !== true) throw new Error(String(response?.error || 'TIGERIQ_PAD_BROKER_ACTION_FAILED'));
     return { broker: health, result: response.data ?? null, completedAt: response.completedAt ?? null };
@@ -123,4 +123,14 @@ export async function executePadUiAction(raw = {}) {
     await fs.unlink(requestPath).catch(() => {});
     await fs.unlink(responsePath).catch(() => {});
   }
+}
+
+export async function executePadUiAction(raw = {}) {
+  const request = assertPadUiRequest(raw);
+  if (request.action === 'pad_health') return await getPadUiBrokerHealth();
+  return await executePadBrokerRequest(request);
+}
+
+export async function executePadV020Signer() {
+  return await executePadBrokerRequest({ action: INTERNAL_V020_SIGNER_ACTION }, MAX_V020_SIGNER_WAIT_MS);
 }

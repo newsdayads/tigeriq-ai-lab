@@ -193,12 +193,13 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("param([string]$zip,[string]$dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force");
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-v020-reviewed-artifact.ps1");
     expect(source).toContain("win.join(downloadDir, 'apksigner.jar')");
-    expect(source).toContain("parsed?.status === 'ANDROID_WORKER_STABLE_RELEASE_READY'");
+    expect(source).toContain("executePadV020Signer()");
+    expect(source).toContain("TIGERIQ_V020_USER_SESSION_BROKER_UNAVAILABLE");
     expect(source).toContain("receipt.passwordTransport !== 'stdin-only'");
     expect(source).toContain("receipt.apksignerMode !== 'portable-pinned-jar'");
     expect(source).toContain("receipt.prealignedInput !== true");
     expect(source).toContain("TIGERIQ_ANDROID_RELEASE_SOURCE_ARTIFACT_MISMATCH");
-    expect(source).toContain("extraEnvKeys: ['JAVA_HOME', 'TIGERIQ_JAVA']");
+    expect(source).not.toContain("extraEnvKeys: ['JAVA_HOME', 'TIGERIQ_JAVA']");
     expect(source).not.toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME', 'ANDROID_SDK_ROOT', 'ANDROID_HOME']");
     expect(source).not.toContain("gh auth login");
     expect(source).not.toContain("'gh.exe'");
@@ -239,6 +240,26 @@ describe('Power Automate Desktop guarded UI contract', () => {
       'pad_health', 'pad_launch', 'pad_windows', 'pad_tree',
       'pad_invoke', 'pad_set_value', 'pad_click', 'pad_keys',
     ]);
+  });
+
+  it('keeps v0.20 signing internal-only inside the existing interactive limited-user broker', async () => {
+    expect(() => assertPadUiRequest({ action: 'pad_android_sign_v020' })).toThrow('TIGERIQ_PAD_ACTION_NOT_ALLOWED');
+    const padModule = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui.mjs', import.meta.url), 'utf8');
+    expect(padModule).toContain("const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020'");
+    expect(padModule).toContain('MAX_V020_SIGNER_WAIT_MS = 130000');
+    expect(padModule).toContain('export async function executePadV020Signer()');
+    const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PadUiBroker.ps1', import.meta.url), 'utf8');
+    expect(broker).toContain("'pad_android_sign_v020' { return Invoke-V020Signer }");
+    expect(broker).toContain("D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1");
+    expect(broker).toContain("$psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"'");
+    expect(broker).not.toContain('ArgumentList.Add');
+    expect(broker).toContain("ANDROID_WORKER_STABLE_RELEASE_READY");
+    expect(broker).toContain("DPAPI_PASSWORD_DECRYPT_FAILED");
+    expect(broker).not.toContain('$Request.command');
+    expect(broker).not.toContain('$Request.path');
+    expect(broker).not.toMatch(/Password=|Credential=/);
+    expect(installer).toContain("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited");
   });
 
   it('requires selectors for PAD element mutations and bounds values', () => {
