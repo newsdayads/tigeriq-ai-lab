@@ -9,8 +9,18 @@ import {
   assertWritePathAllowed,
   resolveOperatorPath,
   androidReleaseBuildFailureClass,
+  assertTigerIQLive3150DeployRequest,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
+import {
+  AUTHORIZED_ISSUE,
+  EXPECTED_BRANCH,
+  EXPECTED_PROJECT_ID,
+  EXPECTED_REPO,
+  EXPECTED_TEAM_ID,
+  classifyDeployFailure,
+  validateReleaseContract,
+} from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 import {
   PAPERCLIP_LAB_ACTIONS,
   PAPERCLIP_LAB_IMAGE,
@@ -718,5 +728,75 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(source).toContain('TIGERIQ_PAPERCLIP_LAB_ABORTED');
     expect(source).not.toMatch(/shell_exec|cmd\.exe/i);
     expect((source.match(/WindowsPowerShell\\\\v1\.0\\\\powershell\.exe/g) ?? []).length).toBe(1);
+  });
+});
+
+
+describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
+  const sha='a'.repeat(40);
+  const valid={
+    projectLink:{projectId:EXPECTED_PROJECT_ID,orgId:EXPECTED_TEAM_ID},
+    expectedSha:sha,
+    actualSha:sha,
+    branch:EXPECTED_BRANCH,
+    remote:'https://github.com/'+EXPECTED_REPO+'.git',
+    config:{git:{deploymentEnabled:false}},
+    issue:AUTHORIZED_ISSUE,
+    uiHtml:'<div>JOB TRỌNG TÂM</div>',
+  };
+
+  it('accepts only an exact 40-hex deployment SHA', () => {
+    expect(assertTigerIQLive3150DeployRequest({expectedSha:sha})).toEqual({expectedSha:sha});
+    expect(() => assertTigerIQLive3150DeployRequest({expectedSha:'abc'})).toThrow('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+    expect(() => assertTigerIQLive3150DeployRequest({expectedSha:'g'.repeat(40)})).toThrow('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+  });
+
+  it('hard-locks project/team/repo/main/SHA/owner scope and UI marker', () => {
+    expect(validateReleaseContract(valid)).toMatchObject({
+      projectId:EXPECTED_PROJECT_ID,
+      teamId:EXPECTED_TEAM_ID,
+      repo:EXPECTED_REPO,
+      branch:'main',
+      target:'production',
+      exactSha:sha,
+      issue:'3185',
+      maxAttempts:1,
+    });
+    expect(() => validateReleaseContract({...valid,projectLink:{projectId:'prj_wrong',orgId:EXPECTED_TEAM_ID}})).toThrow('VERCEL_PROJECT_SCOPE_MISMATCH');
+    expect(() => validateReleaseContract({...valid,expectedSha:'b'.repeat(40)})).toThrow('VERCEL_EXACT_SHA_MISMATCH');
+    expect(() => validateReleaseContract({...valid,branch:'feature/unsafe'})).toThrow('VERCEL_GIT_BRANCH_MISMATCH');
+    expect(() => validateReleaseContract({...valid,remote:'https://github.com/newsdayads/other.git'})).toThrow('VERCEL_GIT_REPO_MISMATCH');
+    expect(() => validateReleaseContract({...valid,config:{git:{deploymentEnabled:true}}})).toThrow('VERCEL_AUTO_DEPLOY_POLICY_MISMATCH');
+    expect(() => validateReleaseContract({...valid,issue:'999'})).toThrow('VERCEL_OWNER_AUTH_SCOPE_MISMATCH');
+    expect(() => validateReleaseContract({...valid,uiHtml:'no marker'})).toThrow('VERCEL_UI_MARKER_MISSING');
+  });
+
+  it('keeps deployment one-shot, typed, and outside arbitrary shell allowlist', async () => {
+    const operatorSource=await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
+    const deploySource=await readFile(new URL('../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs',import.meta.url),'utf8');
+    expect(operatorSource).toContain("action === 'tigeriq_live_3150_production_deploy'");
+    expect(operatorSource).toContain("scripts\\\\pc-worker\\\\vercel-tigeriq-live-3150-deploy.mjs");
+    expect(operatorSource).toContain("'--issue', '3185'");
+    expect(operatorSource).toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME']");
+    expect(operatorSource).toContain("productionMutationScope: action === 'tigeriq_live_3150_production_deploy'");
+    expect(operatorSource).not.toContain("input?.command");
+    expect(() => assertShellCommandAllowed('vercel deploy --prod')).toThrow('TIGERIQ_PC_COMMAND_NOT_ALLOWLISTED');
+
+    expect(deploySource).toContain("AUTHORIZED_ISSUE = '3185'");
+    expect(deploySource).toContain("EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw'");
+    expect(deploySource).toContain("EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT'");
+    expect(deploySource).toContain("EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab'");
+    expect(deploySource).toContain("EXPECTED_BRANCH = 'main'");
+    expect(deploySource).toContain("REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM'");
+    expect((deploySource.match(/vercel\.cmd deploy --prod --yes/g)||[]).length).toBe(1);
+    expect(deploySource).not.toContain('VERCEL_TOKEN');
+    expect(deploySource).not.toContain('retry');
+  });
+
+  it('classifies bounded deploy failures without leaking raw output', () => {
+    expect(classifyDeployFailure('Deployment rate limited')).toBe('VERCEL_RATE_LIMIT_WAIT');
+    expect(classifyDeployFailure('Please log in to Vercel')).toBe('VERCEL_AUTH_REQUIRED');
+    expect(classifyDeployFailure('vercel is not recognized')).toBe('VERCEL_CLI_MISSING');
+    expect(classifyDeployFailure('unexpected failure')).toBe('VERCEL_DEPLOY_FAILED');
   });
 });
