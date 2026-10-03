@@ -78,8 +78,11 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(manifestFetch).toBeGreaterThan(-1);
     expect(updateEngine).toContain('"DEFERRED_CORE_TASK"');
     expect(updateEngine).toContain('"DEFERRED_EVIDENCE_PENDING"');
-    expect(updateEngine).toContain('if (updateInProgress || taskLeaseInProgress) return false;');
-    expect(service).toContain('if (!WorkerUpdateEngine.beginTaskLease()) return;');
+    expect(updateEngine).toContain('if (updateInProgress || installPending(app))');
+    expect(updateEngine).toContain('if (updateInProgress || taskLeaseInProgress || installPending(context)) return false;');
+    expect(updateEngine).toContain('"INSTALL_COMMITTED".equals(state)');
+    expect(updateEngine).toContain('"PENDING_USER_ACTION_OPENED".equals(state)');
+    expect(service).toContain('if (!WorkerUpdateEngine.beginTaskLease(this)) return;');
     expect(service).toContain('WorkerUpdateEngine.endTaskLease();');
   });
 
