@@ -104,7 +104,7 @@ function Invoke-PlainProcess([string]$FileName, [string[]]$Args) {
   $p.WaitForExit()
 
   if ($p.ExitCode -ne 0) {
-    throw ("PROCESS_FAILED: " + $FileName + " exit=" + $p.ExitCode + " stderr=" + $stderr.Trim())
+    throw ("ANDROID_BUILD_TOOL_FAILED: exit=" + $p.ExitCode)
   }
 
   return $stdout
@@ -146,7 +146,7 @@ function Invoke-ApkSignerWithSecureStdin(
     $p.WaitForExit()
 
     if ($p.ExitCode -ne 0) {
-      throw ("APKSIGNER_FAILED: exit=" + $p.ExitCode + " stderr=" + $stderr.Trim())
+      throw ("APKSIGNER_FAILED: exit=" + $p.ExitCode)
     }
 
     return $stdout
@@ -267,5 +267,7 @@ try {
   throw
 } finally {
   Remove-Item -LiteralPath $aligned -Force -ErrorAction SilentlyContinue
-  Remove-Variable securePassword -ErrorAction SilentlyContinue
+  $securePasswordVariable = Get-Variable securePassword -ErrorAction SilentlyContinue
+  if ($securePasswordVariable -and $securePasswordVariable.Value) { $securePasswordVariable.Value.Dispose() }
+  Remove-Variable securePassword,securePasswordVariable -ErrorAction SilentlyContinue
 }
