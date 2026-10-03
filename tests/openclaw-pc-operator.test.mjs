@@ -241,6 +241,11 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("'/api/mobile/gate-c/v020/enqueue'");
     expect(source).toContain("'/api/mobile/gate-c/v020/status'");
     expect(source).toContain('TIGERIQ_CORE_TOKEN');
+    expect(source).toContain("process.env.TIGERIQ_CORE_HOST||'127.0.0.1'");
+    expect(source).toContain("octets[0]===100&&octets[1]>=64&&octets[1]<=127");
+    expect(source).toContain('TIGERIQ_GATE_C_V020_CORE_HOST_INVALID');
+    expect(source).not.toContain('http://127.0.0.1:${port}${path}');
+    expect(source).not.toContain('input?.host');
     expect(source).not.toContain('input?.employeeId');
     expect(source).not.toContain('input?.prompt');
   });
