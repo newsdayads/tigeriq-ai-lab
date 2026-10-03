@@ -3,7 +3,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { normalizeMobileProvider, readMobileReleaseManifest, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -21,6 +21,22 @@ describe('mobile worker api helpers',()=>{
   it('normalizes the two pilot providers',()=>{
     expect(normalizeMobileProvider('Gemini')).toBe('Gemini');
     expect(normalizeMobileProvider('anything-else')).toBe('ChatGPT');
+  });
+
+  it('keeps terminal mobile task commits exactly-once across retries',()=>{
+    for(let i=1;i<=10;i++){
+      const result={status:'completed',output:{token:`TIGERIQ_GATE_C_OK_${i}`},seq:i};
+      const first=mobileTaskTerminalDecision({status:'leased',currentDigest:'',incomingResult:result});
+      expect(first).toMatchObject({accept:true,idempotent:false,conflict:false});
+      const retry=mobileTaskTerminalDecision({status:'completed',currentDigest:first.digest,incomingResult:result});
+      expect(retry).toMatchObject({accept:false,idempotent:true,conflict:false});
+      const conflict=mobileTaskTerminalDecision({
+        status:'completed',
+        currentDigest:first.digest,
+        incomingResult:{...result,output:{token:'DIFFERENT'}},
+      });
+      expect(conflict).toMatchObject({accept:false,idempotent:false,conflict:true});
+    }
   });
 
   it('reads a local release manifest without exposing implicit defaults',()=>{
