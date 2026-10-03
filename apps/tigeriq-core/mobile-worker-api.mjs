@@ -238,7 +238,9 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
         'insert into tigeriq_mobile_evidence(node_id,employee_id,kind,run_id,seq,payload) values($1,$2,$3,$4,$5,$6::jsonb) on conflict do nothing returning run_id',
         [device.node_id,device.employee_id,kind,runId,seq,JSON.stringify(payload)]
       );
-      await event('MOBILE_WORKER_EVIDENCE',{nodeId:device.node_id,employeeId:device.employee_id,kind,runId,seq});
+      if(inserted.rowCount>0){
+        await event('MOBILE_WORKER_EVIDENCE',{nodeId:device.node_id,employeeId:device.employee_id,kind,runId,seq});
+      }
       return send(res,200,{ok:true,idempotent:inserted.rowCount===0});
     }
     if(req.method==='POST'&&url.pathname==='/api/mobile/heartbeat'){

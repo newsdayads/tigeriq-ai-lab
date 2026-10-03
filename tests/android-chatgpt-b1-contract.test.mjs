@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { createMobileWorkerApi } from '../apps/tigeriq-core/mobile-worker-api.mjs';
 
 const adapter = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java', import.meta.url), 'utf8');
 const store = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java', import.meta.url), 'utf8');
@@ -42,6 +44,78 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(core).toContain('tigeriq_mobile_evidence');
     expect(core).toContain("url.pathname==='/api/mobile/evidence'");
     expect(core).toContain('on conflict do nothing');
+  });
+
+  it('emits evidence event once across duplicate POST retries', async () => {
+    const token = 'b1-test-token';
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    let insertAttempts = 0;
+    const events = [];
+    const pool = {
+      async query(sql) {
+        if (sql.startsWith('select * from tigeriq_mobile_devices')) {
+          return {
+            rowCount: 1,
+            rows: [{
+              node_id: 'node-b1',
+              employee_id: 'NV101',
+              credential_id: 'cred-b1',
+              token_hash: tokenHash,
+              provider: 'ChatGPT',
+              department: 'Engineering',
+              role: 'Android Worker Pilot',
+            }],
+          };
+        }
+        if (sql.startsWith('insert into tigeriq_mobile_evidence')) {
+          insertAttempts += 1;
+          return insertAttempts === 1
+            ? { rowCount: 1, rows: [{ run_id: 'run-b1' }] }
+            : { rowCount: 0, rows: [] };
+        }
+        throw new Error('unexpected sql: ' + sql);
+      },
+    };
+    const handle = createMobileWorkerApi({
+      pool,
+      event: async (type, data) => events.push({ type, data }),
+    });
+    const payload = JSON.stringify({
+      kind: 'chatgpt_b1',
+      runId: 'run-b1',
+      seq: 1,
+      payload: { state: 'COMPLETE' },
+    });
+    const request = () => ({
+      method: 'POST',
+      headers: {
+        'x-tigeriq-credential-id': 'cred-b1',
+        authorization: 'Bearer ' + token,
+      },
+      socket: { remoteAddress: '100.64.0.2' },
+      async *[Symbol.asyncIterator]() { yield Buffer.from(payload); },
+    });
+    const response = () => ({
+      status: 0,
+      body: null,
+      writeHead(status) { this.status = status; },
+      end(body) { this.body = JSON.parse(body); },
+    });
+
+    const first = response();
+    const second = response();
+    await handle(request(), first, new URL('http://core/api/mobile/evidence'));
+    await handle(request(), second, new URL('http://core/api/mobile/evidence'));
+
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ ok: true, idempotent: false });
+    expect(second.status).toBe(200);
+    expect(second.body).toEqual({ ok: true, idempotent: true });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'MOBILE_WORKER_EVIDENCE',
+      data: { nodeId: 'node-b1', employeeId: 'NV101', runId: 'run-b1', seq: 1 },
+    });
   });
 
   it('publishes versionCode 11 for the send-selector fix', () => {
