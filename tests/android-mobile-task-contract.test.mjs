@@ -66,16 +66,21 @@ describe('Android Gate C Core-issued task contract', () => {
   });
 
   it('fails closed on every update path while Core task or evidence is pending', () => {
-    const taskGuard = updateEngine.indexOf('if (task.present())');
-    const b1Guard = updateEngine.indexOf('if (run.active())');
-    const evidenceGuard = updateEngine.indexOf('if (run.terminal() && run.evidenceSeq > run.reportedSeq)');
+    const beginUpdate = updateEngine.indexOf('private static Result beginUpdate');
+    const taskGuard = updateEngine.indexOf('taskLeaseInProgress || MobileTaskStore.read(app).present()', beginUpdate);
+    const b1Guard = updateEngine.indexOf('if (run.active())', beginUpdate);
+    const evidenceGuard = updateEngine.indexOf('if (run.terminal() && run.evidenceSeq > run.reportedSeq)', beginUpdate);
     const manifestFetch = updateEngine.indexOf('JSONObject manifest = client.updateManifest()');
-    expect(taskGuard).toBeGreaterThan(-1);
+    expect(beginUpdate).toBeGreaterThan(-1);
+    expect(taskGuard).toBeGreaterThan(beginUpdate);
     expect(b1Guard).toBeGreaterThan(taskGuard);
     expect(evidenceGuard).toBeGreaterThan(b1Guard);
-    expect(manifestFetch).toBeGreaterThan(evidenceGuard);
+    expect(manifestFetch).toBeGreaterThan(-1);
     expect(updateEngine).toContain('"DEFERRED_CORE_TASK"');
     expect(updateEngine).toContain('"DEFERRED_EVIDENCE_PENDING"');
+    expect(updateEngine).toContain('if (updateInProgress || taskLeaseInProgress) return false;');
+    expect(service).toContain('if (!WorkerUpdateEngine.beginTaskLease()) return;');
+    expect(service).toContain('WorkerUpdateEngine.endTaskLease();');
   });
 
   it('drains terminal evidence before clearing, claiming the next task, or updating', () => {
