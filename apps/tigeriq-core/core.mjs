@@ -7,6 +7,7 @@ import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryP
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
+// NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
