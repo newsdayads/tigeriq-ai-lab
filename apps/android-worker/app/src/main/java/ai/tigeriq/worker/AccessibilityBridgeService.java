@@ -30,6 +30,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String KEY_PROJECT_GATE_DIAG = "projectGateDiag";
     public static final String KEY_PROJECT_GATE_MODE = "projectGateMode";
     public static final String KEY_PROJECT_GATE_AT = "projectGateAt";
+    public static final String KEY_AUTO_PROJECT_CLICK_AT = "autoProjectClickAt";
+    public static final String KEY_AUTO_PROJECT_CLICK_COUNT = "autoProjectClickCount";
 
     private static final int MAX_PROBE_NODES = 500;
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
@@ -42,6 +44,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private boolean b1TickScheduled = false;
     private int projectContextSamples = 0;
     private long projectContextFirstSeenAt = 0L;
+    private long projectNavigationNextActionAt = 0L;
 
     private final Runnable b1TickRunnable = new Runnable() {
         @Override
@@ -54,6 +57,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo current = getRootInActiveWindow();
             CharSequence pkg = current == null ? null : current.getPackageName();
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                driveProjectNavigationIfNeeded(current);
                 maybeBindProjectFromStableContext(current);
                 ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
             } else {
@@ -112,6 +116,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
             maybeBindRequiredProject(event, root);
+            driveProjectNavigationIfNeeded(root);
             maybeBindProjectFromStableContext(root);
             ensureB1Ticker();
         }
@@ -175,6 +180,51 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
     }
 
+    private void driveProjectNavigationIfNeeded(AccessibilityNodeInfo root) {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state) || root == null) return;
+
+        long now = System.currentTimeMillis();
+        if (now < projectNavigationNextActionAt) return;
+
+        AccessibilityNodeInfo project = ChatGptB1Automation.findExactProjectControl(
+            root,
+            ChatGptB1RunStore.REQUIRED_PROJECT
+        );
+        if (project != null) {
+            boolean clicked = project.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (clicked) {
+                android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                int count = prefs.getInt(KEY_AUTO_PROJECT_CLICK_COUNT, 0) + 1;
+                prefs.edit()
+                    .putLong(KEY_AUTO_PROJECT_CLICK_AT, now)
+                    .putInt(KEY_AUTO_PROJECT_CLICK_COUNT, count)
+                    .apply();
+                writeProjectDiag(
+                    "AUTO_PROJECT_CLICK",
+                    "project=" + ChatGptB1RunStore.REQUIRED_PROJECT + "; clickCount=" + count
+                );
+                projectNavigationNextActionAt = now + 1800L;
+                resetProjectContextCandidate();
+                return;
+            }
+        }
+
+        AccessibilityNodeInfo menu = ChatGptB1Automation.findNavigationMenuControl(root);
+        if (menu != null) {
+            boolean clicked = menu.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            writeProjectDiag(
+                clicked ? "AUTO_MENU_CLICK" : "AUTO_MENU_CLICK_FAILED",
+                "semanticMenu=true"
+            );
+            projectNavigationNextActionAt = now + (clicked ? 1400L : 2200L);
+            return;
+        }
+
+        writeProjectDiag("AUTO_NAV_WAIT", "projectControl=false; menuControl=false");
+        projectNavigationNextActionAt = now + 1500L;
+    }
+
     private void maybeBindProjectFromStableContext(AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) {
@@ -191,13 +241,18 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 3
             );
         boolean composerReady = root != null && ChatGptB1Automation.findComposerInput(root) != null;
+        long autoProjectClickAt = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        boolean autoNavigationProof = autoProjectClickAt >= run.startedAt && autoProjectClickAt > 0L;
+        boolean contextProof = projectTitleContext || autoNavigationProof;
 
-        if (!exactProject || !composerReady || !projectTitleContext) {
+        if (!exactProject || !composerReady || !contextProof) {
             if (projectContextSamples > 0 || exactProject) {
                 writeProjectDiag(
                     "CONTEXT_WAIT",
                     "exactProject=" + exactProject
                         + "; titleContext=" + projectTitleContext
+                        + "; autoNav=" + autoNavigationProof
                         + "; composer=" + composerReady
                         + "; samples=" + projectContextSamples
                 );
@@ -213,7 +268,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         writeProjectDiag(
             "CONTEXT_CANDIDATE",
-            "exactProject=true; titleContext=true; composer=true"
+            "exactProject=true; contextProof=true; composer=true"
                 + "; samples=" + projectContextSamples
                 + "; stableMs=" + stableMs
         );
@@ -222,6 +277,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             writeProjectDiag(
                 "STABLE_PROJECT_CONTEXT",
                 "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
+                    + "; autoNav=" + autoNavigationProof
                     + "; samples=" + projectContextSamples
                     + "; stableMs=" + stableMs
             );
