@@ -29,8 +29,14 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(store).toContain('INTER_CYCLE_COOLDOWN_MS = 6000L');
     expect(store).toContain('"WAITING_PROJECT"');
     expect(service).toContain('TYPE_VIEW_CLICKED');
-    expect(service).toContain('ChatGptB1Policy.shouldBindRequiredProject');
     expect(adapter).toContain('treeContainsExactLabel');
+    expect(adapter).toContain('nodeOrAncestorContainsLabel');
+    expect(adapter).toContain('searchable(current).contains(wanted)');
+    expect(adapter).not.toContain('treeContains(current, label)');
+    expect(adapter).toContain('rootHasProjectAndVisibleComposer');
+    expect(service).toContain('DIRECT_LINEAGE');
+    expect(service).toContain('VERIFYING_ROOT');
+    expect(service).toContain('STABLE_ROOT');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
@@ -127,8 +133,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 13 for reviewed project pacing', () => {
-    expect(gradle).toContain('versionCode = 13');
-    expect(gradle).toContain('versionName = "0.12.0-project-pacing"');
+  it('publishes versionCode 14 for Project detector fix', () => {
+    expect(gradle).toContain('versionCode = 14');
+    expect(gradle).toContain('versionName = "0.14.0-project-detector"');
   });
 });

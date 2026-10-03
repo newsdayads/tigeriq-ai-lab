@@ -233,6 +233,46 @@ public final class ChatGptB1Automation {
         return false;
     }
 
+    public static boolean nodeOrAncestorContainsLabel(
+        AccessibilityNodeInfo source,
+        String label,
+        int maxParents
+    ) {
+        String wanted = normalize(label);
+        if (source == null || wanted.isEmpty()) return false;
+        AccessibilityNodeInfo current = source;
+        for (int depth = 0; current != null && depth <= maxParents; depth++) {
+            // Direct lineage only: inspect the clicked node and each ancestor's own semantic fields.
+            // Never scan an ancestor subtree here; that could match the required Project in a sibling branch.
+            if (searchable(current).contains(wanted)) return true;
+            current = current.getParent();
+        }
+        return false;
+    }
+
+    public static boolean rootHasProjectAndVisibleComposer(
+        AccessibilityNodeInfo root,
+        String projectName
+    ) {
+        if (root == null) return false;
+        return treeContainsExactLabel(root, projectName)
+            && findComposerInput(root) != null;
+    }
+
+    public static String describeNodeLineage(AccessibilityNodeInfo source, int maxParents) {
+        if (source == null) return "source=null";
+        StringBuilder out = new StringBuilder();
+        AccessibilityNodeInfo current = source;
+        for (int depth = 0; current != null && depth <= maxParents; depth++) {
+            if (out.length() > 0) out.append(" <- ");
+            String label = searchable(current);
+            if (label.length() > 100) label = label.substring(0, 100);
+            out.append(depth).append(':').append(label.isEmpty() ? "(empty)" : label);
+            current = current.getParent();
+        }
+        return out.toString();
+    }
+
     private static boolean treeContainsAny(AccessibilityNodeInfo root, String... needles) {
         for (AccessibilityNodeInfo node : nodes(root)) {
             String label = searchable(node);

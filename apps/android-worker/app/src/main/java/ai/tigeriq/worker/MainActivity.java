@@ -558,12 +558,17 @@ public final class MainActivity extends Activity {
         String b1Progress = b1.targetCycles > 0
             ? b1.completedCycles + "/" + b1.targetCycles
             : "chưa chạy";
+        String projectDiagMode = a11y.getString(AccessibilityBridgeService.KEY_PROJECT_GATE_MODE, "CHƯA CÓ");
+        String projectDiag = a11y.getString(AccessibilityBridgeService.KEY_PROJECT_GATE_DIAG, "");
+        long projectDiagAt = a11y.getLong(AccessibilityBridgeService.KEY_PROJECT_GATE_AT, 0L);
         b1StateView.setText(
             "Trạng thái: " + b1Title
                 + "\nTiến độ: " + b1Progress
                 + " · Đã gửi " + b1.sendCount
                 + " · Chặn trùng " + b1.duplicateSendCount
                 + "\nProject: " + (b1.projectBound ? "ĐÃ XÁC NHẬN · " + ChatGptB1RunStore.REQUIRED_PROJECT : "CHƯA XÁC NHẬN")
+                + "\nDetector: " + projectDiagMode + (projectDiagAt > 0 ? " · " + age(projectDiagAt) : "")
+                + (projectDiag.isEmpty() ? "" : "\nChi tiết detector: " + compact(projectDiag, 180))
                 + "\nRecovery: " + b1.recoveryCount
                 + " · Busy seen: " + (b1.busySeen ? "CÓ" : "CHƯA")
                 + (b1.lastError == null || b1.lastError.isEmpty() ? "" : "\nLỗi: " + b1.lastError)
