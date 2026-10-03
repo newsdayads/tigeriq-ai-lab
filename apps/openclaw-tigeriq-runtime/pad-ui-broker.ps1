@@ -235,16 +235,15 @@ function Send-PadKey($Request) {
 }
 
 function Invoke-V020Signer {
-  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-  $wrapper = Join-Path $repoRoot 'scripts\pc-worker\sign-v020-reviewed-artifact.ps1'
+  $wrapper = 'D:\TigerIQ\Runtime\CoreSource\scripts\pc-worker\sign-v020-reviewed-artifact.ps1'
   if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) { throw 'TIGERIQ_V020_SIGNER_WRAPPER_MISSING' }
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = 'powershell.exe'
+  $psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $wrapper + '"'
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
-  foreach ($arg in @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$wrapper)) { [void]$psi.ArgumentList.Add($arg) }
   $p = [System.Diagnostics.Process]::new(); $p.StartInfo = $psi
   if (-not $p.Start()) { throw 'TIGERIQ_V020_SIGNER_START_FAILED' }
   $stdoutTask = $p.StandardOutput.ReadToEndAsync(); $stderrTask = $p.StandardError.ReadToEndAsync()
