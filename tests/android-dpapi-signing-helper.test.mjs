@@ -22,6 +22,9 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain('ANDROID_HOME');
     expect(helper).toContain("Android\\Sdk");
     expect(helper).toContain('build-tools');
+    expect(helper).toContain('ANDROID_" + $toolRole + "_DISCOVERY_NO_SDK_ROOT');
+    expect(helper).toContain('ANDROID_" + $toolRole + "_DISCOVERY_NO_BUILD_TOOLS_DIR');
+    expect(helper).toContain('ANDROID_" + $toolRole + "_DISCOVERY_BINARY_MISSING');
     expect(helper).toContain('[Array]::Clear');
     expect(helper).not.toMatch(/--ks-pass['",\s]+pass:/i);
     expect(helper).not.toMatch(/--key-pass['",\s]+pass:/i);
