@@ -97,7 +97,15 @@ public final class ForegroundWorkerService extends Service {
                         output.put("recoveryCount", run.recoveryCount);
                         output.put("lastError", run.lastError);
                         result.put("output", output);
-                        client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
+                        try {
+                            client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
+                        } catch (ControllerClient.ControllerException stale) {
+                            if (stale.status != 409) throw stale;
+                            JSONObject reacquired = client.pollLease();
+                            if (!reacquired.optBoolean("leased", false)) throw stale;
+                            task = MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
+                            client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
+                        }
                         MobileTaskStore.markResultReported(this);
                     }
                     MobileTaskStore.clear(this);
