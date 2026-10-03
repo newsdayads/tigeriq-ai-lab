@@ -939,6 +939,63 @@ async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
   };
 }
 
+
+const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
+async function boundedLocalJson(url,{method='GET',payload,fetchImpl=fetch}={}){
+  const parsed=new URL(url);
+  if(parsed.protocol!=='http:'||!['127.0.0.1','localhost','::1'].includes(parsed.hostname))throw new Error('TIGERIQ_CORE_UI_RECONCILE_LOOPBACK_ONLY');
+  if(![8795,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');
+  const response=await fetchImpl(parsed.toString(),{
+    method,
+    headers:payload===undefined?{accept:'application/json'}:{accept:'application/json','content-type':'application/json'},
+    body:payload===undefined?undefined:JSON.stringify(payload),
+    signal:AbortSignal.timeout(5000),
+  });
+  let data={};
+  try{data=await response.json();}catch{throw new Error('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID');}
+  if(!response.ok)throw new Error('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+response.status);
+  return data;
+}
+
+export async function reconcileCancelledCoreUiJob(input={},options={}){
+  const workerId=String(input?.workerId||'').trim().toUpperCase();
+  if(!CORE_UI_RECONCILE_WORKERS.has(workerId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_WORKER_INVALID');
+  const fetchImpl=options?.fetchImpl||fetch;
+  const controllerBase='http://127.0.0.1:8798';
+  const coreBase='http://127.0.0.1:8795';
+  const local=await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job/status',{fetchImpl});
+  const active=local?.active&&typeof local.active==='object'&&!Array.isArray(local.active)?local.active:null;
+  if(!active)return {status:'CORE_UI_RECONCILE_NO_ACTIVE_JOB',workerId,clearedJobId:null,nextJobId:null};
+  const jobId=String(active.jobId||'').trim();
+  if(!/^GH-\d+(?:-R[a-f0-9]{12})?$/i.test(jobId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_JOB_ID_INVALID');
+  if(String(active.source||'')!=='CORE_UI')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_INVALID');
+  const projected=await boundedLocalJson(coreBase+'/api/ui-assignment?previousJobId='+encodeURIComponent(jobId),{fetchImpl});
+  const previous=projected?.previousJob&&typeof projected.previousJob==='object'?projected.previousJob:null;
+  if(!previous||String(previous.jobId||'')!==jobId)throw new Error('TIGERIQ_CORE_UI_RECONCILE_PREVIOUS_ID_MISMATCH');
+  if(String(previous.status||'').toUpperCase()!=='CANCELLED')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_NOT_CANCELLED');
+  await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job',{
+    method:'POST',
+    payload:{
+      jobId,
+      stage:'BLOCKED',
+      blocker:'SOURCE_JOB_CANCELLED',
+      result:'Core UI source is terminal CANCELLED; stale local ledger released for next assignment',
+    },
+    fetchImpl,
+  });
+  const after=await boundedLocalJson(coreBase+'/api/ui-assignment',{fetchImpl});
+  const candidates=Array.isArray(after?.nextJobs)?after.nextJobs:(after?.nextJob?[after.nextJob]:[]);
+  const next=candidates.find((item)=>String(item?.workerId||'')===workerId&&item?.executable===true&&String(item?.status||'')==='READY')||null;
+  return {
+    status:'CORE_UI_CANCELLED_LEDGER_RECONCILED',
+    workerId,
+    clearedJobId:jobId,
+    priorStatus:'CANCELLED',
+    localStage:'BLOCKED',
+    nextJobId:next?String(next.jobId||''):null,
+  };
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -958,6 +1015,8 @@ export async function executePcAction(input, options = {}) {
     data = await grantAndroidWorkerV020SignerReadAcl();
   } else if (action === 'android_worker_export_v020_signed_apk_chunk') {
     data = await exportAndroidWorkerV020SignedApkChunk(input || {});
+  } else if (action === 'chrome_ui_reconcile_cancelled_job') {
+    data = await reconcileCancelledCoreUiJob(input || {}, { fetchImpl: options?.fetchImpl });
   } else if (action === 'tigeriq_live_3150_production_deploy') {
     data = await deployTigerIQLive3150(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
@@ -1002,6 +1061,7 @@ export async function executePcAction(input, options = {}) {
       userContextSigner: action === 'android_worker_sign_v020_user_context',
       signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
       signedApkExport: action === 'android_worker_export_v020_signed_apk_chunk',
+      coreUiCancelledReconcile: action === 'chrome_ui_reconcile_cancelled_job',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
