@@ -39,4 +39,17 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(service).toContain('MobileTaskStore.markResultReported');
     expect(service).toContain('duplicateSendCount');
   });
+
+  it('drains terminal evidence before clearing, claiming the next task, or updating', () => {
+    const terminalBranch = service.indexOf('if (run.terminal())');
+    const evidenceDrain = service.indexOf('reportPendingB1Evidence(client);', terminalBranch);
+    const taskClear = service.indexOf('MobileTaskStore.clear(this);', terminalBranch);
+    const pendingGuard = service.indexOf('if (run.terminal() && run.evidenceSeq > run.reportedSeq)');
+    const nextLease = service.indexOf('JSONObject leased = client.pollLease();');
+    expect(evidenceDrain).toBeGreaterThan(terminalBranch);
+    expect(taskClear).toBeGreaterThan(evidenceDrain);
+    expect(pendingGuard).toBeGreaterThan(taskClear);
+    expect(nextLease).toBeGreaterThan(pendingGuard);
+    expect(service).toContain('boolean evidencePending = run.terminal() && run.evidenceSeq > run.reportedSeq;');
+  });
 });
