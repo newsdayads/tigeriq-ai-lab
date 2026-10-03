@@ -29,6 +29,8 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(store).toContain('INTER_CYCLE_COOLDOWN_MS = 6000L');
     expect(store).toContain('"WAITING_PROJECT"');
     expect(service).toContain('TYPE_VIEW_CLICKED');
+    expect(service).toContain('ChatGptB1Policy.shouldBindRequiredProject');
+    expect(adapter).toContain('treeContainsExactLabel');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
