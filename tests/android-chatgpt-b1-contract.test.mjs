@@ -33,10 +33,17 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(adapter).toContain('nodeOrAncestorContainsLabel');
     expect(adapter).toContain('searchable(current).contains(wanted)');
     expect(adapter).not.toContain('treeContains(current, label)');
-    expect(adapter).toContain('rootHasProjectAndVisibleComposer');
+    expect(adapter).toContain('localizedClickableAncestorContainsExactLabel');
+    expect(adapter).toContain('boundedSubtreeContainsExactLabel');
+    expect(adapter).toContain('seen > maxNodes');
+    expect(adapter).not.toContain('rootHasProjectAndVisibleComposer');
     expect(service).toContain('DIRECT_LINEAGE');
-    expect(service).toContain('VERIFYING_ROOT');
-    expect(service).toContain('STABLE_ROOT');
+    expect(service).toContain('LOCAL_CLICKABLE_SCOPE');
+    expect(service).toContain('CLICK_REJECTED');
+    expect(service).not.toContain('pendingProjectClick');
+    expect(service).not.toContain('projectVisibleSince');
+    expect(service).not.toContain('VERIFYING_ROOT');
+    expect(service).not.toContain('STABLE_ROOT');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
@@ -133,8 +140,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 14 for Project detector fix', () => {
-    expect(gradle).toContain('versionCode = 14');
-    expect(gradle).toContain('versionName = "0.14.0-project-detector"');
+  it('publishes versionCode 15 for Project click hardening', () => {
+    expect(gradle).toContain('versionCode = 15');
+    expect(gradle).toContain('versionName = "0.15.0-project-click-hardening"');
   });
 });

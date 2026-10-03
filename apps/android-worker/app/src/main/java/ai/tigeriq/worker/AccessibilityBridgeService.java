@@ -38,10 +38,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final int MAX_B1_RECOVERIES = 2;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
-    private long projectVisibleSince = 0L;
-    private long pendingProjectClickAt = 0L;
-    private long pendingProjectStableAt = 0L;
-    private boolean pendingProjectClickFromVisibleList = false;
 
     private final Runnable b1TickRunnable = new Runnable() {
         @Override
@@ -54,7 +50,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo current = getRootInActiveWindow();
             CharSequence pkg = current == null ? null : current.getPackageName();
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
-                observeProjectGate(current);
                 ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
             } else {
                 scheduleB1RecoveryIfNeeded();
@@ -112,7 +107,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
             maybeBindRequiredProject(event, root);
-            observeProjectGate(root);
             ensureB1Ticker();
         }
 
@@ -145,87 +139,34 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (event == null || !CHATGPT_PACKAGE.equals(String.valueOf(event.getPackageName()))) return;
         if (event.getEventType() != AccessibilityEvent.TYPE_VIEW_CLICKED) return;
 
-        long now = System.currentTimeMillis();
         AccessibilityNodeInfo source = event.getSource();
         boolean directLineageMatch = ChatGptB1Automation.nodeOrAncestorContainsLabel(
             source,
             ChatGptB1RunStore.REQUIRED_PROJECT,
             6
         );
+        boolean localClickableScopeMatch = ChatGptB1Automation.localizedClickableAncestorContainsExactLabel(
+            source,
+            ChatGptB1RunStore.REQUIRED_PROJECT,
+            4,
+            12
+        );
+        boolean shouldBind = directLineageMatch || localClickableScopeMatch;
         boolean rootProjectVisible = root != null
             && ChatGptB1Automation.treeContainsExactLabel(root, ChatGptB1RunStore.REQUIRED_PROJECT);
-        boolean wasVisibleBeforeClick = projectVisibleSince > 0L && now - projectVisibleSince >= 250L;
 
+        String mode = directLineageMatch
+            ? "DIRECT_LINEAGE"
+            : localClickableScopeMatch ? "LOCAL_CLICKABLE_SCOPE" : "CLICK_REJECTED";
         writeProjectDiag(
-            directLineageMatch ? "DIRECT_LINEAGE" : "CLICK_CANDIDATE",
+            mode,
             "rootProject=" + rootProjectVisible
-                + "; visibleBefore=" + wasVisibleBeforeClick
+                + "; direct=" + directLineageMatch
+                + "; localScope=" + localClickableScopeMatch
                 + "; lineage=" + compactDiag(ChatGptB1Automation.describeNodeLineage(source, 5))
         );
 
-        if (directLineageMatch) {
-            ChatGptB1RunStore.markProjectBound(this);
-            clearProjectCandidate();
-            return;
-        }
-
-        pendingProjectClickAt = now;
-        pendingProjectStableAt = 0L;
-        pendingProjectClickFromVisibleList = wasVisibleBeforeClick;
-    }
-
-    private void observeProjectGate(AccessibilityNodeInfo root) {
-        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) {
-            clearProjectCandidate();
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        boolean projectVisible = ChatGptB1Automation.treeContainsExactLabel(
-            root,
-            ChatGptB1RunStore.REQUIRED_PROJECT
-        );
-        if (projectVisible) {
-            if (projectVisibleSince == 0L) projectVisibleSince = now;
-        } else {
-            projectVisibleSince = 0L;
-        }
-
-        if (pendingProjectClickAt == 0L) return;
-        if (now - pendingProjectClickAt > 5000L) {
-            writeProjectDiag("CLICK_EXPIRED", "Project click candidate expired without stable Project context");
-            clearProjectCandidate();
-            return;
-        }
-        if (!pendingProjectClickFromVisibleList) return;
-
-        boolean stableContext = ChatGptB1Automation.rootHasProjectAndVisibleComposer(
-            root,
-            ChatGptB1RunStore.REQUIRED_PROJECT
-        );
-        if (!stableContext) {
-            pendingProjectStableAt = 0L;
-            return;
-        }
-
-        if (pendingProjectStableAt == 0L) {
-            pendingProjectStableAt = now;
-            writeProjectDiag("VERIFYING_ROOT", "Project label + visible composer detected after click");
-            return;
-        }
-
-        if (now - pendingProjectStableAt >= 750L) {
-            writeProjectDiag("STABLE_ROOT", "Project label + composer stayed stable after click");
-            ChatGptB1RunStore.markProjectBound(this);
-            clearProjectCandidate();
-        }
-    }
-
-    private void clearProjectCandidate() {
-        pendingProjectClickAt = 0L;
-        pendingProjectStableAt = 0L;
-        pendingProjectClickFromVisibleList = false;
+        if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
     }
 
     private void writeProjectDiag(String mode, String detail) {

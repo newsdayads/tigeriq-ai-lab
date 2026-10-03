@@ -250,13 +250,53 @@ public final class ChatGptB1Automation {
         return false;
     }
 
-    public static boolean rootHasProjectAndVisibleComposer(
-        AccessibilityNodeInfo root,
-        String projectName
+    public static boolean localizedClickableAncestorContainsExactLabel(
+        AccessibilityNodeInfo source,
+        String label,
+        int maxParents,
+        int maxNodes
     ) {
-        if (root == null) return false;
-        return treeContainsExactLabel(root, projectName)
-            && findComposerInput(root) != null;
+        String wanted = normalize(label);
+        if (source == null || wanted.isEmpty() || maxNodes < 1) return false;
+
+        AccessibilityNodeInfo current = source;
+        for (int depth = 0; current != null && depth <= maxParents; depth++) {
+            if (current.isVisibleToUser() && current.isEnabled() && current.isClickable()) {
+                // Stop at the nearest clickable scope. Never skip a clicked control to match
+                // the required Project in a broader clickable ancestor.
+                return boundedSubtreeContainsExactLabel(current, wanted, maxNodes);
+            }
+            current = current.getParent();
+        }
+        return false;
+    }
+
+    private static boolean boundedSubtreeContainsExactLabel(
+        AccessibilityNodeInfo root,
+        String wanted,
+        int maxNodes
+    ) {
+        Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int seen = 0;
+        boolean found = false;
+        while (!queue.isEmpty()) {
+            AccessibilityNodeInfo node = queue.removeFirst();
+            seen += 1;
+            if (seen > maxNodes) return false;
+            if (nodeHasExactLabel(node, wanted)) found = true;
+            for (int i = 0; i < node.getChildCount(); i++) {
+                AccessibilityNodeInfo child = node.getChild(i);
+                if (child != null) queue.addLast(child);
+            }
+        }
+        return found;
+    }
+
+    private static boolean nodeHasExactLabel(AccessibilityNodeInfo node, String wanted) {
+        return wanted.equals(normalize(text(node.getText())))
+            || wanted.equals(normalize(text(node.getContentDescription())))
+            || wanted.equals(normalize(text(node.getHintText())));
     }
 
     public static String describeNodeLineage(AccessibilityNodeInfo source, int maxParents) {
