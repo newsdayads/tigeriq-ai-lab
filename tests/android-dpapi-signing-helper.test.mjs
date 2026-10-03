@@ -18,6 +18,10 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain("'--ks-pass', 'stdin'");
     expect(helper).toContain("'--key-pass', 'stdin'");
     expect(helper).toContain('ZeroFreeBSTR');
+    expect(helper).toContain('ANDROID_SDK_ROOT');
+    expect(helper).toContain('ANDROID_HOME');
+    expect(helper).toContain("Android\\Sdk");
+    expect(helper).toContain('build-tools');
     expect(helper).toContain('[Array]::Clear');
     expect(helper).not.toMatch(/--ks-pass['",\s]+pass:/i);
     expect(helper).not.toMatch(/--key-pass['",\s]+pass:/i);
