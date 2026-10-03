@@ -132,13 +132,18 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
     private void maybeBindRequiredProject(AccessibilityEvent event) {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) return;
-        if (event.getEventType() != AccessibilityEvent.TYPE_VIEW_CLICKED) return;
-        AccessibilityNodeInfo source = event.getSource();
-        if (source == null) return;
-        if (ChatGptB1Automation.treeContains(source, ChatGptB1RunStore.REQUIRED_PROJECT)) {
-            ChatGptB1RunStore.markProjectBound(this);
-        }
+        AccessibilityNodeInfo source = event == null ? null : event.getSource();
+        boolean exactProjectLabelSeen = source != null
+            && ChatGptB1Automation.treeContainsExactLabel(source, ChatGptB1RunStore.REQUIRED_PROJECT);
+        boolean shouldBind = ChatGptB1Policy.shouldBindRequiredProject(
+            run.active(),
+            run.projectBound,
+            run.state,
+            event != null && CHATGPT_PACKAGE.equals(String.valueOf(event.getPackageName())),
+            event != null && event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED,
+            exactProjectLabelSeen
+        );
+        if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
     }
 
     private void ensureB1Ticker() {
