@@ -38,15 +38,29 @@ function Resolve-AndroidBuildTool([string]$ExplicitPath, [string[]]$Names) {
     if ($cmd) { return $cmd.Source }
   }
 
-  $sdkRoots = @(
+  $toolRole = if ($Names -contains 'apksigner.bat' -or $Names -contains 'apksigner') {
+    'APKSIGNER'
+  } elseif ($Names -contains 'zipalign.exe' -or $Names -contains 'zipalign') {
+    'ZIPALIGN'
+  } else {
+    'BUILD_TOOL'
+  }
+
+  $sdkRoots = @(@(
     $env:ANDROID_SDK_ROOT,
     $env:ANDROID_HOME,
     $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Android\Sdk' } else { $null })
-  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 
+  if ($sdkRoots.Count -eq 0) {
+    throw ("ANDROID_" + $toolRole + "_DISCOVERY_NO_SDK_ROOT")
+  }
+
+  $buildToolsRootFound = $false
   foreach ($sdkRoot in $sdkRoots) {
     $buildToolsRoot = Join-Path $sdkRoot 'build-tools'
     if (-not (Test-Path -LiteralPath $buildToolsRoot -PathType Container)) { continue }
+    $buildToolsRootFound = $true
 
     $versions = Get-ChildItem -LiteralPath $buildToolsRoot -Directory -ErrorAction SilentlyContinue |
       Sort-Object {
@@ -63,7 +77,10 @@ function Resolve-AndroidBuildTool([string]$ExplicitPath, [string[]]$Names) {
     }
   }
 
-  throw 'ANDROID_BUILD_TOOL_REQUIRED: provide TIGERIQ_APKSIGNER/TIGERIQ_ZIPALIGN or install Android SDK build-tools.'
+  if (-not $buildToolsRootFound) {
+    throw ("ANDROID_" + $toolRole + "_DISCOVERY_NO_BUILD_TOOLS_DIR")
+  }
+  throw ("ANDROID_" + $toolRole + "_DISCOVERY_BINARY_MISSING")
 }
 
 function Quote-ProcessArg([string]$Value) {
