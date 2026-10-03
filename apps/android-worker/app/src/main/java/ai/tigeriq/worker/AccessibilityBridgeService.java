@@ -204,7 +204,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                     "AUTO_PROJECT_CLICK",
                     "project=" + ChatGptB1RunStore.REQUIRED_PROJECT + "; clickCount=" + count
                 );
-                projectNavigationNextActionAt = now + 1800L;
+                projectNavigationNextActionAt = now + ChatGptB1Policy.PROJECT_NAV_STEP_MS;
                 resetProjectContextCandidate();
                 return;
             }
@@ -217,12 +217,12 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 clicked ? "AUTO_MENU_CLICK" : "AUTO_MENU_CLICK_FAILED",
                 "semanticMenu=true"
             );
-            projectNavigationNextActionAt = now + (clicked ? 1400L : 2200L);
+            projectNavigationNextActionAt = now + (clicked ? ChatGptB1Policy.PROJECT_NAV_STEP_MS : ChatGptB1Policy.PROJECT_NAV_RETRY_MS);
             return;
         }
 
         writeProjectDiag("AUTO_NAV_WAIT", "projectControl=false; menuControl=false");
-        projectNavigationNextActionAt = now + 1500L;
+        projectNavigationNextActionAt = now + ChatGptB1Policy.PROJECT_NAV_RETRY_MS;
     }
 
     private void maybeBindProjectFromStableContext(AccessibilityNodeInfo root) {
