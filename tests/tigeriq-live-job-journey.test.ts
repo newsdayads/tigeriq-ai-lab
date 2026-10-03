@@ -10,13 +10,22 @@ describe('TigerIQ Live real workflow graph #3231', () => {
   });
 
   it('replaces the fixed six-step journey with a real workflow graph', () => {
-    expect(rootHtml).toContain('LIVE WORKFLOW');
+    expect(rootHtml).toContain('LUỒNG CÔNG VIỆC');
     expect(rootHtml).toContain('function buildWorkflowGraph()');
     expect(rootHtml).toContain('function workflowResolveRoot(seed,rows)');
-    expect(rootHtml).toContain('function workflowCluster(root,rows)');
+    expect(rootHtml).toContain('function workflowCluster(root,focus,rows)');
     expect(rootHtml).not.toContain('function journeyStageState');
     expect(rootHtml).not.toContain('const stages=[');
     expect(rootHtml).not.toContain('.journey-stage');
+  });
+
+  it('keeps the active focus corridor visible before adding optional siblings', () => {
+    expect(rootHtml).toContain('function workflowAncestorPath(focus,rows)');
+    expect(rootHtml).toContain('const path=workflowAncestorPath(focus,rows)');
+    expect(rootHtml).toContain('path.forEach(add)');
+    expect(rootHtml).toContain('const remaining=()=>Math.max(0,10-selected.length)');
+    expect(rootHtml).toContain('workflowCluster(root,seed,rows)');
+    expect(rootHtml).toContain("!superseded.has(Number(row.number))");
   });
 
   it('builds nodes only from actual work items, PRs and check data', () => {
@@ -43,7 +52,7 @@ describe('TigerIQ Live real workflow graph #3231', () => {
     expect(rootHtml).toContain('@keyframes workflow-ambient');
     expect(rootHtml).toContain('.workflow-wire.is-working');
     expect(rootHtml).toContain("const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale)");
-    expect(rootHtml).toContain('Dữ liệu hiện tại đã cũ nên chưa dựng graph để tránh hiển thị sai.');
+    expect(rootHtml).toContain('Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.');
     expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
