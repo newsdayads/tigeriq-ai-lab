@@ -35,6 +35,8 @@ public final class ChatGptB1RunStore {
     private static final String K_REPORTED_SEQ = "reportedSeq";
     private static final String K_PROJECT_BOUND = "projectBound";
     private static final String K_PROJECT_BOUND_AT = "projectBoundAt";
+    private static final String K_CUSTOM_PROMPT = "customPrompt";
+    private static final String K_CUSTOM_EXPECTED_TOKEN = "customExpectedToken";
 
     private ChatGptB1RunStore() {}
 
@@ -62,6 +64,19 @@ public final class ChatGptB1RunStore {
             .putInt(K_REPORTED_SEQ, 0)
             .putBoolean(K_PROJECT_BOUND, false)
             .putLong(K_PROJECT_BOUND_AT, 0L)
+            .apply();
+        return read(context);
+    }
+
+    public static Snapshot startTask(Context context, String runId, String prompt, String expectedToken) {
+        if (runId == null || runId.trim().isEmpty()) throw new IllegalArgumentException("runId is required");
+        if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
+        if (expectedToken == null || expectedToken.trim().isEmpty()) throw new IllegalArgumentException("expectedToken is required");
+        start(context, 1);
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(K_RUN_ID, runId.trim())
+            .putString(K_CUSTOM_PROMPT, prompt.trim())
+            .putString(K_CUSTOM_EXPECTED_TOKEN, expectedToken.trim())
             .apply();
         return read(context);
     }
@@ -94,15 +109,19 @@ public final class ChatGptB1RunStore {
             p.getInt(K_EVIDENCE_SEQ, 0),
             p.getInt(K_REPORTED_SEQ, 0),
             p.getBoolean(K_PROJECT_BOUND, false),
-            p.getLong(K_PROJECT_BOUND_AT, 0L)
+            p.getLong(K_PROJECT_BOUND_AT, 0L),
+            p.getString(K_CUSTOM_PROMPT, ""),
+            p.getString(K_CUSTOM_EXPECTED_TOKEN, "")
         );
     }
 
     public static String expectedToken(Snapshot s) {
+        if (s.customExpectedToken != null && !s.customExpectedToken.isEmpty()) return s.customExpectedToken;
         return EXPECTED_PREFIX + s.cycle;
     }
 
     public static String prompt(Snapshot s) {
+        if (s.customPrompt != null && !s.customPrompt.isEmpty()) return s.customPrompt;
         return "Bài kiểm tra TigerIQ B1 chu kỳ " + s.cycle + "/" + s.targetCycles
             + ". Hãy ghép đúng bốn phần sau thành một chuỗi duy nhất và chỉ trả lời chuỗi kết quả, không thêm nội dung khác: "
             + "TIGERIQ_ + B1_ + OK_ + " + s.cycle;
@@ -281,6 +300,8 @@ public final class ChatGptB1RunStore {
         public final int reportedSeq;
         public final boolean projectBound;
         public final long projectBoundAt;
+        public final String customPrompt;
+        public final String customExpectedToken;
 
         Snapshot(
             String runId,
@@ -302,7 +323,9 @@ public final class ChatGptB1RunStore {
             int evidenceSeq,
             int reportedSeq,
             boolean projectBound,
-            long projectBoundAt
+            long projectBoundAt,
+            String customPrompt,
+            String customExpectedToken
         ) {
             this.runId = runId;
             this.state = state;
@@ -324,6 +347,8 @@ public final class ChatGptB1RunStore {
             this.reportedSeq = reportedSeq;
             this.projectBound = projectBound;
             this.projectBoundAt = projectBoundAt;
+            this.customPrompt = customPrompt;
+            this.customExpectedToken = customExpectedToken;
         }
 
         public boolean active() {
