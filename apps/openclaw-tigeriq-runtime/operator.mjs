@@ -291,23 +291,24 @@ function nullableCell(row, index) {
 export function parseTaskListCsv(text) {
   const tasks = [];
   for (const row of parseCsvRows(text)) {
-    if (row.length < 9) continue;
-    const rawName = String(row[1] ?? '').trim();
+    const compact = row.length >= 3 && String(row[0] ?? '').trim().startsWith('\\');
+    if (!compact && row.length < 9) continue;
+    const rawName = String(compact ? row[0] : row[1] ?? '').trim();
     const taskName = rawName.replace(/^\\+/, '');
     if (!taskName.startsWith('TigerIQ ')) continue;
 
     assertTigerIQTaskName(taskName);
-    const triggerParts = row
+    const triggerParts = compact ? [] : row
       .slice(17)
       .map((value) => String(value ?? '').trim())
       .filter(Boolean);
 
     tasks.push({
       taskName,
-      state: nullableCell(row, 3),
-      lastRun: nullableCell(row, 5),
-      lastResult: nullableCell(row, 6),
-      action: nullableCell(row, 8),
+      state: nullableCell(row, compact ? 2 : 3),
+      lastRun: compact ? null : nullableCell(row, 5),
+      lastResult: compact ? null : nullableCell(row, 6),
+      action: compact ? null : nullableCell(row, 8),
       trigger: triggerParts.length > 0 ? triggerParts.join(' | ') : null,
     });
   }
@@ -317,7 +318,7 @@ export function parseTaskListCsv(text) {
 async function listTigerIQTasks() {
   const result = await spawnBounded(
     'schtasks.exe',
-    ['/Query', '/FO', 'CSV', '/V', '/NH'],
+    ['/Query', '/FO', 'CSV', '/NH'],
     { timeoutSec: 30 },
   );
   if (result.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
