@@ -10,6 +10,7 @@ import {
   resolveOperatorPath,
   androidReleaseBuildFailureClass,
   assertTigerIQLive3150DeployRequest,
+  reconcileCancelledCoreUiJob,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -46,6 +47,76 @@ import {
   validatePaperclipLabEnvText,
   upgradeLegacyPaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+
+describe('bounded Core UI cancelled-ledger reconcile', () => {
+  const response=(body,status=200)=>({
+    ok:status>=200&&status<300,
+    status,
+    async json(){return body;},
+  });
+
+  it('rejects workers outside the Core UI review/research lane', async () => {
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV02'},{fetchImpl:async()=>response({})}))
+      .rejects.toThrow('TIGERIQ_CORE_UI_RECONCILE_WORKER_INVALID');
+  });
+
+  it('is a safe no-op when the worker has no active local UI job', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      calls.push({url:String(url),method:init.method||'GET'});
+      return response({ok:true,workerId:'NV03',active:null,latest:null});
+    };
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{fetchImpl})).resolves.toEqual({
+      status:'CORE_UI_RECONCILE_NO_ACTIVE_JOB',workerId:'NV03',clearedJobId:null,nextJobId:null
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({url:'http://127.0.0.1:8798/api/utility/workers/NV03/job/status',method:'GET'});
+  });
+
+  it('fails closed without mutating the local ledger when Core does not prove CANCELLED', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      const u=String(url),method=init.method||'GET';calls.push({url:u,method,body:init.body});
+      if(u.includes(':8798/api/utility/workers/NV03/job/status'))return response({ok:true,active:{jobId:'GH-3272',source:'CORE_UI',stage:'WORKING'}});
+      if(u.includes(':8795/api/ui-assignment?previousJobId=GH-3272'))return response({source:'CORE',authority:'CORE',previousJob:{jobId:'GH-3272',status:'RUNNING'}});
+      throw new Error('unexpected fetch '+u);
+    };
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{fetchImpl}))
+      .rejects.toThrow('TIGERIQ_CORE_UI_RECONCILE_SOURCE_NOT_CANCELLED');
+    expect(calls).toHaveLength(2);
+    expect(calls.some(call=>call.method==='POST')).toBe(false);
+  });
+
+  it('blocks exactly the stale local job only after Core proves the same job CANCELLED and returns the next assignment', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      const u=String(url),method=init.method||'GET';calls.push({url:u,method,body:init.body});
+      if(u.includes(':8798/api/utility/workers/NV03/job/status'))return response({ok:true,active:{jobId:'GH-3272',source:'CORE_UI',stage:'WORKING'}});
+      if(u.includes(':8795/api/ui-assignment?previousJobId=GH-3272'))return response({
+        source:'CORE',authority:'CORE',previousJob:{jobId:'GH-3272',status:'CANCELLED'},
+        nextJob:{jobId:'GH-3352-Rabc123abc123',workerId:'NV03',status:'READY',executable:true}
+      });
+      if(u==='http://127.0.0.1:8798/api/utility/workers/NV03/job'&&method==='POST'){
+        expect(JSON.parse(init.body)).toEqual({
+          jobId:'GH-3272',stage:'BLOCKED',blocker:'SOURCE_JOB_CANCELLED',
+          result:'Core UI source is terminal CANCELLED; stale local ledger released for next assignment'
+        });
+        return response({ok:true,job:{jobId:'GH-3272',stage:'BLOCKED'}});
+      }
+      if(u==='http://127.0.0.1:8795/api/ui-assignment'&&method==='GET')return response({
+        source:'CORE',authority:'CORE',
+        nextJobs:[{jobId:'GH-3352-Rabc123abc123',workerId:'NV03',status:'READY',executable:true}]
+      });
+      throw new Error('unexpected fetch '+u);
+    };
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{fetchImpl})).resolves.toEqual({
+      status:'CORE_UI_CANCELLED_LEDGER_RECONCILED',
+      workerId:'NV03',clearedJobId:'GH-3272',priorStatus:'CANCELLED',localStage:'BLOCKED',
+      nextJobId:'GH-3352-Rabc123abc123'
+    });
+    expect(calls.filter(call=>call.method==='POST')).toHaveLength(1);
+  });
+});
 
 describe('OpenClaw PC01 guarded local operator', () => {
   it('allows TigerIQ/OpenClaw work roots', () => {
