@@ -17,7 +17,7 @@ $KeyPasswordPath = Join-Path $SecretsDir 'key-password.txt'
 $FingerprintPath = Join-Path $SecretsDir 'certificate-sha256.txt'
 $AliasPath = Join-Path $SecretsDir 'key-alias.txt'
 
-foreach ($required in @($KeyStorePath,$StorePasswordPath,$KeyPasswordPath)) {
+foreach ($required in @($KeyStorePath,$StorePasswordPath,$KeyPasswordPath,$FingerprintPath)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
     throw 'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED: existing canonical signer material is incomplete; do not create a new key.'
   }
