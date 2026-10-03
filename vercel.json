@@ -1,10 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": {
-      "**": false,
-      "main": true
-    }
+    "deploymentEnabled": false
   },
   "cleanUrls": true,
   "trailingSlash": false,
@@ -76,6 +73,5 @@
         }
       ]
     }
-  ],
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- release/3414-one-shot.txt"
+  ]
 }
