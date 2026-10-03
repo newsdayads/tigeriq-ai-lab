@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.14.0-project-detector"
+        versionCode = 15
+        versionName = "0.15.0-project-click-hardening"
     }
 
     if (stableSigningEnabled) {
