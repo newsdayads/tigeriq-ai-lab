@@ -39,6 +39,7 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(core).toContain('tigeriq_mobile_evidence');
     expect(core).toContain("url.pathname==='/api/mobile/evidence'");
     expect(core).toContain('on conflict do nothing');
+    expect(core).toMatch(/if\(inserted\.rowCount>0\)\{\s*await event\('MOBILE_WORKER_EVIDENCE'/);
   });
 
   it('publishes versionCode 10 for the B1 pilot', () => {
