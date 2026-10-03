@@ -518,6 +518,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("Number(error?.status)>=400");
     expect(core).toContain("host==='openrouter.ai'?{reasoning:{enabled:false}}:{}");
     expect(core.split('reasoning:{enabled:false}').length-1).toBe(1);
+    expect(core).toContain("if(host==='api.groq.com'&&isManagerPrompt(prompt))requestBody.reasoning_format='hidden';");
+    expect(core.split("requestBody.reasoning_format='hidden'").length-1).toBe(1);
     expect(core).toContain('const rankedClaimCandidates=[decision.chosen,...(Array.isArray(decision.candidates)?decision.candidates:[])]');
     expect(core).toContain('.filter(item=>item?.resourceId&&item?.eligible!==false)');
     expect(core).toContain('.filter((item,index,all)=>all.findIndex(x=>x.resourceId===item.resourceId)===index)');
