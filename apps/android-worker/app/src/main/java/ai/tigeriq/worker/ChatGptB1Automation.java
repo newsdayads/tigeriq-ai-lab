@@ -261,9 +261,10 @@ public final class ChatGptB1Automation {
 
         AccessibilityNodeInfo current = source;
         for (int depth = 0; current != null && depth <= maxParents; depth++) {
-            if (current.isVisibleToUser() && current.isEnabled() && current.isClickable()
-                && boundedSubtreeContainsExactLabel(current, wanted, maxNodes)) {
-                return true;
+            if (current.isVisibleToUser() && current.isEnabled() && current.isClickable()) {
+                // Stop at the nearest clickable scope. Never skip a clicked control to match
+                // the required Project in a broader clickable ancestor.
+                return boundedSubtreeContainsExactLabel(current, wanted, maxNodes);
             }
             current = current.getParent();
         }
