@@ -552,11 +552,12 @@ async function buildAndroidWorkerStableRelease() {
 
 const ANDROID_V020_CI_ARTIFACT = Object.freeze({
   repo: 'newsdayads/tigeriq-ai-lab',
-  runId: '37110333387',
+  runId: '37119358164',
   artifactName: 'tigeriq-worker-unsigned-release-apk',
-  artifactId: '11269092955',
-  sourceHead: 'fb25369f483a48f818e6a885b248eb629f53cf95',
+  artifactId: '11273046069',
+  sourceHead: '8364e79ef5a03d5d95663e511c076f5be4f5003a',
   expectedUnsignedSha256: 'BDC32789297BB5304AE423476D8C4170C9D17C0B9AC2D7C5533DA42FBA82F598',
+  expectedApkSignerJarSha256: '00EF9948F843FE395D2440AE3EF41405B8040A6D5D46493BD1902AC0EE6DEAE7',
   expectedVersion: '0.20.0-update-lease-guard',
   expectedSignerSha256: '63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293',
 });
@@ -569,6 +570,7 @@ async function signAndroidWorkerV020CiArtifact() {
   const downloadDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\ci-artifact\\v0.20';
   const releaseDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.20.0-update-lease-guard';
   const unsignedApk = win.join(downloadDir, 'tigeriq-worker-unsigned-release.apk');
+  const apksignerJar = win.join(downloadDir, 'apksigner.jar');
   const outputApk = win.join(releaseDir, 'TIQ Worker v0.20.apk');
   const manifestPath = win.join(releaseDir, 'release-manifest.json');
 
@@ -614,12 +616,20 @@ async function signAndroidWorkerV020CiArtifact() {
   if (Number(extract.exitCode) !== 0) throw new Error('TIGERIQ_GH_ARTIFACT_ARCHIVE_INVALID');
 
   await realPathInsideRoots(unsignedApk);
+  await realPathInsideRoots(apksignerJar);
   const actualUnsignedSha256 = createHash('sha256')
     .update(await fs.readFile(unsignedApk))
     .digest('hex')
     .toUpperCase();
   if (actualUnsignedSha256 !== spec.expectedUnsignedSha256) {
     throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SHA256_MISMATCH');
+  }
+  const actualApkSignerJarSha256 = createHash('sha256')
+    .update(await fs.readFile(apksignerJar))
+    .digest('hex')
+    .toUpperCase();
+  if (actualApkSignerJarSha256 !== spec.expectedApkSignerJarSha256) {
+    throw new Error('TIGERIQ_ANDROID_APKSIGNER_JAR_SHA256_MISMATCH');
   }
 
   const signed = await spawnBounded(
@@ -631,11 +641,14 @@ async function signAndroidWorkerV020CiArtifact() {
       '-OutputApk',outputApk,
       '-ExpectedUnsignedSha256',spec.expectedUnsignedSha256,
       '-SecretsDir',secretsDir,
+      '-ApkSignerJar',apksignerJar,
+      '-ExpectedApkSignerJarSha256',spec.expectedApkSignerJarSha256,
+      '-PrealignedInput',
     ],
     {
       cwd: repoRoot,
       timeoutSec: 120,
-      extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME'],
+      extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME', 'JAVA_HOME'],
     },
   );
   if (signed.timedOut) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_TIMEOUT');
@@ -659,6 +672,9 @@ async function signAndroidWorkerV020CiArtifact() {
   if (receipt.plaintextSecretPrinted !== false || receipt.plaintextSecretWrittenToDisk !== false) {
     throw new Error('TIGERIQ_ANDROID_RELEASE_SECRET_OUTPUT_UNSAFE');
   }
+  if (receipt.apksignerMode !== 'portable-pinned-jar' || receipt.prealignedInput !== true) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_TOOL_MODE_MISMATCH');
+  }
   const signedSha256 = String(receipt.signedSha256 || '').replaceAll(':','').toUpperCase();
   if (!/^[0-9A-F]{64}$/.test(signedSha256)) throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNED_SHA256_INVALID');
 
@@ -671,6 +687,9 @@ async function signAndroidWorkerV020CiArtifact() {
     sourceArtifactId: spec.artifactId,
     sourceArtifactName: spec.artifactName,
     unsignedApkSha256: actualUnsignedSha256,
+    apksignerJarSha256: actualApkSignerJarSha256,
+    signerTool: 'portable-pinned-jar',
+    inputAlignment: 'ci-verified-prealigned',
     apk: win.basename(outputApk),
     apkSha256: signedSha256,
     certificateSha256: spec.expectedSignerSha256,
@@ -686,6 +705,9 @@ async function signAndroidWorkerV020CiArtifact() {
     manifest: manifestPath,
     apkSha256: signedSha256,
     unsignedApkSha256: actualUnsignedSha256,
+    apksignerJarSha256: actualApkSignerJarSha256,
+    signerTool: 'portable-pinned-jar',
+    inputAlignment: 'ci-verified-prealigned',
     certificateSha256: spec.expectedSignerSha256,
     sourceSha: spec.sourceHead,
     sourceWorkflowRunId: spec.runId,
