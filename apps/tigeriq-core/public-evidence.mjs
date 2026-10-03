@@ -5,6 +5,7 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'changedPaths',
   'updaterTaskTarget',
   'taskNames',
+  'releaseTaskNames',
 ]);
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
