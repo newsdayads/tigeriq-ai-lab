@@ -35,6 +35,20 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain('.Dispose()');
   });
 
+  it('uses a hash-pinned portable apksigner jar without weakening stdin secret transport', () => {
+    expect(helper).toContain('ApkSignerJar');
+    expect(helper).toContain('ExpectedApkSignerJarSha256');
+    expect(helper).toContain('APKSIGNER_JAR_SHA256_REQUIRED');
+    expect(helper).toContain('APKSIGNER_JAR_SHA256_MISMATCH');
+    expect(helper).toContain("Resolve-Tool $null @('java.exe', 'java')");
+    expect(helper).toContain("apksignerMode = 'portable-pinned-jar'");
+    expect(helper).toContain('[switch]$PrealignedInput');
+    expect(helper).toContain("if (-not $PrealignedInput)");
+    expect(helper).toContain("$signerInput = $unsigned");
+    expect(helper).toContain("'--ks-pass', 'stdin'");
+    expect(helper).toContain("'--key-pass', 'stdin'");
+  });
+
   it('never provisions or rotates signing identity', () => {
     expect(helper).not.toContain('genkeypair');
     expect(helper).not.toContain('New-RandomSecret');
