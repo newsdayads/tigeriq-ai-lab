@@ -168,53 +168,51 @@ body.drawer-open{overflow:hidden}
 @media(max-width:390px){.drawer{width:calc(100vw - 24px)}.summary-chip span{font-size:7.7px}.api-summary-grid b{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.focus-dot{animation:none!important}.drawer{transition:none!important}}
 
-/* #3150 Job Journey — Owner-first single-job visualization */
+/* #3231 Live Workflow Graph — real work items, PRs and gates */
 .job-journey{margin:0 0 10px}
-.journey-shell{border:1px solid #2a4d70;background:linear-gradient(135deg,#0e2036,#0a1727 55%,#101b31);border-radius:16px;padding:12px;box-shadow:0 12px 34px rgba(0,0,0,.16)}
-.journey-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:9px}
-.journey-kicker{font-size:9px;color:#8fc8ff;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
-.journey-title{font-size:15px;line-height:1.35;font-weight:860;margin-top:4px;color:#f4f8fc;overflow-wrap:anywhere}
-.journey-meta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.journey-badge{border:1px solid #365978;background:#10233a;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;color:#bad2e8;white-space:nowrap}
-.journey-current{border:1px solid #1f405e;background:#091827;border-radius:11px;padding:8px 9px;margin-bottom:10px;font-size:10.5px;line-height:1.45;color:#a9bdd1}
-.journey-current b{color:#e6f1fb}
-.journey-progress{display:flex;align-items:center;gap:8px;margin-top:7px}
-.journey-progress-track{height:6px;flex:1;background:#16283b;border-radius:999px;overflow:hidden}
-.journey-progress-fill{height:100%;background:linear-gradient(90deg,#46d48f,#58d8c6);border-radius:999px}
-.journey-progress-text{font-size:9px;font-weight:900;color:#91eee0;min-width:30px;text-align:right}
-.journey-rail{display:grid;grid-template-columns:repeat(6,minmax(122px,1fr));gap:8px;overflow-x:auto;padding:1px 1px 3px;scrollbar-width:thin;scrollbar-color:#284663 transparent}
-.journey-stage{position:relative;border:1px solid #263f58;background:#0b1726;border-radius:12px;padding:9px 9px 8px;min-height:94px;min-width:122px;transition:.18s ease}
-.journey-stage::after{content:"";position:absolute;top:50%;right:-9px;width:9px;height:2px;background:#284663;z-index:2}
-.journey-stage:last-child::after{display:none}
-.journey-step{font-size:8.5px;color:#6f879f;font-weight:900;text-transform:uppercase;letter-spacing:.05em}
-.journey-stage strong{display:block;font-size:10.5px;line-height:1.25;margin-top:5px;color:#c9d7e5}
-.journey-stage small{display:block;font-size:9.5px;line-height:1.35;margin-top:5px;color:#7f96ad}
-.journey-stage.is-done{border-color:#246b61;background:#0d2b29}
-.journey-stage.is-done .journey-step,.journey-stage.is-done strong{color:#91eee0}
-.journey-stage.is-current{border-color:#377958;background:#103425;box-shadow:0 0 0 1px rgba(70,212,143,.12),0 0 20px rgba(70,212,143,.08)}
-.journey-stage.is-current .journey-step,.journey-stage.is-current strong{color:#9af0bc}
-.journey-stage.is-blocked{border-color:#81404a;background:#351c23;box-shadow:0 0 0 1px rgba(255,116,126,.08)}
-.journey-stage.is-blocked .journey-step,.journey-stage.is-blocked strong{color:#ffb8bf}
-.journey-stage.is-owner{border-color:#8a4651;background:#341d24}
-.journey-stage.is-owner .journey-step,.journey-stage.is-owner strong{color:#ffc0c7}
-.journey-workers{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
-.journey-worker{border:1px solid #31506d;background:#0b2034;color:#b9d7ef;border-radius:999px;padding:3px 6px;font-size:8.5px;font-weight:850}
-.journey-parallel{font-size:8px;color:#8fa5bc;margin-top:5px}
-.journey-blocker{margin-top:8px;border:1px solid #713943;background:#301a20;border-radius:9px;padding:7px 8px;color:#ffafb7;font-size:9.5px;line-height:1.4}
-.journey-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
-.journey-shell[role="button"]{cursor:pointer}
-.journey-shell[role="button"]:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+.workflow-shell{position:relative;overflow:hidden;border:1px solid #2b5277;background:radial-gradient(circle at 82% 0,rgba(88,166,255,.12),transparent 34%),linear-gradient(145deg,#0e2138,#091725 58%,#101d31);border-radius:18px;padding:12px;box-shadow:0 14px 38px rgba(0,0,0,.2)}
+.workflow-shell::before{content:"";position:absolute;inset:-60% -25%;pointer-events:none;background:linear-gradient(115deg,transparent 42%,rgba(101,215,232,.045) 48%,rgba(88,166,255,.08) 50%,rgba(101,215,232,.045) 52%,transparent 58%);transform:translateX(-28%);animation:workflow-ambient 8s ease-in-out infinite}
+.workflow-head,.workflow-now,.workflow-canvas{position:relative;z-index:2}
+.workflow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+.workflow-kicker{font-size:9px;color:#83c8ff;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.workflow-title{font-size:16px;line-height:1.32;font-weight:880;margin-top:4px;color:#f4f8fc;overflow-wrap:anywhere}
+.workflow-meta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.workflow-badge{border:1px solid #365b7d;background:#10253d;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;color:#bdd7ef;white-space:nowrap}
+.workflow-now{display:grid;grid-template-columns:1fr auto;gap:7px 10px;align-items:center;border:1px solid #21435f;background:rgba(5,18,31,.78);border-radius:11px;padding:8px 9px;margin-bottom:10px;font-size:10.5px;line-height:1.42;color:#a9bdd1}
+.workflow-now b{color:#e6f1fb}.workflow-now .workflow-next{grid-column:1/-1;color:#8fa9c2}
+.workflow-progress{display:flex;align-items:center;gap:7px;min-width:112px}.workflow-progress-track{height:5px;flex:1;background:#172b3f;border-radius:999px;overflow:hidden}.workflow-progress-fill{height:100%;background:linear-gradient(90deg,#46d48f,#58d8c6);border-radius:999px}.workflow-progress-text{font-size:9px;font-weight:900;color:#91eee0}
+.workflow-canvas{position:relative;padding:3px 1px 2px}
+.workflow-wires{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:visible}
+.workflow-wire{fill:none;stroke:#31516e;stroke-width:2;vector-effect:non-scaling-stroke;opacity:.74}
+.workflow-wire.is-done{stroke:#2e8a78;opacity:.78}.workflow-wire.is-blocked{stroke:#a14a56;opacity:.9}.workflow-wire.is-working{stroke:#55dda2;stroke-dasharray:7 9;animation:workflow-wire-flow 1.05s linear infinite;filter:drop-shadow(0 0 3px rgba(70,212,143,.42))}
+.workflow-wire.is-review,.workflow-wire.is-verify{stroke:#c4974e;stroke-dasharray:3 8;opacity:.78}
+.workflow-layer{position:relative;z-index:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin:0 0 22px}
+.workflow-layer:last-child{margin-bottom:0}
+.workflow-node{position:relative;display:block;min-width:0;border:1px solid #29445e;background:linear-gradient(180deg,#0d1c2e,#091625);border-radius:13px;padding:9px 10px;text-align:left;box-shadow:0 8px 20px rgba(0,0,0,.13);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;color:inherit;text-decoration:none}
+button.workflow-node{width:100%;font:inherit;cursor:pointer}
+.workflow-node:hover{transform:translateY(-1px);border-color:#3e668a}.workflow-node:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+.workflow-node.is-root{border-color:#38678f;background:linear-gradient(180deg,#112a46,#0d1d31)}
+.workflow-node.is-working{border-color:#348160;background:#0d3025;box-shadow:0 0 0 1px rgba(70,212,143,.1),0 0 24px rgba(70,212,143,.08)}
+.workflow-node.is-working::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(70,212,143,.42);border-radius:15px;animation:workflow-node-pulse 1.8s ease-out infinite;pointer-events:none}
+.workflow-node.is-review,.workflow-node.is-verify{border-color:#765b2e;background:#302617;animation:workflow-review-breathe 3s ease-in-out infinite}
+.workflow-node.is-blocked{border-color:#82424c;background:#321b22}.workflow-node.is-waiting,.workflow-node.is-queued{border-color:#365b7e;background:#0d2237}.workflow-node.is-done{border-color:#287268;background:#0d2d2a}
+.workflow-node.is-unknown,.workflow-node.is-open{border-color:#3b5067;background:#0c1928}
+.workflow-node-top{display:flex;align-items:center;gap:6px;min-width:0}.workflow-node-type{font-size:8.5px;color:#7fa7ca;font-weight:900;letter-spacing:.055em;text-transform:uppercase}.workflow-node-id{font-size:8.5px;color:#6f8ba5;font-weight:850;margin-left:auto}
+.workflow-node-title{font-size:11.5px;line-height:1.3;font-weight:850;margin-top:5px;color:#e9f1f9;overflow-wrap:anywhere}.workflow-node-detail{font-size:9.7px;line-height:1.37;margin-top:5px;color:#8fa5bc;overflow-wrap:anywhere}
+.workflow-node-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px}.workflow-worker,.workflow-state{border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:900;color:#b8d9f2}.workflow-state{margin-left:auto}.workflow-node.is-working .workflow-state{border-color:#34785b;color:#9af0bc;background:#103326}.workflow-node.is-review .workflow-state,.workflow-node.is-verify .workflow-state{border-color:#735a30;color:#ffd38d;background:#312617}.workflow-node.is-blocked .workflow-state{border-color:#7e3e49;color:#ffb8bf;background:#341b22}.workflow-node.is-done .workflow-state{border-color:#286d65;color:#94ecdf;background:#0f302d}
+.workflow-blocker{margin-top:9px;border:1px solid #743a44;background:#30191f;border-radius:10px;padding:7px 8px;color:#ffb0b8;font-size:9.5px;line-height:1.4}.workflow-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
+.workflow-parallel{font-size:8.5px;color:#7890a8;margin:-13px 0 10px;text-align:center;letter-spacing:.02em}
+@keyframes workflow-ambient{0%,100%{transform:translateX(-28%)}50%{transform:translateX(28%)}}
+@keyframes workflow-wire-flow{to{stroke-dashoffset:-32}}
+@keyframes workflow-node-pulse{0%{opacity:.7;transform:scale(1)}75%,100%{opacity:0;transform:scale(1.018)}}
+@keyframes workflow-review-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(239,184,92,.12),0 0 16px rgba(239,184,92,.07)}}
 @media(max-width:700px){
-  .journey-shell{padding:10px}.journey-head{display:block}.journey-meta{justify-content:flex-start;margin-top:7px}
-  .journey-rail{grid-template-columns:1fr;overflow:visible;gap:7px}
-  .journey-stage{min-width:0;min-height:0;padding:8px 10px 8px 34px}
-  .journey-stage::after{top:auto;right:auto;left:16px;bottom:-8px;width:2px;height:8px}
-  .journey-stage:last-child::after{display:none}
-  .journey-step{position:absolute;left:9px;top:9px;width:18px;height:18px;border-radius:6px;background:#14283c;display:flex;align-items:center;justify-content:center;font-size:8px}
-  .journey-stage strong{margin-top:0}.journey-stage small{margin-top:3px}
-  .journey-workers{margin-top:5px}
+  .workflow-shell{padding:10px}.workflow-head{display:block}.workflow-meta{justify-content:flex-start;margin-top:7px}.workflow-title{font-size:15px}
+  .workflow-now{grid-template-columns:1fr}.workflow-progress{min-width:0}.workflow-layer{grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:7px;margin-bottom:19px}
+  .workflow-node{padding:8px 9px}.workflow-node-title{font-size:10.8px}.workflow-node-detail{font-size:9.3px}
 }
-@media(prefers-reduced-motion:reduce){.journey-stage{transition:none!important}}
+@media(max-width:360px){.workflow-layer{grid-template-columns:1fr}.workflow-parallel{display:none}}
+@media(prefers-reduced-motion:reduce){.workflow-shell::before,.workflow-wire,.workflow-node,.workflow-node::after{animation:none!important;transition:none!important}}
 
 </style>
 </head>
@@ -241,7 +239,7 @@ body.drawer-open{overflow:hidden}
     <div class="summary-chip done"><span>Đã xong</span><b id="sumDone">0</b></div>
   </div>
 </section>
-<section id="jobJourney" class="job-journey" aria-label="Luồng công việc trọng tâm"></section>
+<section id="jobJourney" class="job-journey" aria-label="Live Workflow Graph của công việc trọng tâm"></section>
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
 <section aria-labelledby="workListHeading">
@@ -393,93 +391,247 @@ function renderOwnerSummary(){
     : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
 }
 
-function journeyWorkers(row){
-  const out=[];
-  const add=value=>{
-    if(!value)return;
-    if(Array.isArray(value)){value.forEach(add);return}
-    if(typeof value==='object'){add(value.employeeId||value.workerId||value.id||value.name);return}
-    const text=String(value).trim().toUpperCase();
-    if(text&&text!=='OWNER'&&!out.includes(text))out.push(text);
+let workflowGraphState=null;
+let workflowEdgeFrame=0;
+function workflowRows(){
+  const merged=new Map();
+  const add=row=>{
+    const number=Number(row?.number);
+    if(!number||row?.workKind==='SYSTEM'||row?.workKind==='GOAL')return;
+    const prev=merged.get(number)||{};
+    merged.set(number,{...prev,...row,
+      parentNumber:row?.parentNumber??prev?.parentNumber??null,
+      sourceNumber:row?.sourceNumber??prev?.sourceNumber??null,
+      targetPrNumber:row?.targetPrNumber??prev?.targetPrNumber??null,
+      sourcePrNumber:row?.sourcePrNumber??prev?.sourcePrNumber??null,
+      dependsOn:Array.isArray(row?.dependsOn)?row.dependsOn:(prev?.dependsOn||[]),
+      supersedesNumbers:Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:(prev?.supersedesNumbers||[]),
+      capability:row?.capability??prev?.capability??null,
+      reviewOnly:row?.reviewOnly??prev?.reviewOnly??false
+    });
   };
-  [row?.employeeId,row?.targetWorker,row?.workerId,row?.reviewerId,row?.judgeId,row?.assignedEmployeeIds,row?.participants,row?.workers,row?.reviewers].forEach(add);
-  const fallback=workerFrom(row);
-  if(!out.length&&fallback&&!['CHƯA GÁN','CHỜ ANH SƠN','ĐÃ XONG KỸ THUẬT','OWNER'].includes(fallback))add(fallback);
-  return out.slice(0,6);
+  (snapshot?.openWork||[]).forEach(add);
+  (snapshot?.recentWork||[]).forEach(add);
+  (snapshot?.activeWork||[]).forEach(add);
+  return [...merged.values()];
 }
-function journeyFocusRow(){
-  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh)return null;
-  const all=[...(snapshot?.activeWork||[]),...(snapshot?.openWork||[])];
-  const unique=new Map();
-  for(const row of all){
-    if(!Number(row?.number)||row?.workKind==='SYSTEM'||row?.workKind==='GOAL')continue;
-    if(!unique.has(Number(row.number)))unique.set(Number(row.number),row);
-  }
+function workflowFocusSeed(rows){
+  const open=rows.filter(row=>workStatus(row)!=='DONE');
   const rank={WORKING:0,REVIEW:1,VERIFY:2,BLOCKED:3,OWNER_GATE:4,QUEUED:5,WAITING:6,OPEN:7,UNKNOWN:8,DONE:9};
-  return [...unique.values()].sort((a,b)=>(rank[workStatus(a)]??8)-(rank[workStatus(b)]??8)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
+  return open.sort((a,b)=>(rank[workStatus(a)]??8)-(rank[workStatus(b)]??8)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
 }
-function journeyStageState(status,index,assigned){
-  if(status==='DONE')return 'is-done';
-  if(index===0)return 'is-done';
-  if(index===1)return assigned?'is-done':'is-current';
-  if(index===2){
-    if(['REVIEW','VERIFY','OWNER_GATE'].includes(status))return 'is-done';
-    if(status==='BLOCKED')return 'is-blocked';
-    if(status==='WORKING')return 'is-current';
-    return assigned?'is-current':'';
+function workflowResolveRoot(seed,rows){
+  if(!seed)return null;
+  const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
+  let current=seed;
+  const seen=new Set([Number(seed.number)]);
+  for(let depth=0;depth<6;depth++){
+    const parent=Number(current?.parentNumber);
+    if(!parent||seen.has(parent))break;
+    const parentRow=byNumber.get(parent);
+    if(!parentRow||parentRow?.workKind!=='WORK'||workPriority(parentRow)==='P5')break;
+    seen.add(parent);current=parentRow;
   }
-  if(index===3){
-    if(['VERIFY','OWNER_GATE'].includes(status))return 'is-done';
-    if(status==='REVIEW')return 'is-current';
-    return '';
+  return current;
+}
+function workflowCluster(root,rows){
+  if(!root)return [];
+  const byParent=new Map();
+  for(const row of rows){
+    const parent=Number(row?.parentNumber);
+    if(!parent)continue;
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(row);
   }
-  if(index===4){
-    if(status==='OWNER_GATE')return 'is-owner';
-    if(status==='VERIFY')return 'is-current';
-    return '';
+  const selected=[];const seen=new Set();const queue=[root];
+  while(queue.length&&selected.length<10){
+    const row=queue.shift();const n=Number(row?.number);
+    if(!n||seen.has(n))continue;
+    seen.add(n);selected.push(row);
+    const children=(byParent.get(n)||[]).sort((a,b)=>statusRank(workStatus(a))-statusRank(workStatus(b))||Number(a.number)-Number(b.number));
+    children.forEach(child=>{if(selected.length+queue.length<12)queue.push(child)});
   }
+  const superseded=new Set(selected.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
+  return selected.filter(row=>Number(row.number)===Number(root.number)||!superseded.has(Number(row.number)));
+}
+function workflowNodeState(status){
+  const value=workStatus({status});
+  return String(value||'UNKNOWN').toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+}
+function workflowIssueType(row,isRoot=false){
+  if(isRoot)return 'JOB GỐC';
+  const cap=String(row?.capability||'').toLowerCase();
+  if(row?.reviewOnly||cap==='review')return 'RÀ SOÁT';
+  if(cap==='coding')return 'THỰC THI';
+  if(cap==='research'||cap==='deep_research')return 'NGHIÊN CỨU';
+  if(cap==='pc_operator')return 'PC01';
+  return 'CÔNG VIỆC';
+}
+function workflowChecksState(checks){
+  if(!checks)return 'UNKNOWN';
+  if(Number(checks.failed)>0||String(checks.state||'').toUpperCase()==='LỖI')return 'BLOCKED';
+  if(Number(checks.active)>0)return 'WORKING';
+  if(String(checks.state||'').toUpperCase()==='ĐẠT'&&Number(checks.total)>0)return 'DONE';
+  return 'WAITING';
+}
+function buildWorkflowGraph(){
+  const rows=workflowRows();
+  const seed=workflowFocusSeed(rows);
+  const root=workflowResolveRoot(seed,rows);
+  if(!root)return null;
+  const cluster=workflowCluster(root,rows);
+  const rowByNumber=new Map(cluster.map(row=>[Number(row.number),row]));
+  const nodes=[];const edges=[];const nodeIds=new Set();
+  const addNode=node=>{if(!nodeIds.has(node.id)){nodeIds.add(node.id);nodes.push(node)}};
+  const addEdge=(from,to,state='OPEN',kind='flow')=>{if(from&&to&&from!==to)edges.push({from,to,state,kind})};
+  const layers=new Map();
+  const setLayer=(id,layer)=>layers.set(id,Math.max(Number(layers.get(id)||0),Math.max(0,Number(layer)||0)));
+  const rootId='issue-'+Number(root.number);
+  addNode({id:rootId,type:'issue',row:root,state:workStatus(root),title:displayTitle(root.title),label:workflowIssueType(root,true),url:root.url});
+  setLayer(rootId,0);
+
+  const depth=new Map([[Number(root.number),0]]);
+  let changed=true;
+  for(let round=0;round<8&&changed;round++){
+    changed=false;
+    for(const row of cluster){
+      const n=Number(row.number),p=Number(row.parentNumber);
+      if(n===Number(root.number)||!p||!depth.has(p)||depth.has(n))continue;
+      depth.set(n,depth.get(p)+1);changed=true;
+    }
+  }
+
+  for(const row of cluster){
+    const n=Number(row.number),id='issue-'+n,isRoot=n===Number(root.number);
+    if(!isRoot){
+      addNode({id,type:'issue',row,state:workStatus(row),title:displayTitle(row.title),label:workflowIssueType(row),url:row.url});
+      setLayer(id,Math.max(1,depth.get(n)||1));
+    }
+    const pr=Number(row?.prNumber||row?.targetPrNumber||row?.sourcePrNumber);
+    if(pr){
+      const prId='pr-'+pr;
+      const prUrl=row?.prUrl||('https://github.com/newsdayads/tigeriq-ai-lab/pull/'+pr);
+      addNode({id:prId,type:'pr',state:['WORKING','REVIEW','VERIFY'].includes(workStatus(row))?'REVIEW':'OPEN',title:'PR #'+pr,label:'MÃ NGUỒN',detail:row?.checks?.state?('Kiểm tra: '+row.checks.state):'Pull Request thật',url:prUrl,sourceRow:row});
+      const baseLayer=Math.max(1,(depth.get(n)||0)+1);
+      setLayer(prId,baseLayer);
+      if(Number(row?.targetPrNumber)===pr||Number(row?.sourcePrNumber)===pr){
+        addEdge(prId,id,workStatus(row),'target-pr');setLayer(id,baseLayer+1);
+      }else{
+        addEdge(id,prId,workStatus(row),'produces-pr');
+      }
+      if(row?.checks){
+        const checkId='checks-'+pr;
+        const checkState=workflowChecksState(row.checks);
+        const passed=Number(row.checks.passed),total=Number(row.checks.total),active=Number(row.checks.active),failed=Number(row.checks.failed);
+        let detail=String(row.checks.state||'Đang kiểm tra');
+        if(Number.isFinite(passed)&&Number.isFinite(total)&&total>0)detail=passed+'/'+total+' kiểm tra đạt';
+        if(active>0)detail=active+' kiểm tra đang chạy';
+        if(failed>0)detail=failed+' kiểm tra lỗi';
+        addNode({id:checkId,type:'checks',state:checkState,title:detail,label:'KIỂM TRA',detail:'CI / cổng kỹ thuật',url:prUrl,sourceRow:row});
+        setLayer(checkId,baseLayer+1);addEdge(prId,checkId,checkState,'checks');
+      }
+    }
+  }
+
+  for(const row of cluster){
+    const n=Number(row.number),id='issue-'+n,p=Number(row.parentNumber);
+    if(n===Number(root.number))continue;
+    const targetPr=Number(row?.targetPrNumber||row?.sourcePrNumber);
+    if(targetPr&&nodeIds.has('pr-'+targetPr))continue;
+    if(p&&rowByNumber.has(p)){
+      const parentId='issue-'+p;addEdge(parentId,id,workStatus(row),'parent');
+      setLayer(id,Math.max(Number(layers.get(id)||0),Number(layers.get(parentId)||0)+1));
+    }
+    for(const dep of (row?.dependsOn||[]).map(Number)){
+      const depId='issue-'+dep;
+      if(nodeIds.has(depId))addEdge(depId,id,workStatus(row),'dependency');
+    }
+  }
+
+  const maxLayer=Math.max(0,...layers.values());
+  const grouped=Array.from({length:maxLayer+1},()=>[]);
+  for(const node of nodes)grouped[Math.min(maxLayer,Number(layers.get(node.id)||0))].push(node);
+  grouped.forEach(layer=>layer.sort((a,b)=>{
+    const order={issue:0,pr:1,checks:2};
+    return (order[a.type]??9)-(order[b.type]??9)||Number(a?.row?.number||0)-Number(b?.row?.number||0);
+  }));
+  return {root,focus:seed,nodes,edges,layers:grouped};
+}
+function workflowNodeHtml(node){
+  const status=String(node.state||'UNKNOWN').toUpperCase();
+  const cls=workflowNodeState(status);
+  const row=node.row||node.sourceRow||null;
+  const detail=node.detail||row?.currentStep||row?.latestCompletedStep||stateLabel[status]||status;
+  const worker=row?workerFrom(row):'';
+  const idText=node.type==='issue'&&row?'#'+Number(row.number):node.type==='pr'?node.title:'';
+  const footWorker=worker&&!['CHƯA GÁN','OWNER'].includes(worker)?'<span class="workflow-worker">'+esc(worker)+'</span>':'';
+  const stateText=stateLabel[status]||status;
+  const inner='<div class="workflow-node-top"><span class="workflow-node-type">'+esc(node.label)+'</span><span class="workflow-node-id">'+esc(idText)+'</span></div>'
+    +'<div class="workflow-node-title">'+esc(node.title)+'</div>'
+    +'<div class="workflow-node-detail">'+esc(detail||'—')+'</div>'
+    +'<div class="workflow-node-foot">'+footWorker+'<span class="workflow-state">'+esc(stateText)+'</span></div>';
+  const className='workflow-node is-'+cls+(node.id==='issue-'+Number(workflowGraphState?.root?.number)?' is-root':'');
+  if(node.type==='issue'&&row)return '<button type="button" class="'+className+'" data-workflow-node="'+esc(node.id)+'" data-row-number="'+Number(row.number)+'">'+inner+'</button>';
+  return '<a class="'+className+'" data-workflow-node="'+esc(node.id)+'" href="'+esc(node.url||'#')+'" target="_blank" rel="noopener noreferrer">'+inner+'</a>';
+}
+function workflowEdgeClass(edge){
+  const s=String(edge.state||'').toUpperCase();
+  if(s==='DONE')return 'is-done';
+  if(s==='BLOCKED')return 'is-blocked';
+  if(s==='WORKING')return 'is-working';
+  if(s==='REVIEW')return 'is-review';
+  if(s==='VERIFY')return 'is-verify';
   return '';
 }
-function renderJobJourney(){
-  const el=$('jobJourney');
-  if(!el)return;
-  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){el.innerHTML='<div class="journey-empty"><b>Luồng job trọng tâm</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.</div>';return}
-  const row=journeyFocusRow();
-  if(!row){el.innerHTML='<div class="journey-empty"><b>Luồng job trọng tâm</b><br>Hiện chưa có công việc mở đủ dữ liệu để hiển thị.</div>';return}
-  const status=workStatus(row),label=stateLabel[status]||status;
-  const workers=journeyWorkers(row),assigned=workers.length>0||!['CHƯA GÁN','OWNER'].includes(workerFrom(row));
-  const workerMarkup=workers.length?'<div class="journey-workers">'+workers.map(worker=>'<span class="journey-worker">'+esc(worker)+'</span>').join('')+'</div>':'';
-  const parallel=workers.length>1?'<div class="journey-parallel">Đang có '+workers.length+' nhân sự tham gia / có thể chạy song song</div>':'';
-  const stages=[
-    ['01','Mục tiêu',displayTitle(row.title)],
-    ['02','Phân việc',assigned?'Đã xác định nhân sự':'Chưa xác định nhân sự'],
-    ['03','Thực thi',status==='WORKING'?(row.currentStep||'Đang thực thi'):(['BLOCKED','WAITING','QUEUED','OPEN','UNKNOWN'].includes(status)?(row.currentStep||label):'Đã qua bước thực thi')],
-    ['04','Rà soát',status==='REVIEW'?(row.currentStep||'Đang rà soát'):status==='DONE'||['VERIFY','OWNER_GATE'].includes(status)?'Đã qua rà soát':'Chờ kết quả thực thi'],
-    ['05','Xác minh',status==='OWNER_GATE'?'Chờ anh Sơn duyệt':status==='VERIFY'?(row.currentStep||'Đang xác minh'):status==='DONE'?'Đã xác minh':'Chờ rà soát'],
-    ['06','Hoàn tất',status==='DONE'?'Đã hoàn tất có bằng chứng':'Chưa hoàn tất']
-  ];
-  const stageMarkup=stages.map((stage,index)=>{
-    const stageState=journeyStageState(status,index,assigned);
-    const workerPart=index===2?workerMarkup+parallel:'';
-    return '<div class="journey-stage '+stageState+'"><span class="journey-step">'+stage[0]+'</span><strong>'+esc(stage[1])+'</strong><small>'+esc(stage[2])+'</small>'+workerPart+'</div>';
+function drawWorkflowEdges(){
+  const canvas=document.querySelector('.workflow-canvas'),svg=document.querySelector('.workflow-wires');
+  if(!canvas||!svg||!workflowGraphState)return;
+  const canvasRect=canvas.getBoundingClientRect(),width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.scrollHeight);
+  svg.setAttribute('viewBox','0 0 '+width+' '+height);
+  svg.setAttribute('width',width);svg.setAttribute('height',height);
+  svg.innerHTML=workflowGraphState.edges.map(edge=>{
+    const from=canvas.querySelector('[data-workflow-node="'+edge.from+'"]');
+    const to=canvas.querySelector('[data-workflow-node="'+edge.to+'"]');
+    if(!from||!to)return '';
+    const a=from.getBoundingClientRect(),b=to.getBoundingClientRect();
+    const sx=a.left-canvasRect.left+a.width/2,sy=a.bottom-canvasRect.top;
+    const ex=b.left-canvasRect.left+b.width/2,ey=b.top-canvasRect.top;
+    const mid=sy+(ey-sy)*.5;
+    return '<path class="workflow-wire '+workflowEdgeClass(edge)+'" d="M '+sx+' '+sy+' C '+sx+' '+mid+', '+ex+' '+mid+', '+ex+' '+ey+'"></path>';
   }).join('');
-  const blocker=effectiveBlocker(row);
-  const {pct,verified}=verifiedProgress(row);
-  const progress=verified?'<div class="journey-progress"><div class="journey-progress-track"><div class="journey-progress-fill" style="width:'+pct+'%"></div></div><span class="journey-progress-text">'+pct+'%</span></div>':'';
-  el.innerHTML='<article class="journey-shell" role="button" tabindex="0" aria-label="Mở chi tiết job #'+esc(row.number)+'">'
-    +'<div class="journey-head"><div><div class="journey-kicker">JOB TRỌNG TÂM · #'+esc(row.number)+'</div><div class="journey-title">'+esc(displayTitle(row.title))+'</div></div>'
-    +'<div class="journey-meta"><span class="journey-badge">'+esc(workPriority(row))+'</span><span class="journey-badge">'+esc(label)+'</span></div></div>'
-    +'<div class="journey-current"><b>Hiện tại:</b> '+esc(row.currentStep||label)+' · <b>Bước tới:</b> '+esc(shortNext(row))+progress+'</div>'
-    +'<div class="journey-rail">'+stageMarkup+'</div>'
-    +(blocker?'<div class="journey-blocker"><b>Bị chặn:</b> '+esc(blocker)+'</div>':'')
+}
+function scheduleWorkflowEdges(){
+  cancelAnimationFrame(workflowEdgeFrame);
+  workflowEdgeFrame=requestAnimationFrame(drawWorkflowEdges);
+}
+window.addEventListener('resize',scheduleWorkflowEdges,{passive:true});
+function renderJobJourney(){
+  const el=$('jobJourney');if(!el)return;
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!fresh){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng graph để tránh hiển thị sai.</div>';return}
+  const graph=buildWorkflowGraph();
+  if(!graph){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Hiện chưa có công việc thật đủ dữ liệu để hiển thị.</div>';return}
+  workflowGraphState=graph;
+  const root=graph.root,focus=graph.focus||root,status=workStatus(focus),label=stateLabel[status]||status;
+  const {pct,verified}=verifiedProgress(focus);
+  const progress=verified?'<div class="workflow-progress"><div class="workflow-progress-track"><div class="workflow-progress-fill" style="width:'+pct+'%"></div></div><span class="workflow-progress-text">'+pct+'%</span></div>':'';
+  const parallel=graph.layers.some(layer=>layer.length>1)?'<div class="workflow-parallel">Các nhánh cùng hàng là công việc thật đang đi song song / cùng chờ tại một mốc.</div>':'';
+  const layers=graph.layers.map(layer=>'<div class="workflow-layer">'+layer.map(workflowNodeHtml).join('')+'</div>').join('');
+  const blocker=effectiveBlocker(focus);
+  el.innerHTML='<article class="workflow-shell">'
+    +'<div class="workflow-head"><div><div class="workflow-kicker">LIVE WORKFLOW · #'+Number(root.number)+'</div><div class="workflow-title">'+esc(displayTitle(root.title))+'</div></div>'
+    +'<div class="workflow-meta"><span class="workflow-badge">'+esc(workPriority(root))+'</span><span class="workflow-badge">'+graph.nodes.length+' node thật</span></div></div>'
+    +'<div class="workflow-now"><div><b>Đang ở:</b> '+esc(focus?.currentStep||label)+'</div>'+progress+'<div class="workflow-next"><b>Bước tới:</b> '+esc(shortNext(focus))+'</div></div>'
+    +'<div class="workflow-canvas"><svg class="workflow-wires" aria-hidden="true"></svg>'+layers+'</div>'
+    +parallel+(blocker?'<div class="workflow-blocker"><b>Bị chặn:</b> '+esc(blocker)+'</div>':'')
     +'</article>';
-  const shell=el.querySelector('.journey-shell');
-  if(shell){
-    shell.addEventListener('click',()=>openDrawer(row,shell));
-    shell.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,shell)}});
-  }
+  el.querySelectorAll('[data-row-number]').forEach(node=>{
+    const rowNumber=Number(node.getAttribute('data-row-number'));
+    const row=workflowRows().find(item=>Number(item.number)===rowNumber);
+    if(!row)return;
+    node.addEventListener('click',()=>openDrawer(row,node));
+  });
+  scheduleWorkflowEdges();
 }
 
 function renderNowRunning(){
