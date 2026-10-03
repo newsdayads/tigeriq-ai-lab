@@ -24,6 +24,13 @@ describe('TigerIQ Live work-package hierarchy v2 #3374', () => {
     expect(rootHtml).toContain('Rà soát/evidence đã gom:');
   });
 
+  it('walks through review-only wrappers instead of producing empty packages', () => {
+    expect(rootHtml).toContain('function packagePrimaryChildren(parentNumber,rows)');
+    expect(rootHtml).toContain('if(packageIsReviewEvidence(child)){visit(n,depth+1);continue}');
+    expect(rootHtml).toContain('const streamRoots=packagePrimaryChildren(Number(root.number),descendants)');
+    expect(rootHtml).toContain('const taskRoots=packagePrimaryChildren(Number(streamRoot.number),rows)');
+  });
+
   it('chooses an operational descendant focus instead of package root when possible', () => {
     expect(rootHtml).toContain('function packageOperationalFocus(rows)');
     expect(rootHtml).toContain('const descendants=primary.filter(row=>Number(row.parentNumber))');

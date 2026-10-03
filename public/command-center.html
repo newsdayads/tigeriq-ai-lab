@@ -506,6 +506,28 @@ function packageArtifactsFromRows(rows){
   }
   return out.slice(0,3);
 }
+function packagePrimaryChildren(parentNumber,rows){
+  const byParent=new Map();
+  for(const row of rows){
+    const parent=Number(row?.parentNumber);
+    if(!parent)continue;
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(row);
+  }
+  const out=[],seen=new Set();
+  const visit=(parent,depth=0)=>{
+    if(depth>8)return;
+    for(const child of (byParent.get(Number(parent))||[])){
+      const n=Number(child?.number);
+      if(!n||seen.has(n))continue;
+      seen.add(n);
+      if(packageIsReviewEvidence(child)){visit(n,depth+1);continue}
+      out.push(child);
+    }
+  };
+  visit(Number(parentNumber));
+  return out;
+}
 function packageTaskGroup(taskRoot,allRows,byNumber){
   const rows=allRows.filter(row=>packageBelongsTo(row,Number(taskRoot.number),byNumber));
   const primary=rows.filter(row=>!packageIsReviewEvidence(row)),reviews=rows.filter(packageIsReviewEvidence);
@@ -514,7 +536,7 @@ function packageTaskGroup(taskRoot,allRows,byNumber){
 }
 function packageStream(streamRoot,packageRows,byNumber){
   const rows=packageRows.filter(row=>packageBelongsTo(row,Number(streamRoot.number),byNumber));
-  const taskRoots=rows.filter(row=>Number(row.parentNumber)===Number(streamRoot.number)&&!packageIsReviewEvidence(row));
+  const taskRoots=packagePrimaryChildren(Number(streamRoot.number),rows);
   const groups=taskRoots.map(row=>packageTaskGroup(row,rows,byNumber)).sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||Number(a.root.number)-Number(b.root.number));
   const aggregate=packageAggregate(groups.length?groups.flatMap(group=>group.primary):[streamRoot]);
   return {root:streamRoot,rows,groups,aggregate};
@@ -531,7 +553,7 @@ function packageBuildAll(){
   for(const root of roots.values()){
     const descendants=packageDescendants(root,rows),packageByNumber=new Map(descendants.map(row=>[Number(row.number),row]));
     const focus=packageOperationalFocus(descendants)||root;
-    const streamRoots=descendants.filter(row=>Number(row.parentNumber)===Number(root.number)&&!packageIsReviewEvidence(row));
+    const streamRoots=packagePrimaryChildren(Number(root.number),descendants);
     const streams=streamRoots.map(row=>packageStream(row,descendants,packageByNumber));
     const majorGroups=streams.flatMap(stream=>stream.groups);
     const standaloneStreams=streams.filter(stream=>!stream.groups.length);
