@@ -198,7 +198,7 @@ public final class MainActivity extends Activity {
         root.addView(sectionTitle("B1 · ChatGPT Adapter"));
         LinearLayout b1Card = card();
         TextView b1Help = text(
-            "DEV pilot: bắt buộc vào đúng Project TigerIQ AI Lab trước khi gửi. App chờ 3 giây sau khi điền, nghỉ 6 giây giữa các chu kỳ, gửi đúng 1 lần/chu kỳ. Không nhận backlog, không ghi GitHub.",
+            "DEV pilot: TigerIQ tự mở ChatGPT, tự vào Project TigerIQ AI Lab bằng Accessibility semantic, rồi mới điền/gửi. App chờ 3 giây sau khi điền, nghỉ 6 giây giữa các chu kỳ. Không dùng tọa độ, không nhận backlog, không ghi GitHub.",
             12,
             false
         );
@@ -237,7 +237,7 @@ public final class MainActivity extends Activity {
         root.addView(systemCard, marginParams(0, dp(6), 0, dp(12)));
 
         TextView footer = text(
-            WorkerVersion.NAME + " · B1 DEV · Project TigerIQ AI Lab bắt buộc · pacing 3s/6s · chưa nhận backlog/GitHub write",
+            WorkerVersion.NAME + " · B1 DEV · tự điều hướng Project · semantic-only · pacing 3s/6s · chưa nhận backlog/GitHub write",
             11,
             false
         );
@@ -328,7 +328,7 @@ public final class MainActivity extends Activity {
         refreshStatus();
         Toast.makeText(
             this,
-            "Trong ChatGPT: mở menu và chạm Project \"" + ChatGptB1RunStore.REQUIRED_PROJECT + "\". TigerIQ chỉ gửi sau khi ghi nhận đúng Project.",
+            "TigerIQ sẽ tự mở menu và tự chọn Project \"" + ChatGptB1RunStore.REQUIRED_PROJECT + "\".",
             Toast.LENGTH_LONG
         ).show();
         openChatGpt();
@@ -790,7 +790,7 @@ public final class MainActivity extends Activity {
     }
 
     private String b1StateLabel(String state) {
-        if ("WAITING_PROJECT".equals(state)) return "CHỜ CHỌN PROJECT TIGERIQ AI LAB";
+        if ("WAITING_PROJECT".equals(state)) return "ĐANG TỰ VÀO PROJECT TIGERIQ AI LAB";
         if ("REQUESTED".equals(state)) return "ĐÃ XÁC NHẬN PROJECT · CHỜ NHẬP";
         if ("VERIFYING_CONTEXT".equals(state)) return "ĐANG TÌM Ô NHẬP";
         if ("INPUT_READY".equals(state)) return "ĐÃ ĐIỀN · CHỜ GỬI";

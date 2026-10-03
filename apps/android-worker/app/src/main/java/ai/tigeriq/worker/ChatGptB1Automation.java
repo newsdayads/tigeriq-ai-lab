@@ -89,6 +89,40 @@ public final class ChatGptB1Automation {
         ChatGptB1RunStore.markSentExactlyOnce(service);
     }
 
+    public static AccessibilityNodeInfo findExactProjectControl(
+        AccessibilityNodeInfo root,
+        String projectName
+    ) {
+        String wanted = normalize(projectName);
+        if (root == null || wanted.isEmpty()) return null;
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
+            AccessibilityNodeInfo clickable = nearestClickable(node, 5);
+            if (clickable != null && clickable.isEnabled()) return clickable;
+        }
+        return null;
+    }
+
+    public static AccessibilityNodeInfo findNavigationMenuControl(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        AccessibilityNodeInfo best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser() || !node.isEnabled() || !node.isClickable()) continue;
+            String label = searchable(node);
+            if (containsAny(label, "settings", "search", "new chat", "voice", "camera", "profile", "account")) continue;
+            int score = 0;
+            if (containsAny(label, "open sidebar", "sidebar", "navigation drawer", "open navigation")) score += 140;
+            if (containsAny(label, "menu", "mở menu", "thanh bên", "điều hướng")) score += 100;
+            if (label.contains("button")) score += 5;
+            if (score > bestScore) {
+                best = node;
+                bestScore = score;
+            }
+        }
+        return bestScore >= 100 ? best : null;
+    }
+
     public static AccessibilityNodeInfo findComposerInput(AccessibilityNodeInfo root) {
         if (root == null) return null;
         AccessibilityNodeInfo best = null;
