@@ -83,7 +83,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         CharSequence packageName = event == null ? null : event.getPackageName();
-        if (packageName == null) return;
+        if (packageName == null) {
+            clearProjectContextCandidate();
+            return;
+        }
 
         String value = packageName.toString();
 
