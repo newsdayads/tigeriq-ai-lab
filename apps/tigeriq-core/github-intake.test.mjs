@@ -151,6 +151,14 @@ describe('GitHub Core intake guardrails',()=>{
       ['https://api.github.com/repos/o/r/issues/588/labels/tigeriq%3Arole-worker-nv02','DELETE'],
     ]);
   });
+  it('keeps Core runtime owner guard aligned with release mutating actions',()=>{
+    const source=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("'android_worker_release_build'");
+    expect(source).toContain("'android_worker_sign_v020_ci_artifact'");
+    expect(source).toContain("'tigeriq_live_3150_production_deploy'");
+    expect(source).toContain("PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action)&&job?.objective_metadata?.ownerDirect!==true");
+  });
+
   it('admits only explicit typed local pc_operator actions and never shell/file-write/PAD mutation',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_status","taskName":"TigerIQ Core Runtime Updater"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'task_status',taskName:'TigerIQ Core Runtime Updater'},mutating:false
