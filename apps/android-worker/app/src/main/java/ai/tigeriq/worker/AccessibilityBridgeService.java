@@ -118,10 +118,16 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .apply();
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
+        if (root == null) {
+            clearProjectContextCandidate();
+            return;
+        }
 
         CharSequence rootPackage = root.getPackageName();
-        if (rootPackage == null || !value.equals(rootPackage.toString())) return;
+        if (rootPackage == null || !value.equals(rootPackage.toString())) {
+            clearProjectContextCandidate();
+            return;
+        }
 
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
