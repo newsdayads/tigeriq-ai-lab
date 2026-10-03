@@ -912,6 +912,78 @@ const ANDROID_V020_SIGNED_APK_EXPORT = Object.freeze({
   chunkBytes: 3000,
 });
 
+const ANDROID_V020_RELEASE_MANIFEST = Object.freeze({
+  manifestPath: 'D:\\TigerIQ\\Runtime\\MobileWorker\\release.json',
+  apkPath: ANDROID_V020_SIGNED_APK_EXPORT.path,
+  apkSha256: ANDROID_V020_SIGNED_APK_EXPORT.sha256,
+  apkBytes: 62002,
+  versionCode: 20,
+  versionName: '0.20.0-update-lease-guard',
+  signerSha256: ANDROID_V020_CI_ARTIFACT.expectedSignerSha256,
+  fileName: 'TIQ Worker v0.20.apk',
+  releaseNotes: 'Gate C v0.20 update lease guard',
+  channel: 'STABLE',
+  driveUrl: 'https://drive.google.com/file/d/1qnz93uptTfj3tpJYLU7AN5P1KCu4Z_3a/view?usp=drivesdk',
+});
+
+async function publishAndroidWorkerV020Manifest() {
+  const spec = ANDROID_V020_RELEASE_MANIFEST;
+  await realPathInsideRoots(spec.apkPath);
+  const apk = await fs.readFile(spec.apkPath);
+  const actualSha256 = createHash('sha256').update(apk).digest('hex').toUpperCase();
+  if (apk.length !== spec.apkBytes) throw new Error('TIGERIQ_ANDROID_V020_MANIFEST_APK_SIZE_MISMATCH');
+  if (actualSha256 !== spec.apkSha256) throw new Error('TIGERIQ_ANDROID_V020_MANIFEST_APK_SHA256_MISMATCH');
+
+  const manifestDir = win.dirname(spec.manifestPath);
+  if (normalizeWinPath(manifestDir).toLowerCase() !== normalizeWinPath('D:\\TigerIQ\\Runtime\\MobileWorker').toLowerCase()) {
+    throw new Error('TIGERIQ_ANDROID_V020_MANIFEST_PATH_INVALID');
+  }
+  await fs.mkdir(manifestDir, { recursive: true });
+  const manifest = {
+    versionCode: spec.versionCode,
+    versionName: spec.versionName,
+    sha256: spec.apkSha256.toLowerCase(),
+    signerSha256: spec.signerSha256,
+    fileName: spec.fileName,
+    releaseNotes: spec.releaseNotes,
+    channel: spec.channel,
+    publishedAt: new Date().toISOString(),
+    apkPath: spec.apkPath,
+    driveUrl: spec.driveUrl,
+  };
+  const tempPath = spec.manifestPath + '.v020.tmp';
+  await fs.writeFile(tempPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+  await fs.rename(tempPath, spec.manifestPath);
+
+  const readback = JSON.parse(await fs.readFile(spec.manifestPath, 'utf8'));
+  const expected = {
+    versionCode: spec.versionCode,
+    versionName: spec.versionName,
+    sha256: spec.apkSha256.toLowerCase(),
+    signerSha256: spec.signerSha256,
+    fileName: spec.fileName,
+    channel: spec.channel,
+    apkPath: spec.apkPath,
+    driveUrl: spec.driveUrl,
+  };
+  for (const [key,value] of Object.entries(expected)) {
+    if (readback?.[key] !== value) throw new Error('TIGERIQ_ANDROID_V020_MANIFEST_READBACK_MISMATCH');
+  }
+  if (!String(readback.publishedAt || '').trim()) throw new Error('TIGERIQ_ANDROID_V020_MANIFEST_READBACK_MISMATCH');
+  return {
+    status: 'ANDROID_V020_RELEASE_MANIFEST_PUBLISHED',
+    manifestPath: spec.manifestPath,
+    apkPath: spec.apkPath,
+    apkBytes: apk.length,
+    apkSha256: actualSha256,
+    signerSha256: spec.signerSha256,
+    versionCode: spec.versionCode,
+    versionName: spec.versionName,
+    driveUrl: spec.driveUrl,
+    publishedAt: readback.publishedAt,
+  };
+}
+
 async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
   const chunkIndex = Number(input?.chunkIndex);
   if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 31) {
@@ -1050,6 +1122,8 @@ export async function executePcAction(input, options = {}) {
     data = await grantAndroidWorkerV020SignerReadAcl();
   } else if (action === 'android_worker_export_v020_signed_apk_chunk') {
     data = await exportAndroidWorkerV020SignedApkChunk(input || {});
+  } else if (action === 'android_worker_publish_v020_manifest') {
+    data = await publishAndroidWorkerV020Manifest();
   } else if (action === 'android_worker_gate_c_v020_enqueue_10') {
     data = await enqueueAndroidWorkerGateCV020();
   } else if (action === 'android_worker_gate_c_v020_status') {
@@ -1100,6 +1174,7 @@ export async function executePcAction(input, options = {}) {
       userContextSigner: action === 'android_worker_sign_v020_user_context',
       signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
       signedApkExport: action === 'android_worker_export_v020_signed_apk_chunk',
+      androidReleaseManifestPublish: action === 'android_worker_publish_v020_manifest',
       androidGateCV020: ['android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v020_status'].includes(action),
       coreUiCancelledReconcile: action === 'chrome_ui_reconcile_cancelled_job',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
