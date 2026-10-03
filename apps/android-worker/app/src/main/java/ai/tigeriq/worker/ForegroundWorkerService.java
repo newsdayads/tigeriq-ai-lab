@@ -32,6 +32,7 @@ public final class ForegroundWorkerService extends Service {
         startForeground(NOTIFICATION_ID, buildNotification());
         executor = Executors.newSingleThreadScheduledExecutor();
         executor.scheduleWithFixedDelay(this::heartbeat, 2, 30, TimeUnit.SECONDS);
+        executor.scheduleWithFixedDelay(this::autoUpdate, 20, 15, TimeUnit.MINUTES);
     }
 
     @Override
@@ -67,6 +68,17 @@ public final class ForegroundWorkerService extends Service {
             long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getLong(KEY_LAST_HEARTBEAT_AT, 0L);
             writeRuntime("OFFLINE", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
+        }
+    }
+
+    private void autoUpdate() {
+        try {
+            if (ChatGptB1RunStore.read(this).active()) return;
+            WorkerUpdateEngine.checkAndInstall(this, false);
+        } catch (Exception error) {
+            String message = error.getMessage();
+            if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
+            WorkerUpdateEngine.markInstallCallback(this, "AUTO_UPDATE_FAILED", message);
         }
     }
 
