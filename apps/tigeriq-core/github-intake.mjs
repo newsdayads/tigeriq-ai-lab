@@ -477,7 +477,15 @@ export function extractRepoPaths(body){
 export function formatResultComment(row){
   const completed=row?.status==='completed';
   const status=ownerStatusLabel(completed?'COMPLETED':'BLOCKED');
-  const summary=localizeOwnerFacingText(String(row?.summary||'Công việc đã kết thúc.').trim().slice(0,5000));
+  const raw=String(row?.summary||'Công việc đã kết thúc.').trim();
+  const evidenceMarker='\nPUBLIC_EVIDENCE_';
+  const evidenceIndex=raw.indexOf(evidenceMarker);
+  const summary=evidenceIndex<0
+    ? localizeOwnerFacingText(raw.slice(0,5000))
+    : [
+        localizeOwnerFacingText(raw.slice(0,evidenceIndex).slice(0,5000)),
+        raw.slice(evidenceIndex+1,evidenceIndex+1+18000),
+      ].filter(Boolean).join('\n');
   return `${ownerStatusIcon(completed?'COMPLETED':'BLOCKED')} [KẾT QUẢ] TigerIQ Core ${completed?'đã hoàn tất':'bị chặn'} ${row?.id}.\n\n${summary}\n\nBằng chứng: Core objective \`${row?.id}\` · Trạng thái: ${status}.`;
 }
 
