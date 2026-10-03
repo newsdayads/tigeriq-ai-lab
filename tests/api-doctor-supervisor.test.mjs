@@ -23,6 +23,26 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('keeps the NV09 canary marker contract even when a caller supplies diagnostic text',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=core.indexOf('function buildNv09CanaryPrompt');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const open=core.indexOf('{',start);
+    let depth=0,end=-1;
+    for(let i=open;i<core.length;i++){
+      if(core[i]==='{')depth++;
+      else if(core[i]==='}'&&--depth===0){end=i+1;break;}
+    }
+    expect(end).toBeGreaterThan(open);
+    const factory=new Function(`${core.slice(start,end)}\nreturn buildNv09CanaryPrompt;`);
+    const buildNv09CanaryPrompt=factory();
+    const marker='NV09_CORE_CANARY_OK';
+    const prompt=buildNv09CanaryPrompt('Explain why 2 + 3 equals 5.',marker);
+    expect(prompt).toContain('Diagnostic context only');
+    expect(prompt).toContain('Explain why 2 + 3 equals 5.');
+    expect(prompt.trim().endsWith(`CANARY OUTPUT CONTRACT: return exactly ${marker} and nothing else.`)).toBe(true);
+  });
+
   it('classifies quota/payment/contract failures without calling them credential failures',()=>{
     expect(classifyApiDoctorFailure({kind:'rate_limit',message:'HTTP_429'})).toBe('rate_limit');
     expect(classifyApiDoctorFailure({kind:'configuration',message:'HTTP_402'})).toBe('external_blocked');
