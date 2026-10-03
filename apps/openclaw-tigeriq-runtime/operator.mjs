@@ -623,7 +623,11 @@ async function signAndroidWorkerV020CiArtifact() {
       '-ExpectedUnsignedSha256',spec.expectedUnsignedSha256,
       '-SecretsDir',secretsDir,
     ],
-    { cwd: repoRoot, timeoutSec: 120 },
+    {
+      cwd: repoRoot,
+      timeoutSec: 120,
+      extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME'],
+    },
   );
   if (signed.timedOut) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_TIMEOUT');
   if (Number(signed.exitCode) !== 0) {

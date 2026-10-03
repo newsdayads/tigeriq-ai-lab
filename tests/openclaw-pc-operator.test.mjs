@@ -193,6 +193,8 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
     expect(source).toContain("passwordTransport: 'stdin-only'");
     expect(source).toContain("plaintextSecretWrittenToDisk");
+    expect(source).toContain("extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME']");
+    expect(source).not.toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME', 'ANDROID_SDK_ROOT', 'ANDROID_HOME']");
     expect(source).not.toContain("gh auth login");
     expect(source).not.toContain("'gh.exe'");
   });
