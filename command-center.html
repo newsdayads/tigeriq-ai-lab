@@ -168,68 +168,68 @@ body.drawer-open{overflow:hidden}
 @media(max-width:390px){.drawer{width:calc(100vw - 24px)}.summary-chip span{font-size:7.7px}.api-summary-grid b{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.focus-dot{animation:none!important}.drawer{transition:none!important}}
 
-/* #3231 Live Workflow Graph — real work items, PRs and gates */
+/* #3324 Work Package — Việc lớn → Nhánh → Việc nhỏ */
 .job-journey{margin:0 0 10px}
-.workflow-shell{position:relative;overflow:hidden;border:1px solid #2b5277;background:radial-gradient(circle at 82% 0,rgba(88,166,255,.12),transparent 34%),linear-gradient(145deg,#0e2138,#091725 58%,#101d31);border-radius:18px;padding:12px;box-shadow:0 14px 38px rgba(0,0,0,.2)}
-.workflow-shell::before{content:"";position:absolute;inset:-60% -25%;pointer-events:none;background:linear-gradient(115deg,transparent 42%,rgba(101,215,232,.045) 48%,rgba(88,166,255,.08) 50%,rgba(101,215,232,.045) 52%,transparent 58%);transform:translateX(-28%);animation:workflow-ambient 8s ease-in-out infinite}
-.workflow-head,.workflow-now,.workflow-canvas{position:relative;z-index:2}
-.workflow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
-.workflow-kicker{font-size:9px;color:#83c8ff;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
-.workflow-title{font-size:16px;line-height:1.32;font-weight:880;margin-top:4px;color:#f4f8fc;overflow-wrap:anywhere}
-.workflow-meta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.workflow-badge{border:1px solid #365b7d;background:#10253d;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;color:#bdd7ef;white-space:nowrap}
-.workflow-now{display:grid;grid-template-columns:1fr auto;gap:7px 10px;align-items:center;border:1px solid #21435f;background:rgba(5,18,31,.78);border-radius:11px;padding:8px 9px;margin-bottom:10px;font-size:10.5px;line-height:1.42;color:#a9bdd1}
-.workflow-now b{color:#e6f1fb}.workflow-now .workflow-next{grid-column:1/-1;color:#8fa9c2}
-.workflow-progress{display:flex;align-items:center;gap:7px;min-width:112px}.workflow-progress-track{height:5px;flex:1;background:#172b3f;border-radius:999px;overflow:hidden}.workflow-progress-fill{height:100%;background:linear-gradient(90deg,#46d48f,#58d8c6);border-radius:999px}.workflow-progress-text{font-size:9px;font-weight:900;color:#91eee0}
-.workflow-canvas{position:relative;padding:3px 1px 2px}
-.workflow-wires{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:visible}
-.workflow-wire{fill:none;stroke:#31516e;stroke-width:2;vector-effect:non-scaling-stroke;opacity:.74}
-.workflow-wire.is-done{stroke:#2e8a78;opacity:.78}
-.workflow-wire.is-working{stroke:#55dda2;stroke-dasharray:7 9;animation:workflow-wire-flow .9s linear infinite;filter:drop-shadow(0 0 4px rgba(70,212,143,.55))}
-.workflow-wire.is-review,.workflow-wire.is-verify{stroke:#d6a44f;stroke-dasharray:4 8;opacity:.92;animation:workflow-wire-review-flow 2.1s linear infinite;filter:drop-shadow(0 0 2px rgba(214,164,79,.25))}
-.workflow-wire.is-waiting,.workflow-wire.is-queued{stroke:#4b7ea8;stroke-dasharray:2 11;opacity:.64;animation:workflow-wire-wait-flow 4.4s linear infinite}
-.workflow-wire.is-blocked{stroke:#d45b67;stroke-dasharray:6 7;opacity:.95;animation:workflow-wire-blocked 1.35s ease-in-out infinite;filter:drop-shadow(0 0 4px rgba(212,91,103,.36))}
-.workflow-particle{pointer-events:none;filter:drop-shadow(0 0 5px currentColor)}
-.workflow-particle.is-working{fill:#7bf0b9;color:#7bf0b9}
-.workflow-particle.is-review,.workflow-particle.is-verify{fill:#ffd27d;color:#ffd27d}
-.workflow-particle.is-waiting,.workflow-particle.is-queued{fill:#79bdf1;color:#79bdf1;opacity:.72}
-.workflow-layer{position:relative;z-index:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin:0 0 22px}
-.workflow-layer:last-child{margin-bottom:0}
-.workflow-node{position:relative;display:block;min-width:0;border:1px solid #29445e;background:linear-gradient(180deg,#0d1c2e,#091625);border-radius:13px;padding:9px 10px;text-align:left;box-shadow:0 8px 20px rgba(0,0,0,.13);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;color:inherit;text-decoration:none}
-button.workflow-node{width:100%;font:inherit;cursor:pointer}
-.workflow-node:hover{transform:translateY(-1px);border-color:#3e668a}.workflow-node:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
-.workflow-node.is-root{border-color:#38678f;background:linear-gradient(180deg,#112a46,#0d1d31)}
-.workflow-node.is-working{border-color:#348160;background:#0d3025;box-shadow:0 0 0 1px rgba(70,212,143,.1),0 0 24px rgba(70,212,143,.08)}
-.workflow-node.is-working::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(70,212,143,.56);border-radius:15px;animation:workflow-node-pulse 1.45s ease-out infinite;pointer-events:none}
-.workflow-node.is-review,.workflow-node.is-verify{border-color:#8b6934;background:#302617;animation:workflow-review-breathe 2.25s ease-in-out infinite}
-.workflow-node.is-blocked{border-color:#a14b57;background:#351b23;animation:workflow-blocked-node 1.45s ease-in-out infinite}
-.workflow-node.is-waiting,.workflow-node.is-queued{border-color:#3d6689;background:#0d2237;animation:workflow-wait-breathe 4.2s ease-in-out infinite}
-.workflow-node.is-done{border-color:#287268;background:#0d2d2a}
-.workflow-node.is-focus::before{content:"";position:absolute;inset:-5px;border:1px solid rgba(105,190,255,.7);border-radius:17px;pointer-events:none;animation:workflow-focus-ring 1.9s ease-out infinite}
-.workflow-node.is-unknown,.workflow-node.is-open{border-color:#3b5067;background:#0c1928}
-.workflow-node-top{display:flex;align-items:center;gap:6px;min-width:0}.workflow-node-type{font-size:8.5px;color:#7fa7ca;font-weight:900;letter-spacing:.055em;text-transform:uppercase}.workflow-node-id{font-size:8.5px;color:#6f8ba5;font-weight:850;margin-left:auto}
-.workflow-node-title{font-size:11.5px;line-height:1.3;font-weight:850;margin-top:5px;color:#e9f1f9;overflow-wrap:anywhere}.workflow-node-detail{font-size:9.7px;line-height:1.37;margin-top:5px;color:#8fa5bc;overflow-wrap:anywhere}
-.workflow-node-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px}.workflow-worker,.workflow-state{border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:900;color:#b8d9f2}.workflow-state{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.workflow-state::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.68}.workflow-node.is-working .workflow-state{border-color:#34785b;color:#9af0bc;background:#103326}.workflow-node.is-working .workflow-state::before{animation:workflow-status-dot .9s ease-in-out infinite}.workflow-node.is-review .workflow-state,.workflow-node.is-verify .workflow-state{border-color:#735a30;color:#ffd38d;background:#312617}.workflow-node.is-review .workflow-state::before,.workflow-node.is-verify .workflow-state::before{animation:workflow-status-dot 1.8s ease-in-out infinite}.workflow-node.is-waiting .workflow-state::before,.workflow-node.is-queued .workflow-state::before{animation:workflow-status-dot 3.2s ease-in-out infinite}.workflow-node.is-blocked .workflow-state{border-color:#7e3e49;color:#ffb8bf;background:#341b22}.workflow-node.is-blocked .workflow-state::before{animation:workflow-status-dot .7s steps(2,end) infinite}.workflow-node.is-done .workflow-state{border-color:#286d65;color:#94ecdf;background:#0f302d}
-.workflow-blocker{margin-top:9px;border:1px solid #743a44;background:#30191f;border-radius:10px;padding:7px 8px;color:#ffb0b8;font-size:9.5px;line-height:1.4}.workflow-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
-.workflow-parallel{font-size:8.5px;color:#7890a8;margin:-13px 0 10px;text-align:center;letter-spacing:.02em}
-@keyframes workflow-ambient{0%,100%{transform:translateX(-28%)}50%{transform:translateX(28%)}}
-@keyframes workflow-wire-flow{to{stroke-dashoffset:-32}}
-@keyframes workflow-wire-review-flow{to{stroke-dashoffset:-24}}
-@keyframes workflow-wire-wait-flow{to{stroke-dashoffset:-26}}
-@keyframes workflow-wire-blocked{0%,100%{opacity:.48}50%{opacity:1}}
-@keyframes workflow-node-pulse{0%{opacity:.86;transform:scale(1)}78%,100%{opacity:0;transform:scale(1.025)}}
-@keyframes workflow-review-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 rgba(239,184,92,0)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(239,184,92,.23),0 0 22px rgba(239,184,92,.13)}}
-@keyframes workflow-wait-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 16px rgba(88,166,255,.09)}}
-@keyframes workflow-blocked-node{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(212,91,103,.08)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 2px rgba(212,91,103,.32),0 0 22px rgba(212,91,103,.16)}}
-@keyframes workflow-focus-ring{0%{opacity:.72;transform:scale(1)}80%,100%{opacity:0;transform:scale(1.018)}}
-@keyframes workflow-status-dot{0%,100%{opacity:.32;transform:scale(.82)}50%{opacity:1;transform:scale(1.22)}}
+.package-shell{position:relative;overflow:hidden;border:1px solid #2d5276;background:radial-gradient(circle at 88% 0,rgba(88,166,255,.12),transparent 34%),linear-gradient(145deg,#0d2036,#091725 60%,#101c2f);border-radius:18px;padding:12px;box-shadow:0 14px 38px rgba(0,0,0,.2)}
+.package-shell::before{content:"";position:absolute;inset:-60% -25%;pointer-events:none;background:linear-gradient(115deg,transparent 43%,rgba(101,215,232,.04) 48%,rgba(88,166,255,.075) 50%,rgba(101,215,232,.04) 52%,transparent 57%);transform:translateX(-28%);animation:package-ambient 9s ease-in-out infinite}
+.package-head,.package-focus,.package-streams,.package-flow{position:relative;z-index:2}
+.package-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.package-kicker{font-size:9px;color:#83c8ff;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.package-title{font-size:16px;line-height:1.32;font-weight:880;margin-top:4px;color:#f4f8fc;overflow-wrap:anywhere}
+.package-meta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.package-badge{border:1px solid #365b7d;background:#10253d;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;color:#bdd7ef;white-space:nowrap}
+.package-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0}
+.package-summary div{border:1px solid #27435d;background:rgba(7,20,33,.82);border-radius:10px;padding:7px 6px;text-align:center}
+.package-summary span{display:block;font-size:8px;color:#8199b1}.package-summary b{display:block;margin-top:2px;font-size:13px;color:#dce8f4}
+.package-summary .is-working b{color:#95f1bd}.package-summary .is-review b{color:#ffd38d}.package-summary .is-blocked b{color:#ffb1b9}.package-summary .is-done b{color:#8ee7da}
+.package-focus{border:1px solid #35638a;background:#0d2238;border-radius:12px;padding:9px 10px;margin-bottom:10px;box-shadow:0 0 0 1px rgba(88,166,255,.07)}
+.package-focus b{color:#e9f3fc}.package-focus-title{font-size:11.5px;line-height:1.35;font-weight:850;color:#e9f3fc}.package-focus-sub{font-size:9.5px;color:#8fa8c0;margin-top:4px;line-height:1.4}
+.package-flow{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:1px 0 8px;scrollbar-width:thin;scrollbar-color:#284663 transparent}
+.package-flow-chip{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;border:1px solid #315271;background:#0c1f33;border-radius:999px;padding:5px 8px;font-size:8.5px;font-weight:850;color:#afc7dc}
+.package-flow-chip.is-focus{border-color:#5188b5;color:#d8efff;box-shadow:0 0 12px rgba(88,166,255,.13)}
+.package-flow-arrow{flex:0 0 auto;color:#54718d;font-size:11px}
+.package-streams{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.package-stream{position:relative;border:1px solid #2a4864;background:linear-gradient(180deg,#0c1b2c,#091625);border-radius:14px;padding:10px;min-width:0}
+.package-stream.is-focus{border-color:#4b7da5;box-shadow:0 0 0 1px rgba(88,166,255,.1),0 0 22px rgba(88,166,255,.08)}
+.package-stream.is-working{border-color:#34785b}.package-stream.is-review{border-color:#7c6033}.package-stream.is-blocked{border-color:#80414b}.package-stream.is-done{border-color:#286d65}
+.package-stream-head{display:flex;align-items:flex-start;gap:8px}.package-stream-main{min-width:0;flex:1}
+.package-stream-label{font-size:8px;color:#7ea8c9;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.package-stream-id{font-size:8.5px;color:#718aa2;font-weight:850}
+.package-stream-title{font-size:12px;line-height:1.32;font-weight:860;color:#eaf2fa;margin-top:4px;overflow-wrap:anywhere}
+.package-stream-state{display:inline-flex;align-items:center;gap:4px;margin-top:6px;border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:900;color:#b9d8ef}
+.package-stream-state::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.68}
+.package-stream.is-working .package-stream-state{color:#9af0bc;border-color:#34785b}.package-stream.is-working .package-stream-state::before{animation:package-dot .9s ease-in-out infinite}
+.package-stream.is-review .package-stream-state{color:#ffd38d;border-color:#735a30}.package-stream.is-review .package-stream-state::before{animation:package-dot 1.8s ease-in-out infinite}
+.package-stream.is-blocked .package-stream-state{color:#ffb8bf;border-color:#7e3e49}.package-stream.is-blocked .package-stream-state::before{animation:package-dot .7s steps(2,end) infinite}
+.package-stream-dependency{margin-top:7px;border:1px dashed #35516b;border-radius:9px;padding:6px 7px;font-size:8.8px;color:#8fa5ba;line-height:1.35}
+.package-stream-stats{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.package-stat{border:1px solid #2c475f;background:#0a1928;border-radius:999px;padding:3px 6px;font-size:8px;color:#91a7bb}
+.package-tasks{display:grid;gap:7px;margin-top:9px}
+.package-task{position:relative;border:1px solid #29445e;background:#0a1726;border-radius:11px;padding:8px 9px;text-align:left;color:inherit;width:100%;font:inherit}
+button.package-task{cursor:pointer}.package-task:hover{border-color:#3d6688}.package-task:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+.package-task.is-focus{border-color:#568bb4;box-shadow:0 0 0 1px rgba(88,166,255,.16),0 0 16px rgba(88,166,255,.09)}
+.package-task.is-working{border-color:#34785b;background:#0d2d24}.package-task.is-review,.package-task.is-verify{border-color:#7d6133;background:#2b2317}.package-task.is-blocked{border-color:#82424c;background:#311b21}.package-task.is-done{border-color:#286d65;background:#0d2927}.package-task.is-waiting,.package-task.is-queued{border-color:#365b7e;background:#0d2135}
+.package-task.is-working::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(70,212,143,.5);border-radius:13px;animation:package-focus-pulse 1.45s ease-out infinite;pointer-events:none}
+.package-task.is-review::after,.package-task.is-verify::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(239,184,92,.3);border-radius:13px;animation:package-review-pulse 2.4s ease-in-out infinite;pointer-events:none}
+.package-task.is-blocked::after{content:"";position:absolute;inset:-2px;border:1px solid rgba(212,91,103,.42);border-radius:12px;animation:package-blocked-pulse 1.4s ease-in-out infinite;pointer-events:none}
+.package-task-top{display:flex;align-items:center;gap:6px}.package-task-type{font-size:8px;color:#7ea6c5;font-weight:900;letter-spacing:.045em;text-transform:uppercase}.package-task-id{margin-left:auto;font-size:8px;color:#738ba1;font-weight:850}
+.package-task-title{font-size:10.6px;line-height:1.32;font-weight:830;color:#e5eef7;margin-top:4px;overflow-wrap:anywhere}.package-task-detail{font-size:9px;line-height:1.38;color:#8ca2b8;margin-top:4px}
+.package-task-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:6px}
+.package-worker,.package-artifact,.package-task-state{border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:7.8px;font-weight:850;color:#b7d4ea}
+.package-artifact{border-color:#46536a;color:#b5c2d1;background:#121b29;text-decoration:none}.package-artifact:hover{border-color:#6380a0}
+.package-task-state{margin-left:auto}.package-task.is-working .package-task-state{color:#9af0bc;border-color:#34785b}.package-task.is-review .package-task-state,.package-task.is-verify .package-task-state{color:#ffd38d;border-color:#735a30}.package-task.is-blocked .package-task-state{color:#ffb8bf;border-color:#7e3e49}.package-task.is-done .package-task-state{color:#94ecdf;border-color:#286d65}
+.package-more{margin-top:8px;border-top:1px dashed #29445e;padding-top:7px;font-size:8.6px;color:#7f95aa}
+.package-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
+@keyframes package-ambient{0%,100%{transform:translateX(-28%)}50%{transform:translateX(28%)}}
+@keyframes package-dot{0%,100%{opacity:.32;transform:scale(.82)}50%{opacity:1;transform:scale(1.22)}}
+@keyframes package-focus-pulse{0%{opacity:.82;transform:scale(1)}78%,100%{opacity:0;transform:scale(1.018)}}
+@keyframes package-review-pulse{0%,100%{opacity:.22}50%{opacity:.72}}
+@keyframes package-blocked-pulse{0%,100%{opacity:.28}50%{opacity:1}}
 @media(max-width:700px){
-  .workflow-shell{padding:10px}.workflow-head{display:block}.workflow-meta{justify-content:flex-start;margin-top:7px}.workflow-title{font-size:15px}
-  .workflow-now{grid-template-columns:1fr}.workflow-progress{min-width:0}.workflow-layer{grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:7px;margin-bottom:19px}
-  .workflow-node{padding:8px 9px}.workflow-node-title{font-size:10.8px}.workflow-node-detail{font-size:9.3px}
+  .package-shell{padding:10px}.package-head{display:block}.package-meta{justify-content:flex-start;margin-top:7px}.package-title{font-size:15px}
+  .package-summary{grid-template-columns:repeat(5,minmax(54px,1fr));overflow-x:auto}.package-streams{grid-template-columns:1fr}
+  .package-stream{padding:9px}.package-task{padding:8px}.package-task-title{font-size:10.3px}
 }
-@media(max-width:360px){.workflow-layer{grid-template-columns:1fr}.workflow-parallel{display:none}}
-@media(prefers-reduced-motion:reduce){.workflow-shell::before,.workflow-wire,.workflow-node,.workflow-node::before,.workflow-node::after,.workflow-state::before{animation:none!important;transition:none!important}.workflow-particle{display:none!important}}
+@media(max-width:360px){.package-summary{grid-template-columns:repeat(5,58px)}}
+@media(prefers-reduced-motion:reduce){.package-shell::before,.package-stream-state::before,.package-task::after{animation:none!important;transition:none!important}}
 
 </style>
 </head>
@@ -256,7 +256,7 @@ button.workflow-node{width:100%;font:inherit;cursor:pointer}
     <div class="summary-chip done"><span>Đã xong</span><b id="sumDone">0</b></div>
   </div>
 </section>
-<section id="jobJourney" class="job-journey" aria-label="Sơ đồ công việc trực tiếp của việc trọng tâm"></section>
+<section id="jobJourney" class="job-journey" aria-label="Việc lớn và các nhánh công việc đang theo dõi"></section>
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
 <section aria-labelledby="workListHeading">
@@ -408,9 +408,8 @@ function renderOwnerSummary(){
     : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
 }
 
-let workflowGraphState=null;
-let workflowEdgeFrame=0;
-function workflowRows(){
+let workPackageState=null;
+function packageRows(){
   const merged=new Map();
   const add=row=>{
     const number=Number(row?.number);
@@ -418,13 +417,10 @@ function workflowRows(){
     const prev=merged.get(number)||{};
     merged.set(number,{...prev,...row,
       parentNumber:row?.parentNumber??prev?.parentNumber??null,
-      sourceNumber:row?.sourceNumber??prev?.sourceNumber??null,
       targetPrNumber:row?.targetPrNumber??prev?.targetPrNumber??null,
       sourcePrNumber:row?.sourcePrNumber??prev?.sourcePrNumber??null,
       dependsOn:Array.isArray(row?.dependsOn)?row.dependsOn:(prev?.dependsOn||[]),
-      supersedesNumbers:Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:(prev?.supersedesNumbers||[]),
-      capability:row?.capability??prev?.capability??null,
-      reviewOnly:row?.reviewOnly??prev?.reviewOnly??false
+      supersedesNumbers:Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:(prev?.supersedesNumbers||[])
     });
   };
   (snapshot?.openWork||[]).forEach(add);
@@ -432,274 +428,218 @@ function workflowRows(){
   (snapshot?.activeWork||[]).forEach(add);
   return [...merged.values()];
 }
-function workflowFocusSeed(rows){
-  const superseded=new Set(rows.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
-  const open=rows.filter(row=>workStatus(row)!=='DONE'&&!superseded.has(Number(row.number)));
-  const rank={WORKING:0,REVIEW:1,VERIFY:2,BLOCKED:3,OWNER_GATE:4,QUEUED:5,WAITING:6,OPEN:7,UNKNOWN:8,DONE:9};
-  return open.sort((a,b)=>(rank[workStatus(a)]??8)-(rank[workStatus(b)]??8)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
+function packageStatusRank(status){
+  return ({WORKING:0,REVIEW:1,VERIFY:2,BLOCKED:3,OWNER_GATE:4,QUEUED:5,WAITING:6,OPEN:7,UNKNOWN:8,DONE:9})[status]??8;
 }
-function workflowResolveRoot(seed,rows){
+function packageFocusSeed(rows){
+  const superseded=new Set(rows.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
+  return rows.filter(row=>workStatus(row)!=='DONE'&&!superseded.has(Number(row.number)))
+    .sort((a,b)=>packageStatusRank(workStatus(a))-packageStatusRank(workStatus(b))||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
+}
+function packageResolveRoot(seed,rows){
   if(!seed)return null;
   const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
-  let current=seed;
-  const seen=new Set([Number(seed.number)]);
-  for(let depth=0;depth<6;depth++){
-    const parent=Number(current?.parentNumber);
-    if(!parent||seen.has(parent))break;
-    const parentRow=byNumber.get(parent);
-    if(!parentRow||parentRow?.workKind!=='WORK'||workPriority(parentRow)==='P5')break;
-    seen.add(parent);current=parentRow;
+  let current=seed;const seen=new Set();
+  for(let depth=0;depth<12&&current;depth++){
+    const n=Number(current.number);if(!n||seen.has(n))break;seen.add(n);
+    const parent=Number(current.parentNumber);if(!parent)break;
+    const parentRow=byNumber.get(parent);if(!parentRow||parentRow?.workKind!=='WORK'||workPriority(parentRow)==='P5')break;
+    current=parentRow;
   }
   return current;
 }
-function workflowAncestorPath(focus,rows){
-  if(!focus)return [];
+function packageDescendants(root,rows){
+  if(!root)return [];
   const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
-  const reversed=[focus],seen=new Set([Number(focus.number)]);
-  let current=focus;
-  for(let depth=0;depth<7;depth++){
-    const parent=Number(current?.parentNumber);
-    if(!parent||seen.has(parent))break;
-    const parentRow=byNumber.get(parent);
-    if(!parentRow||parentRow?.workKind!=='WORK'||workPriority(parentRow)==='P5')break;
-    seen.add(parent);reversed.push(parentRow);current=parentRow;
-  }
-  return reversed.reverse();
-}
-function workflowCluster(root,focus,rows){
-  if(!root||!focus)return [];
-  const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
-  const byParent=new Map();
-  for(const row of rows){
-    const parent=Number(row?.parentNumber);
-    if(!parent)continue;
-    if(!byParent.has(parent))byParent.set(parent,[]);
-    byParent.get(parent).push(row);
-  }
+  const rootNumber=Number(root.number);
   const superseded=new Set(rows.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
-  const path=workflowAncestorPath(focus,rows).filter(row=>!superseded.has(Number(row.number))||Number(row.number)===Number(focus.number));
-  if(!path.some(row=>Number(row.number)===Number(root.number)))path.unshift(root);
-
-  const selected=[];const seen=new Set();
-  const add=row=>{
-    const n=Number(row?.number);
-    if(!n||seen.has(n)||superseded.has(n)&&n!==Number(focus.number))return false;
-    seen.add(n);selected.push(row);return true;
-  };
-  path.forEach(add);
-
-  const remaining=()=>Math.max(0,10-selected.length);
-  const prioritySort=(a,b)=>statusRank(workStatus(a))-statusRank(workStatus(b))||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number);
-
-  for(let i=0;i<path.length-1&&remaining()>0;i++){
-    const parent=path[i],next=Number(path[i+1]?.number);
-    const siblings=(byParent.get(Number(parent.number))||[])
-      .filter(row=>Number(row.number)!==next)
-      .sort(prioritySort);
-    for(const row of siblings.slice(0,1)){if(remaining()>0)add(row)}
-  }
-
-  const focusChildren=(byParent.get(Number(focus.number))||[]).sort(prioritySort);
-  for(const row of focusChildren){if(remaining()<=0)break;add(row)}
-
-  const related=[...path,...focusChildren];
-  for(const row of related){
-    for(const dep of (row?.dependsOn||[]).map(Number)){
-      if(remaining()<=0)break;
-      add(byNumber.get(dep));
+  const out=[];
+  for(const row of rows){
+    let current=row,seen=new Set(),belongs=false;
+    for(let depth=0;depth<14&&current;depth++){
+      const n=Number(current.number);if(!n||seen.has(n))break;seen.add(n);
+      if(n===rootNumber){belongs=true;break}
+      current=byNumber.get(Number(current.parentNumber));
     }
-    if(remaining()<=0)break;
+    if(belongs&&(Number(row.number)===rootNumber||!superseded.has(Number(row.number))))out.push(row);
   }
-
-  return selected;
+  return out;
 }
-function workflowNodeState(status){
-  const value=workStatus({status});
-  return String(value||'UNKNOWN').toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+function packageBranchRoot(row,root,byNumber){
+  if(!row||!root)return null;
+  const rootNumber=Number(root.number);
+  if(Number(row.number)===rootNumber)return null;
+  let current=row,last=row,seen=new Set();
+  for(let depth=0;depth<14&&current;depth++){
+    const n=Number(current.number);if(!n||seen.has(n))break;seen.add(n);
+    const parent=Number(current.parentNumber);
+    if(parent===rootNumber)return current;
+    const parentRow=byNumber.get(parent);if(!parentRow)break;
+    last=current;current=parentRow;
+  }
+  return last;
 }
-function workflowIssueType(row,isRoot=false){
-  if(isRoot)return 'JOB GỐC';
+function packageStats(rows){
+  const stats={working:0,review:0,blocked:0,waiting:0,done:0};
+  for(const row of rows){
+    const s=workStatus(row);
+    if(s==='WORKING')stats.working++;
+    else if(s==='REVIEW'||s==='VERIFY')stats.review++;
+    else if(s==='BLOCKED')stats.blocked++;
+    else if(s==='DONE')stats.done++;
+    else stats.waiting++;
+  }
+  return stats;
+}
+function packageStateClass(status){
+  return 'is-'+String(status||'UNKNOWN').toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+}
+function packageTaskType(row){
   const cap=String(row?.capability||'').toLowerCase();
   if(row?.reviewOnly||cap==='review')return 'RÀ SOÁT';
   if(cap==='coding')return 'THỰC THI';
   if(cap==='research'||cap==='deep_research')return 'NGHIÊN CỨU';
   if(cap==='pc_operator')return 'PC01';
-  return 'CÔNG VIỆC';
+  return 'VIỆC NHỎ';
 }
-function workflowChecksState(checks){
-  if(!checks)return 'UNKNOWN';
-  if(Number(checks.failed)>0||String(checks.state||'').toUpperCase()==='LỖI')return 'BLOCKED';
-  if(Number(checks.active)>0)return 'WORKING';
-  if(String(checks.state||'').toUpperCase()==='ĐẠT'&&Number(checks.total)>0)return 'DONE';
-  return 'WAITING';
+function packageArtifacts(row){
+  const out=[];
+  const pr=Number(row?.prNumber||row?.targetPrNumber||row?.sourcePrNumber);
+  if(pr)out.push({label:'PR #'+pr,url:row?.prUrl||('https://github.com/newsdayads/tigeriq-ai-lab/pull/'+pr)});
+  const checks=row?.checks;
+  if(checks&&Number(checks.total)>0){
+    const passed=Number(checks.passed)||0,total=Number(checks.total)||0,active=Number(checks.active)||0,failed=Number(checks.failed)||0;
+    let label='CI '+passed+'/'+total;
+    if(active>0)label='CI '+active+' đang chạy';
+    if(failed>0)label='CI '+failed+' lỗi';
+    out.push({label,url:pr?('https://github.com/newsdayads/tigeriq-ai-lab/pull/'+pr):row?.url});
+  }
+  return out.slice(0,3);
 }
-function buildWorkflowGraph(){
-  const rows=workflowRows();
-  const seed=workflowFocusSeed(rows);
-  const root=workflowResolveRoot(seed,rows);
+function buildWorkPackage(){
+  const rows=packageRows();
+  const focus=packageFocusSeed(rows);
+  const root=packageResolveRoot(focus,rows);
   if(!root)return null;
-  const cluster=workflowCluster(root,seed,rows);
-  const rowByNumber=new Map(cluster.map(row=>[Number(row.number),row]));
-  const nodes=[];const edges=[];const nodeIds=new Set();
-  const addNode=node=>{if(!nodeIds.has(node.id)){nodeIds.add(node.id);nodes.push(node)}};
-  const addEdge=(from,to,state='OPEN',kind='flow')=>{if(from&&to&&from!==to)edges.push({from,to,state,kind})};
-  const layers=new Map();
-  const setLayer=(id,layer)=>layers.set(id,Math.max(Number(layers.get(id)||0),Math.max(0,Number(layer)||0)));
-  const rootId='issue-'+Number(root.number);
-  addNode({id:rootId,type:'issue',row:root,state:workStatus(root),title:displayTitle(root.title),label:workflowIssueType(root,true),url:root.url});
-  setLayer(rootId,0);
-
-  const depth=new Map([[Number(root.number),0]]);
-  let changed=true;
-  for(let round=0;round<8&&changed;round++){
-    changed=false;
-    for(const row of cluster){
-      const n=Number(row.number),p=Number(row.parentNumber);
-      if(n===Number(root.number)||!p||!depth.has(p)||depth.has(n))continue;
-      depth.set(n,depth.get(p)+1);changed=true;
-    }
+  const descendants=packageDescendants(root,rows);
+  const byNumber=new Map(descendants.map(row=>[Number(row.number),row]));
+  const streamMap=new Map();
+  for(const row of descendants){
+    if(Number(row.number)===Number(root.number))continue;
+    const streamRoot=packageBranchRoot(row,root,byNumber);
+    if(!streamRoot)continue;
+    const id=Number(streamRoot.number);
+    if(!streamMap.has(id))streamMap.set(id,{root:streamRoot,rows:[]});
+    streamMap.get(id).rows.push(row);
   }
-
-  for(const row of cluster){
-    const n=Number(row.number),id='issue-'+n,isRoot=n===Number(root.number);
-    if(!isRoot){
-      addNode({id,type:'issue',row,state:workStatus(row),title:displayTitle(row.title),label:workflowIssueType(row),url:row.url});
-      setLayer(id,Math.max(1,depth.get(n)||1));
-    }
-    const pr=Number(row?.prNumber||row?.targetPrNumber||row?.sourcePrNumber);
-    if(pr){
-      const prId='pr-'+pr;
-      const prUrl=row?.prUrl||('https://github.com/newsdayads/tigeriq-ai-lab/pull/'+pr);
-      addNode({id:prId,type:'pr',state:['WORKING','REVIEW','VERIFY'].includes(workStatus(row))?'REVIEW':'OPEN',title:'PR #'+pr,label:'MÃ NGUỒN',detail:row?.checks?.state?('Kiểm tra: '+row.checks.state):'Pull Request thật',url:prUrl,sourceRow:row});
-      const baseLayer=Math.max(1,(depth.get(n)||0)+1);
-      setLayer(prId,baseLayer);
-      if(Number(row?.targetPrNumber)===pr||Number(row?.sourcePrNumber)===pr){
-        addEdge(prId,id,workStatus(row),'target-pr');setLayer(id,baseLayer+1);
-      }else{
-        addEdge(id,prId,workStatus(row),'produces-pr');
-      }
-      if(row?.checks){
-        const checkId='checks-'+pr;
-        const checkState=workflowChecksState(row.checks);
-        const passed=Number(row.checks.passed),total=Number(row.checks.total),active=Number(row.checks.active),failed=Number(row.checks.failed);
-        let detail=String(row.checks.state||'Đang kiểm tra');
-        if(Number.isFinite(passed)&&Number.isFinite(total)&&total>0)detail=passed+'/'+total+' kiểm tra đạt';
-        if(active>0)detail=active+' kiểm tra đang chạy';
-        if(failed>0)detail=failed+' kiểm tra lỗi';
-        addNode({id:checkId,type:'checks',state:checkState,title:detail,label:'KIỂM TRA',detail:'CI / cổng kỹ thuật',url:prUrl,sourceRow:row});
-        setLayer(checkId,baseLayer+1);addEdge(prId,checkId,checkState,'checks');
-      }
-    }
+  const streams=[...streamMap.values()].sort((a,b)=>{
+    const af=a.rows.some(row=>Number(row.number)===Number(focus?.number))?0:1;
+    const bf=b.rows.some(row=>Number(row.number)===Number(focus?.number))?0:1;
+    return af-bf||packageStatusRank(workStatus(a.root))-packageStatusRank(workStatus(b.root))||Number(a.root.number)-Number(b.root.number);
+  });
+  return {root,focus,rows:descendants,streams,stats:packageStats(descendants.filter(row=>Number(row.number)!==Number(root.number)))};
+}
+function packageTaskHtml(row,focus){
+  const status=workStatus(row),cls=packageStateClass(status);
+  const isFocus=Number(row.number)===Number(focus?.number);
+  const worker=workerFrom(row);
+  const artifacts=packageArtifacts(row);
+  const artifactMarkup=artifacts.map(item=>'<a class="package-artifact" href="'+esc(item.url||'#')+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">'+esc(item.label)+'</a>').join('');
+  const workerMarkup=worker&&!['CHƯA GÁN','OWNER'].includes(worker)?'<span class="package-worker">'+esc(worker)+'</span>':'';
+  return '<button type="button" class="package-task '+cls+(isFocus?' is-focus':'')+'" data-package-row="'+Number(row.number)+'">'
+    +'<div class="package-task-top"><span class="package-task-type">'+esc(packageTaskType(row))+'</span><span class="package-task-id">#'+Number(row.number)+'</span></div>'
+    +'<div class="package-task-title">'+esc(displayTitle(row.title))+'</div>'
+    +'<div class="package-task-detail">'+esc(row.currentStep||row.latestCompletedStep||stateLabel[status]||status)+'</div>'
+    +'<div class="package-task-foot">'+workerMarkup+artifactMarkup+'<span class="package-task-state">'+esc(stateLabel[status]||status)+'</span></div>'
+    +'</button>';
+}
+function packageVisibleTasks(stream,focus){
+  const streamNumber=Number(stream.root.number);
+  const rows=stream.rows.filter(row=>Number(row.number)!==streamNumber);
+  const ordered=rows.slice().sort((a,b)=>{
+    const af=Number(a.number)===Number(focus?.number)?0:1,bf=Number(b.number)===Number(focus?.number)?0:1;
+    return af-bf||packageStatusRank(workStatus(a))-packageStatusRank(workStatus(b))||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(b.number)-Number(a.number);
+  });
+  const active=ordered.filter(row=>workStatus(row)!=='DONE');
+  const done=ordered.filter(row=>workStatus(row)==='DONE').slice(0,2);
+  const selected=[...active.slice(0,6),...done].filter((row,index,array)=>array.findIndex(item=>Number(item.number)===Number(row.number))===index);
+  if(focus&&rows.some(row=>Number(row.number)===Number(focus.number))&&!selected.some(row=>Number(row.number)===Number(focus.number))){
+    selected.unshift(focus);
   }
-
-  for(const row of cluster){
-    const n=Number(row.number),id='issue-'+n,p=Number(row.parentNumber);
-    if(n===Number(root.number))continue;
-    const targetPr=Number(row?.targetPrNumber||row?.sourcePrNumber);
-    if(targetPr&&nodeIds.has('pr-'+targetPr))continue;
-    if(p&&rowByNumber.has(p)){
-      const parentId='issue-'+p;addEdge(parentId,id,workStatus(row),'parent');
-      setLayer(id,Math.max(Number(layers.get(id)||0),Number(layers.get(parentId)||0)+1));
-    }
-    for(const dep of (row?.dependsOn||[]).map(Number)){
-      const depId='issue-'+dep;
-      if(nodeIds.has(depId))addEdge(depId,id,workStatus(row),'dependency');
-    }
+  return selected.slice(0,8);
+}
+function packageDependencyText(stream,streams){
+  const deps=(stream.root?.dependsOn||[]).map(Number);
+  if(!deps.length)return '';
+  const labels=deps.map(dep=>{
+    const target=streams.find(item=>Number(item.root.number)===dep||item.rows.some(row=>Number(row.number)===dep));
+    return target?'#'+dep+' '+displayTitle(target.root.title):'#'+dep;
+  });
+  return 'Phụ thuộc: '+labels.join(' · ');
+}
+function packageFlowHtml(streams,focus){
+  if(!streams.length)return '';
+  const items=[];
+  for(let i=0;i<streams.length;i++){
+    const stream=streams[i],isFocus=stream.rows.some(row=>Number(row.number)===Number(focus?.number));
+    items.push('<span class="package-flow-chip'+(isFocus?' is-focus':'')+'">#'+Number(stream.root.number)+' · '+esc(displayTitle(stream.root.title))+'</span>');
+    if(i<streams.length-1)items.push('<span class="package-flow-arrow">→</span>');
   }
-
-  const maxLayer=Math.max(0,...layers.values());
-  const grouped=Array.from({length:maxLayer+1},()=>[]);
-  for(const node of nodes)grouped[Math.min(maxLayer,Number(layers.get(node.id)||0))].push(node);
-  grouped.forEach(layer=>layer.sort((a,b)=>{
-    const order={issue:0,pr:1,checks:2};
-    return (order[a.type]??9)-(order[b.type]??9)||Number(a?.row?.number||0)-Number(b?.row?.number||0);
-  }));
-  return {root,focus:seed,nodes,edges,layers:grouped};
+  return '<div class="package-flow" aria-label="Các nhánh của việc lớn">'+items.join('')+'</div>';
 }
-function workflowNodeHtml(node){
-  const status=String(node.state||'UNKNOWN').toUpperCase();
-  const cls=workflowNodeState(status);
-  const row=node.row||node.sourceRow||null;
-  const detail=node.detail||row?.currentStep||row?.latestCompletedStep||stateLabel[status]||status;
-  const worker=row?workerFrom(row):'';
-  const idText=node.type==='issue'&&row?'#'+Number(row.number):node.type==='pr'?node.title:'';
-  const footWorker=worker&&!['CHƯA GÁN','OWNER'].includes(worker)?'<span class="workflow-worker">'+esc(worker)+'</span>':'';
-  const stateText=stateLabel[status]||status;
-  const inner='<div class="workflow-node-top"><span class="workflow-node-type">'+esc(node.label)+'</span><span class="workflow-node-id">'+esc(idText)+'</span></div>'
-    +'<div class="workflow-node-title">'+esc(node.title)+'</div>'
-    +'<div class="workflow-node-detail">'+esc(detail||'—')+'</div>'
-    +'<div class="workflow-node-foot">'+footWorker+'<span class="workflow-state">'+esc(stateText)+'</span></div>';
-  const isRoot=node.id==='issue-'+Number(workflowGraphState?.root?.number);
-  const isFocus=node.id==='issue-'+Number(workflowGraphState?.focus?.number);
-  const className='workflow-node is-'+cls+(isRoot?' is-root':'')+(isFocus?' is-focus':'');
-  if(node.type==='issue'&&row)return '<button type="button" class="'+className+'" data-workflow-node="'+esc(node.id)+'" data-row-number="'+Number(row.number)+'">'+inner+'</button>';
-  return '<a class="'+className+'" data-workflow-node="'+esc(node.id)+'" href="'+esc(node.url||'#')+'" target="_blank" rel="noopener noreferrer">'+inner+'</a>';
+function packageStreamHtml(stream,allStreams,focus){
+  const status=workStatus(stream.root),stats=packageStats(stream.rows);
+  const isFocus=stream.rows.some(row=>Number(row.number)===Number(focus?.number));
+  const visible=packageVisibleTasks(stream,focus);
+  const hidden=Math.max(0,stream.rows.length-1-visible.length);
+  const dep=packageDependencyText(stream,allStreams);
+  const taskMarkup=visible.length?visible.map(row=>packageTaskHtml(row,focus)).join(''):'<div class="package-more">Chưa có việc nhỏ tách riêng trong nhánh này.</div>';
+  const statParts=[];
+  if(stats.working)statParts.push(stats.working+' đang làm');
+  if(stats.review)statParts.push(stats.review+' rà soát');
+  if(stats.blocked)statParts.push(stats.blocked+' bị chặn');
+  if(stats.waiting)statParts.push(stats.waiting+' chờ');
+  if(stats.done)statParts.push(stats.done+' xong');
+  return '<section class="package-stream '+packageStateClass(status)+(isFocus?' is-focus':'')+'">'
+    +'<div class="package-stream-head"><div class="package-stream-main"><div><span class="package-stream-label">NHÁNH CÔNG VIỆC</span> <span class="package-stream-id">#'+Number(stream.root.number)+'</span></div>'
+    +'<div class="package-stream-title">'+esc(displayTitle(stream.root.title))+'</div>'
+    +'<span class="package-stream-state">'+esc(stateLabel[status]||status)+'</span></div></div>'
+    +(dep?'<div class="package-stream-dependency">'+esc(dep)+'</div>':'')
+    +(statParts.length?'<div class="package-stream-stats">'+statParts.map(text=>'<span class="package-stat">'+esc(text)+'</span>').join('')+'</div>':'')
+    +'<div class="package-tasks">'+taskMarkup+'</div>'
+    +(hidden>0?'<div class="package-more">+'+hidden+' việc khác đã thu gọn để màn hình dễ đọc.</div>':'')
+    +'</section>';
 }
-function workflowEdgeClass(edge){
-  const s=String(edge.state||'').toUpperCase();
-  if(s==='DONE')return 'is-done';
-  if(s==='BLOCKED')return 'is-blocked';
-  if(s==='WORKING')return 'is-working';
-  if(s==='REVIEW')return 'is-review';
-  if(s==='VERIFY')return 'is-verify';
-  if(s==='WAITING')return 'is-waiting';
-  if(s==='QUEUED')return 'is-queued';
-  return '';
-}
-function drawWorkflowEdges(){
-  const canvas=document.querySelector('.workflow-canvas'),svg=document.querySelector('.workflow-wires');
-  if(!canvas||!svg||!workflowGraphState)return;
-  const canvasRect=canvas.getBoundingClientRect(),width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.scrollHeight);
-  svg.setAttribute('viewBox','0 0 '+width+' '+height);
-  svg.setAttribute('width',width);svg.setAttribute('height',height);
-  svg.innerHTML=workflowGraphState.edges.map((edge,index)=>{
-    const from=canvas.querySelector('[data-workflow-node="'+edge.from+'"]');
-    const to=canvas.querySelector('[data-workflow-node="'+edge.to+'"]');
-    if(!from||!to)return '';
-    const a=from.getBoundingClientRect(),b=to.getBoundingClientRect();
-    const sx=a.left-canvasRect.left+a.width/2,sy=a.bottom-canvasRect.top;
-    const ex=b.left-canvasRect.left+b.width/2,ey=b.top-canvasRect.top;
-    const mid=sy+(ey-sy)*.5;
-    const d='M '+sx+' '+sy+' C '+sx+' '+mid+', '+ex+' '+mid+', '+ex+' '+ey;
-    const edgeClass=workflowEdgeClass(edge);
-    const state=String(edge.state||'').toUpperCase();
-    const particleSpec=state==='WORKING'?{dur:'1.15s',r:3.8}:['REVIEW','VERIFY'].includes(state)?{dur:'2.35s',r:3.2}:['WAITING','QUEUED'].includes(state)?{dur:'4.2s',r:2.5}:null;
-    const particle=particleSpec?'<circle class="workflow-particle '+edgeClass+'" r="'+particleSpec.r+'"><animateMotion dur="'+particleSpec.dur+'" begin="'+(-.37*index)+'s" repeatCount="indefinite" path="'+d+'"></animateMotion></circle>':'';
-    return '<path class="workflow-wire '+edgeClass+'" d="'+d+'"></path>'+particle;
-  }).join('');
-}
-function scheduleWorkflowEdges(){
-  cancelAnimationFrame(workflowEdgeFrame);
-  workflowEdgeFrame=requestAnimationFrame(drawWorkflowEdges);
-}
-window.addEventListener('resize',scheduleWorkflowEdges,{passive:true});
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.</div>';return}
-  const graph=buildWorkflowGraph();
-  if(!graph){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Hiện chưa có công việc thật đủ dữ liệu để dựng luồng.</div>';return}
-  workflowGraphState=graph;
-  const root=graph.root,focus=graph.focus||root,status=workStatus(focus),label=stateLabel[status]||status;
-  const {pct,verified}=verifiedProgress(focus);
-  const progress=verified?'<div class="workflow-progress"><div class="workflow-progress-track"><div class="workflow-progress-fill" style="width:'+pct+'%"></div></div><span class="workflow-progress-text">'+pct+'%</span></div>':'';
-  const parallel=graph.layers.some(layer=>layer.length>1)?'<div class="workflow-parallel">Các nhánh cùng hàng là công việc thật đang đi song song / cùng chờ tại một mốc.</div>':'';
-  const layers=graph.layers.map(layer=>'<div class="workflow-layer">'+layer.map(workflowNodeHtml).join('')+'</div>').join('');
-  const blocker=effectiveBlocker(focus);
-  el.innerHTML='<article class="workflow-shell">'
-    +'<div class="workflow-head"><div><div class="workflow-kicker">LUỒNG CÔNG VIỆC · #'+Number(root.number)+'</div><div class="workflow-title">'+esc(displayTitle(root.title))+'</div></div>'
-    +'<div class="workflow-meta"><span class="workflow-badge">'+esc(workPriority(root))+'</span><span class="workflow-badge">'+graph.nodes.length+' node thật</span></div></div>'
-    +'<div class="workflow-now"><div><b>Đang ở:</b> '+esc(focus?.currentStep||label)+'</div>'+progress+'<div class="workflow-next"><b>Bước tới:</b> '+esc(shortNext(focus))+'</div></div>'
-    +'<div class="workflow-canvas"><svg class="workflow-wires" aria-hidden="true"></svg>'+layers+'</div>'
-    +parallel+(blocker?'<div class="workflow-blocker"><b>Bị chặn:</b> '+esc(blocker)+'</div>':'')
+  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng cấu trúc để tránh hiển thị sai.</div>';return}
+  const pack=buildWorkPackage();
+  if(!pack){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Hiện chưa có công việc thật đủ dữ liệu để gom thành việc lớn.</div>';return}
+  workPackageState=pack;
+  const root=pack.root,focus=pack.focus||root,status=workStatus(focus),stats=pack.stats;
+  const focusWorker=workerFrom(focus);
+  const focusWorkerText=focusWorker&&!['CHƯA GÁN','OWNER'].includes(focusWorker)?' · '+focusWorker:'';
+  const streamsMarkup=pack.streams.length?pack.streams.map(stream=>packageStreamHtml(stream,pack.streams,focus)).join(''):'<div class="package-empty">Việc lớn này chưa có nhánh con trong dữ liệu hiện hành.</div>';
+  el.innerHTML='<article class="package-shell">'
+    +'<div class="package-head"><div><div class="package-kicker">VIỆC LỚN · #'+Number(root.number)+'</div><div class="package-title">'+esc(displayTitle(root.title))+'</div></div>'
+    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+Math.max(0,pack.rows.length-1)+' việc liên quan</span></div></div>'
+    +'<div class="package-summary">'
+      +'<div class="is-working"><span>Đang làm</span><b>'+stats.working+'</b></div>'
+      +'<div class="is-review"><span>Rà soát</span><b>'+stats.review+'</b></div>'
+      +'<div class="is-blocked"><span>Bị chặn</span><b>'+stats.blocked+'</b></div>'
+      +'<div><span>Đang chờ</span><b>'+stats.waiting+'</b></div>'
+      +'<div class="is-done"><span>Hoàn tất</span><b>'+stats.done+'</b></div>'
+    +'</div>'
+    +'<div class="package-focus"><div class="package-focus-title"><b>Đang tập trung:</b> #'+Number(focus.number)+' · '+esc(displayTitle(focus.title))+'</div><div class="package-focus-sub">'+esc(stateLabel[status]||status)+focusWorkerText+' · Bước tới: '+esc(shortNext(focus))+'</div></div>'
+    +packageFlowHtml(pack.streams,focus)
+    +'<div class="package-streams">'+streamsMarkup+'</div>'
     +'</article>';
-  el.querySelectorAll('[data-row-number]').forEach(node=>{
-    const rowNumber=Number(node.getAttribute('data-row-number'));
-    const row=workflowRows().find(item=>Number(item.number)===rowNumber);
-    if(!row)return;
-    node.addEventListener('click',()=>openDrawer(row,node));
+  el.querySelectorAll('[data-package-row]').forEach(node=>{
+    const rowNumber=Number(node.getAttribute('data-package-row'));
+    const row=pack.rows.find(item=>Number(item.number)===rowNumber);
+    if(row)node.addEventListener('click',()=>openDrawer(row,node));
   });
-  scheduleWorkflowEdges();
 }
 
 function renderNowRunning(){
