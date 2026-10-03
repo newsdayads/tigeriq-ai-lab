@@ -10,6 +10,7 @@ import {
   parseQueueIssue,
   classifyOpenIssue,
   parseOpenWorkIssue,
+  workflowRelationsForIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
   projectionTransportStale,
@@ -771,6 +772,57 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(fallback.workers[0].currentJobId).toBe('GH-1766');
   });
 
+
+
+  it('exposes structural workflow relations without inferring free-form references', () => {
+    const source = issue(3089, '[P1] Graph relation source', [
+      'PARENT=#3059',
+      'SOURCE=#3059',
+      'TARGET_PR=#3091',
+      'SOURCE_PR=#3090',
+      'DEPENDS_ON=#3001,#3002',
+      'SUPERSEDES=#2999',
+      'CAPABILITY=review',
+      'REVIEW_ONLY=true',
+      'NEXT=Open #7777 later',
+    ].join('\n'));
+    expect(workflowRelationsForIssue(source)).toEqual({
+      parentNumber: 3059,
+      sourceNumber: 3059,
+      targetPrNumber: 3091,
+      sourcePrNumber: 3090,
+      dependsOn: [3001, 3002],
+      supersedesNumbers: [2999],
+      capability: 'review',
+      reviewOnly: true,
+    });
+    expect(parseOpenWorkIssue(source)).toMatchObject({
+      parentNumber: 3059,
+      targetPrNumber: 3091,
+      dependsOn: [3001, 3002],
+      capability: 'review',
+      reviewOnly: true,
+    });
+  });
+
+  it('preserves workflow relations on recent completed work for graph history', () => {
+    const row = parseRecentCompletedIssue({
+      ...issue(4001, '[P1] Completed child', [
+        'PARENT=#4000',
+        'SOURCE=#4000',
+        'CAPABILITY=coding',
+      ].join('\n')),
+      state: 'closed',
+      state_reason: 'completed',
+      closed_at: '2026-09-24T12:01:00Z',
+    }, Date.parse('2026-09-24T12:02:00Z'));
+    expect(row).toMatchObject({
+      parentNumber: 4000,
+      sourceNumber: 4000,
+      capability: 'coding',
+      status: 'DONE',
+    });
+  });
 
   it('uses current canonical phase instead of stale historical owner-gate flags', () => {
     const row = parseOpenWorkIssue(issue(2803, '[P1][API WORKFORCE] Stability reopened', [
