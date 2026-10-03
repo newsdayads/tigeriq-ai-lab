@@ -37,7 +37,7 @@ v0.17 defines the current fail-closed Project binding contract:
 - when this ChatGPT build emits no usable click event, a no-click path is allowed only from a stable active-Project title signal plus a usable composer;
 - exact conversation text `TigerIQ AI Lab` is insufficient and must not bind;
 - the title candidate must be outside clickable/editable/scrollable content and expose both Project-specific structural semantics and heading/header/title semantics;
-- stable-context samples are scoped to one `runId` and are cleared before any foreground-departure early return, when the run ends, or when Accessibility is interrupted; active IME events preserve the candidate only while ChatGPT still owns the active root;
+- stable-context samples are scoped to one `runId` and are cleared before any foreground-departure early return, when the run ends, or when Accessibility is interrupted; active IME events preserve the candidate only while ChatGPT still owns the active root; unavailable or mismatched active roots reset the candidate fail-closed;
 - stable binding requires at least 3 fresh samples spanning at least 1200 ms.
 
 Physical acceptance still requires 10 real cycles and at least one ChatGPT restart/recovery on Z Flip 7. This source/build must not be called Gate B PASS until that evidence exists.
