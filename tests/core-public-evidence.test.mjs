@@ -82,4 +82,29 @@ describe('Core public evidence for direct PC receipts', () => {
     });
   });
 
+  it('exposes only sanitized TigerIQ taskNames when explicitly requested',()=>{
+    const jobResult={
+      evidence:{
+        bridgeCalls:[{
+          tool:'tigeriq_pc',
+          result:{
+            ok:true,
+            action:'task_list',
+            target:'pc01-local',
+            data:{
+              readOnly:true,
+              scope:'TigerIQ',
+              taskNames:['TigerIQ Core 24x7','TigerIQ Android Worker Release'],
+              tasks:[{taskName:'TigerIQ Core 24x7'},{taskName:'TigerIQ Android Worker Release'}],
+            },
+          },
+        }],
+      },
+    };
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=taskNames')).toEqual(['taskNames']);
+    expect(extractPublicEvidence(jobResult,['taskNames'])).toEqual({
+      taskNames:['TigerIQ Core 24x7','TigerIQ Android Worker Release'],
+    });
+  });
+
 });
