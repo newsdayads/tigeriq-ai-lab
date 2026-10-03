@@ -4,6 +4,7 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'remoteDesktopGuard',
   'changedPaths',
   'updaterTaskTarget',
+  'taskNames',
 ]);
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
