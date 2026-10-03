@@ -43,8 +43,17 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(service).toContain('duplicateSendCount');
   });
 
+  it('checks exact lease freshness before terminal idempotency', () => {
+    const leaseGuard = core.indexOf('if(!mobileTaskLeaseFresh({currentLeaseId:task.lease_id,leaseId,leaseExpiresAt:task.lease_expires_at}))');
+    const terminalDecision = core.indexOf('const decision=mobileTaskTerminalDecision({status:task.status', leaseGuard);
+    const idempotentAccept = core.indexOf('if(decision.idempotent)', terminalDecision);
+    expect(leaseGuard).toBeGreaterThan(-1);
+    expect(terminalDecision).toBeGreaterThan(leaseGuard);
+    expect(idempotentAccept).toBeGreaterThan(terminalDecision);
+  });
+
   it('does not let a persisted Core task interrupt a manual or different B1 run', () => {
-    expect(service).toContain('boolean runMatchesTask = task.taskId.equals(run.taskId);');
+    expect(service).toContain('boolean runMatchesTask = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);');
     expect(service).toContain('if (!runMatchesTask && run.active())');
     expect(service).toContain('renewTaskLeaseIfDue(client, task);');
     expect(service).toContain('if (run.terminal() && runMatchesTask)');
