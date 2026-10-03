@@ -866,4 +866,14 @@ describe('GitHub Core intake guardrails',()=>{
   });
 
   it('formats a terminal result with Vietnamese Owner-facing evidence',()=>{const out=formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'final review PASS'});expect(out).toContain('[KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-588');expect(out).toContain('rà soát cuối ĐẠT');expect(out).not.toMatch(/\\b(?:PASS|COMPLETED|BLOCKED)\\b/);});
+
+  it('preserves long public evidence verbatim instead of localizing or truncating binary transport',()=>{
+    const evidence='{"status":"ANDROID_V020_EXPORT_CHUNK_READY","chunkBase64":"'+'PASSDONE'.repeat(1200)+'"}';
+    const out=formatResultComment({id:'OBJ-GH-999',status:'completed',summary:'direct pc_operator completed locally; job=JOB-GH-999-PC\\nPUBLIC_EVIDENCE_JSON='+evidence});
+    const published=out.match(/PUBLIC_EVIDENCE_JSON=(.*)\\n\\nBằng chứng:/s)?.[1];
+    expect(published).toBe(evidence);
+    expect(published).toContain('PASSDONE');
+    expect(published).not.toContain('ĐẠT');
+    expect(out.length).toBeGreaterThan(9000);
+  });
 });
