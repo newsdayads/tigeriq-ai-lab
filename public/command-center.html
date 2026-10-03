@@ -252,6 +252,36 @@ body.drawer-open{overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){.flow-card,.flow-row,.flow-stage{transition:none!important}}
 </style>
+
+<style>
+/* #3470 Owner-readable semantic cards + truthful relationship graph */
+.workflow-board{position:relative;overflow:hidden}
+.workflow-head,.workflow-brief,.flow-rows,.flow-session-log{position:relative;z-index:2}
+.flow-edge-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible}
+.flow-edge{fill:none;stroke:#355c79;stroke-width:1.25;opacity:.68}
+.flow-edge.dependency{stroke:#efb85c;stroke-dasharray:5 4}
+.flow-edge.worker{stroke:#65d7e8}
+.flow-edge.artifact{stroke:#c5a6ff;stroke-dasharray:3 3}
+.workflow-brief{display:grid;grid-template-columns:minmax(260px,1.5fr) repeat(3,minmax(150px,1fr));gap:7px;margin:9px 0 5px;padding:9px;border:1px solid #2b506e;background:linear-gradient(135deg,#0f2740,#0a1b2c);border-radius:12px}
+.workflow-brief-main{min-width:0}.workflow-brief-main small{font-size:8px;color:#7fc6f4;font-weight:900;letter-spacing:.06em}.workflow-brief-main b{display:block;font-size:14px;line-height:1.35;margin-top:4px;color:#f0f7fd}.workflow-brief-main span{display:block;font-size:9px;color:#9eb2c5;margin-top:5px}
+.workflow-brief-cell{border-left:1px solid #28445d;padding:3px 0 3px 9px;min-width:0}.workflow-brief-cell small{display:block;font-size:7.5px;color:#7990a6;text-transform:uppercase;font-weight:850}.workflow-brief-cell span{display:block;font-size:9.5px;line-height:1.38;color:#d2deea;margin-top:4px;overflow-wrap:anywhere}
+.flow-cards{grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:9px}
+.flow-card{padding:10px 11px;border-radius:12px;background:linear-gradient(180deg,#0d1f32,#091725);box-shadow:0 7px 20px rgba(0,0,0,.12)}
+.flow-card-top b{font-size:8px}.flow-card-top span{font-size:8.5px;font-weight:800;color:#a9bed1}.flow-card-top em{font-size:8px;border:1px solid #334d63;border-radius:999px;padding:3px 6px}
+.flow-card-title{font-size:12.5px;line-height:1.35;margin-top:7px;color:#f2f6fb}
+.flow-card-semantics{display:grid;gap:4px;margin-top:8px;padding-top:7px;border-top:1px solid #1c344b}
+.flow-card-fact{display:grid;grid-template-columns:66px minmax(0,1fr);gap:7px;font-size:9.5px;line-height:1.4}
+.flow-card-fact b{color:#7390aa;font-size:8px;text-transform:uppercase;letter-spacing:.02em}
+.flow-card-fact span{color:#cedbe7;overflow-wrap:anywhere}
+.flow-card-fact.current span{color:#f0f6fb;font-weight:760}.flow-card-fact.done span{color:#91dcb8}.flow-card-fact.next span{color:#9dcbf3}.flow-card-fact.blocker span{color:#ffabb3}.flow-card-fact.result span{color:#d7c5ff}
+.flow-card-relations{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}.flow-relation{border:1px solid #304d67;background:#0b1724;border-radius:999px;padding:3px 6px;font-size:7.5px;color:#8fa8bf}.flow-relation.dep{border-color:#6f592f;color:#e9c57f}
+.flow-card-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;padding-top:6px;border-top:1px dashed #223c54;font-size:7.5px;color:#69829a}.flow-card-meta span{white-space:nowrap}.flow-card-meta .proof{color:#79c9a2}
+.flow-mini-progress{margin-top:9px}
+.tool-card .flow-card-title{color:#bceaf0}.tool-card .flow-card-fact{grid-template-columns:58px minmax(0,1fr)}
+@media(max-width:900px){.workflow-brief{grid-template-columns:1fr 1fr}.workflow-brief-main{grid-column:1/-1}.workflow-brief-cell{border-left:0;border-top:1px solid #28445d;padding:7px 0 0}}
+@media(max-width:700px){.workflow-brief{grid-template-columns:1fr;padding:8px}.workflow-brief-main{grid-column:auto}.workflow-brief-cell{border-left:0;border-top:1px solid #28445d;padding:7px 0 0}.flow-cards{grid-template-columns:1fr}.flow-card{padding:10px}.flow-card-fact{grid-template-columns:62px minmax(0,1fr)}.flow-edge-layer{display:none}}
+</style>
+
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -639,6 +669,64 @@ function packageSummaryFromUnits(units){
   for(const unit of units){const s=unit.aggregate.state;if(s==='WORKING')counts.working++;else if(['REVIEW','VERIFY'].includes(s))counts.review++;else if(s==='BLOCKED')counts.blocked++;else if(s==='DONE')counts.done++;else counts.waiting++;}
   return counts;
 }
+
+function ownerCardCurrent(row){
+  const direct=String(row?.currentStep||'').trim();
+  if(direct)return direct;
+  if(row?.technicalComplete&&workStatus(row)==='OWNER_GATE')return 'Kỹ thuật đã hoàn tất';
+  return '';
+}
+function ownerCardDone(row){return String(row?.latestCompletedStep||'').trim()}
+function ownerNextText(row){return String(row?.nextStep||'').trim()}
+function ownerPrNumber(row){return Number(row?.prNumber||row?.targetPrNumber||row?.sourcePrNumber)||null}
+function ownerResultText(row){
+  const status=workStatus(row);
+  if(status==='DONE')return 'Hoàn tất';
+  if(status==='OWNER_GATE')return row?.technicalComplete?'Đã xong kỹ thuật · chờ quyết định':'Chờ anh Sơn';
+  if(String(row?.blocker||'').trim())return 'Bị chặn';
+  return stateLabel[status]||status;
+}
+function ownerRelationHtml(row,visibleNumbers){
+  const bits=[];
+  const parent=Number(row?.parentNumber);
+  if(parent&&visibleNumbers.has(parent))bits.push('<span class="flow-relation">↳ từ #'+parent+'</span>');
+  for(const dep of (Array.isArray(row?.dependsOn)?row.dependsOn:[]).map(Number).filter(Boolean)){
+    if(visibleNumbers.has(dep))bits.push('<span class="flow-relation dep">#'+dep+' → việc này</span>');
+  }
+  return bits.length?'<div class="flow-card-relations">'+bits.join('')+'</div>':'';
+}
+function ownerToolNode(worker,row){
+  const live=(snapshot?.workers||[]).find(item=>String(item?.employeeId||'').toUpperCase()===String(worker).toUpperCase());
+  if(!live)return null;
+  const provider=String(live?.provider||'').trim();
+  const model=String(live?.model||'').trim();
+  const source=String(live?.source||'').trim();
+  const detail=String(live?.detail||'').trim();
+  const label=String(live?.label||worker).trim();
+  if(!provider&&!model&&!source&&!detail)return null;
+  return {synthetic:true,id:'tool-'+String(worker).toLowerCase(),worker,row,live,label,provider,model,source,detail};
+}
+function renderFlowEdges(container,edges){
+  const board=container?.querySelector?.('.workflow-board');if(!board)return;
+  const old=board.querySelector('.flow-edge-layer');if(old)old.remove();
+  if(!Array.isArray(edges)||!edges.length)return;
+  const rect=board.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');svg.setAttribute('class','flow-edge-layer');svg.setAttribute('viewBox','0 0 '+rect.width+' '+rect.height);svg.setAttribute('aria-hidden','true');
+  const defs=document.createElementNS(ns,'defs');
+  const marker=document.createElementNS(ns,'marker');marker.setAttribute('id','flowArrow3470');marker.setAttribute('viewBox','0 0 10 10');marker.setAttribute('refX','8');marker.setAttribute('refY','5');marker.setAttribute('markerWidth','5');marker.setAttribute('markerHeight','5');marker.setAttribute('orient','auto-start-reverse');
+  const arrow=document.createElementNS(ns,'path');arrow.setAttribute('d','M 0 0 L 10 5 L 0 10 z');arrow.setAttribute('fill','#527b98');marker.appendChild(arrow);defs.appendChild(marker);svg.appendChild(defs);
+  for(const edge of edges){
+    const from=board.querySelector('[data-flow-node="'+edge.from+'"]'),to=board.querySelector('[data-flow-node="'+edge.to+'"]');
+    if(!from||!to||from===to)continue;
+    const a=from.getBoundingClientRect(),b=to.getBoundingClientRect();
+    const x1=a.left+a.width/2-rect.left,y1=a.bottom-rect.top,x2=b.left+b.width/2-rect.left,y2=b.top-rect.top;
+    const mid=y1+(y2-y1)/2;
+    const path=document.createElementNS(ns,'path');path.setAttribute('d','M '+x1+' '+y1+' C '+x1+' '+mid+', '+x2+' '+mid+', '+x2+' '+y2);path.setAttribute('class','flow-edge '+String(edge.type||''));path.setAttribute('marker-end','url(#flowArrow3470)');svg.appendChild(path);
+  }
+  board.prepend(svg);
+}
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
@@ -651,71 +739,108 @@ function renderJobJourney(){
   workPackageState={packages,selected:pack};
   const root=pack.root;
   const uniqueRows=rows=>[...new Map(rows.filter(Boolean).map(row=>[Number(row.number)||String(row.title),row])).values()];
-  const streamRows=uniqueRows(pack.streams.map(stream=>stream.root));
+  const streamRows=uniqueRows(pack.streams.map(stream=>stream.root)).slice(0,4);
   const executionRows=uniqueRows(pack.streams.flatMap(stream=>stream.groups.length?stream.groups.map(group=>group.focus):[stream.root]))
-    .filter(row=>!packageIsReviewEvidence(row)&&!['DONE','OWNER_GATE'].includes(workStatus(row)));
-  const reviewRows=uniqueRows(pack.rows.filter(row=>packageIsReviewEvidence(row)||['REVIEW','VERIFY'].includes(workStatus(row)))).slice(0,5);
-  const outcomeRows=uniqueRows(pack.rows.filter(row=>workStatus(row)==='OWNER_GATE'&&!packageIsReviewEvidence(row))).slice(0,3);
+    .filter(row=>!packageIsReviewEvidence(row)&&!['DONE','OWNER_GATE'].includes(workStatus(row))).slice(0,6);
+  const reviewRows=uniqueRows(pack.rows.filter(row=>packageIsReviewEvidence(row)||['REVIEW','VERIFY'].includes(workStatus(row)))).slice(0,4);
+  const outcomeRows=uniqueRows(pack.rows.filter(row=>(workStatus(row)==='OWNER_GATE'||workStatus(row)==='DONE')&&!packageIsReviewEvidence(row)))
+    .sort((a,b)=>packageStatusRank(workStatus(a))-packageStatusRank(workStatus(b))||Number(b.number)-Number(a.number)).slice(0,4);
   const workerMap=new Map();
   executionRows.forEach(row=>{const worker=workerFrom(row);if(worker&&worker!=='CHƯA GÁN'&&!workerMap.has(worker))workerMap.set(worker,row)});
-  const toolRows=[...workerMap.entries()].map(([worker,row])=>({synthetic:true,worker,row,title:worker+' · môi trường thực thi'}));
+  const toolRows=[...workerMap.entries()].map(([worker,row])=>ownerToolNode(worker,row)).filter(Boolean);
+  const visibleActual=uniqueRows([root,...streamRows,...executionRows,...reviewRows,...outcomeRows]);
+  const visibleNumbers=new Set(visibleActual.map(row=>Number(row.number)));
   const statusClass=row=>'status-'+String(workStatus(row)||'unknown').toLowerCase();
   const card=row=>{
-    const status=workStatus(row),progress=verifiedProgress(row);
-    return '<button type="button" class="flow-card '+statusClass(row)+'" data-flow-row="'+Number(row.number)+'">'
-      +'<div class="flow-card-top"><b>#'+Number(row.number)+'</b><span>'+esc(workerFrom(row))+'</span><em>'+esc(stateLabel[status]||status)+'</em></div>'
+    const status=workStatus(row),progress=verifiedProgress(row),current=ownerCardCurrent(row),done=ownerCardDone(row),next=ownerNextText(row),blocker=String(row?.blocker||'').trim(),result=ownerResultText(row),pr=ownerPrNumber(row);
+    const facts=[];
+    if(current)facts.push('<div class="flow-card-fact current"><b>Đang làm</b><span>'+esc(current)+'</span></div>');
+    if(done)facts.push('<div class="flow-card-fact done"><b>Đã xong</b><span>'+esc(done)+'</span></div>');
+    if(next)facts.push('<div class="flow-card-fact next"><b>Tiếp theo</b><span>'+esc(next)+'</span></div>');
+    if(blocker)facts.push('<div class="flow-card-fact blocker"><b>Vướng</b><span>'+esc(blocker)+'</span></div>');
+    facts.push('<div class="flow-card-fact result"><b>Kết quả</b><span>'+esc(result)+'</span></div>');
+    const meta=['<span>#'+Number(row.number)+'</span>'];
+    if(pr)meta.push('<span>PR #'+pr+'</span>');
+    if(progress.verified)meta.push('<span class="proof">✓ có bằng chứng tiến độ</span>');
+    return '<button type="button" class="flow-card '+statusClass(row)+'" data-flow-row="'+Number(row.number)+'" data-flow-node="job-'+Number(row.number)+'">'
+      +'<div class="flow-card-top"><span>'+esc(workerFrom(row))+'</span><em>'+esc(stateLabel[status]||status)+'</em></div>'
       +'<div class="flow-card-title">'+esc(displayTitle(row.title))+'</div>'
-      +(row?.blocker?'<div class="flow-card-note blocker">Bị chặn: '+esc(String(row.blocker).slice(0,110))+'</div>':'')
-      +(!row?.blocker&&row?.nextStep?'<div class="flow-card-note">Tiếp: '+esc(shortNext(row))+'</div>':'')
+      +(facts.length?'<div class="flow-card-semantics">'+facts.join('')+'</div>':'')
+      +ownerRelationHtml(row,visibleNumbers)
       +(progress.verified?'<div class="flow-mini-progress"><i style="width:'+progress.pct+'%"></i><span>'+progress.pct+'%</span></div>':'')
+      +'<div class="flow-card-meta">'+meta.join('')+'</div>'
       +'</button>';
   };
   const syntheticCard=item=>{
-    const row=item.row,status=workStatus(row);
-    return '<button type="button" class="flow-card tool-card '+statusClass(row)+'" data-flow-row="'+Number(row.number)+'">'
-      +'<div class="flow-card-top"><b>'+esc(item.worker)+'</b><em>'+esc(stateLabel[status]||status)+'</em></div>'
-      +'<div class="flow-card-title">'+esc(item.title)+'</div>'
-      +'<div class="flow-card-note">Theo việc #'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</div></button>';
+    const live=item.live,status=String(live?.state||workStatus(item.row)||'WAITING').toUpperCase();
+    const facts=[];
+    if(item.detail)facts.push('<div class="flow-card-fact current"><b>Đang chạy</b><span>'+esc(item.detail)+'</span></div>');
+    if(item.model)facts.push('<div class="flow-card-fact"><b>Model</b><span>'+esc(item.model)+'</span></div>');
+    if(item.provider)facts.push('<div class="flow-card-fact"><b>Provider</b><span>'+esc(item.provider)+'</span></div>');
+    if(item.source)facts.push('<div class="flow-card-fact"><b>Nguồn</b><span>'+esc(item.source)+'</span></div>');
+    return '<button type="button" class="flow-card tool-card status-'+String(workStatus(item.row)||'waiting').toLowerCase()+'" data-flow-row="'+Number(item.row.number)+'" data-flow-node="'+esc(item.id)+'">'
+      +'<div class="flow-card-top"><span>'+esc(item.worker)+'</span><em>'+esc(String(live?.status||stateLabel[workStatus(item.row)]||workStatus(item.row)))+'</em></div>'
+      +'<div class="flow-card-title">'+esc(item.label+(item.model?' · '+item.model:''))+'</div>'
+      +'<div class="flow-card-semantics">'+facts.join('')+'</div>'
+      +'<div class="flow-card-meta"><span>theo việc #'+Number(item.row.number)+'</span></div></button>';
   };
   const placeholder=text=>'<div class="flow-placeholder">'+esc(text)+'</div>';
-  const stageCards=[
-    [root],
-    streamRows,
-    executionRows,
-    toolRows,
-    reviewRows,
-    outcomeRows
-  ];
+  const stageCards=[[root],streamRows,executionRows,toolRows,reviewRows,outcomeRows];
   let activeStage=1;
   if(outcomeRows.some(row=>workStatus(row)==='OWNER_GATE'))activeStage=6;
   else if(reviewRows.some(row=>['REVIEW','VERIFY','WORKING'].includes(workStatus(row))))activeStage=5;
   else if(executionRows.some(row=>['WORKING','BLOCKED'].includes(workStatus(row))))activeStage=3;
   else if(streamRows.length)activeStage=2;
   const stages=[
-    ['01','MỤC TIÊU','Yêu cầu / việc lớn'],
-    ['02','ĐIỀU PHỐI','Gom nhánh và phân việc'],
-    ['03','THỰC THI','Việc đang được xử lý'],
-    ['04','CÔNG CỤ & QUYỀN','Nhân sự / môi trường thực thi'],
-    ['05','KIỂM TRA','Rà soát · xác minh · bằng chứng'],
-    ['06','KẾT QUẢ','Hoàn tất / chờ anh Sơn']
+    ['01','MỤC TIÊU','Anh Sơn đang muốn đạt điều gì'],
+    ['02','ĐIỀU PHỐI','Tách việc và quan hệ phụ thuộc'],
+    ['03','THỰC THI','Ai đang làm việc gì ngay lúc này'],
+    ['04','CÔNG CỤ & QUYỀN','Runtime / model / nguồn thực tế'],
+    ['05','KIỂM TRA','Review · verify · bằng chứng'],
+    ['06','KẾT QUẢ','Đã hoàn tất hoặc chờ quyết định']
   ];
   const tabs=packages.length>1?'<div class="flow-package-tabs">'+packages.map(item=>'<button type="button" class="'+(Number(item.root.number)===Number(pack.root.number)?'active':'')+'" data-flow-package="'+Number(item.root.number)+'">#'+Number(item.root.number)+' · '+esc(displayTitle(item.root.title))+'</button>').join('')+'</div>':'';
   const rowsHtml=stages.map((stage,index)=>{
     const items=stageCards[index];
     let cardsHtml='';
-    if(index===3)cardsHtml=items.length?items.map(syntheticCard).join(''):placeholder('Chưa có nhân sự thực thi được gắn vào việc hiện tại');
+    if(index===3)cardsHtml=items.length?items.map(syntheticCard).join(''):placeholder('Chưa có runtime/model/tool được xác nhận cho việc đang chạy');
     else cardsHtml=items.length?items.map(card).join(''):placeholder(index===4?'Chưa tới bước kiểm tra':index===5?'Chưa có kết quả cuối':'Chưa có dữ liệu ở bước này');
     return '<div class="flow-row '+(activeStage===index+1?'active':'')+'"><div class="flow-stage"><strong>'+stage[0]+'</strong><div><b>'+stage[1]+'</b><span>'+stage[2]+'</span></div></div><div class="flow-cards">'+cardsHtml+'</div></div>';
   }).join('');
+  const focus=packageOperationalFocus(pack.rows)||root;
+  const briefCurrent=ownerCardCurrent(focus)||displayTitle(focus.title),briefDone=ownerCardDone(focus)||'—',briefNext=ownerNextText(focus)||'—';
+  const brief='<section class="workflow-brief"><div class="workflow-brief-main"><small>VIỆC ĐANG ĐƯỢC THEO DÕI</small><b>'+esc(displayTitle(root.title))+'</b><span>'+esc(workerFrom(focus))+' · '+esc(stateLabel[workStatus(focus)]||workStatus(focus))+'</span></div><div class="workflow-brief-cell"><small>Đang làm</small><span>'+esc(briefCurrent)+'</span></div><div class="workflow-brief-cell"><small>Đã xong gần nhất</small><span>'+esc(briefDone)+'</span></div><div class="workflow-brief-cell"><small>Tiếp theo</small><span>'+esc(briefNext)+'</span></div></section>';
+  const graphEdges=[],edgeKeys=new Set();
+  const addEdge=(from,to,type)=>{
+    if(!from||!to||from===to)return;const key=from+'>'+to+'>'+type;if(edgeKeys.has(key))return;edgeKeys.add(key);graphEdges.push({from,to,type});
+  };
+  for(const row of visibleActual){
+    const to='job-'+Number(row.number),parent=Number(row?.parentNumber);
+    if(parent&&visibleNumbers.has(parent))addEdge('job-'+parent,to,'parent');
+    for(const dep of (Array.isArray(row?.dependsOn)?row.dependsOn:[]).map(Number).filter(Boolean))if(visibleNumbers.has(dep))addEdge('job-'+dep,to,'dependency');
+  }
+  for(const item of toolRows)addEdge('job-'+Number(item.row.number),item.id,'worker');
+  const byPr=new Map();
+  for(const row of [...executionRows,...reviewRows,...outcomeRows]){
+    const pr=ownerPrNumber(row);if(!pr)continue;if(!byPr.has(pr))byPr.set(pr,[]);byPr.get(pr).push(row);
+  }
+  for(const rows of byPr.values()){
+    const exec=rows.find(row=>executionRows.includes(row)),review=rows.find(row=>reviewRows.includes(row)),outcome=rows.find(row=>outcomeRows.includes(row));
+    if(exec&&review)addEdge('job-'+Number(exec.number),'job-'+Number(review.number),'artifact');
+    if(review&&outcome)addEdge('job-'+Number(review.number),'job-'+Number(outcome.number),'artifact');
+    else if(exec&&outcome)addEdge('job-'+Number(exec.number),'job-'+Number(outcome.number),'artifact');
+  }
   const events=uniqueRows((snapshot?.recentWork||[]).slice(0,5));
   const logHtml=events.length?events.map(row=>{
     let t='—';try{if(row?.updatedAt)t=new Date(row.updatedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}catch{}
     return '<div class="flow-log-row"><time>'+esc(t)+'</time><b>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</b><span>#'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</span></div>';
   }).join(''):'<div class="flow-log-empty">Chưa có sự kiện hoàn tất gần đây.</div>';
-  el.innerHTML=tabs+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG ĐANG THEO DÕI</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div><div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
+  el.innerHTML=tabs+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG CÔNG VIỆC</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div>'+brief+'<div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
   el.querySelectorAll('[data-flow-package]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-flow-package'));renderJobJourney()}));
   el.querySelectorAll('[data-flow-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-flow-row'));const row=pack.rows.find(item=>Number(item.number)===rowNumber)||pack.root;if(row)node.addEventListener('click',()=>openDrawer(row,node))});
+  requestAnimationFrame(()=>renderFlowEdges(el,graphEdges));
 }
+
 
 function renderNowRunning(){
   const el=$('nowRunning');
