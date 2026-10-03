@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer } from './pad-ui.mjs';
@@ -941,35 +942,97 @@ async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
 
 
 const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
-async function boundedLocalJson(url,{method='GET',payload,fetchImpl=fetch}={}){
+async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestImpl=httpRequest}={}){
   const parsed=new URL(url);
   if(parsed.protocol!=='http:'||!['127.0.0.1','localhost','::1'].includes(parsed.hostname))throw new Error('TIGERIQ_CORE_UI_RECONCILE_LOOPBACK_ONLY');
   if(![8795,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');
-  const response=await fetchImpl(parsed.toString(),{
-    method,
-    headers:payload===undefined?{accept:'application/json'}:{accept:'application/json','content-type':'application/json'},
-    body:payload===undefined?undefined:JSON.stringify(payload),
-    signal:AbortSignal.timeout(5000),
+  if(typeof fetchImpl==='function'){
+    let response;
+    try{
+      response=await fetchImpl(parsed.toString(),{
+        method,
+        headers:payload===undefined?{accept:'application/json'}:{accept:'application/json','content-type':'application/json'},
+        body:payload===undefined?undefined:JSON.stringify(payload),
+        signal:AbortSignal.timeout(5000),
+      });
+    }catch(error){
+      const code=String(error?.code||error?.cause?.code||'ERROR').replace(/[^A-Z0-9_]/gi,'_').toUpperCase().slice(0,40);
+      throw new Error('TIGERIQ_CORE_UI_RECONCILE_TRANSPORT_'+code);
+    }
+    let data={};
+    try{data=await response.json();}catch{throw new Error('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID');}
+    if(!response.ok)throw new Error('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+response.status);
+    return data;
+  }
+  const bodyText=payload===undefined?'':JSON.stringify(payload);
+  return await new Promise((resolve,reject)=>{
+    let settled=false;
+    let req;
+    const fail=(code)=>{
+      if(settled)return;
+      settled=true;
+      reject(new Error(code));
+    };
+    try{
+      req=httpRequestImpl(parsed,{
+        method,
+        headers:payload===undefined
+          ?{accept:'application/json'}
+          :{accept:'application/json','content-type':'application/json','content-length':Buffer.byteLength(bodyText)},
+      },(res)=>{
+        const chunks=[];
+        let bytes=0;
+        res.on('data',(chunk)=>{
+          if(settled)return;
+          const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+          bytes+=part.length;
+          if(bytes>64*1024){
+            fail('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_TOO_LARGE');
+            req.destroy();
+            return;
+          }
+          chunks.push(part);
+        });
+        res.on('end',()=>{
+          if(settled)return;
+          const status=Number(res.statusCode||0);
+          let data={};
+          try{data=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+          catch{fail('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID');return;}
+          if(status<200||status>=300){fail('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+status);return;}
+          settled=true;
+          resolve(data);
+        });
+      });
+      req.setTimeout(5000,()=>{
+        fail('TIGERIQ_CORE_UI_RECONCILE_TIMEOUT');
+        req.destroy();
+      });
+      req.on('error',(error)=>{
+        const code=String(error?.code||'ERROR').replace(/[^A-Z0-9_]/gi,'_').toUpperCase().slice(0,40);
+        fail('TIGERIQ_CORE_UI_RECONCILE_TRANSPORT_'+code);
+      });
+      if(bodyText)req.write(bodyText);
+      req.end();
+    }catch{
+      fail('TIGERIQ_CORE_UI_RECONCILE_TRANSPORT_SETUP');
+    }
   });
-  let data={};
-  try{data=await response.json();}catch{throw new Error('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID');}
-  if(!response.ok)throw new Error('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+response.status);
-  return data;
 }
 
 export async function reconcileCancelledCoreUiJob(input={},options={}){
   const workerId=String(input?.workerId||'').trim().toUpperCase();
   if(!CORE_UI_RECONCILE_WORKERS.has(workerId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_WORKER_INVALID');
-  const fetchImpl=options?.fetchImpl||fetch;
+  const transport={fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl};
   const controllerBase='http://127.0.0.1:8798';
   const coreBase='http://127.0.0.1:8795';
-  const local=await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job/status',{fetchImpl});
+  const local=await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job/status',transport);
   const active=local?.active&&typeof local.active==='object'&&!Array.isArray(local.active)?local.active:null;
   if(!active)return {status:'CORE_UI_RECONCILE_NO_ACTIVE_JOB',workerId,clearedJobId:null,nextJobId:null};
   const jobId=String(active.jobId||'').trim();
   if(!/^GH-\d+(?:-R[a-f0-9]{12})?$/i.test(jobId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_JOB_ID_INVALID');
   if(String(active.source||'')!=='CORE_UI')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_INVALID');
-  const projected=await boundedLocalJson(coreBase+'/api/ui-assignment?previousJobId='+encodeURIComponent(jobId),{fetchImpl});
+  const projected=await boundedLocalJson(coreBase+'/api/ui-assignment?previousJobId='+encodeURIComponent(jobId),transport);
   const previous=projected?.previousJob&&typeof projected.previousJob==='object'?projected.previousJob:null;
   if(!previous||String(previous.jobId||'')!==jobId)throw new Error('TIGERIQ_CORE_UI_RECONCILE_PREVIOUS_ID_MISMATCH');
   if(String(previous.status||'').toUpperCase()!=='CANCELLED')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_NOT_CANCELLED');
@@ -981,9 +1044,9 @@ export async function reconcileCancelledCoreUiJob(input={},options={}){
       blocker:'SOURCE_JOB_CANCELLED',
       result:'Core UI source is terminal CANCELLED; stale local ledger released for next assignment',
     },
-    fetchImpl,
+    ...transport,
   });
-  const after=await boundedLocalJson(coreBase+'/api/ui-assignment',{fetchImpl});
+  const after=await boundedLocalJson(coreBase+'/api/ui-assignment',transport);
   const candidates=Array.isArray(after?.nextJobs)?after.nextJobs:(after?.nextJob?[after.nextJob]:[]);
   const next=candidates.find((item)=>String(item?.workerId||'')===workerId&&item?.executable===true&&String(item?.status||'')==='READY')||null;
   return {
