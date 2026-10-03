@@ -156,6 +156,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(androidReleaseBuildFailureClass({ stdout: 'ANDROID_RELEASE_BUILD_FAILED' })).toBe('ANDROID_RELEASE_BUILD_FAILED');
     expect(androidReleaseBuildFailureClass({ stderr: 'GRADLE_COMMAND_MISSING: no existing Gradle runtime' })).toBe('GRADLE_COMMAND_MISSING');
     expect(androidReleaseBuildFailureClass({ stderr: 'DPAPI_SIGNER_RECEIPT_INVALID' })).toBe('DPAPI_SIGNER_RECEIPT_INVALID');
+    expect(androidReleaseBuildFailureClass({ stderr: 'V020_USER_CONTEXT_ARTIFACT_READ_DENIED' })).toBe('V020_USER_CONTEXT_ARTIFACT_READ_DENIED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'V020_USER_CONTEXT_SIGNING_BUNDLE_READ_DENIED' })).toBe('V020_USER_CONTEXT_SIGNING_BUNDLE_READ_DENIED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'V020_USER_CONTEXT_RELEASE_WRITE_DENIED' })).toBe('V020_USER_CONTEXT_RELEASE_WRITE_DENIED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'V020_USER_CONTEXT_WRAPPER_UNCLASSIFIED' })).toBe('V020_USER_CONTEXT_WRAPPER_UNCLASSIFIED');
     expect(androidReleaseBuildFailureClass({ stderr: 'password=secret unknown failure' })).toBe('UNCLASSIFIED');
   });
 
