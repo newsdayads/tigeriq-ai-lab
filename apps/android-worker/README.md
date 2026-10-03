@@ -1,6 +1,6 @@
 # TigerIQ Android Worker — MVP Contract
 
-Status: #2949 GATE B1 CHATGPT ADAPTER V1 / PHYSICAL 10-CYCLE VERIFICATION REQUIRED
+Status: #2949 GATE C CORE ↔ MOBILE EXACTLY-ONCE / v0.19 SOURCE CANDIDATE
 
 ## Gate B0 pilot setup
 
@@ -35,6 +35,20 @@ v0.12 adds a safety gate and pacing before the same physical acceptance:
 - merely seeing the project name is not sufficient; the project item must be clicked in ChatGPT.
 
 Physical acceptance still requires 10 real cycles and at least one ChatGPT restart/recovery on Z Flip 7. This source/build must not be called Gate B PASS until that evidence exists.
+
+
+## Gate C Core-issued mobile tasks
+
+v0.19 extends the proven semantic ChatGPT adapter into the authoritative Core job path:
+- only TigerIQ Core on PC01 may enqueue a mobile task;
+- the paired Mobile Worker leases only tasks bound to its node + AI Employee identity;
+- lease renewal is bounded and stale/wrong-worker results fail closed;
+- one Core runId is persisted across Android process/provider restart recovery;
+- terminal result commit is idempotent and conflicting duplicate results are rejected;
+- Android still does not scan backlog or write GitHub directly;
+- Gate D remains a separate relay proof through Core/Coding Lane.
+
+Gate C runtime acceptance requires 10 real Core-issued jobs on the Z Flip with zero duplicate terminal commits.
 
 
 ## Purpose
