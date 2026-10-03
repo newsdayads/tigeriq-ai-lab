@@ -637,28 +637,9 @@ async function signAndroidWorkerV020CiArtifact() {
     throw new Error('TIGERIQ_ANDROID_APKSIGNER_JAR_SHA256_MISMATCH');
   }
 
-  const signed = await spawnBounded(
-    'powershell.exe',
-    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',wrapper],
-    {
-      cwd: repoRoot,
-      timeoutSec: 120,
-      extraEnvKeys: ['JAVA_HOME', 'TIGERIQ_JAVA'],
-    },
-  );
-  if (signed.timedOut) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_TIMEOUT');
-  if (Number(signed.exitCode) !== 0) {
-    throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_FAILED:' + androidReleaseBuildFailureClass(signed));
-  }
-
-  const lines = String(signed.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  let receipt = null;
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    try {
-      const parsed = JSON.parse(lines[i]);
-      if (parsed?.status === 'ANDROID_WORKER_STABLE_RELEASE_READY') { receipt = parsed; break; }
-    } catch {}
-  }
+  const signed = await executePadUiAction({ action: 'pad_android_sign_v020' });
+  if (!signed?.broker?.available) throw new Error('TIGERIQ_V020_USER_SESSION_BROKER_UNAVAILABLE');
+  const receipt = signed?.result;
   if (!receipt) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_RECEIPT_MISSING');
   if (String(receipt.version || '') !== spec.expectedVersion) throw new Error('TIGERIQ_ANDROID_RELEASE_VERSION_MISMATCH');
   if (String(receipt.unsignedApkSha256 || '').replaceAll(':','').toUpperCase() !== actualUnsignedSha256) {
