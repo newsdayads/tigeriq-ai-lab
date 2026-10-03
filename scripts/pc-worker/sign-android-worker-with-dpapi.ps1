@@ -7,6 +7,7 @@ param(
   [string]$ZipAlign = $env:TIGERIQ_ZIPALIGN,
   [string]$ApkSignerJar = $env:TIGERIQ_APKSIGNER_JAR,
   [string]$ExpectedApkSignerJarSha256 = $env:TIGERIQ_APKSIGNER_JAR_SHA256,
+  [string]$Java = $env:TIGERIQ_JAVA,
   [switch]$PrealignedInput
 )
 
@@ -224,7 +225,21 @@ if (-not [string]::IsNullOrWhiteSpace($ApkSignerJar)) {
   if ($actualApkSignerJarSha256 -ne $expectedApkSignerJarSha256Normalized) {
     throw 'APKSIGNER_JAR_SHA256_MISMATCH'
   }
-  $javaExe = Resolve-Tool $null @('java.exe', 'java')
+  if (-not [string]::IsNullOrWhiteSpace($Java)) {
+    $javaExe = Resolve-Tool $Java @('java.exe', 'java')
+  } else {
+    $javaCmd = Get-Command java.exe -ErrorAction SilentlyContinue
+    if (-not $javaCmd) { $javaCmd = Get-Command java -ErrorAction SilentlyContinue }
+    if ($javaCmd) {
+      $javaExe = $javaCmd.Source
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+      $javaCandidate = Join-Path $env:JAVA_HOME 'bin\java.exe'
+      if (-not (Test-Path -LiteralPath $javaCandidate -PathType Leaf)) { throw 'JAVA_RUNTIME_REQUIRED' }
+      $javaExe = (Resolve-Path -LiteralPath $javaCandidate).Path
+    } else {
+      throw 'JAVA_RUNTIME_REQUIRED'
+    }
+  }
   $apksignerPrefixArgs = @('-jar', $apksignerJarPath)
   $apksignerMode = 'portable-pinned-jar'
 } else {
