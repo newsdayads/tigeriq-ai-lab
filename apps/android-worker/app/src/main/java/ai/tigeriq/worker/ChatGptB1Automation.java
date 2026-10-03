@@ -248,6 +248,7 @@ public final class ChatGptB1Automation {
 
             boolean blockedByInteractiveOrScrollableAncestor = false;
             boolean titleSemantic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading();
+            boolean projectSemantic = false;
             AccessibilityNodeInfo current = node;
             int depth = 0;
 
@@ -256,30 +257,30 @@ public final class ChatGptB1Automation {
                     blockedByInteractiveOrScrollableAncestor = true;
                     break;
                 }
-                if (depth <= maxStructuralParents && hasProjectTitleStructure(current)) {
-                    titleSemantic = true;
+                if (depth <= maxStructuralParents) {
+                    String structural = structuralSearchable(current);
+                    if (containsAny(structural, "title", "header", "toolbar", "appbar", "app bar", "top bar")) {
+                        titleSemantic = true;
+                    }
+                    if (containsAny(structural, "project_title", "project title", "project_header", "project header", "project_toolbar", "project toolbar")) {
+                        projectSemantic = true;
+                    }
                 }
                 current = current.getParent();
                 depth += 1;
             }
 
-            if (!blockedByInteractiveOrScrollableAncestor && titleSemantic) return true;
+            if (!blockedByInteractiveOrScrollableAncestor && projectSemantic && titleSemantic) return true;
         }
         return false;
     }
 
-    private static boolean hasProjectTitleStructure(AccessibilityNodeInfo node) {
-        String structural = normalize(
+    private static String structuralSearchable(AccessibilityNodeInfo node) {
+        return normalize(
             text(node.getViewIdResourceName()) + " "
                 + String.valueOf(node.getClassName()) + " "
                 + text(node.getContentDescription()) + " "
                 + text(node.getHintText())
-        );
-        return containsAny(
-            structural,
-            "project_title", "project title",
-            "toolbar", "appbar", "app bar", "top bar",
-            "header", "title"
         );
     }
 
