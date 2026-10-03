@@ -274,6 +274,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("action === 'android_worker_grant_v020_signer_read_acl'");
     expect(source).toContain("grant-v020-signer-read-acl.ps1");
     expect(source).toContain("ANDROID_V020_SIGNER_ACL_READY");
+    expect(source).toContain("String(receipt.account || '').toLowerCase() !== 'pc01\\\\wdragons12x'");
     expect(source).toContain("signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl'");
     expect(aclScript).toContain("$ExpectedUser='pc01\\wdragons12x'");
     expect(aclScript).toContain("'tigeriq-release.jks'");
