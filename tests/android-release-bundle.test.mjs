@@ -19,6 +19,9 @@ test('stable release bundle consumes private signing paths without copying secre
 test('stable release bundle verifies exact certificate and APK digest', () => {
   assert.match(script, /apksigner(?:\.bat)?/i);
   assert.match(script, /CANONICAL_SIGNING_IDENTITY_MISMATCH/);
+  assert.match(script, /KEYSTORE_SIGNING_IDENTITY_MISMATCH/);
+  assert.match(script, /KEYSTORE_CERTIFICATE_FINGERPRINT_NOT_FOUND/);
+  assert.match(script, /keytool(?:\.exe)?/i);
   assert.match(script, /63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293/);
   assert.match(script, /APK_SIGNING_IDENTITY_MISMATCH/);
   assert.match(script, /Get-FileHash[^\n]*SHA256/);
