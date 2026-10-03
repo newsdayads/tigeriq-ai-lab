@@ -916,6 +916,43 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\\(\\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
 });
 
+test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner authorization',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_V020_SIGNER_ACL_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_grant_v020_signer_read_acl"}',
+    'ASSIGNED_ACTION',
+    'Execute exactly the fixed v0.20 signer read ACL bootstrap.',
+    'ACCEPTANCE',
+    'Return sanitized ACL receipt only.',
+  ].join('\n');
+  const issues=[{number:3301,state:'open',title:'v0.20 signer ACL',body,html_url:'https://example/3301'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'android_worker_grant_v020_signer_read_acl'});
+  assert.strictEqual(pool.objectives[0].metadata.ownerDirect,true);
+
+  const noOwnerPool=coreBacklogPool();
+  const blocked=await materializeGithubIssues({
+    pool:noOwnerPool,
+    openIssues:[{number:3302,state:'open',title:'v0.20 signer ACL no owner',body:body.replace('OWNER_DIRECT=true\n',''),html_url:'https://example/3302'}],
+    token:'fake',
+  });
+  assert.strictEqual(blocked.created,0);
+  assert.strictEqual(noOwnerPool.jobs.length,0);
+
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(coreSource,/android_worker_sign_v020_user_context/);
+  assert.match(coreSource,/android_worker_grant_v020_signer_read_acl/);
+});
+
 test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
   const pool=coreBacklogPool();
   const body=[
