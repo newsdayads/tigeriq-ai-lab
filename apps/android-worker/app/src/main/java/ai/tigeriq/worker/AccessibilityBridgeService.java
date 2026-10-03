@@ -103,6 +103,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
+            maybeBindRequiredProject(event);
             ensureB1Ticker();
         }
 
@@ -126,6 +127,17 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         if (CHATGPT_PACKAGE.equals(value)) {
             ChatGptB1Automation.drive(this, root);
+        }
+    }
+
+    private void maybeBindRequiredProject(AccessibilityEvent event) {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) return;
+        if (event.getEventType() != AccessibilityEvent.TYPE_VIEW_CLICKED) return;
+        AccessibilityNodeInfo source = event.getSource();
+        if (source == null) return;
+        if (ChatGptB1Automation.treeContains(source, ChatGptB1RunStore.REQUIRED_PROJECT)) {
+            ChatGptB1RunStore.markProjectBound(this);
         }
     }
 
