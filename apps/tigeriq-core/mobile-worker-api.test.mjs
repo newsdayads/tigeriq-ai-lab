@@ -126,6 +126,53 @@ describe('mobile worker api helpers',()=>{
     expect(gateCV020Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,pass:false});
   });
 
+  it('fails closed if the prechecked Gate C v0.20 target changes before insert',async()=>{
+    let rolledBack=false;
+    let insertBoundNode='';
+    const now=new Date().toISOString();
+    const client={
+      async query(sql,params=[]){
+        if(sql==='begin'||sql==='commit')return {rowCount:0,rows:[]};
+        if(sql==='rollback'){rolledBack=true;return {rowCount:0,rows:[]};}
+        if(sql.startsWith('select pg_advisory_xact_lock'))return {rowCount:1,rows:[{}]};
+        if(sql.startsWith('select task_id from tigeriq_mobile_tasks'))return {rowCount:0,rows:[]};
+        if(sql.startsWith('insert into tigeriq_mobile_tasks')){
+          insertBoundNode=String(params[6]||'');
+          expect(sql).toContain('node_id=$7');
+          expect(params[7]).toBe(GATE_C_V020_VERSION);
+          return {rowCount:0,rows:[]};
+        }
+        throw new Error('unexpected client sql: '+sql);
+      },
+      release(){}
+    };
+    const pool={
+      async query(sql,params=[]){
+        if(sql.includes('from tigeriq_mobile_devices')&&sql.includes('agent_version=$1')){
+          expect(params).toEqual([GATE_C_V020_VERSION]);
+          return {rowCount:1,rows:[{
+            node_id:'node-prechecked',employee_id:'NV101',provider:'ChatGPT',
+            agent_version:GATE_C_V020_VERSION,last_seen_at:now
+          }]};
+        }
+        throw new Error('unexpected pool sql: '+sql);
+      },
+      async connect(){return client;}
+    };
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const req={
+      method:'POST',
+      headers:{authorization:'Bearer core-secret'},
+      socket:{remoteAddress:'127.0.0.1'},
+      async *[Symbol.asyncIterator](){}
+    };
+    const res={writeHead(){},end(){}};
+    await expect(handle(req,res,new URL('http://core/api/mobile/gate-c/v020/enqueue')))
+      .rejects.toThrow('GATE_C_V020_TARGET_CHANGED');
+    expect(insertBoundNode).toBe('node-prechecked');
+    expect(rolledBack).toBe(true);
+  });
+
   it('reads a local release manifest without exposing implicit defaults',()=>{
     tempPath=mkdtempSync(join(tmpdir(),'tigeriq-mobile-'));
     const path=join(tempPath,'release.json');
