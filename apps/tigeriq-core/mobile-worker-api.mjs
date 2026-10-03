@@ -23,6 +23,23 @@ function text(value, max=160) {
 function stringList(value,maxItems=16,maxLength=80) {
   return Array.isArray(value) ? value.map(v=>text(v,maxLength)).filter(Boolean).slice(0,maxItems) : [];
 }
+function canonicalJson(value) {
+  if(Array.isArray(value))return '['+value.map(canonicalJson).join(',')+']';
+  if(value&&typeof value==='object'){
+    return '{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+canonicalJson(value[key])).join(',')+'}';
+  }
+  return JSON.stringify(value??null);
+}
+export function mobileTaskResultDigest(result={}) {
+  return sha256(canonicalJson(result&&typeof result==='object'?result:{}));
+}
+export function mobileTaskTerminalDecision({status='',currentDigest='',incomingResult={}}={}) {
+  const terminal=['completed','failed'].includes(String(status||'').toLowerCase());
+  const digest=mobileTaskResultDigest(incomingResult);
+  if(!terminal)return {accept:true,idempotent:false,conflict:false,digest};
+  if(String(currentDigest||'')===digest)return {accept:false,idempotent:true,conflict:false,digest};
+  return {accept:false,idempotent:false,conflict:true,digest};
+}
 export function normalizeMobileProvider(value) {
   return String(value||'').trim().toLowerCase()==='gemini'?'Gemini':'ChatGPT';
 }
@@ -77,6 +94,28 @@ export async function initMobileWorkerTables(pool) {
       created_at timestamptz not null default now(),
       primary key(node_id,run_id,seq)
     );
+    create table if not exists tigeriq_mobile_tasks(
+      task_id text primary key,
+      idempotency_key text unique not null,
+      target_node_id text not null,
+      employee_id text not null,
+      provider text not null,
+      prompt text not null,
+      expected_token text not null,
+      status text not null default 'queued',
+      lease_id text,
+      lease_expires_at timestamptz,
+      run_id text not null,
+      attempts int not null default 0,
+      result jsonb,
+      result_digest text,
+      completed_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      check (status in ('queued','leased','completed','failed'))
+    );
+    create index if not exists tigeriq_mobile_tasks_claim_idx
+      on tigeriq_mobile_tasks(target_node_id,status,created_at);
   `);
 }
 async function body(req,maxBytes=65536) {
@@ -214,6 +253,52 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
       }finally{client.release();}
     }
 
+    if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/enqueue'){
+      if(!isTailnetPeer(req)||!['127.0.0.1','::1'].includes(String(req.socket?.remoteAddress||'').replace(/^::ffff:/,''))){
+        return send(res,403,{ok:false,error:'loopback_required'});
+      }
+      const input=await body(req);
+      const employeeId=text(input.employeeId,80);
+      const idempotencyKey=text(input.idempotencyKey,160);
+      const prompt=text(input.prompt,4000);
+      const expectedToken=text(input.expectedToken,500);
+      if(!employeeId||!idempotencyKey||!prompt||!expectedToken)return send(res,400,{ok:false,error:'invalid_mobile_task'});
+      const client=await pool.connect();
+      try{
+        await client.query('begin');
+        await client.query('select pg_advisory_xact_lock(hashtext($1))',[idempotencyKey]);
+        const prior=(await client.query('select * from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',[idempotencyKey])).rows[0];
+        if(prior){
+          await client.query('commit');
+          return send(res,200,{ok:true,idempotent:true,task:{taskId:prior.task_id,runId:prior.run_id,status:prior.status}});
+        }
+        const target=(await client.query('select node_id,employee_id,provider from tigeriq_mobile_devices where employee_id=$1 and revoked=false limit 1',[employeeId])).rows[0];
+        if(!target){await client.query('rollback');return send(res,404,{ok:false,error:'mobile_employee_not_found'});}
+        const taskId='MT-'+randomToken(12),runId='MR-'+randomToken(12);
+        await client.query(
+          `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
+           values($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [taskId,idempotencyKey,target.node_id,target.employee_id,target.provider,prompt,expectedToken,runId]
+        );
+        await client.query('commit');
+        await event('MOBILE_TASK_ENQUEUED',{taskId,runId,nodeId:target.node_id,employeeId:target.employee_id,idempotencyKey});
+        return send(res,201,{ok:true,idempotent:false,task:{taskId,runId,status:'queued'}});
+      }catch(error){
+        try{await client.query('rollback')}catch{}
+        throw error;
+      }finally{client.release();}
+    }
+    if(req.method==='GET'&&url.pathname==='/api/mobile/tasks/status'){
+      const remote=String(req.socket?.remoteAddress||'').replace(/^::ffff:/,'');
+      if(!['127.0.0.1','::1'].includes(remote))return send(res,403,{ok:false,error:'loopback_required'});
+      const employeeId=text(url.searchParams.get('employeeId'),80);
+      const limit=Math.max(1,Math.min(100,Number(url.searchParams.get('limit')||20)));
+      const result=employeeId
+        ? await pool.query('select task_id,idempotency_key,target_node_id,employee_id,status,run_id,attempts,result,created_at,updated_at,completed_at from tigeriq_mobile_tasks where employee_id=$1 order by created_at desc limit $2',[employeeId,limit])
+        : await pool.query('select task_id,idempotency_key,target_node_id,employee_id,status,run_id,attempts,result,created_at,updated_at,completed_at from tigeriq_mobile_tasks order by created_at desc limit $1',[limit]);
+      return send(res,200,{ok:true,tasks:result.rows});
+    }
+
     const device=await authenticate(pool,req);
     if(!device)return send(res,401,{ok:false,error:'mobile_unauthorized'});
 
@@ -226,6 +311,97 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
         [device.node_id,provider,JSON.stringify(capabilities)]
       );
       return send(res,200,{ok:true,employee:{employeeId:device.employee_id,department:device.department,role:device.role,provider,nodeId:device.node_id}});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/lease'){
+      const client=await pool.connect();
+      try{
+        await client.query('begin');
+        await client.query('select pg_advisory_xact_lock(hashtext($1))',[device.node_id]);
+        let task=(await client.query(
+          `select * from tigeriq_mobile_tasks
+           where target_node_id=$1 and employee_id=$2 and status='leased' and lease_expires_at>now()
+           order by updated_at desc limit 1 for update`,
+          [device.node_id,device.employee_id]
+        )).rows[0];
+        let reused=true;
+        if(!task){
+          reused=false;
+          task=(await client.query(
+            `select * from tigeriq_mobile_tasks
+             where target_node_id=$1 and employee_id=$2
+               and (status='queued' or (status='leased' and lease_expires_at<=now()))
+             order by created_at asc limit 1 for update skip locked`,
+            [device.node_id,device.employee_id]
+          )).rows[0];
+          if(!task){await client.query('commit');return send(res,200,{ok:true,leased:false});}
+          const leaseId='ML-'+randomToken(18);
+          task=(await client.query(
+            `update tigeriq_mobile_tasks
+             set status='leased',lease_id=$2,lease_expires_at=now()+interval '5 minutes',
+                 attempts=attempts+1,updated_at=now()
+             where task_id=$1
+             returning *`,
+            [task.task_id,leaseId]
+          )).rows[0];
+          await event('MOBILE_TASK_LEASED',{taskId:task.task_id,runId:task.run_id,nodeId:device.node_id,employeeId:device.employee_id,attempt:task.attempts});
+        }
+        await client.query('commit');
+        return send(res,200,{ok:true,leased:true,reused,task:{
+          taskId:task.task_id,leaseId:task.lease_id,runId:task.run_id,provider:task.provider,
+          prompt:task.prompt,expectedToken:task.expected_token,leaseExpiresAt:task.lease_expires_at
+        }});
+      }catch(error){
+        try{await client.query('rollback')}catch{}
+        throw error;
+      }finally{client.release();}
+    }
+    if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/renew'){
+      const input=await body(req);
+      const taskId=text(input.taskId,160),leaseId=text(input.leaseId,160);
+      if(!taskId||!leaseId)return send(res,400,{ok:false,error:'invalid_mobile_lease'});
+      const renewed=await pool.query(
+        `update tigeriq_mobile_tasks
+         set lease_expires_at=now()+interval '5 minutes',updated_at=now()
+         where task_id=$1 and lease_id=$2 and target_node_id=$3 and employee_id=$4
+           and status='leased' and lease_expires_at>now()
+         returning task_id,lease_expires_at`,
+        [taskId,leaseId,device.node_id,device.employee_id]
+      );
+      if(!renewed.rowCount)return send(res,409,{ok:false,error:'mobile_lease_stale'});
+      return send(res,200,{ok:true,taskId,leaseExpiresAt:renewed.rows[0].lease_expires_at});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/result'){
+      const input=await body(req);
+      const taskId=text(input.taskId,160),leaseId=text(input.leaseId,160);
+      const result=input.result&&typeof input.result==='object'?input.result:{};
+      if(!taskId||!leaseId)return send(res,400,{ok:false,error:'invalid_mobile_result'});
+      const client=await pool.connect();
+      try{
+        await client.query('begin');
+        const task=(await client.query('select * from tigeriq_mobile_tasks where task_id=$1 for update',[taskId])).rows[0];
+        if(!task){await client.query('rollback');return send(res,404,{ok:false,error:'mobile_task_not_found'});}
+        if(task.target_node_id!==device.node_id||task.employee_id!==device.employee_id){
+          await client.query('rollback');return send(res,409,{ok:false,error:'mobile_task_wrong_worker'});
+        }
+        const decision=mobileTaskTerminalDecision({status:task.status,currentDigest:task.result_digest,incomingResult:result});
+        if(decision.idempotent){await client.query('commit');return send(res,200,{ok:true,idempotent:true,taskId,status:task.status});}
+        if(decision.conflict){await client.query('rollback');return send(res,409,{ok:false,error:'mobile_task_result_conflict'});}
+        if(task.status!=='leased'||task.lease_id!==leaseId||new Date(task.lease_expires_at).getTime()<=Date.now()){
+          await client.query('rollback');return send(res,409,{ok:false,error:'mobile_lease_stale'});
+        }
+        const terminal=String(result.status||'completed').toLowerCase()==='failed'?'failed':'completed';
+        await client.query(
+          `update tigeriq_mobile_tasks set status=$2,result=$3::jsonb,result_digest=$4,
+             completed_at=now(),updated_at=now() where task_id=$1`,
+          [taskId,terminal,JSON.stringify(result),decision.digest]
+        );
+        await client.query('commit');
+        await event('MOBILE_TASK_RESULT',{taskId,runId:task.run_id,nodeId:device.node_id,employeeId:device.employee_id,status:terminal});
+        return send(res,200,{ok:true,idempotent:false,taskId,status:terminal});
+      }catch(error){
+        try{await client.query('rollback')}catch{}
+        throw error;
+      }finally{client.release();}
     }
     if(req.method==='POST'&&url.pathname==='/api/mobile/evidence'){
       const input=await body(req);
