@@ -144,12 +144,16 @@ describe('OpenClaw PC01 guarded local operator', () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_release_build'");
     expect(source).toContain("scripts\\\\pc-worker\\\\build-android-worker-release.ps1");
+    expect(source).toContain("D:\\\\TigerIQ\\\\Runtime\\\\CoreSource");
+    expect(source).toContain("D:\\\\TigerIQ\\\\State\\\\core-runtime-updater.json");
     expect(source).toContain("D:\\\\TigerIQ\\\\Secrets\\\\AndroidSigning");
     expect(source).toContain("ANDROID_WORKER_STABLE_RELEASE_READY");
     expect(source).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
     expect(source).toContain("TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH");
     expect(source).not.toContain("input?.script");
     expect(source).not.toContain("input?.secretsDir");
+    expect(source).not.toContain("D:\\\\TigerIQ\\\\Workspace\\\\tigeriq-ai-lab");
   });
 
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {

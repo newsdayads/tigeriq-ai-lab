@@ -106,5 +106,6 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -En
   manifest = $manifestPath
   apkSha256 = $sha256
   certificateSha256 = $expected
+  sourceSha = $sourceSha
   secretsPrinted = $false
 } | ConvertTo-Json -Compress
