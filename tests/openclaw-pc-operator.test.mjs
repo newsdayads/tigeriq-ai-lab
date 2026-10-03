@@ -230,6 +230,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(bridge).toContain("$TaskName='TigerIQ Android v0.20 OneShot Signer'");
     expect(bridge).toContain("$ExpectedUser='pc01\\wdragons12x'");
     expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Limited');
+    expect(bridge).toContain('Resolve-AccountSid');
+    expect(bridge).toContain("return @('Interactive','InteractiveToken','3') -contains $value");
+    expect(bridge).toContain("return @('Limited','LeastPrivilege','0') -contains $value");
+    expect(bridge).toContain('V020_USER_CONTEXT_TASK_USER_MISMATCH');
+    expect(bridge).toContain('V020_USER_CONTEXT_TASK_LOGON_MISMATCH');
+    expect(bridge).toContain('V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH');
     expect(bridge).toContain("V020_USER_CONTEXT_UNAVAILABLE");
     expect(bridge).toContain("V020_USER_CONTEXT_TASK_COLLISION");
     expect(bridge).toContain("Unregister-ScheduledTask -TaskName $TaskName");

@@ -6,6 +6,11 @@ $TaskName='TigerIQ Android v0.20 OneShot Signer'
 $Wrapper='D:\TigerIQ\Runtime\CoreSource\scripts\pc-worker\sign-v020-reviewed-artifact.ps1'
 $ReceiptPath='D:\TigerIQ\Evidence\AndroidWorker\v0.20\user-context-sign-receipt.json'
 $identity=''
+$identitySid=''
+
+function Resolve-AccountSid([string]$account) {
+  try{return (New-Object Security.Principal.NTAccount($account)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{return ''}
+}
 
 function Write-SafeReceipt($value) {
   $dir=Split-Path -Parent $ReceiptPath
@@ -41,8 +46,12 @@ function Safe-FailureCode([string]$message) {
 }
 
 try {
-  $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
-  if($identity -ine $ExpectedUser){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}
+  $expectedSid=Resolve-AccountSid $ExpectedUser
+  if(-not $expectedSid){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}
+  $windowsIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
+  $identity=$windowsIdentity.Name
+  $identitySid=[string]$windowsIdentity.User.Value
+  if($identitySid -ne $expectedSid){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}
   if(-not(Test-Path -LiteralPath $Wrapper -PathType Leaf)){throw 'V020_SIGN_INPUT_MISSING'}
 
   $output=& $Wrapper
