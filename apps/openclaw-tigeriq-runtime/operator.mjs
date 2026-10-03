@@ -825,7 +825,7 @@ async function grantAndroidWorkerV020SignerReadAcl() {
     } catch {}
   }
   if (!receipt) throw new Error('TIGERIQ_ANDROID_SIGNER_ACL_RECEIPT_MISSING');
-  if (String(receipt.account || '').toLowerCase() !== 'pc01\\\\wdragons12x'
+  if (String(receipt.account || '').toLowerCase() !== 'pc01\\wdragons12x'
       || Number(receipt.filesGranted) !== 3
       || String(receipt.rights || '') !== 'Read'
       || String(receipt.inheritance || '') !== 'None'
