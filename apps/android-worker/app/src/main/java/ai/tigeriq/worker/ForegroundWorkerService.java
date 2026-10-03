@@ -85,7 +85,23 @@ public final class ForegroundWorkerService extends Service {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
 
             if (task.present()) {
-                if (run.terminal()) {
+                boolean runMatchesTask = task.taskId.equals(run.taskId);
+
+                if (!runMatchesTask && run.active()) {
+                    renewTaskLeaseIfDue(client, task);
+                    return;
+                }
+
+                if (!runMatchesTask && run.terminal()) {
+                    reportPendingB1Evidence(client);
+                    run = ChatGptB1RunStore.read(this);
+                    if (run.evidenceSeq > run.reportedSeq) {
+                        renewTaskLeaseIfDue(client, task);
+                        return;
+                    }
+                }
+
+                if (run.terminal() && runMatchesTask) {
                     if (!task.resultReported) {
                         JSONObject result = new JSONObject();
                         result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
@@ -124,18 +140,7 @@ public final class ForegroundWorkerService extends Service {
                     return;
                 }
 
-                long now = System.currentTimeMillis();
-                if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
-                    try {
-                        client.renewLease(task.taskId, task.leaseId);
-                    } catch (ControllerClient.ControllerException stale) {
-                        if (stale.status != 409) throw stale;
-                        JSONObject reacquired = client.pollLease();
-                        if (!reacquired.optBoolean("leased", false)) throw stale;
-                        MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
-                    }
-                    lastLeaseRenewAt = now;
-                }
+                renewTaskLeaseIfDue(client, task);
                 if (!taskResumeAttempted) {
                     ChatGptB1RunStore.markRecovery(this);
                     launchChatGpt();
@@ -164,6 +169,20 @@ public final class ForegroundWorkerService extends Service {
             long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_HEARTBEAT_AT, 0L);
             writeRuntime("TASK_ERROR", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
         }
+    }
+
+    private void renewTaskLeaseIfDue(ControllerClient client, MobileTaskStore.Snapshot task) throws Exception {
+        long now = System.currentTimeMillis();
+        if (lastLeaseRenewAt != 0L && now - lastLeaseRenewAt < 60_000L) return;
+        try {
+            client.renewLease(task.taskId, task.leaseId);
+        } catch (ControllerClient.ControllerException stale) {
+            if (stale.status != 409) throw stale;
+            JSONObject reacquired = client.pollLease();
+            if (!reacquired.optBoolean("leased", false)) throw stale;
+            MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
+        }
+        lastLeaseRenewAt = now;
     }
 
     private void launchChatGpt() {
