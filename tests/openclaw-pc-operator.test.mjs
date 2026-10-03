@@ -156,6 +156,23 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("D:\\\\TigerIQ\\\\Workspace\\\\tigeriq-ai-lab");
   });
 
+  it('keeps Android Gate C as fixed credential-internal typed actions', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_mobile_gate_c_start'");
+    expect(source).toContain("action === 'android_mobile_gate_c_status'");
+    expect(source).toContain("const GATE_C_VERSION = '0.19.0-core-mobile-jobs'");
+    expect(source).toContain('GATE_C_TASK_COUNT = 10');
+    expect(source).toContain("process.env.TIGERIQ_CORE_TOKEN");
+    expect(source).toContain("http://127.0.0.1:8795");
+    expect(source).toContain("'/api/mobile/devices/status'");
+    expect(source).toContain("'/api/mobile/tasks/enqueue'");
+    expect(source).toContain("TIGERIQ_GATE_C_OK_");
+    expect(source).toContain("duplicateSendCount");
+    expect(source).not.toContain("input?.employeeId");
+    expect(source).not.toContain("input?.prompt");
+    expect(source).not.toContain("input?.url");
+  });
+
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'task_list'");

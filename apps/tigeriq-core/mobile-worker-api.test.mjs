@@ -31,6 +31,34 @@ describe('mobile worker api helpers',()=>{
     expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'')).toBe(false);
   });
 
+  it('exposes mobile device status only to loopback Core auth',async()=>{
+    const row={
+      node_id:'node-1',employee_id:'NV101',provider:'ChatGPT',platform:'android',
+      agent_version:'0.19.0-core-mobile-jobs',battery_pct:82,last_seen_at:new Date(),revoked:false
+    };
+    const pool={async query(sql){
+      if(sql.includes('from tigeriq_mobile_devices order by last_seen_at'))return {rows:[row]};
+      throw new Error('unexpected sql: '+sql);
+    }};
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const response=()=>({
+      status:0,body:null,
+      writeHead(status){this.status=status;},
+      end(body){this.body=JSON.parse(body);}
+    });
+    const ok=response();
+    await handle({method:'GET',headers:{authorization:'Bearer core-secret'},socket:{remoteAddress:'127.0.0.1'}},ok,new URL('http://core/api/mobile/devices/status'));
+    expect(ok.status).toBe(200);
+    expect(ok.body.devices).toHaveLength(1);
+    expect(ok.body.devices[0]).toMatchObject({nodeId:'node-1',employeeId:'NV101',agentVersion:'0.19.0-core-mobile-jobs',online:true,revoked:false});
+    const remote=response();
+    await handle({method:'GET',headers:{authorization:'Bearer core-secret'},socket:{remoteAddress:'100.64.0.9'}},remote,new URL('http://core/api/mobile/devices/status'));
+    expect(remote.status).toBe(403);
+    const unauth=response();
+    await handle({method:'GET',headers:{authorization:'Bearer wrong'},socket:{remoteAddress:'127.0.0.1'}},unauth,new URL('http://core/api/mobile/devices/status'));
+    expect(unauth.status).toBe(401);
+  });
+
   it('fails closed on stale or wrong leases before terminal retry idempotency',()=>{
     const now=Date.parse('2026-10-03T07:30:00Z');
     expect(mobileTaskLeaseFresh({currentLeaseId:'ML-current',leaseId:'ML-current',leaseExpiresAt:'2026-10-03T07:35:00Z',now})).toBe(true);

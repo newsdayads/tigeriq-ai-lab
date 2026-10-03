@@ -455,6 +455,142 @@ async function statPath(targetPath) {
 }
 
 
+const GATE_C_VERSION = '0.19.0-core-mobile-jobs';
+const GATE_C_TASK_COUNT = 10;
+
+async function coreMobileJson(pathname,{method='GET',body=null}={}) {
+  const token=String(process.env.TIGERIQ_CORE_TOKEN||'').trim();
+  if(!token) throw new Error('TIGERIQ_ANDROID_GATE_C_CORE_TOKEN_MISSING');
+  const response=await fetch('http://127.0.0.1:8795'+pathname,{
+    method,
+    headers:{
+      authorization:'Bearer '+token,
+      ...(body?{'content-type':'application/json'}:{})
+    },
+    ...(body?{body:JSON.stringify(body)}:{})
+  });
+  const raw=await response.text();
+  let parsed={};
+  try{parsed=raw?JSON.parse(raw):{}}catch{throw new Error('TIGERIQ_ANDROID_GATE_C_CORE_RESPONSE_INVALID')}
+  if(!response.ok){
+    const reason=String(parsed?.error||'http_'+response.status).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80);
+    throw new Error('TIGERIQ_ANDROID_GATE_C_CORE_'+response.status+'_'+reason);
+  }
+  return parsed;
+}
+
+function gateCEligibleDevices(payload,{requireOnline=true}={}) {
+  const devices=Array.isArray(payload?.devices)?payload.devices:[];
+  return devices.filter((device)=>
+    device?.revoked!==true
+    && String(device?.agentVersion||'')===GATE_C_VERSION
+    && (!requireOnline||device?.online===true)
+  );
+}
+
+async function gateCDevice({requireOnline=true}={}) {
+  const payload=await coreMobileJson('/api/mobile/devices/status');
+  const eligible=gateCEligibleDevices(payload,{requireOnline});
+  if(eligible.length!==1)throw new Error(requireOnline?'TIGERIQ_ANDROID_GATE_C_ONLINE_DEVICE_COUNT_INVALID':'TIGERIQ_ANDROID_GATE_C_DEVICE_COUNT_INVALID');
+  return eligible[0];
+}
+
+function gateCExpectedToken(index) {
+  return 'TIGERIQ_GATE_C_OK_'+String(index);
+}
+
+function gateCIdempotencyKey(employeeId,index) {
+  return 'gate-c-v019-'+String(employeeId)+'-'+String(index).padStart(2,'0');
+}
+
+async function startAndroidMobileGateC() {
+  const device=await gateCDevice({requireOnline:true});
+  const tasks=[];
+  for(let index=1;index<=GATE_C_TASK_COUNT;index+=1){
+    const expectedToken=gateCExpectedToken(index);
+    const prompt='Bài kiểm tra TigerIQ Gate C chu kỳ '+index+'/'+GATE_C_TASK_COUNT+'. Hãy ghép đúng năm phần sau thành một chuỗi duy nhất và chỉ trả lời chuỗi kết quả, không thêm nội dung khác: TIGERIQ_ + GATE_ + C_ + OK_ + '+index;
+    const response=await coreMobileJson('/api/mobile/tasks/enqueue',{
+      method:'POST',
+      body:{
+        employeeId:device.employeeId,
+        idempotencyKey:gateCIdempotencyKey(device.employeeId,index),
+        prompt,
+        expectedToken
+      }
+    });
+    tasks.push({
+      index,
+      taskId:String(response?.task?.taskId||''),
+      runId:String(response?.task?.runId||''),
+      status:String(response?.task?.status||''),
+      idempotent:Boolean(response?.idempotent)
+    });
+  }
+  if(tasks.length!==GATE_C_TASK_COUNT||tasks.some((task)=>!task.taskId||!task.runId))throw new Error('TIGERIQ_ANDROID_GATE_C_ENQUEUE_INCOMPLETE');
+  return {
+    status:'ANDROID_GATE_C_10JOB_ENQUEUED',
+    employeeId:String(device.employeeId||''),
+    nodeId:String(device.nodeId||''),
+    agentVersion:String(device.agentVersion||''),
+    online:Boolean(device.online),
+    count:tasks.length,
+    tasks
+  };
+}
+
+function gateCTaskValid(task,index) {
+  const result=task?.result&&typeof task.result==='object'?task.result:{};
+  const output=result?.output&&typeof result.output==='object'?result.output:{};
+  return String(task?.status||'')==='completed'
+    && String(output.validatedToken||'')===gateCExpectedToken(index)
+    && String(output.runState||'')==='COMPLETE'
+    && Number(output.sendCount)===1
+    && Number(output.duplicateSendCount)===0;
+}
+
+async function readAndroidMobileGateCStatus() {
+  const device=await gateCDevice({requireOnline:false});
+  const payload=await coreMobileJson('/api/mobile/tasks/status?employeeId='+encodeURIComponent(String(device.employeeId||''))+'&limit=100');
+  const prefix='gate-c-v019-'+String(device.employeeId||'')+'-';
+  const tasks=(Array.isArray(payload?.tasks)?payload.tasks:[])
+    .filter((task)=>String(task?.idempotency_key||'').startsWith(prefix))
+    .sort((a,b)=>String(a.idempotency_key||'').localeCompare(String(b.idempotency_key||'')))
+    .slice(0,GATE_C_TASK_COUNT);
+  let valid=0,completed=0,failed=0,queued=0,leased=0,totalDuplicateSends=0,totalSends=0;
+  const compact=tasks.map((task)=>{
+    const suffix=String(task.idempotency_key||'').slice(prefix.length);
+    const index=Number(suffix);
+    const output=task?.result?.output&&typeof task.result.output==='object'?task.result.output:{};
+    const isValid=Number.isInteger(index)&&index>=1&&index<=GATE_C_TASK_COUNT&&gateCTaskValid(task,index);
+    if(isValid)valid+=1;
+    if(task.status==='completed')completed+=1;
+    else if(task.status==='failed')failed+=1;
+    else if(task.status==='queued')queued+=1;
+    else if(task.status==='leased')leased+=1;
+    totalSends+=Number(output.sendCount||0);
+    totalDuplicateSends+=Number(output.duplicateSendCount||0);
+    return {
+      index,taskId:String(task.task_id||''),runId:String(task.run_id||''),status:String(task.status||''),
+      attempts:Number(task.attempts||0),sendCount:Number(output.sendCount||0),
+      duplicateSendCount:Number(output.duplicateSendCount||0),validatedToken:String(output.validatedToken||''),
+      valid:isValid
+    };
+  });
+  const pass=tasks.length===GATE_C_TASK_COUNT&&valid===GATE_C_TASK_COUNT&&failed===0&&totalSends===GATE_C_TASK_COUNT&&totalDuplicateSends===0;
+  return {
+    status:pass?'ANDROID_GATE_C_10JOB_PASS':'ANDROID_GATE_C_10JOB_PENDING',
+    pass,
+    employeeId:String(device.employeeId||''),
+    nodeId:String(device.nodeId||''),
+    agentVersion:String(device.agentVersion||''),
+    online:Boolean(device.online),
+    lastSeenAt:device.lastSeenAt||null,
+    count:tasks.length,completed,failed,queued,leased,valid,totalSends,totalDuplicateSends,
+    tasks:compact
+  };
+}
+
+
 async function buildAndroidWorkerStableRelease() {
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
   const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\build-android-worker-release.ps1';
@@ -513,6 +649,10 @@ export async function executePcAction(input, options = {}) {
     data = await listTigerIQTasks();
   } else if (action === 'android_worker_release_build') {
     data = await buildAndroidWorkerStableRelease();
+  } else if (action === 'android_mobile_gate_c_start') {
+    data = await startAndroidMobileGateC();
+  } else if (action === 'android_mobile_gate_c_status') {
+    data = await readAndroidMobileGateCStatus();
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
     data = await runTaskAction(action, input?.taskName);
   } else if (action === 'process_list') {
@@ -552,6 +692,8 @@ export async function executePcAction(input, options = {}) {
       destructiveDelete: false,
       taskListReadOnly: action === 'task_list',
       androidReleaseBuild: action === 'android_worker_release_build',
+      androidGateC: action === 'android_mobile_gate_c_start' || action === 'android_mobile_gate_c_status',
+      coreCredentialInternal: action === 'android_mobile_gate_c_start' || action === 'android_mobile_gate_c_status',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
