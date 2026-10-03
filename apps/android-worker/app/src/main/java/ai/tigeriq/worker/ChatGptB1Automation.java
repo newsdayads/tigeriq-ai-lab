@@ -18,6 +18,7 @@ public final class ChatGptB1Automation {
     public static void drive(AccessibilityBridgeService service, AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot s = ChatGptB1RunStore.read(service);
         if (!s.active()) return;
+        if (!s.projectBound) return;
 
         long now = System.currentTimeMillis();
         if (now < s.nextActionAt) return;

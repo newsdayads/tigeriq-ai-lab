@@ -198,7 +198,7 @@ public final class MainActivity extends Activity {
         root.addView(sectionTitle("B1 · ChatGPT Adapter"));
         LinearLayout b1Card = card();
         TextView b1Help = text(
-            "DEV pilot: TigerIQ tự điền prompt xác nhận vô hại, gửi đúng 1 lần/chu kỳ và chờ chuỗi TIGERIQ_B1_OK. Không nhận backlog, không ghi GitHub.",
+            "DEV pilot: bắt buộc vào đúng Project TigerIQ AI Lab trước khi gửi. App chờ 3 giây sau khi điền, nghỉ 6 giây giữa các chu kỳ, gửi đúng 1 lần/chu kỳ. Không nhận backlog, không ghi GitHub.",
             12,
             false
         );
@@ -237,7 +237,7 @@ public final class MainActivity extends Activity {
         root.addView(systemCard, marginParams(0, dp(6), 0, dp(12)));
 
         TextView footer = text(
-            WorkerVersion.NAME + " · B1 DEV · chỉ gửi prompt test vô hại · chưa nhận backlog/GitHub write",
+            WorkerVersion.NAME + " · B1 DEV · Project TigerIQ AI Lab bắt buộc · pacing 3s/6s · chưa nhận backlog/GitHub write",
             11,
             false
         );
@@ -326,6 +326,11 @@ public final class MainActivity extends Activity {
         }
         ChatGptB1RunStore.start(this, cycles);
         refreshStatus();
+        Toast.makeText(
+            this,
+            "Trong ChatGPT: mở menu và chạm Project \"" + ChatGptB1RunStore.REQUIRED_PROJECT + "\". TigerIQ chỉ gửi sau khi ghi nhận đúng Project.",
+            Toast.LENGTH_LONG
+        ).show();
         openChatGpt();
     }
 
@@ -558,6 +563,7 @@ public final class MainActivity extends Activity {
                 + "\nTiến độ: " + b1Progress
                 + " · Đã gửi " + b1.sendCount
                 + " · Chặn trùng " + b1.duplicateSendCount
+                + "\nProject: " + (b1.projectBound ? "ĐÃ XÁC NHẬN · " + ChatGptB1RunStore.REQUIRED_PROJECT : "CHƯA XÁC NHẬN")
                 + "\nRecovery: " + b1.recoveryCount
                 + " · Busy seen: " + (b1.busySeen ? "CÓ" : "CHƯA")
                 + (b1.lastError == null || b1.lastError.isEmpty() ? "" : "\nLỗi: " + b1.lastError)
@@ -779,7 +785,8 @@ public final class MainActivity extends Activity {
     }
 
     private String b1StateLabel(String state) {
-        if ("REQUESTED".equals(state)) return "ĐÃ YÊU CẦU";
+        if ("WAITING_PROJECT".equals(state)) return "CHỜ CHỌN PROJECT TIGERIQ AI LAB";
+        if ("REQUESTED".equals(state)) return "ĐÃ XÁC NHẬN PROJECT · CHỜ NHẬP";
         if ("VERIFYING_CONTEXT".equals(state)) return "ĐANG TÌM Ô NHẬP";
         if ("INPUT_READY".equals(state)) return "ĐÃ ĐIỀN · CHỜ GỬI";
         if ("WAITING_AI".equals(state)) return "ĐÃ GỬI · ĐANG CHỜ AI";
