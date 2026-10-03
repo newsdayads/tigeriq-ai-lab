@@ -103,6 +103,8 @@ export function buildOpenClawPrompt(envelope){
     'FORBIDDEN=backlog selection; P0 selection; new task selection; repository/source mutation; arbitrary shell; credentials/security; paid action; Production; destructive/irreversible action',
     `INSTRUCTION=${e.instruction}`,
     `ACCEPTANCE=${e.acceptance}`,
+    'TOOL_CONTRACT=tigeriq_pc exact actions only: tcp_probe(host,port); task_status/task_start/task_stop/task_restart(taskName); process_list; file_read(path); file_write(path,content); file_list(path); file_stat(path). Never invent action names such as tcp_connect. Use shell_exec only when the assigned work explicitly requires the strict allowlisted shell action.',
+    'For TCP reachability ALWAYS call tigeriq_pc with action=tcp_probe. For file verification use file_write then file_read. For TigerIQ Scheduled Tasks use the exact task_* action.',
     'Execute ONLY this assigned work through the bounded TigerIQ tools. Do not inspect or choose other work.',
     'On retry/recovery, inspect current state first. If acceptance already holds, do not repeat the mutation; return evidence of the already-satisfied state.',
     'Return a concise final JSON object with status, evidence, and blocker. Never claim success without tool evidence.',
