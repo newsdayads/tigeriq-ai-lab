@@ -3,6 +3,7 @@ import {
   appendPublicEvidenceToSummary,
   buildPublicJobEvidenceRecord,
   extractPublicEvidence,
+  parsePublicEvidenceKeys,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
@@ -121,6 +122,46 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(extractPublicEvidence(jobResult,['releaseTaskNames'])).toEqual({
       releaseTaskNames:['TigerIQ Android Worker Release','TigerIQ Stable Signer'],
     });
+  });
+
+  it('exposes only explicitly allowlisted v0.20 signed-release receipt fields',()=>{
+    const receipt={
+      status:'ANDROID_WORKER_STABLE_RELEASE_READY',
+      version:'0.20.0-update-lease-guard',
+      apkSha256:'SIGNED_SHA',
+      unsignedApkSha256:'UNSIGNED_SHA',
+      certificateSha256:'CERT_SHA',
+      sourceSha:'SOURCE_SHA',
+      sourceWorkflowRunId:37119358164,
+      sourceArtifactId:11273046069,
+      signingIdentity:'canonical-release',
+      passwordTransport:'stdin-only',
+      apksignerMode:'v2-v3',
+      prealignedInput:true,
+      secretsPrinted:false,
+      executionIdentity:'pc01\\\\wdragons12x',
+      taskName:'TigerIQ Android Worker v0.20 User Signer',
+      taskPrincipal:'pc01\\\\wdragons12x',
+      taskLogonType:'InteractiveToken',
+      taskRunLevel:'Highest',
+      taskDeleted:true,
+      token:'must-not-publish',
+    };
+    const requested=[
+      'status','version','apkSha256','unsignedApkSha256','certificateSha256','sourceSha',
+      'sourceWorkflowRunId','sourceArtifactId','signingIdentity','passwordTransport','apksignerMode',
+      'prealignedInput','secretsPrinted','executionIdentity','taskName','taskPrincipal','taskLogonType',
+      'taskRunLevel','taskDeleted',
+    ];
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'file_read',target:'pc01-local',data:{content:JSON.stringify(receipt)},
+    }}]}};
+
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS='+requested.join(','))).toEqual(requested);
+    expect(extractPublicEvidence(jobResult,requested)).toEqual(Object.fromEntries(
+      requested.map((key)=>[key,receipt[key]]),
+    ));
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('must-not-publish');
   });
 
 });
