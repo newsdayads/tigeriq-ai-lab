@@ -124,6 +124,31 @@ describe('Core public evidence for direct PC receipts', () => {
     });
   });
 
+  it('exports a bounded v0.20 APK base64 chunk without raising generic evidence limits',()=>{
+    const chunkBase64='A'.repeat(16000);
+    const data={
+      status:'ANDROID_V020_EXPORT_CHUNK_READY',
+      apkSha256:'F2A8F279033EC832764370A50A34B51B8D29586AF6D9AE7B8957EA81E563A04D',
+      totalBytes:62002,
+      chunkIndex:0,
+      chunkCount:6,
+      chunkBytes:12000,
+      chunkSha256:'ABC123',
+      chunkBase64,
+      token:'must-not-publish',
+    };
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'android_worker_export_v020_signed_apk_chunk',target:'pc01-local',data,
+    }}]}};
+    const requested=['status','apkSha256','totalBytes','chunkIndex','chunkCount','chunkBytes','chunkSha256','chunkBase64'];
+    const evidence=extractPublicEvidence(jobResult,requested);
+    expect(evidence.chunkBase64).toBe(chunkBase64);
+    expect(evidence.totalBytes).toBe(62002);
+    const summary=appendPublicEvidenceToSummary('done',jobResult,requested);
+    expect(summary).toContain(chunkBase64);
+    expect(summary).not.toContain('must-not-publish');
+  });
+
   it('exposes only explicitly allowlisted v0.20 signed-release receipt fields',()=>{
     const receipt={
       status:'ANDROID_WORKER_STABLE_RELEASE_READY',
