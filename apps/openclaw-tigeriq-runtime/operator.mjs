@@ -455,6 +455,29 @@ async function statPath(targetPath) {
 }
 
 
+export function androidReleaseBuildFailureClass(result = {}) {
+  const text = `${String(result?.stderr || '')}\n${String(result?.stdout || '')}`.toUpperCase();
+  const allowed = [
+    'STABLE_SIGNING_DIR_REQUIRED',
+    'STABLE_SIGNING_ALIAS_REQUIRED',
+    'STABLE_SIGNING_NOT_PROVISIONED',
+    'CANONICAL_SIGNING_IDENTITY_MISMATCH',
+    'KEYTOOL_MISSING',
+    'KEYSTORE_VERIFY_FAILED',
+    'KEYSTORE_CERTIFICATE_FINGERPRINT_NOT_FOUND',
+    'KEYSTORE_SIGNING_IDENTITY_MISMATCH',
+    'GRADLE_WRAPPER_MISSING',
+    'ANDROID_RELEASE_BUILD_FAILED',
+    'SIGNED_APK_NOT_FOUND',
+    'APKSIGNER_MISSING',
+    'APK_SIGNATURE_VERIFY_FAILED',
+    'APK_CERTIFICATE_FINGERPRINT_NOT_FOUND',
+    'APK_SIGNING_IDENTITY_MISMATCH',
+    'WORKER_VERSION_NOT_FOUND',
+  ];
+  return allowed.find((code) => text.includes(code)) || 'UNCLASSIFIED';
+}
+
 async function buildAndroidWorkerStableRelease() {
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
   const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\build-android-worker-release.ps1';
@@ -471,7 +494,9 @@ async function buildAndroidWorkerStableRelease() {
     { cwd: repoRoot, timeoutSec: 120 },
   );
   if (result.timedOut) throw new Error('TIGERIQ_ANDROID_RELEASE_BUILD_TIMEOUT');
-  if (Number(result.exitCode) !== 0) throw new Error('TIGERIQ_ANDROID_RELEASE_BUILD_FAILED');
+  if (Number(result.exitCode) !== 0) {
+    throw new Error(`TIGERIQ_ANDROID_RELEASE_BUILD_FAILED:${androidReleaseBuildFailureClass(result)}`);
+  }
   const lines = String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let receipt = null;
   for (let i = lines.length - 1; i >= 0; i -= 1) {

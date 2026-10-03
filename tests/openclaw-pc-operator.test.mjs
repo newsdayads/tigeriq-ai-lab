@@ -8,6 +8,7 @@ import {
   parseCompactTaskListCsv,
   assertWritePathAllowed,
   resolveOperatorPath,
+  androidReleaseBuildFailureClass,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -138,6 +139,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
       { taskName: 'TigerIQ Core 24x7' },
       { taskName: 'TigerIQ OpenClaw Gateway' },
     ]);
+  });
+
+  it('surfaces only allowlisted Android release failure classes', () => {
+    expect(androidReleaseBuildFailureClass({ stderr: 'Exception: APKSIGNER_MISSING: Android SDK build-tools are required' })).toBe('APKSIGNER_MISSING');
+    expect(androidReleaseBuildFailureClass({ stdout: 'ANDROID_RELEASE_BUILD_FAILED' })).toBe('ANDROID_RELEASE_BUILD_FAILED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'password=secret unknown failure' })).toBe('UNCLASSIFIED');
   });
 
   it('keeps Android stable release build as one fixed typed local action', async () => {
