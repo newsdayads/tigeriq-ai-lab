@@ -155,7 +155,7 @@ export function validateExternalSnapshot(raw: unknown): ExternalAutopilotSnapsho
     if (!job) return;
     if (!job.jobId?.trim()) throw new Error(`AUTOPILOT_${label}_JOB_ID_REQUIRED`);
     if (!['NV02', 'NV03', 'NV04'].includes(job.workerId)) throw new Error(`AUTOPILOT_${label}_WORKER_INVALID`);
-    if (!['P0', 'P1', 'P2'].includes(job.priority)) throw new Error(`AUTOPILOT_${label}_PRIORITY_INVALID`);
+    if (!['P0', 'P1', 'P2', 'P3', 'P4', 'P5'].includes(job.priority)) throw new Error(`AUTOPILOT_${label}_PRIORITY_INVALID`);
     if (!['QUEUED', 'READY', 'RUNNING', 'DONE', 'FAILED', 'BLOCKED', 'CANCELLED'].includes(job.status)) throw new Error(`AUTOPILOT_${label}_STATUS_INVALID`);
     if (typeof job.executable !== 'boolean') throw new Error(`AUTOPILOT_${label}_EXECUTABLE_MUST_BE_BOOLEAN`);
     if(job.completedAt&&!Number.isFinite(Date.parse(job.completedAt)))throw new Error(`AUTOPILOT_${label}_COMPLETED_AT_INVALID`);
