@@ -4,64 +4,76 @@ import fs from 'node:fs';
 const rootHtml = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
 const publicHtml = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 
-describe('TigerIQ Live work-package hierarchy #3324', () => {
+describe('TigerIQ Live work-package hierarchy v2 #3374', () => {
   it('keeps root and public TigerIQ Live in sync', () => {
     expect(publicHtml).toBe(rootHtml);
   });
 
-  it('renders one big work package instead of an issue-centric graph', () => {
-    expect(rootHtml).toContain('VIỆC LỚN · #');
-    expect(rootHtml).toContain('NHÁNH CÔNG VIỆC');
-    expect(rootHtml).toContain('function buildWorkPackage()');
-    expect(rootHtml).toContain('function packageBranchRoot(row,root,byNumber)');
+  it('groups live work as package -> workstream -> major task -> current leaf', () => {
+    expect(rootHtml).toContain('function packageBuildAll()');
+    expect(rootHtml).toContain('function packageStream(streamRoot,packageRows,byNumber)');
+    expect(rootHtml).toContain('function packageTaskGroup(taskRoot,allRows,byNumber)');
+    expect(rootHtml).toContain('Đang ở #');
     expect(rootHtml).not.toContain('function buildWorkflowGraph()');
-    expect(rootHtml).not.toContain('workflow-particle');
-    expect(rootHtml).not.toContain('workflow-wires');
   });
 
-  it('derives package, workstream and task hierarchy from real parent relations', () => {
-    expect(rootHtml).toContain('function packageResolveRoot(seed,rows)');
-    expect(rootHtml).toContain('function packageDescendants(root,rows)');
-    expect(rootHtml).toContain('const streamRoot=packageBranchRoot(row,root,byNumber)');
-    expect(rootHtml).toContain('Number(current.parentNumber)');
+  it('keeps review-only jobs as evidence instead of workstreams or primary tasks', () => {
+    expect(rootHtml).toContain('function packageIsReviewEvidence(row)');
+    expect(rootHtml).toContain("row?.reviewOnly===true");
+    expect(rootHtml).toContain("!packageIsReviewEvidence(row)");
+    expect(rootHtml).toContain('Rà soát/evidence đã gom:');
   });
 
-  it('keeps PR and checks as compact evidence inside a task instead of peer nodes', () => {
-    expect(rootHtml).toContain('function packageArtifacts(row)');
-    expect(rootHtml).toContain("out.push({label:'PR #'+pr");
-    expect(rootHtml).toContain("out.push({label,url:pr?");
-    expect(rootHtml).toContain('package-artifact');
+  it('chooses an operational descendant focus instead of package root when possible', () => {
+    expect(rootHtml).toContain('function packageOperationalFocus(rows)');
+    expect(rootHtml).toContain('const descendants=primary.filter(row=>Number(row.parentNumber))');
+    expect(rootHtml).toContain('const candidates=descendants.length?descendants:primary');
+    expect(rootHtml).toContain("BLOCKED:1");
   });
 
-  it('keeps focus visible and prioritizes active work over completed history', () => {
-    expect(rootHtml).toContain('function packageVisibleTasks(stream,focus)');
-    expect(rootHtml).toContain("const active=ordered.filter(row=>workStatus(row)!=='DONE')");
-    expect(rootHtml).toContain("const done=ordered.filter(row=>workStatus(row)==='DONE').slice(0,2)");
-    expect(rootHtml).toContain("Number(row.number)===Number(focus?.number)");
+  it('renders dependency motion only from explicit DEPENDS_ON relations', () => {
+    expect(rootHtml).toContain('function packageDependencyLinks(streams)');
+    expect(rootHtml).toContain("(target.root?.dependsOn||[]).map(Number)");
+    expect(rootHtml).toContain('package-dep-particle');
+    expect(rootHtml).not.toContain('function packageFlowHtml');
+    expect(rootHtml).not.toContain('package-flow-arrow');
   });
 
-  it('shows true dependency text between workstreams and does not invent percentages', () => {
-    expect(rootHtml).toContain('function packageDependencyText(stream,streams)');
-    expect(rootHtml).toContain('Phụ thuộc: ');
-    expect(rootHtml).not.toContain('verifiedProgress(focus)');
-    expect(rootHtml).not.toContain('workflow-progress-fill');
-  });
-
-  it('summarizes real task states for the big work package', () => {
-    for (const text of ['Đang làm','Rà soát','Bị chặn','Đang chờ','Hoàn tất']) {
-      expect(rootHtml).toContain(text);
-    }
-    expect(rootHtml).toContain('function packageStats(rows)');
-  });
-
-  it('keeps motion state-derived and reduced-motion safe', () => {
-    expect(rootHtml).toContain('@keyframes package-focus-pulse');
-    expect(rootHtml).toContain('@keyframes package-review-pulse');
-    expect(rootHtml).toContain('@keyframes package-blocked-pulse');
+  it('shows visible state-derived live motion without inventing workflow state', () => {
+    expect(rootHtml).toContain('package-livebar');
+    expect(rootHtml).toContain('@keyframes package-livebar');
+    expect(rootHtml).toContain('@keyframes package-dep-run');
+    expect(rootHtml).toContain('@keyframes package-dep-blocked');
     expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
-  it('preserves the existing owner dashboard, list and drawer', () => {
+  it('aggregates stream/task state from primary descendants rather than root status alone', () => {
+    expect(rootHtml).toContain('function packageAggregate(rows)');
+    expect(rootHtml).toContain("if(open.some(row=>workStatus(row)==='BLOCKED'))state='BLOCKED'");
+    expect(rootHtml).toContain('stream.aggregate.label');
+    expect(rootHtml).toContain('group.aggregate.label');
+  });
+
+  it('summarizes major task groups rather than counting review artifacts as jobs', () => {
+    expect(rootHtml).toContain('const majorGroups=streams.flatMap(stream=>stream.groups)');
+    expect(rootHtml).toContain('function packageSummaryFromUnits(units)');
+    expect(rootHtml).toContain("pack.summaryUnits.length+' việc chính");
+  });
+
+  it('keeps standalone workstreams represented in package counts and excludes P5 deferred roots', () => {
+    expect(rootHtml).toContain('const standaloneStreams=streams.filter(stream=>!stream.groups.length)');
+    expect(rootHtml).toContain('const summaryUnits=');
+    expect(rootHtml).toContain("workPriority(row)!=='P5'");
+  });
+
+  it('offers multiple work packages and collapses the raw technical job list by default', () => {
+    expect(rootHtml).toContain('function packageTabsHtml(packages,selected)');
+    expect(rootHtml).toContain('data-package-select');
+    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details">');
+    expect(rootHtml).toContain('JOB kỹ thuật / chi tiết hệ thống');
+  });
+
+  it('preserves the existing owner dashboard, raw list and drawer', () => {
     for (const id of ['ownerSummary','workList','workDrawer','nowRunning','apiWorkforce']) {
       expect(rootHtml).toContain('id="'+id+'"');
     }
