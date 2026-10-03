@@ -107,7 +107,7 @@ public final class ForegroundWorkerService extends Service {
                 }
 
                 if (!run.active()) {
-                    ChatGptB1RunStore.startTask(this, task.runId, task.prompt, task.expectedToken);
+                    ChatGptB1RunStore.startTask(this, task.runId, task.taskId, task.prompt, task.expectedToken);
                     launchChatGpt();
                     taskResumeAttempted = true;
                     return;
@@ -136,7 +136,7 @@ public final class ForegroundWorkerService extends Service {
             JSONObject leased = client.pollLease();
             if (!leased.optBoolean("leased", false)) return;
             MobileTaskStore.Snapshot bound = MobileTaskStore.bind(this, leased.getJSONObject("task"));
-            ChatGptB1RunStore.startTask(this, bound.runId, bound.prompt, bound.expectedToken);
+            ChatGptB1RunStore.startTask(this, bound.runId, bound.taskId, bound.prompt, bound.expectedToken);
             lastLeaseRenewAt = System.currentTimeMillis();
             launchChatGpt();
             taskResumeAttempted = true;
