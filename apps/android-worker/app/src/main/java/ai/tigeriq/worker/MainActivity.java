@@ -62,6 +62,7 @@ public final class MainActivity extends Activity {
     private TextView networkState;
     private TextView coreState;
     private TextView aiProbeState;
+    private TextView b1StateView;
     private TextView technicalState;
 
     @Override
@@ -194,6 +195,36 @@ public final class MainActivity extends Activity {
         aiCard.addView(aiProbeState, marginParams(0, dp(12), 0, 0));
         root.addView(aiCard, marginParams(0, dp(6), 0, dp(16)));
 
+        root.addView(sectionTitle("B1 · ChatGPT Adapter"));
+        LinearLayout b1Card = card();
+        TextView b1Help = text(
+            "DEV pilot: TigerIQ tự điền prompt xác nhận vô hại, gửi đúng 1 lần/chu kỳ và chờ chuỗi TIGERIQ_B1_OK. Không nhận backlog, không ghi GitHub.",
+            12,
+            false
+        );
+        b1Help.setTextColor(MUTED);
+        b1Card.addView(b1Help);
+
+        LinearLayout b1Actions = horizontal();
+        Button runOne = primaryButton("Chạy 1 test");
+        runOne.setOnClickListener(v -> startB1Run(1));
+        b1Actions.addView(runOne, weightedParams(1f, 0, dp(10), dp(4), 0));
+        Button runTen = secondaryButton("Chạy 10 test");
+        runTen.setOnClickListener(v -> startB1Run(10));
+        b1Actions.addView(runTen, weightedParams(1f, dp(4), dp(10), 0, 0));
+        b1Card.addView(b1Actions);
+
+        Button cancelB1 = secondaryButton("Hủy B1 đang chạy");
+        cancelB1.setOnClickListener(v -> {
+            ChatGptB1RunStore.cancel(this);
+            refreshStatus();
+        });
+        b1Card.addView(cancelB1, marginParams(0, dp(8), 0, 0));
+
+        b1StateView = text("", 13, false);
+        b1Card.addView(b1StateView, marginParams(0, dp(12), 0, 0));
+        root.addView(b1Card, marginParams(0, dp(6), 0, dp(16)));
+
         root.addView(sectionTitle("Hệ thống"));
         LinearLayout systemCard = card();
         technicalState = text("", 12, false);
@@ -206,7 +237,7 @@ public final class MainActivity extends Activity {
         root.addView(systemCard, marginParams(0, dp(6), 0, dp(12)));
 
         TextView footer = text(
-            WorkerVersion.NAME + " · TigerIQ Core Mobile · probe chỉ đọc, chưa tự gửi nội dung",
+            WorkerVersion.NAME + " · B1 DEV · chỉ gửi prompt test vô hại · chưa nhận backlog/GitHub write",
             11,
             false
         );
@@ -278,6 +309,24 @@ public final class MainActivity extends Activity {
 
         parent.addView(row, marginParams(0, 0, 0, dp(15)));
         return stateView;
+    }
+
+    private void startB1Run(int cycles) {
+        if (!"ChatGPT".equals(selectedProvider())) {
+            Toast.makeText(this, "B1 hiện chỉ hỗ trợ ChatGPT", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!accessibilityEnabled()) {
+            Toast.makeText(this, "Cần bật Accessibility trước khi chạy B1", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!hasCredential()) {
+            Toast.makeText(this, "Cần ghép TigerIQ Core trước khi chạy B1", Toast.LENGTH_LONG).show();
+            return;
+        }
+        ChatGptB1RunStore.start(this, cycles);
+        refreshStatus();
+        openChatGpt();
     }
 
     private void probeCore(Button button) {
@@ -499,6 +548,26 @@ public final class MainActivity extends Activity {
         readinessView.setTextColor(ready ? GREEN : AMBER);
         readinessView.setBackground(panelBox(ready ? Color.rgb(8, 56, 35) : Color.rgb(55, 45, 18), ready ? GREEN : AMBER, 14));
 
+        ChatGptB1RunStore.Snapshot b1 = ChatGptB1RunStore.read(this);
+        String b1Title = b1StateLabel(b1.state);
+        String b1Progress = b1.targetCycles > 0
+            ? b1.completedCycles + "/" + b1.targetCycles
+            : "chưa chạy";
+        b1StateView.setText(
+            "Trạng thái: " + b1Title
+                + "\nTiến độ: " + b1Progress
+                + " · Đã gửi " + b1.sendCount
+                + " · Chặn trùng " + b1.duplicateSendCount
+                + "\nRecovery: " + b1.recoveryCount
+                + " · Busy seen: " + (b1.busySeen ? "CÓ" : "CHƯA")
+                + (b1.lastError == null || b1.lastError.isEmpty() ? "" : "\nLỗi: " + b1.lastError)
+        );
+        b1StateView.setTextColor(
+            "COMPLETE".equals(b1.state) ? GREEN
+                : ("ERROR".equals(b1.state) ? RED
+                : (b1.active() ? AMBER : MUTED))
+        );
+
         technicalState.setText(
             "Phiên bản: " + WorkerVersion.NAME
                 + "\nNode: " + new NodeIdentityStore(this).getOrCreate()
@@ -707,6 +776,17 @@ public final class MainActivity extends Activity {
         String message = error.getMessage();
         if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
         return compact(message, 160);
+    }
+
+    private String b1StateLabel(String state) {
+        if ("REQUESTED".equals(state)) return "ĐÃ YÊU CẦU";
+        if ("VERIFYING_CONTEXT".equals(state)) return "ĐANG TÌM Ô NHẬP";
+        if ("INPUT_READY".equals(state)) return "ĐÃ ĐIỀN · CHỜ GỬI";
+        if ("WAITING_AI".equals(state)) return "ĐÃ GỬI · ĐANG CHỜ AI";
+        if ("COMPLETE".equals(state)) return "ĐẠT";
+        if ("ERROR".equals(state)) return "LỖI";
+        if ("CANCELLED".equals(state)) return "ĐÃ HỦY";
+        return "CHƯA CHẠY";
     }
 
     private String friendlyPackage(String packageName) {
