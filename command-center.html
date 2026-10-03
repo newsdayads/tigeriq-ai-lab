@@ -521,7 +521,7 @@ function packageStream(streamRoot,packageRows,byNumber){
 }
 function packageBuildAll(){
   const rows=packageRows(),byNumber=new Map(rows.map(row=>[Number(row.number),row])),superseded=packageSupersededSet(rows);
-  const openPrimary=rows.filter(row=>workStatus(row)!=='DONE'&&!packageIsReviewEvidence(row)&&!superseded.has(Number(row.number)));
+  const openPrimary=rows.filter(row=>workStatus(row)!=='DONE'&&!packageIsReviewEvidence(row)&&!superseded.has(Number(row.number))&&workPriority(row)!=='P5');
   const roots=new Map();
   for(const row of openPrimary){
     const root=packageResolveRoot(row,rows);if(!root||packageIsReviewEvidence(root))continue;
@@ -534,8 +534,11 @@ function packageBuildAll(){
     const streamRoots=descendants.filter(row=>Number(row.parentNumber)===Number(root.number)&&!packageIsReviewEvidence(row));
     const streams=streamRoots.map(row=>packageStream(row,descendants,packageByNumber));
     const majorGroups=streams.flatMap(stream=>stream.groups);
-    const aggregate=packageAggregate(majorGroups.length?majorGroups.flatMap(group=>group.primary):descendants.filter(row=>Number(row.number)!==Number(root.number)));
-    packages.push({root,focus,rows:descendants,streams,majorGroups,aggregate});
+    const standaloneStreams=streams.filter(stream=>!stream.groups.length);
+    const summaryUnits=[...majorGroups.map(group=>({aggregate:group.aggregate})),...standaloneStreams.map(stream=>({aggregate:stream.aggregate}))];
+    const aggregateRows=[...majorGroups.flatMap(group=>group.primary),...standaloneStreams.map(stream=>stream.root)];
+    const aggregate=packageAggregate(aggregateRows.length?aggregateRows:[root]);
+    packages.push({root,focus,rows:descendants,streams,majorGroups,summaryUnits,aggregate});
   }
   return packages.sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||priorityRank(workPriority(a.root))-priorityRank(workPriority(b.root))||Number(a.root.number)-Number(b.root.number));
 }
@@ -589,9 +592,9 @@ function packageTabsHtml(packages,selected){
   if(packages.length<=1)return '';
   return '<div class="package-tabs" aria-label="Các việc lớn đang mở">'+packages.map(pack=>'<button type="button" class="package-tab'+(Number(pack.root.number)===Number(selected)?' active':'')+'" data-package-select="'+Number(pack.root.number)+'"><b>#'+Number(pack.root.number)+' · '+esc(pack.aggregate.label)+'</b><span>'+esc(displayTitle(pack.root.title))+'</span></button>').join('')+'</div>';
 }
-function packageSummaryFromGroups(groups){
+function packageSummaryFromUnits(units){
   const counts={working:0,review:0,blocked:0,waiting:0,done:0};
-  for(const group of groups){const s=group.aggregate.state;if(s==='WORKING')counts.working++;else if(['REVIEW','VERIFY'].includes(s))counts.review++;else if(s==='BLOCKED')counts.blocked++;else if(s==='DONE')counts.done++;else counts.waiting++;}
+  for(const unit of units){const s=unit.aggregate.state;if(s==='WORKING')counts.working++;else if(['REVIEW','VERIFY'].includes(s))counts.review++;else if(s==='BLOCKED')counts.blocked++;else if(s==='DONE')counts.done++;else counts.waiting++;}
   return counts;
 }
 function renderJobJourney(){
@@ -604,12 +607,12 @@ function renderJobJourney(){
   if(!selectedPackageNumber||!packages.some(pack=>Number(pack.root.number)===Number(selectedPackageNumber)))selectedPackageNumber=Number(defaultPack.root.number);
   const pack=packages.find(item=>Number(item.root.number)===Number(selectedPackageNumber))||defaultPack;
   workPackageState={packages,selected:pack};
-  const root=pack.root,focus=pack.focus||root,summary=packageSummaryFromGroups(pack.majorGroups),focusStatus=workStatus(focus),focusWorker=workerFrom(focus);
+  const root=pack.root,focus=pack.focus||root,summary=packageSummaryFromUnits(pack.summaryUnits),focusStatus=workStatus(focus),focusWorker=workerFrom(focus);
   const focusWorkerText=focusWorker&&!['CHƯA GÁN','OWNER'].includes(focusWorker)?' · '+focusWorker:'';
   const streamsMarkup=pack.streams.length?pack.streams.map(stream=>packageStreamHtml(stream,focus)).join(''):'<div class="package-empty">Việc lớn này chưa có nhánh công việc con trong dữ liệu hiện hành.</div>';
   el.innerHTML='<article class="package-shell">'+packageTabsHtml(packages,pack.root.number)
     +'<div class="package-head"><div><div class="package-kicker">VIỆC LỚN · #'+Number(root.number)+'</div><div class="package-title">'+esc(displayTitle(root.title))+'</div></div>'
-    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.majorGroups.length+' việc chính</span></div></div>'
+    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.summaryUnits.length+' việc chính</span></div></div>'
     +'<div class="package-summary"><div class="is-working"><span>Đang làm</span><b>'+summary.working+'</b></div><div class="is-review"><span>Rà soát</span><b>'+summary.review+'</b></div><div class="is-blocked"><span>Bị chặn</span><b>'+summary.blocked+'</b></div><div><span>Đang chờ</span><b>'+summary.waiting+'</b></div><div class="is-done"><span>Hoàn tất</span><b>'+summary.done+'</b></div></div>'
     +'<div class="package-focus"><div class="package-focus-title"><b>Đang tập trung:</b> #'+Number(focus.number)+' · '+esc(displayTitle(focus.title))+'</div><div class="package-focus-sub">'+esc(stateLabel[focusStatus]||focusStatus)+focusWorkerText+' · Bước tới: '+esc(shortNext(focus))+'</div></div>'
     +packageDependenciesHtml(pack.streams)
