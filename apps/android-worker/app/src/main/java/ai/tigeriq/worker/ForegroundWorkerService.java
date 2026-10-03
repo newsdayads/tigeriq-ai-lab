@@ -173,7 +173,7 @@ public final class ForegroundWorkerService extends Service {
             }
             if (run.active()) return;
 
-            if (!WorkerUpdateEngine.beginTaskLease()) return;
+            if (!WorkerUpdateEngine.beginTaskLease(this)) return;
             try {
                 JSONObject leased = client.pollLease();
                 if (!leased.optBoolean("leased", false)) return;
