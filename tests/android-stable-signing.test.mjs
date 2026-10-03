@@ -25,12 +25,14 @@ describe('WO-037 Android stable signing', () => {
     expect(workflow).not.toContain('F:\\TigerIQ\\Secrets');
   });
 
-  it('provisions one persistent private keystore and pins its fingerprint', () => {
-    expect(provision).toContain("F:\\TigerIQ\\Secrets\\android-worker-signing");
-    expect(provision).toContain("if (-not (Test-Path $KeyStorePath))");
+  it('recovers only the established canonical identity and never generates a replacement key', () => {
+    expect(provision).toContain('TIGERIQ_ANDROID_SIGNING_DIR');
+    expect(provision).toContain('CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED');
+    expect(provision).toContain('63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293');
     expect(provision).toContain('SIGNING_IDENTITY_CHANGED');
-    expect(provision).toContain('certificateSha256');
-    expect(provision).toContain("'SYSTEM','FullControl','Allow'");
-    expect(provision).toContain("'BUILTIN\\Administrators','FullControl','Allow'");
+    expect(provision).toContain('identityCreated = $false');
+    expect(provision).not.toContain('genkeypair');
+    expect(provision).not.toContain('New-RandomSecret');
+    expect(provision).not.toContain("F:\\TigerIQ\\Secrets\\android-worker-signing");
   });
 });
