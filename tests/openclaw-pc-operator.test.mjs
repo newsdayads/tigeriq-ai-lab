@@ -245,6 +245,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain('http://127.0.0.1:${port}${path}');
     expect(source).not.toContain('input?.host');
     expect(source).not.toContain('input?.employeeId');
+    expect(source).toContain("gate_c_v020_device_unavailable:'GATE_C_V020_DEVICE_UNAVAILABLE'");
+    expect(source).toContain("gate_c_v020_device_ambiguous:'GATE_C_V020_DEVICE_AMBIGUOUS'");
+    expect(source).toContain("gate_c_v020_device_stale:'GATE_C_V020_DEVICE_STALE'");
+
     expect(coreSource).toContain("createServer(server.listeners('request')[0])");
     expect(coreSource).toContain("loopbackServer.listen(PORT,'127.0.0.1',resolve)");
     expect(coreSource).toContain("loopbackServer?.close()");
