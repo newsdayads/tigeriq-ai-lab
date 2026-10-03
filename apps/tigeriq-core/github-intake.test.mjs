@@ -166,6 +166,16 @@ describe('GitHub Core intake guardrails',()=>{
       present:true,valid:true,action:{action:'task_restart',taskName:'TigerIQ Core 24x7'},mutating:true
     });
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"task_restart","taskName":"TigerIQ Core 24x7"}',false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_status"}',false)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_gate_c_v020_status'},mutating:false
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_enqueue_10"}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_gate_c_v020_enqueue_10'},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_enqueue_10"}',false)).toMatchObject({
+      present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'
+    });
+
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_release_build"}',true)).toMatchObject({
       present:true,valid:true,action:{action:'android_worker_release_build'},mutating:true
     });
