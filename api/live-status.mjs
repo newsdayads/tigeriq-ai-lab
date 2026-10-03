@@ -483,6 +483,34 @@ function issueIsTerminalOrExcluded(issue) {
   return state === 'EXCLUDED' || bodyFlag(body, 'EXCLUDED') || bodyValue(body, 'AUTO_QUEUE').toUpperCase() === 'EXCLUDED';
 }
 
+
+function firstWorkflowRef(body = '', key = '') {
+  const raw = bodyValue(body, key);
+  const match = String(raw || '').match(/#?(\d{1,8})(?!\d)/);
+  return match ? Number(match[1]) : null;
+}
+
+function workflowRefList(body = '', key = '') {
+  const raw = bodyValue(body, key);
+  return [...new Set((String(raw || '').match(/#?\d{1,8}/g) || [])
+    .map((value) => Number(value.replace('#', '')))
+    .filter(Boolean))].slice(0, 16);
+}
+
+export function workflowRelationsForIssue(issue) {
+  const body = String(issue?.body || '');
+  return {
+    parentNumber: firstWorkflowRef(body, 'PARENT'),
+    sourceNumber: firstWorkflowRef(body, 'SOURCE'),
+    targetPrNumber: firstWorkflowRef(body, 'TARGET_PR'),
+    sourcePrNumber: firstWorkflowRef(body, 'SOURCE_PR'),
+    dependsOn: workflowRefList(body, 'DEPENDS_ON'),
+    supersedesNumbers: workflowRefList(body, 'SUPERSEDES'),
+    capability: bodyValue(body, 'CAPABILITY').trim().toLowerCase() || null,
+    reviewOnly: bodyFlag(body, 'REVIEW_ONLY'),
+  };
+}
+
 export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
   if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
@@ -498,6 +526,7 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   const classification = classifyOpenIssue(issue);
   if (classification.workKind !== 'WORK') return null;
   const priority = issuePriority(issue);
+  const relations = workflowRelationsForIssue(issue);
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
@@ -507,6 +536,7 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     employeeId: issueEmployeeId(issue),
     status: 'DONE',
     workKind: 'WORK',
+    ...relations,
     progressPercent: 100,
     progressSource: 'terminal',
     progressDetail: '5/5 gate',
@@ -1039,6 +1069,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
+  const relations = workflowRelationsForIssue(issue);
   const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
   const currentStep = classification.ownerGate
     ? technicalComplete
@@ -1093,6 +1124,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
         : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
     workKind: classification.workKind,
+    ...relations,
     ownerGate: classification.ownerGate,
     ownerApprovalRequired: classification.ownerApprovalRequired,
     ownerApprovalPending: classification.ownerGate,

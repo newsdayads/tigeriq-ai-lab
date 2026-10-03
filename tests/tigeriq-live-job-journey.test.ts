@@ -4,46 +4,60 @@ import fs from 'node:fs';
 const rootHtml = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
 const publicHtml = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 
-describe('TigerIQ Live job journey #3150', () => {
+describe('TigerIQ Live real workflow graph #3231', () => {
   it('keeps root and public TigerIQ Live in sync', () => {
     expect(publicHtml).toBe(rootHtml);
   });
 
-  it('adds a single-job journey without removing the existing owner dashboard', () => {
-    expect(rootHtml).toContain('id="jobJourney"');
-    for (const text of ['JOB TRỌNG TÂM','Mục tiêu','Phân việc','Thực thi','Rà soát','Xác minh','Hoàn tất']) {
-      expect(rootHtml).toContain(text);
-    }
-    for (const id of ['ownerSummary','workList','workDrawer']) {
+  it('replaces the fixed six-step journey with a real workflow graph', () => {
+    expect(rootHtml).toContain('LIVE WORKFLOW');
+    expect(rootHtml).toContain('function buildWorkflowGraph()');
+    expect(rootHtml).toContain('function workflowResolveRoot(seed,rows)');
+    expect(rootHtml).toContain('function workflowCluster(root,rows)');
+    expect(rootHtml).not.toContain('function journeyStageState');
+    expect(rootHtml).not.toContain('const stages=[');
+    expect(rootHtml).not.toContain('.journey-stage');
+  });
+
+  it('builds nodes only from actual work items, PRs and check data', () => {
+    expect(rootHtml).toContain("const pr=Number(row?.prNumber||row?.targetPrNumber||row?.sourcePrNumber)");
+    expect(rootHtml).toContain("addNode({id:prId,type:'pr'");
+    expect(rootHtml).toContain("if(row?.checks)");
+    expect(rootHtml).toContain("addNode({id:checkId,type:'checks'");
+    expect(rootHtml).toContain("row?.parentNumber");
+    expect(rootHtml).toContain("row?.dependsOn");
+    expect(rootHtml).toContain("row?.supersedesNumbers");
+  });
+
+  it('renders true branching and draws edges from the graph relation set', () => {
+    expect(rootHtml).toContain("addEdge(prId,id,workStatus(row),'target-pr')");
+    expect(rootHtml).toContain("addEdge(parentId,id,workStatus(row),'parent')");
+    expect(rootHtml).toContain("addEdge(depId,id,workStatus(row),'dependency')");
+    expect(rootHtml).toContain('function drawWorkflowEdges()');
+    expect(rootHtml).toContain('workflow-wires');
+  });
+
+  it('shows live animation without pretending stale data is live', () => {
+    expect(rootHtml).toContain('@keyframes workflow-wire-flow');
+    expect(rootHtml).toContain('@keyframes workflow-node-pulse');
+    expect(rootHtml).toContain('@keyframes workflow-ambient');
+    expect(rootHtml).toContain('.workflow-wire.is-working');
+    expect(rootHtml).toContain("const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale)");
+    expect(rootHtml).toContain('Dữ liệu hiện tại đã cũ nên chưa dựng graph để tránh hiển thị sai.');
+    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
+  });
+
+  it('keeps mobile layout compact and node details interactive', () => {
+    expect(rootHtml).toContain('@media(max-width:700px)');
+    expect(rootHtml).toContain('grid-template-columns:repeat(auto-fit,minmax(138px,1fr))');
+    expect(rootHtml).toContain('data-row-number');
+    expect(rootHtml).toContain('openDrawer(row,node)');
+    expect(rootHtml).toContain("target=\"_blank\" rel=\"noopener noreferrer\"");
+  });
+
+  it('preserves existing owner dashboard, list and drawer', () => {
+    for (const id of ['ownerSummary','workList','workDrawer','nowRunning','apiWorkforce']) {
       expect(rootHtml).toContain('id="'+id+'"');
     }
-  });
-
-  it('derives focus and stage state only from the existing snapshot contract', () => {
-    expect(rootHtml).toContain('function journeyFocusRow()');
-    expect(rootHtml).toContain('function journeyStageState(status,index,assigned)');
-    expect(rootHtml).toContain('snapshot?.activeWork');
-    expect(rootHtml).toContain('snapshot?.openWork');
-    expect(rootHtml).not.toContain('/api/job-journey');
-  });
-
-  it('fails safe on stale data and does not invent progress', () => {
-    expect(rootHtml).toContain('Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.');
-    expect(rootHtml).toContain('const {pct,verified}=verifiedProgress(row)');
-    expect(rootHtml).toContain("verified?'<div class=\"journey-progress\"");
-  });
-
-  it('supports multiple workers and exposes blockers at the affected journey', () => {
-    expect(rootHtml).toContain('function journeyWorkers(row)');
-    expect(rootHtml).toContain('row?.participants');
-    expect(rootHtml).toContain('row?.workers');
-    expect(rootHtml).toContain("Đang có '+workers.length+' nhân sự tham gia / có thể chạy song song");
-    expect(rootHtml).toContain('<b>Bị chặn:</b>');
-  });
-
-  it('keeps the job journey mobile-first and opens the existing detail drawer', () => {
-    expect(rootHtml).toContain('@media(max-width:700px)');
-    expect(rootHtml).toContain('.journey-rail{grid-template-columns:1fr');
-    expect(rootHtml).toContain('openDrawer(row,shell)');
   });
 });
