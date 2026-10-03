@@ -40,10 +40,13 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('DIRECT_LINEAGE');
     expect(service).toContain('LOCAL_CLICKABLE_SCOPE');
     expect(service).toContain('CLICK_REJECTED');
-    expect(service).not.toContain('pendingProjectClick');
-    expect(service).not.toContain('projectVisibleSince');
-    expect(service).not.toContain('VERIFYING_ROOT');
-    expect(service).not.toContain('STABLE_ROOT');
+    expect(service).toContain('maybeBindProjectFromStableContext');
+    expect(service).toContain('PROJECT_STABLE_MIN_SAMPLES = 3');
+    expect(service).toContain('PROJECT_STABLE_MIN_MS = 1200L');
+    expect(service).toContain('CONTEXT_CANDIDATE');
+    expect(service).toContain('STABLE_PROJECT_CONTEXT');
+    expect(adapter).toContain('treeContainsExactLabelOutsideClickableNavigation');
+    expect(service).toContain('findComposerInput(root) != null');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
@@ -140,8 +143,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 15 for Project click hardening', () => {
-    expect(gradle).toContain('versionCode = 15');
-    expect(gradle).toContain('versionName = "0.15.0-project-click-hardening"');
+  it('publishes versionCode 16 for stable Project context verification', () => {
+    expect(gradle).toContain('versionCode = 16');
+    expect(gradle).toContain('versionName = "0.16.0-stable-project-context"');
   });
 });
