@@ -27,6 +27,13 @@ v0.10 adds a DEV-only semantic ChatGPT adapter after the Z Flip 7 proved the nat
 - terminal evidence reported idempotently to TigerIQ Core;
 - no task lease, backlog self-pull, GitHub mutation, coordinate taps or gesture fallback.
 
+v0.12 adds a safety gate and pacing before the same physical acceptance:
+- the active run starts in `WAITING_PROJECT`;
+- TigerIQ will not type/send until ChatGPT emits a real click on Project `TigerIQ AI Lab`;
+- minimum fill-to-send dwell is 3 seconds;
+- cooldown between completed cycles is 6 seconds;
+- this is a behavioral safety/verification measure, not a claim that automated UI usage bypasses provider rules.
+
 Physical acceptance still requires 10 real cycles and at least one ChatGPT restart/recovery on Z Flip 7. This source/build must not be called Gate B PASS until that evidence exists.
 
 
