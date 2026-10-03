@@ -1,6 +1,6 @@
 # TigerIQ Android Worker — MVP Contract
 
-Status: #2949 GATE B0 PILOT SETUP / Z FLIP 7 PHYSICAL VERIFICATION REQUIRED
+Status: #2949 GATE B1 CHATGPT ADAPTER V1 / PHYSICAL 10-CYCLE VERIFICATION REQUIRED
 
 ## Gate B0 pilot setup
 
@@ -15,6 +15,20 @@ v0.6 turns the earlier probe screen into a guided real-device setup:
 The semantic probe remains deliberately read-only. It does **not** auto-click, auto-send, or collect conversation text until physical Z Flip evidence supports the next adapter implementation.
 
 Master authority: #2949 / `MOBILE_WORKER_MASTER_V1`.
+
+## Gate B1 ChatGPT Adapter
+
+v0.10 adds a DEV-only semantic ChatGPT adapter after the Z Flip 7 proved the native Accessibility tree:
+- one- or ten-cycle harmless confirmation test;
+- semantic editable-node detection + `ACTION_SET_TEXT`;
+- semantic send-control detection + `ACTION_CLICK`;
+- exactly-once guard per cycle;
+- WAITING/COMPLETE/ERROR state machine with bounded ChatGPT relaunch recovery;
+- terminal evidence reported idempotently to TigerIQ Core;
+- no task lease, backlog self-pull, GitHub mutation, coordinate taps or gesture fallback.
+
+Physical acceptance still requires 10 real cycles and at least one ChatGPT restart/recovery on Z Flip 7. This source/build must not be called Gate B PASS until that evidence exists.
+
 
 ## Purpose
 One Android device can act as one persistent TigerIQ employee workstation. The Android app does not own company hierarchy or business decisions. It is an execution runtime that receives bounded Task Packets from TigerIQ Control Plane and returns structured Result/Evidence.
