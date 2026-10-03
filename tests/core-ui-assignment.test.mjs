@@ -93,6 +93,45 @@ test('Core can assign NV03 and NV04 concurrently while NV02 remains external',as
   assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-212');
 });
 
+test('Core UI paginates beyond the first 100 open issues so newer eligible review work is not starved',async()=>{
+  const pool=fakePool();
+  const filler=Array.from({length:100},(_,i)=>issue(1000+i,safe(['CAPABILITY=general']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=FILLER_'+i),'Filler '+i));
+  const target=issue(3059,safe(['TARGET_EMPLOYEE=NV04','CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=PAGINATED_REVIEW'),'Paged NV04 review');
+  const seenPages=[];
+  const fetchImpl=async url=>{
+    if(url.includes('/issues?')){
+      const page=Number(String(url).match(/[?&]page=(\d+)/)?.[1]||1);
+      seenPages.push(page);
+      return response(page===1?filler:page===2?[target]:[]);
+    }
+    if(url.endsWith('/issues/3059'))return response(target);
+    return response([]);
+  };
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.deepEqual(seenPages,[1,2]);
+  assert.equal(pool.jobs.length,1);
+  assert.equal(snap.nextJobs[0].workerId,'NV04');
+  assert.equal(snap.nextJobs[0].issueRef,target.html_url);
+  assert.equal(snap.nextJobs[0].resourceScope,'PAGINATED_REVIEW');
+});
+
+test('Core UI fails closed instead of silently truncating a full bounded issue listing',async()=>{
+  const pool=fakePool();
+  const fullPage=Array.from({length:100},(_,i)=>issue(2000+i,safe(['CAPABILITY=general']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=LIMIT_'+i),'Limit filler '+i));
+  let listCalls=0;
+  const fetchImpl=async url=>{
+    if(url.includes('/issues?')){listCalls+=1;return response(fullPage);}
+    return response([]);
+  };
+  await assert.rejects(
+    ()=>buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'}),
+    /CORE_UI_GITHUB_ISSUES_PAGE_LIMIT/,
+  );
+  assert.equal(listCalls,20);
+  assert.equal(pool.jobs.length,0);
+  assert.equal(pool.objectives.length,0);
+});
+
 test('same RESOURCE_SCOPE cannot be assigned twice across NV03/NV04 using atomic advisory-lock insert',async()=>{
   const pool=fakePool();
   const issues=[issue(220,safe(['CAPABILITY=review'])),issue(221,safe(['CAPABILITY=research']))];
