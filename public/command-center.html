@@ -239,7 +239,7 @@ button.workflow-node{width:100%;font:inherit;cursor:pointer}
     <div class="summary-chip done"><span>Đã xong</span><b id="sumDone">0</b></div>
   </div>
 </section>
-<section id="jobJourney" class="job-journey" aria-label="Live Workflow Graph của công việc trọng tâm"></section>
+<section id="jobJourney" class="job-journey" aria-label="Sơ đồ công việc trực tiếp của việc trọng tâm"></section>
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
 <section aria-labelledby="workListHeading">
@@ -416,7 +416,8 @@ function workflowRows(){
   return [...merged.values()];
 }
 function workflowFocusSeed(rows){
-  const open=rows.filter(row=>workStatus(row)!=='DONE');
+  const superseded=new Set(rows.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
+  const open=rows.filter(row=>workStatus(row)!=='DONE'&&!superseded.has(Number(row.number)));
   const rank={WORKING:0,REVIEW:1,VERIFY:2,BLOCKED:3,OWNER_GATE:4,QUEUED:5,WAITING:6,OPEN:7,UNKNOWN:8,DONE:9};
   return open.sort((a,b)=>(rank[workStatus(a)]??8)-(rank[workStatus(b)]??8)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
 }
@@ -434,8 +435,23 @@ function workflowResolveRoot(seed,rows){
   }
   return current;
 }
-function workflowCluster(root,rows){
-  if(!root)return [];
+function workflowAncestorPath(focus,rows){
+  if(!focus)return [];
+  const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
+  const reversed=[focus],seen=new Set([Number(focus.number)]);
+  let current=focus;
+  for(let depth=0;depth<7;depth++){
+    const parent=Number(current?.parentNumber);
+    if(!parent||seen.has(parent))break;
+    const parentRow=byNumber.get(parent);
+    if(!parentRow||parentRow?.workKind!=='WORK'||workPriority(parentRow)==='P5')break;
+    seen.add(parent);reversed.push(parentRow);current=parentRow;
+  }
+  return reversed.reverse();
+}
+function workflowCluster(root,focus,rows){
+  if(!root||!focus)return [];
+  const byNumber=new Map(rows.map(row=>[Number(row.number),row]));
   const byParent=new Map();
   for(const row of rows){
     const parent=Number(row?.parentNumber);
@@ -443,16 +459,42 @@ function workflowCluster(root,rows){
     if(!byParent.has(parent))byParent.set(parent,[]);
     byParent.get(parent).push(row);
   }
-  const selected=[];const seen=new Set();const queue=[root];
-  while(queue.length&&selected.length<10){
-    const row=queue.shift();const n=Number(row?.number);
-    if(!n||seen.has(n))continue;
-    seen.add(n);selected.push(row);
-    const children=(byParent.get(n)||[]).sort((a,b)=>statusRank(workStatus(a))-statusRank(workStatus(b))||Number(a.number)-Number(b.number));
-    children.forEach(child=>{if(selected.length+queue.length<12)queue.push(child)});
+  const superseded=new Set(rows.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
+  const path=workflowAncestorPath(focus,rows).filter(row=>!superseded.has(Number(row.number))||Number(row.number)===Number(focus.number));
+  if(!path.some(row=>Number(row.number)===Number(root.number)))path.unshift(root);
+
+  const selected=[];const seen=new Set();
+  const add=row=>{
+    const n=Number(row?.number);
+    if(!n||seen.has(n)||superseded.has(n)&&n!==Number(focus.number))return false;
+    seen.add(n);selected.push(row);return true;
+  };
+  path.forEach(add);
+
+  const remaining=()=>Math.max(0,10-selected.length);
+  const prioritySort=(a,b)=>statusRank(workStatus(a))-statusRank(workStatus(b))||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number);
+
+  for(let i=0;i<path.length-1&&remaining()>0;i++){
+    const parent=path[i],next=Number(path[i+1]?.number);
+    const siblings=(byParent.get(Number(parent.number))||[])
+      .filter(row=>Number(row.number)!==next)
+      .sort(prioritySort);
+    for(const row of siblings.slice(0,1)){if(remaining()>0)add(row)}
   }
-  const superseded=new Set(selected.flatMap(row=>Array.isArray(row?.supersedesNumbers)?row.supersedesNumbers:[]).map(Number));
-  return selected.filter(row=>Number(row.number)===Number(root.number)||!superseded.has(Number(row.number)));
+
+  const focusChildren=(byParent.get(Number(focus.number))||[]).sort(prioritySort);
+  for(const row of focusChildren){if(remaining()<=0)break;add(row)}
+
+  const related=[...path,...focusChildren];
+  for(const row of related){
+    for(const dep of (row?.dependsOn||[]).map(Number)){
+      if(remaining()<=0)break;
+      add(byNumber.get(dep));
+    }
+    if(remaining()<=0)break;
+  }
+
+  return selected;
 }
 function workflowNodeState(status){
   const value=workStatus({status});
@@ -479,7 +521,7 @@ function buildWorkflowGraph(){
   const seed=workflowFocusSeed(rows);
   const root=workflowResolveRoot(seed,rows);
   if(!root)return null;
-  const cluster=workflowCluster(root,rows);
+  const cluster=workflowCluster(root,seed,rows);
   const rowByNumber=new Map(cluster.map(row=>[Number(row.number),row]));
   const nodes=[];const edges=[];const nodeIds=new Set();
   const addNode=node=>{if(!nodeIds.has(node.id)){nodeIds.add(node.id);nodes.push(node)}};
@@ -608,9 +650,9 @@ window.addEventListener('resize',scheduleWorkflowEdges,{passive:true});
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng graph để tránh hiển thị sai.</div>';return}
+  if(!fresh){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.</div>';return}
   const graph=buildWorkflowGraph();
-  if(!graph){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Hiện chưa có công việc thật đủ dữ liệu để hiển thị.</div>';return}
+  if(!graph){workflowGraphState=null;el.innerHTML='<div class="workflow-empty"><b>Luồng công việc trực tiếp</b><br>Hiện chưa có công việc thật đủ dữ liệu để dựng luồng.</div>';return}
   workflowGraphState=graph;
   const root=graph.root,focus=graph.focus||root,status=workStatus(focus),label=stateLabel[status]||status;
   const {pct,verified}=verifiedProgress(focus);
@@ -619,7 +661,7 @@ function renderJobJourney(){
   const layers=graph.layers.map(layer=>'<div class="workflow-layer">'+layer.map(workflowNodeHtml).join('')+'</div>').join('');
   const blocker=effectiveBlocker(focus);
   el.innerHTML='<article class="workflow-shell">'
-    +'<div class="workflow-head"><div><div class="workflow-kicker">LIVE WORKFLOW · #'+Number(root.number)+'</div><div class="workflow-title">'+esc(displayTitle(root.title))+'</div></div>'
+    +'<div class="workflow-head"><div><div class="workflow-kicker">LUỒNG CÔNG VIỆC · #'+Number(root.number)+'</div><div class="workflow-title">'+esc(displayTitle(root.title))+'</div></div>'
     +'<div class="workflow-meta"><span class="workflow-badge">'+esc(workPriority(root))+'</span><span class="workflow-badge">'+graph.nodes.length+' node thật</span></div></div>'
     +'<div class="workflow-now"><div><b>Đang ở:</b> '+esc(focus?.currentStep||label)+'</div>'+progress+'<div class="workflow-next"><b>Bước tới:</b> '+esc(shortNext(focus))+'</div></div>'
     +'<div class="workflow-canvas"><svg class="workflow-wires" aria-hidden="true"></svg>'+layers+'</div>'
