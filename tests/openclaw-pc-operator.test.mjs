@@ -206,6 +206,9 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_NO_SDK_ROOT');
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_NO_BUILD_TOOLS_DIR');
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_ZIPALIGN_DISCOVERY_BINARY_MISSING' })).toBe('ANDROID_ZIPALIGN_DISCOVERY_BINARY_MISSING');
+    expect(androidReleaseBuildFailureClass({ stderr: 'APKSIGNER_JAR_SHA256_REQUIRED' })).toBe('APKSIGNER_JAR_SHA256_REQUIRED');
+    expect(androidReleaseBuildFailureClass({ stderr: 'APKSIGNER_JAR_SHA256_MISMATCH' })).toBe('APKSIGNER_JAR_SHA256_MISMATCH');
+    expect(androidReleaseBuildFailureClass({ stderr: 'JAVA_RUNTIME_REQUIRED' })).toBe('JAVA_RUNTIME_REQUIRED');
   });
 
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
