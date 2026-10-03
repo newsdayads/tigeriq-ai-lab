@@ -768,7 +768,7 @@ async function signAndroidWorkerV020UserContext() {
       || String(receipt.taskPrincipal || '').toLowerCase() !== expectedUser
       || String(receipt.taskName || '') !== expectedTask
       || String(receipt.taskLogonType || '') !== 'InteractiveToken'
-      || String(receipt.taskRunLevel || '') !== 'Limited'
+      || String(receipt.taskRunLevel || '') !== 'Highest'
       || receipt.taskDeleted !== true) {
     throw new Error('TIGERIQ_ANDROID_USER_CONTEXT_IDENTITY_CONTRACT_FAILED');
   }
@@ -794,7 +794,7 @@ async function signAndroidWorkerV020UserContext() {
     executionIdentity: expectedUser,
     taskName: expectedTask,
     taskLogonType: 'InteractiveToken',
-    taskRunLevel: 'Limited',
+    taskRunLevel: 'Highest',
     taskDeleted: true,
     secretsPrinted: false,
   };
