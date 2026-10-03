@@ -210,29 +210,61 @@ body.drawer-open{overflow:hidden}
 @media(prefers-reduced-motion:reduce){.package-shell::before,.package-stream-state::before,.package-livebar,.package-dep-particle,.raw-work-details>summary::before{animation:none!important;transition:none!important}}
 
 </style>
+<style>
+/* #3414 Owner workflow flow — one visual metaphor */
+.flow-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.flow-kpi{border:1px solid #203953;background:linear-gradient(180deg,#102139,#0b1829);border-radius:11px;padding:9px 10px;min-height:62px;display:flex;flex-direction:column;justify-content:center}
+.flow-kpi span{font-size:9px;color:#8fa4ba;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.flow-kpi b{font-size:18px;line-height:1.15;margin-top:4px;color:#f2f7fd}.flow-kpi small{font-size:8.5px;color:#7f95aa;margin-top:2px}
+.live-kpi b{color:#9af0bc;font-size:13px}.progress-kpi b{color:#8fc8ff}
+.flow-package-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 8px;scrollbar-width:none}.flow-package-tabs::-webkit-scrollbar{display:none}
+.flow-package-tabs button{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1.1 inherit;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.flow-package-tabs button.active{border-color:#4c82ad;background:#102a43;color:#dff2ff}
+.workflow-board{border:1px solid #274866;background:radial-gradient(circle at 84% -8%,rgba(88,166,255,.12),transparent 34%),linear-gradient(180deg,#0a1828,#07131f);border-radius:15px;padding:10px;box-shadow:0 12px 34px rgba(0,0,0,.18)}
+.workflow-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:2px 2px 9px;border-bottom:1px solid #1d344b}
+.workflow-head small{font-size:8px;letter-spacing:.08em;color:#79bff0;font-weight:900}.workflow-head h2{font-size:14px;line-height:1.3;margin:3px 0 0;color:#edf5fb}
+.workflow-head>span{border:1px solid #345a79;background:#0e2237;border-radius:999px;padding:5px 8px;font-size:9px;color:#b7d5ea;white-space:nowrap}
+.flow-rows{display:grid;gap:0;padding:7px 0 2px}
+.flow-row{display:grid;grid-template-columns:165px minmax(0,1fr);gap:10px;min-height:74px;position:relative}
+.flow-row:not(:last-child)::after{content:"";position:absolute;left:22px;top:48px;bottom:-7px;width:1px;background:#28445d}
+.flow-stage{display:flex;gap:8px;align-items:flex-start;padding:8px 7px;border-radius:10px;position:relative;z-index:2}
+.flow-stage>strong{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;background:#102b45;border:1px solid #315d80;color:#8fc8ff;font-size:10px;flex:none}
+.flow-stage b{display:block;font-size:9.5px;color:#c7d6e4;letter-spacing:.04em}.flow-stage span{display:block;font-size:8px;color:#738ba1;margin-top:3px;line-height:1.25}
+.flow-row.active .flow-stage{background:#10253b}.flow-row.active .flow-stage>strong{background:#145782;border-color:#58b9ef;color:#e8f8ff;box-shadow:0 0 14px rgba(88,185,239,.18)}
+.flow-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px;padding:6px 0 8px;align-items:stretch;position:relative}
+.flow-cards::before{content:"";position:absolute;left:-10px;top:22px;width:10px;height:1px;background:#31536d}
+.flow-card{appearance:none;text-align:left;border:1px solid #29455f;background:#0b1928;color:inherit;border-radius:10px;padding:8px 9px;min-width:0;font:inherit;cursor:pointer;position:relative;overflow:hidden}
+.flow-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#49627a}
+.flow-card.status-working::before{background:#46d48f}.flow-card.status-blocked::before,.flow-card.status-owner_gate::before{background:#ff747e}.flow-card.status-review::before,.flow-card.status-verify::before{background:#efb85c}.flow-card.status-done::before{background:#58d8c6}.flow-card.status-queued::before,.flow-card.status-waiting::before{background:#58a6ff}
+.flow-card:hover{border-color:#4d7598}.flow-card-top{display:flex;gap:5px;align-items:center;min-width:0}.flow-card-top b{font-size:8.5px;color:#9dc9ea}.flow-card-top span{font-size:8px;color:#7f95aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-card-top em{margin-left:auto;font-style:normal;font-size:7.5px;font-weight:900;color:#9fb2c5;white-space:nowrap}
+.flow-card-title{font-size:10.5px;line-height:1.32;font-weight:830;color:#e6eef6;margin-top:5px}.flow-card-note{font-size:8.5px;line-height:1.34;color:#8096ab;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.flow-card-note.blocker{color:#ff9fa7}
+.flow-mini-progress{display:flex;align-items:center;gap:6px;margin-top:6px;height:5px;background:#16283b;border-radius:999px;overflow:visible;position:relative}.flow-mini-progress i{display:block;height:5px;background:#58a6ff;border-radius:999px}.flow-mini-progress span{position:absolute;right:0;top:-13px;font-size:7px;color:#8fa7bb}
+.tool-card{background:#0c1d2d}.flow-placeholder{border:1px dashed #28435b;border-radius:10px;padding:10px;color:#6f869c;font-size:9px;display:flex;align-items:center;min-height:54px}
+.flow-session-log{margin-top:7px;border-top:1px solid #1d344b;padding-top:8px}.flow-log-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.flow-log-head b{font-size:8px;color:#83c8ff;letter-spacing:.06em}.flow-log-head span{font-size:8px;color:#60788e}
+.flow-log-row{display:grid;grid-template-columns:46px 72px minmax(0,1fr);gap:7px;padding:3px 2px;font-size:8.5px;line-height:1.3;color:#8da1b5}.flow-log-row time{color:#657d92}.flow-log-row b{color:#a9bfd2;font-size:8px}.flow-log-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-log-empty{font-size:8.5px;color:#71879b}
+.flow-empty{border:1px dashed #2a425d;border-radius:14px;padding:16px;color:#91a4ba;font-size:10px}.flow-empty b,.flow-empty span{display:block}.flow-empty span{margin-top:4px}
+#rawWorkDetails{margin-top:9px;opacity:.78}#rawWorkDetails[open]{opacity:1}
+@media(max-width:700px){
+  .flow-kpis{grid-template-columns:1fr 1fr;gap:6px}.flow-kpi{min-height:54px;padding:7px 8px}.flow-kpi b{font-size:16px}
+  .workflow-head{display:block}.workflow-head>span{display:inline-block;margin-top:6px}
+  .flow-row{grid-template-columns:1fr;gap:2px;padding:2px 0 7px}.flow-row:not(:last-child)::after{left:22px;top:42px;bottom:-2px}.flow-stage{padding:6px 7px}.flow-cards{grid-template-columns:1fr;padding:2px 0 5px 46px}.flow-cards::before{left:22px;top:18px;width:24px}.flow-card{padding:8px}
+  .flow-log-row{grid-template-columns:40px 66px minmax(0,1fr)}
+}
+@media(prefers-reduced-motion:reduce){.flow-card,.flow-row,.flow-stage{transition:none!important}}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
 <header class="top">
-  <div class="brand"><h1>TigerIQ Live</h1><p>Danh sách công việc · chỉ xem</p></div>
+  <div class="brand"><h1>TigerIQ Live · Luồng công việc</h1><p>Giao việc → điều phối → thực thi → kiểm tra → kết quả</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
-<section id="ownerSummary" class="owner-summary" aria-label="Tổng quan tiến độ">
-  <div class="summary-main">
-    <div class="summary-label">Tổng tiến độ · phạm vi đang theo dõi</div>
-    <div class="summary-value"><span id="overallPct">—</span> <small id="overallScope">đang tính</small></div>
-    <div class="summary-track"><div id="overallFill" class="summary-fill"></div></div>
-    <div id="overallNote" class="summary-note">Đang kiểm tra trạng thái hoàn tất có bằng chứng…</div>
-  </div>
-  <div class="summary-strip">
-    <div class="summary-chip running"><span>Đang chạy thật</span><b id="sumRunning">0</b></div>
-    <div class="summary-chip waiting"><span>Đang chờ</span><b id="sumWaiting">0</b></div>
-    <div class="summary-chip blocked"><span>Bị chặn thật</span><b id="sumBlocked">0</b></div>
-    <div class="summary-chip owner"><span>Chờ anh Sơn</span><b id="sumOwner">0</b></div>
-    <div class="summary-chip system"><span>Hệ thống</span><b id="sumSystem">0</b></div>
-    <div class="summary-chip done"><span>Đã xong</span><b id="sumDone">0</b></div>
-  </div>
+<section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc">
+  <div class="flow-kpi live-kpi"><span>Kết nối</span><b id="kpiLive">ĐANG KIỂM TRA</b></div>
+  <div class="flow-kpi"><span>Việc đang làm</span><b id="sumRunning">0</b></div>
+  <div class="flow-kpi"><span>Nhân sự hoạt động</span><b id="sumWorkers">0</b></div>
+  <div class="flow-kpi progress-kpi"><span>Tổng tiến độ</span><b id="overallPct">—</b><small id="overallScope">chưa xác minh</small></div>
 </section>
 <section id="jobJourney" class="job-journey" aria-label="Việc lớn và các nhánh công việc đang theo dõi"></section>
 <details id="rawWorkDetails" class="raw-work-details">
@@ -361,34 +393,22 @@ function updateCounts(){
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
 function renderOwnerSummary(){
-  const legacyPortfolioProgress=snapshot?.portfolioProgress;
-  void legacyPortfolioProgress;
-  const s=snapshot?.openSummary||{};
+  const portfolioProgress=snapshot?.portfolioProgress; void portfolioProgress;
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
   const actionable=openRows.filter(row=>row?.workKind==='WORK'&&workStatus(row)!=='SYSTEM');
+  const runningRows=actionable.filter(row=>workStatus(row)==='WORKING');
+  const workers=new Set(runningRows.map(workerFrom).filter(worker=>worker&&!['CHƯA GÁN','OWNER','CHỜ ANH SƠN','ĐÃ XONG KỸ THUẬT'].includes(worker)));
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  const liveOk=fresh&&snapshot?.liveConnected!==false;
+  $('kpiLive').textContent=liveOk?'TRỰC TUYẾN':'CHƯA XÁC MINH';
+  $('sumRunning').textContent=runningRows.length;
+  $('sumWorkers').textContent=workers.size;
   const completion=snapshot?.completionProgress||{};
   const pct=Number(completion?.percent);
-  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   const verified=fresh&&completion?.source==='terminal_completion'&&Number.isFinite(pct)&&pct>=0&&pct<=100;
-  const running=Number.isFinite(Number(s.running))?Number(s.running):actionable.filter(row=>workStatus(row)==='WORKING').length;
-  const blocked=Number.isFinite(Number(s.blocked))?Number(s.blocked):actionable.filter(row=>workStatus(row)==='BLOCKED').length;
-  const owner=Number.isFinite(Number(s.owner))?Number(s.owner):actionable.filter(row=>workStatus(row)==='OWNER_GATE').length;
-  const waiting=actionable.filter(row=>['QUEUED','WAITING','UNKNOWN'].includes(workStatus(row))).length;
-  const system=Number.isFinite(Number(s.system))?Number(s.system):openRows.filter(row=>row?.workKind==='SYSTEM'||workStatus(row)==='SYSTEM').length;
-  const done=Number.isFinite(Number(completion?.completedItems))?Number(completion.completedItems):Number(s.done||0);
-  $('sumRunning').textContent=running;
-  $('sumWaiting').textContent=waiting;
-  $('sumBlocked').textContent=blocked;
-  $('sumOwner').textContent=owner;
-  $('sumSystem').textContent=system;
-  $('sumDone').textContent=done;
   $('overallPct').textContent=verified?pct+'%':'—';
-  $('overallFill').style.width=verified?pct+'%':'0%';
   const scope=Number(completion?.scopeItems||0),completed=Number(completion?.completedItems||0);
-  $('overallScope').textContent=scope?completed+'/'+scope+' việc hoàn tất':'chưa có scope';
-  $('overallNote').textContent=verified
-    ? completed+'/'+scope+' việc đã hoàn tất có bằng chứng · còn '+Math.max(0,scope-completed)+' việc'
-    : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
+  $('overallScope').textContent=verified&&scope?completed+'/'+scope+' việc có bằng chứng':'chưa đủ dữ liệu xác minh';
 }
 
 let workPackageState=null;
@@ -622,25 +642,79 @@ function packageSummaryFromUnits(units){
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng cấu trúc để tránh hiển thị sai.</div>';return}
+  if(!fresh){workPackageState=null;el.innerHTML='<div class="flow-empty"><b>Luồng công việc</b><span>Dữ liệu hiện tại đã cũ nên em không dựng luồng để tránh hiển thị sai.</span></div>';return}
   const packages=packageBuildAll();
-  if(!packages.length){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Hiện chưa có công việc thật đủ dữ liệu để gom.</div>';return}
+  if(!packages.length){workPackageState=null;el.innerHTML='<div class="flow-empty"><b>Luồng công việc</b><span>Chưa có công việc đủ dữ liệu để dựng luồng.</span></div>';return}
   const defaultPack=packages[0];
   if(!selectedPackageNumber||!packages.some(pack=>Number(pack.root.number)===Number(selectedPackageNumber)))selectedPackageNumber=Number(defaultPack.root.number);
   const pack=packages.find(item=>Number(item.root.number)===Number(selectedPackageNumber))||defaultPack;
   workPackageState={packages,selected:pack};
-  const root=pack.root,focus=pack.focus||root,summary=packageSummaryFromUnits(pack.summaryUnits),focusStatus=workStatus(focus),focusWorker=workerFrom(focus);
-  const focusWorkerText=focusWorker&&!['CHƯA GÁN','OWNER'].includes(focusWorker)?' · '+focusWorker:'';
-  const streamsMarkup=pack.streams.length?pack.streams.map(stream=>packageStreamHtml(stream,focus)).join(''):'<div class="package-empty">Việc lớn này chưa có nhánh công việc con trong dữ liệu hiện hành.</div>';
-  el.innerHTML='<article class="package-shell">'+packageTabsHtml(packages,pack.root.number)
-    +'<div class="package-head"><div><div class="package-kicker">VIỆC LỚN · #'+Number(root.number)+'</div><div class="package-title">'+esc(displayTitle(root.title))+'</div></div>'
-    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.summaryUnits.length+' việc chính</span></div></div>'
-    +'<div class="package-summary"><div class="is-working"><span>Đang làm</span><b>'+summary.working+'</b></div><div class="is-review"><span>Rà soát</span><b>'+summary.review+'</b></div><div class="is-blocked"><span>Bị chặn</span><b>'+summary.blocked+'</b></div><div><span>Đang chờ</span><b>'+summary.waiting+'</b></div><div class="is-done"><span>Hoàn tất</span><b>'+summary.done+'</b></div></div>'
-    +'<div class="package-focus"><div class="package-focus-title"><b>Đang tập trung:</b> #'+Number(focus.number)+' · '+esc(displayTitle(focus.title))+'</div><div class="package-focus-sub">'+esc(stateLabel[focusStatus]||focusStatus)+focusWorkerText+' · Bước tới: '+esc(shortNext(focus))+'</div></div>'
-    +packageDependenciesHtml(pack.streams)
-    +'<div class="package-streams">'+streamsMarkup+'</div></article>';
-  el.querySelectorAll('[data-package-select]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-package-select'));renderJobJourney()}));
-  el.querySelectorAll('[data-package-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-package-row')),row=pack.rows.find(item=>Number(item.number)===rowNumber);if(row)node.addEventListener('click',()=>openDrawer(row,node))});
+  const root=pack.root;
+  const uniqueRows=rows=>[...new Map(rows.filter(Boolean).map(row=>[Number(row.number)||String(row.title),row])).values()];
+  const streamRows=uniqueRows(pack.streams.map(stream=>stream.root));
+  const executionRows=uniqueRows(pack.streams.flatMap(stream=>stream.groups.length?stream.groups.map(group=>group.focus):[stream.root]))
+    .filter(row=>!packageIsReviewEvidence(row)&&!['DONE','OWNER_GATE'].includes(workStatus(row)));
+  const reviewRows=uniqueRows(pack.rows.filter(row=>packageIsReviewEvidence(row)||['REVIEW','VERIFY'].includes(workStatus(row)))).slice(0,5);
+  const outcomeRows=uniqueRows(pack.rows.filter(row=>workStatus(row)==='OWNER_GATE'&&!packageIsReviewEvidence(row))).slice(0,3);
+  const workerMap=new Map();
+  executionRows.forEach(row=>{const worker=workerFrom(row);if(worker&&worker!=='CHƯA GÁN'&&!workerMap.has(worker))workerMap.set(worker,row)});
+  const toolRows=[...workerMap.entries()].map(([worker,row])=>({synthetic:true,worker,row,title:worker+' · môi trường thực thi'}));
+  const statusClass=row=>'status-'+String(workStatus(row)||'unknown').toLowerCase();
+  const card=row=>{
+    const status=workStatus(row),progress=verifiedProgress(row);
+    return '<button type="button" class="flow-card '+statusClass(row)+'" data-flow-row="'+Number(row.number)+'">'
+      +'<div class="flow-card-top"><b>#'+Number(row.number)+'</b><span>'+esc(workerFrom(row))+'</span><em>'+esc(stateLabel[status]||status)+'</em></div>'
+      +'<div class="flow-card-title">'+esc(displayTitle(row.title))+'</div>'
+      +(row?.blocker?'<div class="flow-card-note blocker">Bị chặn: '+esc(String(row.blocker).slice(0,110))+'</div>':'')
+      +(!row?.blocker&&row?.nextStep?'<div class="flow-card-note">Tiếp: '+esc(shortNext(row))+'</div>':'')
+      +(progress.verified?'<div class="flow-mini-progress"><i style="width:'+progress.pct+'%"></i><span>'+progress.pct+'%</span></div>':'')
+      +'</button>';
+  };
+  const syntheticCard=item=>{
+    const row=item.row,status=workStatus(row);
+    return '<button type="button" class="flow-card tool-card '+statusClass(row)+'" data-flow-row="'+Number(row.number)+'">'
+      +'<div class="flow-card-top"><b>'+esc(item.worker)+'</b><em>'+esc(stateLabel[status]||status)+'</em></div>'
+      +'<div class="flow-card-title">'+esc(item.title)+'</div>'
+      +'<div class="flow-card-note">Theo việc #'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</div></button>';
+  };
+  const placeholder=text=>'<div class="flow-placeholder">'+esc(text)+'</div>';
+  const stageCards=[
+    [root],
+    streamRows,
+    executionRows,
+    toolRows,
+    reviewRows,
+    outcomeRows
+  ];
+  let activeStage=1;
+  if(outcomeRows.some(row=>workStatus(row)==='OWNER_GATE'))activeStage=6;
+  else if(reviewRows.some(row=>['REVIEW','VERIFY','WORKING'].includes(workStatus(row))))activeStage=5;
+  else if(executionRows.some(row=>['WORKING','BLOCKED'].includes(workStatus(row))))activeStage=3;
+  else if(streamRows.length)activeStage=2;
+  const stages=[
+    ['01','MỤC TIÊU','Yêu cầu / việc lớn'],
+    ['02','ĐIỀU PHỐI','Gom nhánh và phân việc'],
+    ['03','THỰC THI','Việc đang được xử lý'],
+    ['04','CÔNG CỤ & QUYỀN','Nhân sự / môi trường thực thi'],
+    ['05','KIỂM TRA','Rà soát · xác minh · bằng chứng'],
+    ['06','KẾT QUẢ','Hoàn tất / chờ anh Sơn']
+  ];
+  const tabs=packages.length>1?'<div class="flow-package-tabs">'+packages.map(item=>'<button type="button" class="'+(Number(item.root.number)===Number(pack.root.number)?'active':'')+'" data-flow-package="'+Number(item.root.number)+'">#'+Number(item.root.number)+' · '+esc(displayTitle(item.root.title))+'</button>').join('')+'</div>':'';
+  const rowsHtml=stages.map((stage,index)=>{
+    const items=stageCards[index];
+    let cardsHtml='';
+    if(index===3)cardsHtml=items.length?items.map(syntheticCard).join(''):placeholder('Chưa có nhân sự thực thi được gắn vào việc hiện tại');
+    else cardsHtml=items.length?items.map(card).join(''):placeholder(index===4?'Chưa tới bước kiểm tra':index===5?'Chưa có kết quả cuối':'Chưa có dữ liệu ở bước này');
+    return '<div class="flow-row '+(activeStage===index+1?'active':'')+'"><div class="flow-stage"><strong>'+stage[0]+'</strong><div><b>'+stage[1]+'</b><span>'+stage[2]+'</span></div></div><div class="flow-cards">'+cardsHtml+'</div></div>';
+  }).join('');
+  const events=uniqueRows((snapshot?.recentWork||[]).slice(0,5));
+  const logHtml=events.length?events.map(row=>{
+    let t='—';try{if(row?.updatedAt)t=new Date(row.updatedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}catch{}
+    return '<div class="flow-log-row"><time>'+esc(t)+'</time><b>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</b><span>#'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</span></div>';
+  }).join(''):'<div class="flow-log-empty">Chưa có sự kiện hoàn tất gần đây.</div>';
+  el.innerHTML=tabs+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG ĐANG THEO DÕI</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div><div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
+  el.querySelectorAll('[data-flow-package]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-flow-package'));renderJobJourney()}));
+  el.querySelectorAll('[data-flow-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-flow-row'));const row=pack.rows.find(item=>Number(item.number)===rowNumber)||pack.root;if(row)node.addEventListener('click',()=>openDrawer(row,node))});
 }
 
 function renderNowRunning(){
