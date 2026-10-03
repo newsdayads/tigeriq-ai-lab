@@ -146,6 +146,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("['/Query', '/FO', 'CSV', '/NH']");
     expect(source).not.toContain("['/Query', '/FO', 'CSV', '/V', '/NH']");
     expect(source).toContain("scope: 'TigerIQ'");
+    expect(source).toContain("taskNames: tasks.map((task) => task.taskName)");
     expect(source).not.toContain("['/Delete'");
   });
 });
