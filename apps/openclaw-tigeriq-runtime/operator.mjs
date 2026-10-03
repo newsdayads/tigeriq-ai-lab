@@ -15,6 +15,7 @@ const DEFAULT_ROOT = PC_OPERATOR_ROOTS[0];
 const MAX_READ_BYTES = 256 * 1024;
 const MAX_WRITE_BYTES = 512 * 1024;
 const MAX_OUTPUT_CHARS = 64 * 1024;
+const MAX_TASK_LIST_OUTPUT_CHARS = 512 * 1024;
 const MAX_TIMEOUT_SEC = 120;
 const ALLOWED_TCP_HOSTS = new Set(['127.0.0.1', 'localhost', '100.97.23.87']);
 const ALLOWED_TCP_PORTS = new Set([8793, 8794, 8795, 8796, 8797, 8798, 8799, 11434, 18789]);
@@ -124,9 +125,9 @@ export function assertShellCommandAllowed(command) {
   return text;
 }
 
-function boundedText(value) {
+function boundedText(value, maxChars = MAX_OUTPUT_CHARS) {
   const text = String(value || '');
-  return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(0, MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
+  return text.length <= maxChars ? text : text.slice(0, maxChars) + '\n[TRUNCATED]';
 }
 
 function safeChildEnv() {
@@ -138,9 +139,10 @@ function safeChildEnv() {
   return env;
 }
 
-async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60 } = {}) {
+async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60, maxOutputChars = MAX_OUTPUT_CHARS } = {}) {
   const safeCwd = await realPathInsideRoots(cwd || DEFAULT_ROOT);
   const timeout = Math.max(1, Math.min(MAX_TIMEOUT_SEC, Number(timeoutSec) || 60));
+  const outputCap = Math.max(1024, Math.min(1024 * 1024, Number(maxOutputChars) || MAX_OUTPUT_CHARS));
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
       cwd: safeCwd,
@@ -151,8 +153,8 @@ async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60 } =
     let stdout = '';
     let stderr = '';
     let timedOut = false;
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); if (stdout.length > MAX_OUTPUT_CHARS * 2) stdout = stdout.slice(-MAX_OUTPUT_CHARS); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); if (stderr.length > MAX_OUTPUT_CHARS * 2) stderr = stderr.slice(-MAX_OUTPUT_CHARS); });
+    child.stdout.on('data', (chunk) => { if (stdout.length <= outputCap) stdout += chunk.toString().slice(0, outputCap + 1 - stdout.length); });
+    child.stderr.on('data', (chunk) => { if (stderr.length <= outputCap) stderr += chunk.toString().slice(0, outputCap + 1 - stderr.length); });
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
@@ -166,8 +168,8 @@ async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60 } =
       resolve({
         exitCode: typeof code === 'number' ? code : -1,
         timedOut,
-        stdout: boundedText(stdout),
-        stderr: boundedText(stderr),
+        stdout: boundedText(stdout, outputCap),
+        stderr: boundedText(stderr, outputCap),
         cwd: safeCwd,
       });
     });
@@ -318,7 +320,7 @@ async function listTigerIQTasks() {
   const result = await spawnBounded(
     'schtasks.exe',
     ['/Query', '/FO', 'CSV', '/V', '/NH'],
-    { timeoutSec: 30 },
+    { timeoutSec: 30, maxOutputChars: MAX_TASK_LIST_OUTPUT_CHARS },
   );
   if (result.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
   if (result.exitCode !== 0) throw new Error('TIGERIQ_PC_TASK_LIST_FAILED');
