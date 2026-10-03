@@ -175,6 +175,24 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("D:\\\\TigerIQ\\\\Workspace\\\\tigeriq-ai-lab");
   });
 
+  it('keeps v0.20 CI artifact signing scoped to the reviewed artifact', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_sign_v020_ci_artifact'");
+    expect(source).toContain("runId: '37110333387'");
+    expect(source).toContain("artifactId: '11269092955'");
+    expect(source).toContain("artifactName: 'tigeriq-worker-unsigned-release-apk'");
+    expect(source).toContain("sourceHead: 'fb25369f483a48f818e6a885b248eb629f53cf95'");
+    expect(source).toContain("expectedUnsignedSha256: 'BDC32789297BB5304AE423476D8C4170C9D17C0B9AC2D7C5533DA42FBA82F598'");
+    expect(source).toContain("expectedVersion: '0.20.0-update-lease-guard'");
+    expect(source).toContain("'gh.exe'");
+    expect(source).toContain("['run','download',spec.runId,'--repo',spec.repo,'--name',spec.artifactName,'--dir',downloadDir]");
+    expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
+    expect(source).toContain("passwordTransport: 'stdin-only'");
+    expect(source).toContain("plaintextSecretWrittenToDisk");
+    expect(source).not.toContain("gh auth login");
+    expect(source).not.toContain("GH_TOKEN");
+  });
+
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'task_list'");
