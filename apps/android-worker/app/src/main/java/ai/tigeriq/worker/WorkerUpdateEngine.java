@@ -37,9 +37,19 @@ public final class WorkerUpdateEngine {
 
     public static Result checkAndInstall(Context context, boolean userInitiated) throws Exception {
         Context app = context.getApplicationContext();
-        if (ChatGptB1RunStore.read(app).active()) {
+        MobileTaskStore.Snapshot task = MobileTaskStore.read(app);
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(app);
+        if (task.present()) {
+            write(app, "DEFERRED_CORE_TASK", "", 0, -1, userInitiated, "", "");
+            return new Result("DEFERRED_CORE_TASK", 0, false);
+        }
+        if (run.active()) {
             write(app, "DEFERRED_B1_ACTIVE", "", 0, -1, userInitiated, "", "");
             return new Result("DEFERRED_B1_ACTIVE", 0, false);
+        }
+        if (run.terminal() && run.evidenceSeq > run.reportedSeq) {
+            write(app, "DEFERRED_EVIDENCE_PENDING", "", 0, -1, userInitiated, "", "");
+            return new Result("DEFERRED_EVIDENCE_PENDING", 0, false);
         }
 
         ControllerClient client = new ControllerClient(new SecureCredentialStore(app));
