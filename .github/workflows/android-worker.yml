@@ -120,4 +120,5 @@ jobs:
             .ci-artifacts/tigeriq-worker-unsigned-release.apk
             .ci-artifacts/apksigner.jar
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 7
