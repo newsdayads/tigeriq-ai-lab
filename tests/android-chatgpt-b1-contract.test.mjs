@@ -23,7 +23,14 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(adapter + service).not.toMatch(/dispatchGesture|GestureDescription|getBoundsInScreen|performGlobalAction/);
   });
 
-  it('pins exactly-once and bounded recovery state', () => {
+  it('pins project gate, pacing, exactly-once and bounded recovery state', () => {
+    expect(store).toContain('REQUIRED_PROJECT = "TigerIQ AI Lab"');
+    expect(store).toContain('MIN_FILL_TO_SEND_MS = 3000L');
+    expect(store).toContain('INTER_CYCLE_COOLDOWN_MS = 6000L');
+    expect(store).toContain('"WAITING_PROJECT"');
+    expect(service).toContain('TYPE_VIEW_CLICKED');
+    expect(service).toContain('markProjectBound');
+    expect(adapter).toContain('if (!s.projectBound) return;');
     expect(store).toContain('TIGERIQ_B1_OK_');
     expect(store).toContain('Math.min(10, requestedCycles)');
     expect(store).toContain('s.sentCycle == s.cycle');
@@ -118,8 +125,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 11 for the send-selector fix', () => {
-    expect(gradle).toContain('versionCode = 11');
-    expect(gradle).toContain('versionName = "0.11.0-send-selector"');
+  it('publishes versionCode 12 for project pacing', () => {
+    expect(gradle).toContain('versionCode = 12');
+    expect(gradle).toContain('versionName = "0.12.0-project-pacing"');
   });
 });
