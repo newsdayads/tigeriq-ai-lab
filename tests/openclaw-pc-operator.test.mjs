@@ -178,11 +178,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('keeps v0.20 CI artifact signing scoped to the reviewed artifact', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_sign_v020_ci_artifact'");
-    expect(source).toContain("runId: '37110333387'");
-    expect(source).toContain("artifactId: '11269092955'");
+    expect(source).toContain("runId: '37119358164'");
+    expect(source).toContain("artifactId: '11273046069'");
     expect(source).toContain("artifactName: 'tigeriq-worker-unsigned-release-apk'");
-    expect(source).toContain("sourceHead: 'fb25369f483a48f818e6a885b248eb629f53cf95'");
+    expect(source).toContain("sourceHead: '8364e79ef5a03d5d95663e511c076f5be4f5003a'");
     expect(source).toContain("expectedUnsignedSha256: 'BDC32789297BB5304AE423476D8C4170C9D17C0B9AC2D7C5533DA42FBA82F598'");
+    expect(source).toContain("expectedApkSignerJarSha256: '00EF9948F843FE395D2440AE3EF41405B8040A6D5D46493BD1902AC0EE6DEAE7'");
     expect(source).toContain("expectedVersion: '0.20.0-update-lease-guard'");
     expect(source).toContain("process.env.TIGERIQ_GITHUB_TOKEN || process.env.GITHUB_TOKEN");
     expect(source).toContain("actions/artifacts/${spec.artifactId}/zip");
@@ -191,9 +192,15 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("[\'504b0304\',\'504b0506\',\'504b0708\']");
     expect(source).toContain("param([string]$zip,[string]$dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force");
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
+    expect(source).toContain("win.join(downloadDir, 'apksigner.jar')");
+    expect(source).toContain("'-ApkSignerJar',apksignerJar");
+    expect(source).toContain("'-ExpectedApkSignerJarSha256',spec.expectedApkSignerJarSha256");
+    expect(source).toContain("'-PrealignedInput'");
+    expect(source).toContain("receipt.apksignerMode !== 'portable-pinned-jar'");
+    expect(source).toContain("receipt.prealignedInput !== true");
     expect(source).toContain("passwordTransport: 'stdin-only'");
     expect(source).toContain("plaintextSecretWrittenToDisk");
-    expect(source).toContain("extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME']");
+    expect(source).toContain("extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME', 'JAVA_HOME']");
     expect(source).not.toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME', 'ANDROID_SDK_ROOT', 'ANDROID_HOME']");
     expect(source).not.toContain("gh auth login");
     expect(source).not.toContain("'gh.exe'");
