@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.16.0-stable-project-context"
+        versionCode = 17
+        versionName = "0.17.0-auto-project-navigation"
     }
 
     if (stableSigningEnabled) {
