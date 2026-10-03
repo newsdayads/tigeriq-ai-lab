@@ -957,9 +957,13 @@ async function coreGateCV020Request(path,method='GET'){
   try{payload=await response.json();}catch{throw new Error('TIGERIQ_GATE_C_V020_RESPONSE_INVALID');}
   if(!response.ok){
     const reason=String(payload?.error||'');
-    const allowed=new Set(['gate_c_v020_device_unavailable','gate_c_v020_device_ambiguous','gate_c_v020_device_stale']);
-    if(!allowed.has(reason))throw new Error('TIGERIQ_GATE_C_V020_REQUEST_FAILED');
-    return {status:'GATE_C_V020_BLOCKED',reason,httpStatus:response.status};
+    const blockedStatus={
+      gate_c_v020_device_unavailable:'GATE_C_V020_DEVICE_UNAVAILABLE',
+      gate_c_v020_device_ambiguous:'GATE_C_V020_DEVICE_AMBIGUOUS',
+      gate_c_v020_device_stale:'GATE_C_V020_DEVICE_STALE',
+    }[reason];
+    if(!blockedStatus)throw new Error('TIGERIQ_GATE_C_V020_REQUEST_FAILED');
+    return {status:blockedStatus,reason,httpStatus:response.status};
   }
   if(!payload||payload.ok!==true)throw new Error('TIGERIQ_GATE_C_V020_RESPONSE_INVALID');
   return payload;
