@@ -95,7 +95,8 @@ public final class ChatGptB1RunStore {
 
     public static String prompt(Snapshot s) {
         return "Bài kiểm tra TigerIQ B1 chu kỳ " + s.cycle + "/" + s.targetCycles
-            + ". Chỉ trả lời đúng chuỗi sau, không thêm nội dung khác: " + expectedToken(s);
+            + ". Hãy ghép đúng bốn phần sau thành một chuỗi duy nhất và chỉ trả lời chuỗi kết quả, không thêm nội dung khác: "
+            + "TIGERIQ_ + B1_ + OK_ + " + s.cycle;
     }
 
     public static void markVerifying(Context context) {
