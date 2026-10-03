@@ -42,7 +42,7 @@ const DISALLOWED_RISK_FLAGS = new Set([
 
 export type EvidenceSource = 'GITHUB' | 'CORE';
 export type AutopilotPhase = 'IDLE' | 'BUSY' | 'WAIT_EVIDENCE' | 'STOPPED' | 'RECOVERING';
-export type JobPriority = 'P0' | 'P1' | 'P2';
+export type JobPriority = 'P0' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5';
 export type JobStatus = 'QUEUED' | 'READY' | 'RUNNING' | 'DONE' | 'FAILED' | 'BLOCKED' | 'CANCELLED';
 
 export interface ExternalEvidence {
