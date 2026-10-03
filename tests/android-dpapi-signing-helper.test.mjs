@@ -40,7 +40,9 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain('ExpectedApkSignerJarSha256');
     expect(helper).toContain('APKSIGNER_JAR_SHA256_REQUIRED');
     expect(helper).toContain('APKSIGNER_JAR_SHA256_MISMATCH');
-    expect(helper).toContain("Resolve-Tool $null @('java.exe', 'java')");
+    expect(helper).toContain('JAVA_RUNTIME_REQUIRED');
+    expect(helper).toContain('JAVA_HOME');
+    expect(helper).toContain('TIGERIQ_JAVA');
     expect(helper).toContain("apksignerMode = 'portable-pinned-jar'");
     expect(helper).toContain('[switch]$PrealignedInput');
     expect(helper).toContain("if (-not $PrealignedInput)");
