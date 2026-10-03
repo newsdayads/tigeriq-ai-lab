@@ -167,6 +167,55 @@ body.drawer-open{overflow:hidden}
 }
 @media(max-width:390px){.drawer{width:calc(100vw - 24px)}.summary-chip span{font-size:7.7px}.api-summary-grid b{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.focus-dot{animation:none!important}.drawer{transition:none!important}}
+
+/* #3150 Job Journey — Owner-first single-job visualization */
+.job-journey{margin:0 0 10px}
+.journey-shell{border:1px solid #2a4d70;background:linear-gradient(135deg,#0e2036,#0a1727 55%,#101b31);border-radius:16px;padding:12px;box-shadow:0 12px 34px rgba(0,0,0,.16)}
+.journey-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:9px}
+.journey-kicker{font-size:9px;color:#8fc8ff;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.journey-title{font-size:15px;line-height:1.35;font-weight:860;margin-top:4px;color:#f4f8fc;overflow-wrap:anywhere}
+.journey-meta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.journey-badge{border:1px solid #365978;background:#10233a;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;color:#bad2e8;white-space:nowrap}
+.journey-current{border:1px solid #1f405e;background:#091827;border-radius:11px;padding:8px 9px;margin-bottom:10px;font-size:10.5px;line-height:1.45;color:#a9bdd1}
+.journey-current b{color:#e6f1fb}
+.journey-progress{display:flex;align-items:center;gap:8px;margin-top:7px}
+.journey-progress-track{height:6px;flex:1;background:#16283b;border-radius:999px;overflow:hidden}
+.journey-progress-fill{height:100%;background:linear-gradient(90deg,#46d48f,#58d8c6);border-radius:999px}
+.journey-progress-text{font-size:9px;font-weight:900;color:#91eee0;min-width:30px;text-align:right}
+.journey-rail{display:grid;grid-template-columns:repeat(6,minmax(122px,1fr));gap:8px;overflow-x:auto;padding:1px 1px 3px;scrollbar-width:thin;scrollbar-color:#284663 transparent}
+.journey-stage{position:relative;border:1px solid #263f58;background:#0b1726;border-radius:12px;padding:9px 9px 8px;min-height:94px;min-width:122px;transition:.18s ease}
+.journey-stage::after{content:"";position:absolute;top:50%;right:-9px;width:9px;height:2px;background:#284663;z-index:2}
+.journey-stage:last-child::after{display:none}
+.journey-step{font-size:8.5px;color:#6f879f;font-weight:900;text-transform:uppercase;letter-spacing:.05em}
+.journey-stage strong{display:block;font-size:10.5px;line-height:1.25;margin-top:5px;color:#c9d7e5}
+.journey-stage small{display:block;font-size:9.5px;line-height:1.35;margin-top:5px;color:#7f96ad}
+.journey-stage.is-done{border-color:#246b61;background:#0d2b29}
+.journey-stage.is-done .journey-step,.journey-stage.is-done strong{color:#91eee0}
+.journey-stage.is-current{border-color:#377958;background:#103425;box-shadow:0 0 0 1px rgba(70,212,143,.12),0 0 20px rgba(70,212,143,.08)}
+.journey-stage.is-current .journey-step,.journey-stage.is-current strong{color:#9af0bc}
+.journey-stage.is-blocked{border-color:#81404a;background:#351c23;box-shadow:0 0 0 1px rgba(255,116,126,.08)}
+.journey-stage.is-blocked .journey-step,.journey-stage.is-blocked strong{color:#ffb8bf}
+.journey-stage.is-owner{border-color:#8a4651;background:#341d24}
+.journey-stage.is-owner .journey-step,.journey-stage.is-owner strong{color:#ffc0c7}
+.journey-workers{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.journey-worker{border:1px solid #31506d;background:#0b2034;color:#b9d7ef;border-radius:999px;padding:3px 6px;font-size:8.5px;font-weight:850}
+.journey-parallel{font-size:8px;color:#8fa5bc;margin-top:5px}
+.journey-blocker{margin-top:8px;border:1px solid #713943;background:#301a20;border-radius:9px;padding:7px 8px;color:#ffafb7;font-size:9.5px;line-height:1.4}
+.journey-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
+.journey-shell[role="button"]{cursor:pointer}
+.journey-shell[role="button"]:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+@media(max-width:700px){
+  .journey-shell{padding:10px}.journey-head{display:block}.journey-meta{justify-content:flex-start;margin-top:7px}
+  .journey-rail{grid-template-columns:1fr;overflow:visible;gap:7px}
+  .journey-stage{min-width:0;min-height:0;padding:8px 10px 8px 34px}
+  .journey-stage::after{top:auto;right:auto;left:16px;bottom:-8px;width:2px;height:8px}
+  .journey-stage:last-child::after{display:none}
+  .journey-step{position:absolute;left:9px;top:9px;width:18px;height:18px;border-radius:6px;background:#14283c;display:flex;align-items:center;justify-content:center;font-size:8px}
+  .journey-stage strong{margin-top:0}.journey-stage small{margin-top:3px}
+  .journey-workers{margin-top:5px}
+}
+@media(prefers-reduced-motion:reduce){.journey-stage{transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -192,6 +241,7 @@ body.drawer-open{overflow:hidden}
     <div class="summary-chip done"><span>Đã xong</span><b id="sumDone">0</b></div>
   </div>
 </section>
+<section id="jobJourney" class="job-journey" aria-label="Luồng công việc trọng tâm"></section>
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
 <section aria-labelledby="workListHeading">
@@ -342,6 +392,96 @@ function renderOwnerSummary(){
     ? completed+'/'+scope+' việc đã hoàn tất có bằng chứng · còn '+Math.max(0,scope-completed)+' việc'
     : 'Chưa đủ dữ liệu tươi để tính % hoàn tất';
 }
+
+function journeyWorkers(row){
+  const out=[];
+  const add=value=>{
+    if(!value)return;
+    if(Array.isArray(value)){value.forEach(add);return}
+    if(typeof value==='object'){add(value.employeeId||value.workerId||value.id||value.name);return}
+    const text=String(value).trim().toUpperCase();
+    if(text&&text!=='OWNER'&&!out.includes(text))out.push(text);
+  };
+  [row?.employeeId,row?.targetWorker,row?.workerId,row?.reviewerId,row?.judgeId,row?.assignedEmployeeIds,row?.participants,row?.workers,row?.reviewers].forEach(add);
+  const fallback=workerFrom(row);
+  if(!out.length&&fallback&&!['CHƯA GÁN','CHỜ ANH SƠN','ĐÃ XONG KỸ THUẬT','OWNER'].includes(fallback))add(fallback);
+  return out.slice(0,6);
+}
+function journeyFocusRow(){
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!fresh)return null;
+  const all=[...(snapshot?.activeWork||[]),...(snapshot?.openWork||[])];
+  const unique=new Map();
+  for(const row of all){
+    if(!Number(row?.number)||row?.workKind==='SYSTEM'||row?.workKind==='GOAL')continue;
+    if(!unique.has(Number(row.number)))unique.set(Number(row.number),row);
+  }
+  const rank={WORKING:0,REVIEW:1,VERIFY:2,BLOCKED:3,OWNER_GATE:4,QUEUED:5,WAITING:6,OPEN:7,UNKNOWN:8,DONE:9};
+  return [...unique.values()].sort((a,b)=>(rank[workStatus(a)]??8)-(rank[workStatus(b)]??8)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number))[0]||null;
+}
+function journeyStageState(status,index,assigned){
+  if(status==='DONE')return 'is-done';
+  if(index===0)return 'is-done';
+  if(index===1)return assigned?'is-done':'is-current';
+  if(index===2){
+    if(['REVIEW','VERIFY','OWNER_GATE'].includes(status))return 'is-done';
+    if(status==='BLOCKED')return 'is-blocked';
+    if(status==='WORKING')return 'is-current';
+    return assigned?'is-current':'';
+  }
+  if(index===3){
+    if(['VERIFY','OWNER_GATE'].includes(status))return 'is-done';
+    if(status==='REVIEW')return 'is-current';
+    return '';
+  }
+  if(index===4){
+    if(status==='OWNER_GATE')return 'is-owner';
+    if(status==='VERIFY')return 'is-current';
+    return '';
+  }
+  return '';
+}
+function renderJobJourney(){
+  const el=$('jobJourney');
+  if(!el)return;
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!fresh){el.innerHTML='<div class="journey-empty"><b>Luồng job trọng tâm</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.</div>';return}
+  const row=journeyFocusRow();
+  if(!row){el.innerHTML='<div class="journey-empty"><b>Luồng job trọng tâm</b><br>Hiện chưa có công việc mở đủ dữ liệu để hiển thị.</div>';return}
+  const status=workStatus(row),label=stateLabel[status]||status;
+  const workers=journeyWorkers(row),assigned=workers.length>0||!['CHƯA GÁN','OWNER'].includes(workerFrom(row));
+  const workerMarkup=workers.length?'<div class="journey-workers">'+workers.map(worker=>'<span class="journey-worker">'+esc(worker)+'</span>').join('')+'</div>':'';
+  const parallel=workers.length>1?'<div class="journey-parallel">Đang có '+workers.length+' nhân sự tham gia / có thể chạy song song</div>':'';
+  const stages=[
+    ['01','Mục tiêu',displayTitle(row.title)],
+    ['02','Phân việc',assigned?'Đã xác định nhân sự':'Chưa xác định nhân sự'],
+    ['03','Thực thi',status==='WORKING'?(row.currentStep||'Đang thực thi'):(['BLOCKED','WAITING','QUEUED','OPEN','UNKNOWN'].includes(status)?(row.currentStep||label):'Đã qua bước thực thi')],
+    ['04','Rà soát',status==='REVIEW'?(row.currentStep||'Đang rà soát'):status==='DONE'||['VERIFY','OWNER_GATE'].includes(status)?'Đã qua rà soát':'Chờ kết quả thực thi'],
+    ['05','Xác minh',status==='OWNER_GATE'?'Chờ anh Sơn duyệt':status==='VERIFY'?(row.currentStep||'Đang xác minh'):status==='DONE'?'Đã xác minh':'Chờ rà soát'],
+    ['06','Hoàn tất',status==='DONE'?'Đã hoàn tất có bằng chứng':'Chưa hoàn tất']
+  ];
+  const stageMarkup=stages.map((stage,index)=>{
+    const stageState=journeyStageState(status,index,assigned);
+    const workerPart=index===2?workerMarkup+parallel:'';
+    return '<div class="journey-stage '+stageState+'"><span class="journey-step">'+stage[0]+'</span><strong>'+esc(stage[1])+'</strong><small>'+esc(stage[2])+'</small>'+workerPart+'</div>';
+  }).join('');
+  const blocker=effectiveBlocker(row);
+  const {pct,verified}=verifiedProgress(row);
+  const progress=verified?'<div class="journey-progress"><div class="journey-progress-track"><div class="journey-progress-fill" style="width:'+pct+'%"></div></div><span class="journey-progress-text">'+pct+'%</span></div>':'';
+  el.innerHTML='<article class="journey-shell" role="button" tabindex="0" aria-label="Mở chi tiết job #'+esc(row.number)+'">'
+    +'<div class="journey-head"><div><div class="journey-kicker">JOB TRỌNG TÂM · #'+esc(row.number)+'</div><div class="journey-title">'+esc(displayTitle(row.title))+'</div></div>'
+    +'<div class="journey-meta"><span class="journey-badge">'+esc(workPriority(row))+'</span><span class="journey-badge">'+esc(label)+'</span></div></div>'
+    +'<div class="journey-current"><b>Hiện tại:</b> '+esc(row.currentStep||label)+' · <b>Bước tới:</b> '+esc(shortNext(row))+progress+'</div>'
+    +'<div class="journey-rail">'+stageMarkup+'</div>'
+    +(blocker?'<div class="journey-blocker"><b>Bị chặn:</b> '+esc(blocker)+'</div>':'')
+    +'</article>';
+  const shell=el.querySelector('.journey-shell');
+  if(shell){
+    shell.addEventListener('click',()=>openDrawer(row,shell));
+    shell.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,shell)}});
+  }
+}
+
 function renderNowRunning(){
   const el=$('nowRunning');
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
@@ -419,6 +559,7 @@ function refreshOpenDrawer(){
 function render(){
   if(!snapshot)return;
   renderOwnerSummary();
+  renderJobJourney();
   renderNowRunning();
   renderApiWorkforce();
   updateCounts();
