@@ -242,7 +242,9 @@ public final class ChatGptB1Automation {
         if (source == null || wanted.isEmpty()) return false;
         AccessibilityNodeInfo current = source;
         for (int depth = 0; current != null && depth <= maxParents; depth++) {
-            if (searchable(current).contains(wanted) || treeContains(current, label)) return true;
+            // Direct lineage only: inspect the clicked node and each ancestor's own semantic fields.
+            // Never scan an ancestor subtree here; that could match the required Project in a sibling branch.
+            if (searchable(current).contains(wanted)) return true;
             current = current.getParent();
         }
         return false;
