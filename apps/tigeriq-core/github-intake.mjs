@@ -299,7 +299,7 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
   if(!readOnly&&!mutating)return {present:true,valid:false,action:null,reason:'ACTION_NOT_ALLOWLISTED'};
   if(mutating&&!ownerDirect)return {present:true,valid:false,action:null,reason:'OWNER_DIRECT_REQUIRED'};
   let normalized;
-  if(action.startsWith('task_')){
+  if(action.startsWith('task_')&&action!=='task_list'){
     const taskName=String(parsed.taskName||'').trim();
     if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
     normalized={action,taskName};
