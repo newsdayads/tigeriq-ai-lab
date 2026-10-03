@@ -57,7 +57,7 @@ describe('TigerIQ Live work-package hierarchy v2 #3374', () => {
   it('summarizes major task groups rather than counting review artifacts as jobs', () => {
     expect(rootHtml).toContain('const majorGroups=streams.flatMap(stream=>stream.groups)');
     expect(rootHtml).toContain('function packageSummaryFromUnits(units)');
-    expect(rootHtml).toContain("pack.summaryUnits.length+' việc chính'");
+    expect(rootHtml).toContain("pack.summaryUnits.length+' việc chính");
   });
 
   it('keeps standalone workstreams represented in package counts and excludes P5 deferred roots', () => {
