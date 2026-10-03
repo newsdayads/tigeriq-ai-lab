@@ -133,6 +133,8 @@ public final class ForegroundWorkerService extends Service {
                 return;
             }
 
+            if (run.active()) return;
+
             JSONObject leased = client.pollLease();
             if (!leased.optBoolean("leased", false)) return;
             MobileTaskStore.Snapshot bound = MobileTaskStore.bind(this, leased.getJSONObject("task"));
