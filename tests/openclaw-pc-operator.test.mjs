@@ -193,7 +193,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("param([string]$zip,[string]$dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force");
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-v020-reviewed-artifact.ps1");
     expect(source).toContain("win.join(downloadDir, 'apksigner.jar')");
-    expect(source).toContain("executePadUiAction({ action: 'pad_android_sign_v020' })");
+    expect(source).toContain("executePadV020Signer()");
     expect(source).toContain("TIGERIQ_V020_USER_SESSION_BROKER_UNAVAILABLE");
     expect(source).toContain("receipt.passwordTransport !== 'stdin-only'");
     expect(source).toContain("receipt.apksignerMode !== 'portable-pinned-jar'");
@@ -239,12 +239,15 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(PAD_UI_ACTIONS).toEqual([
       'pad_health', 'pad_launch', 'pad_windows', 'pad_tree',
       'pad_invoke', 'pad_set_value', 'pad_click', 'pad_keys',
-      'pad_android_sign_v020',
     ]);
   });
 
-  it('keeps v0.20 signing fixed inside the existing interactive limited-user broker', async () => {
-    expect(assertPadUiRequest({ action: 'pad_android_sign_v020' })).toEqual({ action: 'pad_android_sign_v020' });
+  it('keeps v0.20 signing internal-only inside the existing interactive limited-user broker', async () => {
+    expect(() => assertPadUiRequest({ action: 'pad_android_sign_v020' })).toThrow('TIGERIQ_PAD_ACTION_NOT_ALLOWED');
+    const padModule = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui.mjs', import.meta.url), 'utf8');
+    expect(padModule).toContain("const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020'");
+    expect(padModule).toContain('MAX_V020_SIGNER_WAIT_MS = 130000');
+    expect(padModule).toContain('export async function executePadV020Signer()');
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PadUiBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("'pad_android_sign_v020' { return Invoke-V020Signer }");
