@@ -568,27 +568,39 @@ async function signAndroidWorkerV020CiArtifact() {
   await fs.mkdir(downloadDir, { recursive: true });
   await fs.mkdir(releaseDir, { recursive: true });
 
-  let download;
+  const githubToken = String(process.env.TIGERIQ_GITHUB_TOKEN || process.env.GITHUB_TOKEN || '').trim();
+  if (!githubToken) throw new Error('TIGERIQ_GH_AUTH_REQUIRED');
+  const artifactZip = win.join(downloadDir, 'artifact.zip');
+  const artifactUrl = `https://api.github.com/repos/${spec.repo}/actions/artifacts/${spec.artifactId}/zip`;
+  let response;
   try {
-    download = await spawnBounded(
-      'gh.exe',
-      ['run','download',spec.runId,'--repo',spec.repo,'--name',spec.artifactName,'--dir',downloadDir],
-      {
-        cwd: repoRoot,
-        timeoutSec: 120,
-        extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME'],
+    response = await fetch(artifactUrl, {
+      method: 'GET',
+      headers: {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${githubToken}`,
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'TigerIQ-Core',
       },
-    );
-  } catch (error) {
-    if (error?.code === 'ENOENT') throw new Error('TIGERIQ_GH_CLI_MISSING');
+      redirect: 'follow',
+    });
+  } catch {
     throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_FAILED');
   }
-  if (download.timedOut) throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_TIMEOUT');
-  if (Number(download.exitCode) !== 0) {
-    const safeText = (String(download.stderr || '') + '\n' + String(download.stdout || '')).toLowerCase();
-    if (/(auth|login|401|403)/.test(safeText)) throw new Error('TIGERIQ_GH_AUTH_REQUIRED');
-    throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_FAILED');
-  }
+  if (response.status === 401 || response.status === 403) throw new Error('TIGERIQ_GH_AUTH_REQUIRED');
+  if (!response.ok) throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_FAILED');
+  const archive = Buffer.from(await response.arrayBuffer());
+  if (!archive.length || archive.length > 250 * 1024 * 1024) throw new Error('TIGERIQ_GH_ARTIFACT_ARCHIVE_INVALID');
+  await fs.writeFile(artifactZip, archive);
+  const extract = await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile','-NonInteractive','-Command',
+      'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+      artifactZip,downloadDir],
+    { cwd: repoRoot, timeoutSec: 120 },
+  );
+  if (extract.timedOut) throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_TIMEOUT');
+  if (Number(extract.exitCode) !== 0) throw new Error('TIGERIQ_GH_ARTIFACT_ARCHIVE_INVALID');
 
   await realPathInsideRoots(unsignedApk);
   const actualUnsignedSha256 = createHash('sha256')

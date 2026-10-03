@@ -184,13 +184,16 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("sourceHead: 'fb25369f483a48f818e6a885b248eb629f53cf95'");
     expect(source).toContain("expectedUnsignedSha256: 'BDC32789297BB5304AE423476D8C4170C9D17C0B9AC2D7C5533DA42FBA82F598'");
     expect(source).toContain("expectedVersion: '0.20.0-update-lease-guard'");
-    expect(source).toContain("'gh.exe'");
-    expect(source).toContain("['run','download',spec.runId,'--repo',spec.repo,'--name',spec.artifactName,'--dir',downloadDir]");
+    expect(source).toContain("process.env.TIGERIQ_GITHUB_TOKEN || process.env.GITHUB_TOKEN");
+    expect(source).toContain("actions/artifacts/${spec.artifactId}/zip");
+    expect(source).toContain("'x-github-api-version': '2022-11-28'");
+    expect(source).toContain("redirect: 'follow'");
+    expect(source).toContain("Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force");
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
     expect(source).toContain("passwordTransport: 'stdin-only'");
     expect(source).toContain("plaintextSecretWrittenToDisk");
     expect(source).not.toContain("gh auth login");
-    expect(source).not.toContain("GH_TOKEN");
+    expect(source).not.toContain("'gh.exe'");
   });
 
   it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
