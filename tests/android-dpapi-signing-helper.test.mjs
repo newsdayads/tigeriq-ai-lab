@@ -35,6 +35,13 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain('.Dispose()');
   });
 
+  it('forwards tool arguments without colliding with PowerShell automatic $args', () => {
+    expect(helper).toContain('[string[]]$ToolArgs');
+    expect(helper).toContain('New-ToolProcessStartInfo $FileName $ToolArgs');
+    expect(helper).not.toContain('[string[]]$Args');
+    expect(helper).toContain('certificate SHA-256 digest:\\s*([0-9a-fA-F:]+)');
+  });
+
   it('uses a hash-pinned portable apksigner jar without weakening stdin secret transport', () => {
     expect(helper).toContain('ApkSignerJar');
     expect(helper).toContain('ExpectedApkSignerJarSha256');
