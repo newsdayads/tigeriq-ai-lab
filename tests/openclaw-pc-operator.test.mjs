@@ -126,10 +126,13 @@ describe('OpenClaw PC01 guarded local operator', () => {
     ]);
   });
 
-  it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
+  it('keeps task_list as a fixed read-only schtasks query with a larger bounded capture before TigerIQ filtering', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'task_list'");
     expect(source).toContain("['/Query', '/FO', 'CSV', '/V', '/NH']");
+    expect(source).toContain('const MAX_TASK_LIST_OUTPUT_CHARS = 512 * 1024;');
+    expect(source).toContain('{ timeoutSec: 30, maxOutputChars: MAX_TASK_LIST_OUTPUT_CHARS }');
+    expect(source).toContain('maxOutputChars = MAX_OUTPUT_CHARS');
     expect(source).toContain("scope: 'TigerIQ'");
     expect(source).not.toContain("['/Delete'");
   });
