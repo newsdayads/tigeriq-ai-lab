@@ -225,6 +225,13 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(runner).toContain("if($identity -ine $ExpectedUser){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}");
     expect(runner).toContain("passwordTransport=[string]$receipt.passwordTransport");
     expect(runner).toContain("secretsPrinted=[bool]$receipt.secretsPrinted");
+    expect(runner).toContain("V020_USER_CONTEXT_ARTIFACT_READ_DENIED");
+    expect(runner).toContain("V020_USER_CONTEXT_SIGNING_BUNDLE_READ_DENIED");
+    expect(runner).toContain("V020_USER_CONTEXT_RELEASE_WRITE_DENIED");
+    expect(runner).toContain("V020_USER_CONTEXT_WRAPPER_UNCLASSIFIED");
+    expect(runner).toContain("Test-ReleaseWritable");
+    expect(runner).toContain("Test-FileReadable");
+    expect(bridge).toContain("V020_USER_CONTEXT_RELEASE_WRITE_DENIED");
     for (const code of [
       'STABLE_SIGNING_DIR_REQUIRED',
       'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED',
