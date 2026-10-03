@@ -82,6 +82,16 @@ public final class MainActivity extends Activity {
         if (readinessView != null) {
             refreshStatus();
             syncRuntime(null, false);
+            if (WorkerUpdateEngine.shouldResumeAfterPermission(this)) {
+                networkExecutor.execute(() -> {
+                    try {
+                        WorkerUpdateEngine.checkAndInstall(this, true);
+                    } catch (Exception error) {
+                        WorkerUpdateEngine.markInstallCallback(this, "UPDATE_FAILED", safeError(error));
+                    }
+                    runOnUiThread(this::refreshStatus);
+                });
+            }
         }
     }
 
@@ -198,7 +208,7 @@ public final class MainActivity extends Activity {
         root.addView(sectionTitle("B1 · ChatGPT Adapter"));
         LinearLayout b1Card = card();
         TextView b1Help = text(
-            "DEV pilot: TigerIQ tự mở ChatGPT, tự vào Project TigerIQ AI Lab bằng Accessibility semantic, rồi mới điền/gửi. App chờ 3 giây sau khi điền, nghỉ 6 giây giữa các chu kỳ. Không dùng tọa độ, không nhận backlog, không ghi GitHub.",
+            "DEV pilot: TigerIQ tự mở ChatGPT, tự vào Project TigerIQ AI Lab bằng Accessibility semantic, rồi mới điền/gửi. App chờ 5 giây sau khi điền, nghỉ 8 giây giữa các chu kỳ. Không dùng tọa độ, không nhận backlog, không ghi GitHub.",
             12,
             false
         );
@@ -231,13 +241,13 @@ public final class MainActivity extends Activity {
         technicalState.setTextColor(MUTED);
         systemCard.addView(technicalState);
 
-        Button update = secondaryButton("Kiểm tra cập nhật");
+        Button update = secondaryButton("Cập nhật tự động");
         update.setOnClickListener(v -> checkForUpdate((Button) v));
         systemCard.addView(update, marginParams(0, dp(12), 0, 0));
         root.addView(systemCard, marginParams(0, dp(6), 0, dp(12)));
 
         TextView footer = text(
-            WorkerVersion.NAME + " · B1 DEV · tự điều hướng Project · semantic-only · pacing 3s/6s · chưa nhận backlog/GitHub write",
+            WorkerVersion.NAME + " · B1 DEV · auto-update · auto-resume · pacing 5s/8s · chưa nhận backlog/GitHub write",
             11,
             false
         );
@@ -584,6 +594,8 @@ public final class MainActivity extends Activity {
                 + "\nNode: " + new NodeIdentityStore(this).getOrCreate()
                 + "\nHeartbeat: " + (lastHeartbeat > 0 ? age(lastHeartbeat) : "chưa có")
                 + "\nSự kiện Android gần nhất: " + friendlyPackage(lastAnyPackage)
+                + "\nCập nhật: " + WorkerUpdateEngine.state(this)
+                + (WorkerUpdateEngine.lastError(this).isEmpty() ? "" : "\nLỗi update: " + compact(WorkerUpdateEngine.lastError(this), 120))
                 + (lastError == null || lastError.isEmpty() ? "" : "\nLỗi gần nhất: " + compact(lastError, 140))
         );
     }
@@ -607,39 +619,26 @@ public final class MainActivity extends Activity {
 
     private void checkForUpdate(Button button) {
         button.setEnabled(false);
-        button.setText("Đang kiểm tra");
+        button.setText("Đang cập nhật");
         networkExecutor.execute(() -> {
+            String message;
             try {
-                JSONObject manifest = new ControllerClient(new SecureCredentialStore(this)).updateManifest();
-                boolean available = manifest.optBoolean("available", false);
-                int versionCode = manifest.optInt("versionCode", 0);
-                String versionName = manifest.optString("versionName", "");
-                String driveUrl = manifest.optString("driveUrl", "");
-                boolean newer = available && versionCode > currentVersionCode();
-                runOnUiThread(() -> {
-                    button.setEnabled(true);
-                    button.setText("Kiểm tra cập nhật");
-                    if (!newer) {
-                        Toast.makeText(this, "Đang dùng bản mới nhất", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    new AlertDialog.Builder(this)
-                        .setTitle("Có bản " + versionName)
-                        .setMessage("Bản mới đã được TigerIQ Core xác minh. Android sẽ cập nhật đè nếu chữ ký phát hành khớp.")
-                        .setNegativeButton("Để sau", null)
-                        .setPositiveButton("Mở bản cập nhật", (dialog, which) -> {
-                            if (!driveUrl.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(driveUrl)));
-                            else Toast.makeText(this, "Core chưa có link phát hành", Toast.LENGTH_LONG).show();
-                        })
-                        .show();
-                });
+                WorkerUpdateEngine.Result result = WorkerUpdateEngine.checkAndInstall(this, true);
+                if ("UP_TO_DATE".equals(result.state)) message = "Đang dùng bản mới nhất";
+                else if ("NEEDS_INSTALL_PERMISSION".equals(result.state)) message = "Cho phép TigerIQ cài bản cập nhật một lần, sau đó app sẽ tự tiếp tục";
+                else if ("DEFERRED_B1_ACTIVE".equals(result.state)) message = "Đang chạy B1, cập nhật sẽ chờ";
+                else message = "Đã tải và gửi bản cập nhật cho Android";
             } catch (Exception error) {
-                runOnUiThread(() -> {
-                    button.setEnabled(true);
-                    button.setText("Kiểm tra cập nhật");
-                    Toast.makeText(this, "Chưa kiểm tra được cập nhật", Toast.LENGTH_LONG).show();
-                });
+                WorkerUpdateEngine.markInstallCallback(this, "UPDATE_FAILED", safeError(error));
+                message = "Cập nhật lỗi: " + compact(safeError(error), 80);
             }
+            final String toast = message;
+            runOnUiThread(() -> {
+                button.setEnabled(true);
+                button.setText("Cập nhật tự động");
+                refreshStatus();
+                Toast.makeText(this, toast, Toast.LENGTH_LONG).show();
+            });
         });
     }
 
