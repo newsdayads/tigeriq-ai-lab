@@ -343,9 +343,9 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
              returning *`,
             [task.task_id,leaseId]
           )).rows[0];
-          await event('MOBILE_TASK_LEASED',{taskId:task.task_id,runId:task.run_id,nodeId:device.node_id,employeeId:device.employee_id,attempt:task.attempts});
         }
         await client.query('commit');
+        if(!reused)await event('MOBILE_TASK_LEASED',{taskId:task.task_id,runId:task.run_id,nodeId:device.node_id,employeeId:device.employee_id,attempt:task.attempts});
         return send(res,200,{ok:true,leased:true,reused,task:{
           taskId:task.task_id,leaseId:task.lease_id,runId:task.run_id,provider:task.provider,
           prompt:task.prompt,expectedToken:task.expected_token,leaseExpiresAt:task.lease_expires_at
