@@ -1,0 +1,152 @@
+import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+export const EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw';
+export const EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT';
+export const EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab';
+export const EXPECTED_BRANCH = 'main';
+export const AUTHORIZED_ISSUE = '3185';
+export const REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM';
+
+function clean(value) { return String(value || '').trim(); }
+
+export function validateExactSha(expectedSha, actualSha) {
+  const expected = clean(expectedSha).toLowerCase();
+  const actual = clean(actualSha).toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(expected) || !/^[0-9a-f]{40}$/.test(actual) || expected !== actual) {
+    throw new Error('VERCEL_EXACT_SHA_MISMATCH');
+  }
+  return actual;
+}
+
+export function normalizeGitRemote(remote) {
+  let value = clean(remote).toLowerCase();
+  value = value.replace(/^git@github\.com:/, 'https://github.com/');
+  value = value.replace(/^ssh:\/\/git@github\.com\//, 'https://github.com/');
+  return value.replace(/\.git\/?$/, '').replace(/\/$/, '');
+}
+
+export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, remote, config, issue, uiHtml }) {
+  if (!projectLink || projectLink.projectId !== EXPECTED_PROJECT_ID || projectLink.orgId !== EXPECTED_TEAM_ID) {
+    throw new Error('VERCEL_PROJECT_SCOPE_MISMATCH');
+  }
+  const exactSha = validateExactSha(expectedSha, actualSha);
+  if (clean(branch) !== EXPECTED_BRANCH) throw new Error('VERCEL_GIT_BRANCH_MISMATCH');
+  if (normalizeGitRemote(remote) !== 'https://github.com/' + EXPECTED_REPO) throw new Error('VERCEL_GIT_REPO_MISMATCH');
+  if (config?.git?.deploymentEnabled !== false) throw new Error('VERCEL_AUTO_DEPLOY_POLICY_MISMATCH');
+  if (clean(issue) !== AUTHORIZED_ISSUE) throw new Error('VERCEL_OWNER_AUTH_SCOPE_MISMATCH');
+  if (!String(uiHtml || '').includes(REQUIRED_UI_MARKER)) throw new Error('VERCEL_UI_MARKER_MISSING');
+  return {
+    projectId: EXPECTED_PROJECT_ID,
+    teamId: EXPECTED_TEAM_ID,
+    repo: EXPECTED_REPO,
+    branch: EXPECTED_BRANCH,
+    target: 'production',
+    exactSha,
+    issue: AUTHORIZED_ISSUE,
+    maxAttempts: 1,
+  };
+}
+
+export function classifyDeployFailure(text = '') {
+  const value = String(text).toLowerCase();
+  if (value.includes('rate limited') || value.includes('rate limit')) return 'VERCEL_RATE_LIMIT_WAIT';
+  if (value.includes('not authenticated') || value.includes('log in') || value.includes('login')) return 'VERCEL_AUTH_REQUIRED';
+  if (value.includes('command not found') || value.includes('not recognized')) return 'VERCEL_CLI_MISSING';
+  return 'VERCEL_DEPLOY_FAILED';
+}
+
+function git(root, args) {
+  return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }).trim();
+}
+
+function ensureProjectLink(root) {
+  const dir = resolve(root, '.vercel');
+  const file = resolve(dir, 'project.json');
+  if (existsSync(file)) {
+    const link = JSON.parse(readFileSync(file, 'utf8'));
+    if (link.projectId !== EXPECTED_PROJECT_ID || link.orgId !== EXPECTED_TEAM_ID) throw new Error('VERCEL_PROJECT_SCOPE_MISMATCH');
+    return { link, temporary: false, dir };
+  }
+  mkdirSync(dir, { recursive: true });
+  const link = { projectId: EXPECTED_PROJECT_ID, orgId: EXPECTED_TEAM_ID };
+  writeFileSync(file, JSON.stringify(link), { encoding: 'utf8', flag: 'wx' });
+  return { link, temporary: true, dir };
+}
+
+function deploy(root) {
+  const options = {
+    cwd: root,
+    encoding: 'utf8',
+    env: process.env,
+    windowsHide: true,
+    timeout: 110000,
+    maxBuffer: 2 * 1024 * 1024,
+  };
+  const result = process.platform === 'win32'
+    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'vercel.cmd deploy --prod --yes'], options)
+    : spawnSync('vercel', ['deploy', '--prod', '--yes'], options);
+  if (result.error) throw new Error(result.error.code === 'ETIMEDOUT' ? 'VERCEL_DEPLOY_TIMEOUT' : 'VERCEL_CLI_EXEC_FAILED');
+  const output = String(result.stdout || '') + '\n' + String(result.stderr || '');
+  if (result.status !== 0) throw new Error(classifyDeployFailure(output));
+  const urls = [...output.matchAll(/https:\/\/[^\s]+\.vercel\.app\b/gi)].map((match) => match[0]);
+  const deploymentUrl = urls.at(-1) || null;
+  if (!deploymentUrl) throw new Error('VERCEL_DEPLOYMENT_URL_MISSING');
+  return { deploymentUrl };
+}
+
+function parseArgs(argv) {
+  const out = { sha: '', issue: '' };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--sha') out.sha = argv[++i] || '';
+    else if (argv[i] === '--issue') out.issue = argv[++i] || '';
+    else throw new Error('UNKNOWN_ARG');
+  }
+  return out;
+}
+
+export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue = AUTHORIZED_ISSUE, deployImpl = deploy } = {}) {
+  const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
+  const uiHtml = readFileSync(resolve(root, 'command-center.html'), 'utf8');
+  const actualSha = git(root, ['rev-parse', 'HEAD']);
+  const branch = git(root, ['branch', '--show-current']);
+  const remote = git(root, ['remote', 'get-url', 'origin']);
+  const dirty = git(root, ['status', '--porcelain']);
+  if (dirty) throw new Error('GIT_WORKTREE_NOT_CLEAN');
+
+  let linkState;
+  try {
+    linkState = ensureProjectLink(root);
+    const plan = validateReleaseContract({
+      projectLink: linkState.link,
+      expectedSha,
+      actualSha,
+      branch,
+      remote,
+      config,
+      issue,
+      uiHtml,
+    });
+    const result = deployImpl(root);
+    return { ok: true, status: 'TIGERIQ_LIVE_3150_PRODUCTION_DEPLOYED', ...plan, ...result, secretsPrinted: false };
+  } finally {
+    if (linkState?.temporary) rmSync(linkState.dir, { recursive: true, force: true });
+  }
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const result = runOneShotDeploy({ expectedSha: args.sha, issue: args.issue });
+  console.log(JSON.stringify(result));
+}
+
+const invoked = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
+if (import.meta.url === invoked) {
+  try { main(); }
+  catch (error) {
+    console.error(String(error instanceof Error ? error.message : error));
+    process.exit(1);
+  }
+}

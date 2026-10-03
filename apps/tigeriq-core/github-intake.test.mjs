@@ -188,6 +188,32 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={bad json}',true)).toMatchObject({present:true,valid:false,reason:'JSON_INVALID'});
   });
 
+
+  it('accepts only the Owner-authorized exact-SHA TigerIQ Live production direct action',()=>{
+    const sha='a'.repeat(40);
+    const raw='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"'+sha+'"}';
+    expect(parsePcOperatorDirectAction(raw,true)).toMatchObject({
+      present:true,valid:true,action:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha},mutating:true
+    });
+    expect(parsePcOperatorDirectAction(raw,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"bad"}',true))
+      .toMatchObject({present:true,valid:false,reason:'EXPECTED_SHA_INVALID'});
+
+    const body=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator',
+      'ASSIGNED_EXECUTOR=NV06','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'RESOURCE_SCOPE=PC01_TIGERIQ_LIVE_3150_DEPLOY_TEST',
+      'ASSIGNED_ACTION','tigeriq_pc tigeriq_live_3150_production_deploy expectedSha="'+sha+'"',
+      'ACCEPTANCE','PASS',raw,
+    ].join('\n');
+    expect(parseExecutableIssue({...base,number:3192,title:'typed deploy',body})).toMatchObject({
+      capability:'pc_operator',
+      dispatchLane:'PC_OPERATOR',
+      targetWorker:'NV06',
+      pcOperatorDirectAction:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha}
+    });
+  });
+
   it('fails closed on an invalid direct-action marker and preserves OpenClaw path when marker is absent',()=>{
     const basePc=[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator','OWNER_DIRECT=true',

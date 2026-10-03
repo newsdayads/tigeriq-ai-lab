@@ -129,23 +129,24 @@ function boundedText(value) {
   return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(0, MAX_OUTPUT_CHARS) + '\n[TRUNCATED]';
 }
 
-function safeChildEnv() {
+function safeChildEnv(extraKeys = []) {
   const env = {};
-  for (const key of ['SystemRoot', 'WINDIR', 'ComSpec', 'PATH', 'PATHEXT', 'TEMP', 'TMP']) {
+  const keys = [...new Set(['SystemRoot', 'WINDIR', 'ComSpec', 'PATH', 'PATHEXT', 'TEMP', 'TMP', ...(Array.isArray(extraKeys) ? extraKeys : [])])];
+  for (const key of keys) {
     const value = process.env[key];
     if (typeof value === 'string' && value) env[key] = value;
   }
   return env;
 }
 
-async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60 } = {}) {
+async function spawnBounded(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60, extraEnvKeys = [] } = {}) {
   const safeCwd = await realPathInsideRoots(cwd || DEFAULT_ROOT);
   const timeout = Math.max(1, Math.min(MAX_TIMEOUT_SEC, Number(timeoutSec) || 60));
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
       cwd: safeCwd,
       windowsHide: true,
-      env: safeChildEnv(),
+      env: safeChildEnv(extraEnvKeys),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -527,6 +528,69 @@ async function buildAndroidWorkerStableRelease() {
   };
 }
 
+
+export function assertTigerIQLive3150DeployRequest(input = {}) {
+  const expectedSha = String(input?.expectedSha || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+  return { expectedSha };
+}
+
+async function deployTigerIQLive3150(input = {}) {
+  const { expectedSha } = assertTigerIQLive3150DeployRequest(input);
+  const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
+  const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\vercel-tigeriq-live-3150-deploy.mjs';
+  await realPathInsideRoots(script);
+  const result = await spawnBounded(
+    process.execPath,
+    [script, '--sha', expectedSha, '--issue', '3185'],
+    {
+      cwd: repoRoot,
+      timeoutSec: 120,
+      extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME'],
+    },
+  );
+  if (result.timedOut) throw new Error('TIGERIQ_VERCEL_DEPLOY_TIMEOUT');
+  if (Number(result.exitCode) !== 0) {
+    const code = String(result.stderr || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1) || 'VERCEL_DEPLOY_FAILED';
+    if (!/^VERCEL_[A-Z0-9_]+$/.test(code)) throw new Error('TIGERIQ_VERCEL_DEPLOY_FAILED');
+    throw new Error(code);
+  }
+  const lines = String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let receipt = null;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed?.status === 'TIGERIQ_LIVE_3150_PRODUCTION_DEPLOYED') { receipt = parsed; break; }
+    } catch {}
+  }
+  if (!receipt) throw new Error('TIGERIQ_VERCEL_DEPLOY_RECEIPT_MISSING');
+  if (receipt.projectId !== 'prj_gg7AuV6y62TALzEpby8XUAFisLKw'
+      || receipt.teamId !== 'team_K8HIG7zmwu0ZjCINX1VhlGiT'
+      || receipt.repo !== 'newsdayads/tigeriq-ai-lab'
+      || receipt.branch !== 'main'
+      || receipt.issue !== '3185'
+      || receipt.target !== 'production'
+      || receipt.exactSha !== expectedSha
+      || receipt.maxAttempts !== 1
+      || receipt.secretsPrinted !== false
+      || !/^https:\/\/[^\s]+\.vercel\.app$/i.test(String(receipt.deploymentUrl || ''))) {
+    throw new Error('TIGERIQ_VERCEL_DEPLOY_RECEIPT_INVALID');
+  }
+  return {
+    status: receipt.status,
+    deploymentUrl: receipt.deploymentUrl,
+    projectId: receipt.projectId,
+    teamId: receipt.teamId,
+    repo: receipt.repo,
+    branch: receipt.branch,
+    target: receipt.target,
+    exactSha: receipt.exactSha,
+    issue: receipt.issue,
+    maxAttempts: 1,
+    secretsPrinted: false,
+  };
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -538,6 +602,8 @@ export async function executePcAction(input, options = {}) {
     data = await listTigerIQTasks();
   } else if (action === 'android_worker_release_build') {
     data = await buildAndroidWorkerStableRelease();
+  } else if (action === 'tigeriq_live_3150_production_deploy') {
+    data = await deployTigerIQLive3150(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
     data = await runTaskAction(action, input?.taskName);
   } else if (action === 'process_list') {
@@ -581,7 +647,8 @@ export async function executePcAction(input, options = {}) {
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
-      productionMutationBlocked: true,
+      productionMutationBlocked: action !== 'tigeriq_live_3150_production_deploy',
+      productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ Live #3185 exact one-shot' : 'none',
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
       paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
