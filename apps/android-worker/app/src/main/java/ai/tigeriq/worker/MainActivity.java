@@ -626,7 +626,9 @@ public final class MainActivity extends Activity {
                 WorkerUpdateEngine.Result result = WorkerUpdateEngine.checkAndInstall(this, true);
                 if ("UP_TO_DATE".equals(result.state)) message = "Đang dùng bản mới nhất";
                 else if ("NEEDS_INSTALL_PERMISSION".equals(result.state)) message = "Cho phép TigerIQ cài bản cập nhật một lần, sau đó app sẽ tự tiếp tục";
+                else if ("DEFERRED_CORE_TASK".equals(result.state)) message = "Đang xử lý việc Core, cập nhật sẽ chờ";
                 else if ("DEFERRED_B1_ACTIVE".equals(result.state)) message = "Đang chạy B1, cập nhật sẽ chờ";
+                else if ("DEFERRED_EVIDENCE_PENDING".equals(result.state)) message = "Đang gửi bằng chứng, cập nhật sẽ chờ";
                 else message = "Đã tải và gửi bản cập nhật cho Android";
             } catch (Exception error) {
                 WorkerUpdateEngine.markInstallCallback(this, "UPDATE_FAILED", safeError(error));
