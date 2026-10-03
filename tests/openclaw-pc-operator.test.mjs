@@ -186,7 +186,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("expectedVersion: '0.20.0-update-lease-guard'");
     expect(source).toContain("'gh.exe'");
     expect(source).toContain("['run','download',spec.runId,'--repo',spec.repo,'--name',spec.artifactName,'--dir',downloadDir]");
-    expect(source).toContain("scripts\\pc-worker\\sign-android-worker-with-dpapi.ps1");
+    expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
     expect(source).toContain("passwordTransport: 'stdin-only'");
     expect(source).toContain("plaintextSecretWrittenToDisk");
     expect(source).not.toContain("gh auth login");
