@@ -909,12 +909,12 @@ async function deployTigerIQLive3150(input = {}) {
 const ANDROID_V020_SIGNED_APK_EXPORT = Object.freeze({
   path: 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.20.0-update-lease-guard\\TIQ Worker v0.20.apk',
   sha256: 'F2A8F279033EC832764370A50A34B51B8D29586AF6D9AE7B8957EA81E563A04D',
-  chunkBytes: 12000,
+  chunkBytes: 3000,
 });
 
 async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
   const chunkIndex = Number(input?.chunkIndex);
-  if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 15) {
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 31) {
     throw new Error('TIGERIQ_ANDROID_V020_EXPORT_CHUNK_INDEX_INVALID');
   }
   await realPathInsideRoots(ANDROID_V020_SIGNED_APK_EXPORT.path);
