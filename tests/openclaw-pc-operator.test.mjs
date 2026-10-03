@@ -248,7 +248,9 @@ describe('Power Automate Desktop guarded UI contract', () => {
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PadUiBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("'pad_android_sign_v020' { return Invoke-V020Signer }");
-    expect(broker).toContain("scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1");
+    expect(broker).toContain("D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1");
+    expect(broker).toContain("$psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"'");
+    expect(broker).not.toContain('ArgumentList.Add');
     expect(broker).toContain("ANDROID_WORKER_STABLE_RELEASE_READY");
     expect(broker).toContain("DPAPI_PASSWORD_DECRYPT_FAILED");
     expect(broker).not.toContain('$Request.command');
