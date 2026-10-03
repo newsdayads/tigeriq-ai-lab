@@ -7,6 +7,7 @@ const client = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai
 const service = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ForegroundWorkerService.java', import.meta.url), 'utf8');
 const taskStore = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/MobileTaskStore.java', import.meta.url), 'utf8');
 const runStore = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java', import.meta.url), 'utf8');
+const updateEngine = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/WorkerUpdateEngine.java', import.meta.url), 'utf8');
 
 describe('Android Gate C Core-issued task contract', () => {
   it('keeps assignment and execution Core-issued only', () => {
@@ -62,6 +63,19 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(service).toContain('client.submitResult');
     expect(service).toContain('MobileTaskStore.markResultReported');
     expect(service).toContain('duplicateSendCount');
+  });
+
+  it('fails closed on every update path while Core task or evidence is pending', () => {
+    const taskGuard = updateEngine.indexOf('if (task.present())');
+    const b1Guard = updateEngine.indexOf('if (run.active())');
+    const evidenceGuard = updateEngine.indexOf('if (run.terminal() && run.evidenceSeq > run.reportedSeq)');
+    const manifestFetch = updateEngine.indexOf('JSONObject manifest = client.updateManifest()');
+    expect(taskGuard).toBeGreaterThan(-1);
+    expect(b1Guard).toBeGreaterThan(taskGuard);
+    expect(evidenceGuard).toBeGreaterThan(b1Guard);
+    expect(manifestFetch).toBeGreaterThan(evidenceGuard);
+    expect(updateEngine).toContain('"DEFERRED_CORE_TASK"');
+    expect(updateEngine).toContain('"DEFERRED_EVIDENCE_PENDING"');
   });
 
   it('drains terminal evidence before clearing, claiming the next task, or updating', () => {
