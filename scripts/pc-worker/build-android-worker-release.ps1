@@ -48,7 +48,17 @@ function Resolve-GradleCommand {
     $cacheRoot = Join-Path $env:USERPROFILE '.gradle\wrapper\dists\gradle-8.7-bin'
     if (Test-Path -LiteralPath $cacheRoot -PathType Container) {
       $cached = Get-ChildItem -LiteralPath $cacheRoot -Filter 'gradle.bat' -File -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '\\gradle-8\.7\\bin\\gradle\.bat
+        Where-Object { $_.FullName.EndsWith('\gradle-8.7\bin\gradle.bat',[System.StringComparison]::OrdinalIgnoreCase) } |
+        Sort-Object FullName |
+        Select-Object -First 1
+      if ($cached) { return $cached.FullName }
+    }
+  }
+
+  throw 'GRADLE_COMMAND_MISSING: use the existing Gradle 8.7 installation/cache; no network install is performed by the release builder.'
+}
+
+$gradle = Resolve-GradleCommand
 
 $versionLine = Select-String -Path (Join-Path $workerDir 'app\build.gradle.kts') -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $versionLine) { throw 'WORKER_VERSION_NOT_FOUND' }
