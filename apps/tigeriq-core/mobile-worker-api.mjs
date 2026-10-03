@@ -349,7 +349,7 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
           const prior=(await client.query('select task_id from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',[spec.idempotencyKey])).rows[0];
           if(prior)continue;
           const taskId='MT-'+randomToken(12),runId='MR-'+randomToken(12);
-          await client.query(
+          const inserted=await client.query(
             `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
              select $1,$2,node_id,employee_id,provider,$3,$4,$5
                from tigeriq_mobile_devices
@@ -357,6 +357,7 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
               limit 1`,
             [taskId,spec.idempotencyKey,spec.prompt,spec.expectedToken,runId,employeeId,GATE_C_V020_VERSION]
           );
+          if(inserted.rowCount!==1)throw new Error('GATE_C_V020_TARGET_CHANGED');
           created++;
         }
         await client.query('commit');
