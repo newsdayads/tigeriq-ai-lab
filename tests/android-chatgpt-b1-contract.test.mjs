@@ -46,6 +46,7 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('activeRootPackage');
     expect(service).toContain('isActiveInputMethodPackage');
     expect(service).toContain('DEFAULT_INPUT_METHOD');
+    expect(service).toContain('if (packageName == null) {');
     expect(service).toContain('if (root == null) {');
     expect(service).toContain('rootPackage == null || !value.equals(rootPackage.toString())');
     expect(service).toContain('if (getPackageName().equals(value)) return;');
