@@ -308,6 +308,22 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
 
+  it('publishes the v0.20 Core release manifest only from the pinned signed APK', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_publish_v020_manifest'");
+    expect(source).toContain("manifestPath: 'D:\\\\TigerIQ\\\\Runtime\\\\MobileWorker\\\\release.json'");
+    expect(source).toContain("apkBytes: 62002");
+    expect(source).toContain("F2A8F279033EC832764370A50A34B51B8D29586AF6D9AE7B8957EA81E563A04D");
+    expect(source).toContain("versionCode: 20");
+    expect(source).toContain("versionName: '0.20.0-update-lease-guard'");
+    expect(source).toContain("1qnz93uptTfj3tpJYLU7AN5P1KCu4Z_3a");
+    expect(source).toContain("TIGERIQ_ANDROID_V020_MANIFEST_APK_SHA256_MISMATCH");
+    expect(source).toContain("await fs.rename(tempPath, spec.manifestPath)");
+    expect(source).toContain("TIGERIQ_ANDROID_V020_MANIFEST_READBACK_MISMATCH");
+    expect(source).not.toContain("input?.manifestPath");
+    expect(source).not.toContain("input?.driveUrl");
+  });
+
   it('keeps v0.20 user-context signing fixed, evidence-justified elevated, and non-generic', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     const runner = await readFile(new URL('../scripts/pc-worker/invoke-v020-user-context-signer.ps1', import.meta.url), 'utf8');
