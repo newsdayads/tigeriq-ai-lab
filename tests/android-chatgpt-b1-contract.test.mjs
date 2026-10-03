@@ -15,6 +15,9 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(adapter).toContain('ACTION_CLICK');
     expect(adapter).toContain('isEditable()');
     expect(adapter).toContain('isClickable()');
+    expect(adapter).toContain('nearestClickable');
+    expect(adapter).toContain('uniqueComposerAction');
+    expect(adapter).toContain('bestScore - secondScore >= 20');
     expect(adapter + service).not.toMatch(/dispatchGesture|GestureDescription|getBoundsInScreen|performGlobalAction/);
   });
 
@@ -41,8 +44,8 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(core).toContain('on conflict do nothing');
   });
 
-  it('publishes versionCode 10 for the B1 pilot', () => {
-    expect(gradle).toContain('versionCode = 10');
-    expect(gradle).toContain('versionName = "0.10.0-chatgpt-b1"');
+  it('publishes versionCode 11 for the send-selector fix', () => {
+    expect(gradle).toContain('versionCode = 11');
+    expect(gradle).toContain('versionName = "0.11.0-send-selector"');
   });
 });
