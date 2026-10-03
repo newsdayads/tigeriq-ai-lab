@@ -130,7 +130,7 @@ try {
     taskName=$TaskName
     taskPrincipal=$ExpectedUser
     taskLogonType='InteractiveToken'
-    taskRunLevel='Limited'
+    taskRunLevel='Highest'
   }
   Write-SafeReceipt $safe
   $safe|ConvertTo-Json -Compress
