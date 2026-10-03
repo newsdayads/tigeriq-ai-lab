@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { androidReleaseBuildFailureClass } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 
 const helper = readFileSync(new URL('../scripts/pc-worker/sign-android-worker-with-dpapi.ps1', import.meta.url), 'utf8');
 const operator = readFileSync(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
@@ -74,13 +75,19 @@ describe('Android DPAPI apksigner helper', () => {
 
   it('classifies signer helper failures with bounded machine-safe codes', () => {
     expect(helper).toContain("throw 'DPAPI_PASSWORD_DECRYPT_FAILED'");
-    for (const code of [
+    const codes = [
       'UNSIGNED_APK_SHA256_MISMATCH',
       'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED',
       'OUTPUT_APK_MUST_DIFFER_FROM_UNSIGNED_APK',
       'DPAPI_PASSWORD_DECRYPT_FAILED',
       'APK_V2_SIGNATURE_REQUIRED',
       'APK_V3_SIGNATURE_REQUIRED',
-    ]) expect(operator).toContain(`'${code}'`);
+    ];
+    for (const code of codes) {
+      expect(operator).toContain(`'${code}'`);
+      expect(androidReleaseBuildFailureClass({ stderr: `PowerShell stopped: ${code}` })).toBe(code);
+      expect(androidReleaseBuildFailureClass({ stdout: `diagnostic ${code}` })).toBe(code);
+    }
+    expect(androidReleaseBuildFailureClass({ stderr: 'unexpected opaque failure' })).toBe('UNCLASSIFIED');
   });
 });
