@@ -311,7 +311,7 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     normalized={action,sessionId};
   }else if(action==='android_worker_export_v020_signed_apk_chunk'){
     const chunkIndex=Number(parsed.chunkIndex);
-    if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>15)return {present:true,valid:false,action:null,reason:'CHUNK_INDEX_INVALID'};
+    if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>31)return {present:true,valid:false,action:null,reason:'CHUNK_INDEX_INVALID'};
     normalized={action,chunkIndex};
   }else if(action==='chrome_ui_reconcile_cancelled_job'){
     const workerId=String(parsed.workerId||'').trim().toUpperCase();
