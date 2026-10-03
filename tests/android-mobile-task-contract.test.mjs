@@ -11,6 +11,9 @@ describe('Android Gate C Core-issued task contract', () => {
   it('keeps assignment and execution Core-issued only', () => {
     expect(core).toContain("url.pathname==='/api/mobile/tasks/enqueue'");
     expect(core).toContain("loopback_required");
+    expect(core).toContain("core_auth_unconfigured");
+    expect(core).toContain("core_unauthorized");
+    expect(core).toContain("verifyCoreTaskEnqueueAuth");
     expect(core).toContain("url.pathname==='/api/mobile/tasks/lease'");
     expect(client).toContain('/api/mobile/tasks/lease');
     expect(service).toContain('client.pollLease()');
@@ -38,6 +41,13 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(service).toContain('client.submitResult');
     expect(service).toContain('MobileTaskStore.markResultReported');
     expect(service).toContain('duplicateSendCount');
+  });
+
+  it('does not let a persisted Core task interrupt a manual or different B1 run', () => {
+    expect(service).toContain('boolean runMatchesTask = task.taskId.equals(run.taskId);');
+    expect(service).toContain('if (!runMatchesTask && run.active())');
+    expect(service).toContain('renewTaskLeaseIfDue(client, task);');
+    expect(service).toContain('if (run.terminal() && runMatchesTask)');
   });
 
   it('drains terminal evidence before clearing, claiming the next task, or updating', () => {
