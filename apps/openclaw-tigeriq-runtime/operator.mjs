@@ -906,6 +906,39 @@ async function deployTigerIQLive3150(input = {}) {
   };
 }
 
+const ANDROID_V020_SIGNED_APK_EXPORT = Object.freeze({
+  path: 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.20.0-update-lease-guard\\TIQ Worker v0.20.apk',
+  sha256: 'F2A8F279033EC832764370A50A34B51B8D29586AF6D9AE7B8957EA81E563A04D',
+  chunkBytes: 12000,
+});
+
+async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
+  const chunkIndex = Number(input?.chunkIndex);
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 15) {
+    throw new Error('TIGERIQ_ANDROID_V020_EXPORT_CHUNK_INDEX_INVALID');
+  }
+  await realPathInsideRoots(ANDROID_V020_SIGNED_APK_EXPORT.path);
+  const bytes = await fs.readFile(ANDROID_V020_SIGNED_APK_EXPORT.path);
+  const apkSha256 = createHash('sha256').update(bytes).digest('hex').toUpperCase();
+  if (apkSha256 !== ANDROID_V020_SIGNED_APK_EXPORT.sha256) {
+    throw new Error('TIGERIQ_ANDROID_V020_EXPORT_APK_SHA256_MISMATCH');
+  }
+  const chunkCount = Math.ceil(bytes.length / ANDROID_V020_SIGNED_APK_EXPORT.chunkBytes);
+  if (chunkIndex >= chunkCount) throw new Error('TIGERIQ_ANDROID_V020_EXPORT_CHUNK_INDEX_RANGE');
+  const start = chunkIndex * ANDROID_V020_SIGNED_APK_EXPORT.chunkBytes;
+  const chunk = bytes.subarray(start, Math.min(bytes.length, start + ANDROID_V020_SIGNED_APK_EXPORT.chunkBytes));
+  return {
+    status: 'ANDROID_V020_EXPORT_CHUNK_READY',
+    apkSha256,
+    totalBytes: bytes.length,
+    chunkIndex,
+    chunkCount,
+    chunkBytes: chunk.length,
+    chunkSha256: createHash('sha256').update(chunk).digest('hex').toUpperCase(),
+    chunkBase64: chunk.toString('base64'),
+  };
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -923,6 +956,8 @@ export async function executePcAction(input, options = {}) {
     data = await signAndroidWorkerV020UserContext();
   } else if (action === 'android_worker_grant_v020_signer_read_acl') {
     data = await grantAndroidWorkerV020SignerReadAcl();
+  } else if (action === 'android_worker_export_v020_signed_apk_chunk') {
+    data = await exportAndroidWorkerV020SignedApkChunk(input || {});
   } else if (action === 'tigeriq_live_3150_production_deploy') {
     data = await deployTigerIQLive3150(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
@@ -966,6 +1001,7 @@ export async function executePcAction(input, options = {}) {
       androidReleaseBuild: ['android_worker_release_build', 'android_worker_sign_v020_ci_artifact', 'android_worker_sign_v020_user_context'].includes(action),
       userContextSigner: action === 'android_worker_sign_v020_user_context',
       signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
+      signedApkExport: action === 'android_worker_export_v020_signed_apk_chunk',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
