@@ -12,10 +12,10 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * Read-only semantic probe for AI provider UIs.
+ * Semantic bridge for provider observation plus the explicitly approved ChatGPT B1 pilot.
  *
- * Non-provider events are intentionally kept separate from the last provider snapshot so
- * Android Launcher / Recents cannot erase evidence captured from ChatGPT or Gemini.
+ * B1 is bounded to harmless confirmation prompts, semantic ACTION_SET_TEXT/ACTION_CLICK,
+ * exactly-once state, and recovery. It does not lease backlog work or mutate GitHub.
  */
 public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String PREFS = "tigeriq-accessibility-pilot";
