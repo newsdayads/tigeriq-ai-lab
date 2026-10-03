@@ -206,7 +206,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
 
-  it('keeps v0.20 user-context signing fixed, least-privilege, and non-generic', async () => {
+  it('keeps v0.20 user-context signing fixed, evidence-justified elevated, and non-generic', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     const runner = await readFile(new URL('../scripts/pc-worker/invoke-v020-user-context-signer.ps1', import.meta.url), 'utf8');
     const bridge = await readFile(new URL('../scripts/pc-worker/run-v020-user-context-signer-task.ps1', import.meta.url), 'utf8');
