@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const helper = readFileSync(new URL('../scripts/pc-worker/sign-android-worker-with-dpapi.ps1', import.meta.url), 'utf8');
+const operator = readFileSync(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
 
 describe('Android DPAPI apksigner helper', () => {
   it('binds signing to the established certificate and exact unsigned artifact', () => {
@@ -69,5 +70,17 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain('plaintextSecretPrinted = $false');
     expect(helper).toContain('plaintextSecretWrittenToDisk = $false');
     expect(helper).toContain("passwordTransport = 'stdin-only'");
+  });
+
+  it('classifies signer helper failures with bounded machine-safe codes', () => {
+    expect(helper).toContain("throw 'DPAPI_PASSWORD_DECRYPT_FAILED'");
+    for (const code of [
+      'UNSIGNED_APK_SHA256_MISMATCH',
+      'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED',
+      'OUTPUT_APK_MUST_DIFFER_FROM_UNSIGNED_APK',
+      'DPAPI_PASSWORD_DECRYPT_FAILED',
+      'APK_V2_SIGNATURE_REQUIRED',
+      'APK_V3_SIGNATURE_REQUIRED',
+    ]) expect(operator).toContain(`'${code}'`);
   });
 });
