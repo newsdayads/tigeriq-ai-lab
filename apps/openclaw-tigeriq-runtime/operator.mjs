@@ -314,16 +314,28 @@ export function parseTaskListCsv(text) {
   return tasks;
 }
 
+export function parseTaskNameListCsv(text) {
+  const names = [];
+  for (const row of parseCsvRows(text)) {
+    const raw = row.map((value) => String(value ?? '').trim()).find((value) => /^\\+TigerIQ /.test(value));
+    if (!raw) continue;
+    const taskName = raw.replace(/^\\+/, '');
+    assertTigerIQTaskName(taskName);
+    if (!names.includes(taskName)) names.push(taskName);
+  }
+  return names.map((taskName) => ({ taskName }));
+}
+
 async function listTigerIQTasks() {
   const result = await spawnBounded(
     'schtasks.exe',
-    ['/Query', '/FO', 'CSV', '/V', '/NH'],
+    ['/Query', '/FO', 'CSV', '/NH'],
     { timeoutSec: 30 },
   );
   if (result.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
   if (result.exitCode !== 0) throw new Error('TIGERIQ_PC_TASK_LIST_FAILED');
   if (result.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_LIST_TRUNCATED');
-  const tasks = parseTaskListCsv(result.stdout);
+  const tasks = parseTaskNameListCsv(result.stdout);
   return {
     readOnly: true,
     scope: 'TigerIQ',
