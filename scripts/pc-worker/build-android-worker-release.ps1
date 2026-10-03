@@ -29,8 +29,112 @@ foreach ($required in @($dpapiKeystore,$dpapiPasswordBlob,$aliasFile)) {
 }
 
 $workerDir = Join-Path $RepoRoot 'apps\android-worker'
-$gradle = Join-Path $workerDir 'gradlew.bat'
-if (-not (Test-Path -LiteralPath $gradle -PathType Leaf)) { throw 'GRADLE_WRAPPER_MISSING' }
+
+function Resolve-GradleCommand {
+  $wrapper = Join-Path $workerDir 'gradlew.bat'
+  if (Test-Path -LiteralPath $wrapper -PathType Leaf) { return $wrapper }
+
+  foreach ($name in @('gradle.bat','gradle')) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:GRADLE_HOME)) {
+    $candidate = Join-Path $env:GRADLE_HOME 'bin\gradle.bat'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $cacheRoot = Join-Path $env:USERPROFILE '.gradle\wrapper\dists\gradle-8.7-bin'
+    if (Test-Path -LiteralPath $cacheRoot -PathType Container) {
+      $cached = Get-ChildItem -LiteralPath $cacheRoot -Filter 'gradle.bat' -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\gradle-8\.7\\bin\\gradle\.bat
+
+$versionLine = Select-String -Path (Join-Path $workerDir 'app\build.gradle.kts') -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
+if (-not $versionLine) { throw 'WORKER_VERSION_NOT_FOUND' }
+$version = $versionLine.Matches[0].Groups[1].Value
+
+$releaseDir = Join-Path $ReleaseRoot $version
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+$outApk = Join-Path $releaseDir "tigeriq-worker-$version.apk"
+
+# Force an unsigned Gradle release. The canonical signer is applied only by the DPAPI/stdin helper below.
+Remove-Item Env:TIGERIQ_ANDROID_KEYSTORE,Env:TIGERIQ_ANDROID_KEY_ALIAS,Env:TIGERIQ_ANDROID_STORE_PASSWORD_FILE,Env:TIGERIQ_ANDROID_KEY_PASSWORD_FILE -ErrorAction SilentlyContinue
+
+try {
+  Push-Location $workerDir
+  & $gradle --no-daemon clean :app:assembleRelease
+  if ($LASTEXITCODE -ne 0) { throw 'ANDROID_RELEASE_BUILD_FAILED' }
+} finally {
+  Pop-Location
+}
+
+$unsignedApk = Join-Path $workerDir 'app\build\outputs\apk\release\app-release-unsigned.apk'
+if (-not (Test-Path -LiteralPath $unsignedApk -PathType Leaf)) { throw 'UNSIGNED_APK_NOT_FOUND' }
+
+$unsignedSha256 = (Get-FileHash -LiteralPath $unsignedApk -Algorithm SHA256).Hash.ToUpperInvariant()
+$helper = Join-Path $RepoRoot 'scripts\pc-worker\sign-android-worker-with-dpapi.ps1'
+if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'DPAPI_SIGNER_HELPER_MISSING' }
+
+$helperOutput = & $helper -UnsignedApk $unsignedApk -OutputApk $outApk -ExpectedUnsignedSha256 $unsignedSha256 -SecretsDir $SecretsDir
+$receiptLine = $helperOutput | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Last 1
+if (-not $receiptLine) { throw 'DPAPI_SIGNER_RECEIPT_MISSING' }
+
+try {
+  $receipt = $receiptLine | ConvertFrom-Json
+} catch {
+  throw 'DPAPI_SIGNER_RECEIPT_INVALID'
+}
+
+if ($receipt.status -ne 'ANDROID_WORKER_CANONICAL_SIGNING_READY') { throw 'DPAPI_SIGNER_STATUS_INVALID' }
+if (([string]$receipt.certificateSha256).ToUpperInvariant() -ne $CanonicalCertificateSha256) { throw 'APK_SIGNING_IDENTITY_MISMATCH' }
+if (-not $receipt.v2 -or -not $receipt.v3) { throw 'APK_SIGNATURE_VERIFY_FAILED' }
+if ($receipt.plaintextSecretPrinted -ne $false -or $receipt.plaintextSecretWrittenToDisk -ne $false) { throw 'SIGNING_SECRET_SAFETY_VIOLATION' }
+if (-not (Test-Path -LiteralPath $outApk -PathType Leaf)) { throw 'SIGNED_APK_NOT_FOUND' }
+
+$sha256 = (Get-FileHash -LiteralPath $outApk -Algorithm SHA256).Hash.ToUpperInvariant()
+if ($sha256 -ne ([string]$receipt.signedSha256).ToUpperInvariant()) { throw 'SIGNED_APK_SHA256_MISMATCH' }
+
+$git = Get-Command git.exe -ErrorAction SilentlyContinue
+$sourceSha = if ($git) { (& $git.Source -C $RepoRoot rev-parse HEAD).Trim() } else { 'unknown' }
+
+$manifest = [ordered]@{
+  schema = 'tigeriq.android-worker.release.v1'
+  createdAt = (Get-Date).ToUniversalTime().ToString('o')
+  version = $version
+  applicationId = 'ai.tigeriq.worker'
+  sourceSha = $sourceSha
+  apk = (Split-Path $outApk -Leaf)
+  apkSha256 = $sha256
+  certificateSha256 = $CanonicalCertificateSha256
+  signingIdentity = 'stable-private-pc01-dpapi-stdin'
+  secretsIncluded = $false
+}
+$manifestPath = Join-Path $releaseDir 'release-manifest.json'
+$manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+[ordered]@{
+  status = 'ANDROID_WORKER_STABLE_RELEASE_READY'
+  version = $version
+  apk = $outApk
+  manifest = $manifestPath
+  apkSha256 = $sha256
+  certificateSha256 = $CanonicalCertificateSha256
+  sourceSha = $sourceSha
+  signingIdentity = 'stable-private-pc01-dpapi-stdin'
+  secretsPrinted = $false
+} | ConvertTo-Json -Compress
+ } |
+        Sort-Object FullName |
+        Select-Object -First 1
+      if ($cached) { return $cached.FullName }
+    }
+  }
+
+  throw 'GRADLE_COMMAND_MISSING: use the existing Gradle 8.7 installation/cache; no network install is performed by the release builder.'
+}
+
+$gradle = Resolve-GradleCommand
 
 $versionLine = Select-String -Path (Join-Path $workerDir 'app\build.gradle.kts') -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $versionLine) { throw 'WORKER_VERSION_NOT_FOUND' }
