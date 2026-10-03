@@ -1,6 +1,6 @@
 # TigerIQ Android Worker — MVP Contract
 
-Status: #2949 GATE C CORE ↔ MOBILE EXACTLY-ONCE / v0.19 SOURCE CANDIDATE
+Status: #2949 GATE C CORE ↔ MOBILE EXACTLY-ONCE / v0.20 RELEASE CANDIDATE
 
 ## Gate B0 pilot setup
 
@@ -39,7 +39,7 @@ Physical acceptance still requires 10 real cycles and at least one ChatGPT resta
 
 ## Gate C Core-issued mobile tasks
 
-v0.19 extends the proven semantic ChatGPT adapter into the authoritative Core job path:
+v0.20 carries the reviewed Gate C Core-job path plus the Update Engine ↔ Core lease mutual-exclusion hardening into the physical release candidate:
 - only TigerIQ Core on PC01 may enqueue a mobile task;
 - the paired Mobile Worker leases only tasks bound to its node + AI Employee identity;
 - lease renewal is bounded and stale/wrong-worker results fail closed;
