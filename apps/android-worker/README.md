@@ -27,12 +27,18 @@ v0.10 adds a DEV-only semantic ChatGPT adapter after the Z Flip 7 proved the nat
 - terminal evidence reported idempotently to TigerIQ Core;
 - no task lease, backlog self-pull, GitHub mutation, coordinate taps or gesture fallback.
 
-v0.12 adds a safety gate and pacing before the same physical acceptance:
+v0.12 adds the initial Project gate and pacing before the same physical acceptance:
 - the active run starts in `WAITING_PROJECT`;
-- TigerIQ will not type/send until ChatGPT emits a real click on Project `TigerIQ AI Lab`;
 - minimum fill-to-send dwell is 3 seconds;
-- cooldown between completed cycles is 6 seconds;
-- merely seeing the project name is not sufficient; the project item must be clicked in ChatGPT.
+- cooldown between completed cycles is 6 seconds.
+
+v0.17 defines the current fail-closed Project binding contract:
+- a real semantic click on Project `TigerIQ AI Lab` remains an accepted binding path;
+- when this ChatGPT build emits no usable click event, a no-click path is allowed only from a stable active-Project title signal plus a usable composer;
+- exact conversation text `TigerIQ AI Lab` is insufficient and must not bind;
+- the title candidate must be outside clickable/editable/scrollable content and expose both Project-specific structural semantics and heading/header/title semantics;
+- stable-context samples are scoped to one `runId` and are cleared before any foreground-departure early return, when the run ends, or when Accessibility is interrupted; active IME events preserve the candidate only while ChatGPT still owns the active root; unknown event packages plus unavailable or mismatched active roots reset the candidate fail-closed;
+- stable binding requires at least 3 fresh samples spanning at least 1200 ms.
 
 Physical acceptance still requires 10 real cycles and at least one ChatGPT restart/recovery on Z Flip 7. This source/build must not be called Gate B PASS until that evidence exists.
 

@@ -1,5 +1,6 @@
 package ai.tigeriq.worker;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -233,27 +234,54 @@ public final class ChatGptB1Automation {
         return false;
     }
 
-    public static boolean treeContainsExactLabelOutsideClickableNavigation(
+    public static boolean treeContainsExactProjectTitleSignal(
         AccessibilityNodeInfo root,
         String label,
-        int maxParents
+        int maxStructuralParents
     ) {
         String wanted = normalize(label);
         if (root == null || wanted.isEmpty()) return false;
+
         for (AccessibilityNodeInfo node : nodes(root)) {
-            if (!nodeHasExactLabel(node, wanted)) continue;
+            if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
+            if (node.isClickable() || node.isEditable() || node.isScrollable()) continue;
+
+            boolean blockedByInteractiveOrScrollableAncestor = false;
+            boolean titleSemantic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading();
+            boolean projectSemantic = false;
             AccessibilityNodeInfo current = node;
-            boolean clickableAncestor = false;
-            for (int depth = 0; current != null && depth <= maxParents; depth++) {
-                if (current.isClickable()) {
-                    clickableAncestor = true;
+            int depth = 0;
+
+            while (current != null) {
+                if (current.isClickable() || current.isEditable() || current.isScrollable()) {
+                    blockedByInteractiveOrScrollableAncestor = true;
                     break;
                 }
+                if (depth <= maxStructuralParents) {
+                    String structural = structuralSearchable(current);
+                    if (containsAny(structural, "title", "header", "toolbar", "appbar", "app bar", "top bar")) {
+                        titleSemantic = true;
+                    }
+                    if (containsAny(structural, "project_title", "project title", "project_header", "project header", "project_toolbar", "project toolbar")) {
+                        projectSemantic = true;
+                    }
+                }
                 current = current.getParent();
+                depth += 1;
             }
-            if (!clickableAncestor) return true;
+
+            if (!blockedByInteractiveOrScrollableAncestor && projectSemantic && titleSemantic) return true;
         }
         return false;
+    }
+
+    private static String structuralSearchable(AccessibilityNodeInfo node) {
+        return normalize(
+            text(node.getViewIdResourceName()) + " "
+                + String.valueOf(node.getClassName()) + " "
+                + text(node.getContentDescription()) + " "
+                + text(node.getHintText())
+        );
     }
 
     public static boolean nodeOrAncestorContainsLabel(
