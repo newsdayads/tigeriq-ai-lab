@@ -591,11 +591,13 @@ async function signAndroidWorkerV020CiArtifact() {
   if (!response.ok) throw new Error('TIGERIQ_GH_ARTIFACT_DOWNLOAD_FAILED');
   const archive = Buffer.from(await response.arrayBuffer());
   if (!archive.length || archive.length > 250 * 1024 * 1024) throw new Error('TIGERIQ_GH_ARTIFACT_ARCHIVE_INVALID');
+  const zipMagic = archive.subarray(0,4).toString('hex').toLowerCase();
+  if (!['504b0304','504b0506','504b0708'].includes(zipMagic)) throw new Error('TIGERIQ_GH_ARTIFACT_ARCHIVE_INVALID');
   await fs.writeFile(artifactZip, archive);
   const extract = await spawnBounded(
     'powershell.exe',
     ['-NoProfile','-NonInteractive','-Command',
-      'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+      '& { param([string]$zip,[string]$dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force }',
       artifactZip,downloadDir],
     { cwd: repoRoot, timeoutSec: 120 },
   );
