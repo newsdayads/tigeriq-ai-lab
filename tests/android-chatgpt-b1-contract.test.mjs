@@ -31,6 +31,8 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('TYPE_VIEW_CLICKED');
     expect(adapter).toContain('treeContainsExactLabel');
     expect(adapter).toContain('nodeOrAncestorContainsLabel');
+    expect(adapter).toContain('searchable(current).contains(wanted)');
+    expect(adapter).not.toContain('treeContains(current, label)');
     expect(adapter).toContain('rootHasProjectAndVisibleComposer');
     expect(service).toContain('DIRECT_LINEAGE');
     expect(service).toContain('VERIFYING_ROOT');
