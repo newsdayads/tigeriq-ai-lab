@@ -93,8 +93,14 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .putLong(KEY_LAST_EVENT_AT, System.currentTimeMillis())
             .apply();
 
-        // Important: launcher/recents/keyboard events must not zero the last AI snapshot.
+        // Important: keyboard events must not reset the candidate while ChatGPT still owns
+        // the active root. Launcher/recents/other-app departures must reset synchronously.
         if (!isPilotProvider(value)) {
+            AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+            CharSequence activeRootPackage = activeRoot == null ? null : activeRoot.getPackageName();
+            if (activeRootPackage == null || !CHATGPT_PACKAGE.equals(activeRootPackage.toString())) {
+                clearProjectContextCandidate();
+            }
             scheduleB1RecoveryIfNeeded();
             return;
         }
@@ -115,6 +121,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             maybeBindRequiredProject(event, root);
             maybeBindProjectFromStableContext(root);
             ensureB1Ticker();
+        } else {
+            clearProjectContextCandidate();
         }
 
         int nodes = 0;
