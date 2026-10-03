@@ -16,6 +16,17 @@ describe('Android stable release builder DPAPI integration', () => {
     expect(builder).not.toContain("TIGERIQ_ANDROID_KEY_PASSWORD_FILE =");
   });
 
+  it('uses an existing Gradle runtime without requiring a repository wrapper or network install', () => {
+    expect(builder).toContain('function Resolve-GradleCommand');
+    expect(builder).toContain("'gradle.bat','gradle'");
+    expect(builder).toContain("GRADLE_HOME");
+    expect(builder).toContain(".gradle\\wrapper\\dists\\gradle-8.7-bin");
+    expect(builder).toContain("GRADLE_COMMAND_MISSING");
+    expect(builder).toContain("--no-daemon clean :app:assembleRelease");
+    expect(builder).not.toContain("Invoke-WebRequest");
+    expect(builder).not.toContain("Start-BitsTransfer");
+  });
+
   it('forces unsigned build then validates canonical signer receipt and artifact hash', () => {
     expect(builder).toContain("Remove-Item Env:TIGERIQ_ANDROID_KEYSTORE");
     expect(builder).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
