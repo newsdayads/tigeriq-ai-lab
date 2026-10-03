@@ -11,6 +11,9 @@ import java.util.UUID;
 public final class ChatGptB1RunStore {
     public static final String PREFS = "tigeriq-chatgpt-b1";
     public static final String EXPECTED_PREFIX = "TIGERIQ_B1_OK_";
+    public static final String REQUIRED_PROJECT = "TigerIQ AI Lab";
+    public static final long MIN_FILL_TO_SEND_MS = 3000L;
+    public static final long INTER_CYCLE_COOLDOWN_MS = 6000L;
 
     private static final String K_RUN_ID = "runId";
     private static final String K_STATE = "state";
@@ -30,6 +33,8 @@ public final class ChatGptB1RunStore {
     private static final String K_LATENCIES = "latenciesMs";
     private static final String K_EVIDENCE_SEQ = "evidenceSeq";
     private static final String K_REPORTED_SEQ = "reportedSeq";
+    private static final String K_PROJECT_BOUND = "projectBound";
+    private static final String K_PROJECT_BOUND_AT = "projectBoundAt";
 
     private ChatGptB1RunStore() {}
 
@@ -39,7 +44,7 @@ public final class ChatGptB1RunStore {
         long now = System.currentTimeMillis();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
             .putString(K_RUN_ID, runId)
-            .putString(K_STATE, "REQUESTED")
+            .putString(K_STATE, "WAITING_PROJECT")
             .putInt(K_TARGET, target)
             .putInt(K_CYCLE, 1)
             .putInt(K_COMPLETED, 0)
@@ -55,6 +60,8 @@ public final class ChatGptB1RunStore {
             .putString(K_LATENCIES, "")
             .putInt(K_EVIDENCE_SEQ, 0)
             .putInt(K_REPORTED_SEQ, 0)
+            .putBoolean(K_PROJECT_BOUND, false)
+            .putLong(K_PROJECT_BOUND_AT, 0L)
             .apply();
         return read(context);
     }
@@ -85,7 +92,9 @@ public final class ChatGptB1RunStore {
             p.getString(K_LAST_ERROR, ""),
             p.getString(K_LATENCIES, ""),
             p.getInt(K_EVIDENCE_SEQ, 0),
-            p.getInt(K_REPORTED_SEQ, 0)
+            p.getInt(K_REPORTED_SEQ, 0),
+            p.getBoolean(K_PROJECT_BOUND, false),
+            p.getLong(K_PROJECT_BOUND_AT, 0L)
         );
     }
 
@@ -99,12 +108,28 @@ public final class ChatGptB1RunStore {
             + "TIGERIQ_ + B1_ + OK_ + " + s.cycle;
     }
 
+    public static void markProjectBound(Context context) {
+        long now = System.currentTimeMillis();
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(K_PROJECT_BOUND, true)
+            .putLong(K_PROJECT_BOUND_AT, now)
+            .putString(K_STATE, "REQUESTED")
+            .putLong(K_CYCLE_STARTED_AT, now)
+            .putLong(K_NEXT_ACTION_AT, now + 750L)
+            .putString(K_LAST_ERROR, "")
+            .apply();
+    }
+
     public static void markVerifying(Context context) {
         writeState(context, "VERIFYING_CONTEXT", "");
     }
 
     public static void markInputReady(Context context) {
-        writeState(context, "INPUT_READY", "");
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(K_STATE, "INPUT_READY")
+            .putLong(K_NEXT_ACTION_AT, System.currentTimeMillis() + MIN_FILL_TO_SEND_MS)
+            .putString(K_LAST_ERROR, "")
+            .apply();
     }
 
     public static boolean markSentExactlyOnce(Context context) {
@@ -163,7 +188,7 @@ public final class ChatGptB1RunStore {
             .putInt(K_CYCLE, nextCycle)
             .putLong(K_CYCLE_STARTED_AT, now)
             .putLong(K_SENT_AT, 0L)
-            .putLong(K_NEXT_ACTION_AT, now + 1500L)
+            .putLong(K_NEXT_ACTION_AT, now + INTER_CYCLE_COOLDOWN_MS)
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
             .putString(K_LATENCIES, latencies)
@@ -197,6 +222,11 @@ public final class ChatGptB1RunStore {
         body.put("startedAt", s.startedAt);
         body.put("lastError", s.lastError);
         body.put("latenciesMs", s.latenciesMs);
+        body.put("requiredProject", REQUIRED_PROJECT);
+        body.put("projectBound", s.projectBound);
+        body.put("projectBoundAt", s.projectBoundAt);
+        body.put("minFillToSendMs", MIN_FILL_TO_SEND_MS);
+        body.put("interCycleCooldownMs", INTER_CYCLE_COOLDOWN_MS);
         body.put("workerVersion", WorkerVersion.NAME);
         body.put("nodeId", new NodeIdentityStore(context).getOrCreate());
         payload.put("payload", body);
@@ -249,6 +279,8 @@ public final class ChatGptB1RunStore {
         public final String latenciesMs;
         public final int evidenceSeq;
         public final int reportedSeq;
+        public final boolean projectBound;
+        public final long projectBoundAt;
 
         Snapshot(
             String runId,
@@ -268,7 +300,9 @@ public final class ChatGptB1RunStore {
             String lastError,
             String latenciesMs,
             int evidenceSeq,
-            int reportedSeq
+            int reportedSeq,
+            boolean projectBound,
+            long projectBoundAt
         ) {
             this.runId = runId;
             this.state = state;
@@ -288,10 +322,13 @@ public final class ChatGptB1RunStore {
             this.latenciesMs = latenciesMs;
             this.evidenceSeq = evidenceSeq;
             this.reportedSeq = reportedSeq;
+            this.projectBound = projectBound;
+            this.projectBoundAt = projectBoundAt;
         }
 
         public boolean active() {
-            return "REQUESTED".equals(state)
+            return "WAITING_PROJECT".equals(state)
+                || "REQUESTED".equals(state)
                 || "VERIFYING_CONTEXT".equals(state)
                 || "INPUT_READY".equals(state)
                 || "WAITING_AI".equals(state);
