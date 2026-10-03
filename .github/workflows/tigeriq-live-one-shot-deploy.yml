@@ -1,0 +1,81 @@
+name: TigerIQ Live One-Shot Production Deploy 3150
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tigeriq-live-one-shot-deploy.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tigeriq-live-production-deploy-3150
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy exact TigerIQ Live production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: team_K8HIG7zmwu0ZjCINX1VhlGiT
+      VERCEL_PROJECT_ID: prj_gg7AuV6y62TALzEpby8XUAFisLKw
+      PRODUCTION_ALIAS: https://tigeriq-ai-lab.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail closed on repository and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "newsdayads/tigeriq-ai-lab"
+          test "$GITHUB_REF" = "refs/heads/main"
+          grep -q 'JOB TRỌNG TÂM' command-center.html
+          grep -q '"deploymentEnabled": false' vercel.json
+
+      - name: Require existing Vercel credential
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Pull exact production configuration
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build production artifact
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@latest build --prod --yes --token="$VERCEL_TOKEN"
+
+      - name: Deploy production exactly once
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "DEPLOYMENT_URL=$url"
+
+      - name: Verify deployed UI and production alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 "${{ steps.deploy.outputs.url }}/command-center" | grep -q 'JOB TRỌNG TÂM'
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 "$PRODUCTION_ALIAS/command-center" | grep -q 'JOB TRỌNG TÂM'
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 "$PRODUCTION_ALIAS/api/live-status" >/dev/null
+          echo "TIGERIQ_LIVE_PRODUCTION_VERIFY=PASS"
