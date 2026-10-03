@@ -44,7 +44,10 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('projectContextRunId');
     expect(service).toContain('clearProjectContextCandidate');
     expect(service).toContain('activeRootPackage');
-    expect(service).toContain('!CHATGPT_PACKAGE.equals(activeRootPackage.toString())');
+    expect(service).toContain('isActiveInputMethodPackage');
+    expect(service).toContain('DEFAULT_INPUT_METHOD');
+    expect(service).toContain('if (getPackageName().equals(value)) return;');
+    expect(service.indexOf('clearProjectContextCandidate();')).toBeLessThan(service.indexOf('if (getPackageName().equals(value)) return;'));
     expect(service).toContain('shouldBindRequiredProjectFromStableContext');
     expect(service).toContain('CONTEXT_CANDIDATE');
     expect(service).toContain('STABLE_PROJECT_CONTEXT');
