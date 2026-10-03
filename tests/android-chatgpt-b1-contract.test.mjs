@@ -127,8 +127,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 12 for project pacing', () => {
-    expect(gradle).toContain('versionCode = 12');
+  it('publishes versionCode 13 for reviewed project pacing', () => {
+    expect(gradle).toContain('versionCode = 13');
     expect(gradle).toContain('versionName = "0.12.0-project-pacing"');
   });
 });
