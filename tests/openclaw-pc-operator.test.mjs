@@ -266,6 +266,23 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(bridge).not.toMatch(/-Password\b|\/RP\b|LogonType\s+Password|RunLevel\s+Highest/i);
   });
 
+  it('keeps v0.20 signer ACL bootstrap fixed to read-only access on exactly three canonical files', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    const aclScript = await readFile(new URL('../scripts/pc-worker/grant-v020-signer-read-acl.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_grant_v020_signer_read_acl'");
+    expect(source).toContain("grant-v020-signer-read-acl.ps1");
+    expect(source).toContain("ANDROID_V020_SIGNER_ACL_READY");
+    expect(source).toContain("signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl'");
+    expect(aclScript).toContain("$ExpectedUser='pc01\\wdragons12x'");
+    expect(aclScript).toContain("'tigeriq-release.jks'");
+    expect(aclScript).toContain("'signing-password.dpapi.txt'");
+    expect(aclScript).toContain("'key-alias.txt'");
+    expect(aclScript).toContain("[Security.AccessControl.FileSystemRights]::Read");
+    expect(aclScript).toContain("inheritance='None'");
+    expect(aclScript).not.toMatch(/Write|Modify|FullControl/);
+    expect(aclScript).not.toMatch(/Get-Content|ReadAllText|ConvertTo-SecureString|SecureStringToBSTR/);
+  });
+
   it('surfaces only bounded Android build-tool discovery failure classes', async () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT');
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR');
