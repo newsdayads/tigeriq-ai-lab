@@ -25,3 +25,11 @@ PC01 currently has legacy protected signer material outside the old documented `
 
 ## Pilot lineage
 v0.6 and earlier used disposable debug identities. v0.7 established the stable TigerIQ certificate and required the one-time migration. v0.7+ must preserve the same certificate so subsequent versions update in place.
+
+
+## DPAPI preferred signing path
+- When the existing canonical bundle contains `tigeriq-release.jks`, `signing-password.dpapi.txt`, and `key-alias.txt`, the release builder must prefer the DPAPI/stdin path.
+- Gradle builds an unsigned release with signing environment variables cleared; the exact unsigned APK SHA-256 is then bound into `sign-android-worker-with-dpapi.ps1`.
+- The protected password is decrypted only under the owning Windows user context and is sent to apksigner through stdin. It is not provisioned into plaintext password files, command-line arguments, environment variables, clipboard, logs, or repository content.
+- The helper requires v2 + v3 signatures and the canonical certificate SHA-256 before the release builder accepts the artifact.
+- The legacy plaintext-file path is retained only as compatibility for an already-provisioned complete bundle; the builder never creates those files.
