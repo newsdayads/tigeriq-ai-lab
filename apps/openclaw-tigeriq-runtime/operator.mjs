@@ -454,6 +454,45 @@ async function statPath(targetPath) {
   };
 }
 
+
+async function buildAndroidWorkerStableRelease() {
+  const repoRoot = 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab';
+  const script = 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\scripts\\pc-worker\\build-android-worker-release.ps1';
+  const secretsDir = 'D:\\TigerIQ\\Secrets\\AndroidSigning';
+  const releaseRoot = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed';
+  await realPathInsideRoots(script);
+  const result = await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-RepoRoot',repoRoot,'-SecretsDir',secretsDir,'-ReleaseRoot',releaseRoot],
+    { cwd: repoRoot, timeoutSec: 120 },
+  );
+  if (result.timedOut) throw new Error('TIGERIQ_ANDROID_RELEASE_BUILD_TIMEOUT');
+  if (Number(result.exitCode) !== 0) throw new Error('TIGERIQ_ANDROID_RELEASE_BUILD_FAILED');
+  const lines = String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let receipt = null;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed && parsed.status === 'ANDROID_WORKER_STABLE_RELEASE_READY') { receipt = parsed; break; }
+    } catch {}
+  }
+  if (!receipt) throw new Error('TIGERIQ_ANDROID_RELEASE_RECEIPT_MISSING');
+  const expectedSigner = '63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293';
+  if (String(receipt.certificateSha256 || '').replaceAll(':','').toUpperCase() !== expectedSigner) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
+  }
+  if (receipt.secretsPrinted !== false) throw new Error('TIGERIQ_ANDROID_RELEASE_SECRET_OUTPUT_UNSAFE');
+  return {
+    status: receipt.status,
+    version: String(receipt.version || ''),
+    apk: String(receipt.apk || ''),
+    manifest: String(receipt.manifest || ''),
+    apkSha256: String(receipt.apkSha256 || '').toUpperCase(),
+    certificateSha256: expectedSigner,
+    secretsPrinted: false,
+  };
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -463,6 +502,8 @@ export async function executePcAction(input, options = {}) {
     data = await runShell(input || {});
   } else if (action === 'task_list') {
     data = await listTigerIQTasks();
+  } else if (action === 'android_worker_release_build') {
+    data = await buildAndroidWorkerStableRelease();
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
     data = await runTaskAction(action, input?.taskName);
   } else if (action === 'process_list') {
@@ -501,6 +542,7 @@ export async function executePcAction(input, options = {}) {
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
       taskListReadOnly: action === 'task_list',
+      androidReleaseBuild: action === 'android_worker_release_build',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
