@@ -11,6 +11,41 @@ $cleanupOk=$true
 $failure=$null
 $receipt=$null
 
+function Safe-BridgeFailureCode([string]$message) {
+  $allowed=@(
+    'V020_USER_CONTEXT_UNAVAILABLE',
+    'V020_USER_CONTEXT_RUNNER_MISSING',
+    'V020_USER_CONTEXT_TASK_COLLISION',
+    'V020_USER_CONTEXT_TASK_REGISTER_FAILED',
+    'V020_USER_CONTEXT_TASK_START_FAILED',
+    'V020_USER_CONTEXT_TASK_TIMEOUT',
+    'V020_USER_CONTEXT_RECEIPT_INVALID',
+    'V020_USER_CONTEXT_IDENTITY_MISMATCH',
+    'V020_USER_CONTEXT_SIGN_FAILED',
+    'DPAPI_PASSWORD_DECRYPT_FAILED',
+    'V020_SIGN_INPUT_MISSING',
+    'V020_UNSIGNED_SHA256_MISMATCH',
+    'V020_APKSIGNER_JAR_SHA256_MISMATCH',
+    'V020_JAVA_REQUIRED',
+    'V020_SIGNER_RECEIPT_MISSING',
+    'V020_SIGNER_RECEIPT_INVALID',
+    'V020_SIGNER_STATUS_INVALID',
+    'V020_SIGNER_IDENTITY_MISMATCH',
+    'V020_SIGNATURE_SCHEME_INVALID',
+    'V020_PASSWORD_TRANSPORT_INVALID',
+    'V020_SECRET_SAFETY_VIOLATION',
+    'V020_APKSIGNER_MODE_INVALID',
+    'V020_PREALIGNED_RECEIPT_INVALID',
+    'V020_SIGNED_APK_MISSING',
+    'V020_SIGNED_SHA256_MISMATCH',
+    'APKSIGNER_FAILED',
+    'APK_SIGNATURE_VERIFY_FAILED',
+    'APK_SIGNING_IDENTITY_MISMATCH'
+  )
+  foreach($code in $allowed){if($message -match [regex]::Escape($code)){return $code}}
+  return 'V020_USER_CONTEXT_SIGN_FAILED'
+}
+
 function Assert-ExistingTaskSafe($task) {
   if(-not $task){return}
   $principal=[string]$task.Principal.UserId
@@ -67,7 +102,7 @@ try {
   }
   if([string]$receipt.executionIdentity -ine $ExpectedUser){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}
 }catch{
-  $failure=[string]$_.Exception.Message
+  $failure=Safe-BridgeFailureCode ([string]$_.Exception.Message)
 }finally{
   if($registered -or (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)){
     try{
