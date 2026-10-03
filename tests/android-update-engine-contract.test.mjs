@@ -42,4 +42,20 @@ describe('Android Update Engine V1', () => {
     expect(activity).toContain('WorkerUpdateEngine.shouldResumeAfterPermission');
     expect(activity).toContain('Cập nhật tự động');
   });
+  it('closes PackageInstaller write streams before committing the install session', () => {
+    const commitStart = engine.indexOf('private static int commitInstall');
+    const helperStart = engine.indexOf('private static void writeSessionApk');
+    const verifyStart = engine.indexOf('private static void verifyDownloadedApk');
+    const commit = engine.slice(commitStart, helperStart);
+    const writer = engine.slice(helperStart, verifyStart);
+
+    expect(commitStart).toBeGreaterThan(-1);
+    expect(helperStart).toBeGreaterThan(commitStart);
+    expect(commit).toContain('writeSessionApk(session, apk);');
+    expect(commit).toContain('session.commit(pending.getIntentSender());');
+    expect(writer).toContain('try (FileInputStream input = new FileInputStream(apk);');
+    expect(writer).toContain('OutputStream output = session.openWrite("base.apk", 0L, apk.length()))');
+    expect(writer).toContain('session.fsync(output);');
+  });
+
 });

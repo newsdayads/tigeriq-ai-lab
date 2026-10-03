@@ -210,13 +210,8 @@ public final class WorkerUpdateEngine {
         }
 
         int sessionId = installer.createSession(params);
-        try (PackageInstaller.Session session = installer.openSession(sessionId);
-             FileInputStream input = new FileInputStream(apk);
-             OutputStream output = session.openWrite("base.apk", 0L, apk.length())) {
-            byte[] buffer = new byte[32 * 1024];
-            int read;
-            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
-            session.fsync(output);
+        try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+            writeSessionApk(session, apk);
 
             Intent result = new Intent(context, UpdateInstallReceiver.class)
                 .setAction(ACTION_INSTALL_RESULT)
@@ -228,6 +223,16 @@ public final class WorkerUpdateEngine {
             session.commit(pending.getIntentSender());
         }
         return sessionId;
+    }
+
+    private static void writeSessionApk(PackageInstaller.Session session, File apk) throws Exception {
+        try (FileInputStream input = new FileInputStream(apk);
+             OutputStream output = session.openWrite("base.apk", 0L, apk.length())) {
+            byte[] buffer = new byte[32 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            session.fsync(output);
+        }
     }
 
     private static void verifyDownloadedApk(
