@@ -60,6 +60,12 @@ describe('bounded Core UI cancelled-ledger reconcile', () => {
       .rejects.toThrow('TIGERIQ_CORE_UI_RECONCILE_WORKER_INVALID');
   });
 
+  it('surfaces the exact bounded fetch stage when loopback transport fails', async () => {
+    const fetchImpl=async()=>{const error=new TypeError('fetch failed');error.cause={code:'ECONNREFUSED'};throw error;};
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{fetchImpl}))
+      .rejects.toThrow('TIGERIQ_CORE_UI_RECONCILE_FETCH_FAILED_CONTROLLER_STATUS:ECONNREFUSED');
+  });
+
   it('is a safe no-op when the worker has no active local UI job', async () => {
     const calls=[];
     const fetchImpl=async(url,init={})=>{
