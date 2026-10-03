@@ -85,7 +85,7 @@ public final class ForegroundWorkerService extends Service {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
 
             if (task.present()) {
-                boolean sameTaskRun = task.taskId.equals(run.taskId);
+                boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
 
                 // A manual/different B1 run owns ChatGPT until it reaches terminal state.
                 // Keep the already-leased Core task alive, but never launch/overwrite the manual run.

@@ -22,7 +22,7 @@ describe('Android Gate C Core-issued task contract', () => {
   });
 
   it('defers a persisted Core task while a manual B1 run owns ChatGPT', () => {
-    expect(service).toContain('boolean sameTaskRun = task.taskId.equals(run.taskId);');
+    expect(service).toContain('boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);');
     expect(service).toContain('if (run.active() && !sameTaskRun)');
     expect(service).toContain('if (run.terminal() && !sameTaskRun)');
     expect(service).toContain('if (sameTaskRun && run.terminal())');
@@ -43,6 +43,15 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(runStore).toContain('startTask(Context context');
     expect(runStore).toContain('K_CUSTOM_PROMPT');
     expect(runStore).toContain('K_CUSTOM_EXPECTED_TOKEN');
+  });
+
+  it('checks exact lease freshness before terminal idempotency', () => {
+    const leaseGuard = core.indexOf('if(!mobileTaskLeaseFresh({currentLeaseId:task.lease_id,leaseId,leaseExpiresAt:task.lease_expires_at}))');
+    const terminalDecision = core.indexOf('const decision=mobileTaskTerminalDecision({status:task.status', leaseGuard);
+    const idempotentAccept = core.indexOf('if(decision.idempotent)', terminalDecision);
+    expect(leaseGuard).toBeGreaterThan(-1);
+    expect(terminalDecision).toBeGreaterThan(leaseGuard);
+    expect(idempotentAccept).toBeGreaterThan(terminalDecision);
   });
 
   it('reports a terminal result exactly once and rejects stale leases', () => {
