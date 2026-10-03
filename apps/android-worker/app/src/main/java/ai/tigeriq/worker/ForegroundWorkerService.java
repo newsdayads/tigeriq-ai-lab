@@ -59,6 +59,7 @@ public final class ForegroundWorkerService extends Service {
             }
             ControllerClient client = new ControllerClient(store);
             client.heartbeat(batteryPct(), null, WorkerVersion.NAME);
+            reportPendingB1Evidence(client);
             writeRuntime("ONLINE", System.currentTimeMillis(), "");
         } catch (Exception error) {
             String message = error.getMessage();
@@ -66,6 +67,17 @@ public final class ForegroundWorkerService extends Service {
             long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getLong(KEY_LAST_HEARTBEAT_AT, 0L);
             writeRuntime("OFFLINE", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
+        }
+    }
+
+    private void reportPendingB1Evidence(ControllerClient client) {
+        try {
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+            if (!run.terminal() || run.evidenceSeq <= run.reportedSeq || run.evidenceSeq < 1) return;
+            client.reportEvidence(ChatGptB1RunStore.evidencePayload(this));
+            ChatGptB1RunStore.markReported(this, run.evidenceSeq);
+        } catch (Exception ignored) {
+            // Heartbeat loop will retry idempotently on the next cycle.
         }
     }
 
