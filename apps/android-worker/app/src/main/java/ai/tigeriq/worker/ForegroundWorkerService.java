@@ -108,6 +108,9 @@ public final class ForegroundWorkerService extends Service {
                         }
                         MobileTaskStore.markResultReported(this);
                     }
+                    reportPendingB1Evidence(client);
+                    run = ChatGptB1RunStore.read(this);
+                    if (run.evidenceSeq > run.reportedSeq) return;
                     MobileTaskStore.clear(this);
                     taskResumeAttempted = false;
                     lastLeaseRenewAt = 0L;
@@ -141,6 +144,11 @@ public final class ForegroundWorkerService extends Service {
                 return;
             }
 
+            if (run.terminal() && run.evidenceSeq > run.reportedSeq) {
+                reportPendingB1Evidence(client);
+                run = ChatGptB1RunStore.read(this);
+                if (run.evidenceSeq > run.reportedSeq) return;
+            }
             if (run.active()) return;
 
             JSONObject leased = client.pollLease();
@@ -170,7 +178,9 @@ public final class ForegroundWorkerService extends Service {
 
     private void autoUpdate() {
         try {
-            if (ChatGptB1RunStore.read(this).active() || MobileTaskStore.read(this).present()) return;
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+            boolean evidencePending = run.terminal() && run.evidenceSeq > run.reportedSeq;
+            if (run.active() || evidencePending || MobileTaskStore.read(this).present()) return;
             WorkerUpdateEngine.checkAndInstall(this, false);
         } catch (Exception error) {
             String message = error.getMessage();
