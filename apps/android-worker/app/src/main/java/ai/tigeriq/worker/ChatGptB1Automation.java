@@ -74,7 +74,7 @@ public final class ChatGptB1Automation {
         if (!"INPUT_READY".equals(s.state)) return;
         if (s.sentCycle == s.cycle) return;
 
-        AccessibilityNodeInfo send = findSendControl(root);
+        AccessibilityNodeInfo send = findSendControl(root, input);
         if (send == null) {
             // Text has been set; wait for the provider to render its semantic send control.
             return;
@@ -106,23 +106,108 @@ public final class ChatGptB1Automation {
         return best;
     }
 
-    public static AccessibilityNodeInfo findSendControl(AccessibilityNodeInfo root) {
+    public static AccessibilityNodeInfo findSendControl(
+        AccessibilityNodeInfo root,
+        AccessibilityNodeInfo composerInput
+    ) {
         if (root == null) return null;
-        AccessibilityNodeInfo best = null;
-        int bestScore = Integer.MIN_VALUE;
+
+        // Primary path: the semantic label may live on an icon/child while the action is on a parent.
         for (AccessibilityNodeInfo node : nodes(root)) {
-            if (!node.isVisibleToUser() || !node.isClickable()) continue;
+            if (!node.isVisibleToUser()) continue;
             String label = searchable(node);
-            if (containsAny(label, "microphone", "mic", "voice", "camera", "photo", "attach", "đính kèm", "gọi thoại", "call")) continue;
-            int score = 0;
-            if (containsAny(label, "send", "gửi", "submit", "composer_send", "send_button")) score += 120;
-            if (label.contains("button")) score += 5;
-            if (score > bestScore && score >= 100) {
-                best = node;
-                bestScore = score;
+            if (!isSendLabel(label)) continue;
+            AccessibilityNodeInfo clickable = nearestClickable(node, 4);
+            if (clickable != null && clickable.isEnabled() && !isForbiddenControl(searchable(clickable))) {
+                return clickable;
             }
         }
-        return best;
+
+        // Safe semantic fallback: stay inside the smallest composer subtree and only pick a
+        // unique icon-like clickable control after excluding known non-send controls.
+        AccessibilityNodeInfo scope = composerInput == null ? null : composerInput.getParent();
+        for (int depth = 0; scope != null && depth < 4; depth++) {
+            AccessibilityNodeInfo candidate = uniqueComposerAction(scope, composerInput);
+            if (candidate != null) return candidate;
+            scope = scope.getParent();
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo nearestClickable(AccessibilityNodeInfo node, int maxParents) {
+        AccessibilityNodeInfo current = node;
+        for (int depth = 0; current != null && depth <= maxParents; depth++) {
+            if (current.isVisibleToUser() && current.isEnabled() && current.isClickable()) return current;
+            current = current.getParent();
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo uniqueComposerAction(
+        AccessibilityNodeInfo scope,
+        AccessibilityNodeInfo composerInput
+    ) {
+        AccessibilityNodeInfo best = null;
+        int bestScore = Integer.MIN_VALUE;
+        int secondScore = Integer.MIN_VALUE;
+
+        for (AccessibilityNodeInfo node : nodes(scope)) {
+            if (!node.isVisibleToUser() || !node.isEnabled() || !node.isClickable()) continue;
+            if (sameNode(node, composerInput) || node.isEditable()) continue;
+
+            String label = searchable(node);
+            if (isForbiddenControl(label)) continue;
+
+            if (isSendLabel(label)) {
+                AccessibilityNodeInfo clickable = nearestClickable(node, 2);
+                if (clickable != null) return clickable;
+            }
+
+            int score = 0;
+            String className = normalize(String.valueOf(node.getClassName()));
+            String text = text(node.getText());
+            String description = text(node.getContentDescription());
+            String viewId = text(node.getViewIdResourceName());
+
+            if (className.contains("button") || className.contains("imagebutton")) score += 50;
+            if (text.isEmpty()) score += 15;
+            if (description.isEmpty()) score += 15;
+            if (viewId.isEmpty()) score += 10;
+            if (node.getChildCount() <= 2) score += 10;
+            if (containsAny(label, "arrow", "up", "mũi tên")) score += 25;
+
+            if (score > bestScore) {
+                secondScore = bestScore;
+                bestScore = score;
+                best = node;
+            } else if (score > secondScore) {
+                secondScore = score;
+            }
+        }
+
+        // Do not guess when several controls look equally plausible.
+        return best != null && bestScore >= 70 && bestScore - secondScore >= 20 ? best : null;
+    }
+
+    private static boolean isSendLabel(String label) {
+        return containsAny(
+            label,
+            "send", "gửi", "submit", "send message", "send prompt",
+            "composer_send", "send_button", "arrow up", "up arrow", "mũi tên lên"
+        );
+    }
+
+    private static boolean isForbiddenControl(String label) {
+        return containsAny(
+            label,
+            "microphone", "mic", "voice", "camera", "photo", "attach", "đính kèm",
+            "gọi thoại", "call", "plus", "add", "expand", "fullscreen", "tools",
+            "search", "browse", "web", "settings", "menu", "more"
+        );
+    }
+
+    private static boolean sameNode(AccessibilityNodeInfo left, AccessibilityNodeInfo right) {
+        return left != null && right != null && left.equals(right);
     }
 
     public static boolean treeContains(AccessibilityNodeInfo root, String needle) {
