@@ -11,12 +11,25 @@ $cleanupOk=$true
 $failure=$null
 $receipt=$null
 
+function Resolve-AccountSid([string]$account) {
+  try{return (New-Object Security.Principal.NTAccount($account)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{return ''}
+}
+function Test-InteractiveTokenLogon([string]$value) {
+  return @('Interactive','InteractiveToken','3') -contains $value
+}
+function Test-LimitedRunLevel([string]$value) {
+  return @('Limited','LeastPrivilege','0') -contains $value
+}
+
 function Safe-BridgeFailureCode([string]$message) {
   $allowed=@(
     'V020_USER_CONTEXT_UNAVAILABLE',
     'V020_USER_CONTEXT_RUNNER_MISSING',
     'V020_USER_CONTEXT_TASK_COLLISION',
     'V020_USER_CONTEXT_TASK_REGISTER_FAILED',
+    'V020_USER_CONTEXT_TASK_USER_MISMATCH',
+    'V020_USER_CONTEXT_TASK_LOGON_MISMATCH',
+    'V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH',
     'V020_USER_CONTEXT_TASK_START_FAILED',
     'V020_USER_CONTEXT_TASK_TIMEOUT',
     'V020_USER_CONTEXT_RECEIPT_INVALID',
@@ -49,20 +62,24 @@ function Safe-BridgeFailureCode([string]$message) {
 function Assert-ExistingTaskSafe($task) {
   if(-not $task){return}
   $principal=[string]$task.Principal.UserId
+  $principalSid=Resolve-AccountSid $principal
+  $expectedSid=Resolve-AccountSid $ExpectedUser
   $logonType=[string]$task.Principal.LogonType
   $runLevel=[string]$task.Principal.RunLevel
   $action=@($task.Actions|Select-Object -First 1)
   $exe=[string]$action.Execute
   $args=[string]$action.Arguments
-  if($principal -ine $ExpectedUser -or $logonType -notin @('Interactive','InteractiveToken') -or $runLevel -ine 'Limited' -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
+  if(-not $principalSid -or -not $expectedSid -or $principalSid -ne $expectedSid -or -not(Test-InteractiveTokenLogon $logonType) -or -not(Test-LimitedRunLevel $runLevel) -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
     throw 'V020_USER_CONTEXT_TASK_COLLISION'
   }
 }
 
 try {
   if(-not(Test-Path -LiteralPath $Runner -PathType Leaf)){throw 'V020_USER_CONTEXT_RUNNER_MISSING'}
+  $expectedSid=Resolve-AccountSid $ExpectedUser
   $activeUser=[string](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName
-  if($activeUser -ine $ExpectedUser){throw 'V020_USER_CONTEXT_UNAVAILABLE'}
+  $activeSid=Resolve-AccountSid $activeUser
+  if(-not $expectedSid -or -not $activeSid -or $activeSid -ne $expectedSid){throw 'V020_USER_CONTEXT_UNAVAILABLE'}
 
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ReceiptPath)|Out-Null
   Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction SilentlyContinue
@@ -83,10 +100,13 @@ try {
   $registered=$true
 
   $fresh=Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-  if([string]$fresh.Principal.UserId -ine $ExpectedUser){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
+  $freshUser=[string]$fresh.Principal.UserId
+  $freshUserSid=Resolve-AccountSid $freshUser
+  if(-not $freshUserSid -or $freshUserSid -ne $expectedSid){throw 'V020_USER_CONTEXT_TASK_USER_MISMATCH'}
   $freshLogonType=[string]$fresh.Principal.LogonType
-  if($freshLogonType -notin @('Interactive','InteractiveToken')){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
-  if([string]$fresh.Principal.RunLevel -ine 'Limited'){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
+  if(-not(Test-InteractiveTokenLogon $freshLogonType)){throw 'V020_USER_CONTEXT_TASK_LOGON_MISMATCH'}
+  $freshRunLevel=[string]$fresh.Principal.RunLevel
+  if(-not(Test-LimitedRunLevel $freshRunLevel)){throw 'V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH'}
 
   Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 
