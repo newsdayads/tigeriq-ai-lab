@@ -36,7 +36,7 @@ v0.17 defines the current fail-closed Project binding contract:
 - a real semantic click on Project `TigerIQ AI Lab` remains an accepted binding path;
 - when this ChatGPT build emits no usable click event, a no-click path is allowed only from a stable active-Project title signal plus a usable composer;
 - exact conversation text `TigerIQ AI Lab` is insufficient and must not bind;
-- the title candidate must be outside clickable/editable/scrollable content and expose heading/header/title semantics;
+- the title candidate must be outside clickable/editable/scrollable content and expose both Project-specific structural semantics and heading/header/title semantics;
 - stable-context samples are scoped to one `runId` and are cleared when the run ends, ChatGPT loses foreground context, or Accessibility is interrupted;
 - stable binding requires at least 3 fresh samples spanning at least 1200 ms.
 
