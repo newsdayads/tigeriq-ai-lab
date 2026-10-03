@@ -49,10 +49,12 @@ function Safe-BridgeFailureCode([string]$message) {
 function Assert-ExistingTaskSafe($task) {
   if(-not $task){return}
   $principal=[string]$task.Principal.UserId
+  $logonType=[string]$task.Principal.LogonType
+  $runLevel=[string]$task.Principal.RunLevel
   $action=@($task.Actions|Select-Object -First 1)
   $exe=[string]$action.Execute
   $args=[string]$action.Arguments
-  if($principal -ine $ExpectedUser -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
+  if($principal -ine $ExpectedUser -or $logonType -notin @('Interactive','InteractiveToken') -or $runLevel -ine 'Limited' -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
     throw 'V020_USER_CONTEXT_TASK_COLLISION'
   }
 }
@@ -82,8 +84,9 @@ try {
 
   $fresh=Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
   if([string]$fresh.Principal.UserId -ine $ExpectedUser){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
-  if([string]$fresh.Principal.LogonType -notmatch 'Interactive'){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
-  if([string]$fresh.Principal.RunLevel -match 'Highest'){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
+  $freshLogonType=[string]$fresh.Principal.LogonType
+  if($freshLogonType -notin @('Interactive','InteractiveToken')){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
+  if([string]$fresh.Principal.RunLevel -ine 'Limited'){throw 'V020_USER_CONTEXT_TASK_REGISTER_FAILED'}
 
   Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 
