@@ -41,11 +41,16 @@ describe('ChatGPT B1 pilot contract', () => {
     expect(service).toContain('LOCAL_CLICKABLE_SCOPE');
     expect(service).toContain('CLICK_REJECTED');
     expect(service).toContain('maybeBindProjectFromStableContext');
-    expect(service).toContain('PROJECT_STABLE_MIN_SAMPLES = 3');
-    expect(service).toContain('PROJECT_STABLE_MIN_MS = 1200L');
+    expect(service).toContain('projectContextRunId');
+    expect(service).toContain('clearProjectContextCandidate');
+    expect(service).toContain('shouldBindRequiredProjectFromStableContext');
     expect(service).toContain('CONTEXT_CANDIDATE');
     expect(service).toContain('STABLE_PROJECT_CONTEXT');
-    expect(adapter).toContain('treeContainsExactLabelOutsideClickableNavigation');
+    expect(adapter).toContain('treeContainsExactProjectTitleSignal');
+    expect(adapter).toContain('isScrollable()');
+    expect(adapter).toContain('isHeading()');
+    expect(adapter).toContain('hasProjectTitleStructure');
+    expect(adapter).not.toContain('treeContainsExactLabelOutsideClickableNavigation');
     expect(service).toContain('findComposerInput(root) != null');
     expect(service).toContain('markProjectBound');
     expect(adapter).toContain('if (!s.projectBound) return;');
@@ -143,8 +148,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 16 for stable Project context verification', () => {
-    expect(gradle).toContain('versionCode = 16');
-    expect(gradle).toContain('versionName = "0.16.0-stable-project-context"');
+  it('publishes versionCode 17 for Project context regression hardening', () => {
+    expect(gradle).toContain('versionCode = 17');
+    expect(gradle).toContain('versionName = "0.17.0-project-context-regression-fix"');
   });
 });
