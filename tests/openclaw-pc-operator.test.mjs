@@ -373,8 +373,8 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("action === 'android_worker_export_v020_signed_apk_chunk'");
     expect(source).toContain("TIQ Worker v0.20.apk");
     expect(source).toContain("F2A8F279033EC832764370A50A34B51B8D29586AF6D9AE7B8957EA81E563A04D");
-    expect(source).toContain("chunkBytes: 12000");
-    expect(source).toContain("chunkIndex > 15");
+    expect(source).toContain("chunkBytes: 3000");
+    expect(source).toContain("chunkIndex > 31");
     expect(source).toContain("ANDROID_V020_EXPORT_APK_SHA256_MISMATCH");
     expect(source).toContain("chunk.toString('base64')");
     expect(source).not.toContain("exportAndroidWorkerV020SignedApkChunk(input?.path");
