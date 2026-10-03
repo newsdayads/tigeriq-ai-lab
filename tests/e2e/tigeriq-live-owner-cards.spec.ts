@@ -18,7 +18,16 @@ const snapshot = {
     { number: 110, parentNumber: 100, title: '[P1][UI] Nhánh trình bày thẻ công việc', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P1', currentStep: 'Tổ chức thông tin theo cách người dùng đọc', nextStep: 'Gắn công việc thực thi' },
     { number: 111, parentNumber: 110, title: '[P1][UI] Xây thẻ công việc đọc là hiểu', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P1', employeeId: 'NV03', currentStep: 'Dựng mặt thẻ hiển thị việc đang làm', latestCompletedStep: 'Đã chốt cấu trúc card', nextStep: 'Kiểm tra browser desktop và mobile', targetPrNumber: 200, progressPercent: 70, progressSource: 'explicit_verified' },
     { number: 112, parentNumber: 111, title: '[P1][REVIEW] Kiểm tra thẻ công việc', status: 'RÀ SOÁT', workKind: 'WORK', priority: 'P1', reviewOnly: true, employeeId: 'NV12', currentStep: 'Kiểm tra card và graph', targetPrNumber: 200 },
-    { number: 113, parentNumber: 111, title: '[P1][RESULT] Xuất bản giao diện mới', status: 'CHỜ ANH SƠN DUYỆT', workKind: 'WORK', priority: 'P1', technicalComplete: true, latestCompletedStep: 'Production đã sẵn sàng', nextStep: 'Duyệt kết quả cuối', targetPrNumber: 200 }
+    { number: 113, parentNumber: 111, title: '[P1][RESULT] Xuất bản giao diện mới', status: 'CHỜ ANH SƠN DUYỆT', workKind: 'WORK', priority: 'P1', technicalComplete: true, latestCompletedStep: 'Production đã sẵn sàng', nextStep: 'Duyệt kết quả cuối', targetPrNumber: 200 },
+    ...Array.from({ length: 12 }, (_, i) => ({
+      number: 300 + i,
+      title: '[P2][TEST] Việc phụ '+String(i + 1).padStart(2, '0'),
+      status: 'UNKNOWN',
+      workKind: 'WORK',
+      priority: 'P2',
+      currentStep: null,
+      nextStep: 'Chờ điều phối'
+    }))
   ],
   activeWork: [
     { number: 111, parentNumber: 110, title: '[P1][UI] Xây thẻ công việc đọc là hiểu', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P1', employeeId: 'NV03', currentStep: 'Dựng mặt thẻ hiển thị việc đang làm', latestCompletedStep: 'Đã chốt cấu trúc card', nextStep: 'Kiểm tra browser desktop và mobile', targetPrNumber: 200, progressPercent: 70, progressSource: 'explicit_verified' }
@@ -88,4 +97,31 @@ test('Owner workflow remains readable without horizontal overflow on mobile', as
   });
   expect(metrics.scroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.edgeDisplay).toBe('none');
+});
+
+test('work-card picker stays readable with many open packages on mobile and selects active work first', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openTiger(page);
+
+  await expect(page.locator('.flow-package-tabs')).toHaveCount(0);
+  const choices = page.locator('.flow-package-choice');
+  await expect(choices).toHaveCount(13);
+
+  const selected = page.locator('.flow-package-choice.active');
+  await expect(selected).toContainText('Làm giao diện TigerIQ dễ hiểu');
+  await expect(selected).toContainText('NV03');
+  await expect(selected).toContainText('Dựng mặt thẻ hiển thị việc đang làm');
+
+  const box = await selected.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(260);
+
+  const metrics = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    documentScroll: document.documentElement.scrollWidth,
+    pickerClient: document.querySelector('.flow-package-list')?.clientWidth ?? 0,
+    pickerScroll: document.querySelector('.flow-package-list')?.scrollWidth ?? 0
+  }));
+  expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
+  expect(metrics.pickerScroll).toBeGreaterThan(metrics.pickerClient);
 });
