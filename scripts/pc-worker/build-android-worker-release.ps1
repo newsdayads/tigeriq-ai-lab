@@ -29,8 +29,36 @@ foreach ($required in @($dpapiKeystore,$dpapiPasswordBlob,$aliasFile)) {
 }
 
 $workerDir = Join-Path $RepoRoot 'apps\android-worker'
-$gradle = Join-Path $workerDir 'gradlew.bat'
-if (-not (Test-Path -LiteralPath $gradle -PathType Leaf)) { throw 'GRADLE_WRAPPER_MISSING' }
+
+function Resolve-GradleCommand {
+  $wrapper = Join-Path $workerDir 'gradlew.bat'
+  if (Test-Path -LiteralPath $wrapper -PathType Leaf) { return $wrapper }
+
+  foreach ($name in @('gradle.bat','gradle')) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:GRADLE_HOME)) {
+    $candidate = Join-Path $env:GRADLE_HOME 'bin\gradle.bat'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $cacheRoot = Join-Path $env:USERPROFILE '.gradle\wrapper\dists\gradle-8.7-bin'
+    if (Test-Path -LiteralPath $cacheRoot -PathType Container) {
+      $cached = Get-ChildItem -LiteralPath $cacheRoot -Filter 'gradle.bat' -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName.EndsWith('\gradle-8.7\bin\gradle.bat',[System.StringComparison]::OrdinalIgnoreCase) } |
+        Sort-Object FullName |
+        Select-Object -First 1
+      if ($cached) { return $cached.FullName }
+    }
+  }
+
+  throw 'GRADLE_COMMAND_MISSING: use the existing Gradle 8.7 installation/cache; no network install is performed by the release builder.'
+}
+
+$gradle = Resolve-GradleCommand
 
 $versionLine = Select-String -Path (Join-Path $workerDir 'app\build.gradle.kts') -Pattern 'versionName\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $versionLine) { throw 'WORKER_VERSION_NOT_FOUND' }
@@ -40,12 +68,11 @@ $releaseDir = Join-Path $ReleaseRoot $version
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 $outApk = Join-Path $releaseDir "tigeriq-worker-$version.apk"
 
-# Force an unsigned Gradle release. The canonical signer is applied only by the DPAPI/stdin helper below.
 Remove-Item Env:TIGERIQ_ANDROID_KEYSTORE,Env:TIGERIQ_ANDROID_KEY_ALIAS,Env:TIGERIQ_ANDROID_STORE_PASSWORD_FILE,Env:TIGERIQ_ANDROID_KEY_PASSWORD_FILE -ErrorAction SilentlyContinue
 
 try {
   Push-Location $workerDir
-  & $gradle clean :app:assembleRelease
+  & $gradle --no-daemon clean :app:assembleRelease
   if ($LASTEXITCODE -ne 0) { throw 'ANDROID_RELEASE_BUILD_FAILED' }
 } finally {
   Pop-Location
