@@ -220,6 +220,19 @@ public final class ChatGptB1Automation {
         return false;
     }
 
+    public static boolean treeContainsExactLabel(AccessibilityNodeInfo root, String label) {
+        String wanted = normalize(label);
+        if (wanted.isEmpty()) return false;
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (wanted.equals(normalize(text(node.getText())))
+                || wanted.equals(normalize(text(node.getContentDescription())))
+                || wanted.equals(normalize(text(node.getHintText())))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean treeContainsAny(AccessibilityNodeInfo root, String... needles) {
         for (AccessibilityNodeInfo node : nodes(root)) {
             String label = searchable(node);

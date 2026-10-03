@@ -11,9 +11,9 @@ import java.util.UUID;
 public final class ChatGptB1RunStore {
     public static final String PREFS = "tigeriq-chatgpt-b1";
     public static final String EXPECTED_PREFIX = "TIGERIQ_B1_OK_";
-    public static final String REQUIRED_PROJECT = "TigerIQ AI Lab";
-    public static final long MIN_FILL_TO_SEND_MS = 3000L;
-    public static final long INTER_CYCLE_COOLDOWN_MS = 6000L;
+    public static final String REQUIRED_PROJECT = ChatGptB1Policy.REQUIRED_PROJECT;
+    public static final long MIN_FILL_TO_SEND_MS = ChatGptB1Policy.MIN_FILL_TO_SEND_MS;
+    public static final long INTER_CYCLE_COOLDOWN_MS = ChatGptB1Policy.INTER_CYCLE_COOLDOWN_MS;
 
     private static final String K_RUN_ID = "runId";
     private static final String K_STATE = "state";
@@ -127,7 +127,7 @@ public final class ChatGptB1RunStore {
     public static void markInputReady(Context context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(K_STATE, "INPUT_READY")
-            .putLong(K_NEXT_ACTION_AT, System.currentTimeMillis() + MIN_FILL_TO_SEND_MS)
+            .putLong(K_NEXT_ACTION_AT, ChatGptB1Policy.nextActionAfterFill(System.currentTimeMillis()))
             .putString(K_LAST_ERROR, "")
             .apply();
     }
@@ -188,7 +188,7 @@ public final class ChatGptB1RunStore {
             .putInt(K_CYCLE, nextCycle)
             .putLong(K_CYCLE_STARTED_AT, now)
             .putLong(K_SENT_AT, 0L)
-            .putLong(K_NEXT_ACTION_AT, now + INTER_CYCLE_COOLDOWN_MS)
+            .putLong(K_NEXT_ACTION_AT, ChatGptB1Policy.nextActionAfterCycle(now))
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
             .putString(K_LATENCIES, latencies)
