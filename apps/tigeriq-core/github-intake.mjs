@@ -282,7 +282,7 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
-const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','process_list','tcp_probe','file_read','file_list','file_stat','paperclip_lab_preflight','paperclip_lab_health']);
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
