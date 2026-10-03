@@ -28,6 +28,44 @@ function Resolve-Tool([string]$ExplicitPath, [string[]]$Names) {
   throw 'ANDROID_BUILD_TOOL_REQUIRED: provide an explicit tool path.'
 }
 
+function Resolve-AndroidBuildTool([string]$ExplicitPath, [string[]]$Names) {
+  if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+    return Resolve-Tool $ExplicitPath $Names
+  }
+
+  foreach ($name in $Names) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+  }
+
+  $sdkRoots = @(
+    $env:ANDROID_SDK_ROOT,
+    $env:ANDROID_HOME,
+    $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Android\Sdk' } else { $null })
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+  foreach ($sdkRoot in $sdkRoots) {
+    $buildToolsRoot = Join-Path $sdkRoot 'build-tools'
+    if (-not (Test-Path -LiteralPath $buildToolsRoot -PathType Container)) { continue }
+
+    $versions = Get-ChildItem -LiteralPath $buildToolsRoot -Directory -ErrorAction SilentlyContinue |
+      Sort-Object {
+        try { [version]$_.Name } catch { [version]'0.0' }
+      } -Descending
+
+    foreach ($versionDir in $versions) {
+      foreach ($name in $Names) {
+        $candidate = Join-Path $versionDir.FullName $name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+          return $candidate
+        }
+      }
+    }
+  }
+
+  throw 'ANDROID_BUILD_TOOL_REQUIRED: provide TIGERIQ_APKSIGNER/TIGERIQ_ZIPALIGN or install Android SDK build-tools.'
+}
+
 function Quote-ProcessArg([string]$Value) {
   return '"' + ($Value -replace '"', '\"') + '"'
 }
@@ -150,8 +188,8 @@ if ([string]::IsNullOrWhiteSpace($alias)) {
   throw 'STABLE_SIGNING_ALIAS_REQUIRED'
 }
 
-$apksignerExe = Resolve-Tool $ApkSigner @('apksigner.bat', 'apksigner')
-$zipalignExe = Resolve-Tool $ZipAlign @('zipalign.exe', 'zipalign')
+$apksignerExe = Resolve-AndroidBuildTool $ApkSigner @('apksigner.bat', 'apksigner')
+$zipalignExe = Resolve-AndroidBuildTool $ZipAlign @('zipalign.exe', 'zipalign')
 
 $outputDir = Split-Path -Parent $OutputApk
 if ([string]::IsNullOrWhiteSpace($outputDir)) {
