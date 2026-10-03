@@ -40,6 +40,12 @@ export function mobileTaskTerminalDecision({status='',currentDigest='',incomingR
   if(String(currentDigest||'')===digest)return {accept:false,idempotent:true,conflict:false,digest};
   return {accept:false,idempotent:false,conflict:true,digest};
 }
+export function mobileTaskLeaseFresh({currentLeaseId='',leaseId='',leaseExpiresAt='',now=Date.now()}={}) {
+  const current=String(currentLeaseId||'');
+  const incoming=String(leaseId||'');
+  const expiresAt=new Date(leaseExpiresAt).getTime();
+  return Boolean(current&&incoming&&current===incoming&&Number.isFinite(expiresAt)&&expiresAt>Number(now));
+}
 export function verifyCoreEnqueueAuth(req,coreAuthToken='') {
   const expected=String(coreAuthToken||'').trim();
   if(!expected)return false;
@@ -392,10 +398,13 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
         if(task.target_node_id!==device.node_id||task.employee_id!==device.employee_id){
           await client.query('rollback');return send(res,409,{ok:false,error:'mobile_task_wrong_worker'});
         }
+        if(!mobileTaskLeaseFresh({currentLeaseId:task.lease_id,leaseId,leaseExpiresAt:task.lease_expires_at})){
+          await client.query('rollback');return send(res,409,{ok:false,error:'mobile_lease_stale'});
+        }
         const decision=mobileTaskTerminalDecision({status:task.status,currentDigest:task.result_digest,incomingResult:result});
         if(decision.idempotent){await client.query('commit');return send(res,200,{ok:true,idempotent:true,taskId,status:task.status});}
         if(decision.conflict){await client.query('rollback');return send(res,409,{ok:false,error:'mobile_task_result_conflict'});}
-        if(task.status!=='leased'||task.lease_id!==leaseId||new Date(task.lease_expires_at).getTime()<=Date.now()){
+        if(task.status!=='leased'){
           await client.query('rollback');return send(res,409,{ok:false,error:'mobile_lease_stale'});
         }
         const terminal=String(result.status||'completed').toLowerCase()==='failed'?'failed':'completed';
