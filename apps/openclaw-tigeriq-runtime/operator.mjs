@@ -941,19 +941,26 @@ async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
 
 
 const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
-async function boundedLocalJson(url,{method='GET',payload,fetchImpl=fetch}={}){
+async function boundedLocalJson(url,{method='GET',payload,fetchImpl=fetch,stage='UNSPECIFIED'}={}){
   const parsed=new URL(url);
   if(parsed.protocol!=='http:'||!['127.0.0.1','localhost','::1'].includes(parsed.hostname))throw new Error('TIGERIQ_CORE_UI_RECONCILE_LOOPBACK_ONLY');
   if(![8795,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');
-  const response=await fetchImpl(parsed.toString(),{
-    method,
-    headers:payload===undefined?{accept:'application/json'}:{accept:'application/json','content-type':'application/json'},
-    body:payload===undefined?undefined:JSON.stringify(payload),
-    signal:AbortSignal.timeout(5000),
-  });
+  let response;
+  try{
+    response=await fetchImpl(parsed.toString(),{
+      method,
+      headers:payload===undefined?{accept:'application/json'}:{accept:'application/json','content-type':'application/json'},
+      body:payload===undefined?undefined:JSON.stringify(payload),
+      signal:AbortSignal.timeout(5000),
+    });
+  }catch(error){
+    const raw=String(error?.cause?.code||error?.code||error?.message||error||'UNKNOWN');
+    const reason=raw.replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,96)||'UNKNOWN';
+    throw new Error('TIGERIQ_CORE_UI_RECONCILE_FETCH_FAILED_'+stage+':'+reason);
+  }
   let data={};
-  try{data=await response.json();}catch{throw new Error('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID');}
-  if(!response.ok)throw new Error('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+response.status);
+  try{data=await response.json();}catch{throw new Error('TIGERIQ_CORE_UI_RECONCILE_RESPONSE_INVALID_'+stage);}
+  if(!response.ok)throw new Error('TIGERIQ_CORE_UI_RECONCILE_HTTP_'+stage+'_'+response.status);
   return data;
 }
 
@@ -963,13 +970,13 @@ export async function reconcileCancelledCoreUiJob(input={},options={}){
   const fetchImpl=options?.fetchImpl||fetch;
   const controllerBase='http://127.0.0.1:8798';
   const coreBase='http://127.0.0.1:8795';
-  const local=await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job/status',{fetchImpl});
+  const local=await boundedLocalJson(controllerBase+'/api/utility/workers/'+workerId+'/job/status',{fetchImpl,stage:'CONTROLLER_STATUS'});
   const active=local?.active&&typeof local.active==='object'&&!Array.isArray(local.active)?local.active:null;
   if(!active)return {status:'CORE_UI_RECONCILE_NO_ACTIVE_JOB',workerId,clearedJobId:null,nextJobId:null};
   const jobId=String(active.jobId||'').trim();
   if(!/^GH-\d+(?:-R[a-f0-9]{12})?$/i.test(jobId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_JOB_ID_INVALID');
   if(String(active.source||'')!=='CORE_UI')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_INVALID');
-  const projected=await boundedLocalJson(coreBase+'/api/ui-assignment?previousJobId='+encodeURIComponent(jobId),{fetchImpl});
+  const projected=await boundedLocalJson(coreBase+'/api/ui-assignment?previousJobId='+encodeURIComponent(jobId),{fetchImpl,stage:'CORE_PREVIOUS'});
   const previous=projected?.previousJob&&typeof projected.previousJob==='object'?projected.previousJob:null;
   if(!previous||String(previous.jobId||'')!==jobId)throw new Error('TIGERIQ_CORE_UI_RECONCILE_PREVIOUS_ID_MISMATCH');
   if(String(previous.status||'').toUpperCase()!=='CANCELLED')throw new Error('TIGERIQ_CORE_UI_RECONCILE_SOURCE_NOT_CANCELLED');
@@ -982,8 +989,9 @@ export async function reconcileCancelledCoreUiJob(input={},options={}){
       result:'Core UI source is terminal CANCELLED; stale local ledger released for next assignment',
     },
     fetchImpl,
+    stage:'CONTROLLER_BLOCK',
   });
-  const after=await boundedLocalJson(coreBase+'/api/ui-assignment',{fetchImpl});
+  const after=await boundedLocalJson(coreBase+'/api/ui-assignment',{fetchImpl,stage:'CORE_NEXT'});
   const candidates=Array.isArray(after?.nextJobs)?after.nextJobs:(after?.nextJob?[after.nextJob]:[]);
   const next=candidates.find((item)=>String(item?.workerId||'')===workerId&&item?.executable===true&&String(item?.status||'')==='READY')||null;
   return {
