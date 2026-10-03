@@ -282,6 +282,30 @@ body.drawer-open{overflow:hidden}
 @media(max-width:700px){.workflow-brief{grid-template-columns:1fr;padding:8px}.workflow-brief-main{grid-column:auto}.workflow-brief-cell{border-left:0;border-top:1px solid #28445d;padding:7px 0 0}.flow-cards{grid-template-columns:1fr}.flow-card{padding:10px}.flow-card-fact{grid-template-columns:62px minmax(0,1fr)}.flow-edge-layer{display:none}}
 </style>
 
+
+<style>
+/* #3506 readable work-card picker */
+.flow-package-picker{margin:0 0 10px}
+.flow-package-picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 7px}
+.flow-package-picker-head b{font-size:9px;letter-spacing:.07em;color:#84c9f6}
+.flow-package-picker-head span{font-size:8px;color:#718aa1}
+.flow-package-list{display:flex;gap:8px;overflow-x:auto;padding:0 0 7px;scroll-snap-type:x proximity;scrollbar-width:none}
+.flow-package-list::-webkit-scrollbar{display:none}
+.flow-package-choice{appearance:none;flex:0 0 300px;scroll-snap-align:start;text-align:left;border:1px solid #294b68;background:linear-gradient(180deg,#0d2034,#0a1727);color:inherit;border-radius:13px;padding:10px 11px;font:inherit;cursor:pointer;min-width:0}
+.flow-package-choice.active{border-color:#65baf0;background:linear-gradient(180deg,#12314d,#0b1f32);box-shadow:0 0 0 1px rgba(101,186,240,.18) inset}
+.flow-package-choice-top{display:flex;align-items:center;gap:6px}
+.flow-package-choice-top span{font-size:8px;font-weight:900;color:#91a9bf}
+.flow-package-choice-top em{margin-left:auto;border:1px solid #35556f;border-radius:999px;padding:3px 6px;font-size:7.5px;font-style:normal;font-weight:900;color:#a8bed1}
+.flow-package-choice>b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:7px;font-size:11.5px;line-height:1.35;color:#eef5fb}
+.flow-package-choice>p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:6px 0 0;font-size:9px;line-height:1.4;color:#9db2c5}
+.flow-package-choice>small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:6px;padding-top:6px;border-top:1px dashed #26415a;font-size:7.8px;color:#7fbf9d}
+@media(max-width:700px){
+  .flow-package-choice{flex:0 0 min(82vw,330px);min-width:270px;padding:11px 12px}
+  .flow-package-choice>b{font-size:12px}
+  .workflow-brief{display:none}
+}
+</style>
+
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -670,6 +694,41 @@ function packageSummaryFromUnits(units){
   return counts;
 }
 
+function packageOwnerActiveNumbers(){
+  return new Set((snapshot?.activeWork||[]).map(row=>Number(row?.number)).filter(Boolean));
+}
+function packageOwnerFocus(pack){
+  const active=packageOwnerActiveNumbers();
+  return pack?.rows?.find(row=>active.has(Number(row?.number)))||pack?.focus||packageOperationalFocus(pack?.rows||[])||pack?.root||null;
+}
+function packageOwnerAttentionRank(pack){
+  const active=packageOwnerActiveNumbers();
+  if((pack?.rows||[]).some(row=>active.has(Number(row?.number))))return 0;
+  const state=String(pack?.aggregate?.state||'UNKNOWN').toUpperCase();
+  return ({OWNER_GATE:1,WORKING:2,REVIEW:3,VERIFY:3,BLOCKED:4,QUEUED:5,WAITING:5,OPEN:6,UNKNOWN:7,DONE:8})[state]??7;
+}
+function packageOwnerSorted(packages){
+  return [...packages].sort((a,b)=>packageOwnerAttentionRank(a)-packageOwnerAttentionRank(b)
+    ||priorityRank(workPriority(a.root))-priorityRank(workPriority(b.root))
+    ||Number(a.root.number)-Number(b.root.number));
+}
+function ownerPackagePicker(packages,selected){
+  if(!packages.length)return '';
+  const cards=packages.map(pack=>{
+    const focus=packageOwnerFocus(pack)||pack.root;
+    const status=workStatus(focus),worker=workerFrom(focus);
+    const current=ownerCardCurrent(focus)||ownerCardCurrent(pack.root)||ownerNextText(focus)||ownerNextText(pack.root)||String(pack.aggregate?.label||'').trim();
+    const done=ownerCardDone(focus)||ownerCardDone(pack.root);
+    return '<button type="button" class="flow-package-choice'+(Number(pack.root.number)===Number(selected)?' active':'')+'" data-flow-package="'+Number(pack.root.number)+'" aria-label="Chọn việc '+esc(displayTitle(pack.root.title))+'">'
+      +'<div class="flow-package-choice-top"><span>'+esc(worker)+'</span><em>'+esc(stateLabel[status]||pack.aggregate?.label||status)+'</em></div>'
+      +'<b>'+esc(displayTitle(pack.root.title))+'</b>'
+      +(current?'<p>'+esc(current)+'</p>':'')
+      +(done?'<small>Đã xong: '+esc(done)+'</small>':'')
+      +'</button>';
+  }).join('');
+  return '<section class="flow-package-picker" aria-label="Thẻ việc đang mở"><div class="flow-package-picker-head"><b>THẺ VIỆC ĐANG MỞ</b><span>'+packages.length+' việc</span></div><div class="flow-package-list">'+cards+'</div></section>';
+}
+
 function ownerCardCurrent(row){
   const direct=String(row?.currentStep||'').trim();
   if(direct)return direct;
@@ -733,9 +792,10 @@ function renderJobJourney(){
   if(!fresh){workPackageState=null;el.innerHTML='<div class="flow-empty"><b>Luồng công việc</b><span>Dữ liệu hiện tại đã cũ nên em không dựng luồng để tránh hiển thị sai.</span></div>';return}
   const packages=packageBuildAll();
   if(!packages.length){workPackageState=null;el.innerHTML='<div class="flow-empty"><b>Luồng công việc</b><span>Chưa có công việc đủ dữ liệu để dựng luồng.</span></div>';return}
-  const defaultPack=packages[0];
-  if(!selectedPackageNumber||!packages.some(pack=>Number(pack.root.number)===Number(selectedPackageNumber)))selectedPackageNumber=Number(defaultPack.root.number);
-  const pack=packages.find(item=>Number(item.root.number)===Number(selectedPackageNumber))||defaultPack;
+  const ownerPackages=packageOwnerSorted(packages);
+  const defaultPack=ownerPackages[0];
+  if(!selectedPackageNumber||!ownerPackages.some(pack=>Number(pack.root.number)===Number(selectedPackageNumber)))selectedPackageNumber=Number(defaultPack.root.number);
+  const pack=ownerPackages.find(item=>Number(item.root.number)===Number(selectedPackageNumber))||defaultPack;
   workPackageState={packages,selected:pack};
   const root=pack.root;
   const uniqueRows=rows=>[...new Map(rows.filter(Boolean).map(row=>[Number(row.number)||String(row.title),row])).values()];
@@ -799,7 +859,7 @@ function renderJobJourney(){
     ['05','KIỂM TRA','Review · verify · bằng chứng'],
     ['06','KẾT QUẢ','Đã hoàn tất hoặc chờ quyết định']
   ];
-  const tabs=packages.length>1?'<div class="flow-package-tabs">'+packages.map(item=>'<button type="button" class="'+(Number(item.root.number)===Number(pack.root.number)?'active':'')+'" data-flow-package="'+Number(item.root.number)+'">#'+Number(item.root.number)+' · '+esc(displayTitle(item.root.title))+'</button>').join('')+'</div>':'';
+  const picker=ownerPackagePicker(ownerPackages,Number(pack.root.number));
   const rowsHtml=stages.map((stage,index)=>{
     const items=stageCards[index];
     let cardsHtml='';
@@ -807,7 +867,7 @@ function renderJobJourney(){
     else cardsHtml=items.length?items.map(card).join(''):placeholder(index===4?'Chưa tới bước kiểm tra':index===5?'Chưa có kết quả cuối':'Chưa có dữ liệu ở bước này');
     return '<div class="flow-row '+(activeStage===index+1?'active':'')+'"><div class="flow-stage"><strong>'+stage[0]+'</strong><div><b>'+stage[1]+'</b><span>'+stage[2]+'</span></div></div><div class="flow-cards">'+cardsHtml+'</div></div>';
   }).join('');
-  const focus=packageOperationalFocus(pack.rows)||root;
+  const focus=packageOwnerFocus(pack)||root;
   const briefCurrent=ownerCardCurrent(focus)||displayTitle(focus.title),briefDone=ownerCardDone(focus)||'—',briefNext=ownerNextText(focus)||'—';
   const brief='<section class="workflow-brief"><div class="workflow-brief-main"><small>VIỆC ĐANG ĐƯỢC THEO DÕI</small><b>'+esc(displayTitle(root.title))+'</b><span>'+esc(workerFrom(focus))+' · '+esc(stateLabel[workStatus(focus)]||workStatus(focus))+'</span></div><div class="workflow-brief-cell"><small>Đang làm</small><span>'+esc(briefCurrent)+'</span></div><div class="workflow-brief-cell"><small>Đã xong gần nhất</small><span>'+esc(briefDone)+'</span></div><div class="workflow-brief-cell"><small>Tiếp theo</small><span>'+esc(briefNext)+'</span></div></section>';
   const graphEdges=[],edgeKeys=new Set();
@@ -835,7 +895,7 @@ function renderJobJourney(){
     let t='—';try{if(row?.updatedAt)t=new Date(row.updatedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}catch{}
     return '<div class="flow-log-row"><time>'+esc(t)+'</time><b>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</b><span>#'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</span></div>';
   }).join(''):'<div class="flow-log-empty">Chưa có sự kiện hoàn tất gần đây.</div>';
-  el.innerHTML=tabs+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG CÔNG VIỆC</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div>'+brief+'<div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
+  el.innerHTML=picker+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG CÔNG VIỆC</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div>'+brief+'<div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
   el.querySelectorAll('[data-flow-package]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-flow-package'));renderJobJourney()}));
   el.querySelectorAll('[data-flow-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-flow-row'));const row=pack.rows.find(item=>Number(item.number)===rowNumber)||pack.root;if(row)node.addEventListener('click',()=>openDrawer(row,node))});
   requestAnimationFrame(()=>renderFlowEdges(el,graphEdges));

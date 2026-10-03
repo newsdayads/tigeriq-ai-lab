@@ -88,4 +88,17 @@ describe('TigerIQ Live owner-readable workflow #3470', () => {
     expect(rootHtml).toContain('.flow-cards{grid-template-columns:1fr');
     expect(rootHtml).toContain('.flow-edge-layer{display:none}');
   });
+
+  it('replaces unreadable hash tabs with readable non-shrinking work cards and owner attention ranking', () => {
+    expect(rootHtml).toContain('THẺ VIỆC ĐANG MỞ');
+    expect(rootHtml).toContain('class="flow-package-choice');
+    expect(rootHtml).toContain('function packageOwnerAttentionRank(pack)');
+    expect(rootHtml).toContain('function packageOwnerFocus(pack)');
+    expect(rootHtml).toContain('const ownerPackages=packageOwnerSorted(packages)');
+    expect(rootHtml).toContain('const picker=ownerPackagePicker(ownerPackages,Number(pack.root.number))');
+    expect(rootHtml).not.toContain("const tabs=packages.length>1?");
+    expect(rootHtml).toContain('.flow-package-choice{appearance:none;flex:0 0 300px');
+    expect(rootHtml).toContain('.flow-package-choice{flex:0 0 min(82vw,330px);min-width:270px');
+  });
+
 });
