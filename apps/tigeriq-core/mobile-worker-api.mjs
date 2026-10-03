@@ -199,7 +199,7 @@ function isLoopbackPeer(req){
 }
 async function gateCV020Target(pool,{requireFresh=false}={}){
   const result=await pool.query(
-    `select employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,last_seen_at
        from tigeriq_mobile_devices
       where revoked=false and agent_version=$1
       order by last_seen_at desc nulls last`,
@@ -339,6 +339,7 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       const target=await gateCV020Target(pool,{requireFresh:true});
       if(!target.ok)return send(res,409,target);
       const employeeId=String(target.row.employee_id);
+      const targetNodeId=String(target.row.node_id);
       const specs=gateCV020TaskSpecs(employeeId);
       const client=await pool.connect();
       let created=0;
@@ -353,9 +354,9 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
             `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
              select $1,$2,node_id,employee_id,provider,$3,$4,$5
                from tigeriq_mobile_devices
-              where employee_id=$6 and revoked=false and agent_version=$7
+              where employee_id=$6 and node_id=$7 and revoked=false and agent_version=$8
               limit 1`,
-            [taskId,spec.idempotencyKey,spec.prompt,spec.expectedToken,runId,employeeId,GATE_C_V020_VERSION]
+            [taskId,spec.idempotencyKey,spec.prompt,spec.expectedToken,runId,employeeId,targetNodeId,GATE_C_V020_VERSION]
           );
           if(inserted.rowCount!==1)throw new Error('GATE_C_V020_TARGET_CHANGED');
           created++;
