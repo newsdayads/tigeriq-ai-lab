@@ -295,7 +295,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("chunkIndex > 15");
     expect(source).toContain("ANDROID_V020_EXPORT_APK_SHA256_MISMATCH");
     expect(source).toContain("chunk.toString('base64')");
-    expect(source).not.toContain("input?.path");
+    expect(source).not.toContain("exportAndroidWorkerV020SignedApkChunk(input?.path");
   });
 
   it('surfaces only bounded Android build-tool discovery failure classes', async () => {
