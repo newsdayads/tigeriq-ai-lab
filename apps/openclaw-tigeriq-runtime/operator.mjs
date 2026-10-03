@@ -571,8 +571,7 @@ const ANDROID_V020_CI_ARTIFACT = Object.freeze({
 async function signAndroidWorkerV020CiArtifact() {
   const spec = ANDROID_V020_CI_ARTIFACT;
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
-  const helper = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-android-worker-with-dpapi.ps1';
-  const secretsDir = 'D:\\TigerIQ\\Secrets\\AndroidSigning';
+  const wrapper = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1';
   const downloadDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\ci-artifact\\v0.20';
   const releaseDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.20.0-update-lease-guard';
   const unsignedApk = win.join(downloadDir, 'tigeriq-worker-unsigned-release.apk');
@@ -580,7 +579,7 @@ async function signAndroidWorkerV020CiArtifact() {
   const outputApk = win.join(releaseDir, 'TIQ Worker v0.20.apk');
   const manifestPath = win.join(releaseDir, 'release-manifest.json');
 
-  await realPathInsideRoots(helper);
+  await realPathInsideRoots(wrapper);
   await fs.rm(downloadDir, { recursive: true, force: true });
   await fs.mkdir(downloadDir, { recursive: true });
   await fs.mkdir(releaseDir, { recursive: true });
@@ -640,21 +639,11 @@ async function signAndroidWorkerV020CiArtifact() {
 
   const signed = await spawnBounded(
     'powershell.exe',
-    [
-      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
-      '-File',helper,
-      '-UnsignedApk',unsignedApk,
-      '-OutputApk',outputApk,
-      '-ExpectedUnsignedSha256',spec.expectedUnsignedSha256,
-      '-SecretsDir',secretsDir,
-      '-ApkSignerJar',apksignerJar,
-      '-ExpectedApkSignerJarSha256',spec.expectedApkSignerJarSha256,
-      '-PrealignedInput',
-    ],
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',wrapper],
     {
       cwd: repoRoot,
       timeoutSec: 120,
-      extraEnvKeys: ['LOCALAPPDATA', 'ANDROID_SDK_ROOT', 'ANDROID_HOME', 'JAVA_HOME'],
+      extraEnvKeys: ['JAVA_HOME', 'TIGERIQ_JAVA'],
     },
   );
   if (signed.timedOut) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_TIMEOUT');
@@ -667,42 +656,30 @@ async function signAndroidWorkerV020CiArtifact() {
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     try {
       const parsed = JSON.parse(lines[i]);
-      if (parsed?.status === 'ANDROID_WORKER_CANONICAL_SIGNING_READY') { receipt = parsed; break; }
+      if (parsed?.status === 'ANDROID_WORKER_STABLE_RELEASE_READY') { receipt = parsed; break; }
     } catch {}
   }
   if (!receipt) throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SIGN_RECEIPT_MISSING');
+  if (String(receipt.version || '') !== spec.expectedVersion) throw new Error('TIGERIQ_ANDROID_RELEASE_VERSION_MISMATCH');
+  if (String(receipt.unsignedApkSha256 || '').replaceAll(':','').toUpperCase() !== actualUnsignedSha256) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_UNSIGNED_SHA256_MISMATCH');
+  }
   if (String(receipt.certificateSha256 || '').replaceAll(':','').toUpperCase() !== spec.expectedSignerSha256) {
     throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
   }
-  if (receipt.v2 !== true || receipt.v3 !== true) throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNATURE_SCHEME_MISMATCH');
-  if (receipt.plaintextSecretPrinted !== false || receipt.plaintextSecretWrittenToDisk !== false) {
-    throw new Error('TIGERIQ_ANDROID_RELEASE_SECRET_OUTPUT_UNSAFE');
+  if (String(receipt.sourceSha || '').toLowerCase() !== spec.sourceHead
+      || String(receipt.sourceWorkflowRunId || '') !== spec.runId
+      || String(receipt.sourceArtifactId || '') !== spec.artifactId) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_ARTIFACT_MISMATCH');
   }
-  if (receipt.apksignerMode !== 'portable-pinned-jar' || receipt.prealignedInput !== true) {
-    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_TOOL_MODE_MISMATCH');
+  if (receipt.passwordTransport !== 'stdin-only' || receipt.secretsPrinted !== false
+      || receipt.apksignerMode !== 'portable-pinned-jar' || receipt.prealignedInput !== true) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_RECEIPT_UNSAFE');
   }
-  const signedSha256 = String(receipt.signedSha256 || '').replaceAll(':','').toUpperCase();
+  const signedSha256 = String(receipt.apkSha256 || '').replaceAll(':','').toUpperCase();
   if (!/^[0-9A-F]{64}$/.test(signedSha256)) throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNED_SHA256_INVALID');
-
-  const manifest = {
-    schema: 'tigeriq.android-worker.release.v1',
-    createdAt: new Date().toISOString(),
-    version: spec.expectedVersion,
-    sourceSha: spec.sourceHead,
-    sourceWorkflowRunId: spec.runId,
-    sourceArtifactId: spec.artifactId,
-    sourceArtifactName: spec.artifactName,
-    unsignedApkSha256: actualUnsignedSha256,
-    apksignerJarSha256: actualApkSignerJarSha256,
-    signerTool: 'portable-pinned-jar',
-    inputAlignment: 'ci-verified-prealigned',
-    apk: win.basename(outputApk),
-    apkSha256: signedSha256,
-    certificateSha256: spec.expectedSignerSha256,
-    signingIdentity: 'stable-private-pc01-dpapi-stdin',
-    secretsIncluded: false,
-  };
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+  await realPathInsideRoots(outputApk);
+  await realPathInsideRoots(manifestPath);
 
   return {
     status: 'ANDROID_WORKER_STABLE_RELEASE_READY',
