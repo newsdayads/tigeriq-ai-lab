@@ -5,6 +5,7 @@ import {
   assertTigerIQTaskName,
   trustedTigerIQTaskActionData,
   parseTaskListCsv,
+  parseTigerIQTaskNamesCsv,
   assertWritePathAllowed,
   resolveOperatorPath,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
@@ -126,10 +127,20 @@ describe('OpenClaw PC01 guarded local operator', () => {
     ]);
   });
 
-  it('keeps task_list as a fixed read-only schtasks query with no delete path', async () => {
+  it('extracts TigerIQ task names from the compact non-verbose inventory', () => {
+    const csv = [
+      String.raw`"\\TigerIQ Core 24x7","10/3/2026 1:00:00 PM","Ready"`,
+      String.raw`"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag","N/A","Ready"`,
+      String.raw`"PC01","\\TigerIQ Core Runtime Updater","N/A","Ready"`,
+    ].join('\r\n');
+    expect(parseTigerIQTaskNamesCsv(csv)).toEqual(['TigerIQ Core 24x7','TigerIQ Core Runtime Updater']);
+  });
+
+  it('keeps task_list read-only and avoids one verbose all-machine query', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'task_list'");
-    expect(source).toContain("['/Query', '/FO', 'CSV', '/V', '/NH']");
+    expect(source).toContain("['/Query', '/FO', 'CSV', '/NH']");
+    expect(source).toContain("['/Query', '/TN', taskName, '/FO', 'CSV', '/V', '/NH']");
     expect(source).toContain("scope: 'TigerIQ'");
     expect(source).not.toContain("['/Delete'");
   });
