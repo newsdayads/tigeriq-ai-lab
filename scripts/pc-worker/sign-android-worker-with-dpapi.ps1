@@ -271,7 +271,11 @@ try {
     $signerInput = $aligned
   }
 
-  $securePassword = ([IO.File]::ReadAllText($passwordBlob).Trim() | ConvertTo-SecureString)
+  try {
+    $securePassword = ([IO.File]::ReadAllText($passwordBlob).Trim() | ConvertTo-SecureString)
+  } catch {
+    throw 'DPAPI_PASSWORD_DECRYPT_FAILED'
+  }
 
   Invoke-ApkSignerWithSecureStdin $apksignerFile ($apksignerPrefixArgs + @(
     'sign',
