@@ -67,6 +67,16 @@ export async function initMobileWorkerTables(pool) {
       revoked boolean not null default false
     );
     create index if not exists tigeriq_mobile_devices_seen_idx on tigeriq_mobile_devices(last_seen_at desc);
+    create table if not exists tigeriq_mobile_evidence(
+      node_id text not null,
+      employee_id text not null,
+      kind text not null,
+      run_id text not null,
+      seq int not null,
+      payload jsonb not null,
+      created_at timestamptz not null default now(),
+      primary key(node_id,run_id,seq)
+    );
   `);
 }
 async function body(req,maxBytes=65536) {
@@ -216,6 +226,20 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
         [device.node_id,provider,JSON.stringify(capabilities)]
       );
       return send(res,200,{ok:true,employee:{employeeId:device.employee_id,department:device.department,role:device.role,provider,nodeId:device.node_id}});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/mobile/evidence'){
+      const input=await body(req);
+      const kind=text(input.kind,80);
+      const runId=text(input.runId,160);
+      const seq=Number(input.seq||0);
+      const payload=input.payload&&typeof input.payload==='object'?input.payload:{};
+      if(!kind||!runId||!Number.isInteger(seq)||seq<1)return send(res,400,{ok:false,error:'invalid_mobile_evidence'});
+      const inserted=await pool.query(
+        'insert into tigeriq_mobile_evidence(node_id,employee_id,kind,run_id,seq,payload) values($1,$2,$3,$4,$5,$6::jsonb) on conflict do nothing returning run_id',
+        [device.node_id,device.employee_id,kind,runId,seq,JSON.stringify(payload)]
+      );
+      await event('MOBILE_WORKER_EVIDENCE',{nodeId:device.node_id,employeeId:device.employee_id,kind,runId,seq});
+      return send(res,200,{ok:true,idempotent:inserted.rowCount===0});
     }
     if(req.method==='POST'&&url.pathname==='/api/mobile/heartbeat'){
       const input=await body(req);
