@@ -77,6 +77,16 @@ describe('NV02 completion watcher/autopilot',()=>{
   it('stops after FAILED/BLOCKED but reconciles CANCELLED work so Core can advance',()=>{for(const status of ['FAILED','BLOCKED'] as const){expect(decideAutoContinue(snapshot({previousJob:{jobId:'J1',workerId:'NV02',status,executable:true,priority:'P0',evidence:[{source:'GITHUB',ref:'x',verifiedAt:OBSERVED_AT}]}}),freshAutopilotState(),NOW)).toMatchObject({kind:'STOP',reason:`PREVIOUS_JOB_${status}`});}expect(decideAutoContinue(snapshot({previousJob:{jobId:'J1',workerId:'NV02',status:'CANCELLED',executable:false,priority:'P0'}}),freshAutopilotState(),NOW)).toMatchObject({kind:'DISPATCH',jobId:'JOB-2'});});
   it('fails closed on stale, uncorrelated, pending or uncertain state',()=>{expect(decideAutoContinue(snapshot(),freshAutopilotState(),NOW+600000)).toMatchObject({kind:'STOP',reason:'SNAPSHOT_STALE'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'OTHER'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),pendingJobId:'JOB-2'},NOW)).toMatchObject({kind:'BUSY'});expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),uncertainJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP'});});
   it('never duplicates the same job',()=>{expect(decideAutoContinue(snapshot(),{...freshAutopilotState(),lastDispatchedJobId:'JOB-2'},NOW)).toMatchObject({kind:'STOP',reason:'PREVIOUS_JOB_CORRELATION_MISMATCH'});});
+  it('accepts trusted Core transport priorities P3-P5 while invalid priorities still fail closed',()=>{
+    for(const priority of ['P3','P4','P5'] as const){
+      const current=snapshot();
+      current.nextJob={...current.nextJob!,priority};
+      expect(()=>validateExternalSnapshot(current)).not.toThrow();
+    }
+    const invalid=snapshot() as any;
+    invalid.nextJob={...invalid.nextJob,priority:'P9'};
+    expect(()=>validateExternalSnapshot(invalid)).toThrow('AUTOPILOT_NEXT_PRIORITY_INVALID');
+  });
   it('stops on gated risks and rejects snapshots without revision',()=>{expect(decideAutoContinue(snapshot({nextJob:{jobId:'J',workerId:'NV02',status:'READY',executable:true,priority:'P0',prompt:'x',riskFlags:['PRODUCTION_RELEASE'],coreSelected:true}}),{...freshAutopilotState(),lastDispatchedJobId:'JOB-1',lastDispatchedAt:'2026-09-15T00:59:58.000Z'},NOW)).toMatchObject({kind:'STOP'});expect(()=>validateExternalSnapshot({...snapshot(),revision:''})).toThrow('AUTOPILOT_SNAPSHOT_REVISION_REQUIRED');});
 });
 
