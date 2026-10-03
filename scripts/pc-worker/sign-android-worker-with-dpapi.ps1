@@ -91,8 +91,8 @@ function Quote-ProcessArg([string]$Value) {
   return '"' + ($Value -replace '"', '\"') + '"'
 }
 
-function New-ToolProcessStartInfo([string]$FileName, [string[]]$Args) {
-  $renderedArgs = (($Args | ForEach-Object {
+function New-ToolProcessStartInfo([string]$FileName, [string[]]$ToolArgs) {
+  $renderedArgs = (($ToolArgs | ForEach-Object {
     if ($_ -match '\s|"') { Quote-ProcessArg $_ } else { $_ }
   }) -join ' ')
 
@@ -112,8 +112,8 @@ function New-ToolProcessStartInfo([string]$FileName, [string[]]$Args) {
   return $psi
 }
 
-function Invoke-PlainProcess([string]$FileName, [string[]]$Args) {
-  $psi = New-ToolProcessStartInfo $FileName $Args
+function Invoke-PlainProcess([string]$FileName, [string[]]$ToolArgs) {
+  $psi = New-ToolProcessStartInfo $FileName $ToolArgs
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
 
@@ -133,10 +133,10 @@ function Invoke-PlainProcess([string]$FileName, [string[]]$Args) {
 
 function Invoke-ApkSignerWithSecureStdin(
   [string]$FileName,
-  [string[]]$Args,
+  [string[]]$ToolArgs,
   [Security.SecureString]$Password
 ) {
-  $psi = New-ToolProcessStartInfo $FileName $Args
+  $psi = New-ToolProcessStartInfo $FileName $ToolArgs
   $psi.RedirectStandardInput = $true
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -289,15 +289,15 @@ try {
   $verify = Invoke-PlainProcess $apksignerFile ($apksignerPrefixArgs + @('verify', '--verbose', '--print-certs', $output))
   $certLine = (
     $verify -split [Environment]::NewLine |
-      Where-Object { $_ -match 'Signer #1 certificate SHA-256 digest:' } |
+      Where-Object { $_ -match 'certificate SHA-256 digest:\s*[0-9a-fA-F:]+' } |
       Select-Object -First 1
   )
 
-  if (-not $certLine) {
+  if (-not $certLine -or $certLine -notmatch 'certificate SHA-256 digest:\s*([0-9a-fA-F:]+)') {
     throw 'APK_CERTIFICATE_FINGERPRINT_NOT_FOUND'
   }
 
-  $actualCert = (($certLine -split ':', 2)[1]).Trim().Replace(':','').ToUpperInvariant()
+  $actualCert = $Matches[1].Trim().Replace(':','').ToUpperInvariant()
   if ($actualCert -ne $CanonicalCertificateSha256) {
     Remove-Item -LiteralPath $output, ($output + '.idsig') -Force -ErrorAction SilentlyContinue
     throw 'APK_SIGNING_IDENTITY_MISMATCH'
