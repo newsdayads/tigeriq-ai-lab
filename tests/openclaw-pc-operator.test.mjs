@@ -225,6 +225,18 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(runner).toContain("if($identity -ine $ExpectedUser){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}");
     expect(runner).toContain("passwordTransport=[string]$receipt.passwordTransport");
     expect(runner).toContain("secretsPrinted=[bool]$receipt.secretsPrinted");
+    for (const code of [
+      'STABLE_SIGNING_DIR_REQUIRED',
+      'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED',
+      'APKSIGNER_JAR_SHA256_REQUIRED',
+      'JAVA_RUNTIME_REQUIRED',
+      'APK_CERTIFICATE_FINGERPRINT_NOT_FOUND',
+      'APK_V2_SIGNATURE_REQUIRED',
+      'APK_V3_SIGNATURE_REQUIRED',
+    ]) {
+      expect(runner).toContain(`'${code}'`);
+      expect(bridge).toContain(`'${code}'`);
+    }
     expect(runner).not.toMatch(/ConvertFrom-SecureString|SecureStringToBSTR|PtrToString|Clipboard|Set-Clipboard/i);
 
     expect(bridge).toContain("$TaskName='TigerIQ Android v0.20 OneShot Signer'");
