@@ -25,6 +25,12 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'taskLogonType',
   'taskRunLevel',
   'taskDeleted',
+  'totalBytes',
+  'chunkIndex',
+  'chunkCount',
+  'chunkBytes',
+  'chunkSha256',
+  'chunkBase64',
 ]);
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
@@ -36,6 +42,8 @@ const MAX_ARRAY=16;
 const MAX_OBJECT_KEYS=24;
 const MAX_STRING=400;
 const MAX_BLOCK_CHARS=1800;
+const MAX_EXPORT_CHUNK_BASE64_CHARS=16000;
+const MAX_EXPORT_BLOCK_CHARS=17500;
 
 export {SUPPORTED_PUBLIC_EVIDENCE_KEYS};
 
@@ -55,6 +63,14 @@ function sanitizeScalar(value){
   if(value==null||typeof value==='boolean'||typeof value==='number')return value;
   if(typeof value==='string')return value.slice(0,MAX_STRING);
   return String(value).slice(0,MAX_STRING);
+}
+
+function sanitizePublicEvidenceForKey(key,value){
+  if(key==='chunkBase64'){
+    if(typeof value!=='string'||value.length>MAX_EXPORT_CHUNK_BASE64_CHARS||!/^[A-Za-z0-9+/]*={0,2}$/.test(value))return '[INVALID_CHUNK_BASE64]';
+    return value;
+  }
+  return sanitizePublicEvidenceValue(value);
 }
 
 export function sanitizePublicEvidenceValue(value,depth=0){
@@ -145,7 +161,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
       if(raw!==undefined)break;
     }
     if(raw===undefined)continue;
-    out[key]=sanitizePublicEvidenceValue(raw);
+    out[key]=sanitizePublicEvidenceForKey(key,raw);
   }
   return out;
 }
@@ -175,17 +191,18 @@ export function formatPublicEvidenceBlock(evidence={}){
   const safe={};
   for(const key of SUPPORTED_PUBLIC_EVIDENCE_KEYS){
     if(!Object.prototype.hasOwnProperty.call(evidence,key))continue;
-    safe[key]=sanitizePublicEvidenceValue(evidence[key]);
+    safe[key]=sanitizePublicEvidenceForKey(key,evidence[key]);
   }
   const keys=Object.keys(safe);
   if(!keys.length)return '';
+  const maxBlockChars=Object.prototype.hasOwnProperty.call(safe,'chunkBase64')?MAX_EXPORT_BLOCK_CHARS:MAX_BLOCK_CHARS;
   let json=JSON.stringify(safe);
-  if(json.length>MAX_BLOCK_CHARS){
+  if(json.length>maxBlockChars){
     const bounded={};
     for(const key of keys){
       const value=safe[key];
       const candidate={...bounded,[key]:value};
-      if(JSON.stringify(candidate).length>MAX_BLOCK_CHARS)break;
+      if(JSON.stringify(candidate).length>maxBlockChars)break;
       bounded[key]=value;
     }
     json=JSON.stringify(bounded);
