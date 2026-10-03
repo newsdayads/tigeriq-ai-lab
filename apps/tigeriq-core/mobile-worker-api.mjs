@@ -267,6 +267,26 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       }finally{client.release();}
     }
 
+    if(req.method==='GET'&&url.pathname==='/api/mobile/devices/status'){
+      const remote=String(req.socket?.remoteAddress||'').replace(/^::ffff:/,'');
+      if(!['127.0.0.1','::1'].includes(remote))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const result=await pool.query(
+        `select node_id,employee_id,provider,platform,agent_version,battery_pct,last_seen_at,revoked
+         from tigeriq_mobile_devices order by last_seen_at desc nulls last`
+      );
+      const now=Date.now();
+      const devices=result.rows.map((row)=>{
+        const seenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():0;
+        return {
+          nodeId:row.node_id,employeeId:row.employee_id,provider:row.provider,platform:row.platform,
+          agentVersion:row.agent_version,batteryPct:row.battery_pct,lastSeenAt:row.last_seen_at,
+          revoked:Boolean(row.revoked),online:Boolean(seenAt&&now-seenAt<=120000)
+        };
+      });
+      return send(res,200,{ok:true,devices});
+    }
+
     if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/enqueue'){
       if(!isTailnetPeer(req)||!['127.0.0.1','::1'].includes(String(req.socket?.remoteAddress||'').replace(/^::ffff:/,''))){
         return send(res,403,{ok:false,error:'loopback_required'});
