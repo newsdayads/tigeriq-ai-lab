@@ -23,7 +23,7 @@ describe('TigerIQ Live work-package hierarchy #3324', () => {
     expect(rootHtml).toContain('function packageResolveRoot(seed,rows)');
     expect(rootHtml).toContain('function packageDescendants(root,rows)');
     expect(rootHtml).toContain('const streamRoot=packageBranchRoot(row,root,byNumber)');
-    expect(rootHtml).toContain('Number(row.parentNumber)');
+    expect(rootHtml).toContain('Number(current.parentNumber)');
   });
 
   it('keeps PR and checks as compact evidence inside a task instead of peer nodes', () => {
