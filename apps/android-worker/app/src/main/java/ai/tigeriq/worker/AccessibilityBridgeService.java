@@ -36,18 +36,18 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
     private static final int MAX_B1_RECOVERIES = 2;
-    private static final int PROJECT_STABLE_MIN_SAMPLES = 3;
-    private static final long PROJECT_STABLE_MIN_MS = 1200L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
     private int projectContextSamples = 0;
     private long projectContextFirstSeenAt = 0L;
+    private String projectContextRunId = "";
 
     private final Runnable b1TickRunnable = new Runnable() {
         @Override
         public void run() {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(AccessibilityBridgeService.this);
             if (!run.active()) {
+                clearProjectContextCandidate();
                 b1TickScheduled = false;
                 return;
             }
@@ -57,6 +57,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 maybeBindProjectFromStableContext(current);
                 ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
             } else {
+                clearProjectContextCandidate();
                 scheduleB1RecoveryIfNeeded();
             }
             recoveryHandler.postDelayed(this, 750L);
@@ -157,7 +158,15 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             4,
             12
         );
-        boolean shouldBind = directLineageMatch || localClickableScopeMatch;
+        boolean clickProjectMatch = directLineageMatch || localClickableScopeMatch;
+        boolean shouldBind = ChatGptB1Policy.shouldBindRequiredProject(
+            run.active(),
+            run.projectBound,
+            run.state,
+            true,
+            true,
+            clickProjectMatch
+        );
         boolean rootProjectVisible = root != null
             && ChatGptB1Automation.treeContainsExactLabel(root, ChatGptB1RunStore.REQUIRED_PROJECT);
 
@@ -178,17 +187,22 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void maybeBindProjectFromStableContext(AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state)) {
-            resetProjectContextCandidate();
+            clearProjectContextCandidate();
             return;
+        }
+
+        if (!run.runId.equals(projectContextRunId)) {
+            resetProjectContextCandidate();
+            projectContextRunId = run.runId;
         }
 
         boolean exactProject = root != null
             && ChatGptB1Automation.treeContainsExactLabel(root, ChatGptB1RunStore.REQUIRED_PROJECT);
         boolean projectTitleContext = root != null
-            && ChatGptB1Automation.treeContainsExactLabelOutsideClickableNavigation(
+            && ChatGptB1Automation.treeContainsExactProjectTitleSignal(
                 root,
                 ChatGptB1RunStore.REQUIRED_PROJECT,
-                3
+                6
             );
         boolean composerReady = root != null && ChatGptB1Automation.findComposerInput(root) != null;
 
@@ -218,21 +232,38 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; stableMs=" + stableMs
         );
 
-        if (projectContextSamples >= PROJECT_STABLE_MIN_SAMPLES && stableMs >= PROJECT_STABLE_MIN_MS) {
+        boolean shouldBind = ChatGptB1Policy.shouldBindRequiredProjectFromStableContext(
+            run.active(),
+            run.projectBound,
+            run.state,
+            true,
+            exactProject,
+            projectTitleContext,
+            composerReady,
+            projectContextSamples,
+            stableMs
+        );
+        if (shouldBind) {
             writeProjectDiag(
                 "STABLE_PROJECT_CONTEXT",
                 "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
                     + "; samples=" + projectContextSamples
                     + "; stableMs=" + stableMs
+                    + "; runId=" + run.runId
             );
             ChatGptB1RunStore.markProjectBound(this);
-            resetProjectContextCandidate();
+            clearProjectContextCandidate();
         }
     }
 
     private void resetProjectContextCandidate() {
         projectContextSamples = 0;
         projectContextFirstSeenAt = 0L;
+    }
+
+    private void clearProjectContextCandidate() {
+        resetProjectContextCandidate();
+        projectContextRunId = "";
     }
 
     private void writeProjectDiag(String mode, String detail) {
@@ -282,6 +313,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     public void onInterrupt() {
         recoveryHandler.removeCallbacks(recoveryRunnable);
         recoveryHandler.removeCallbacks(b1TickRunnable);
+        clearProjectContextCandidate();
         b1TickScheduled = false;
     }
 
