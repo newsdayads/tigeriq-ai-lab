@@ -939,14 +939,25 @@ async function exportAndroidWorkerV020SignedApkChunk(input = {}) {
   };
 }
 
+function coreGateCV020Host(){
+  const host=String(process.env.TIGERIQ_CORE_HOST||'127.0.0.1').trim();
+  if(host==='127.0.0.1')return host;
+  const match=host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if(!match)throw new Error('TIGERIQ_GATE_C_V020_CORE_HOST_INVALID');
+  const octets=match.slice(1).map(Number);
+  if(octets.some((value)=>!Number.isInteger(value)||value<0||value>255))throw new Error('TIGERIQ_GATE_C_V020_CORE_HOST_INVALID');
+  if(octets[0]===100&&octets[1]>=64&&octets[1]<=127)return host;
+  throw new Error('TIGERIQ_GATE_C_V020_CORE_HOST_INVALID');
+}
 async function coreGateCV020Request(path,method='GET'){
   const token=String(process.env.TIGERIQ_CORE_TOKEN||'').trim();
   if(!token)throw new Error('TIGERIQ_GATE_C_V020_CORE_TOKEN_MISSING');
+  const host=coreGateCV020Host();
   const port=Number(process.env.TIGERIQ_CORE_PORT||8795);
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('TIGERIQ_GATE_C_V020_CORE_PORT_INVALID');
   let response;
   try{
-    response=await fetch(`http://127.0.0.1:${port}${path}`,{
+    response=await fetch(`http://${host}:${port}${path}`,{
       method,
       headers:{authorization:`Bearer ${token}`,accept:'application/json'},
     });
