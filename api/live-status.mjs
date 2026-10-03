@@ -1068,24 +1068,6 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const progress = classification.workKind === 'SYSTEM'
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
-export function parseOpenWorkIssue(issue, overlays = {}) {
-  if (!issue || issue.pull_request || issue.state !== 'open') return null;
-  const number = Number(issue.number);
-  if (!number) return null;
-  const active = overlays.active || null;
-  const queued = overlays.queued || null;
-  const body = String(issue.body || '');
-  const lifecycle = overlays.lifecycle || null;
-  const classification = classifyOpenIssue(issue);
-  const canonicalPhase = issueCanonicalState(issue);
-  const phase = String(classification.ownerGate ? canonicalPhase : lifecycle?.state || canonicalPhase).toUpperCase();
-  const status = actionableStatus(issue, overlays);
-
-  const checks = classification.ownerGate ? null : active?.checks || null;
-  const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
-  const progress = classification.workKind === 'SYSTEM'
-    ? { percent: null, source: 'none', detail: null }
-    : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
   const relations = workflowRelationsForIssue(issue);
   const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
