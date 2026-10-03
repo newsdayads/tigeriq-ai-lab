@@ -210,7 +210,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
 
-  it('keeps v0.20 user-context signing fixed, least-privilege, and non-generic', async () => {
+  it('keeps v0.20 user-context signing fixed, evidence-justified elevated, and non-generic', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     const runner = await readFile(new URL('../scripts/pc-worker/invoke-v020-user-context-signer.ps1', import.meta.url), 'utf8');
     const bridge = await readFile(new URL('../scripts/pc-worker/run-v020-user-context-signer-task.ps1', import.meta.url), 'utf8');
@@ -219,7 +219,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("expectedUser = 'pc01\\\\wdragons12x'");
     expect(source).toContain("expectedTask = 'TigerIQ Android v0.20 OneShot Signer'");
     expect(source).toContain("taskLogonType || '') !== 'InteractiveToken'");
-    expect(source).toContain("taskRunLevel || '') !== 'Limited'");
+    expect(source).toContain("taskRunLevel || '') !== 'Highest'");
     expect(source).not.toContain("input?.userContext");
     expect(source).not.toContain("input?.signerUser");
 
@@ -252,10 +252,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
 
     expect(bridge).toContain("$TaskName='TigerIQ Android v0.20 OneShot Signer'");
     expect(bridge).toContain("$ExpectedUser='pc01\\wdragons12x'");
-    expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Limited');
+    expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Highest');
     expect(bridge).toContain('Resolve-AccountSid');
     expect(bridge).toContain("return @('Interactive','InteractiveToken','3') -contains $value");
-    expect(bridge).toContain("return @('Limited','LeastPrivilege','0') -contains $value");
+    expect(bridge).toContain("return @('Highest','HighestAvailable','1') -contains $value");
     expect(bridge).toContain('V020_USER_CONTEXT_TASK_USER_MISMATCH');
     expect(bridge).toContain('V020_USER_CONTEXT_TASK_LOGON_MISMATCH');
     expect(bridge).toContain('V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH');
@@ -263,7 +263,9 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(bridge).toContain("V020_USER_CONTEXT_TASK_COLLISION");
     expect(bridge).toContain("Unregister-ScheduledTask -TaskName $TaskName");
     expect(bridge).toContain("taskDeleted=$true");
-    expect(bridge).not.toMatch(/-Password\b|\/RP\b|LogonType\s+Password|RunLevel\s+Highest/i);
+    expect(runner).toContain("taskRunLevel='Highest'");
+    expect(source).toContain("taskRunLevel: 'Highest'");
+    expect(bridge).not.toMatch(/-Password\\b|\\/RP\\b|LogonType\\s+Password/i);
   });
 
   it('surfaces only bounded Android build-tool discovery failure classes', async () => {

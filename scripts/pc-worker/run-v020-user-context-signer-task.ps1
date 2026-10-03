@@ -17,8 +17,8 @@ function Resolve-AccountSid([string]$account) {
 function Test-InteractiveTokenLogon([string]$value) {
   return @('Interactive','InteractiveToken','3') -contains $value
 }
-function Test-LimitedRunLevel([string]$value) {
-  return @('Limited','LeastPrivilege','0') -contains $value
+function Test-SignerRunLevel([string]$value) {
+  return @('Highest','HighestAvailable','1') -contains $value
 }
 
 function Safe-BridgeFailureCode([string]$message) {
@@ -84,7 +84,7 @@ function Assert-ExistingTaskSafe($task) {
   $action=@($task.Actions|Select-Object -First 1)
   $exe=[string]$action.Execute
   $args=[string]$action.Arguments
-  if(-not $principalSid -or -not $expectedSid -or $principalSid -ne $expectedSid -or -not(Test-InteractiveTokenLogon $logonType) -or -not(Test-LimitedRunLevel $runLevel) -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
+  if(-not $principalSid -or -not $expectedSid -or $principalSid -ne $expectedSid -or -not(Test-InteractiveTokenLogon $logonType) -or -not(Test-SignerRunLevel $runLevel) -or $exe -ine $PowerShell -or $args -notmatch [regex]::Escape($Runner)){
     throw 'V020_USER_CONTEXT_TASK_COLLISION'
   }
 }
@@ -108,7 +108,7 @@ try {
 
   $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Runner`""
   $action=New-ScheduledTaskAction -Execute $PowerShell -Argument $args
-  $principal=New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Limited
+  $principal=New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Highest
   $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
   $task=New-ScheduledTask -Action $action -Principal $principal -Settings $settings
   Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force -ErrorAction Stop|Out-Null
@@ -121,7 +121,7 @@ try {
   $freshLogonType=[string]$fresh.Principal.LogonType
   if(-not(Test-InteractiveTokenLogon $freshLogonType)){throw 'V020_USER_CONTEXT_TASK_LOGON_MISMATCH'}
   $freshRunLevel=[string]$fresh.Principal.RunLevel
-  if(-not(Test-LimitedRunLevel $freshRunLevel)){throw 'V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH'}
+  if(-not(Test-SignerRunLevel $freshRunLevel)){throw 'V020_USER_CONTEXT_TASK_RUNLEVEL_MISMATCH'}
 
   Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 
@@ -178,7 +178,7 @@ $out=[ordered]@{
   taskName=$TaskName
   taskPrincipal=$ExpectedUser
   taskLogonType='InteractiveToken'
-  taskRunLevel='Limited'
+  taskRunLevel='Highest'
   taskDeleted=$true
 }
 $out|ConvertTo-Json -Compress
