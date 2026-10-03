@@ -89,6 +89,11 @@ public final class ControllerClient {
         return authenticatedGet("/api/mobile/update/manifest", credential);
     }
 
+    public JSONObject reportEvidence(JSONObject evidence) throws Exception {
+        if (evidence == null) throw new IllegalArgumentException("evidence is required");
+        return authenticatedPost("/api/mobile/evidence", evidence);
+    }
+
     public JSONObject heartbeat(int batteryPct, Double temperatureC, String agentVersion) throws Exception {
         JSONObject request = new JSONObject();
         request.put("status", "online");
