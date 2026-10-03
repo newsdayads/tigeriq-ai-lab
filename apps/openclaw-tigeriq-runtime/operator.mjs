@@ -339,6 +339,7 @@ async function listTigerIQTasks() {
     readOnly: true,
     scope: 'TigerIQ',
     count: tasks.length,
+    taskNames: tasks.map((task) => task.taskName),
     tasks,
   };
 }
