@@ -26,6 +26,21 @@ foreach ($required in @($keystore,$storePasswordFile,$keyPasswordFile,$fingerpri
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "STABLE_SIGNING_NOT_PROVISIONED: missing private signing material." }
 }
 
+$expected = ([IO.File]::ReadAllText($fingerprintFile).Trim().Replace(':','').ToUpperInvariant())
+if ($expected -ne $CanonicalCertificateSha256) {
+  throw 'CANONICAL_SIGNING_IDENTITY_MISMATCH: pinned signer directory is not the established TigerIQ Android signer.'
+}
+
+$keytool = Get-Command keytool.exe -ErrorAction SilentlyContinue
+if (-not $keytool) { throw 'KEYTOOL_MISSING: a JDK is required to verify the canonical signer before building.' }
+$storePassword = [IO.File]::ReadAllText($storePasswordFile).Trim()
+$certificate = & $keytool.Source -list -v -keystore $keystore -storepass $storePassword -alias $Alias 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'KEYSTORE_VERIFY_FAILED' }
+$preflightLine = $certificate | Where-Object { $_ -match '^\s*SHA256:\s*' } | Select-Object -First 1
+if (-not $preflightLine) { throw 'KEYSTORE_CERTIFICATE_FINGERPRINT_NOT_FOUND' }
+$preflightFingerprint = ($preflightLine -replace '^\s*SHA256:\s*','').Trim().Replace(':','').ToUpperInvariant()
+if ($preflightFingerprint -ne $CanonicalCertificateSha256) { throw 'KEYSTORE_SIGNING_IDENTITY_MISMATCH' }
+
 $workerDir = Join-Path $RepoRoot 'apps\android-worker'
 $gradle = Join-Path $workerDir 'gradlew.bat'
 if (-not (Test-Path -LiteralPath $gradle -PathType Leaf)) { throw 'GRADLE_WRAPPER_MISSING' }
@@ -56,8 +71,6 @@ if ($LASTEXITCODE -ne 0) { throw 'APK_SIGNATURE_VERIFY_FAILED' }
 $certLine = $verify | Where-Object { $_ -match 'Signer #1 certificate SHA-256 digest:' } | Select-Object -First 1
 if (-not $certLine) { throw 'APK_CERTIFICATE_FINGERPRINT_NOT_FOUND' }
 $actual = (($certLine -split ':',2)[1]).Trim().Replace(':','').ToUpperInvariant()
-$expected = ([IO.File]::ReadAllText($fingerprintFile).Trim().Replace(':','').ToUpperInvariant())
-if ($expected -ne $CanonicalCertificateSha256) { throw 'CANONICAL_SIGNING_IDENTITY_MISMATCH: pinned signer directory is not the established TigerIQ Android signer.' }
 if ($actual -ne $CanonicalCertificateSha256) { throw 'APK_SIGNING_IDENTITY_MISMATCH' }
 
 $sha256 = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
