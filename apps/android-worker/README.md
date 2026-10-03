@@ -102,3 +102,5 @@ No Android execution claim is valid until two physical phones prove:
 4. structured result + screenshot/evidence returned;
 5. one independent reviewer worker evaluates combined evidence;
 6. disconnect/restart produces bounded recovery rather than duplicate execution.
+
+Project binding is accepted only from a real ChatGPT UI click event on TigerIQ AI Lab; merely seeing the project name is not sufficient.
