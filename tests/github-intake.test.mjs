@@ -953,6 +953,51 @@ test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner author
   assert.match(coreSource,/android_worker_grant_v020_signer_read_acl/);
 });
 
+test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk index',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P1',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_V020_EXPORT_TEST',
+    'PUBLIC_EVIDENCE_KEYS=status,apkSha256,totalBytes,chunkIndex,chunkCount,chunkBytes,chunkSha256,chunkBase64',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_v020_signed_apk_chunk","chunkIndex":2}',
+    'ASSIGNED_ACTION',
+    'Export exactly one fixed signed APK chunk.',
+    'ACCEPTANCE',
+    'Return bounded chunk evidence only.',
+  ].join('\n');
+  const issues=[{number:3330,state:'open',title:'v0.20 export chunk',body,html_url:'https://example/3330'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{
+    action:'android_worker_export_v020_signed_apk_chunk',chunkIndex:2,
+  });
+  assert.strictEqual(pool.objectives[0].metadata.ownerDirect,true);
+
+  const badPool=coreBacklogPool();
+  const bad=await materializeGithubIssues({
+    pool:badPool,
+    openIssues:[{...issues[0],number:3331,body:body.replace('"chunkIndex":2','"chunkIndex":99')}],
+    token:'fake',
+  });
+  assert.strictEqual(bad.created,0);
+  assert.strictEqual(badPool.jobs.length,0);
+
+  const noOwnerPool=coreBacklogPool();
+  const noOwner=await materializeGithubIssues({
+    pool:noOwnerPool,
+    openIssues:[{...issues[0],number:3332,body:body.replace('OWNER_DIRECT=true\n','')}],
+    token:'fake',
+  });
+  assert.strictEqual(noOwner.created,0);
+  assert.strictEqual(noOwnerPool.jobs.length,0);
+});
+
 test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
   const pool=coreBacklogPool();
   const body=[
