@@ -2,6 +2,9 @@ package ai.tigeriq.worker;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
+import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -9,10 +12,10 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * Read-only semantic probe for AI provider UIs.
+ * Semantic bridge for provider observation plus the explicitly approved ChatGPT B1 pilot.
  *
- * Non-provider events are intentionally kept separate from the last provider snapshot so
- * Android Launcher / Recents cannot erase evidence captured from ChatGPT or Gemini.
+ * B1 is bounded to harmless confirmation prompts, semantic ACTION_SET_TEXT/ACTION_CLICK,
+ * exactly-once state, and recovery. It does not lease backlog work or mutate GitHub.
  */
 public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String PREFS = "tigeriq-accessibility-pilot";
@@ -29,6 +32,44 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
+    private static final int MAX_B1_RECOVERIES = 2;
+    private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
+    private boolean b1TickScheduled = false;
+
+    private final Runnable b1TickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(AccessibilityBridgeService.this);
+            if (!run.active()) {
+                b1TickScheduled = false;
+                return;
+            }
+            AccessibilityNodeInfo current = getRootInActiveWindow();
+            CharSequence pkg = current == null ? null : current.getPackageName();
+            if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
+            } else {
+                scheduleB1RecoveryIfNeeded();
+            }
+            recoveryHandler.postDelayed(this, 750L);
+        }
+    };
+
+    private final Runnable recoveryRunnable = () -> {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        AccessibilityNodeInfo current = getRootInActiveWindow();
+        CharSequence pkg = current == null ? null : current.getPackageName();
+        if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) return;
+        Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
+        if (launch == null) {
+            ChatGptB1RunStore.fail(this, "CHATGPT_NATIVE_APP_NOT_FOUND");
+            return;
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        ChatGptB1RunStore.markRecovery(this);
+        startActivity(launch);
+    };
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -44,7 +85,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .apply();
 
         // Important: launcher/recents/keyboard events must not zero the last AI snapshot.
-        if (!isPilotProvider(value)) return;
+        if (!isPilotProvider(value)) {
+            scheduleB1RecoveryIfNeeded();
+            return;
+        }
 
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_PROVIDER_PACKAGE, value)
@@ -56,6 +100,11 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         CharSequence rootPackage = root.getPackageName();
         if (rootPackage == null || !value.equals(rootPackage.toString())) return;
+
+        if (CHATGPT_PACKAGE.equals(value)) {
+            recoveryHandler.removeCallbacks(recoveryRunnable);
+            ensureB1Ticker();
+        }
 
         int nodes = 0;
         int editable = 0;
@@ -74,6 +123,24 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             }
         }
         writeProbe(true, nodes, editable, clickable);
+
+        if (CHATGPT_PACKAGE.equals(value)) {
+            ChatGptB1Automation.drive(this, root);
+        }
+    }
+
+    private void ensureB1Ticker() {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || b1TickScheduled) return;
+        b1TickScheduled = true;
+        recoveryHandler.postDelayed(b1TickRunnable, 400L);
+    }
+
+    private void scheduleB1RecoveryIfNeeded() {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryHandler.postDelayed(recoveryRunnable, 2500L);
     }
 
     private void writeProbe(boolean rootAvailable, int nodes, int editable, int clickable) {
@@ -93,7 +160,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        // No-op; bounded provider recovery is introduced after semantic probe evidence is proven.
+        recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryHandler.removeCallbacks(b1TickRunnable);
+        b1TickScheduled = false;
     }
 
     public boolean semanticTreeAvailable() {
