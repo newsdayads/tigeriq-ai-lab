@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createMobileWorkerApi, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, createMobileWorkerApi, gateCV020Aggregate, gateCV020TaskSpecs, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -105,6 +105,25 @@ describe('mobile worker api helpers',()=>{
       });
       expect(conflict).toMatchObject({accept:false,idempotent:false,conflict:true});
     }
+  });
+
+  it('builds a deterministic fixed 10-job v0.20 Gate C batch and validates exactly-once aggregate evidence',()=>{
+    expect(GATE_C_V020_VERSION).toBe('0.20.0-update-lease-guard');
+    expect(GATE_C_V020_COUNT).toBe(10);
+    const specs=gateCV020TaskSpecs('NV101');
+    expect(specs).toHaveLength(10);
+    expect(specs[0]).toMatchObject({index:1,idempotencyKey:'gate-c:v020:NV101:01',expectedToken:'TIGERIQ_GATE_C_OK_1'});
+    expect(specs[9]).toMatchObject({index:10,idempotencyKey:'gate-c:v020:NV101:10',expectedToken:'TIGERIQ_GATE_C_OK_10'});
+    expect(new Set(specs.map(x=>x.idempotencyKey)).size).toBe(10);
+    const rows=specs.map(spec=>({
+      idempotency_key:spec.idempotencyKey,
+      status:'completed',
+      attempts:1,
+      result:{output:{validatedToken:spec.expectedToken,sendCount:1,duplicateSendCount:0}},
+    }));
+    expect(gateCV020Aggregate(rows,'NV101')).toMatchObject({expected:10,taskCount:10,completed:10,failed:0,pending:0,invalid:0,pass:true});
+    rows[4].result.output.duplicateSendCount=1;
+    expect(gateCV020Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,pass:false});
   });
 
   it('reads a local release manifest without exposing implicit defaults',()=>{
