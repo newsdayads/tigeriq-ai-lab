@@ -153,6 +153,13 @@ public final class ControllerClient {
         return authenticatedPost("/api/mobile/tasks/lease", new JSONObject());
     }
 
+    public JSONObject renewLease(String taskId, String leaseId) throws Exception {
+        JSONObject request = new JSONObject();
+        request.put("taskId", required(taskId, "taskId"));
+        request.put("leaseId", required(leaseId, "leaseId"));
+        return authenticatedPost("/api/mobile/tasks/renew", request);
+    }
+
     public JSONObject submitResult(String taskId, String leaseId, String leaseToken, JSONObject result) throws Exception {
         JSONObject request = new JSONObject();
         request.put("taskId", required(taskId, "taskId"));
