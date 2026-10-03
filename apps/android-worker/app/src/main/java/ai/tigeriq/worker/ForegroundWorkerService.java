@@ -115,7 +115,14 @@ public final class ForegroundWorkerService extends Service {
 
                 long now = System.currentTimeMillis();
                 if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
-                    client.renewLease(task.taskId, task.leaseId);
+                    try {
+                        client.renewLease(task.taskId, task.leaseId);
+                    } catch (ControllerClient.ControllerException stale) {
+                        if (stale.status != 409) throw stale;
+                        JSONObject reacquired = client.pollLease();
+                        if (!reacquired.optBoolean("leased", false)) throw stale;
+                        MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
+                    }
                     lastLeaseRenewAt = now;
                 }
                 if (!taskResumeAttempted) {
