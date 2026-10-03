@@ -137,6 +137,12 @@ function mobileAuthHeaders(req) {
   const match=String(req.headers.authorization||'').match(/^Bearer\s+(.+)$/i);
   return {credentialId,token:match?match[1]:''};
 }
+export function verifyCoreTaskEnqueueAuth(authorization='',coreToken='') {
+  const expected=String(coreToken||'').trim();
+  const match=String(authorization||'').match(/^Bearer\s+(.+)$/i);
+  if(!expected||!match)return false;
+  return safeHexEqual(sha256(match[1]),sha256(expected));
+}
 async function authenticate(pool,req) {
   const {credentialId,token}=mobileAuthHeaders(req);
   if(!credentialId||!token)return null;
@@ -179,7 +185,7 @@ export function readMobileReleaseManifest(path=releaseManifestPath()) {
     };
   } catch { return {available:false}; }
 }
-export function createMobileWorkerApi({pool,event=async()=>{}}) {
+export function createMobileWorkerApi({pool,event=async()=>{},coreToken=''}) {
   return async function handleMobile(req,res,url) {
     if(!url.pathname.startsWith('/api/mobile/'))return false;
 
@@ -256,6 +262,10 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
     if(req.method==='POST'&&url.pathname==='/api/mobile/tasks/enqueue'){
       if(!isTailnetPeer(req)||!['127.0.0.1','::1'].includes(String(req.socket?.remoteAddress||'').replace(/^::ffff:/,''))){
         return send(res,403,{ok:false,error:'loopback_required'});
+      }
+      if(!String(coreToken||'').trim())return send(res,503,{ok:false,error:'core_auth_unconfigured'});
+      if(!verifyCoreTaskEnqueueAuth(req.headers.authorization,coreToken)){
+        return send(res,401,{ok:false,error:'core_unauthorized'});
       }
       const input=await body(req);
       const employeeId=text(input.employeeId,80);
