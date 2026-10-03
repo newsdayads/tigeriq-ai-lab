@@ -879,6 +879,43 @@ test('typed direct pc_operator action keeps direct prompt and public evidence co
   assert.match(pool.jobs[0].prompt,/Do not echo raw file content/);
 });
 
+test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct local action',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_DIRECT=true',
+    'PRIORITY=P3',
+    'CAPABILITY=pc_operator',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_V020_SIGNER_ADMISSION_TEST',
+    'PUBLIC_EVIDENCE_KEYS=result',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_v020_ci_artifact"}',
+    'ASSIGNED_ACTION',
+    'Execute exactly the pre-admitted typed v0.20 CI artifact signer.',
+    'ACCEPTANCE',
+    'Return sanitized result evidence only.',
+  ].join('\\n');
+  const issues=[{number:3219,state:'open',title:'v0.20 signer',body,html_url:'https://example/3219'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,3219);
+  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'android_worker_sign_v020_ci_artifact'});
+  assert.strictEqual(pool.objectives[0].metadata.ownerDirect,true);
+  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
+
+  const noOwnerPool=coreBacklogPool();
+  const noOwnerBody=body.replace('OWNER_DIRECT=true\\n','');
+  const blocked=await materializeGithubIssues({pool:noOwnerPool,openIssues:[{number:3220,state:'open',title:'v0.20 signer no owner',body:noOwnerBody,html_url:'https://example/3220'}],token:'fake'});
+  assert.strictEqual(blocked.created,0);
+  assert.strictEqual(noOwnerPool.jobs.length,0);
+
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\\(\\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
+});
+
 test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
   const pool=coreBacklogPool();
   const body=[
