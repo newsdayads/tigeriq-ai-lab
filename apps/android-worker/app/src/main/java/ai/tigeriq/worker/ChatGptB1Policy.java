@@ -3,8 +3,10 @@ package ai.tigeriq.worker;
 /** Pure policy for the ChatGPT B1 Project gate and pacing; Android-free for executable unit tests. */
 public final class ChatGptB1Policy {
     public static final String REQUIRED_PROJECT = "TigerIQ AI Lab";
-    public static final long MIN_FILL_TO_SEND_MS = 3000L;
-    public static final long INTER_CYCLE_COOLDOWN_MS = 6000L;
+    public static final long MIN_FILL_TO_SEND_MS = 5000L;
+    public static final long INTER_CYCLE_COOLDOWN_MS = 8000L;
+    public static final long PROJECT_NAV_STEP_MS = 2500L;
+    public static final long PROJECT_NAV_RETRY_MS = 3000L;
 
     private ChatGptB1Policy() {}
 

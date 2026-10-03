@@ -36,9 +36,9 @@ public final class ChatGptB1PolicyTest {
     @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
-        assertEquals(now + 3000L, ChatGptB1Policy.nextActionAfterFill(now));
-        assertEquals(now + 6000L, ChatGptB1Policy.nextActionAfterCycle(now));
-        assertEquals(3000L, ChatGptB1Policy.MIN_FILL_TO_SEND_MS);
-        assertEquals(6000L, ChatGptB1Policy.INTER_CYCLE_COOLDOWN_MS);
+        assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));
+        assertEquals(now + 8000L, ChatGptB1Policy.nextActionAfterCycle(now));
+        assertEquals(5000L, ChatGptB1Policy.MIN_FILL_TO_SEND_MS);
+        assertEquals(8000L, ChatGptB1Policy.INTER_CYCLE_COOLDOWN_MS);
     }
 }

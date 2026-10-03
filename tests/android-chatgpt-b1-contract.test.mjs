@@ -25,8 +25,8 @@ describe('ChatGPT B1 pilot contract', () => {
 
   it('pins project gate, pacing, exactly-once and bounded recovery state', () => {
     expect(store).toContain('REQUIRED_PROJECT = "TigerIQ AI Lab"');
-    expect(store).toContain('MIN_FILL_TO_SEND_MS = 3000L');
-    expect(store).toContain('INTER_CYCLE_COOLDOWN_MS = 6000L');
+    expect(store).toContain('MIN_FILL_TO_SEND_MS = 5000L');
+    expect(store).toContain('INTER_CYCLE_COOLDOWN_MS = 8000L');
     expect(store).toContain('"WAITING_PROJECT"');
     expect(service).toContain('TYPE_VIEW_CLICKED');
     expect(adapter).toContain('treeContainsExactLabel');
@@ -150,8 +150,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 17 for self-navigating Project binding', () => {
-    expect(gradle).toContain('versionCode = 17');
-    expect(gradle).toContain('versionName = "0.17.0-auto-project-navigation"');
+  it('publishes versionCode 18 for Update Engine V1', () => {
+    expect(gradle).toContain('versionCode = 18');
+    expect(gradle).toContain('versionName = "0.18.0-update-engine"');
   });
 });
