@@ -74,6 +74,17 @@ jobs:
           mkdir -p .ci-artifacts
           cp apps/android-worker/app/build/outputs/apk/debug/app-debug.apk .ci-artifacts/tigeriq-worker-debug.apk
           cp apps/android-worker/app/build/outputs/apk/release/app-release-unsigned.apk .ci-artifacts/tigeriq-worker-unsigned-release.apk
+      - name: Verify unsigned alignment and bundle portable apksigner
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/35.0.0"
+          test -x "$build_tools/zipalign"
+          test -f "$build_tools/lib/apksigner.jar"
+          "$build_tools/zipalign" -c -p 4 .ci-artifacts/tigeriq-worker-unsigned-release.apk
+          cp "$build_tools/lib/apksigner.jar" .ci-artifacts/apksigner.jar
+          printf 'UNSIGNED_APK_SHA256=%s\n' "$(sha256sum .ci-artifacts/tigeriq-worker-unsigned-release.apk | awk '{print $1}')"
+          printf 'APKSIGNER_JAR_SHA256=%s\n' "$(sha256sum .ci-artifacts/apksigner.jar | awk '{print $1}')"
+          echo 'ANDROID_PORTABLE_SIGNER_ARTIFACT_READY'
       - name: Prove stable signing configuration with disposable CI identity
         working-directory: apps/android-worker
         env:
@@ -105,6 +116,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tigeriq-worker-unsigned-release-apk
-          path: .ci-artifacts/tigeriq-worker-unsigned-release.apk
+          path: |
+            .ci-artifacts/tigeriq-worker-unsigned-release.apk
+            .ci-artifacts/apksigner.jar
           if-no-files-found: error
           retention-days: 7
