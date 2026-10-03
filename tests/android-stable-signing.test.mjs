@@ -28,6 +28,7 @@ describe('WO-037 Android stable signing', () => {
   it('recovers only the established canonical identity and never generates a replacement key', () => {
     expect(provision).toContain('TIGERIQ_ANDROID_SIGNING_DIR');
     expect(provision).toContain('CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED');
+    expect(provision).toContain('$FingerprintPath');
     expect(provision).toContain('63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293');
     expect(provision).toContain('SIGNING_IDENTITY_CHANGED');
     expect(provision).toContain('identityCreated = $false');
