@@ -15,7 +15,10 @@ import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolution
 // Ensure NV09/ollama responses always include a canary marker.
 function addCanaryMarkerIfMissing(response) {
   if (response && typeof response === 'object' && !('canary_marker' in response)) {
-    response.canary_marker = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';
+    response.canary_marker = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';
+  }
+  return response;
+}r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';r = 'NV09_OLLAMA_SOURCE_CONTRACT_OK';
   }
   return response;
 }ce contract was repaired.
