@@ -184,8 +184,15 @@ body.drawer-open{overflow:hidden}
 .workflow-canvas{position:relative;padding:3px 1px 2px}
 .workflow-wires{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:visible}
 .workflow-wire{fill:none;stroke:#31516e;stroke-width:2;vector-effect:non-scaling-stroke;opacity:.74}
-.workflow-wire.is-done{stroke:#2e8a78;opacity:.78}.workflow-wire.is-blocked{stroke:#a14a56;opacity:.9}.workflow-wire.is-working{stroke:#55dda2;stroke-dasharray:7 9;animation:workflow-wire-flow 1.05s linear infinite;filter:drop-shadow(0 0 3px rgba(70,212,143,.42))}
-.workflow-wire.is-review,.workflow-wire.is-verify{stroke:#c4974e;stroke-dasharray:3 8;opacity:.78}
+.workflow-wire.is-done{stroke:#2e8a78;opacity:.78}
+.workflow-wire.is-working{stroke:#55dda2;stroke-dasharray:7 9;animation:workflow-wire-flow .9s linear infinite;filter:drop-shadow(0 0 4px rgba(70,212,143,.55))}
+.workflow-wire.is-review,.workflow-wire.is-verify{stroke:#d6a44f;stroke-dasharray:4 8;opacity:.92;animation:workflow-wire-review-flow 2.1s linear infinite;filter:drop-shadow(0 0 2px rgba(214,164,79,.25))}
+.workflow-wire.is-waiting,.workflow-wire.is-queued{stroke:#4b7ea8;stroke-dasharray:2 11;opacity:.64;animation:workflow-wire-wait-flow 4.4s linear infinite}
+.workflow-wire.is-blocked{stroke:#d45b67;stroke-dasharray:6 7;opacity:.95;animation:workflow-wire-blocked 1.35s ease-in-out infinite;filter:drop-shadow(0 0 4px rgba(212,91,103,.36))}
+.workflow-particle{pointer-events:none;filter:drop-shadow(0 0 5px currentColor)}
+.workflow-particle.is-working{fill:#7bf0b9;color:#7bf0b9}
+.workflow-particle.is-review,.workflow-particle.is-verify{fill:#ffd27d;color:#ffd27d}
+.workflow-particle.is-waiting,.workflow-particle.is-queued{fill:#79bdf1;color:#79bdf1;opacity:.72}
 .workflow-layer{position:relative;z-index:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin:0 0 22px}
 .workflow-layer:last-child{margin-bottom:0}
 .workflow-node{position:relative;display:block;min-width:0;border:1px solid #29445e;background:linear-gradient(180deg,#0d1c2e,#091625);border-radius:13px;padding:9px 10px;text-align:left;box-shadow:0 8px 20px rgba(0,0,0,.13);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;color:inherit;text-decoration:none}
@@ -193,26 +200,36 @@ button.workflow-node{width:100%;font:inherit;cursor:pointer}
 .workflow-node:hover{transform:translateY(-1px);border-color:#3e668a}.workflow-node:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
 .workflow-node.is-root{border-color:#38678f;background:linear-gradient(180deg,#112a46,#0d1d31)}
 .workflow-node.is-working{border-color:#348160;background:#0d3025;box-shadow:0 0 0 1px rgba(70,212,143,.1),0 0 24px rgba(70,212,143,.08)}
-.workflow-node.is-working::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(70,212,143,.42);border-radius:15px;animation:workflow-node-pulse 1.8s ease-out infinite;pointer-events:none}
-.workflow-node.is-review,.workflow-node.is-verify{border-color:#765b2e;background:#302617;animation:workflow-review-breathe 3s ease-in-out infinite}
-.workflow-node.is-blocked{border-color:#82424c;background:#321b22}.workflow-node.is-waiting,.workflow-node.is-queued{border-color:#365b7e;background:#0d2237}.workflow-node.is-done{border-color:#287268;background:#0d2d2a}
+.workflow-node.is-working::after{content:"";position:absolute;inset:-3px;border:1px solid rgba(70,212,143,.56);border-radius:15px;animation:workflow-node-pulse 1.45s ease-out infinite;pointer-events:none}
+.workflow-node.is-review,.workflow-node.is-verify{border-color:#8b6934;background:#302617;animation:workflow-review-breathe 2.25s ease-in-out infinite}
+.workflow-node.is-blocked{border-color:#a14b57;background:#351b23;animation:workflow-blocked-node 1.45s ease-in-out infinite}
+.workflow-node.is-waiting,.workflow-node.is-queued{border-color:#3d6689;background:#0d2237;animation:workflow-wait-breathe 4.2s ease-in-out infinite}
+.workflow-node.is-done{border-color:#287268;background:#0d2d2a}
+.workflow-node.is-focus::before{content:"";position:absolute;inset:-5px;border:1px solid rgba(105,190,255,.7);border-radius:17px;pointer-events:none;animation:workflow-focus-ring 1.9s ease-out infinite}
 .workflow-node.is-unknown,.workflow-node.is-open{border-color:#3b5067;background:#0c1928}
 .workflow-node-top{display:flex;align-items:center;gap:6px;min-width:0}.workflow-node-type{font-size:8.5px;color:#7fa7ca;font-weight:900;letter-spacing:.055em;text-transform:uppercase}.workflow-node-id{font-size:8.5px;color:#6f8ba5;font-weight:850;margin-left:auto}
 .workflow-node-title{font-size:11.5px;line-height:1.3;font-weight:850;margin-top:5px;color:#e9f1f9;overflow-wrap:anywhere}.workflow-node-detail{font-size:9.7px;line-height:1.37;margin-top:5px;color:#8fa5bc;overflow-wrap:anywhere}
-.workflow-node-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px}.workflow-worker,.workflow-state{border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:900;color:#b8d9f2}.workflow-state{margin-left:auto}.workflow-node.is-working .workflow-state{border-color:#34785b;color:#9af0bc;background:#103326}.workflow-node.is-review .workflow-state,.workflow-node.is-verify .workflow-state{border-color:#735a30;color:#ffd38d;background:#312617}.workflow-node.is-blocked .workflow-state{border-color:#7e3e49;color:#ffb8bf;background:#341b22}.workflow-node.is-done .workflow-state{border-color:#286d65;color:#94ecdf;background:#0f302d}
+.workflow-node-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px}.workflow-worker,.workflow-state{border:1px solid #345775;background:#10263d;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:900;color:#b8d9f2}.workflow-state{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.workflow-state::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.68}.workflow-node.is-working .workflow-state{border-color:#34785b;color:#9af0bc;background:#103326}.workflow-node.is-working .workflow-state::before{animation:workflow-status-dot .9s ease-in-out infinite}.workflow-node.is-review .workflow-state,.workflow-node.is-verify .workflow-state{border-color:#735a30;color:#ffd38d;background:#312617}.workflow-node.is-review .workflow-state::before,.workflow-node.is-verify .workflow-state::before{animation:workflow-status-dot 1.8s ease-in-out infinite}.workflow-node.is-waiting .workflow-state::before,.workflow-node.is-queued .workflow-state::before{animation:workflow-status-dot 3.2s ease-in-out infinite}.workflow-node.is-blocked .workflow-state{border-color:#7e3e49;color:#ffb8bf;background:#341b22}.workflow-node.is-blocked .workflow-state::before{animation:workflow-status-dot .7s steps(2,end) infinite}.workflow-node.is-done .workflow-state{border-color:#286d65;color:#94ecdf;background:#0f302d}
 .workflow-blocker{margin-top:9px;border:1px solid #743a44;background:#30191f;border-radius:10px;padding:7px 8px;color:#ffb0b8;font-size:9.5px;line-height:1.4}.workflow-empty{border:1px dashed #2a425d;background:#0a1727;border-radius:14px;padding:14px;color:#91a4ba;font-size:10.5px;line-height:1.45}
 .workflow-parallel{font-size:8.5px;color:#7890a8;margin:-13px 0 10px;text-align:center;letter-spacing:.02em}
 @keyframes workflow-ambient{0%,100%{transform:translateX(-28%)}50%{transform:translateX(28%)}}
 @keyframes workflow-wire-flow{to{stroke-dashoffset:-32}}
-@keyframes workflow-node-pulse{0%{opacity:.7;transform:scale(1)}75%,100%{opacity:0;transform:scale(1.018)}}
-@keyframes workflow-review-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(239,184,92,.12),0 0 16px rgba(239,184,92,.07)}}
+@keyframes workflow-wire-review-flow{to{stroke-dashoffset:-24}}
+@keyframes workflow-wire-wait-flow{to{stroke-dashoffset:-26}}
+@keyframes workflow-wire-blocked{0%,100%{opacity:.48}50%{opacity:1}}
+@keyframes workflow-node-pulse{0%{opacity:.86;transform:scale(1)}78%,100%{opacity:0;transform:scale(1.025)}}
+@keyframes workflow-review-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 rgba(239,184,92,0)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(239,184,92,.23),0 0 22px rgba(239,184,92,.13)}}
+@keyframes workflow-wait-breathe{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 16px rgba(88,166,255,.09)}}
+@keyframes workflow-blocked-node{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 1px rgba(212,91,103,.08)}50%{box-shadow:0 8px 20px rgba(0,0,0,.13),0 0 0 2px rgba(212,91,103,.32),0 0 22px rgba(212,91,103,.16)}}
+@keyframes workflow-focus-ring{0%{opacity:.72;transform:scale(1)}80%,100%{opacity:0;transform:scale(1.018)}}
+@keyframes workflow-status-dot{0%,100%{opacity:.32;transform:scale(.82)}50%{opacity:1;transform:scale(1.22)}}
 @media(max-width:700px){
   .workflow-shell{padding:10px}.workflow-head{display:block}.workflow-meta{justify-content:flex-start;margin-top:7px}.workflow-title{font-size:15px}
   .workflow-now{grid-template-columns:1fr}.workflow-progress{min-width:0}.workflow-layer{grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:7px;margin-bottom:19px}
   .workflow-node{padding:8px 9px}.workflow-node-title{font-size:10.8px}.workflow-node-detail{font-size:9.3px}
 }
 @media(max-width:360px){.workflow-layer{grid-template-columns:1fr}.workflow-parallel{display:none}}
-@media(prefers-reduced-motion:reduce){.workflow-shell::before,.workflow-wire,.workflow-node,.workflow-node::after{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.workflow-shell::before,.workflow-wire,.workflow-node,.workflow-node::before,.workflow-node::after,.workflow-state::before{animation:none!important;transition:none!important}.workflow-particle{display:none!important}}
 
 </style>
 </head>
@@ -612,7 +629,9 @@ function workflowNodeHtml(node){
     +'<div class="workflow-node-title">'+esc(node.title)+'</div>'
     +'<div class="workflow-node-detail">'+esc(detail||'—')+'</div>'
     +'<div class="workflow-node-foot">'+footWorker+'<span class="workflow-state">'+esc(stateText)+'</span></div>';
-  const className='workflow-node is-'+cls+(node.id==='issue-'+Number(workflowGraphState?.root?.number)?' is-root':'');
+  const isRoot=node.id==='issue-'+Number(workflowGraphState?.root?.number);
+  const isFocus=node.id==='issue-'+Number(workflowGraphState?.focus?.number);
+  const className='workflow-node is-'+cls+(isRoot?' is-root':'')+(isFocus?' is-focus':'');
   if(node.type==='issue'&&row)return '<button type="button" class="'+className+'" data-workflow-node="'+esc(node.id)+'" data-row-number="'+Number(row.number)+'">'+inner+'</button>';
   return '<a class="'+className+'" data-workflow-node="'+esc(node.id)+'" href="'+esc(node.url||'#')+'" target="_blank" rel="noopener noreferrer">'+inner+'</a>';
 }
@@ -623,6 +642,8 @@ function workflowEdgeClass(edge){
   if(s==='WORKING')return 'is-working';
   if(s==='REVIEW')return 'is-review';
   if(s==='VERIFY')return 'is-verify';
+  if(s==='WAITING')return 'is-waiting';
+  if(s==='QUEUED')return 'is-queued';
   return '';
 }
 function drawWorkflowEdges(){
@@ -631,7 +652,7 @@ function drawWorkflowEdges(){
   const canvasRect=canvas.getBoundingClientRect(),width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.scrollHeight);
   svg.setAttribute('viewBox','0 0 '+width+' '+height);
   svg.setAttribute('width',width);svg.setAttribute('height',height);
-  svg.innerHTML=workflowGraphState.edges.map(edge=>{
+  svg.innerHTML=workflowGraphState.edges.map((edge,index)=>{
     const from=canvas.querySelector('[data-workflow-node="'+edge.from+'"]');
     const to=canvas.querySelector('[data-workflow-node="'+edge.to+'"]');
     if(!from||!to)return '';
@@ -639,7 +660,12 @@ function drawWorkflowEdges(){
     const sx=a.left-canvasRect.left+a.width/2,sy=a.bottom-canvasRect.top;
     const ex=b.left-canvasRect.left+b.width/2,ey=b.top-canvasRect.top;
     const mid=sy+(ey-sy)*.5;
-    return '<path class="workflow-wire '+workflowEdgeClass(edge)+'" d="M '+sx+' '+sy+' C '+sx+' '+mid+', '+ex+' '+mid+', '+ex+' '+ey+'"></path>';
+    const d='M '+sx+' '+sy+' C '+sx+' '+mid+', '+ex+' '+mid+', '+ex+' '+ey;
+    const edgeClass=workflowEdgeClass(edge);
+    const state=String(edge.state||'').toUpperCase();
+    const particleSpec=state==='WORKING'?{dur:'1.15s',r:3.8}:['REVIEW','VERIFY'].includes(state)?{dur:'2.35s',r:3.2}:['WAITING','QUEUED'].includes(state)?{dur:'4.2s',r:2.5}:null;
+    const particle=particleSpec?'<circle class="workflow-particle '+edgeClass+'" r="'+particleSpec.r+'"><animateMotion dur="'+particleSpec.dur+'" begin="'+(-.37*index)+'s" repeatCount="indefinite" path="'+d+'"></animateMotion></circle>':'';
+    return '<path class="workflow-wire '+edgeClass+'" d="'+d+'"></path>'+particle;
   }).join('');
 }
 function scheduleWorkflowEdges(){

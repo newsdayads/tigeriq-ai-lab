@@ -46,6 +46,18 @@ describe('TigerIQ Live real workflow graph #3231', () => {
     expect(rootHtml).toContain('workflow-wires');
   });
 
+  it('renders visible motion for real workflow states without changing state semantics', () => {
+    expect(rootHtml).toContain('workflow-particle');
+    expect(rootHtml).toContain('<animateMotion');
+    expect(rootHtml).toContain('@keyframes workflow-wire-review-flow');
+    expect(rootHtml).toContain('@keyframes workflow-wire-wait-flow');
+    expect(rootHtml).toContain('@keyframes workflow-blocked-node');
+    expect(rootHtml).toContain('@keyframes workflow-focus-ring');
+    expect(rootHtml).toContain("if(s==='WAITING')return 'is-waiting'");
+    expect(rootHtml).toContain("if(s==='QUEUED')return 'is-queued'");
+    expect(rootHtml).toContain("const isFocus=node.id==='issue-'+Number(workflowGraphState?.focus?.number)");
+  });
+
   it('shows live animation without pretending stale data is live', () => {
     expect(rootHtml).toContain('@keyframes workflow-wire-flow');
     expect(rootHtml).toContain('@keyframes workflow-node-pulse');
@@ -54,6 +66,7 @@ describe('TigerIQ Live real workflow graph #3231', () => {
     expect(rootHtml).toContain("const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale)");
     expect(rootHtml).toContain('Dữ liệu hiện tại đã cũ nên chưa dựng luồng để tránh hiển thị sai.');
     expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(rootHtml).toContain('.workflow-particle{display:none!important}');
   });
 
   it('keeps mobile layout compact and node details interactive', () => {
