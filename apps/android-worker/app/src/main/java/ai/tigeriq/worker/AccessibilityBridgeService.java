@@ -86,6 +86,20 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (packageName == null) return;
 
         String value = packageName.toString();
+
+        // Reset Project stability before any early return whenever foreground evidence leaves
+        // ChatGPT. The only exception is the active IME while ChatGPT still owns the root.
+        if (!CHATGPT_PACKAGE.equals(value)) {
+            AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+            CharSequence activeRootPackage = activeRoot == null ? null : activeRoot.getPackageName();
+            boolean chatGptStillOwnsRoot = activeRootPackage != null
+                && CHATGPT_PACKAGE.equals(activeRootPackage.toString());
+            boolean activeImeEvent = isActiveInputMethodPackage(value);
+            if (!activeImeEvent || !chatGptStillOwnsRoot) {
+                clearProjectContextCandidate();
+            }
+        }
+
         if (getPackageName().equals(value)) return;
 
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -93,14 +107,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .putLong(KEY_LAST_EVENT_AT, System.currentTimeMillis())
             .apply();
 
-        // Important: keyboard events must not reset the candidate while ChatGPT still owns
-        // the active root. Launcher/recents/other-app departures must reset synchronously.
         if (!isPilotProvider(value)) {
-            AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
-            CharSequence activeRootPackage = activeRoot == null ? null : activeRoot.getPackageName();
-            if (activeRootPackage == null || !CHATGPT_PACKAGE.equals(activeRootPackage.toString())) {
-                clearProjectContextCandidate();
-            }
             scheduleB1RecoveryIfNeeded();
             return;
         }
@@ -121,8 +128,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             maybeBindRequiredProject(event, root);
             maybeBindProjectFromStableContext(root);
             ensureB1Ticker();
-        } else {
-            clearProjectContextCandidate();
         }
 
         int nodes = 0;
@@ -309,6 +314,18 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             .putInt(KEY_EDITABLE_COUNT, editable)
             .putInt(KEY_CLICKABLE_COUNT, clickable)
             .apply();
+    }
+
+    private boolean isActiveInputMethodPackage(String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        String component = android.provider.Settings.Secure.getString(
+            getContentResolver(),
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
+        );
+        if (component == null || component.isEmpty()) return false;
+        int slash = component.indexOf('/');
+        String imePackage = slash > 0 ? component.substring(0, slash) : component;
+        return packageName.equals(imePackage);
     }
 
     private static boolean isPilotProvider(String packageName) {
