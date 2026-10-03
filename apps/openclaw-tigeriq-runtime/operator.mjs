@@ -340,6 +340,7 @@ async function listTigerIQTasks() {
     scope: 'TigerIQ',
     count: tasks.length,
     taskNames: tasks.map((task) => task.taskName),
+    releaseTaskNames: tasks.map((task) => task.taskName).filter((name) => /(?:android|worker|release|sign|apk|build|stable|elevated)/i.test(name)),
     tasks,
   };
 }
