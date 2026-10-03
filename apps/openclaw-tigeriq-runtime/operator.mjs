@@ -314,16 +314,44 @@ export function parseTaskListCsv(text) {
   return tasks;
 }
 
+export function parseTigerIQTaskNamesCsv(text) {
+  const names = [];
+  for (const row of parseCsvRows(text)) {
+    for (const cell of row) {
+      const candidate = String(cell ?? '').trim().replace(/^\\+/, '');
+      if (!candidate.startsWith('TigerIQ ')) continue;
+      assertTigerIQTaskName(candidate);
+      if (!names.includes(candidate)) names.push(candidate);
+      break;
+    }
+  }
+  return names;
+}
+
 async function listTigerIQTasks() {
-  const result = await spawnBounded(
+  const inventory = await spawnBounded(
     'schtasks.exe',
-    ['/Query', '/FO', 'CSV', '/V', '/NH'],
+    ['/Query', '/FO', 'CSV', '/NH'],
     { timeoutSec: 30 },
   );
-  if (result.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
-  if (result.exitCode !== 0) throw new Error('TIGERIQ_PC_TASK_LIST_FAILED');
-  if (result.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_LIST_TRUNCATED');
-  const tasks = parseTaskListCsv(result.stdout);
+  if (inventory.timedOut) throw new Error('TIGERIQ_PC_TASK_LIST_TIMEOUT');
+  if (inventory.exitCode !== 0) throw new Error('TIGERIQ_PC_TASK_LIST_FAILED');
+  if (inventory.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_LIST_TRUNCATED');
+
+  const names = parseTigerIQTaskNamesCsv(inventory.stdout);
+  const tasks = [];
+  for (const taskName of names) {
+    const detail = await spawnBounded(
+      'schtasks.exe',
+      ['/Query', '/TN', taskName, '/FO', 'CSV', '/V', '/NH'],
+      { timeoutSec: 15 },
+    );
+    assertTaskProcessSuccess(detail, 'LIST_DETAIL');
+    if (detail.stdout.includes('[TRUNCATED]')) throw new Error('TIGERIQ_PC_TASK_DETAIL_TRUNCATED');
+    const parsed = parseTaskListCsv(detail.stdout).find((item) => item.taskName === taskName);
+    if (!parsed) throw new Error('TIGERIQ_PC_TASK_DETAIL_MISSING');
+    tasks.push(parsed);
+  }
   return {
     readOnly: true,
     scope: 'TigerIQ',
