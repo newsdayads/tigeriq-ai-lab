@@ -28,6 +28,8 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).not.toContain('Set-Clipboard');
     expect(helper).not.toContain('store-password.txt');
     expect(helper).not.toContain('key-password.txt');
+    expect(helper).not.toContain('stderr.Trim()');
+    expect(helper).toContain('.Dispose()');
   });
 
   it('never provisions or rotates signing identity', () => {
