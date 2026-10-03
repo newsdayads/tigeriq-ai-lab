@@ -34,6 +34,26 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
     private static final int MAX_B1_RECOVERIES = 2;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
+    private boolean b1TickScheduled = false;
+
+    private final Runnable b1TickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(AccessibilityBridgeService.this);
+            if (!run.active()) {
+                b1TickScheduled = false;
+                return;
+            }
+            AccessibilityNodeInfo current = getRootInActiveWindow();
+            CharSequence pkg = current == null ? null : current.getPackageName();
+            if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
+            } else {
+                scheduleB1RecoveryIfNeeded();
+            }
+            recoveryHandler.postDelayed(this, 750L);
+        }
+    };
 
     private final Runnable recoveryRunnable = () -> {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
@@ -83,6 +103,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
+            ensureB1Ticker();
         }
 
         int nodes = 0;
@@ -106,6 +127,13 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (CHATGPT_PACKAGE.equals(value)) {
             ChatGptB1Automation.drive(this, root);
         }
+    }
+
+    private void ensureB1Ticker() {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || b1TickScheduled) return;
+        b1TickScheduled = true;
+        recoveryHandler.postDelayed(b1TickRunnable, 400L);
     }
 
     private void scheduleB1RecoveryIfNeeded() {
@@ -133,6 +161,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryHandler.removeCallbacks(b1TickRunnable);
+        b1TickScheduled = false;
     }
 
     public boolean semanticTreeAvailable() {
