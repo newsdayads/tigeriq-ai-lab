@@ -7,6 +7,7 @@ const client = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai
 const service = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ForegroundWorkerService.java', import.meta.url), 'utf8');
 const taskStore = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/MobileTaskStore.java', import.meta.url), 'utf8');
 const runStore = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java', import.meta.url), 'utf8');
+const updateEngine = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/WorkerUpdateEngine.java', import.meta.url), 'utf8');
 
 describe('Android Gate C Core-issued task contract', () => {
   it('keeps assignment and execution Core-issued only', () => {
@@ -62,6 +63,27 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(service).toContain('client.submitResult');
     expect(service).toContain('MobileTaskStore.markResultReported');
     expect(service).toContain('duplicateSendCount');
+  });
+
+  it('fails closed on every update path while Core task or evidence is pending', () => {
+    const beginUpdate = updateEngine.indexOf('private static Result beginUpdate');
+    const taskGuard = updateEngine.indexOf('taskLeaseInProgress || MobileTaskStore.read(app).present()', beginUpdate);
+    const b1Guard = updateEngine.indexOf('if (run.active())', beginUpdate);
+    const evidenceGuard = updateEngine.indexOf('if (run.terminal() && run.evidenceSeq > run.reportedSeq)', beginUpdate);
+    const manifestFetch = updateEngine.indexOf('JSONObject manifest = client.updateManifest()');
+    expect(beginUpdate).toBeGreaterThan(-1);
+    expect(taskGuard).toBeGreaterThan(beginUpdate);
+    expect(b1Guard).toBeGreaterThan(taskGuard);
+    expect(evidenceGuard).toBeGreaterThan(b1Guard);
+    expect(manifestFetch).toBeGreaterThan(-1);
+    expect(updateEngine).toContain('"DEFERRED_CORE_TASK"');
+    expect(updateEngine).toContain('"DEFERRED_EVIDENCE_PENDING"');
+    expect(updateEngine).toContain('if (updateInProgress || installPending(app))');
+    expect(updateEngine).toContain('if (updateInProgress || taskLeaseInProgress || installPending(context)) return false;');
+    expect(updateEngine).toContain('"INSTALL_COMMITTED".equals(state)');
+    expect(updateEngine).toContain('"PENDING_USER_ACTION_OPENED".equals(state)');
+    expect(service).toContain('if (!WorkerUpdateEngine.beginTaskLease(this)) return;');
+    expect(service).toContain('WorkerUpdateEngine.endTaskLease();');
   });
 
   it('drains terminal evidence before clearing, claiming the next task, or updating', () => {

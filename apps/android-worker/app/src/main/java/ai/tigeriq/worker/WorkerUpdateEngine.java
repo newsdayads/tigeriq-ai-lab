@@ -32,17 +32,19 @@ public final class WorkerUpdateEngine {
     public static final String KEY_EXPECTED_SHA256 = "expectedSha256";
     public static final String KEY_EXPECTED_SIGNER_SHA256 = "expectedSignerSha256";
     public static final String ACTION_INSTALL_RESULT = "ai.tigeriq.worker.UPDATE_INSTALL_RESULT";
+    private static final Object OPERATION_GATE = new Object();
+    private static boolean updateInProgress;
+    private static boolean taskLeaseInProgress;
 
     private WorkerUpdateEngine() {}
 
     public static Result checkAndInstall(Context context, boolean userInitiated) throws Exception {
         Context app = context.getApplicationContext();
-        if (ChatGptB1RunStore.read(app).active()) {
-            write(app, "DEFERRED_B1_ACTIVE", "", 0, -1, userInitiated, "", "");
-            return new Result("DEFERRED_B1_ACTIVE", 0, false);
-        }
-
-        ControllerClient client = new ControllerClient(new SecureCredentialStore(app));
+        Result deferred = beginUpdate(app, userInitiated);
+        if (deferred != null) return deferred;
+        boolean installPending = false;
+        try {
+            ControllerClient client = new ControllerClient(new SecureCredentialStore(app));
         JSONObject manifest = client.updateManifest();
         long now = System.currentTimeMillis();
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -81,9 +83,63 @@ public final class WorkerUpdateEngine {
         verifyDownloadedApk(app, apk, targetVersion, expectedSha256, expectedSigner);
         write(app, "VERIFIED", "", targetVersion, -1, userInitiated, expectedSha256, expectedSigner);
 
-        int sessionId = commitInstall(app, apk, targetVersion, userInitiated);
-        write(app, "INSTALL_COMMITTED", "", targetVersion, sessionId, userInitiated, expectedSha256, expectedSigner);
-        return new Result("INSTALL_COMMITTED", targetVersion, true);
+            int sessionId = commitInstall(app, apk, targetVersion, userInitiated);
+            installPending = true;
+            write(app, "INSTALL_COMMITTED", "", targetVersion, sessionId, userInitiated, expectedSha256, expectedSigner);
+            return new Result("INSTALL_COMMITTED", targetVersion, true);
+        } finally {
+            if (!installPending) {
+                synchronized (OPERATION_GATE) {
+                    updateInProgress = false;
+                }
+            }
+        }
+    }
+
+    private static Result beginUpdate(Context app, boolean userInitiated) {
+        synchronized (OPERATION_GATE) {
+            if (updateInProgress || installPending(app)) {
+                return new Result("UPDATE_IN_PROGRESS", 0, false);
+            }
+            if (taskLeaseInProgress || MobileTaskStore.read(app).present()) {
+                write(app, "DEFERRED_CORE_TASK", "", 0, -1, userInitiated, "", "");
+                return new Result("DEFERRED_CORE_TASK", 0, false);
+            }
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(app);
+            if (run.active()) {
+                write(app, "DEFERRED_B1_ACTIVE", "", 0, -1, userInitiated, "", "");
+                return new Result("DEFERRED_B1_ACTIVE", 0, false);
+            }
+            if (run.terminal() && run.evidenceSeq > run.reportedSeq) {
+                write(app, "DEFERRED_EVIDENCE_PENDING", "", 0, -1, userInitiated, "", "");
+                return new Result("DEFERRED_EVIDENCE_PENDING", 0, false);
+            }
+            updateInProgress = true;
+            return null;
+        }
+    }
+
+    public static boolean beginTaskLease(Context context) {
+        synchronized (OPERATION_GATE) {
+            if (updateInProgress || taskLeaseInProgress || installPending(context)) return false;
+            taskLeaseInProgress = true;
+            return true;
+        }
+    }
+
+    private static boolean installPending(Context context) {
+        String state = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_STATE, "");
+        return "INSTALL_COMMITTED".equals(state)
+            || "PENDING_USER_ACTION".equals(state)
+            || "PENDING_USER_ACTION_OPENED".equals(state)
+            || "INSTALL_SUCCESS_CALLBACK".equals(state);
+    }
+
+    public static void endTaskLease() {
+        synchronized (OPERATION_GATE) {
+            taskLeaseInProgress = false;
+        }
     }
 
     public static boolean shouldResumeAfterPermission(Context context) {
@@ -118,6 +174,13 @@ public final class WorkerUpdateEngine {
             .putString(KEY_STATE, state)
             .putString(KEY_LAST_ERROR, safe(error))
             .apply();
+        if (state != null && (state.startsWith("INSTALL_FAILED_")
+            || "UPDATE_FAILED".equals(state)
+            || "AUTO_UPDATE_FAILED".equals(state))) {
+            synchronized (OPERATION_GATE) {
+                updateInProgress = false;
+            }
+        }
     }
 
     public static void markPackageReplaced(Context context) {
@@ -126,6 +189,9 @@ public final class WorkerUpdateEngine {
             .putString(KEY_LAST_ERROR, "")
             .putLong(KEY_LAST_PACKAGE_REPLACED_AT, System.currentTimeMillis())
             .apply();
+        synchronized (OPERATION_GATE) {
+            updateInProgress = false;
+        }
     }
 
     public static boolean wasUserInitiated(Context context) {
