@@ -456,11 +456,15 @@ async function statPath(targetPath) {
 
 
 async function buildAndroidWorkerStableRelease() {
-  const repoRoot = 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab';
-  const script = 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab\\scripts\\pc-worker\\build-android-worker-release.ps1';
+  const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
+  const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\build-android-worker-release.ps1';
   const secretsDir = 'D:\\TigerIQ\\Secrets\\AndroidSigning';
   const releaseRoot = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed';
+  const runtimeStatePath = 'D:\\TigerIQ\\State\\core-runtime-updater.json';
   await realPathInsideRoots(script);
+  const runtimeState = JSON.parse(await fs.readFile(await realPathInsideRoots(runtimeStatePath), 'utf8'));
+  const installedSha = String(runtimeState?.installedSha || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(installedSha)) throw new Error('TIGERIQ_ANDROID_RELEASE_INSTALLED_SHA_MISSING');
   const result = await spawnBounded(
     'powershell.exe',
     ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-RepoRoot',repoRoot,'-SecretsDir',secretsDir,'-ReleaseRoot',releaseRoot],
@@ -482,6 +486,9 @@ async function buildAndroidWorkerStableRelease() {
     throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
   }
   if (receipt.secretsPrinted !== false) throw new Error('TIGERIQ_ANDROID_RELEASE_SECRET_OUTPUT_UNSAFE');
+  const sourceSha = String(receipt.sourceSha || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISSING');
+  if (sourceSha !== installedSha) throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH');
   return {
     status: receipt.status,
     version: String(receipt.version || ''),
@@ -489,6 +496,8 @@ async function buildAndroidWorkerStableRelease() {
     manifest: String(receipt.manifest || ''),
     apkSha256: String(receipt.apkSha256 || '').toUpperCase(),
     certificateSha256: expectedSigner,
+    sourceSha,
+    installedSha,
     secretsPrinted: false,
   };
 }
