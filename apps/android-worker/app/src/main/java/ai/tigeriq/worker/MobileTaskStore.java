@@ -60,19 +60,6 @@ public final class MobileTaskStore {
         return read(context);
     }
 
-    public static Snapshot rebindLease(Context context, JSONObject task) throws Exception {
-        Snapshot current=read(context);
-        String taskId=required(task.optString("taskId",""),"taskId");
-        String runId=required(task.optString("runId",""),"runId");
-        if(!current.present()||!current.taskId.equals(taskId)||!current.runId.equals(runId)) {
-            throw new IllegalStateException("mobile task rebind mismatch");
-        }
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
-            .putString(K_LEASE_ID,required(task.optString("leaseId",""),"leaseId"))
-            .apply();
-        return read(context);
-    }
-
     public static void markResultReported(Context context) {
         context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
             .putBoolean(K_RESULT_REPORTED,true)
