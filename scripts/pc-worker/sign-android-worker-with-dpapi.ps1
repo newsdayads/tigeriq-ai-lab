@@ -4,7 +4,10 @@ param(
   [Parameter(Mandatory = $true)][string]$ExpectedUnsignedSha256,
   [string]$SecretsDir = $env:TIGERIQ_ANDROID_SIGNING_DIR,
   [string]$ApkSigner = $env:TIGERIQ_APKSIGNER,
-  [string]$ZipAlign = $env:TIGERIQ_ZIPALIGN
+  [string]$ZipAlign = $env:TIGERIQ_ZIPALIGN,
+  [string]$ApkSignerJar = $env:TIGERIQ_APKSIGNER_JAR,
+  [string]$ExpectedApkSignerJarSha256 = $env:TIGERIQ_APKSIGNER_JAR_SHA256,
+  [switch]$PrealignedInput
 )
 
 $ErrorActionPreference = 'Stop'
@@ -205,8 +208,31 @@ if ([string]::IsNullOrWhiteSpace($alias)) {
   throw 'STABLE_SIGNING_ALIAS_REQUIRED'
 }
 
-$apksignerExe = Resolve-AndroidBuildTool $ApkSigner @('apksigner.bat', 'apksigner')
-$zipalignExe = Resolve-AndroidBuildTool $ZipAlign @('zipalign.exe', 'zipalign')
+$apksignerExe = $null
+$apksignerJarPath = $null
+$javaExe = $null
+$apksignerPrefixArgs = @()
+$apksignerMode = 'local-build-tools'
+
+if (-not [string]::IsNullOrWhiteSpace($ApkSignerJar)) {
+  if ([string]::IsNullOrWhiteSpace($ExpectedApkSignerJarSha256)) {
+    throw 'APKSIGNER_JAR_SHA256_REQUIRED'
+  }
+  $apksignerJarPath = (Resolve-Path -LiteralPath $ApkSignerJar).Path
+  $actualApkSignerJarSha256 = (Get-FileHash -LiteralPath $apksignerJarPath -Algorithm SHA256).Hash.ToUpperInvariant()
+  $expectedApkSignerJarSha256Normalized = $ExpectedApkSignerJarSha256.Trim().Replace(':','').ToUpperInvariant()
+  if ($actualApkSignerJarSha256 -ne $expectedApkSignerJarSha256Normalized) {
+    throw 'APKSIGNER_JAR_SHA256_MISMATCH'
+  }
+  $javaExe = Resolve-Tool $null @('java.exe', 'java')
+  $apksignerPrefixArgs = @('-jar', $apksignerJarPath)
+  $apksignerMode = 'portable-pinned-jar'
+} else {
+  $apksignerExe = Resolve-AndroidBuildTool $ApkSigner @('apksigner.bat', 'apksigner')
+}
+
+$zipalignExe = if ($PrealignedInput) { $null } else { Resolve-AndroidBuildTool $ZipAlign @('zipalign.exe', 'zipalign') }
+$apksignerFile = if ($apksignerMode -eq 'portable-pinned-jar') { $javaExe } else { $apksignerExe }
 
 $outputDir = Split-Path -Parent $OutputApk
 if ([string]::IsNullOrWhiteSpace($outputDir)) {
@@ -224,11 +250,15 @@ $aligned = Join-Path (Split-Path -Parent $output) ([IO.Path]::GetFileNameWithout
 Remove-Item -LiteralPath $aligned, $output, ($output + '.idsig') -Force -ErrorAction SilentlyContinue
 
 try {
-  Invoke-PlainProcess $zipalignExe @('-f', '-p', '4', $unsigned, $aligned) | Out-Null
+  $signerInput = $unsigned
+  if (-not $PrealignedInput) {
+    Invoke-PlainProcess $zipalignExe @('-f', '-p', '4', $unsigned, $aligned) | Out-Null
+    $signerInput = $aligned
+  }
 
   $securePassword = ([IO.File]::ReadAllText($passwordBlob).Trim() | ConvertTo-SecureString)
 
-  Invoke-ApkSignerWithSecureStdin $apksignerExe @(
+  Invoke-ApkSignerWithSecureStdin $apksignerFile ($apksignerPrefixArgs + @(
     'sign',
     '--ks', $keystore,
     '--ks-key-alias', $alias,
@@ -238,10 +268,10 @@ try {
     '--v2-signing-enabled', 'true',
     '--v3-signing-enabled', 'true',
     '--out', $output,
-    $aligned
-  ) $securePassword | Out-Null
+    $signerInput
+  )) $securePassword | Out-Null
 
-  $verify = Invoke-PlainProcess $apksignerExe @('verify', '--verbose', '--print-certs', $output)
+  $verify = Invoke-PlainProcess $apksignerFile ($apksignerPrefixArgs + @('verify', '--verbose', '--print-certs', $output))
   $certLine = (
     $verify -split [Environment]::NewLine |
       Where-Object { $_ -match 'Signer #1 certificate SHA-256 digest:' } |
@@ -278,6 +308,8 @@ try {
     plaintextSecretPrinted = $false
     plaintextSecretWrittenToDisk = $false
     passwordTransport = 'stdin-only'
+    apksignerMode = $apksignerMode
+    prealignedInput = [bool]$PrealignedInput
   } | ConvertTo-Json -Compress
 } catch {
   Remove-Item -LiteralPath $output, ($output + '.idsig') -Force -ErrorAction SilentlyContinue
