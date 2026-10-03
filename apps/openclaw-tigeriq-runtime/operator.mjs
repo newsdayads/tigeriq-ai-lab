@@ -804,6 +804,46 @@ async function signAndroidWorkerV020UserContext() {
   };
 }
 
+
+async function grantAndroidWorkerV020SignerReadAcl() {
+  const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
+  const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\grant-v020-signer-read-acl.ps1';
+  await realPathInsideRoots(script);
+  const applied = await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script],
+    { cwd: repoRoot, timeoutSec: 30 },
+  );
+  if (applied.timedOut) throw new Error('TIGERIQ_ANDROID_SIGNER_ACL_TIMEOUT');
+  if (Number(applied.exitCode) !== 0) throw new Error('TIGERIQ_ANDROID_SIGNER_ACL_APPLY_FAILED');
+  const lines = String(applied.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let receipt = null;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed?.status === 'ANDROID_V020_SIGNER_ACL_READY') { receipt = parsed; break; }
+    } catch {}
+  }
+  if (!receipt) throw new Error('TIGERIQ_ANDROID_SIGNER_ACL_RECEIPT_MISSING');
+  if (String(receipt.account || '').toLowerCase() !== 'pc01\\\\wdragons12x'
+      || Number(receipt.filesGranted) !== 3
+      || String(receipt.rights || '') !== 'Read'
+      || String(receipt.inheritance || '') !== 'None'
+      || receipt.secretsPrinted !== false) {
+    throw new Error('TIGERIQ_ANDROID_SIGNER_ACL_RECEIPT_INVALID');
+  }
+  return {
+    status: receipt.status,
+    account: 'pc01\\wdragons12x',
+    sid: String(receipt.sid || ''),
+    filesGranted: 3,
+    changed: Number(receipt.changed || 0),
+    rights: 'Read',
+    inheritance: 'None',
+    secretsPrinted: false,
+  };
+}
+
 export function assertTigerIQLive3150DeployRequest(input = {}) {
   const expectedSha = String(input?.expectedSha || '').trim().toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
@@ -881,6 +921,8 @@ export async function executePcAction(input, options = {}) {
     data = await signAndroidWorkerV020CiArtifact();
   } else if (action === 'android_worker_sign_v020_user_context') {
     data = await signAndroidWorkerV020UserContext();
+  } else if (action === 'android_worker_grant_v020_signer_read_acl') {
+    data = await grantAndroidWorkerV020SignerReadAcl();
   } else if (action === 'tigeriq_live_3150_production_deploy') {
     data = await deployTigerIQLive3150(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
@@ -923,6 +965,7 @@ export async function executePcAction(input, options = {}) {
       taskListReadOnly: action === 'task_list',
       androidReleaseBuild: ['android_worker_release_build', 'android_worker_sign_v020_ci_artifact', 'android_worker_sign_v020_user_context'].includes(action),
       userContextSigner: action === 'android_worker_sign_v020_user_context',
+      signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
