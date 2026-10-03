@@ -40,6 +40,14 @@ export function mobileTaskTerminalDecision({status='',currentDigest='',incomingR
   if(String(currentDigest||'')===digest)return {accept:false,idempotent:true,conflict:false,digest};
   return {accept:false,idempotent:false,conflict:true,digest};
 }
+export function verifyCoreEnqueueAuth(req,coreAuthToken='') {
+  const expected=String(coreAuthToken||'').trim();
+  if(!expected)return false;
+  const match=String(req?.headers?.authorization||'').match(/^Bearer\s+(.+)$/i);
+  const presented=String(match?.[1]||'').trim();
+  if(!presented)return false;
+  return safeHexEqual(sha256(presented),sha256(expected));
+}
 export function normalizeMobileProvider(value) {
   return String(value||'').trim().toLowerCase()==='gemini'?'Gemini':'ChatGPT';
 }
@@ -179,7 +187,7 @@ export function readMobileReleaseManifest(path=releaseManifestPath()) {
     };
   } catch { return {available:false}; }
 }
-export function createMobileWorkerApi({pool,event=async()=>{}}) {
+export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''}) {
   return async function handleMobile(req,res,url) {
     if(!url.pathname.startsWith('/api/mobile/'))return false;
 
@@ -257,6 +265,7 @@ export function createMobileWorkerApi({pool,event=async()=>{}}) {
       if(!isTailnetPeer(req)||!['127.0.0.1','::1'].includes(String(req.socket?.remoteAddress||'').replace(/^::ffff:/,''))){
         return send(res,403,{ok:false,error:'loopback_required'});
       }
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
       const input=await body(req);
       const employeeId=text(input.employeeId,80);
       const idempotencyKey=text(input.idempotencyKey,160);

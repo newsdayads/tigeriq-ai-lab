@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const core = readFileSync(new URL('../apps/tigeriq-core/mobile-worker-api.mjs', import.meta.url), 'utf8');
+const coreMain = readFileSync(new URL('../apps/tigeriq-core/core.mjs', import.meta.url), 'utf8');
 const client = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ControllerClient.java', import.meta.url), 'utf8');
 const service = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/ForegroundWorkerService.java', import.meta.url), 'utf8');
 const taskStore = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/MobileTaskStore.java', import.meta.url), 'utf8');
@@ -11,10 +12,24 @@ describe('Android Gate C Core-issued task contract', () => {
   it('keeps assignment and execution Core-issued only', () => {
     expect(core).toContain("url.pathname==='/api/mobile/tasks/enqueue'");
     expect(core).toContain("loopback_required");
+    expect(core).toContain("core_auth_required");
+    expect(core).toContain("verifyCoreEnqueueAuth(req,coreAuthToken)");
+    expect(coreMain).toContain("createMobileWorkerApi({pool,event,coreAuthToken:TOKEN})");
     expect(core).toContain("url.pathname==='/api/mobile/tasks/lease'");
     expect(client).toContain('/api/mobile/tasks/lease');
     expect(service).toContain('client.pollLease()');
     expect(service).not.toMatch(/github|backlog|issues\/|pulls\//i);
+  });
+
+  it('defers a persisted Core task while a manual B1 run owns ChatGPT', () => {
+    expect(service).toContain('boolean sameTaskRun = task.taskId.equals(run.taskId);');
+    expect(service).toContain('if (run.active() && !sameTaskRun)');
+    expect(service).toContain('if (run.terminal() && !sameTaskRun)');
+    expect(service).toContain('if (sameTaskRun && run.terminal())');
+    const manualGuard = service.indexOf('if (run.active() && !sameTaskRun)');
+    const recoveryLaunch = service.indexOf('ChatGptB1RunStore.markRecovery(this);', manualGuard);
+    expect(manualGuard).toBeGreaterThan(-1);
+    expect(recoveryLaunch).toBeGreaterThan(manualGuard);
   });
 
   it('persists one leased task and resumes the same run after restart', () => {

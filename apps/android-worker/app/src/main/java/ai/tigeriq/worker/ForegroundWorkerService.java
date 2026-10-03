@@ -85,7 +85,36 @@ public final class ForegroundWorkerService extends Service {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
 
             if (task.present()) {
-                if (run.terminal()) {
+                boolean sameTaskRun = task.taskId.equals(run.taskId);
+
+                // A manual/different B1 run owns ChatGPT until it reaches terminal state.
+                // Keep the already-leased Core task alive, but never launch/overwrite the manual run.
+                if (run.active() && !sameTaskRun) {
+                    long now = System.currentTimeMillis();
+                    if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
+                        task = renewTaskLease(client, task);
+                        lastLeaseRenewAt = now;
+                    }
+                    return;
+                }
+
+                // Drain evidence from the manual/different run before starting the waiting Core task.
+                if (run.terminal() && !sameTaskRun) {
+                    reportPendingB1Evidence(client);
+                    run = ChatGptB1RunStore.read(this);
+                    if (run.evidenceSeq > run.reportedSeq) return;
+                    long now = System.currentTimeMillis();
+                    if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
+                        task = renewTaskLease(client, task);
+                        lastLeaseRenewAt = now;
+                    }
+                    ChatGptB1RunStore.startTask(this, task.runId, task.taskId, task.prompt, task.expectedToken);
+                    launchChatGpt();
+                    taskResumeAttempted = true;
+                    return;
+                }
+
+                if (sameTaskRun && run.terminal()) {
                     if (!task.resultReported) {
                         JSONObject result = new JSONObject();
                         result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
@@ -126,14 +155,7 @@ public final class ForegroundWorkerService extends Service {
 
                 long now = System.currentTimeMillis();
                 if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
-                    try {
-                        client.renewLease(task.taskId, task.leaseId);
-                    } catch (ControllerClient.ControllerException stale) {
-                        if (stale.status != 409) throw stale;
-                        JSONObject reacquired = client.pollLease();
-                        if (!reacquired.optBoolean("leased", false)) throw stale;
-                        MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
-                    }
+                    task = renewTaskLease(client, task);
                     lastLeaseRenewAt = now;
                 }
                 if (!taskResumeAttempted) {
@@ -163,6 +185,18 @@ public final class ForegroundWorkerService extends Service {
             if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
             long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_HEARTBEAT_AT, 0L);
             writeRuntime("TASK_ERROR", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
+        }
+    }
+
+    private MobileTaskStore.Snapshot renewTaskLease(ControllerClient client, MobileTaskStore.Snapshot task) throws Exception {
+        try {
+            client.renewLease(task.taskId, task.leaseId);
+            return task;
+        } catch (ControllerClient.ControllerException stale) {
+            if (stale.status != 409) throw stale;
+            JSONObject reacquired = client.pollLease();
+            if (!reacquired.optBoolean("leased", false)) throw stale;
+            return MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
         }
     }
 

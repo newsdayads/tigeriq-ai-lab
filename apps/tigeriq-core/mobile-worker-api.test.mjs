@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { createMobileWorkerApi, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -21,6 +21,67 @@ describe('mobile worker api helpers',()=>{
   it('normalizes the two pilot providers',()=>{
     expect(normalizeMobileProvider('Gemini')).toBe('Gemini');
     expect(normalizeMobileProvider('anything-else')).toBe('ChatGPT');
+  });
+
+  it('requires the existing Core token for mobile task enqueue',()=>{
+    const req=(authorization)=>({headers:{authorization}});
+    expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'core-secret')).toBe(true);
+    expect(verifyCoreEnqueueAuth(req('Bearer wrong'),'core-secret')).toBe(false);
+    expect(verifyCoreEnqueueAuth(req(''),'core-secret')).toBe(false);
+    expect(verifyCoreEnqueueAuth(req('Bearer core-secret'),'')).toBe(false);
+  });
+
+  it('rejects a wrong worker before terminal idempotent retry acceptance',async()=>{
+    const incoming={status:'completed',output:{token:'TIGERIQ_GATE_C_OK'}};
+    const digest=mobileTaskResultDigest(incoming);
+    const device={
+      node_id:'node-wrong',employee_id:'NV202',credential_id:'cred-wrong',
+      token_hash:createHash('sha256').update('mobile-token').digest('hex'),
+      provider:'ChatGPT',department:'Engineering',role:'Android Worker Pilot'
+    };
+    let committed=false;
+    const client={
+      async query(sql){
+        if(sql==='begin')return {rowCount:0,rows:[]};
+        if(sql==='rollback')return {rowCount:0,rows:[]};
+        if(sql==='commit'){committed=true;return {rowCount:0,rows:[]};}
+        if(sql.startsWith('select * from tigeriq_mobile_tasks where task_id=')){
+          return {rowCount:1,rows:[{
+            task_id:'MT-1',target_node_id:'node-owner',employee_id:'NV201',
+            status:'completed',result_digest:digest,lease_id:'ML-1',
+            lease_expires_at:new Date(Date.now()+60_000).toISOString()
+          }]};
+        }
+        throw new Error('unexpected client sql: '+sql);
+      },
+      release(){}
+    };
+    const pool={
+      async query(sql){
+        if(sql.startsWith('select * from tigeriq_mobile_devices')){
+          return {rowCount:1,rows:[device]};
+        }
+        throw new Error('unexpected pool sql: '+sql);
+      },
+      async connect(){return client;}
+    };
+    const handle=createMobileWorkerApi({pool});
+    const payload=JSON.stringify({taskId:'MT-1',leaseId:'ML-1',result:incoming});
+    const req={
+      method:'POST',
+      headers:{'x-tigeriq-credential-id':'cred-wrong',authorization:'Bearer mobile-token'},
+      socket:{remoteAddress:'100.64.0.9'},
+      async *[Symbol.asyncIterator](){yield Buffer.from(payload);}
+    };
+    const res={
+      status:0,body:null,
+      writeHead(status){this.status=status;},
+      end(body){this.body=JSON.parse(body);}
+    };
+    await handle(req,res,new URL('http://core/api/mobile/tasks/result'));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ok:false,error:'mobile_task_wrong_worker'});
+    expect(committed).toBe(false);
   });
 
   it('keeps terminal mobile task commits exactly-once across retries',()=>{
