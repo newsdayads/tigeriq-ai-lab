@@ -979,10 +979,21 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
   });
   assert.strictEqual(pool.objectives[0].metadata.ownerDirect,true);
 
+  const highValidPool=coreBacklogPool();
+  const highValid=await materializeGithubIssues({
+    pool:highValidPool,
+    openIssues:[{...issues[0],number:3331,body:body.replace('"chunkIndex":2','"chunkIndex":20')}],
+    token:'fake',
+  });
+  assert.strictEqual(highValid.created,1);
+  assert.deepStrictEqual(highValidPool.objectives[0].metadata.pcOperatorDirectAction,{
+    action:'android_worker_export_v020_signed_apk_chunk',chunkIndex:20,
+  });
+
   const badPool=coreBacklogPool();
   const bad=await materializeGithubIssues({
     pool:badPool,
-    openIssues:[{...issues[0],number:3331,body:body.replace('"chunkIndex":2','"chunkIndex":99')}],
+    openIssues:[{...issues[0],number:3332,body:body.replace('"chunkIndex":2','"chunkIndex":32')}],
     token:'fake',
   });
   assert.strictEqual(bad.created,0);
@@ -991,7 +1002,7 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
   const noOwnerPool=coreBacklogPool();
   const noOwner=await materializeGithubIssues({
     pool:noOwnerPool,
-    openIssues:[{...issues[0],number:3332,body:body.replace('OWNER_DIRECT=true\n','')}],
+    openIssues:[{...issues[0],number:3333,body:body.replace('OWNER_DIRECT=true\n','')}],
     token:'fake',
   });
   assert.strictEqual(noOwner.created,0);
