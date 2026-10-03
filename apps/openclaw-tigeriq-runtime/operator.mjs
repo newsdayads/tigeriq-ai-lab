@@ -468,6 +468,17 @@ export function androidReleaseBuildFailureClass(result = {}) {
     'CANONICAL_SIGNING_IDENTITY_RECOVERY_REQUIRED',
     'OUTPUT_APK_MUST_DIFFER_FROM_UNSIGNED_APK',
     'DPAPI_PASSWORD_DECRYPT_FAILED',
+    'V020_USER_CONTEXT_UNAVAILABLE',
+    'V020_USER_CONTEXT_RUNNER_MISSING',
+    'V020_USER_CONTEXT_TASK_COLLISION',
+    'V020_USER_CONTEXT_TASK_REGISTER_FAILED',
+    'V020_USER_CONTEXT_TASK_START_FAILED',
+    'V020_USER_CONTEXT_TASK_TIMEOUT',
+    'V020_USER_CONTEXT_RECEIPT_MISSING',
+    'V020_USER_CONTEXT_RECEIPT_INVALID',
+    'V020_USER_CONTEXT_IDENTITY_MISMATCH',
+    'V020_USER_CONTEXT_TASK_CLEANUP_FAILED',
+    'V020_USER_CONTEXT_SIGN_FAILED',
     'KEYTOOL_MISSING',
     'KEYSTORE_VERIFY_FAILED',
     'KEYSTORE_CERTIFICATE_FINGERPRINT_NOT_FOUND',
@@ -683,6 +694,109 @@ async function signAndroidWorkerV020CiArtifact() {
 }
 
 
+async function signAndroidWorkerV020UserContext() {
+  const spec = ANDROID_V020_CI_ARTIFACT;
+  const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
+  const bridge = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\run-v020-user-context-signer-task.ps1';
+  const downloadDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\ci-artifact\\v0.20';
+  const releaseDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.20.0-update-lease-guard';
+  const unsignedApk = win.join(downloadDir, 'tigeriq-worker-unsigned-release.apk');
+  const apksignerJar = win.join(downloadDir, 'apksigner.jar');
+  const outputApk = win.join(releaseDir, 'TIQ Worker v0.20.apk');
+  const manifestPath = win.join(releaseDir, 'release-manifest.json');
+  const expectedUser = 'pc01\\wdragons12x';
+  const expectedTask = 'TigerIQ Android v0.20 OneShot Signer';
+
+  await realPathInsideRoots(bridge);
+  await realPathInsideRoots(unsignedApk);
+  await realPathInsideRoots(apksignerJar);
+
+  const actualUnsignedSha256 = createHash('sha256')
+    .update(await fs.readFile(unsignedApk))
+    .digest('hex')
+    .toUpperCase();
+  if (actualUnsignedSha256 !== spec.expectedUnsignedSha256) {
+    throw new Error('TIGERIQ_ANDROID_CI_ARTIFACT_SHA256_MISMATCH');
+  }
+  const actualApkSignerJarSha256 = createHash('sha256')
+    .update(await fs.readFile(apksignerJar))
+    .digest('hex')
+    .toUpperCase();
+  if (actualApkSignerJarSha256 !== spec.expectedApkSignerJarSha256) {
+    throw new Error('TIGERIQ_ANDROID_APKSIGNER_JAR_SHA256_MISMATCH');
+  }
+
+  const signed = await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',bridge],
+    { cwd: repoRoot, timeoutSec: 120 },
+  );
+  if (signed.timedOut) throw new Error('TIGERIQ_ANDROID_USER_CONTEXT_SIGN_TIMEOUT');
+  if (Number(signed.exitCode) !== 0) {
+    throw new Error('TIGERIQ_ANDROID_USER_CONTEXT_SIGN_FAILED:' + androidReleaseBuildFailureClass(signed));
+  }
+
+  const lines = String(signed.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let receipt = null;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed?.status === 'ANDROID_WORKER_STABLE_RELEASE_READY') { receipt = parsed; break; }
+    } catch {}
+  }
+  if (!receipt) throw new Error('TIGERIQ_ANDROID_USER_CONTEXT_SIGN_RECEIPT_MISSING');
+  if (String(receipt.version || '') !== spec.expectedVersion) throw new Error('TIGERIQ_ANDROID_RELEASE_VERSION_MISMATCH');
+  if (String(receipt.unsignedApkSha256 || '').replaceAll(':','').toUpperCase() !== actualUnsignedSha256) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_UNSIGNED_SHA256_MISMATCH');
+  }
+  if (String(receipt.certificateSha256 || '').replaceAll(':','').toUpperCase() !== spec.expectedSignerSha256) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
+  }
+  if (String(receipt.sourceSha || '').toLowerCase() !== spec.sourceHead
+      || String(receipt.sourceWorkflowRunId || '') !== spec.runId
+      || String(receipt.sourceArtifactId || '') !== spec.artifactId) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_ARTIFACT_MISMATCH');
+  }
+  if (receipt.passwordTransport !== 'stdin-only' || receipt.secretsPrinted !== false
+      || receipt.apksignerMode !== 'portable-pinned-jar' || receipt.prealignedInput !== true) {
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_RECEIPT_UNSAFE');
+  }
+  if (String(receipt.executionIdentity || '').toLowerCase() !== expectedUser
+      || String(receipt.taskPrincipal || '').toLowerCase() !== expectedUser
+      || String(receipt.taskName || '') !== expectedTask
+      || String(receipt.taskLogonType || '') !== 'InteractiveToken'
+      || String(receipt.taskRunLevel || '') !== 'Limited'
+      || receipt.taskDeleted !== true) {
+    throw new Error('TIGERIQ_ANDROID_USER_CONTEXT_IDENTITY_CONTRACT_FAILED');
+  }
+  const signedSha256 = String(receipt.apkSha256 || '').replaceAll(':','').toUpperCase();
+  if (!/^[0-9A-F]{64}$/.test(signedSha256)) throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNED_SHA256_INVALID');
+  await realPathInsideRoots(outputApk);
+  await realPathInsideRoots(manifestPath);
+
+  return {
+    status: 'ANDROID_WORKER_STABLE_RELEASE_READY',
+    version: spec.expectedVersion,
+    apk: outputApk,
+    manifest: manifestPath,
+    apkSha256: signedSha256,
+    unsignedApkSha256: actualUnsignedSha256,
+    apksignerJarSha256: actualApkSignerJarSha256,
+    certificateSha256: spec.expectedSignerSha256,
+    sourceSha: spec.sourceHead,
+    sourceWorkflowRunId: spec.runId,
+    sourceArtifactId: spec.artifactId,
+    signingIdentity: 'stable-private-pc01-dpapi-stdin',
+    passwordTransport: 'stdin-only',
+    executionIdentity: expectedUser,
+    taskName: expectedTask,
+    taskLogonType: 'InteractiveToken',
+    taskRunLevel: 'Limited',
+    taskDeleted: true,
+    secretsPrinted: false,
+  };
+}
+
 export function assertTigerIQLive3150DeployRequest(input = {}) {
   const expectedSha = String(input?.expectedSha || '').trim().toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
@@ -758,6 +872,8 @@ export async function executePcAction(input, options = {}) {
     data = await buildAndroidWorkerStableRelease();
   } else if (action === 'android_worker_sign_v020_ci_artifact') {
     data = await signAndroidWorkerV020CiArtifact();
+  } else if (action === 'android_worker_sign_v020_user_context') {
+    data = await signAndroidWorkerV020UserContext();
   } else if (action === 'tigeriq_live_3150_production_deploy') {
     data = await deployTigerIQLive3150(input || {});
   } else if (['task_status', 'task_start', 'task_stop', 'task_restart'].includes(action)) {
@@ -798,7 +914,8 @@ export async function executePcAction(input, options = {}) {
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
       taskListReadOnly: action === 'task_list',
-      androidReleaseBuild: ['android_worker_release_build', 'android_worker_sign_v020_ci_artifact'].includes(action),
+      androidReleaseBuild: ['android_worker_release_build', 'android_worker_sign_v020_ci_artifact', 'android_worker_sign_v020_user_context'].includes(action),
+      userContextSigner: action === 'android_worker_sign_v020_user_context',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,
       sourceWriteBlocked: true,
