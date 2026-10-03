@@ -188,7 +188,8 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("actions/artifacts/${spec.artifactId}/zip");
     expect(source).toContain("'x-github-api-version': '2022-11-28'");
     expect(source).toContain("redirect: 'follow'");
-    expect(source).toContain("Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force");
+    expect(source).toContain("[\'504b0304\',\'504b0506\',\'504b0708\']");
+    expect(source).toContain("param([string]$zip,[string]$dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force");
     expect(source).toContain("scripts\\\\pc-worker\\\\sign-android-worker-with-dpapi.ps1");
     expect(source).toContain("passwordTransport: 'stdin-only'");
     expect(source).toContain("plaintextSecretWrittenToDisk");
