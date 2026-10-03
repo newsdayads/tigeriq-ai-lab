@@ -85,7 +85,7 @@ public final class ForegroundWorkerService extends Service {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
 
             if (task.present()) {
-                boolean runMatchesTask = task.taskId.equals(run.taskId);
+                boolean runMatchesTask = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
 
                 if (!runMatchesTask && run.active()) {
                     renewTaskLeaseIfDue(client, task);
