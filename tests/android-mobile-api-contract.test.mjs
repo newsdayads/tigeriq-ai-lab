@@ -13,6 +13,8 @@ describe('Android Worker ↔ TigerIQ Core mobile API contract', () => {
       '/api/mobile/assignment',
       '/api/mobile/heartbeat',
       '/api/mobile/update/manifest',
+      '/api/mobile/tasks/lease',
+      '/api/mobile/tasks/result',
     ]) {
       expect(client).toContain(route);
       expect(core).toContain(route);
@@ -20,5 +22,10 @@ describe('Android Worker ↔ TigerIQ Core mobile API contract', () => {
     expect(client).not.toContain('/api/node/employee');
     expect(client).not.toContain('/api/node/pair');
     expect(client).not.toContain('/api/node/pairing-challenge');
+    expect(core).toContain('/api/mobile/tasks/enqueue');
+    expect(core).toContain('/api/mobile/tasks/renew');
+    expect(core).toContain('tigeriq_mobile_tasks');
+    expect(core).toContain("mobile_task_result_conflict");
+    expect(core).toContain("mobile_lease_stale");
   });
 });

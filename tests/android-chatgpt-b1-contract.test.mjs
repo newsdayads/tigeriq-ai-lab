@@ -150,8 +150,8 @@ describe('ChatGPT B1 pilot contract', () => {
     });
   });
 
-  it('publishes versionCode 18 for Update Engine V1', () => {
-    expect(gradle).toContain('versionCode = 18');
-    expect(gradle).toContain('versionName = "0.18.0-update-engine"');
+  it('publishes versionCode 19 for Core mobile jobs', () => {
+    expect(gradle).toContain('versionCode = 19');
+    expect(gradle).toContain('versionName = "0.19.0-core-mobile-jobs"');
   });
 });

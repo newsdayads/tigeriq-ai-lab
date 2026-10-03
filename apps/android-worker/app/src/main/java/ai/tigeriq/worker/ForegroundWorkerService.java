@@ -10,6 +10,8 @@ import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
 
+import org.json.JSONObject;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +25,8 @@ public final class ForegroundWorkerService extends Service {
     private static final String CHANNEL_ID = "tigeriq-worker-runtime";
     private static final int NOTIFICATION_ID = 24027;
     private ScheduledExecutorService executor;
+    private boolean taskResumeAttempted;
+    private long lastLeaseRenewAt;
 
     @Override
     public void onCreate() {
@@ -32,6 +36,7 @@ public final class ForegroundWorkerService extends Service {
         startForeground(NOTIFICATION_ID, buildNotification());
         executor = Executors.newSingleThreadScheduledExecutor();
         executor.scheduleWithFixedDelay(this::heartbeat, 2, 30, TimeUnit.SECONDS);
+        executor.scheduleWithFixedDelay(this::taskLoop, 4, 5, TimeUnit.SECONDS);
         executor.scheduleWithFixedDelay(this::autoUpdate, 20, 15, TimeUnit.MINUTES);
     }
 
@@ -71,9 +76,111 @@ public final class ForegroundWorkerService extends Service {
         }
     }
 
+    private void taskLoop() {
+        try {
+            SecureCredentialStore store = new SecureCredentialStore(this);
+            if (store.load() == null) return;
+            ControllerClient client = new ControllerClient(store);
+            MobileTaskStore.Snapshot task = MobileTaskStore.read(this);
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+
+            if (task.present()) {
+                if (run.terminal()) {
+                    if (!task.resultReported) {
+                        JSONObject result = new JSONObject();
+                        result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
+                        JSONObject output = new JSONObject();
+                        output.put("validatedToken", task.expectedToken);
+                        output.put("runState", run.state);
+                        output.put("sendCount", run.sendCount);
+                        output.put("duplicateSendCount", run.duplicateSendCount);
+                        output.put("recoveryCount", run.recoveryCount);
+                        output.put("lastError", run.lastError);
+                        result.put("output", output);
+                        try {
+                            client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
+                        } catch (ControllerClient.ControllerException stale) {
+                            if (stale.status != 409) throw stale;
+                            JSONObject reacquired = client.pollLease();
+                            if (!reacquired.optBoolean("leased", false)) throw stale;
+                            task = MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
+                            client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
+                        }
+                        MobileTaskStore.markResultReported(this);
+                    }
+                    reportPendingB1Evidence(client);
+                    run = ChatGptB1RunStore.read(this);
+                    if (run.evidenceSeq > run.reportedSeq) return;
+                    MobileTaskStore.clear(this);
+                    taskResumeAttempted = false;
+                    lastLeaseRenewAt = 0L;
+                    return;
+                }
+
+                if (!run.active()) {
+                    ChatGptB1RunStore.startTask(this, task.runId, task.taskId, task.prompt, task.expectedToken);
+                    launchChatGpt();
+                    taskResumeAttempted = true;
+                    return;
+                }
+
+                long now = System.currentTimeMillis();
+                if (lastLeaseRenewAt == 0L || now - lastLeaseRenewAt >= 60_000L) {
+                    try {
+                        client.renewLease(task.taskId, task.leaseId);
+                    } catch (ControllerClient.ControllerException stale) {
+                        if (stale.status != 409) throw stale;
+                        JSONObject reacquired = client.pollLease();
+                        if (!reacquired.optBoolean("leased", false)) throw stale;
+                        MobileTaskStore.rebindLease(this, reacquired.getJSONObject("task"));
+                    }
+                    lastLeaseRenewAt = now;
+                }
+                if (!taskResumeAttempted) {
+                    ChatGptB1RunStore.markRecovery(this);
+                    launchChatGpt();
+                    taskResumeAttempted = true;
+                }
+                return;
+            }
+
+            if (run.terminal() && run.evidenceSeq > run.reportedSeq) {
+                reportPendingB1Evidence(client);
+                run = ChatGptB1RunStore.read(this);
+                if (run.evidenceSeq > run.reportedSeq) return;
+            }
+            if (run.active()) return;
+
+            JSONObject leased = client.pollLease();
+            if (!leased.optBoolean("leased", false)) return;
+            MobileTaskStore.Snapshot bound = MobileTaskStore.bind(this, leased.getJSONObject("task"));
+            ChatGptB1RunStore.startTask(this, bound.runId, bound.taskId, bound.prompt, bound.expectedToken);
+            lastLeaseRenewAt = System.currentTimeMillis();
+            launchChatGpt();
+            taskResumeAttempted = true;
+        } catch (Exception error) {
+            String message = error.getMessage();
+            if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
+            long lastSuccess = getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_HEARTBEAT_AT, 0L);
+            writeRuntime("TASK_ERROR", lastSuccess, message.length() > 160 ? message.substring(0, 160) : message);
+        }
+    }
+
+    private void launchChatGpt() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (launch == null) {
+            ChatGptB1RunStore.fail(this, "CHATGPT_NOT_INSTALLED");
+            return;
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(launch);
+    }
+
     private void autoUpdate() {
         try {
-            if (ChatGptB1RunStore.read(this).active()) return;
+            ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+            boolean evidencePending = run.terminal() && run.evidenceSeq > run.reportedSeq;
+            if (run.active() || evidencePending || MobileTaskStore.read(this).present()) return;
             WorkerUpdateEngine.checkAndInstall(this, false);
         } catch (Exception error) {
             String message = error.getMessage();
