@@ -204,6 +204,38 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("'gh.exe'");
   });
 
+
+  it('keeps v0.20 user-context signing fixed, least-privilege, and non-generic', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    const runner = await readFile(new URL('../scripts/pc-worker/invoke-v020-user-context-signer.ps1', import.meta.url), 'utf8');
+    const bridge = await readFile(new URL('../scripts/pc-worker/run-v020-user-context-signer-task.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_sign_v020_user_context'");
+    expect(source).toContain("run-v020-user-context-signer-task.ps1");
+    expect(source).toContain("expectedUser = 'pc01\\\\wdragons12x'");
+    expect(source).toContain("expectedTask = 'TigerIQ Android v0.20 OneShot Signer'");
+    expect(source).toContain("taskLogonType || '') !== 'InteractiveToken'");
+    expect(source).toContain("taskRunLevel || '') !== 'Limited'");
+    expect(source).not.toContain("input?.userContext");
+    expect(source).not.toContain("input?.signerUser");
+
+    expect(runner).toContain("$ExpectedUser='pc01\\wdragons12x'");
+    expect(runner).toContain("$Wrapper='D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1'");
+    expect(runner).toContain('[Security.Principal.WindowsIdentity]::GetCurrent().Name');
+    expect(runner).toContain("if($identity -ine $ExpectedUser){throw 'V020_USER_CONTEXT_IDENTITY_MISMATCH'}");
+    expect(runner).toContain("passwordTransport=[string]$receipt.passwordTransport");
+    expect(runner).toContain("secretsPrinted=[bool]$receipt.secretsPrinted");
+    expect(runner).not.toMatch(/ConvertFrom-SecureString|SecureStringToBSTR|PtrToString|Clipboard|Set-Clipboard/i);
+
+    expect(bridge).toContain("$TaskName='TigerIQ Android v0.20 OneShot Signer'");
+    expect(bridge).toContain("$ExpectedUser='pc01\\wdragons12x'");
+    expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Limited');
+    expect(bridge).toContain("V020_USER_CONTEXT_UNAVAILABLE");
+    expect(bridge).toContain("V020_USER_CONTEXT_TASK_COLLISION");
+    expect(bridge).toContain("Unregister-ScheduledTask -TaskName $TaskName");
+    expect(bridge).toContain("taskDeleted=$true");
+    expect(bridge).not.toMatch(/-Password\b|\/RP\b|LogonType\s+Password|RunLevel\s+Highest/i);
+  });
+
   it('surfaces only bounded Android build-tool discovery failure classes', async () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT');
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR');
