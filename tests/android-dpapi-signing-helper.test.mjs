@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const helper = readFileSync(new URL('../scripts/pc-worker/sign-android-worker-with-dpapi.ps1', import.meta.url), 'utf8');
+const v020Wrapper = readFileSync(new URL('../scripts/pc-worker/sign-v020-reviewed-artifact.ps1', import.meta.url), 'utf8');
 
 describe('Android DPAPI apksigner helper', () => {
   it('binds signing to the established certificate and exact unsigned artifact', () => {
@@ -56,6 +57,21 @@ describe('Android DPAPI apksigner helper', () => {
     expect(helper).toContain("$signerInput = $unsigned");
     expect(helper).toContain("'--ks-pass', 'stdin'");
     expect(helper).toContain("'--key-pass', 'stdin'");
+  });
+
+  it('pins the one-shot v0.20 release wrapper to the reviewed artifact and canonical signer', () => {
+    expect(v020Wrapper).toContain('BDC32789297BB5304AE423476D8C4170C9D17C0B9AC2D7C5533DA42FBA82F598');
+    expect(v020Wrapper).toContain('00EF9948F843FE395D2440AE3EF41405B8040A6D5D46493BD1902AC0EE6DEAE7');
+    expect(v020Wrapper).toContain('63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293');
+    expect(v020Wrapper).toContain('8364e79ef5a03d5d95663e511c076f5be4f5003a');
+    expect(v020Wrapper).toContain("'37119358164'");
+    expect(v020Wrapper).toContain("'11273046069'");
+    expect(v020Wrapper).toContain('-PrealignedInput');
+    expect(v020Wrapper).toContain("passwordTransport='stdin-only'");
+    expect(v020Wrapper).toContain("apksignerMode='portable-pinned-jar'");
+    expect(v020Wrapper).toContain("secretsIncluded=$false");
+    expect(v020Wrapper).not.toContain('Read-Host');
+    expect(v020Wrapper).not.toContain('Set-Clipboard');
   });
 
   it('never provisions or rotates signing identity', () => {
