@@ -839,9 +839,16 @@ async function apiDoctorLatestUnresolvedSignatureHandoff(resourceId,signature){
   const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
+async function apiDoctorPostRepairValidationEvidence(resourceId,handoffAt){
+  const row=(await pool.query(
+    "select count(*)::int as count,min(ts) as first_at,max(ts) as last_at from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",
+    [resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION]
+  )).rows[0]||{};
+  const toIso=value=>{const ms=Date.parse(String(value||''));return Number.isFinite(ms)?new Date(ms).toISOString():null};
+  return {count:Number(row?.count||0),firstAt:toIso(row?.first_at),lastAt:toIso(row?.last_at)};
+}
 async function apiDoctorPostRepairValidationAttempts(resourceId,handoffAt){
-  const row=(await pool.query("select count(*)::int as count from tigeriq_events where type='API_DOCTOR_POST_REPAIR_VALIDATION' and resource_id=$1 and ts>$2 and data->>'policyVersion'=$3",[resourceId,handoffAt,API_DOCTOR_VALIDATION_POLICY_VERSION])).rows[0];
-  return Number(row?.count||0);
+  return (await apiDoctorPostRepairValidationEvidence(resourceId,handoffAt)).count;
 }
 async function runApiDoctorPostRepairValidation(resource,existingHandoff){
   const r=resources.find(x=>x.resourceId===resource.resource_id);
@@ -1124,7 +1131,9 @@ async function runApiDoctorScan(){
       if(lifecycle.repairPrNumber)row.repairPrNumber=lifecycle.repairPrNumber;
       if(lifecycle.repairRevision)row.repairRevision=lifecycle.repairRevision;
       if(lifecycle.deployedRevision)row.deployedRevision=lifecycle.deployedRevision;
-      const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
+      const validationEvidence=await apiDoctorPostRepairValidationEvidence(resource.resource_id,handoffCandidate.ts);
+      const validationAttempts=validationEvidence.count;
+      if(validationEvidence.firstAt)row.repairTerminalAt=validationEvidence.firstAt;
       let successAfter=null;
       if(lifecycle.ready){
         const currentFailureSignature=apiDoctorRepairSignature({
@@ -1136,7 +1145,7 @@ async function runApiDoctorScan(){
         freshRecurrence=apiDoctorFreshRecurrence({
           currentFailureClass:plan.failureClass,
           currentFailureAt:latestFailure?.ts,
-          terminalAt:lifecycle.successAfterAt,
+          terminalAt:validationEvidence.firstAt,
           currentSignature:currentFailureSignature,
           priorSignature:handoffCandidate?.data?.signature||'',
         });
@@ -1146,9 +1155,10 @@ async function runApiDoctorScan(){
           row.recurrenceSignature=freshRecurrence.signature;
           handoffPlan={action:'proceed',reason:'fresh_recurrence_after_terminal_repair'};
         }else{
+          const recoveryAfterAt=validationEvidence.firstAt||lifecycle.successAfterAt;
           successAfter=(await pool.query(
             "select ts,data from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
-            [resource.resource_id,lifecycle.successAfterAt]
+            [resource.resource_id,recoveryAfterAt]
           )).rows[0]||null;
           handoffPlan=apiDoctorExistingHandoffAction({
             existingHandoff:true,
