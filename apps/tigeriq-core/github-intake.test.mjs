@@ -178,6 +178,9 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_status"}',false)).toMatchObject({
       present:true,valid:true,action:{action:'android_worker_gate_c_v020_status'},mutating:false
     });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_live_v022_status"}',false)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_live_v022_status'},mutating:false
+    });
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_gate_c_v020_enqueue_10"}',true)).toMatchObject({
       present:true,valid:true,action:{action:'android_worker_gate_c_v020_enqueue_10'},mutating:true
     });
