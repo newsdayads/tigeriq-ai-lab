@@ -182,6 +182,62 @@ test('GitHub intake admits explicit mobile_worker work without a generic API/cod
   assert.strictEqual(spec.requiresCodingHandoff,false);
 });
 
+test('mobile unavailable routing fault uses the checked-out client and releases a max=1 pool',async()=>{
+  const base=coreBacklogPool();
+  let held=false;
+  let released=false;
+  let poolQueryWhileHeld=0;
+  const clientEvents=[];
+  const client={
+    async query(q,params=[]){
+      if(q==='begin'||q==='rollback'||q.includes('pg_advisory_xact_lock'))return {rowCount:0,rows:[]};
+      if(q.includes('from tigeriq_mobile_tasks'))return {rowCount:0,rows:[]};
+      if(q.includes('from tigeriq_mobile_devices'))return {rowCount:0,rows:[]};
+      if(q.includes("insert into tigeriq_events(type,data) values('ROUTING_FAULT'")){
+        clientEvents.push(JSON.parse(params[0]));
+        return {rowCount:1,rows:[]};
+      }
+      throw new Error('UNEXPECTED_MOBILE_CLIENT_QUERY:'+q);
+    },
+    release(){held=false;released=true;},
+  };
+  const pool={
+    ...base,
+    async query(q,params=[]){
+      if(held){poolQueryWhileHeld++;throw new Error('POOL_QUERY_WHILE_CLIENT_HELD');}
+      return base.query(q,params);
+    },
+    async connect(){
+      assert.strictEqual(held,false);
+      held=true;
+      return client;
+    },
+  };
+  const body=[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'ZERO_COST=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'RESOURCE_SCOPE=MOBILE_UNAVAILABLE_DEADLOCK_REGRESSION','CAPABILITY=mobile_worker',
+    'EXECUTION_SURFACE=MOBILE_WORKER'
+  ].join('\n');
+  const issue={number:3853,state:'open',title:'[P1][ANDROID] unavailable mobile regression',body,labels:[],comments:0,html_url:'https://example/3853'};
+  const out=await materializeGithubIssues({
+    pool,
+    openIssues:[issue],
+    token:'fake',
+    fetchImpl:async()=>{throw new Error('UNEXPECTED_FETCH');},
+  });
+  assert.strictEqual(out.created,0);
+  assert.strictEqual(out.skipped,1);
+  assert.strictEqual(poolQueryWhileHeld,0,'must not query max=1 pool while its only client is checked out');
+  assert.strictEqual(released,true);
+  assert.strictEqual(held,false);
+  assert.strictEqual(clientEvents.length,1);
+  assert.strictEqual(clientEvents[0].reason,'MOBILE_LIVE_WORKER_UNAVAILABLE');
+  assert.strictEqual(clientEvents[0].issueNumber,3853);
+});
+
 test('mobile objectives are excluded from the generic Core manager lane',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
