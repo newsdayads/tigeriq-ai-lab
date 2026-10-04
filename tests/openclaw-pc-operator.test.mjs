@@ -14,7 +14,6 @@ import {
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
-  AUTHORIZED_ISSUE,
   EXPECTED_BRANCH,
   EXPECTED_PROJECT_ID,
   EXPECTED_REPO,
@@ -1219,24 +1218,41 @@ describe('Paperclip Lab bounded PC01 capability', () => {
 
 describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
   const sha='a'.repeat(40);
+  const releaseIssue='3945';
+  const releaseReason='Publish owner-authorized TigerIQ LIVE UI';
+  const request={
+    expectedSha:sha,
+    releaseIssue,
+    releaseClass:'WEB_LIVE',
+    ownerAuthorized:true,
+    releaseReason,
+  };
   const valid={
     projectLink:{projectId:EXPECTED_PROJECT_ID,orgId:EXPECTED_TEAM_ID},
     expectedSha:sha,
     actualSha:sha,
     branch:EXPECTED_BRANCH,
+    mainRefSha:sha,
     remote:'https://github.com/'+EXPECTED_REPO+'.git',
     config:{git:{deploymentEnabled:false}},
-    issue:AUTHORIZED_ISSUE,
+    issue:releaseIssue,
     uiHtml:'<div>JOB TRỌNG TÂM</div>',
+    releaseClass:'WEB_LIVE',
+    ownerAuthorized:'true',
+    releaseReason,
+    changedFiles:['public/work-ui.css'],
   };
 
-  it('accepts only an exact 40-hex deployment SHA', () => {
-    expect(assertTigerIQLive3150DeployRequest({expectedSha:sha})).toEqual({expectedSha:sha});
-    expect(() => assertTigerIQLive3150DeployRequest({expectedSha:'abc'})).toThrow('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
-    expect(() => assertTigerIQLive3150DeployRequest({expectedSha:'g'.repeat(40)})).toThrow('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+  it('accepts only a fully attested exact-SHA typed deployment request', () => {
+    expect(assertTigerIQLive3150DeployRequest(request)).toEqual(request);
+    expect(() => assertTigerIQLive3150DeployRequest({...request,expectedSha:'abc'})).toThrow('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+    expect(() => assertTigerIQLive3150DeployRequest({...request,releaseIssue:''})).toThrow('TIGERIQ_VERCEL_RELEASE_ISSUE_INVALID');
+    expect(() => assertTigerIQLive3150DeployRequest({...request,releaseClass:'CORE'})).toThrow('TIGERIQ_VERCEL_RELEASE_CLASS_INVALID');
+    expect(() => assertTigerIQLive3150DeployRequest({...request,ownerAuthorized:false})).toThrow('TIGERIQ_VERCEL_OWNER_AUTH_REQUIRED');
+    expect(() => assertTigerIQLive3150DeployRequest({...request,releaseReason:''})).toThrow('TIGERIQ_VERCEL_RELEASE_REASON_REQUIRED');
   });
 
-  it('hard-locks project/team/repo/main/SHA/owner scope and UI marker', () => {
+  it('hard-locks project/team/repo/exact remote-main/SHA/owner scope and UI marker', () => {
     expect(validateReleaseContract(valid)).toMatchObject({
       projectId:EXPECTED_PROJECT_ID,
       teamId:EXPECTED_TEAM_ID,
@@ -1244,19 +1260,22 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
       branch:'main',
       target:'production',
       exactSha:sha,
-      issue:'3185',
+      issue:releaseIssue,
+      releaseClass:'WEB_LIVE',
       maxAttempts:1,
     });
     expect(() => validateReleaseContract({...valid,projectLink:{projectId:'prj_wrong',orgId:EXPECTED_TEAM_ID}})).toThrow('VERCEL_PROJECT_SCOPE_MISMATCH');
     expect(() => validateReleaseContract({...valid,expectedSha:'b'.repeat(40)})).toThrow('VERCEL_EXACT_SHA_MISMATCH');
-    expect(() => validateReleaseContract({...valid,branch:'feature/unsafe'})).toThrow('VERCEL_GIT_BRANCH_MISMATCH');
+    expect(() => validateReleaseContract({...valid,branch:'feature/unsafe',mainRefSha:'b'.repeat(40)})).toThrow('VERCEL_GIT_BRANCH_MISMATCH');
     expect(() => validateReleaseContract({...valid,remote:'https://github.com/newsdayads/other.git'})).toThrow('VERCEL_GIT_REPO_MISMATCH');
     expect(() => validateReleaseContract({...valid,config:{git:{deploymentEnabled:true}}})).toThrow('VERCEL_AUTO_DEPLOY_POLICY_MISMATCH');
-    expect(() => validateReleaseContract({...valid,issue:'999'})).toThrow('VERCEL_OWNER_AUTH_SCOPE_MISMATCH');
+    expect(() => validateReleaseContract({...valid,releaseClass:'CORE'})).toThrow('VERCEL_RELEASE_CLASS_INVALID');
+    expect(() => validateReleaseContract({...valid,ownerAuthorized:'false'})).toThrow('VERCEL_OWNER_RELEASE_AUTH_REQUIRED');
+    expect(() => validateReleaseContract({...valid,releaseReason:''})).toThrow('VERCEL_RELEASE_REASON_REQUIRED');
     expect(() => validateReleaseContract({...valid,uiHtml:'no marker'})).toThrow('VERCEL_UI_MARKER_MISSING');
   });
 
-  it('keeps deployment one-shot, typed, and outside arbitrary shell allowlist', async () => {
+  it('keeps deployment one-shot, typed, dynamically issue-bound, and outside arbitrary shell allowlist', async () => {
     const operatorSource=await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
     const deploySource=await readFile(new URL('../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs',import.meta.url),'utf8');
     expect(operatorSource).toContain("action === 'tigeriq_live_3150_production_deploy'");
@@ -1266,17 +1285,21 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     expect(operatorSource).toContain("'--owner-authorized', ownerAuthorized ? 'true' : 'false'");
     expect(operatorSource).toContain("'--release-reason', releaseReason");
     expect(operatorSource).toContain("receipt.issue !== releaseIssue");
+    expect(operatorSource).toContain("receipt.releaseClass !== 'WEB_LIVE'");
     expect(operatorSource).toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME']");
     expect(operatorSource).toContain("productionMutationScope: action === 'tigeriq_live_3150_production_deploy'");
     expect(operatorSource).not.toContain("input?.command");
     expect(() => assertShellCommandAllowed('vercel deploy --prod')).toThrow('TIGERIQ_PC_COMMAND_NOT_ALLOWLISTED');
 
-    expect(deploySource).toContain("AUTHORIZED_ISSUE = '3185'");
+    expect(deploySource).not.toContain("AUTHORIZED_ISSUE = '3185'");
     expect(deploySource).toContain("EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw'");
     expect(deploySource).toContain("EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT'");
     expect(deploySource).toContain("EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab'");
     expect(deploySource).toContain("EXPECTED_BRANCH = 'main'");
     expect(deploySource).toContain("REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM'");
+    expect(deploySource).toContain("'--release-class'");
+    expect(deploySource).toContain("'--owner-authorized'");
+    expect(deploySource).toContain("'--release-reason'");
     expect((deploySource.match(/vercel\.cmd deploy --prod --yes/g)||[]).length).toBe(1);
     expect(deploySource).not.toContain('VERCEL_TOKEN');
     expect(deploySource).not.toContain('retry');
