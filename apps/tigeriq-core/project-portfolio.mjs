@@ -29,8 +29,8 @@ function canonicalProject(id = '', name = '') {
   return PROJECT_BY_ID.get('tigeriq-ai-lab');
 }
 
-function rowText(row = {}, issue = null) {
-  return [row?.title, issue?.title, issue?.body].filter(Boolean).join('\n');
+function titleText(row = {}, issue = null) {
+  return [row?.title, issue?.title].filter(Boolean).join('\n');
 }
 
 export function classifyProject(row = {}, issue = null) {
@@ -39,7 +39,7 @@ export function classifyProject(row = {}, issue = null) {
   const explicitName = bodyValue(body, 'PROJECT_NAME') || String(row?.projectName || '').trim();
   if (explicitId || explicitName) return canonicalProject(explicitId, explicitName || explicitId);
 
-  const text = rowText(row, issue);
+  const text = titleText(row, issue);
   if (/\bTIGERIQ[ _-](?:NEWS|MEDIA)\b/i.test(text)) return PROJECT_BY_ID.get('tigeriq-news');
   if (/\bPAPERCLIP\b/i.test(text)) return PROJECT_BY_ID.get('paperclip-vnext');
   if (/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(text)) return PROJECT_BY_ID.get('revenue-lab');
@@ -48,11 +48,11 @@ export function classifyProject(row = {}, issue = null) {
 }
 
 export function androidMinorVersion(row = {}, issue = null) {
-  const text = rowText(row, issue);
+  const text = titleText(row, issue);
   const matches = [
-    ...text.matchAll(/(?:version(?:Name)?\s*[=:]\s*)?0\.(\d{1,3})(?:\.\d+)?/gi),
-    ...text.matchAll(/\bV0?(\d{1,3})\b/gi),
-    ...text.matchAll(/ANDROID[_ -]?V0?(\d{1,3})/gi),
+    ...text.matchAll(/\bv0\.(\d{1,3})(?:\.\d+)?\b/gi),
+    ...text.matchAll(/\b0\.(\d{1,3})\.\d+\b/gi),
+    ...text.matchAll(/\bANDROID[_ -]?V0?(\d{1,3})\b/gi),
   ].map((match) => Number(match[1])).filter(Number.isFinite);
   return matches.length ? Math.max(...matches) : null;
 }
@@ -70,7 +70,7 @@ function legacyWorkPackage(project, row = {}, issue = null) {
     };
   }
 
-  const text = rowText(row, issue);
+  const text = titleText(row, issue);
   if (project.id === 'tigeriq-mobile-worker') {
     const minor = androidMinorVersion(row, issue);
     if (minor != null) return { id: 'mobile-v0-' + minor, name: 'Live Worker v0.' + minor, order: 1000 - minor, androidMinor: minor };
@@ -153,6 +153,16 @@ export function annotatePortfolioRows(rows = [], issues = []) {
     .filter((row) => row.projectId === 'tigeriq-mobile-worker' && Number.isFinite(Number(row.androidVersionMinor)))
     .map((row) => Number(row.androidVersionMinor));
   const currentMobileMinor = mobileVersions.length ? Math.max(...mobileVersions) : null;
+
+  if (currentMobileMinor != null) {
+    for (const row of staged) {
+      if (row.projectId !== 'tigeriq-mobile-worker' || row._portfolioPackageExplicit) continue;
+      if (Number.isFinite(Number(row.androidVersionMinor))) continue;
+      row.workPackageId = 'mobile-v0-' + currentMobileMinor;
+      row.workPackageName = 'Live Worker v0.' + currentMobileMinor;
+      row.workPackageOrder = 1000 - currentMobileMinor;
+    }
+  }
 
   return staged.map((row) => {
     let next = row;
