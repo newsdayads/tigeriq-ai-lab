@@ -101,6 +101,53 @@ export function gateCV020Aggregate(rows=[],employeeId=''){
   };
 }
 
+export const GATE_C_V021_VERSION='0.21.0-packageinstaller-stream-fix';
+export const GATE_C_V021_COUNT=10;
+const gateCV021Prefix=(employeeId)=>`gate-c:v021:${String(employeeId||'').trim()}:`;
+export function gateCV021TaskSpecs(employeeId){
+  const id=String(employeeId||'').trim();
+  if(!id)throw new Error('GATE_C_V021_EMPLOYEE_REQUIRED');
+  return Array.from({length:GATE_C_V021_COUNT},(_,offset)=>{
+    const index=offset+1;
+    const token=`TIGERIQ_GATE_C_OK_${index}`;
+    return {
+      index,
+      idempotencyKey:`${gateCV021Prefix(id)}${String(index).padStart(2,'0')}`,
+      prompt:`TigerIQ Gate C job ${index}/${GATE_C_V021_COUNT}. Return exactly: ${token}`,
+      expectedToken:token,
+    };
+  });
+}
+export function gateCV021Aggregate(rows=[],employeeId=''){
+  const specs=gateCV021TaskSpecs(employeeId);
+  const byKey=new Map((Array.isArray(rows)?rows:[]).map(row=>[String(row?.idempotency_key||''),row]));
+  const jobs=specs.map(spec=>{
+    const row=byKey.get(spec.idempotencyKey);
+    const status=String(row?.status||'missing').toLowerCase();
+    const output=row?.result&&typeof row.result==='object'&&!Array.isArray(row.result)
+      ? (row.result.output&&typeof row.result.output==='object'&&!Array.isArray(row.result.output)?row.result.output:{})
+      : {};
+    const sendCount=Number(output.sendCount);
+    const duplicateSendCount=Number(output.duplicateSendCount);
+    const valid=status==='completed'
+      && Number.isFinite(sendCount)&&sendCount===1
+      && Number.isFinite(duplicateSendCount)&&duplicateSendCount===0
+      && String(output.validatedToken||'')===spec.expectedToken;
+    return {index:spec.index,status,attempts:Number(row?.attempts||0),sendCount:Number.isFinite(sendCount)?sendCount:null,duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,valid};
+  });
+  const completed=jobs.filter(job=>job.status==='completed').length;
+  const failed=jobs.filter(job=>job.status==='failed').length;
+  const pending=jobs.filter(job=>!['completed','failed'].includes(job.status)).length;
+  const invalid=jobs.filter(job=>job.status==='completed'&&!job.valid).length;
+  return {
+    expected:GATE_C_V021_COUNT,
+    taskCount:jobs.filter(job=>job.status!=='missing').length,
+    completed,failed,pending,invalid,
+    pass:completed===GATE_C_V021_COUNT&&failed===0&&pending===0&&invalid===0,
+    jobs,
+  };
+}
+
 export function normalizeMobileProvider(value) {
   return String(value||'').trim().toLowerCase()==='gemini'?'Gemini':'ChatGPT';
 }
@@ -210,6 +257,21 @@ async function gateCV020Target(pool,{requireFresh=false}={}){
   const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
   const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
   if(requireFresh&&!online)return {ok:false,error:'gate_c_v020_device_stale'};
+  return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
+}
+async function gateCV021Target(pool,{requireFresh=false}={}){
+  const result=await pool.query(
+    `select node_id,employee_id,provider,agent_version,last_seen_at
+       from tigeriq_mobile_devices
+      where revoked=false and agent_version=$1
+      order by last_seen_at desc nulls last`,
+    [GATE_C_V021_VERSION]
+  );
+  if(result.rowCount!==1)return {ok:false,error:result.rowCount===0?'gate_c_v021_device_unavailable':'gate_c_v021_device_ambiguous'};
+  const row=result.rows[0];
+  const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
+  const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
+  if(requireFresh&&!online)return {ok:false,error:'gate_c_v021_device_stale'};
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
 }
 function mobileAuthHeaders(req) {
@@ -388,6 +450,65 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       const aggregate=gateCV020Aggregate(result.rows,employeeId);
       return send(res,200,{
         ok:true,status:'GATE_C_V020_STATUS',version:GATE_C_V020_VERSION,
+        employeeId,online:target.online,lastSeenAt:target.lastSeenAt,...aggregate,
+      });
+    }
+
+    if(req.method==='POST'&&url.pathname==='/api/mobile/gate-c/v021/enqueue'){
+      if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const target=await gateCV021Target(pool,{requireFresh:true});
+      if(!target.ok)return send(res,409,target);
+      const employeeId=String(target.row.employee_id);
+      const targetNodeId=String(target.row.node_id);
+      const specs=gateCV021TaskSpecs(employeeId);
+      const client=await pool.connect();
+      let created=0;
+      try{
+        await client.query('begin');
+        await client.query('select pg_advisory_xact_lock(hashtext($1))',[gateCV021Prefix(employeeId)]);
+        for(const spec of specs){
+          const prior=(await client.query('select task_id from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',[spec.idempotencyKey])).rows[0];
+          if(prior)continue;
+          const taskId='MT-'+randomToken(12),runId='MR-'+randomToken(12);
+          const inserted=await client.query(
+            `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
+             select $1,$2,node_id,employee_id,provider,$3,$4,$5
+               from tigeriq_mobile_devices
+              where employee_id=$6 and node_id=$7 and revoked=false and agent_version=$8
+              limit 1`,
+            [taskId,spec.idempotencyKey,spec.prompt,spec.expectedToken,runId,employeeId,targetNodeId,GATE_C_V021_VERSION]
+          );
+          if(inserted.rowCount!==1)throw new Error('GATE_C_V021_TARGET_CHANGED');
+          created++;
+        }
+        await client.query('commit');
+      }catch(error){
+        try{await client.query('rollback')}catch{}
+        throw error;
+      }finally{client.release();}
+      await event('MOBILE_GATE_C_V021_ENQUEUED',{employeeId,count:GATE_C_V021_COUNT,created});
+      return send(res,created?201:200,{
+        ok:true,status:'GATE_C_V021_ENQUEUED',version:GATE_C_V021_VERSION,
+        employeeId,count:GATE_C_V021_COUNT,created,existing:GATE_C_V021_COUNT-created,
+      });
+    }
+    if(req.method==='GET'&&url.pathname==='/api/mobile/gate-c/v021/status'){
+      if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const target=await gateCV021Target(pool);
+      if(!target.ok)return send(res,409,target);
+      const employeeId=String(target.row.employee_id);
+      const keys=gateCV021TaskSpecs(employeeId).map(spec=>spec.idempotencyKey);
+      const result=await pool.query(
+        `select idempotency_key,status,attempts,result
+           from tigeriq_mobile_tasks
+          where employee_id=$1 and idempotency_key=any($2::text[])`,
+        [employeeId,keys]
+      );
+      const aggregate=gateCV021Aggregate(result.rows,employeeId);
+      return send(res,200,{
+        ok:true,status:'GATE_C_V021_STATUS',version:GATE_C_V021_VERSION,
         employeeId,online:target.online,lastSeenAt:target.lastSeenAt,...aggregate,
       });
     }
