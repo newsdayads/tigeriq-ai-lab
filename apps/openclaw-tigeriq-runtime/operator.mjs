@@ -913,10 +913,10 @@ async function loadAndroidWorkerCurrentCiArtifactSpec() {
       ||!spec.versionName||spec.applicationId!=='ai.tigeriq.worker'
       ||!/^\d+$/.test(spec.runId)||!/^\d+$/.test(spec.artifactId)
       ||spec.artifactName!=='tigeriq-worker-unsigned-release-apk'
-      ||!^[0-9a-f]{40}$/.test(spec.sourceArtifactHead)
-      ||!^[0-9a-f]{40}$/.test(spec.sourceArtifactAndroidTreeSha)
-      ||!^[0-9A-F]{64}$/.test(spec.expectedUnsignedSha256)
-      ||!^[0-9A-F]{64}$/.test(spec.expectedApkSignerJarSha256)
+      ||!/^[0-9a-f]{40}$/.test(spec.sourceArtifactHead)
+      ||!/^[0-9a-f]{40}$/.test(spec.sourceArtifactAndroidTreeSha)
+      ||!/^[0-9A-F]{64}$/.test(spec.expectedUnsignedSha256)
+      ||!/^[0-9A-F]{64}$/.test(spec.expectedApkSignerJarSha256)
       ||spec.expectedSignerSha256!=='63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293'){
     throw new Error('TIGERIQ_ANDROID_CURRENT_CI_METADATA_INVALID');
   }
