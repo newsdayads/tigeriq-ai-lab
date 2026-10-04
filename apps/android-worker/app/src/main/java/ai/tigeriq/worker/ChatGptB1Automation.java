@@ -18,15 +18,9 @@ public final class ChatGptB1Automation {
     public static void drive(AccessibilityBridgeService service, AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot s = ChatGptB1RunStore.read(service);
         if (!s.active()) return;
+        if (!s.projectBound) return;
 
         long now = System.currentTimeMillis();
-        if (!s.projectBound) {
-            if (ChatGptB1Policy.waitingProjectTimedOut(s.state, s.startedAt, now)) {
-                ChatGptB1RunStore.fail(service, "PROJECT_BIND_TIMEOUT");
-            }
-            return;
-        }
-
         if (now < s.nextActionAt) return;
 
         if ("WAITING_AI".equals(s.state)) {
