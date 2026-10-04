@@ -20,7 +20,9 @@ const RESPONSES_DIR = win.join(PAD_UI_BROKER_ROOT, 'responses');
 const HEARTBEAT_PATH = win.join(PAD_UI_BROKER_ROOT, 'heartbeat.json');
 const MAX_BROKER_WAIT_MS = 12000;
 const MAX_V020_SIGNER_WAIT_MS = 130000;
+const MAX_V021_SIGNER_WAIT_MS = 130000;
 const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020';
+const INTERNAL_V021_SIGNER_ACTION = 'pad_android_sign_v021';
 const ALLOWED_KEYS = new Set(['ENTER', 'ESC', 'TAB', 'CTRL+A', 'CTRL+F', 'CTRL+N', 'F5']);
 
 function cleanText(value, max, label) {
@@ -133,4 +135,8 @@ export async function executePadUiAction(raw = {}) {
 
 export async function executePadV020Signer() {
   return await executePadBrokerRequest({ action: INTERNAL_V020_SIGNER_ACTION }, MAX_V020_SIGNER_WAIT_MS);
+}
+
+export async function executePadV021Signer() {
+  return await executePadBrokerRequest({ action: INTERNAL_V021_SIGNER_ACTION }, MAX_V021_SIGNER_WAIT_MS);
 }
