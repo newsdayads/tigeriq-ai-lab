@@ -306,6 +306,53 @@ body.drawer-open{overflow:hidden}
 }
 </style>
 
+
+<style>
+/* #3506 compact mobile workflow — overview first, detail on demand */
+.mobile-flow-compact{display:none}
+@media(max-width:700px){
+  .workflow-board{padding:8px;border-radius:13px}
+  .workflow-head{display:flex;align-items:center;gap:8px;padding:0 1px 7px}
+  .workflow-head>div{min-width:0;flex:1}
+  .workflow-head small{font-size:7px}
+  .workflow-head h2{font-size:11.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .workflow-head>span{margin:0;padding:4px 6px;font-size:7.5px}
+  .mobile-flow-compact{display:block;padding-top:8px}
+  .mobile-flow-map{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;position:relative;align-items:start}
+  .mobile-flow-map::before{content:"";position:absolute;left:6%;right:6%;top:18px;height:1px;background:#31526c;z-index:0}
+  .mobile-flow-node{position:relative;z-index:1;min-width:0;text-align:center}
+  .mobile-flow-node strong{width:32px;height:32px;margin:0 auto;border:1px solid #315d80;border-radius:9px;background:#0e263d;color:#8fc8ff;display:grid;place-items:center;font-size:8px;box-shadow:0 0 0 4px #081624}
+  .mobile-flow-node span{display:block;margin-top:5px;font-size:6.7px;line-height:1.15;font-weight:850;color:#8097aa;white-space:normal}
+  .mobile-flow-node.active strong{background:#145782;border-color:#64c6fa;color:#f1fbff;box-shadow:0 0 10px rgba(88,185,239,.22),0 0 0 4px #081624}
+  .mobile-flow-node.active span{color:#d9effe}
+  .mobile-flow-node.blocked strong{border-color:#b95d65;color:#ffadb4}
+  .mobile-flow-node.review strong{border-color:#9a7a3e;color:#f3d18d}
+  .mobile-flow-node.done strong{border-color:#3f8a72;color:#9de6c3}
+  .mobile-focus-card{appearance:none;width:100%;text-align:left;margin-top:10px;padding:9px 10px;border:1px solid #2e5877;border-radius:11px;background:linear-gradient(180deg,#0e263b,#0a1b2b);color:inherit;font:inherit}
+  .mobile-focus-top{display:flex;align-items:center;gap:6px}
+  .mobile-focus-top b{font-size:7.5px;color:#83c9f8;letter-spacing:.05em}
+  .mobile-focus-top em{margin-left:auto;font-size:7px;font-style:normal;border:1px solid #365773;border-radius:999px;padding:3px 6px;color:#b2c6d7}
+  .mobile-focus-title{margin-top:6px;font-size:12px;font-weight:850;line-height:1.25;color:#eef6fc;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .mobile-focus-line{display:grid;grid-template-columns:48px minmax(0,1fr);gap:6px;margin-top:5px;font-size:8.5px;line-height:1.28}
+  .mobile-focus-line b{font-size:7px;color:#6f8aa2;text-transform:uppercase}
+  .mobile-focus-line span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9d8e5}
+  .mobile-focus-line.next span{color:#9dcdf3}
+  .mobile-focus-progress{margin-top:7px;height:3px;border-radius:999px;background:#183047;overflow:hidden}
+  .mobile-focus-progress i{display:block;height:100%;background:#58a6ff;border-radius:999px}
+  .mobile-flow-toggle{width:100%;margin-top:7px;border:0;background:transparent;color:#78a6c7;font:800 8px/1.2 inherit;padding:6px 2px;cursor:pointer}
+  .workflow-board .flow-rows,.workflow-board .flow-session-log{display:none}
+  .workflow-board.mobile-expanded .flow-rows{display:grid;margin-top:5px;border-top:1px solid #1d344b;padding-top:6px}
+  .workflow-board.mobile-expanded .flow-session-log{display:block}
+  .workflow-board.mobile-expanded .mobile-flow-toggle{color:#a8cce6}
+  .workflow-board.mobile-expanded .flow-row{grid-template-columns:1fr;gap:2px;padding:2px 0 7px}
+  .workflow-board.mobile-expanded .flow-row:not(:last-child)::after{left:22px;top:42px;bottom:-2px}
+  .workflow-board.mobile-expanded .flow-stage{padding:6px 7px}
+  .workflow-board.mobile-expanded .flow-cards{grid-template-columns:1fr;padding:2px 0 5px 46px}
+  .workflow-board.mobile-expanded .flow-cards::before{left:22px;top:18px;width:24px}
+  .workflow-board.mobile-expanded .flow-card{padding:8px}
+}
+</style>
+
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -870,6 +917,28 @@ function renderJobJourney(){
   const focus=packageOwnerFocus(pack)||root;
   const briefCurrent=ownerCardCurrent(focus)||displayTitle(focus.title),briefDone=ownerCardDone(focus)||'—',briefNext=ownerNextText(focus)||'—';
   const brief='<section class="workflow-brief"><div class="workflow-brief-main"><small>VIỆC ĐANG ĐƯỢC THEO DÕI</small><b>'+esc(displayTitle(root.title))+'</b><span>'+esc(workerFrom(focus))+' · '+esc(stateLabel[workStatus(focus)]||workStatus(focus))+'</span></div><div class="workflow-brief-cell"><small>Đang làm</small><span>'+esc(briefCurrent)+'</span></div><div class="workflow-brief-cell"><small>Đã xong gần nhất</small><span>'+esc(briefDone)+'</span></div><div class="workflow-brief-cell"><small>Tiếp theo</small><span>'+esc(briefNext)+'</span></div></section>';
+  const stageVisualState=items=>{
+    const states=(items||[]).map(item=>item?.synthetic?workStatus(item.row):workStatus(item)).filter(Boolean);
+    if(states.includes('BLOCKED'))return 'blocked';
+    if(states.some(state=>['REVIEW','VERIFY'].includes(state)))return 'review';
+    if(states.length&&states.every(state=>state==='DONE'))return 'done';
+    return '';
+  };
+  const compactNodes=stages.map((stage,index)=>{
+    const stateClass=stageVisualState(stageCards[index]);
+    return '<div class="mobile-flow-node '+(activeStage===index+1?'active ':'')+stateClass+'"><strong>'+stage[0]+'</strong><span>'+stage[1].replace(' & QUYỀN','')+'</span></div>';
+  }).join('');
+  const focusProgress=verifiedProgress(focus);
+  const compactCurrent=ownerCardCurrent(focus)||'';
+  const compactNext=ownerNextText(focus)||'';
+  const compactFocus='<button type="button" class="mobile-focus-card" data-mobile-focus="'+Number(focus.number)+'">'
+    +'<div class="mobile-focus-top"><b>'+esc(workerFrom(focus))+'</b><em>'+esc(stateLabel[workStatus(focus)]||workStatus(focus))+'</em></div>'
+    +'<div class="mobile-focus-title">'+esc(displayTitle(focus.title))+'</div>'
+    +(compactCurrent?'<div class="mobile-focus-line"><b>Đang</b><span>'+esc(compactCurrent)+'</span></div>':'')
+    +(compactNext?'<div class="mobile-focus-line next"><b>Tiếp</b><span>'+esc(compactNext)+'</span></div>':'')
+    +(focusProgress.verified?'<div class="mobile-focus-progress"><i style="width:'+focusProgress.pct+'%"></i></div>':'')
+    +'</button>';
+  const mobileCompact='<section class="mobile-flow-compact" aria-label="Sơ đồ công việc 6 bước"><div class="mobile-flow-map">'+compactNodes+'</div>'+compactFocus+'<button type="button" class="mobile-flow-toggle" data-mobile-flow-toggle>⌄ Xem chi tiết 6 bước</button></section>';
   const graphEdges=[],edgeKeys=new Set();
   const addEdge=(from,to,type)=>{
     if(!from||!to||from===to)return;const key=from+'>'+to+'>'+type;if(edgeKeys.has(key))return;edgeKeys.add(key);graphEdges.push({from,to,type});
@@ -895,9 +964,16 @@ function renderJobJourney(){
     let t='—';try{if(row?.updatedAt)t=new Date(row.updatedAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}catch{}
     return '<div class="flow-log-row"><time>'+esc(t)+'</time><b>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</b><span>#'+Number(row.number)+' · '+esc(displayTitle(row.title))+'</span></div>';
   }).join(''):'<div class="flow-log-empty">Chưa có sự kiện hoàn tất gần đây.</div>';
-  el.innerHTML=picker+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG CÔNG VIỆC</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div>'+brief+'<div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
+  el.innerHTML=picker+'<article class="workflow-board"><div class="workflow-head"><div><small>LUỒNG CÔNG VIỆC</small><h2>#'+Number(root.number)+' · '+esc(displayTitle(root.title))+'</h2></div><span>Giai đoạn '+activeStage+'/6</span></div>'+brief+mobileCompact+'<div class="flow-rows">'+rowsHtml+'</div><div class="flow-session-log"><div class="flow-log-head"><b>NHẬT KÝ GẦN NHẤT</b><span>tự cập nhật</span></div>'+logHtml+'</div></article>';
   el.querySelectorAll('[data-flow-package]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-flow-package'));renderJobJourney()}));
   el.querySelectorAll('[data-flow-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-flow-row'));const row=pack.rows.find(item=>Number(item.number)===rowNumber)||pack.root;if(row)node.addEventListener('click',()=>openDrawer(row,node))});
+  const mobileFocus=el.querySelector('[data-mobile-focus]');
+  if(mobileFocus)mobileFocus.addEventListener('click',()=>openDrawer(focus,mobileFocus));
+  const mobileToggle=el.querySelector('[data-mobile-flow-toggle]');
+  if(mobileToggle)mobileToggle.addEventListener('click',()=>{
+    const board=mobileToggle.closest('.workflow-board');const expanded=board?.classList.toggle('mobile-expanded');
+    mobileToggle.textContent=expanded?'⌃ Thu gọn 6 bước':'⌄ Xem chi tiết 6 bước';
+  });
   requestAnimationFrame(()=>renderFlowEdges(el,graphEdges));
 }
 
