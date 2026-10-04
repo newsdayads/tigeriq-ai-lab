@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
 $RepoRoot='D:\TigerIQ\Runtime\CoreSource'
-$MetadataPath=Join-Path $RepoRoot 'apps\android-worker\release\current-ci-artifact.json'
+$MetadataPath=Join-Path $RepoRoot 'config\android-worker-current-ci-artifact.json'
 $ArtifactDir='D:\TigerIQ\Releases\AndroidWorker\ci-artifact\current'
 $UnsignedApk=Join-Path $ArtifactDir 'tigeriq-worker-unsigned-release.apk'
 $ApkSignerJar=Join-Path $ArtifactDir 'apksigner.jar'
