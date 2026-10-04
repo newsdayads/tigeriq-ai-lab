@@ -52,7 +52,22 @@ export function classifyWorkOrder(body){
   const surface=String(bodyValue(text,'EXECUTION_SURFACE')||'').trim().toUpperCase();
   const assigned=backlogAssignedExecutor(text);
   const preferred=preferredEmployee(text);
+  const ownerP0Reviewer=employee(bodyValue(text,'OWNER_REVIEWER'));
+  const ownerP0ReviewDispatch=priority.sourcePriority==='P0'
+    &&cap==='review'
+    &&exactBodyFlag(text,'OWNER_DIRECT','true')
+    &&exactBodyFlag(text,'VY_DIRECT_REVIEW_DISPATCH','true')
+    &&exactBodyFlag(text,'REVIEW_ONLY','true')
+    &&exactBodyFlag(text,'NO_CODE_CHANGE','true')
+    &&['NV03','NV04'].includes(ownerP0Reviewer);
   if(priority.sourcePriority==='P0'){
+    if(ownerP0ReviewDispatch){
+      return {
+        ...priority,capability:'review',surface:'CORE_UI_REVIEW',assignedExecutor:'',preferredEmployee:ownerP0Reviewer,
+        route:'UI',workerId:ownerP0Reviewer,autonomous:true,requestedReviewer:ownerP0Reviewer,
+        reviewRoutingReason:'OWNER_VY_DIRECT_P0_REVIEW',
+      };
+    }
     return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'HOLD_OWNER',workerId:null,autonomous:false};
   }
   if(surface==='MOBILE_WORKER'||cap==='mobile_worker'){
