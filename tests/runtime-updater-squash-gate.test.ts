@@ -23,6 +23,18 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('gateSha=$gateSha');
   });
 
+  it('keeps Runtime Updater gate independent from Vercel web-hosting checks',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    const start=src.indexOf('function Gates-Pass');
+    const end=src.indexOf('function Resolve-GateSha');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const gate=src.slice(start,end);
+    expect(gate).toContain("'CI'");
+    expect(gate).toContain("'WO-014 Queue Hygiene'");
+    expect(gate).not.toContain('Vercel');
+  });
+
   it('stages Web Control bootstrap files before Web-only restart and after rollback',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("else{'D:\\TigerIQ\\Runtime\\WebControl24x7'}");
