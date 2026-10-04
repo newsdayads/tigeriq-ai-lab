@@ -1,7 +1,7 @@
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {CodingScopeViolationError,existingPrNeedsBaseUpdate,parseCompactEditJson,resolveCodingRepository,salvageCompactEditsJson,selectCodingWorker,targetRepositoryFromObjective,validateExistingPrResume,validateJobScope,validateObjectiveRoutingInput,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {checkRepositoryGateState,CodingScopeViolationError,existingPrNeedsBaseUpdate,parseCompactEditJson,resolveCodingRepository,salvageCompactEditsJson,selectCodingWorker,targetRepositoryFromObjective,validateExistingPrResume,validateJobScope,validateObjectiveRoutingInput,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
@@ -87,6 +87,19 @@ test('coding lane scope validation tests',async(t)=>{
     assert.deepStrictEqual(resolveCodingRepository('newsdayads/tigeriq-media'),{owner:'newsdayads',repo:'tigeriq-media',fullName:'newsdayads/tigeriq-media',isSource:false});
     assert.throws(()=>resolveCodingRepository('bad value'),/CODING_TARGET_REPOSITORY_INVALID/);
     assert.throws(()=>resolveCodingRepository('other/private'),/CODING_TARGET_REPOSITORY_NOT_ALLOWED/);
+  });
+
+  await t.test('requires both tigeriq-media verify checks to pass',()=>{
+    const target=resolveCodingRepository('newsdayads/tigeriq-media');
+    assert.strictEqual(checkRepositoryGateState([{name:'verify',status:'completed',conclusion:'success'}],target).state,'pending');
+    assert.strictEqual(checkRepositoryGateState([
+      {name:'verify',status:'completed',conclusion:'success'},
+      {name:'verify',status:'completed',conclusion:'success'},
+    ],target).state,'passed');
+    assert.strictEqual(checkRepositoryGateState([
+      {name:'verify',status:'completed',conclusion:'success'},
+      {name:'verify',status:'completed',conclusion:'failure'},
+    ],target).state,'failed');
   });
 
   await t.test('validates objective routing input as an exact target/PR-head pair',()=>{
