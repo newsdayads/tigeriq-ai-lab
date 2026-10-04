@@ -1390,6 +1390,15 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
     if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
     const issue=githubEventIssue(event?.payload);
     if(!issue)return;
+    // Enforce WAITING_PROJECT bounded lease of 60 seconds
+    if(issue.labels?.some(l=>l.name==='WAITING_PROJECT')){
+      const age=Date.now()-new Date(issue.created_at||0).getTime();
+      if(age>60000){
+        console.log(JSON.stringify({event:'WAITING_PROJECT_TIMEOUT',issueNumber:issue.number,ageMs:age}));
+        // Skip processing to avoid indefinite lease
+        return;
+      }
+    }
     busy=true;
     try{
       const n=Number(issue.number);
