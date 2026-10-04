@@ -153,10 +153,12 @@ describe('mobile worker api helpers',()=>{
     expect(missingRecovery).toMatchObject({completed:10,invalid:1,recoveryCount:0,pass:false});
     expect(missingRecovery.jobs[4]).toMatchObject({recoveryCount:null,valid:false});
 
-    rows[4].result.output.recoveryCount=-1;
-    const invalidRecovery=gateCV021Aggregate(rows,'NV101');
-    expect(invalidRecovery).toMatchObject({completed:10,invalid:1,recoveryCount:0,pass:false});
-    expect(invalidRecovery.jobs[4]).toMatchObject({recoveryCount:null,valid:false});
+    for(const malformed of [-1,1.5,null,false,'',[]]){
+      rows[4].result.output.recoveryCount=malformed;
+      const invalidRecovery=gateCV021Aggregate(rows,'NV101');
+      expect(invalidRecovery).toMatchObject({completed:10,invalid:1,recoveryCount:0,pass:false});
+      expect(invalidRecovery.jobs[4]).toMatchObject({recoveryCount:null,valid:false});
+    }
   });
 
   it('fails closed if the prechecked Gate C v0.20 target changes before insert',async()=>{
