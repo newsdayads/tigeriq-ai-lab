@@ -86,6 +86,14 @@ public final class ForegroundWorkerService extends Service {
 
             if (task.present()) {
                 boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
+                if (sameTaskRun && ChatGptB1Policy.waitingProjectTimedOut(
+                    run.state,
+                    run.startedAt,
+                    System.currentTimeMillis()
+                )) {
+                    ChatGptB1RunStore.fail(this, "PROJECT_BIND_TIMEOUT");
+                    run = ChatGptB1RunStore.read(this);
+                }
 
                 // A manual/different B1 run owns ChatGPT until it reaches terminal state.
                 // Keep the already-leased Core task alive, but never launch/overwrite the manual run.
