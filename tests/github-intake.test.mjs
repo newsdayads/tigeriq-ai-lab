@@ -1477,3 +1477,48 @@ test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
+
+
+test('Vercel Production direct action requires an explicit bounded web-release contract',()=>{
+  const sha='a'.repeat(40);
+  const raw='PC_OPERATOR_DIRECT_ACTION_JSON='+JSON.stringify({
+    action:'tigeriq_live_3150_production_deploy',
+    expectedSha:sha,
+    releaseIssue:'3945',
+    releaseClass:'WEB_LIVE',
+    ownerAuthorized:true,
+    releaseReason:'Publish #3918 API Health UI',
+  });
+  const denied=parsePcOperatorDirectAction(raw,false);
+  assert.strictEqual(denied.valid,false);
+  assert.strictEqual(denied.reason,'OWNER_DIRECT_REQUIRED');
+  const allowed=parsePcOperatorDirectAction(raw,true);
+  assert.strictEqual(allowed.valid,true);
+  assert.deepStrictEqual(allowed.action,{
+    action:'tigeriq_live_3150_production_deploy',
+    expectedSha:sha,
+    releaseIssue:'3945',
+    releaseClass:'WEB_LIVE',
+    ownerAuthorized:true,
+    releaseReason:'Publish #3918 API Health UI',
+  });
+  for(const [override,reason] of [
+    [{releaseIssue:''},'RELEASE_ISSUE_INVALID'],
+    [{releaseClass:'CORE'},'RELEASE_CLASS_INVALID'],
+    [{ownerAuthorized:false},'OWNER_RELEASE_AUTH_REQUIRED'],
+    [{releaseReason:''},'RELEASE_REASON_INVALID'],
+  ]){
+    const invalid='PC_OPERATOR_DIRECT_ACTION_JSON='+JSON.stringify({
+      action:'tigeriq_live_3150_production_deploy',
+      expectedSha:sha,
+      releaseIssue:'3945',
+      releaseClass:'WEB_LIVE',
+      ownerAuthorized:true,
+      releaseReason:'Publish #3918 API Health UI',
+      ...override,
+    });
+    const parsed=parsePcOperatorDirectAction(invalid,true);
+    assert.strictEqual(parsed.valid,false);
+    assert.strictEqual(parsed.reason,reason);
+  }
+});
