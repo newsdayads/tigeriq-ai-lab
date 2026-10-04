@@ -240,17 +240,28 @@ describe('GitHub Core intake guardrails',()=>{
   it('accepts only the Owner-authorized exact-SHA TigerIQ Live production direct action',()=>{
     const sha='a'.repeat(40);
     const raw='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"'+sha+'"}';
-    expect(parsePcOperatorDirectAction(raw,true)).toMatchObject({
-      present:true,valid:true,action:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha},mutating:true
+    const releaseBody=['OWNER_RELEASE_AUTHORIZED=true','VERCEL_RELEASE_REASON=Publish owner-authorized TigerIQ LIVE UI',raw].join('\n');
+    expect(parsePcOperatorDirectAction(releaseBody,true)).toMatchObject({
+      present:true,valid:true,action:{
+        action:'tigeriq_live_3150_production_deploy',
+        expectedSha:sha,
+        releaseClass:'WEB_LIVE',
+        ownerAuthorized:true,
+        releaseReason:'Publish owner-authorized TigerIQ LIVE UI'
+      },mutating:true
     });
-    expect(parsePcOperatorDirectAction(raw,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
-    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"bad"}',true))
+    expect(parsePcOperatorDirectAction(releaseBody,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    expect(parsePcOperatorDirectAction(raw,true)).toMatchObject({present:true,valid:false,reason:'OWNER_RELEASE_AUTH_REQUIRED'});
+    expect(parsePcOperatorDirectAction(['OWNER_RELEASE_AUTHORIZED=true',raw].join('\n'),true))
+      .toMatchObject({present:true,valid:false,reason:'RELEASE_REASON_REQUIRED'});
+    expect(parsePcOperatorDirectAction(['OWNER_RELEASE_AUTHORIZED=true','VERCEL_RELEASE_REASON=x','PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"bad"}'].join('\n'),true))
       .toMatchObject({present:true,valid:false,reason:'EXPECTED_SHA_INVALID'});
 
     const body=[
-      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1','CAPABILITY=pc_operator',
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_RELEASE_AUTHORIZED=true','PRIORITY=P1','CAPABILITY=pc_operator',
       'ASSIGNED_EXECUTOR=NV06','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
       'RESOURCE_SCOPE=PC01_TIGERIQ_LIVE_3150_DEPLOY_TEST',
+      'VERCEL_RELEASE_REASON=Publish owner-authorized TigerIQ LIVE UI',
       'ASSIGNED_ACTION','tigeriq_pc tigeriq_live_3150_production_deploy expectedSha="'+sha+'"',
       'ACCEPTANCE','PASS',raw,
     ].join('\n');
@@ -258,7 +269,14 @@ describe('GitHub Core intake guardrails',()=>{
       capability:'pc_operator',
       dispatchLane:'PC_OPERATOR',
       targetWorker:'NV06',
-      pcOperatorDirectAction:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha}
+      pcOperatorDirectAction:{
+        action:'tigeriq_live_3150_production_deploy',
+        expectedSha:sha,
+        releaseClass:'WEB_LIVE',
+        ownerAuthorized:true,
+        releaseReason:'Publish owner-authorized TigerIQ LIVE UI',
+        releaseIssue:'3192'
+      }
     });
   });
 

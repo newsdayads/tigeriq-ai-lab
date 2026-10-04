@@ -327,7 +327,10 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
   }else if(action==='tigeriq_live_3150_production_deploy'){
     const expectedSha=String(parsed.expectedSha||'').trim().toLowerCase();
     if(!/^[0-9a-f]{40}$/.test(expectedSha))return {present:true,valid:false,action:null,reason:'EXPECTED_SHA_INVALID'};
-    normalized={action,expectedSha};
+    if(!hasExactFlag(text,'OWNER_RELEASE_AUTHORIZED'))return {present:true,valid:false,action:null,reason:'OWNER_RELEASE_AUTH_REQUIRED'};
+    const releaseReason=bodyValue(text,'VERCEL_RELEASE_REASON').trim();
+    if(!releaseReason)return {present:true,valid:false,action:null,reason:'RELEASE_REASON_REQUIRED'};
+    normalized={action,expectedSha,releaseClass:'WEB_LIVE',ownerAuthorized:true,releaseReason};
   }else if(action.startsWith('file_')){
     normalized={action,path:String(parsed.path||'')};
   }else{
@@ -427,6 +430,9 @@ export function parseExecutableIssue(issue){
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
   if(directAction.present&&!directAction.valid)return null;
+  if(directAction.action?.action==='tigeriq_live_3150_production_deploy'){
+    directAction.action.releaseIssue=String(Number(issue.number));
+  }
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
