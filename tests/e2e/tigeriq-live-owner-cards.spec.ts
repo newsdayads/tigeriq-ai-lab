@@ -78,6 +78,7 @@ test('Owner can understand work cards before opening any drawer', async ({ page 
   await expect(page.locator('.tool-card')).toContainText('ChatGPT Go · GPT-5.6');
   await expect(page.locator('.tool-card')).toContainText('PC01 live runtime');
   await expect(page.locator('.flow-edge-layer path.flow-edge').first()).toBeAttached();
+  await page.screenshot({ path: 'artifacts/ui-preview-desktop.png', fullPage: true });
 });
 
 test('Owner workflow remains readable without horizontal overflow on mobile', async ({ page }) => {
@@ -124,4 +125,5 @@ test('work-card picker stays readable with many open packages on mobile and sele
   }));
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.pickerScroll).toBeGreaterThan(metrics.pickerClient);
+  await page.screenshot({ path: 'artifacts/ui-preview-mobile.png', fullPage: true });
 });
