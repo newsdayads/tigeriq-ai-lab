@@ -1380,7 +1380,7 @@ async function runJob(j){
   const finalSha=await headSha(branch,targetRepository);
   assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  // mergePr(pr.number,approvedHead,j.title)
+  // merge=await mergePr(pr.number,approvedHead,j.title)
   if(AUTO_MERGE){try{await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);merge=await mergePr(pr.number,approvedHead,j.title,targetRepository)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
