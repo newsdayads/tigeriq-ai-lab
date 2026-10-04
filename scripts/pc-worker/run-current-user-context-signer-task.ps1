@@ -37,13 +37,8 @@ function Assert-ExistingTaskSafe($task){
   $logonType=[string]$task.Principal.LogonType
   $runLevel=[string]$task.Principal.RunLevel
   $action=@($task.Actions|Select-Object -First 1)
-  if(-not $principalSid -or -not $expectedSid -or $principalSid-ne$expectedSid
-    -or -not(Test-InteractiveTokenLogon $logonType)
-    -or -not(Test-SignerRunLevel $runLevel)
-    -or [string]$action.Execute-ine$PowerShell
-    -or [string]$action.Arguments-notmatch[regex]::Escape($Runner)){
-    throw 'CURRENT_CI_USER_CONTEXT_TASK_COLLISION'
-  }
+  $exe=[string]$action.Execute;$args=[string]$action.Arguments
+  if(-not $principalSid -or -not $expectedSid -or $principalSid-ne$expectedSid -or -not(Test-InteractiveTokenLogon $logonType) -or -not(Test-SignerRunLevel $runLevel) -or $exe-ine$PowerShell -or $args-notmatch[regex]::Escape($Runner)){throw 'CURRENT_CI_USER_CONTEXT_TASK_COLLISION'}
 }
 
 try{
