@@ -50,6 +50,17 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
 ]);
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
+const GATE_C_V021_PUBLIC_EVIDENCE_KEYS=new Set([
+  'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','pending','invalid','pass',
+  'sendCount','duplicateSendCount','recoveryCount','created','existing','count',
+]);
+const GATE_C_V021_STRONG_KEYS=new Set([
+  'expected','taskCount','completed','failed','pending','invalid','pass','sendCount','duplicateSendCount','recoveryCount','created','existing','count',
+]);
+const GATE_C_V021_ACTIONS=new Set([
+  'android_worker_gate_c_v021_status',
+  'android_worker_gate_c_v021_enqueue_10',
+]);
 const SENSITIVE_KEY_RE=/(?:secret|token|password|passwd|credential|authorization|cookie|session|api[_-]?key|private[_-]?key|env(?:ironment)?)/i;
 const RAW_OUTPUT_KEY_RE=/^(?:content|contentSnippet|content_snippet|text|stdout|stderr|raw|rawText|raw_text|payload|body)$/i;
 const blockedPublicKey=(key)=>SENSITIVE_KEY_RE.test(String(key))||RAW_OUTPUT_KEY_RE.test(String(key));
@@ -138,6 +149,29 @@ function collectTrustedFileReadJsonSources(node,depth=0,seen=new Set(),out=[]){
   return out;
 }
 
+function hasGateCV021BridgeAction(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls.some(call=>GATE_C_V021_ACTIONS.has(String(call?.result?.action||'')));
+}
+
+function trustedGateCV021ReceiptSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  for(let index=calls.length-1;index>=0;index--){
+    const call=calls[index];
+    const result=call?.result;
+    const evidence=result?.evidence;
+    if(String(call?.tool||'')!=='tigeriq_pc')continue;
+    if(!result||typeof result!=='object'||Array.isArray(result))continue;
+    if(result.ok!==true||String(result.target||'').toLowerCase()!=='pc01-local')continue;
+    if(!GATE_C_V021_ACTIONS.has(String(result.action||'')))continue;
+    if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))continue;
+    if(String(evidence.transport||'')!=='local-process'||evidence.androidGateCV021!==true)continue;
+    if(evidence.shell!==false||evidence.inheritedSecretEnvironment!==false)continue;
+    if(result.data&&typeof result.data==='object'&&!Array.isArray(result.data))return [result.data];
+  }
+  return [];
+}
+
 function structuredBridgeEvidenceSources(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   const sources=[];
@@ -164,14 +198,19 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   if(!requested.length)return {};
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
-  const sources=[
+  const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
+  const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls)&&requested.some(key=>GATE_C_V021_STRONG_KEYS.has(key));
+  const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
   ];
-  if(!sources.length)return {};
+  if(!fallbackSources.length&&!trustedGateCV021Sources.length)return {};
   const out={};
   for(const key of requested){
     let raw;
+    const sources=gateCV021Request&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
+      ? trustedGateCV021Sources
+      : fallbackSources;
     for(const source of sources){
       raw=findRequestedValue(source,key);
       if(raw!==undefined)break;
