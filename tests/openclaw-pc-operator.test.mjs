@@ -116,6 +116,60 @@ describe('bounded Core UI cancelled-ledger reconcile', () => {
     });
     expect(calls.filter(call=>call.method==='POST')).toHaveLength(1);
   });
+
+  it('uses bounded node:http transport when no fetch implementation is injected', async () => {
+    const calls=[];
+    const httpRequestImpl=(url,options,onResponse)=>{
+      const u=String(url),method=options.method||'GET';
+      const call={url:u,method,body:''};
+      calls.push(call);
+      const req={
+        setTimeout(){return req;},
+        on(){return req;},
+        write(chunk){call.body+=String(chunk);},
+        destroy(){},
+        end(){
+          queueMicrotask(()=>{
+            let payload;
+            if(u.includes(':8798/api/utility/workers/NV03/job/status'))payload={ok:true,active:{jobId:'GH-3272',source:'CORE_UI',stage:'WORKING'}};
+            else if(u.includes(':8795/api/ui-assignment?previousJobId=GH-3272'))payload={source:'CORE',authority:'CORE',previousJob:{jobId:'GH-3272',status:'CANCELLED'}};
+            else if(u==='http://127.0.0.1:8798/api/utility/workers/NV03/job'&&method==='POST')payload={ok:true,job:{jobId:'GH-3272',stage:'BLOCKED'}};
+            else if(u==='http://127.0.0.1:8795/api/ui-assignment'&&method==='GET')payload={source:'CORE',authority:'CORE',nextJobs:[{jobId:'GH-3352-Rabc123abc123',workerId:'NV03',status:'READY',executable:true}]};
+            else throw new Error('unexpected request '+u);
+            const handlers={};
+            const res={statusCode:200,on(event,cb){handlers[event]=cb;return this;}};
+            onResponse(res);
+            queueMicrotask(()=>{
+              handlers.data?.(Buffer.from(JSON.stringify(payload)));
+              handlers.end?.();
+            });
+          });
+        },
+      };
+      return req;
+    };
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{httpRequestImpl})).resolves.toEqual({
+      status:'CORE_UI_CANCELLED_LEDGER_RECONCILED',
+      workerId:'NV03',clearedJobId:'GH-3272',priorStatus:'CANCELLED',localStage:'BLOCKED',
+      nextJobId:'GH-3352-Rabc123abc123'
+    });
+    expect(calls).toHaveLength(4);
+    expect(calls.filter(call=>call.method==='POST')).toHaveLength(1);
+    expect(JSON.parse(calls.find(call=>call.method==='POST').body)).toMatchObject({
+      jobId:'GH-3272',stage:'BLOCKED',blocker:'SOURCE_JOB_CANCELLED'
+    });
+  });
+
+  it('returns a bounded machine-safe transport error for injected fetch failures', async () => {
+    const fetchImpl=async()=>{
+      const error=new Error('sensitive raw transport detail');
+      error.code='ECONNRESET';
+      throw error;
+    };
+    await expect(reconcileCancelledCoreUiJob({workerId:'NV03'},{fetchImpl}))
+      .rejects.toThrow('TIGERIQ_CORE_UI_RECONCILE_TRANSPORT_ECONNRESET');
+  });
+
 });
 
 describe('OpenClaw PC01 guarded local operator', () => {
