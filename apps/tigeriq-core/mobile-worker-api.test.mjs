@@ -3,10 +3,15 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, GATE_C_V021_COUNT, GATE_C_V021_VERSION, LIVE_WORKER_VERSION, createMobileWorkerApi, enqueueFreshLiveMobileTask, gateCV020Aggregate, gateCV020TaskSpecs, gateCV021Aggregate, gateCV021TaskSpecs, liveMobileCompletionToken, liveMobileTaskPrompt, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
-afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
+afterEach(()=>{
+  if(tempPath)rmSync(tempPath,{recursive:true,force:true});
+  tempPath='';
+  delete process.env.TIGERIQ_MOBILE_RELEASE_MANIFEST;
+});
 
 describe('mobile worker api helpers',()=>{
   it('verifies Android-compatible P256 challenge proof',()=>{
@@ -353,7 +358,9 @@ describe('mobile worker api helpers',()=>{
           expect(params).toEqual([LIVE_WORKER_VERSION]);
           return {rowCount:1,rows:[{
             node_id:'node-live',employee_id:'NV101',provider:'ChatGPT',
-            agent_version:LIVE_WORKER_VERSION,last_seen_at:now
+            agent_version:LIVE_WORKER_VERSION,last_seen_at:now,
+            update_manifest_seen_at:'2026-10-04T14:00:00.000Z',update_manifest_version:22,
+            update_apk_requested_at:'2026-10-04T14:01:00.000Z',update_apk_version:22
           }]};
         }
         throw new Error('unexpected pool sql: '+sql);
@@ -366,8 +373,135 @@ describe('mobile worker api helpers',()=>{
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
-      employeeId:'NV101',online:true,lastSeenAt:now
+      employeeId:'NV101',online:true,lastSeenAt:now,
+      updateManifestSeenAt:'2026-10-04T14:00:00.000Z',updateManifestVersion:22,
+      updateApkRequestedAt:'2026-10-04T14:01:00.000Z',updateApkVersion:22
     });
+  });
+
+  it('reports version-independent update request telemetry by employee',async()=>{
+    const now=new Date().toISOString();
+    const pool={async query(sql,params=[]){
+      if(sql.includes('from tigeriq_mobile_devices')&&sql.includes('employee_id=$1')){
+        expect(params).toEqual(['NV101']);
+        return {rowCount:1,rows:[{
+          node_id:'node-current',employee_id:'NV101',agent_version:'0.21.0-packageinstaller-stream-fix',
+          last_seen_at:now,
+          update_manifest_seen_at:'2026-10-04T14:10:00.000Z',update_manifest_version:22,
+          update_apk_requested_at:null,update_apk_version:null
+        }]};
+      }
+      throw new Error('unexpected pool sql: '+sql);
+    }};
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const req={method:'GET',headers:{authorization:'Bearer core-secret'},socket:{remoteAddress:'127.0.0.1'},async *[Symbol.asyncIterator](){}};
+    const res={status:0,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}};
+    await handle(req,res,new URL('http://core/api/mobile/update/request-status?employeeId=NV101'));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      ok:true,status:'MOBILE_UPDATE_REQUEST_STATUS',employeeId:'NV101',
+      version:'0.21.0-packageinstaller-stream-fix',online:true,lastSeenAt:now,
+      updateManifestSeenAt:'2026-10-04T14:10:00.000Z',updateManifestVersion:22,
+      updateApkRequestedAt:null,updateApkVersion:null
+    });
+  });
+
+  it('records manifest and APK requests from an unchanged authenticated worker',async()=>{
+    tempPath=mkdtempSync(join(tmpdir(),'tigeriq-mobile-observe-'));
+    const apkPath=join(tempPath,'worker.apk');
+    const manifestPath=join(tempPath,'release.json');
+    writeFileSync(apkPath,Buffer.alloc(2048,7));
+    writeFileSync(manifestPath,JSON.stringify({
+      versionCode:22,versionName:'0.22.0-live-worker',sha256:'aa'.repeat(32),
+      signerSha256:'11'.repeat(32),fileName:'TIQ Worker v0.22.apk',channel:'STABLE',
+      apkPath,publishedAt:'2026-10-04T00:00:00Z'
+    }));
+    process.env.TIGERIQ_MOBILE_RELEASE_MANIFEST=manifestPath;
+    const device={
+      node_id:'node-v021',employee_id:'NV101',credential_id:'cred-v021',
+      token_hash:createHash('sha256').update('mobile-token').digest('hex'),
+      provider:'ChatGPT',department:'Engineering',role:'Android Worker Pilot'
+    };
+    const observations=[];
+    const pool={async query(sql,params=[]){
+      if(sql.startsWith('select * from tigeriq_mobile_devices where credential_id=')){
+        expect(params).toEqual(['cred-v021']);
+        return {rowCount:1,rows:[device]};
+      }
+      if(sql.startsWith('update tigeriq_mobile_devices set update_')){
+        observations.push({sql,params});
+        return {rowCount:1,rows:[]};
+      }
+      throw new Error('unexpected pool sql: '+sql);
+    }};
+    const handle=createMobileWorkerApi({pool});
+    const headers={'x-tigeriq-credential-id':'cred-v021',authorization:'Bearer mobile-token'};
+
+    const manifestReq={method:'GET',headers,socket:{remoteAddress:'100.64.0.9'},async *[Symbol.asyncIterator](){}};
+    const manifestRes={status:0,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}};
+    await handle(manifestReq,manifestRes,new URL('http://core/api/mobile/update/manifest'));
+    expect(manifestRes.status).toBe(200);
+    expect(manifestRes.body).toMatchObject({ok:true,available:true,versionCode:22});
+    expect(observations[0].sql).toContain('update_manifest_seen_at=now()');
+    expect(observations[0].params).toEqual(['node-v021',22]);
+
+    const apkReq={method:'GET',headers,socket:{remoteAddress:'100.64.0.9'},async *[Symbol.asyncIterator](){}};
+    const apkRes=new PassThrough();
+    apkRes.status=0;
+    apkRes.writeHead=function(status){this.status=status;};
+    let apkBytes=0;
+    apkRes.on('data',chunk=>{apkBytes+=chunk.length;});
+    const finished=new Promise(resolve=>apkRes.on('finish',resolve));
+    await handle(apkReq,apkRes,new URL('http://core/api/mobile/update/apk'));
+    await finished;
+    expect(apkRes.status).toBe(200);
+    expect(apkBytes).toBe(2048);
+    expect(observations[1].sql).toContain('update_apk_requested_at=now()');
+    expect(observations[1].params).toEqual(['node-v021',22]);
+  });
+
+  it('surfaces observation-write failure without blocking manifest delivery',async()=>{
+    tempPath=mkdtempSync(join(tmpdir(),'tigeriq-mobile-observe-fail-'));
+    const apkPath=join(tempPath,'worker.apk');
+    const manifestPath=join(tempPath,'release.json');
+    writeFileSync(apkPath,Buffer.alloc(2048,7));
+    writeFileSync(manifestPath,JSON.stringify({
+      versionCode:22,versionName:'0.22.0-live-worker',sha256:'aa'.repeat(32),
+      signerSha256:'11'.repeat(32),fileName:'TIQ Worker v0.22.apk',channel:'STABLE',
+      apkPath,publishedAt:'2026-10-04T00:00:00Z'
+    }));
+    process.env.TIGERIQ_MOBILE_RELEASE_MANIFEST=manifestPath;
+    const device={
+      node_id:'node-v021',employee_id:'NV101',credential_id:'cred-v021',
+      token_hash:createHash('sha256').update('mobile-token').digest('hex'),
+      provider:'ChatGPT',department:'Engineering',role:'Android Worker Pilot'
+    };
+    const events=[];
+    const pool={async query(sql,params=[]){
+      if(sql.startsWith('select * from tigeriq_mobile_devices where credential_id=')){
+        return {rowCount:1,rows:[device]};
+      }
+      if(sql.startsWith('update tigeriq_mobile_devices set update_manifest_seen_at=')){
+        expect(sql).toContain('last_seen_at=now()');
+        throw new Error('db_temporarily_unavailable');
+      }
+      throw new Error('unexpected pool sql: '+sql);
+    }};
+    const handle=createMobileWorkerApi({pool,event:async(type,payload)=>events.push({type,payload})});
+    const req={
+      method:'GET',
+      headers:{'x-tigeriq-credential-id':'cred-v021',authorization:'Bearer mobile-token'},
+      socket:{remoteAddress:'100.64.0.9'},
+      async *[Symbol.asyncIterator](){}
+    };
+    const res={status:0,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}};
+    await handle(req,res,new URL('http://core/api/mobile/update/manifest'));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ok:true,available:true,versionCode:22});
+    expect(events).toEqual([{
+      type:'MOBILE_UPDATE_OBSERVATION_FAILED',
+      payload:{nodeId:'node-v021',kind:'manifest',versionCode:22,error:'db_temporarily_unavailable'}
+    }]);
   });
 
   it('reports unavailable when no exact v0.22 live worker is enrolled',async()=>{
