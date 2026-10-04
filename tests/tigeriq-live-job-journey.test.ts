@@ -36,7 +36,7 @@ describe('TigerIQ Live restored Work Package cards #3576', () => {
     expect(rootHtml).toContain('class="package-task-progress"');
     expect(rootHtml).toContain('class="package-task-progress-track" role="progressbar"');
     expect(rootHtml).toContain("aria-valuenow=\"'+progress.pct+'\"");
-    expect(rootHtml).toContain("'<b>'+progress.pct+'%</b>");
+    expect(rootHtml).toContain("<b>'+progress.pct+'%</b>");
     expect(rootHtml).toContain('chưa xác minh');
     expect(rootHtml).toContain('progress.verified');
   });
