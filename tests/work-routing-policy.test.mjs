@@ -39,6 +39,8 @@ test('explicit mobile_worker capability or surface routes only to the mobile lan
   assert.equal(s.route,'MOBILE_WORKER');assert.equal(s.capability,'mobile_worker');assert.equal(s.surface,'MOBILE_WORKER');assert.equal(s.workerId,null);assert.equal(s.autonomous,true);
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=general\nEXECUTION_SURFACE=MOBILE_WORKER');
   assert.equal(s.route,'MOBILE_WORKER');assert.equal(s.capability,'mobile_worker');assert.equal(s.surface,'MOBILE_WORKER');assert.equal(s.workerId,null);
+  s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=mobile_worker\nASSIGNED_EXECUTOR=NV06');
+  assert.equal(s.route,'MOBILE_WORKER');assert.equal(s.workerId,null);assert.equal(s.assignedExecutor,'');
 });
 
 test('explicit UI preference routes NV03/NV04 autonomously while NV02 stays external',()=>{
