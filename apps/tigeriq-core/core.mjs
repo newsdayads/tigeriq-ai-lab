@@ -21,7 +21,7 @@ import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -1109,6 +1109,7 @@ async function runApiDoctorScan(){
     const handoffFailureClass=String(handoffCandidate?.data?.failureClass||'').toLowerCase();
     const canonicalRepairIssueNumber=Number(handoffCandidate?.data?.repairIssueNumber||0);
     let handoffPlan=null;
+    let freshRecurrence=null;
     if(handoffCandidate){
       let lifecycle;
       try{
@@ -1124,18 +1125,38 @@ async function runApiDoctorScan(){
       const validationAttempts=await apiDoctorPostRepairValidationAttempts(resource.resource_id,handoffCandidate.ts);
       let successAfter=null;
       if(lifecycle.ready){
-        successAfter=(await pool.query(
-          "select ts,data from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
-          [resource.resource_id,lifecycle.successAfterAt]
-        )).rows[0]||null;
-        handoffPlan=apiDoctorExistingHandoffAction({
-          existingHandoff:true,
-          successAfterHandoff:Boolean(successAfter),
-          healthState:resource.health_state,
-          cooldownUntil:resource.cooldown_until,
-          validationAttempts,
-          maxValidationAttempts:2,
+        const currentFailureSignature=apiDoctorRepairSignature({
+          employeeId:resource.employee_id,
+          provider:resource.provider,
+          failureClass:plan.failureClass,
+          message:latestFailure?.data?.message||latestFailure?.data?.kind||plan.reason,
         });
+        freshRecurrence=apiDoctorFreshRecurrence({
+          currentFailureClass:plan.failureClass,
+          currentFailureAt:latestFailure?.ts,
+          terminalAt:lifecycle.successAfterAt,
+          currentSignature:currentFailureSignature,
+          priorSignature:handoffCandidate?.data?.signature||'',
+        });
+        if(freshRecurrence.fresh){
+          row.handoff='fresh_recurrence_after_terminal_repair';
+          row.priorRepairIssueNumber=lifecycle.issueNumber||canonicalRepairIssueNumber||null;
+          row.recurrenceSignature=freshRecurrence.signature;
+          handoffPlan={action:'proceed',reason:'fresh_recurrence_after_terminal_repair'};
+        }else{
+          successAfter=(await pool.query(
+            "select ts,data from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
+            [resource.resource_id,lifecycle.successAfterAt]
+          )).rows[0]||null;
+          handoffPlan=apiDoctorExistingHandoffAction({
+            existingHandoff:true,
+            successAfterHandoff:Boolean(successAfter),
+            healthState:resource.health_state,
+            cooldownUntil:resource.cooldown_until,
+            validationAttempts,
+            maxValidationAttempts:2,
+          });
+        }
       }else{
         handoffPlan={action:'wait_repair',reason:lifecycle.reason};
       }
@@ -1156,10 +1177,10 @@ async function runApiDoctorScan(){
     }
     const repairLifecycleRelevant=apiDoctorRepairLifecycleRelevant({
       hasHandoff:Boolean(handoffCandidate),repairIssueNumber:canonicalRepairIssueNumber,handoffFailureClass,
-      currentFailureClass:plan.failureClass,currentAction:plan.action,
+      currentFailureClass:plan.failureClass,currentAction:plan.action,freshRecurrence:Boolean(freshRecurrence?.fresh),
     });
-    const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null;
-    if(handoffCandidate&&!existingHandoff){
+    const existingHandoff=freshRecurrence?.fresh?null:(repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)?handoffCandidate:null);
+    if(handoffCandidate&&!existingHandoff&&!freshRecurrence?.fresh){
       row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class';
       row.handoffFailureClass=handoffFailureClass||'unknown';
     }
@@ -1200,11 +1221,11 @@ async function runApiDoctorScan(){
       probeOk=Boolean(probe?.ok);
       row.probe='ok';
     }catch(error){row.probe='failed';row.probeError=String(error?.kind||error?.message||error).slice(0,120);}
-    if(probeOk&&handoffCandidate&&!existingHandoff){
+    if(probeOk&&handoffCandidate&&!existingHandoff&&!freshRecurrence?.fresh){
       row.staleHandoffProbe='ok_wait_repair_lifecycle';
     }
     if(plan.action==='probe_then_handoff'&&probeOk&&repeatedSourceFailures>=2){
-      const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure);
+      const handoff=await createApiDoctorRepairHandoff(resource,plan.failureClass,latestFailure,freshRecurrence?.fresh?{signatureOverride:freshRecurrence.signature}:{});
       row.handoff=handoff.created?'created':'deduped';
       row.codingObjectiveId=handoff.codingObjectiveId||null;row.repairIssueNumber=handoff.repairIssueNumber||null;row.repairIssueUrl=handoff.repairIssueUrl||null;
     }
