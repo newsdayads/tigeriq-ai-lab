@@ -34,7 +34,8 @@ $metadataInvalid=(
   $ExpectedApkSignerJarSha256-notmatch'^[0-9A-F]{64}$' -or
   $ExpectedSignerSha256-notmatch'^[0-9A-F]{64}$' -or
   $SourceArtifactSha-notmatch'^[0-9a-f]{40}$' -or
-  $SourceArtifactAndroidTreeSha-notmatch'^[0-9a-f]{40}
+  $SourceArtifactAndroidTreeSha-notmatch'^[0-9a-f]{40}$' -or
+  $SourceArtifactAppTreeSha-notmatch'^[0-9a-f]{40}$' -or
   $SourceWorkflowRunId-notmatch'^\d+$' -or
   $SourceArtifactId-notmatch'^\d+$' -or
   [string]::IsNullOrWhiteSpace($SourceArtifactName)
