@@ -40,6 +40,10 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('/* #3918 visual parity R2');
     expect(shared).toContain('.work-row.status-review,.work-row.status-waiting,.work-row.status-verify');
     expect(shared).toContain('.work-row .state.review,.work-row .state.waiting,.work-row .state.verify');
+    expect(shared).toContain('/* #3918 vivid API Health Work-card pass');
+    expect(shared).toContain('.api-health .work-row.status-review');
+    expect(shared).toContain('.api-health .work-row .state.review');
+    expect(shared).toContain('@keyframes tiq-status-pulse');
   });
 
   it('orders side panels performance then recent activity then alerts and uppercases headings',()=>{
