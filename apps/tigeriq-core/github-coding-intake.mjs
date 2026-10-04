@@ -62,15 +62,29 @@ export function extractCodingDependencies(body){
   return [...new Set(values)].slice(0,16);
 }
 
+const DEFAULT_CODING_TARGET_REPOSITORIES=new Set([`${DEFAULT_OWNER}/${DEFAULT_REPO}`,'newsdayads/tigeriq-media']);
+
+export function parseCodingTargetRepository(body,{sourceRepository=`${DEFAULT_OWNER}/${DEFAULT_REPO}`,allowedRepositories=DEFAULT_CODING_TARGET_REPOSITORIES}={}){
+  const raw=String(String(body||'').match(/^TARGET_REPOSITORY=(.+)$/m)?.[1]||'').trim();
+  if(!raw)return {valid:true,reason:null,targetRepository:null};
+  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw))return {valid:false,reason:'TARGET_REPOSITORY_INVALID',targetRepository:null};
+  const normalized=raw.toLowerCase();
+  const allowed=new Set([String(sourceRepository||'').toLowerCase(),...[...allowedRepositories].map(x=>String(x||'').toLowerCase())]);
+  if(!allowed.has(normalized))return {valid:false,reason:'TARGET_REPOSITORY_NOT_ALLOWED',targetRepository:null};
+  return {valid:true,reason:null,targetRepository:raw};
+}
+
 export function parseCodingRouteMetadata(body){
   const text=String(body||'');
   const targetRaw=String(text.match(/^TARGET_EMPLOYEE=(.+)$/m)?.[1]||'').trim();
   const currentPrRaw=String(text.match(/^CURRENT_PR=(.+)$/m)?.[1]||'').trim();
   const targetHeadRaw=String(text.match(/^TARGET_HEAD=(.+)$/m)?.[1]||'').trim();
+  const repository=parseCodingTargetRepository(text);
+  if(!repository.valid)return {valid:false,reason:repository.reason,targetEmployee:null,currentPr:null,targetHead:null,targetRepository:null};
 
   let targetEmployee=null;
   if(targetRaw){
-    if(!/^NV\d{2,3}$/i.test(targetRaw))return {valid:false,reason:'TARGET_EMPLOYEE_INVALID',targetEmployee:null,currentPr:null,targetHead:null};
+    if(!/^NV\d{2,3}$/i.test(targetRaw))return {valid:false,reason:'TARGET_EMPLOYEE_INVALID',targetEmployee:null,currentPr:null,targetHead:null,targetRepository:repository.targetRepository};
     targetEmployee=targetRaw.toUpperCase();
   }
 
@@ -81,13 +95,13 @@ export function parseCodingRouteMetadata(body){
   if(hasPr){
     const match=currentPrRaw.match(/^#?(\d+)$/);
     const value=Number(match?.[1]||0);
-    if(!match||!Number.isInteger(value)||value<=0)return {valid:false,reason:'CURRENT_PR_INVALID',targetEmployee,currentPr:null,targetHead:null};
-    if(!targetHeadRaw)return {valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED',targetEmployee,currentPr:null,targetHead:null};
-    if(!/^[0-9a-f]{40}$/i.test(targetHeadRaw))return {valid:false,reason:'TARGET_HEAD_INVALID',targetEmployee,currentPr:null,targetHead:null};
+    if(!match||!Number.isInteger(value)||value<=0)return {valid:false,reason:'CURRENT_PR_INVALID',targetEmployee,currentPr:null,targetHead:null,targetRepository:repository.targetRepository};
+    if(!targetHeadRaw)return {valid:false,reason:'CURRENT_PR_TARGET_HEAD_PAIR_REQUIRED',targetEmployee,currentPr:null,targetHead:null,targetRepository:repository.targetRepository};
+    if(!/^[0-9a-f]{40}$/i.test(targetHeadRaw))return {valid:false,reason:'TARGET_HEAD_INVALID',targetEmployee,currentPr:null,targetHead:null,targetRepository:repository.targetRepository};
     currentPr=value;
     targetHead=targetHeadRaw.toLowerCase();
   }
-  return {valid:true,reason:null,targetEmployee,currentPr,targetHead};
+  return {valid:true,reason:null,targetEmployee,currentPr,targetHead,targetRepository:repository.targetRepository};
 }
 
 export function parseCodingScope(body){

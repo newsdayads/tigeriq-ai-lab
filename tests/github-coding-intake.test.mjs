@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -153,11 +153,20 @@ ALLOW_PATH_PREFIX=tests/`;
   it('parses explicit target employee and existing PR resume metadata only when valid',()=>{
     const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
     expect(parseCodingRouteMetadata(`TARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`)).toEqual({
-      valid:true,reason:null,targetEmployee:'NV09',currentPr:1870,targetHead:head
+      valid:true,reason:null,targetEmployee:'NV09',currentPr:1870,targetHead:head,targetRepository:null
     });
     expect(parseCodingIssue(issue(`${SAFE}\nTARGET_EMPLOYEE=NV09\nCURRENT_PR=#1870\nTARGET_HEAD=${head}`))?.routing).toMatchObject({
       targetEmployee:'NV09',currentPr:1870,targetHead:head
     });
+  });
+
+  it('parses only the default or explicitly allowlisted target repository',()=>{
+    expect(parseCodingTargetRepository('')).toEqual({valid:true,reason:null,targetRepository:null});
+    expect(parseCodingTargetRepository('TARGET_REPOSITORY=newsdayads/tigeriq-media')).toEqual({valid:true,reason:null,targetRepository:'newsdayads/tigeriq-media'});
+    expect(parseCodingTargetRepository('TARGET_REPOSITORY=bad value')).toMatchObject({valid:false,reason:'TARGET_REPOSITORY_INVALID'});
+    expect(parseCodingTargetRepository('TARGET_REPOSITORY=other/private')).toMatchObject({valid:false,reason:'TARGET_REPOSITORY_NOT_ALLOWED'});
+    expect(parseCodingIssue(issue(`${SAFE}\nTARGET_REPOSITORY=newsdayads/tigeriq-media`))?.routing.targetRepository).toBe('newsdayads/tigeriq-media');
+    expect(parseCodingIssue(issue(`${SAFE}\nTARGET_REPOSITORY=other/private`))).toBeNull();
   });
 
   it('fails closed on malformed or incomplete explicit routing metadata',()=>{
