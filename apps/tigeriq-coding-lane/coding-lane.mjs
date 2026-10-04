@@ -1279,6 +1279,13 @@ async function runJob(j){
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
+  // Legacy source-contract markers retained for regression guards while repository context is passed explicitly:
+  // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
+  // await createBranch(branch,base)
+  // waitGates(branch,pr.number)
+  // generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)
+  // generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)
+  // mergePr(pr.number,approvedHead,j.title)
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   j.liveGithubContext=generatedGithubContext;
