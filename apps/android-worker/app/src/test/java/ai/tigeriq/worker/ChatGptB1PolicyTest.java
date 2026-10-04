@@ -34,6 +34,48 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void boundsProjectBindingWithMonotonicElapsedTime() {
+        long startedElapsed = 1_000_000L;
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS - 1L
+        ));
+        assertTrue(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            0L, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed + 10_000L, startedElapsed
+        ));
+        assertTrue(ChatGptB1Policy.projectBindElapsedAnchorInvalid(0L, startedElapsed));
+        assertTrue(ChatGptB1Policy.projectBindElapsedAnchorInvalid(startedElapsed + 1L, startedElapsed));
+        assertFalse(ChatGptB1Policy.projectBindElapsedAnchorInvalid(startedElapsed, startedElapsed));
+        assertEquals(60_000L, ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS);
+    }
+
+    @Test
+    public void timeoutRequiresCurrentBoundTaskIdentityAndWaitingState() {
+        long start = 1_000_000L;
+        long expired = start + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS;
+        assertTrue(ChatGptB1Policy.shouldTimeoutBoundTask(
+            "run-1", "task-1", "run-1", "task-1", "WAITING_PROJECT", false, start, expired
+        ));
+        assertFalse(ChatGptB1Policy.shouldTimeoutBoundTask(
+            "run-1", "task-1", "run-2", "task-1", "WAITING_PROJECT", false, start, expired
+        ));
+        assertFalse(ChatGptB1Policy.shouldTimeoutBoundTask(
+            "run-1", "task-1", "run-1", "task-2", "WAITING_PROJECT", false, start, expired
+        ));
+        assertFalse(ChatGptB1Policy.shouldTimeoutBoundTask(
+            "run-1", "task-1", "run-1", "task-1", "REQUESTED", false, start, expired
+        ));
+        assertFalse(ChatGptB1Policy.shouldTimeoutBoundTask(
+            "run-1", "task-1", "run-1", "task-1", "WAITING_PROJECT", true, start, expired
+        ));
+    }
+
+    @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
         assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));

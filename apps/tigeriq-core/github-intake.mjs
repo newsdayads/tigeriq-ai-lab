@@ -8,6 +8,7 @@ import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 import { isStabilityV2ResourceScope } from './stability-v2.mjs';
+import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPrompt } from './mobile-worker-api.mjs';
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
@@ -253,6 +254,7 @@ export function githubDispatchLane(capability='reasoning'){
   const cap=String(capability||'reasoning').toLowerCase();
   if(cap==='pc_operator')return 'PC_OPERATOR';
   if(cap==='review')return 'CORE_REVIEW';
+  if(cap==='mobile_worker')return 'MOBILE_WORKER';
   return 'CORE_REASONING';
 }
 
@@ -283,7 +285,7 @@ export function extractPcOperatorInstruction(body){
 }
 
 const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','paperclip_lab_preflight','paperclip_lab_health']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
   const text=String(body||'');
@@ -309,11 +311,12 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     const sessionId=String(parsed.sessionId||'').trim().toLowerCase();
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId))return {present:true,valid:false,action:null,reason:'SESSION_ID_INVALID'};
     normalized={action,sessionId};
-  }else if(action==='android_worker_export_v020_signed_apk_chunk'||action==='android_worker_export_v021_signed_apk_chunk'){
+  }else if(action==='android_worker_export_v020_signed_apk_chunk'||action==='android_worker_export_v021_signed_apk_chunk'||action==='android_worker_export_current_signed_apk_chunk'){
     const chunkIndex=Number(parsed.chunkIndex);
-    if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>31)return {present:true,valid:false,action:null,reason:'CHUNK_INDEX_INVALID'};
+    const maxIndex=action==='android_worker_export_current_signed_apk_chunk'?255:31;
+    if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>maxIndex)return {present:true,valid:false,action:null,reason:'CHUNK_INDEX_INVALID'};
     normalized={action,chunkIndex};
-  }else if(action==='android_worker_publish_v021_manifest'){
+  }else if(action==='android_worker_publish_v021_manifest'||action==='android_worker_publish_current_manifest'){
     const driveFileId=String(parsed.driveFileId||'').trim();
     if(!/^[A-Za-z0-9_-]{10,200}$/.test(driveFileId))return {present:true,valid:false,action:null,reason:'DRIVE_FILE_ID_INVALID'};
     normalized={action,driveFileId};
@@ -933,7 +936,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY'),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.dispatchLane==='MOBILE_WORKER'?'MOBILE_WORKER':(spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY')),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
       liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
@@ -958,6 +961,51 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
+    if(spec.dispatchLane==='MOBILE_WORKER'){
+      const expectedToken=liveMobileCompletionToken(`github:${spec.number}:${spec.sourceRevision}`);
+      const idempotencyKey=`github-mobile:${spec.number}:${spec.sourceRevision}`;
+      const taskPrompt=liveMobileTaskPrompt({title:spec.title,body:spec.body,expectedToken});
+      const client=await pool.connect();
+      try{
+        await client.query('begin');
+        await client.query('select pg_advisory_xact_lock(hashtext($1))',[idempotencyKey]);
+        const mobile=await enqueueFreshLiveMobileTask(client,{idempotencyKey,prompt:taskPrompt,expectedToken});
+        const mobileMetadata={
+          ...metadata,
+          executionSurface:'MOBILE_WORKER',
+          mobileTaskId:mobile.taskId,
+          mobileRunId:mobile.runId,
+          mobileNodeId:mobile.nodeId,
+          mobileEmployeeId:mobile.employeeId,
+          mobileIdempotencyKey:idempotencyKey,
+          mobileExpectedToken:expectedToken,
+        };
+        await client.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[
+          id,
+          `GitHub Mobile Worker #${spec.number}. Execute exactly one Core-routed task and return a useful response plus deterministic completion token.\n\n${taskPrompt}`,
+          spec.priority,
+          JSON.stringify(mobileMetadata),
+        ]);
+        await client.query("insert into tigeriq_events(type,objective_id,task_kind,data) values('GITHUB_MOBILE_TASK_MATERIALIZED',$1,'mobile_worker',$2)",[
+          id,
+          JSON.stringify({issueNumber:spec.number,taskId:mobile.taskId,runId:mobile.runId,nodeId:mobile.nodeId,employeeId:mobile.employeeId,executionSurface:'MOBILE_WORKER'})
+        ]);
+        await client.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[
+          id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})
+        ]);
+        await client.query('commit');
+        return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,mobileTaskId:mobile.taskId,cleanedOrphans:cleanup.cleaned};
+      }catch(error){
+        try{await client.query('rollback')}catch{}
+        if(String(error?.message||error)==='MOBILE_LIVE_WORKER_UNAVAILABLE'){
+          skipped++;
+          await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason:'MOBILE_LIVE_WORKER_UNAVAILABLE',sourceRevision:spec.sourceRevision,ownerVisible:false,terminalBlocked:false});
+          continue;
+        }
+        throw error;
+      }finally{client.release();}
+    }
+
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
     if(spec.capability==='pc_operator'){
       const jobId=githubPcOperatorJobId(id,spec.number);
@@ -1231,6 +1279,40 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       }catch(error){
         if(githubRateLimitCooldownMs(error)>0)throw error;
         console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+      }
+    }
+    if(row.status==='active'&&row.metadata?.executionSurface==='MOBILE_WORKER'){
+      const taskId=String(row.metadata?.mobileTaskId||'').trim();
+      if(!taskId){
+        row.status='blocked';
+        row.summary='mobile worker objective missing bound task id';
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }else{
+        const task=(await pool.query(
+          'select task_id,status,employee_id,result,completed_at from tigeriq_mobile_tasks where task_id=$1 limit 1',
+          [taskId]
+        )).rows[0]||null;
+        if(!task){
+          row.status='blocked';
+          row.summary=`mobile worker task missing; taskId=${taskId}`;
+          await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+        }else if(['completed','failed'].includes(String(task.status||'').toLowerCase())){
+          const terminal=String(task.status).toLowerCase();
+          const output=task.result?.output&&typeof task.result.output==='object'?task.result.output:{};
+          const responseText=String(output.responseText||'').trim().slice(0,4000);
+          const expectedToken=String(row.metadata?.mobileExpectedToken||'');
+          const tokenValid=terminal==='completed'&&expectedToken&&String(output.validatedToken||'')===expectedToken&&responseText.includes(expectedToken);
+          if(terminal==='completed'&&!tokenValid){
+            row.status='blocked';
+            row.summary=`mobile worker completion rejected: deterministic token/response evidence invalid; taskId=${taskId}`;
+          }else{
+            row.status=terminal==='completed'?'completed':'blocked';
+            row.summary=terminal==='completed'
+              ? `mobile worker completed via ${String(task.employee_id||row.metadata?.mobileEmployeeId||'').trim()}; task=${taskId}; response=${responseText}`
+              : `mobile worker failed; task=${taskId}; error=${String(output.lastError||task.result?.error||'terminal_failure').slice(0,300)}`;
+          }
+          await pool.query('update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1',[row.id,row.status,row.summary]);
+        }
       }
     }
     if(row.status==='active'&&['CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL'].includes(row.metadata?.executionSurface)){

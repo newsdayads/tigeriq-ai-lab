@@ -544,6 +544,23 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain('exportAndroidWorkerV021SignedApkChunk(input?.path');
   });
 
+  it('exports and publishes the current Android release from dynamic version metadata with fail-closed provenance', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_export_current_signed_apk_chunk'");
+    expect(source).toContain("action === 'android_worker_publish_current_manifest'");
+    expect(source).toContain("versionCode\\s*=\\s*(\\d+)");
+    expect(source).toContain("versionName\\s*=\\s*\"([^\"]+)\"");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RUNTIME_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_APK_SHA256_MISMATCH");
+    expect(source).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
+    expect(source).toContain("TIQ Worker v\${shortVersion}.apk");
+    expect(source).toContain("spec.runtimeManifestPath+'.current.tmp'");
+    expect(source).not.toContain("input?.apkPath");
+    expect(source).not.toContain("input?.versionName");
+    expect(source).not.toContain("input?.apkSha256");
+  });
+
   it('publishes v0.21 runtime manifest only from verified signed release and validated Drive file id', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_publish_v021_manifest'");

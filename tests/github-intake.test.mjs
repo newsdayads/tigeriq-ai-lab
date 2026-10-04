@@ -164,6 +164,29 @@ RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
 
+test('GitHub intake admits explicit mobile_worker work without a generic API/coding route',()=>{
+  const body=[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'ZERO_COST=true','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true',
+    'RESOURCE_SCOPE=MOBILE_LIVE_CANARY','CAPABILITY=mobile_worker','EXECUTION_SURFACE=MOBILE_WORKER'
+  ].join('\n');
+  const issue={number:3688,state:'open',title:'[P1][ANDROID] Mobile live canary',body,labels:[],html_url:'https://example/3688'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:true,reason:'SAFE_P1_P5_POLICY'});
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  assert.strictEqual(spec.capability,'mobile_worker');
+  assert.strictEqual(spec.dispatchLane,'MOBILE_WORKER');
+  assert.strictEqual(spec.route,'MOBILE_WORKER');
+  assert.strictEqual(spec.requiresCodingHandoff,false);
+});
+
+test('mobile objectives are excluded from the generic Core manager lane',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
+});
+
 test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
   const admission=safeAutoWorkAdmission(issue);

@@ -24,8 +24,10 @@ public final class ChatGptB1Automation {
         if (now < s.nextActionAt) return;
 
         if ("WAITING_AI".equals(s.state)) {
-            if (treeContains(root, ChatGptB1RunStore.expectedToken(s))) {
-                ChatGptB1RunStore.completeCurrentCycle(service);
+            String expectedToken = ChatGptB1RunStore.expectedToken(s);
+            String responseText = responseTextContaining(root, expectedToken, ChatGptB1RunStore.prompt(s));
+            if (!responseText.isEmpty()) {
+                ChatGptB1RunStore.completeCurrentCycle(service, responseText);
                 return;
             }
             if (treeContainsAny(root, "stop", "dừng", "stop generating", "đang trả lời")) {
@@ -252,6 +254,34 @@ public final class ChatGptB1Automation {
             if (searchable(node).contains(wanted)) return true;
         }
         return false;
+    }
+
+    static String responseTextContaining(AccessibilityNodeInfo root, String token, String prompt) {
+        String wanted = normalize(token);
+        if (root == null || wanted.isEmpty()) return "";
+        String exactToken = text(token);
+        String exactPrompt = text(prompt);
+        String bestUseful = "";
+        String bestAny = "";
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser()) continue;
+            String raw = text(node.getText());
+            if (raw.isEmpty()) raw = text(node.getContentDescription());
+            if (raw.isEmpty() || !normalize(raw).contains(wanted)) continue;
+            String candidate = raw.trim();
+            if (!exactPrompt.isEmpty() && candidate.contains(exactPrompt)) {
+                candidate = candidate.replace(exactPrompt, "").trim();
+            }
+            if (candidate.isEmpty() || !normalize(candidate).contains(wanted)) continue;
+            if (bestAny.isEmpty() || candidate.length() < bestAny.length()) bestAny = candidate;
+            String useful = exactToken.isEmpty() ? candidate : candidate.replace(exactToken, "").trim();
+            if (!useful.isEmpty() && (bestUseful.isEmpty() || candidate.length() < bestUseful.length())) {
+                bestUseful = candidate;
+            }
+        }
+        String best = bestUseful.isEmpty() ? bestAny : bestUseful;
+        if (best.length() > 4000) return best.substring(0, 4000);
+        return best;
     }
 
     public static boolean treeContainsExactLabel(AccessibilityNodeInfo root, String label) {

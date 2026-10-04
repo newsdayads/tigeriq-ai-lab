@@ -2,6 +2,7 @@ package ai.tigeriq.worker;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 
 import org.json.JSONObject;
 
@@ -25,6 +26,7 @@ public final class ChatGptB1RunStore {
     private static final String K_DUPLICATE_COUNT = "duplicateSendCount";
     private static final String K_RECOVERY_COUNT = "recoveryCount";
     private static final String K_STARTED_AT = "startedAt";
+    private static final String K_STARTED_ELAPSED_AT = "startedElapsedAt";
     private static final String K_CYCLE_STARTED_AT = "cycleStartedAt";
     private static final String K_SENT_AT = "sentAt";
     private static final String K_NEXT_ACTION_AT = "nextActionAt";
@@ -38,13 +40,15 @@ public final class ChatGptB1RunStore {
     private static final String K_TASK_ID = "taskId";
     private static final String K_CUSTOM_PROMPT = "customPrompt";
     private static final String K_CUSTOM_EXPECTED_TOKEN = "customExpectedToken";
+    private static final String K_RESPONSE_TEXT = "responseText";
 
     private ChatGptB1RunStore() {}
 
-    public static Snapshot start(Context context, int requestedCycles) {
+    public static synchronized Snapshot start(Context context, int requestedCycles) {
         int target = Math.max(1, Math.min(10, requestedCycles));
         String runId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
+        long nowElapsed = SystemClock.elapsedRealtime();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
             .putString(K_RUN_ID, runId)
             .putString(K_STATE, "WAITING_PROJECT")
@@ -56,11 +60,13 @@ public final class ChatGptB1RunStore {
             .putInt(K_DUPLICATE_COUNT, 0)
             .putInt(K_RECOVERY_COUNT, 0)
             .putLong(K_STARTED_AT, now)
+            .putLong(K_STARTED_ELAPSED_AT, nowElapsed)
             .putLong(K_CYCLE_STARTED_AT, now)
             .putLong(K_NEXT_ACTION_AT, now)
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
             .putString(K_LATENCIES, "")
+            .putString(K_RESPONSE_TEXT, "")
             .putInt(K_EVIDENCE_SEQ, 0)
             .putInt(K_REPORTED_SEQ, 0)
             .putBoolean(K_PROJECT_BOUND, false)
@@ -69,7 +75,7 @@ public final class ChatGptB1RunStore {
         return read(context);
     }
 
-    public static Snapshot startTask(Context context, String runId, String taskId, String prompt, String expectedToken) {
+    public static synchronized Snapshot startTask(Context context, String runId, String taskId, String prompt, String expectedToken) {
         if (runId == null || runId.trim().isEmpty()) throw new IllegalArgumentException("runId is required");
         if (taskId == null || taskId.trim().isEmpty()) throw new IllegalArgumentException("taskId is required");
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
@@ -90,6 +96,13 @@ public final class ChatGptB1RunStore {
         finish(context, "CANCELLED", "cancelled_by_owner");
     }
 
+    public static synchronized boolean cancelStaleManualRunForLiveWorker(Context context) {
+        Snapshot s = read(context);
+        if (!s.active() || (s.taskId != null && !s.taskId.isEmpty())) return false;
+        finish(context, "CANCELLED", "superseded_by_live_worker");
+        return true;
+    }
+
     public static Snapshot read(Context context) {
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         return new Snapshot(
@@ -103,6 +116,7 @@ public final class ChatGptB1RunStore {
             p.getInt(K_DUPLICATE_COUNT, 0),
             p.getInt(K_RECOVERY_COUNT, 0),
             p.getLong(K_STARTED_AT, 0L),
+            p.getLong(K_STARTED_ELAPSED_AT, 0L),
             p.getLong(K_CYCLE_STARTED_AT, 0L),
             p.getLong(K_SENT_AT, 0L),
             p.getLong(K_NEXT_ACTION_AT, 0L),
@@ -115,7 +129,8 @@ public final class ChatGptB1RunStore {
             p.getLong(K_PROJECT_BOUND_AT, 0L),
             p.getString(K_TASK_ID, ""),
             p.getString(K_CUSTOM_PROMPT, ""),
-            p.getString(K_CUSTOM_EXPECTED_TOKEN, "")
+            p.getString(K_CUSTOM_EXPECTED_TOKEN, ""),
+            p.getString(K_RESPONSE_TEXT, "")
         );
     }
 
@@ -131,7 +146,7 @@ public final class ChatGptB1RunStore {
             + "TIGERIQ_ + B1_ + OK_ + " + s.cycle;
     }
 
-    public static void markProjectBound(Context context) {
+    public static synchronized void markProjectBound(Context context) {
         long now = System.currentTimeMillis();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(K_PROJECT_BOUND, true)
@@ -189,6 +204,10 @@ public final class ChatGptB1RunStore {
     }
 
     public static void completeCurrentCycle(Context context) {
+        completeCurrentCycle(context, "");
+    }
+
+    public static void completeCurrentCycle(Context context, String responseText) {
         Snapshot s = read(context);
         if (!s.active() || s.cycle <= 0) return;
         long now = System.currentTimeMillis();
@@ -199,6 +218,7 @@ public final class ChatGptB1RunStore {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(K_COMPLETED, completed)
                 .putString(K_LATENCIES, latencies)
+                .putString(K_RESPONSE_TEXT, trimResponse(responseText, 4000))
                 .apply();
             finish(context, "COMPLETE", "");
             return;
@@ -216,6 +236,39 @@ public final class ChatGptB1RunStore {
             .putString(K_LAST_ERROR, "")
             .putString(K_LATENCIES, latencies)
             .apply();
+    }
+
+    public static synchronized boolean failWaitingProjectIfTimedOut(
+        Context context,
+        String expectedRunId,
+        String expectedTaskId,
+        long nowElapsedMs
+    ) {
+        Snapshot current = read(context);
+        if (expectedRunId == null || expectedTaskId == null) return false;
+        if (!expectedRunId.equals(current.runId) || !expectedTaskId.equals(current.taskId)) return false;
+        if (!"WAITING_PROJECT".equals(current.state) || current.projectBound) return false;
+
+        long anchor = current.startedElapsedAt;
+        if (ChatGptB1Policy.projectBindElapsedAnchorInvalid(anchor, nowElapsedMs)) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putLong(K_STARTED_ELAPSED_AT, nowElapsedMs)
+                .apply();
+            return false;
+        }
+        if (!ChatGptB1Policy.shouldTimeoutBoundTask(
+            expectedRunId,
+            expectedTaskId,
+            current.runId,
+            current.taskId,
+            current.state,
+            current.projectBound,
+            anchor,
+            nowElapsedMs
+        )) return false;
+
+        finish(context, "ERROR", "PROJECT_BIND_TIMEOUT");
+        return true;
     }
 
     public static void fail(Context context, String code) {
@@ -253,6 +306,7 @@ public final class ChatGptB1RunStore {
         body.put("workerVersion", WorkerVersion.NAME);
         body.put("nodeId", new NodeIdentityStore(context).getOrCreate());
         if (s.taskId != null && !s.taskId.isEmpty()) body.put("taskId", s.taskId);
+        if (s.responseText != null && !s.responseText.isEmpty()) body.put("responseText", s.responseText);
         payload.put("payload", body);
         return payload;
     }
@@ -284,6 +338,12 @@ public final class ChatGptB1RunStore {
         return normalized.length() <= max ? normalized : normalized.substring(0, max);
     }
 
+    private static String trimResponse(String value, int max) {
+        if (value == null) return "";
+        String normalized = value.replace("\r", "").trim();
+        return normalized.length() <= max ? normalized : normalized.substring(0, max);
+    }
+
     public static final class Snapshot {
         public final String runId;
         public final String state;
@@ -295,6 +355,7 @@ public final class ChatGptB1RunStore {
         public final int duplicateSendCount;
         public final int recoveryCount;
         public final long startedAt;
+        public final long startedElapsedAt;
         public final long cycleStartedAt;
         public final long sentAt;
         public final long nextActionAt;
@@ -308,6 +369,7 @@ public final class ChatGptB1RunStore {
         public final String taskId;
         public final String customPrompt;
         public final String customExpectedToken;
+        public final String responseText;
 
         Snapshot(
             String runId,
@@ -320,6 +382,7 @@ public final class ChatGptB1RunStore {
             int duplicateSendCount,
             int recoveryCount,
             long startedAt,
+            long startedElapsedAt,
             long cycleStartedAt,
             long sentAt,
             long nextActionAt,
@@ -332,7 +395,8 @@ public final class ChatGptB1RunStore {
             long projectBoundAt,
             String taskId,
             String customPrompt,
-            String customExpectedToken
+            String customExpectedToken,
+            String responseText
         ) {
             this.runId = runId;
             this.state = state;
@@ -344,6 +408,7 @@ public final class ChatGptB1RunStore {
             this.duplicateSendCount = duplicateSendCount;
             this.recoveryCount = recoveryCount;
             this.startedAt = startedAt;
+            this.startedElapsedAt = startedElapsedAt;
             this.cycleStartedAt = cycleStartedAt;
             this.sentAt = sentAt;
             this.nextActionAt = nextActionAt;
@@ -357,6 +422,7 @@ public final class ChatGptB1RunStore {
             this.taskId = taskId;
             this.customPrompt = customPrompt;
             this.customExpectedToken = customExpectedToken;
+            this.responseText = responseText;
         }
 
         public boolean active() {

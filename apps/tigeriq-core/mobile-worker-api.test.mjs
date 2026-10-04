@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, GATE_C_V021_COUNT, GATE_C_V021_VERSION, createMobileWorkerApi, gateCV020Aggregate, gateCV020TaskSpecs, gateCV021Aggregate, gateCV021TaskSpecs, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, GATE_C_V021_COUNT, GATE_C_V021_VERSION, LIVE_WORKER_VERSION, createMobileWorkerApi, enqueueFreshLiveMobileTask, gateCV020Aggregate, gateCV020TaskSpecs, gateCV021Aggregate, gateCV021TaskSpecs, liveMobileCompletionToken, liveMobileTaskPrompt, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -21,6 +21,64 @@ describe('mobile worker api helpers',()=>{
   it('normalizes the two pilot providers',()=>{
     expect(normalizeMobileProvider('Gemini')).toBe('Gemini');
     expect(normalizeMobileProvider('anything-else')).toBe('ChatGPT');
+  });
+
+  it('builds a deterministic v0.22 live-worker token without exposing it contiguously in the prompt',()=>{
+    expect(LIVE_WORKER_VERSION).toBe('0.22.0-live-worker');
+    const token=liveMobileCompletionToken('github:4000:abc123');
+    expect(token).toMatch(/^TIGERIQ_MOBILE_DONE_[A-F0-9]{16}$/);
+    expect(liveMobileCompletionToken('github:4000:abc123')).toBe(token);
+    const prompt=liveMobileTaskPrompt({title:'Read-only task',body:'Summarize the supplied evidence.',expectedToken:token});
+    expect(prompt).toContain('TIGERIQ_MOBILE_ + DONE_ + ');
+    expect(prompt).not.toContain(token);
+    expect(prompt.length).toBeLessThanOrEqual(3900);
+  });
+
+  it('enqueues a live task only to one fresh exact-version device and is idempotent',async()=>{
+    const rows=[];
+    const now=new Date('2026-10-04T07:00:00Z');
+    const db={
+      async query(sql,params=[]){
+        if(sql.startsWith('select * from tigeriq_mobile_tasks where idempotency_key=')){
+          const row=rows.find(x=>x.idempotency_key===params[0]);
+          return {rowCount:row?1:0,rows:row?[row]:[]};
+        }
+        if(sql.includes('from tigeriq_mobile_devices')){
+          expect(params[0]).toBe(LIVE_WORKER_VERSION);
+          expect(new Date(params[1]).getTime()).toBe(now.getTime()-120000);
+          return {rowCount:1,rows:[{node_id:'node-live',employee_id:'NV101',provider:'ChatGPT',agent_version:LIVE_WORKER_VERSION,last_seen_at:now.toISOString()}]};
+        }
+        if(sql.startsWith('insert into tigeriq_mobile_tasks')){
+          rows.push({
+            task_id:params[0],idempotency_key:params[1],target_node_id:params[2],employee_id:params[3],
+            provider:params[4],prompt:params[5],expected_token:params[6],run_id:params[7],status:'queued'
+          });
+          return {rowCount:1,rows:[]};
+        }
+        throw new Error('unexpected db sql: '+sql);
+      }
+    };
+    const token=liveMobileCompletionToken('seed');
+    const prompt=liveMobileTaskPrompt({title:'Task',body:'Return useful evidence.',expectedToken:token});
+    const first=await enqueueFreshLiveMobileTask(db,{idempotencyKey:'github-mobile:1:rev',prompt,expectedToken:token,now});
+    expect(first).toMatchObject({idempotent:false,nodeId:'node-live',employeeId:'NV101',status:'queued'});
+    const second=await enqueueFreshLiveMobileTask(db,{idempotencyKey:'github-mobile:1:rev',prompt,expectedToken:token,now});
+    expect(second).toMatchObject({idempotent:true,taskId:first.taskId,runId:first.runId,nodeId:'node-live',employeeId:'NV101'});
+    expect(rows).toHaveLength(1);
+  });
+
+  it('fails closed when no fresh v0.22 live worker is enrolled',async()=>{
+    const db={async query(sql){
+      if(sql.startsWith('select * from tigeriq_mobile_tasks'))return {rowCount:0,rows:[]};
+      if(sql.includes('from tigeriq_mobile_devices'))return {rowCount:0,rows:[]};
+      throw new Error('unexpected db sql: '+sql);
+    }};
+    const token=liveMobileCompletionToken('missing');
+    await expect(enqueueFreshLiveMobileTask(db,{
+      idempotencyKey:'github-mobile:2:rev',
+      prompt:liveMobileTaskPrompt({title:'Task',body:'Do it.',expectedToken:token}),
+      expectedToken:token
+    })).rejects.toThrow('MOBILE_LIVE_WORKER_UNAVAILABLE');
   });
 
   it('requires the existing Core token for mobile task enqueue',()=>{

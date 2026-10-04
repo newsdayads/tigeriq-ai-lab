@@ -55,6 +55,9 @@ export function classifyWorkOrder(body){
   if(priority.sourcePriority==='P0'){
     return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'HOLD_OWNER',workerId:null,autonomous:false};
   }
+  if(surface==='MOBILE_WORKER'||cap==='mobile_worker'){
+    return {...priority,capability:'mobile_worker',surface:'MOBILE_WORKER',assignedExecutor:'',preferredEmployee:preferred,route:'MOBILE_WORKER',workerId:null,autonomous:true};
+  }
   if(assigned){
     if(assigned==='NV06')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'OPENCLAW',workerId:assigned,autonomous:true};
     if(assigned==='NV09')return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CODING',workerId:assigned,autonomous:true};

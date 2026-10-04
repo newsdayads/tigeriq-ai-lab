@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 
 import org.json.JSONObject;
 
@@ -32,6 +33,7 @@ public final class ForegroundWorkerService extends Service {
     public void onCreate() {
         super.onCreate();
         WorkerIdentity.ensureDeviceKey();
+        ChatGptB1RunStore.cancelStaleManualRunForLiveWorker(this);
         ensureChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         executor = Executors.newSingleThreadScheduledExecutor();
@@ -86,6 +88,15 @@ public final class ForegroundWorkerService extends Service {
 
             if (task.present()) {
                 boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
+                if (sameTaskRun && ChatGptB1RunStore.failWaitingProjectIfTimedOut(
+                    this,
+                    task.runId,
+                    task.taskId,
+                    SystemClock.elapsedRealtime()
+                )) {
+                    run = ChatGptB1RunStore.read(this);
+                    sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
+                }
 
                 // A manual/different B1 run owns ChatGPT until it reaches terminal state.
                 // Keep the already-leased Core task alive, but never launch/overwrite the manual run.
@@ -119,7 +130,8 @@ public final class ForegroundWorkerService extends Service {
                         JSONObject result = new JSONObject();
                         result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
                         JSONObject output = new JSONObject();
-                        output.put("validatedToken", task.expectedToken);
+                        if ("COMPLETE".equals(run.state)) output.put("validatedToken", task.expectedToken);
+                        output.put("responseText", run.responseText == null ? "" : run.responseText);
                         output.put("runState", run.state);
                         output.put("sendCount", run.sendCount);
                         output.put("duplicateSendCount", run.duplicateSendCount);
@@ -136,6 +148,9 @@ public final class ForegroundWorkerService extends Service {
                             client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
                         }
                         MobileTaskStore.markResultReported(this);
+                        // Keep the bound task for one 5s task-loop interval so the owner UI can
+                        // observably render ĐÃ TRẢ KẾT QUẢ before the durable binding is cleared.
+                        return;
                     }
                     reportPendingB1Evidence(client);
                     run = ChatGptB1RunStore.read(this);
