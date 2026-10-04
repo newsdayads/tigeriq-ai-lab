@@ -538,7 +538,7 @@ async function buildAndroidWorkerStableRelease() {
   const result = await spawnBounded(
     'powershell.exe',
     ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-RepoRoot',repoRoot,'-SecretsDir',secretsDir,'-ReleaseRoot',releaseRoot],
-    { cwd: repoRoot, timeoutSec: 120 },
+    { cwd: repoRoot, timeoutSec: 120, extraEnvKeys: ['USERPROFILE','GRADLE_HOME'] },
   );
   if (result.timedOut) throw new Error('TIGERIQ_ANDROID_RELEASE_BUILD_TIMEOUT');
   if (Number(result.exitCode) !== 0) {
