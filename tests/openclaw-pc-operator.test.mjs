@@ -1218,3 +1218,21 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     expect(classifyDeployFailure('unexpected failure')).toBe('VERCEL_DEPLOY_FAILED');
   });
 });
+
+describe('Android current release publication path', () => {
+  it('uses bounded interactive signer and generic export/publish actions', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    const runner = await readFile(new URL('../scripts/pc-worker/invoke-current-user-context-release-build.ps1', import.meta.url), 'utf8');
+    const bridge = await readFile(new URL('../scripts/pc-worker/run-current-user-context-release-build-task.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_release_build_user_context'");
+    expect(source).toContain("action === 'android_worker_export_current_signed_apk_chunk'");
+    expect(source).toContain("action === 'android_worker_publish_current_manifest'");
+    expect(source).toContain('verifyCurrentAndroidWorkerSignedRelease');
+    expect(source).toContain('TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH');
+    expect(runner).toContain("$ExpectedUser='pc01\\wdragons12x'");
+    expect(runner).toContain('build-android-worker-release.ps1');
+    expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Highest');
+    expect(bridge).toContain('taskDeleted=$true');
+    expect(bridge).not.toMatch(/-Password\b|\/RP\b/i);
+  });
+});
