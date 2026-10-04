@@ -284,3 +284,14 @@
 @media(prefers-reduced-motion:reduce){
   .api-health .work-row .state::before{animation:none!important}
 }
+
+/* #3918 three-card work grid */
+.api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+@media(max-width:1500px){.api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:980px){.api-health .wo-list,.api-health .work-list{grid-template-columns:1fr!important}}
+.progress.stage .progress-track{background:repeating-linear-gradient(90deg,#14283c 0 14px,#1b3550 14px 24px);position:relative;overflow:hidden}
+.progress.stage .progress-fill{display:block!important;width:38%!important;background:linear-gradient(90deg,transparent,currentColor,transparent);animation:tiq-stage-scan 1.9s ease-in-out infinite;opacity:.45}
+.progress.stage .progress-text{min-width:68px;color:currentColor!important;text-transform:uppercase}
+.progress.checks .progress-fill{background:linear-gradient(90deg,#2f86d5,#58a6ff)}
+@keyframes tiq-stage-scan{0%{transform:translateX(-130%)}100%{transform:translateX(340%)}}
+@media(prefers-reduced-motion:reduce){.progress.stage .progress-fill{animation:none!important;opacity:.25}}
