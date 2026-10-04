@@ -55,61 +55,70 @@ async function openTiger(page: Page) {
     await route.fulfill({ status: 204, body: '' });
   });
   await page.goto('https://tigeriq.test/command-center');
-  await expect(page.locator('.package-shell')).toBeVisible();
+  await expect(page.locator('.owner-clean-board')).toBeVisible();
 }
 
-test('restores the old Work Package cards with verified percent bars', async ({ page }) => {
+test('shows only the owner-readable work package and five-stage live flow on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  await expect(page.locator('.workflow-board')).toHaveCount(0);
-  await expect(page.locator('.package-stream')).toHaveCount(2);
-
-  const task = page.locator('.package-task[data-package-row="111"]');
-  await expect(task).toBeVisible();
-  await expect(task).toContainText('Xây thẻ công việc đọc là hiểu');
-  await expect(task).toContainText('NV03');
-  await expect(task).toContainText('70%');
-  await expect(task.locator('.package-task-progress-track')).toHaveAttribute('aria-valuenow', '70');
-  await expect(task.locator('.package-task-progress-track i')).toHaveAttribute('style', 'width:70%');
-  await expect(task).toContainText('Rà soát/evidence đã gom: 1');
+  await expect(page.locator('#ownerSummary')).toBeHidden();
+  await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
+  await expect(page.locator('.owner-clean-flow')).toContainText('Giao việc');
+  await expect(page.locator('.owner-clean-flow')).toContainText('Điều phối');
+  await expect(page.locator('.owner-clean-flow')).toContainText('Thực hiện');
+  await expect(page.locator('.owner-clean-flow')).toContainText('Kiểm tra');
+  await expect(page.locator('.owner-clean-flow')).toContainText('Kết quả');
+  await expect(page.locator('.package-task')).toHaveCount(0);
+  await expect(page.locator('.package-stream')).toHaveCount(0);
 });
 
-test('does not invent a percentage when progress is not verified', async ({ page }) => {
+test('keeps current/next owner-readable and moves technical evidence into the drawer', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  const task = page.locator('.package-task[data-package-row="121"]');
-  await expect(task).toBeVisible();
-  await expect(task).toContainText('Thẻ chưa xác minh tiến độ');
-  await expect(task).toContainText('chưa xác minh');
-  await expect(task.locator('.package-task-progress-track')).not.toHaveAttribute('aria-valuenow', /.+/);
+  const current = page.locator('.owner-clean-current');
+  await expect(current).toContainText('Dựng mặt thẻ công việc');
+  await expect(current).toContainText('Kiểm tra browser desktop và mobile');
+  await expect(page.locator('.owner-clean-board')).not.toContainText('#111');
+  await expect(page.locator('.owner-clean-board')).not.toContainText('NV03');
+  await expect(page.locator('.owner-clean-board')).not.toContainText('70%');
+
+  await page.locator('.owner-clean-detail').click();
+  await expect(page.locator('#workDrawer')).toHaveClass(/open/);
+  await expect(page.locator('#drawerTitle')).toContainText('Xây thẻ công việc đọc là hiểu');
+  await expect(page.locator('#drawerProgress')).toContainText('70%');
 });
 
-test('keeps old task cards readable on mobile without document overflow', async ({ page }) => {
+test('keeps raw technical work collapsed by default', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openTiger(page);
+  await expect(page.locator('#rawWorkDetails')).not.toHaveAttribute('open', '');
+});
+
+test('uses the same clean vertical flow on mobile without document overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  const firstTask = page.locator('.package-task').first();
-  await expect(firstTask).toBeVisible();
   const metrics = await page.evaluate(() => ({
     viewport: window.innerWidth,
     documentScroll: document.documentElement.scrollWidth,
-    streamsColumns: getComputedStyle(document.querySelector('.package-streams')!).gridTemplateColumns,
+    flowColumns: getComputedStyle(document.querySelector('.owner-clean-flow')!).gridTemplateColumns,
     rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
   }));
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.rawOpen).toBe(false);
-  expect(metrics.streamsColumns.split(' ').length).toBe(1);
+  expect(metrics.flowColumns.split(' ').length).toBe(1);
+  await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
+  await expect(page.locator('.owner-clean-detail')).toBeVisible();
 });
 
-test('keeps package selector readable and never renders the compact six-node workflow', async ({ page }) => {
+test('keeps multiple work packages as compact pills instead of rendering all cards at once', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  await expect(page.locator('.package-tab')).toHaveCount(9);
-  await expect(page.locator('.mobile-flow-map')).toHaveCount(0);
-  await expect(page.locator('.mobile-flow-node')).toHaveCount(0);
-  await expect(page.locator('.flow-package-choice')).toHaveCount(0);
-  await expect(page.locator('.package-focus')).toContainText('Xây thẻ công việc đọc là hiểu');
+  await expect(page.locator('.owner-clean-package')).toHaveCount(9);
+  await expect(page.locator('.package-tab')).toHaveCount(0);
+  await expect(page.locator('.package-stream')).toHaveCount(0);
+  await expect(page.locator('.package-task')).toHaveCount(0);
 });
