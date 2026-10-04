@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, extractMobileInstruction, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -1384,4 +1384,35 @@ test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',
   assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
+});
+
+test('safe MOBILE work requires an explicit assigned action and routes to Mobile Worker',()=>{
+  const base=[
+    'PRIORITY=P1',
+    'OWNER_POLICY=AUTO',
+    'ZERO_COST=true',
+    'NO_PC01_SHELL=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true',
+    'RESOURCE_SCOPE=MOBILE_LIVE_REAL_WORK',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'CAPABILITY=mobile',
+    'EXECUTION_SURFACE=MOBILE',
+  ].join('\n');
+  const blocked=safeAutoWorkAdmission({number:9001,state:'open',title:'mobile missing action',body:base,labels:[]});
+  assert.equal(blocked.eligible,false);
+  assert.equal(blocked.reason,'MOBILE_ASSIGNED_ACTION_REQUIRED');
+  const body=base+'\n\n## ASSIGNED_ACTION\nTóm tắt ba thay đổi quan trọng của Work Order này.\n\n## ACCEPTANCE\nCó kết quả.';
+  assert.equal(extractMobileInstruction(body),'Tóm tắt ba thay đổi quan trọng của Work Order này.');
+  const issue={number:9002,state:'open',title:'mobile live work',body,labels:[],html_url:'https://example/9002'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.equal(admission.eligible,true);
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  assert.equal(spec.dispatchLane,'MOBILE');
+  assert.equal(spec.capability,'mobile');
+  assert.equal(spec.executionSurface,undefined);
 });
