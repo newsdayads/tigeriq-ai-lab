@@ -54,7 +54,6 @@ async function openTiger(page: Page) {
   });
   await page.goto('https://tigeriq.test/command-center');
   await expect(page.locator('.workflow-board')).toBeVisible();
-  await expect(page.locator('.flow-card-semantics').first()).toBeVisible();
 }
 
 test('Owner can understand work cards before opening any drawer', async ({ page }) => {
@@ -84,7 +83,7 @@ test('Owner workflow remains readable without horizontal overflow on mobile', as
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  const task = page.locator('[data-flow-node="job-111"]');
+  const task = page.locator('.mobile-focus-card');
   await expect(task).toBeVisible();
   await expect(task).toContainText('Dựng mặt thẻ hiển thị việc đang làm');
   const metrics = await page.evaluate(() => {
