@@ -368,6 +368,20 @@ async function gateCV021Target(pool,{requireFresh=false}={}){
   if(requireFresh&&!online)return {ok:false,error:'gate_c_v021_device_stale'};
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
 }
+async function liveV022Target(pool){
+  const result=await pool.query(
+    `select node_id,employee_id,provider,agent_version,last_seen_at
+       from tigeriq_mobile_devices
+      where revoked=false and agent_version=$1
+      order by last_seen_at desc nulls last`,
+    [LIVE_WORKER_VERSION]
+  );
+  if(result.rowCount!==1)return {ok:false,error:result.rowCount===0?'mobile_live_v022_device_unavailable':'mobile_live_v022_device_ambiguous'};
+  const row=result.rows[0];
+  const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
+  const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
+  return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
+}
 function mobileAuthHeaders(req) {
   const credentialId=text(req.headers['x-tigeriq-credential-id'],160);
   const match=String(req.headers.authorization||'').match(/^Bearer\s+(.+)$/i);
@@ -421,6 +435,17 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
 
     if(req.method==='GET'&&url.pathname==='/api/mobile/health'){
       return send(res,200,{ok:true,service:'tigeriq-core-mobile',controlPlane:'TigerIQ Core',port:Number(process.env.TIGERIQ_CORE_PORT||8795),apiVersion:'mobile-v1'});
+    }
+
+    if(req.method==='GET'&&url.pathname==='/api/mobile/live/v022/status'){
+      if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const target=await liveV022Target(pool);
+      if(!target.ok)return send(res,409,target);
+      return send(res,200,{
+        ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
+        employeeId:String(target.row.employee_id),online:target.online,lastSeenAt:target.lastSeenAt,
+      });
     }
 
     if(req.method==='POST'&&url.pathname==='/api/mobile/pairing-challenge'){
