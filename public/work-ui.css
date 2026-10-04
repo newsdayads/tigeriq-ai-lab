@@ -183,3 +183,104 @@
 .api-health .wo-filter:hover{transform:translateY(-1px);border-color:#3b79aa}
 .api-health .wo-filter.on{box-shadow:0 0 15px rgba(63,143,221,.08),inset 0 0 12px rgba(255,255,255,.025)}
 
+
+/* #3918 vivid API Health Work-card pass — stronger semantic contrast, still shared-contract compatible. */
+.api-health .work-row{
+  border-width:1px;
+  border-left-width:4px;
+  box-shadow:0 10px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.018);
+}
+.api-health .work-row::before{display:none}
+.api-health .work-row.status-review,.api-health .work-row.status-waiting,.api-health .work-row.status-verify{
+  border-color:#8b6426;
+  border-left-color:#f0b94d;
+  background:linear-gradient(100deg,rgba(240,185,77,.12),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.api-health .work-row.status-working{
+  border-color:#287453;
+  border-left-color:#47db91;
+  background:linear-gradient(100deg,rgba(71,219,145,.11),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.api-health .work-row.status-queued{
+  border-color:#3a6fa2;
+  border-left-color:#61adff;
+  background:linear-gradient(100deg,rgba(97,173,255,.11),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.api-health .work-row.status-blocked,.api-health .work-row.status-owner_gate{
+  border-color:#87434d;
+  border-left-color:#ff6f7c;
+  background:linear-gradient(100deg,rgba(255,111,124,.12),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.api-health .work-row.status-done{
+  border-color:#2b776d;
+  border-left-color:#5be0cd;
+  background:linear-gradient(100deg,rgba(91,224,205,.10),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.api-health .work-row.status-system{
+  border-color:#4d6072;
+  border-left-color:#7f93a7;
+}
+.api-health .work-row .state{
+  gap:5px;
+  padding:5px 9px;
+  font-size:9.5px;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.api-health .work-row .state::before{
+  content:"";
+  width:6px;height:6px;border-radius:50%;
+  background:currentColor;
+  box-shadow:0 0 9px currentColor;
+  flex:none;
+}
+.api-health .work-row .state.review,
+.api-health .work-row .state.waiting,
+.api-health .work-row .state.verify{
+  color:#ffd57f;
+  border-color:#ad7b27;
+  background:linear-gradient(180deg,#4a3518,#342512);
+  box-shadow:0 0 16px rgba(240,185,77,.18),inset 0 0 12px rgba(240,185,77,.08);
+}
+.api-health .work-row .state.working{
+  color:#98f0bd;
+  border-color:#2c8a61;
+  background:linear-gradient(180deg,#123e2d,#0c2d21);
+  box-shadow:0 0 16px rgba(71,219,145,.15),inset 0 0 12px rgba(71,219,145,.07);
+}
+.api-health .work-row .state.queued{
+  color:#b7ddff;
+  border-color:#3a79b8;
+  background:linear-gradient(180deg,#153d63,#102c48);
+  box-shadow:0 0 16px rgba(97,173,255,.14),inset 0 0 12px rgba(97,173,255,.06);
+}
+.api-health .work-row .state.blocked,
+.api-health .work-row .state.owner_gate{
+  color:#ffc1c7;
+  border-color:#a34d58;
+  background:linear-gradient(180deg,#4a2228,#35191e);
+  box-shadow:0 0 16px rgba(255,111,124,.15),inset 0 0 12px rgba(255,111,124,.06);
+}
+.api-health .work-row .state.done{
+  color:#a5f3e7;
+  border-color:#2f877d;
+  background:linear-gradient(180deg,#123e38,#0c2d29);
+}
+.api-health .work-row .priority.p0{background:#4a173a;border-color:#a53b7d;color:#ffc6e6;box-shadow:0 0 12px rgba(255,116,197,.12)}
+.api-health .work-row .priority.p1{background:#312357;border-color:#7657b2;color:#dbc8ff}
+.api-health .work-row .rank{color:#e7f3ff;background:linear-gradient(145deg,#24558b,#17385f);border:1px solid #2f669d}
+.api-health .work-row .work-nv{color:#c2d4e6}
+.api-health .work-row .work-title{font-size:14.5px;line-height:1.34;margin-top:9px}
+.api-health .work-row .progress{margin-top:10px}
+.api-health .work-row .progress-track{height:8px;background:#13283c}
+.api-health .work-row .work-summary{margin-top:7px;color:#b9cadc}
+.api-health .work-row .work-next{margin-top:5px;color:#91a9c1}
+.api-health .work-row:hover{transform:translateY(-2px);box-shadow:0 13px 30px rgba(0,0,0,.28),0 0 20px rgba(70,140,200,.07)}
+.api-health .work-row.status-review .state.review::before,
+.api-health .work-row.status-working .state.working::before{
+  animation:tiq-status-pulse 1.9s ease-in-out infinite;
+}
+@keyframes tiq-status-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.72)}}
+@media(prefers-reduced-motion:reduce){
+  .api-health .work-row .state::before{animation:none!important}
+}
