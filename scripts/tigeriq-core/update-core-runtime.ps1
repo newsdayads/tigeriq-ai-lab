@@ -408,13 +408,24 @@ function Invoke-LiveStatusBridgeReconcile(){
     if(-not (Task-Exists $liveStatusBridgeTask)) {return [ordered]@{status='BLOCKED';reason='TASK_ABSENT';action='NONE'}}
     $st=Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue
     if(-not $st){return [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}}
-    if([string]$st.State -ne 'Running'){Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop}
+    $stateName=[string]$st.State
+    $action='START'
+    if($stateName -eq 'Running'){
+      Stop-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
+      Start-Sleep -Seconds 2
+      $st=Get-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction SilentlyContinue
+      if(-not $st){return [ordered]@{status='BLOCKED';reason='TASK_NOT_FOUND';action='NONE'}}
+      $action='RESTART'
+    }
+    if($stateName -ne 'Running' -or $action -eq 'RESTART'){
+      Start-ScheduledTask -TaskName $liveStatusBridgeTask -ErrorAction Stop
+    }
     $deadline=(Get-Date).AddSeconds(90)
     do{
       Start-Sleep -Seconds 2
-      if(Test-LiveStatusBridgeHealth){return [ordered]@{status='RECONCILED';reason='HEALTH_RECOVERED';action='START'}}
+      if(Test-LiveStatusBridgeHealth){return [ordered]@{status='RECONCILED';reason='HEALTH_RECOVERED';action=$action}}
     }while((Get-Date)-lt$deadline)
-    return [ordered]@{status='BLOCKED';reason='HEALTH_TIMEOUT';action='START_ATTEMPTED'}
+    return [ordered]@{status='BLOCKED';reason='HEALTH_TIMEOUT';action=($action+'_ATTEMPTED')}
   } catch {
     return [ordered]@{status='BLOCKED';reason=$_.Exception.Message;action='NONE'}
   }

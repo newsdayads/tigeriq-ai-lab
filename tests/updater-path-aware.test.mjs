@@ -152,9 +152,14 @@ test('updater performs bounded reconcile for TigerIQ Live Status Bridge without 
   assert.doesNotMatch(script,/Set-ScheduledTask\s+-TaskName\s+\$liveStatusBridgeTask/);
   assert.match(script,/TASK_ABSENT/);
   assert.match(script,/TASK_NOT_FOUND/);
-  assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask/);
-  assert.match(script,/liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
+  assert.match(script,/\$stateName=\[string\]\$st\.State/);
+  assert.match(script,/if\(\$stateName -eq 'Running'\)\{/);
+  assert.match(script,/Stop-ScheduledTask -TaskName \$liveStatusBridgeTask -ErrorAction Stop/);
+  assert.match(script,/Start-ScheduledTask -TaskName \$liveStatusBridgeTask -ErrorAction Stop/);
+  assert.match(script,/\$action='RESTART'/);
   assert.match(script,/stateName -ne 'Running'/);
+  assert.match(script,/HEALTH_TIMEOUT/);
+  assert.match(script,/liveStatusBridgeReconcile=\$liveStatusBridgeReconcile/);
   assert.match(script,/function Invoke-LiveStatusBridgeReconcile/);
   const steadyStateReconcile=script.indexOf('$liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile');
   const noChange=script.indexOf("if($runtimeExists -and $local -eq $remote)");
