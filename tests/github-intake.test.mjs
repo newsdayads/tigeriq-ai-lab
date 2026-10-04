@@ -1011,6 +1011,41 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
   assert.strictEqual(noOwnerPool.jobs.length,0);
 });
 
+test('Owner-direct v0.21 release export and manifest publish validate bounded inputs',async()=>{
+  const exportPool=coreBacklogPool();
+  const exportBody=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_V021_EXPORT_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_v021_signed_apk_chunk","chunkIndex":3}',
+    'ASSIGNED_ACTION','Export one v0.21 signed APK chunk.','ACCEPTANCE','Return bounded evidence.',
+  ].join('\n');
+  const exportOut=await materializeGithubIssues({pool:exportPool,openIssues:[{number:35420,state:'open',title:'v021 export',body:exportBody,html_url:'https://example/35420'}],token:'fake'});
+  assert.strictEqual(exportOut.created,1);
+  assert.deepStrictEqual(exportPool.objectives[0].metadata.pcOperatorDirectAction,{action:'android_worker_export_v021_signed_apk_chunk',chunkIndex:3});
+
+  const publishPool=coreBacklogPool();
+  const publishBody=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_V021_MANIFEST_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_publish_v021_manifest","driveFileId":"1AbCdEfGhIjKlMnOpQrStUv"}',
+    'ASSIGNED_ACTION','Publish v0.21 runtime manifest.','ACCEPTANCE','Use canonical Drive id only.',
+  ].join('\n');
+  const publishOut=await materializeGithubIssues({pool:publishPool,openIssues:[{number:35421,state:'open',title:'v021 manifest',body:publishBody,html_url:'https://example/35421'}],token:'fake'});
+  assert.strictEqual(publishOut.created,1);
+  assert.deepStrictEqual(publishPool.objectives[0].metadata.pcOperatorDirectAction,{action:'android_worker_publish_v021_manifest',driveFileId:'1AbCdEfGhIjKlMnOpQrStUv'});
+
+  const badIdPool=coreBacklogPool();
+  const bad=await materializeGithubIssues({pool:badIdPool,openIssues:[{number:35422,state:'open',title:'bad drive id',body:publishBody.replace('1AbCdEfGhIjKlMnOpQrStUv','https://evil.example/x'),html_url:'https://example/35422'}],token:'fake'});
+  assert.strictEqual(bad.created,0);
+  assert.strictEqual(badIdPool.jobs.length,0);
+
+  const noOwnerPool=coreBacklogPool();
+  const noOwner=await materializeGithubIssues({pool:noOwnerPool,openIssues:[{number:35423,state:'open',title:'no owner',body:exportBody.replace('OWNER_DIRECT=true\n',''),html_url:'https://example/35423'}],token:'fake'});
+  assert.strictEqual(noOwner.created,0);
+  assert.strictEqual(noOwnerPool.jobs.length,0);
+});
 test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
   const pool=coreBacklogPool();
   const body=[
