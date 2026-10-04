@@ -1235,18 +1235,26 @@ async function grantAndroidWorkerV020SignerReadAcl() {
 
 export function assertTigerIQLive3150DeployRequest(input = {}) {
   const expectedSha = String(input?.expectedSha || '').trim().toLowerCase();
+  const releaseIssue = String(input?.releaseIssue || '').trim();
+  const releaseClass = String(input?.releaseClass || '').trim().toUpperCase();
+  const ownerAuthorized = input?.ownerAuthorized === true;
+  const releaseReason = String(input?.releaseReason || '').trim();
   if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
-  return { expectedSha };
+  if (!/^\d{1,10}$/.test(releaseIssue)) throw new Error('TIGERIQ_VERCEL_RELEASE_ISSUE_INVALID');
+  if (releaseClass !== 'WEB_LIVE') throw new Error('TIGERIQ_VERCEL_RELEASE_CLASS_INVALID');
+  if (!ownerAuthorized) throw new Error('TIGERIQ_VERCEL_OWNER_RELEASE_AUTH_REQUIRED');
+  if (!releaseReason || releaseReason.length > 160 || /[\r\n\0]/.test(releaseReason)) throw new Error('TIGERIQ_VERCEL_RELEASE_REASON_INVALID');
+  return { expectedSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason };
 }
 
 async function deployTigerIQLive3150(input = {}) {
-  const { expectedSha } = assertTigerIQLive3150DeployRequest(input);
+  const { expectedSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason } = assertTigerIQLive3150DeployRequest(input);
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
   const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\vercel-tigeriq-live-3150-deploy.mjs';
   await realPathInsideRoots(script);
   const result = await spawnBounded(
     process.execPath,
-    [script, '--sha', expectedSha, '--issue', '3185'],
+    [script, '--sha', expectedSha, '--issue', releaseIssue, '--release-class', releaseClass, '--owner-authorized', ownerAuthorized ? 'true' : 'false', '--release-reason', releaseReason],
     {
       cwd: repoRoot,
       timeoutSec: 120,
@@ -1272,7 +1280,8 @@ async function deployTigerIQLive3150(input = {}) {
       || receipt.teamId !== 'team_K8HIG7zmwu0ZjCINX1VhlGiT'
       || receipt.repo !== 'newsdayads/tigeriq-ai-lab'
       || receipt.branch !== 'main'
-      || receipt.issue !== '3185'
+      || receipt.issue !== releaseIssue
+      || receipt.releaseClass !== releaseClass
       || receipt.target !== 'production'
       || receipt.exactSha !== expectedSha
       || receipt.maxAttempts !== 1
@@ -2021,7 +2030,7 @@ export async function executePcAction(input, options = {}) {
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
       productionMutationBlocked: action !== 'tigeriq_live_3150_production_deploy',
-      productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ Live #3185 exact one-shot' : 'none',
+      productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ Live explicit exact one-shot' : 'none',
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
       paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
