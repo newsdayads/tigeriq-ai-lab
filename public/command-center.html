@@ -655,7 +655,19 @@ function projectStatus(project){
 }
 function projectPortfolio(){
   const source=Array.isArray(snapshot?.projectPortfolio)?snapshot.projectPortfolio:[];
-  return [...source].sort((a,b)=>packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)-Number(b.order||900)||String(a.name||'').localeCompare(String(b.name||'')));
+  if(source.length)return [...source].sort((a,b)=>packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)-Number(b.order||900)||String(a.name||'').localeCompare(String(b.name||'')));
+  const rows=packageRows().filter(row=>row?.workKind==='WORK'&&row?.portfolioHidden!==true);
+  if(!rows.length)return [];
+  const counts={working:0,review:0,blocked:0,waiting:0,done:0};
+  for(const row of rows){
+    const s=workStatus(row);
+    if(s==='WORKING')counts.working++;
+    else if(s==='REVIEW'||s==='VERIFY')counts.review++;
+    else if(s==='BLOCKED')counts.blocked++;
+    else if(s==='DONE')counts.done++;
+    else counts.waiting++;
+  }
+  return [{id:'tigeriq-ai-lab',name:'TigerIQ AI Lab',order:10,counts,workPackageCount:0,hiddenTechnicalItems:0,legacyFallback:true}];
 }
 function projectDefaultId(projects){
   const active=new Set((snapshot?.activeWork||[]).map(row=>Number(row?.number)).filter(Boolean));
@@ -681,7 +693,33 @@ function projectPickerHtml(projects,selected){
   return '<section class="project-picker" aria-label="Dự án"><div class="project-picker-head"><b>DỰ ÁN</b><span>'+projects.length+' dự án đang theo dõi</span></div><div class="project-list">'+cards+'</div></section>';
 }
 function packageBuildAll(projectId){
-  const rows=packageRows().filter(row=>row?.portfolioHidden!==true&&(!projectId||row?.projectId===projectId));
+  const allRows=packageRows();
+  const hasPortfolioMetadata=allRows.some(row=>String(row?.projectId||'').trim()||String(row?.workPackageId||'').trim());
+  if(!hasPortfolioMetadata){
+    const rows=allRows,byNumber=new Map(rows.map(row=>[Number(row.number),row])),superseded=packageSupersededSet(rows);
+    const openPrimary=rows.filter(row=>workStatus(row)!=='DONE'&&!packageIsReviewEvidence(row)&&!superseded.has(Number(row.number))&&workPriority(row)!=='P5');
+    const roots=new Map();
+    for(const row of openPrimary){
+      const root=packageResolveRoot(row,rows);if(!root||packageIsReviewEvidence(root))continue;
+      roots.set(Number(root.number),root);
+    }
+    const packages=[];
+    for(const root of roots.values()){
+      const descendants=packageDescendants(root,rows),packageByNumber=new Map(descendants.map(row=>[Number(row.number),row]));
+      const focus=packageOperationalFocus(descendants)||root;
+      const streamRoots=packagePrimaryChildren(Number(root.number),descendants);
+      const streams=streamRoots.map(row=>packageStream(row,descendants,packageByNumber));
+      const majorGroups=streams.flatMap(stream=>stream.groups);
+      const standaloneStreams=streams.filter(stream=>!stream.groups.length);
+      const summaryUnits=[...majorGroups.map(group=>({aggregate:group.aggregate})),...standaloneStreams.map(stream=>({aggregate:stream.aggregate}))];
+      const aggregateRows=[...majorGroups.flatMap(group=>group.primary),...standaloneStreams.map(stream=>stream.root)];
+      const aggregate=packageAggregate(aggregateRows.length?aggregateRows:[root]);
+      packages.push({id:'issue-'+Number(root.number),name:displayTitle(root.title),order:Number(root.number),root,focus,rows:descendants,streams,majorGroups,summaryUnits,aggregate});
+    }
+    return packages.sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||priorityRank(workPriority(a.root))-priorityRank(workPriority(b.root))||Number(a.root.number)-Number(b.root.number));
+  }
+
+  const rows=allRows.filter(row=>row?.portfolioHidden!==true&&(!projectId||row?.projectId===projectId));
   const conceptual=new Map();
   for(const row of rows){
     const id=String(row?.workPackageId||'legacy-'+Number(row?.number));
