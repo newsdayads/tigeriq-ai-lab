@@ -969,7 +969,8 @@ function ownerCleanStateClass(state=''){
   const value=String(state||'').toUpperCase();
   if(value==='WORKING')return 'is-working';
   if(value==='REVIEW'||value==='VERIFY')return 'is-review';
-  if(value==='BLOCKED'||value==='OWNER_GATE')return 'is-blocked';
+  if(value==='BLOCKED')return 'is-blocked';
+  if(value==='OWNER_GATE')return 'is-review';
   if(value==='DONE')return 'is-done';
   return 'is-waiting';
 }
@@ -988,7 +989,7 @@ function ownerCleanStages(pack,focus){
   const executionState=['REVIEW','VERIFY','DONE'].includes(focusState)?'DONE':focusState;
   const coordinationState=rows.length>1?'DONE':(focusState==='OPEN'?'WAITING':'DONE');
   const reviewState=reviewRow?String(workStatus(reviewRow)||'WAITING').toUpperCase():(aggregate==='DONE'?'DONE':'WAITING');
-  const resultState=aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':'WAITING');
+  const resultState=aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':(aggregate==='OWNER_GATE'?'OWNER_GATE':'WAITING'));
   return [
     {label:'Giao việc',state:'DONE'},
     {label:'Điều phối',state:coordinationState},
