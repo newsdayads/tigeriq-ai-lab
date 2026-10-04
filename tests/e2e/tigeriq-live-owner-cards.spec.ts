@@ -122,3 +122,58 @@ test('keeps multiple work packages as compact pills instead of rendering all car
   await expect(page.locator('.package-stream')).toHaveCount(0);
   await expect(page.locator('.package-task')).toHaveCount(0);
 });
+
+
+test('derives clean-flow status from evidence instead of row count', async ({ page }) => {
+  await openTiger(page);
+  const result = await page.evaluate(() => {
+    const fn = (window as any).ownerCleanStages;
+    const openRows = [{ number: 1, status: 'MỞ' }, { number: 2, status: 'ĐANG CHỜ' }];
+    return fn({ rows: openRows, aggregate: { state: 'WAITING' } }, openRows[0]);
+  });
+  expect(result.find((stage: any) => stage.label === 'Điều phối')?.state).toBe('WAITING');
+});
+
+test('keeps owner decision at result stage after technical execution is complete', async ({ page }) => {
+  await openTiger(page);
+  const result = await page.evaluate(() => {
+    const fn = (window as any).ownerCleanStages;
+    const focus = { number: 1, status: 'CHỜ ANH SƠN DUYỆT', technicalComplete: true };
+    return fn({ rows: [focus], aggregate: { state: 'OWNER_GATE' } }, focus);
+  });
+  expect(result.find((stage: any) => stage.label === 'Thực hiện')?.state).toBe('DONE');
+  expect(result.find((stage: any) => stage.label === 'Kết quả')?.state).toBe('OWNER_GATE');
+});
+
+test('does not report final result while independent review remains open', async ({ page }) => {
+  await openTiger(page);
+  const result = await page.evaluate(() => {
+    const fn = (window as any).ownerCleanStages;
+    const focus = { number: 1, status: 'HOÀN TẤT', employeeId: 'NV03' };
+    const review = { number: 2, status: 'RÀ SOÁT', reviewOnly: true, employeeId: 'NV12' };
+    return fn({ rows: [focus, review], aggregate: { state: 'DONE' } }, focus);
+  });
+  expect(result.find((stage: any) => stage.label === 'Kiểm tra')?.state).toBe('REVIEW');
+  expect(result.find((stage: any) => stage.label === 'Kết quả')?.state).toBe('WAITING');
+});
+
+test('preserves blocker warning and normalizes technical next-step text', async ({ page }) => {
+  await openTiger(page);
+  const result = await page.evaluate(() => {
+    const shortNextFn = (window as any).shortNext;
+    return {
+      next: shortNextFn({ status: 'ĐANG XỬ LÝ', nextStep: '#123 -> #124' })
+    };
+  });
+  expect(result.next).toBe('Hoàn tất chuỗi phụ thuộc');
+
+  const aggregate = await page.evaluate(() => {
+    const fn = (window as any).packageAggregate;
+    return fn([
+      { number: 1, status: 'ĐANG XỬ LÝ', employeeId: 'NV03' },
+      { number: 2, status: 'BỊ CHẶN' }
+    ]);
+  });
+  expect(aggregate.state).toBe('WORKING');
+  expect(aggregate.label).toBe('ĐANG LÀM · CÓ VƯỚNG');
+});
