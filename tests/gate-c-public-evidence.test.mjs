@@ -78,4 +78,64 @@ describe('Gate C bounded public evidence',()=>{
     expect(block).toContain('"recoveryCount":1');
     expect(block).not.toContain('must-not-leak');
   });
+
+  it('prefers the trusted v0.21 Gate C bridge receipt over agent assertions',()=>{
+    const requested=parsePublicEvidenceKeys(
+      'PUBLIC_EVIDENCE_KEYS=status,version,taskCount,completed,invalid,pass,sendCount,duplicateSendCount,recoveryCount'
+    );
+    const trustedData={
+      status:'GATE_C_V021_STATUS',
+      version:'0.21.0-packageinstaller-stream-fix',
+      taskCount:10,
+      completed:9,
+      invalid:1,
+      pass:false,
+      sendCount:9,
+      duplicateSendCount:0,
+      recoveryCount:0,
+    };
+    const jobResult={
+      evidence:{
+        agentResult:{
+          evidence:{
+            status:'GATE_C_V021_STATUS',
+            version:'0.21.0-packageinstaller-stream-fix',
+            taskCount:10,
+            completed:10,
+            invalid:0,
+            pass:true,
+            sendCount:10,
+            duplicateSendCount:0,
+            recoveryCount:99,
+          }
+        },
+        bridgeCalls:[
+          {result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:{...trustedData,pass:true},evidence:{transport:'agent-assertion',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
+          {result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:trustedData,evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
+        ]
+      }
+    };
+    expect(extractPublicEvidence(jobResult,requested)).toEqual(trustedData);
+  });
+
+  it('does not backfill missing trusted Gate C scalars from agent evidence',()=>{
+    const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=pass,recoveryCount');
+    const jobResult={
+      evidence:{
+        agentResult:{evidence:{pass:true,recoveryCount:7}},
+        bridgeCalls:[{
+          result:{
+            ok:true,
+            action:'android_worker_gate_c_v021_status',
+            target:'pc01-local',
+            data:{pass:false},
+            evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}
+          }
+        }]
+      }
+    };
+    const evidence=extractPublicEvidence(jobResult,requested);
+    expect(evidence).toEqual({pass:false});
+    expect(evidence).not.toHaveProperty('recoveryCount');
+  });
 });
