@@ -34,6 +34,27 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void boundsWaitingProjectWithoutAffectingOtherStates() {
+        long startedAt = 1_000_000L;
+        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
+            "WAITING_PROJECT", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS - 1L
+        ));
+        assertTrue(ChatGptB1Policy.waitingProjectTimedOut(
+            "WAITING_PROJECT", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
+            "REQUESTED", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
+            "WAITING_PROJECT", 0L, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
+            "WAITING_PROJECT", startedAt + 10_000L, startedAt
+        ));
+        assertEquals(60_000L, ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS);
+    }
+
+    @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
         assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));
