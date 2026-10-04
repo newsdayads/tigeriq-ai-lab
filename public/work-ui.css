@@ -132,3 +132,54 @@
 /* #3918 current LIVE shared-stylesheet release marker R5; no visual override. */
 
 /* #3918 API Health local final: shared Work card contract. */
+/* #3918 visual parity R2 — LIVE is the canonical Work Card appearance. */
+.work-row{
+  border-color:#234766;
+  background:
+    linear-gradient(90deg,rgba(88,166,255,.025),transparent 32%),
+    linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row::before{width:4px;box-shadow:0 0 13px currentColor}
+.work-row.status-review,.work-row.status-waiting,.work-row.status-verify{
+  border-color:#5c4928;
+  background:linear-gradient(105deg,rgba(239,184,92,.075),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row.status-working{
+  border-color:#285f49;
+  background:linear-gradient(105deg,rgba(70,212,143,.07),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row.status-blocked,.work-row.status-owner_gate{
+  border-color:#693842;
+  background:linear-gradient(105deg,rgba(255,116,126,.075),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row.status-queued{
+  border-color:#31577d;
+  background:linear-gradient(105deg,rgba(88,166,255,.075),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row.status-done{
+  border-color:#24645d;
+  background:linear-gradient(105deg,rgba(88,216,198,.06),transparent 28%),linear-gradient(180deg,#102139,#0b1829);
+}
+.work-row .state{box-shadow:inset 0 0 13px rgba(255,255,255,.025)}
+.work-row .state.review,.work-row .state.waiting,.work-row .state.verify{box-shadow:0 0 0 1px rgba(239,184,92,.08),0 0 13px rgba(239,184,92,.10),inset 0 0 10px rgba(239,184,92,.08)}
+.work-row .state.working{box-shadow:0 0 0 1px rgba(70,212,143,.08),0 0 13px rgba(70,212,143,.10),inset 0 0 10px rgba(70,212,143,.07)}
+.work-row .state.blocked,.work-row .state.owner_gate{box-shadow:0 0 0 1px rgba(255,116,126,.08),0 0 13px rgba(255,116,126,.10),inset 0 0 10px rgba(255,116,126,.07)}
+.work-row .priority.p0{box-shadow:0 0 11px rgba(255,183,223,.10)}
+.work-row .rank{background:linear-gradient(145deg,#1a4775,#14345a);box-shadow:inset 0 0 10px rgba(88,166,255,.14)}
+.work-row .work-title{font-size:14px;font-weight:850;color:#f7fbff;text-shadow:0 1px 0 rgba(0,0,0,.2)}
+.work-row .work-summary{color:#b5c9dc}
+.work-next,.work-blocker{font-size:10.75px;line-height:1.4;margin-top:4px;color:#8fa5bc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.work-next b{color:#bcd0e4}.work-blocker{color:#ff9fa7}.work-blocker b{color:#ffb8bf}
+.progress.unverified{color:#71849a}.progress.unverified .progress-track{background:repeating-linear-gradient(90deg,#16283b 0 12px,#1b3047 12px 20px)}.progress.unverified .progress-fill{display:none}.progress.unverified .progress-text{min-width:78px;color:#91a4ba}
+.work-row.status-review .progress,.work-row.status-waiting .progress,.work-row.status-verify .progress{color:var(--tiq-review)}
+.work-row.status-review .progress-fill,.work-row.status-waiting .progress-fill,.work-row.status-verify .progress-fill{background:linear-gradient(90deg,#c58c37,#efb85c)}
+.work-row.status-working .progress-fill{background:linear-gradient(90deg,#2cab6e,#46d48f)}
+.work-row.status-queued .progress-fill{background:linear-gradient(90deg,#347bc5,#58a6ff)}
+.work-row.status-blocked .progress-fill,.work-row.status-owner_gate .progress-fill{background:linear-gradient(90deg,#c54f5a,#ff747e)}
+.api-health .work-row{min-height:170px;padding:11px 12px}
+.api-health .work-list{align-items:stretch}
+.api-health .wo-filters{background:linear-gradient(180deg,rgba(13,37,64,.52),rgba(7,22,39,.18))}
+.api-health .wo-filter{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.api-health .wo-filter:hover{transform:translateY(-1px);border-color:#3b79aa}
+.api-health .wo-filter.on{box-shadow:0 0 15px rgba(63,143,221,.08),inset 0 0 12px rgba(255,255,255,.025)}
+
