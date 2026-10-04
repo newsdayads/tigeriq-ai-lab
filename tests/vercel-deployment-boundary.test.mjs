@@ -9,6 +9,7 @@ const base = {
   expectedSha: 'a'.repeat(40),
   actualSha: 'a'.repeat(40),
   branch: 'main',
+  mainRefSha: 'a'.repeat(40),
   remote: 'https://github.com/newsdayads/tigeriq-ai-lab.git',
   config: { git: { deploymentEnabled: false } },
   issue: '3897',
@@ -35,6 +36,24 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
     [{ issue: '' }, 'VERCEL_RELEASE_ISSUE_REQUIRED'],
     [{ changedFiles: ['apps/tigeriq-core/router.mjs'] }, 'VERCEL_WEB_ARTIFACT_CHANGE_REQUIRED'],
   ])('fails closed for non-web or unauthorized deployment: %o', (override, code) => {
+    expect(() => validateReleaseContract({ ...base, ...override })).toThrow(code);
+  });
+
+  it('allows the isolated runtime worktree only when detached HEAD equals exact origin/main', () => {
+    expect(validateReleaseContract({
+      ...base,
+      branch: '',
+      mainRefSha: 'a'.repeat(40),
+    })).toMatchObject({
+      sourceMode: 'detached-exact-main',
+      exactSha: 'a'.repeat(40),
+    });
+  });
+
+  it.each([
+    [{ branch: '', mainRefSha: 'b'.repeat(40) }, 'VERCEL_GIT_BRANCH_MISMATCH'],
+    [{ branch: 'feature/not-main', mainRefSha: 'a'.repeat(40) }, 'VERCEL_GIT_BRANCH_MISMATCH'],
+  ])('rejects non-main release source: %o', (override, code) => {
     expect(() => validateReleaseContract({ ...base, ...override })).toThrow(code);
   });
 
