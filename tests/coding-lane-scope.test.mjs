@@ -1,7 +1,7 @@
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {CodingScopeViolationError,existingPrNeedsBaseUpdate,parseCompactEditJson,salvageCompactEditsJson,selectCodingWorker,validateExistingPrResume,validateJobScope,validateObjectiveRoutingInput,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {CodingScopeViolationError,existingPrNeedsBaseUpdate,parseCompactEditJson,resolveCodingRepository,salvageCompactEditsJson,selectCodingWorker,targetRepositoryFromObjective,validateExistingPrResume,validateJobScope,validateObjectiveRoutingInput,validateSourceScope} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {extractCanonicalAllowedPaths} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 test('coding lane scope validation tests',async(t)=>{
@@ -81,6 +81,14 @@ test('coding lane scope validation tests',async(t)=>{
     assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV09');
   });
 
+  await t.test('resolves only source or allowlisted TARGET_REPOSITORY',()=>{
+    assert.strictEqual(targetRepositoryFromObjective('TARGET_REPOSITORY=newsdayads/tigeriq-media\nPRIORITY=P1'),'newsdayads/tigeriq-media');
+    assert.deepStrictEqual(resolveCodingRepository(''),{owner:'newsdayads',repo:'tigeriq-ai-lab',fullName:'newsdayads/tigeriq-ai-lab',isSource:true});
+    assert.deepStrictEqual(resolveCodingRepository('newsdayads/tigeriq-media'),{owner:'newsdayads',repo:'tigeriq-media',fullName:'newsdayads/tigeriq-media',isSource:false});
+    assert.throws(()=>resolveCodingRepository('bad value'),/CODING_TARGET_REPOSITORY_INVALID/);
+    assert.throws(()=>resolveCodingRepository('other/private'),/CODING_TARGET_REPOSITORY_NOT_ALLOWED/);
+  });
+
   await t.test('validates objective routing input as an exact target/PR-head pair',()=>{
     const head='9b31b1885e8c31a97519ddaecf0dfa3a5917269b';
     assert.deepStrictEqual(validateObjectiveRoutingInput({targetEmployee:'nv09',currentPr:1870,targetHead:head}),{
@@ -100,6 +108,11 @@ test('coding lane scope validation tests',async(t)=>{
     assert.throws(()=>validateExistingPrResume({...pr,merged:true},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_ALREADY_MERGED/);
     assert.throws(()=>validateExistingPrResume({...pr,head:{...pr.head,sha:'a'.repeat(40)}},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_TARGET_HEAD_MISMATCH/);
     assert.throws(()=>validateExistingPrResume({...pr,head:{...pr.head,repo:{full_name:'other/repo'}}},{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_HEAD_REPO_MISMATCH/);
+    const targetPr={...pr,base:{repo:{full_name:'newsdayads/tigeriq-media'}},head:{...pr.head,repo:{full_name:'newsdayads/tigeriq-media'}}};
+    assert.deepStrictEqual(validateExistingPrResume(targetPr,{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-media'}),{
+      number:1870,branch:'feature-1870',headSha:head
+    });
+    assert.throws(()=>validateExistingPrResume(targetPr,{number:1870,targetHead:head,repoFullName:'newsdayads/tigeriq-ai-lab'}),/EXISTING_PR_BASE_REPO_MISMATCH/);
   });
 
   await t.test('marks behind or diverged existing PRs for three-way base update',()=>{
