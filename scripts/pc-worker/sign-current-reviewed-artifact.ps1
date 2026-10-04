@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
 $RepoRoot='D:\TigerIQ\Runtime\CoreSource'
-$MetadataPath=Join-Path $RepoRoot 'apps\android-worker\release\current-ci-artifact.json'
+$MetadataPath=Join-Path $RepoRoot 'config\android-worker-current-ci-artifact.json'
 $ArtifactDir='D:\TigerIQ\Releases\AndroidWorker\ci-artifact\current'
 $UnsignedApk=Join-Path $ArtifactDir 'tigeriq-worker-unsigned-release.apk'
 $ApkSignerJar=Join-Path $ArtifactDir 'apksigner.jar'
@@ -23,7 +23,6 @@ $ExpectedApkSignerJarSha256=([string]$meta.apksignerJarSha256).Replace(':','').T
 $ExpectedSignerSha256=([string]$meta.signerSha256).Replace(':','').ToUpperInvariant()
 $SourceArtifactSha=([string]$meta.sourceArtifactHead).ToLowerInvariant()
 $SourceArtifactAndroidTreeSha=([string]$meta.sourceArtifactAndroidTreeSha).ToLowerInvariant()
-$SourceArtifactAppTreeSha=([string]$meta.sourceArtifactAppTreeSha).ToLowerInvariant()
 $SourceWorkflowRunId=[string]$meta.workflowRunId
 $SourceArtifactId=[string]$meta.artifactId
 $SourceArtifactName=[string]$meta.artifactName
@@ -35,7 +34,6 @@ $metadataInvalid=(
   $ExpectedSignerSha256-notmatch'^[0-9A-F]{64}$' -or
   $SourceArtifactSha-notmatch'^[0-9a-f]{40}$' -or
   $SourceArtifactAndroidTreeSha-notmatch'^[0-9a-f]{40}$' -or
-  $SourceArtifactAppTreeSha-notmatch'^[0-9a-f]{40}$' -or
   $SourceWorkflowRunId-notmatch'^\d+$' -or
   $SourceArtifactId-notmatch'^\d+$' -or
   [string]::IsNullOrWhiteSpace($SourceArtifactName)
@@ -58,9 +56,9 @@ $git=Get-Command git.exe -ErrorAction SilentlyContinue
 if(-not $git){throw 'CURRENT_CI_GIT_REQUIRED'}
 $ReleaseSourceSha=(& $git.Source -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
 if($LASTEXITCODE-ne0 -or $ReleaseSourceSha-notmatch'^[0-9a-f]{40}$'){throw 'CURRENT_CI_RELEASE_SOURCE_SHA_INVALID'}
-$CurrentAppTreeSha=(& $git.Source -C $RepoRoot rev-parse 'HEAD:apps/android-worker/app').Trim().ToLowerInvariant()
-if($LASTEXITCODE-ne0 -or $CurrentAppTreeSha-notmatch'^[0-9a-f]{40}$'){throw 'CURRENT_CI_ANDROID_TREE_SHA_INVALID'}
-if($CurrentAppTreeSha-ne$SourceArtifactAppTreeSha){throw 'CURRENT_CI_ANDROID_SOURCE_DRIFT'}
+$CurrentAndroidTreeSha=(& $git.Source -C $RepoRoot rev-parse 'HEAD:apps/android-worker').Trim().ToLowerInvariant()
+if($LASTEXITCODE-ne0 -or $CurrentAndroidTreeSha-notmatch'^[0-9a-f]{40}$'){throw 'CURRENT_CI_ANDROID_TREE_SHA_INVALID'}
+if($CurrentAndroidTreeSha-ne$SourceArtifactAndroidTreeSha){throw 'CURRENT_CI_ANDROID_SOURCE_DRIFT'}
 & $git.Source -C $RepoRoot merge-base --is-ancestor $SourceArtifactSha $ReleaseSourceSha
 if($LASTEXITCODE-ne0){throw 'CURRENT_CI_SOURCE_ANCESTRY_MISMATCH'}
 
@@ -99,7 +97,6 @@ $manifest=[ordered]@{
   sourceSha=$ReleaseSourceSha
   sourceArtifactSha=$SourceArtifactSha
   sourceArtifactAndroidTreeSha=$SourceArtifactAndroidTreeSha
-  sourceArtifactAppTreeSha=$SourceArtifactAppTreeSha
   sourceWorkflowRunId=$SourceWorkflowRunId
   sourceArtifactId=$SourceArtifactId
   sourceArtifactName=$SourceArtifactName
@@ -127,7 +124,6 @@ $manifest=[ordered]@{
   sourceSha=$ReleaseSourceSha
   sourceArtifactSha=$SourceArtifactSha
   sourceArtifactAndroidTreeSha=$SourceArtifactAndroidTreeSha
-  sourceArtifactAppTreeSha=$SourceArtifactAppTreeSha
   sourceWorkflowRunId=$SourceWorkflowRunId
   sourceArtifactId=$SourceArtifactId
   sourceArtifactName=$SourceArtifactName
