@@ -717,7 +717,7 @@ const ANDROID_V021_CI_ARTIFACT = Object.freeze({
 async function signAndroidWorkerV021CiArtifact() {
   const spec = ANDROID_V021_CI_ARTIFACT;
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
-  const wrapper = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1';
+  const wrapper = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v021-reviewed-artifact.ps1';
   const downloadDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\ci-artifact\\v0.21';
   const releaseDir = 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.21.0-packageinstaller-stream-fix';
   const unsignedApk = win.join(downloadDir, 'tigeriq-worker-unsigned-release.apk');
