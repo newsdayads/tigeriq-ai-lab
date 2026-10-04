@@ -4,6 +4,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -1362,7 +1363,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     }
 
     const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
-    const recentWork = recentWorkSnapshot.rows;
+    const recentWork = annotatePortfolioRows(recentWorkSnapshot.rows);
     const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
     const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
     const resolvedQueue = specs.map((row) => {
@@ -1387,12 +1388,12 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 
     const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
     const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
-    const openWork = openIssues.map((issue) => parseOpenWorkIssue(issue, {
+    const openWork = annotatePortfolioRows(openIssues.map((issue) => parseOpenWorkIssue(issue, {
       active: activeMap.get(Number(issue.number)) || null,
       queued: queueMap.get(Number(issue.number)) || null,
       lifecycle: lifecycleOverrides.get(Number(issue.number)) || null,
       hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
-    })).filter(Boolean).sort((a, b) => {
+    })).filter(Boolean), openIssues).sort((a, b) => {
       const actionRank = {
         OWNER_GATE: 0,
         WORKING: 1,
@@ -1467,6 +1468,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       portfolioProgress,
       completionProgress,
       apiWorkforceSummary,
+      projectPortfolio: buildProjectPortfolio(openWork),
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
@@ -1497,6 +1499,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       nextQueue: [],
       nextQueueTotal: 0,
       recentWork: [],
+      projectPortfolio: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
@@ -1681,6 +1684,7 @@ export default async function handler(req, res) {
       nextQueue: [],
       nextQueueTotal: 0,
       recentWork: [],
+      projectPortfolio: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
