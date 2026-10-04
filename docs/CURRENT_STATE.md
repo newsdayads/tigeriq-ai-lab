@@ -13,6 +13,14 @@
 
 STATE: `CURRENT_20261001_APP_CHROME_LOCAL_ONLY_RUNTIME_BOUNDARY_COMPLETE`
 
+## CURRENT OVERRIDE — RDC MULTI-ACCOUNT POOL — 2026-10-05
+- RDC on PC01 is hardened as five independent persisted sessions/tasks: `RDC01..RDC05`; runtime is pinned to Desktop Commander `0.2.52` and does not use `npx @latest` during boot.
+- Legacy pooled supervisor/watchdog tasks are disabled. Normal reboot must not require reconnect/login unless a persisted RDC session is revoked, logged out, or invalid.
+- Canonical RDC pool/check policy: `docs/RDC_REMOTE_POOL.md`.
+- Chat shortcut `RDC CHECK`: audit all exposed RDC links, show PC01 Online/Offline + `remote_calls_left_pct`, and select an eligible Online account with the highest remaining percentage; 0% links are excluded when another eligible link exists.
+- Chat shortcut `RDC CHECK FULL`: same plus device/app/last-seen details and exclusion reasons.
+- Connector percentage is authoritative for ChatGPT-side quota checks; do not infer exact raw monthly call counts from rounded percentage.
+
 ---
 
 # TigerIQ — Current State
