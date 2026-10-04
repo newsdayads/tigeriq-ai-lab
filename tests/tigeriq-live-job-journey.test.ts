@@ -43,6 +43,14 @@ describe('TigerIQ Live Owner Clean View #3833', () => {
     expect(rootHtml).toContain('.owner-clean-detail{width:100%');
   });
 
+  it('keeps audit fixes wired into the Owner Clean View', () => {
+    expect(rootHtml).toContain("coordinationHasEvidence?'DONE':'WAITING'");
+    expect(rootHtml).toContain("focusState==='OWNER_GATE'&&focus?.technicalComplete===true");
+    expect(rootHtml).toContain("reviewUnresolved?'WAITING'");
+    expect(rootHtml).toContain("pack.aggregate?.label||stateLabel[state]||state");
+    expect(rootHtml).toContain("const next=shortNext(focus)||'Chưa có bước kế tiếp được xác minh'");
+  });
+
   it('preserves verified-progress and raw evidence infrastructure', () => {
     expect(rootHtml).toContain('function verifiedProgress(row)');
     expect(rootHtml).toContain("['explicit_verified','checklist_verified','terminal']");
