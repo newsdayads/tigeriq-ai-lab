@@ -371,6 +371,28 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
 
+  it('keeps v0.21 CI artifact signing pinned and independent of local Gradle', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    const wrapper = await readFile(new URL('../scripts/pc-worker/sign-v021-reviewed-artifact.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_sign_v021_ci_artifact'");
+    expect(source).toContain("runId: '37167530454'");
+    expect(source).toContain("artifactId: '11290356482'");
+    expect(source).toContain("sourceHead: '1f80bc5c86a855b7a88f13e6d6e89d8035437f4c'");
+    expect(source).toContain("expectedUnsignedSha256: 'B43A938A9EDC35C20652E516BF1E476D005F8D0A42655F2BB6C55643FE65BC3F'");
+    expect(source).toContain("expectedApkSignerJarSha256: '00EF9948F843FE395D2440AE3EF41405B8040A6D5D46493BD1902AC0EE6DEAE7'");
+    expect(source).toContain("expectedVersion: '0.21.0-packageinstaller-stream-fix'");
+    expect(source).toContain("scripts\\\\pc-worker\\\\sign-v021-reviewed-artifact.ps1");
+    expect(source).toContain("executePadV021Signer()");
+    expect(source).toContain("TIGERIQ_V021_USER_SESSION_BROKER_UNAVAILABLE");
+    expect(source).toContain("tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk");
+    expect(wrapper).toContain("$SourceWorkflowRunId='37167530454'");
+    expect(wrapper).toContain("$SourceArtifactId='11290356482'");
+    expect(wrapper).toContain("$Version='0.21.0-packageinstaller-stream-fix'");
+    expect(wrapper).toContain("tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk");
+    expect(wrapper).not.toMatch(/gradle(?:\.bat)?/i);
+    expect(source).not.toContain("input?.artifactId");
+  });
+
   it('publishes the v0.20 Core release manifest only from the pinned signed APK', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_publish_v020_manifest'");
@@ -547,9 +569,14 @@ describe('Power Automate Desktop guarded UI contract', () => {
     expect(padModule).toContain("const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020'");
     expect(padModule).toContain('MAX_V020_SIGNER_WAIT_MS = 130000');
     expect(padModule).toContain('export async function executePadV020Signer()');
+    expect(() => assertPadUiRequest({ action: 'pad_android_sign_v021' })).toThrow('TIGERIQ_PAD_ACTION_NOT_ALLOWED');
+    expect(padModule).toContain("const INTERNAL_V021_SIGNER_ACTION = 'pad_android_sign_v021'");
+    expect(padModule).toContain('export async function executePadV021Signer()');
     const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
     const installer = await readFile(new URL('../apps/openclaw-tigeriq-runtime/Install-PadUiBroker.ps1', import.meta.url), 'utf8');
     expect(broker).toContain("'pad_android_sign_v020' { return Invoke-V020Signer }");
+    expect(broker).toContain("'pad_android_sign_v021' { return Invoke-V021Signer }");
+    expect(broker).toContain("D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v021-reviewed-artifact.ps1");
     expect(broker).toContain("D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\sign-v020-reviewed-artifact.ps1");
     expect(broker).toContain("$psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"'");
     expect(broker).not.toContain('ArgumentList.Add');
