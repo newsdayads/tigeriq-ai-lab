@@ -33,3 +33,10 @@ jobs:
         run: npm run test:e2e
       - name: Build
         run: npm run build
+      - name: Upload restored cards visual preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tigeriq-restored-work-cards-preview
+          path: artifacts/old-cards-*.png
+          if-no-files-found: error
