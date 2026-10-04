@@ -130,12 +130,14 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
     const sendCountRaw=output.sendCount;
     const duplicateSendCountRaw=output.duplicateSendCount;
     const recoveryCountRaw=output.recoveryCount;
-    const sendCountValid=Number.isInteger(sendCountRaw)&&sendCountRaw===1;
-    const duplicateSendCountValid=Number.isInteger(duplicateSendCountRaw)&&duplicateSendCountRaw===0;
+    const sendCountTyped=Number.isInteger(sendCountRaw)&&sendCountRaw>=0;
+    const duplicateSendCountTyped=Number.isInteger(duplicateSendCountRaw)&&duplicateSendCountRaw>=0;
     const recoveryCountValid=Number.isInteger(recoveryCountRaw)&&recoveryCountRaw>=0;
-    const sendCount=sendCountValid?sendCountRaw:null;
-    const duplicateSendCount=duplicateSendCountValid?duplicateSendCountRaw:null;
+    const sendCount=sendCountTyped?sendCountRaw:null;
+    const duplicateSendCount=duplicateSendCountTyped?duplicateSendCountRaw:null;
     const recoveryCount=recoveryCountValid?recoveryCountRaw:null;
+    const sendCountValid=sendCountTyped&&sendCountRaw===1;
+    const duplicateSendCountValid=duplicateSendCountTyped&&duplicateSendCountRaw===0;
     const valid=status==='completed'
       && sendCountValid
       && duplicateSendCountValid
