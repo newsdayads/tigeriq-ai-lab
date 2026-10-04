@@ -417,7 +417,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
 
   it('keeps current CI artifact signing metadata-pinned and fixed-purpose', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
-    const metadata = JSON.parse(await readFile(new URL('../apps/android-worker/release/current-ci-artifact.json', import.meta.url), 'utf8'));
+    const metadata = JSON.parse(await readFile(new URL('../config/android-worker-current-ci-artifact.json', import.meta.url), 'utf8'));
     const wrapper = await readFile(new URL('../scripts/pc-worker/sign-current-reviewed-artifact.ps1', import.meta.url), 'utf8');
     const runner = await readFile(new URL('../scripts/pc-worker/invoke-current-user-context-signer.ps1', import.meta.url), 'utf8');
     const bridge = await readFile(new URL('../scripts/pc-worker/run-current-user-context-signer-task.ps1', import.meta.url), 'utf8');
@@ -434,7 +434,8 @@ describe('OpenClaw PC01 guarded local operator', () => {
       signerSha256:'63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293',
     });
     expect(source).toContain("action === 'android_worker_sign_current_ci_artifact'");
-    expect(source).toContain("apps','android-worker','release','current-ci-artifact.json");
+    expect(source).toContain("config','android-worker-current-ci-artifact.json");
+    expect(source).not.toContain("apps','android-worker','release','current-ci-artifact.json");
     expect(source).toContain('actions/artifacts/${spec.artifactId}');
     expect(source).toContain('workflow_run?.head_sha');
     expect(source).toContain('TIGERIQ_ANDROID_CURRENT_CI_ARTIFACT_METADATA_MISMATCH');
