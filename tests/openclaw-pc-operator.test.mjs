@@ -388,6 +388,11 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(wrapper).toContain("$SourceWorkflowRunId='37167530454'");
     expect(wrapper).toContain("$SourceArtifactId='11290356482'");
     expect(wrapper).toContain("$Version='0.21.0-packageinstaller-stream-fix'");
+    expect(wrapper).toContain("$ArtifactSourceSha='1f80bc5c86a855b7a88f13e6d6e89d8035437f4c'");
+    expect(wrapper).toContain("$RuntimeStatePath='D:\\TigerIQ\\State\\core-runtime-updater.json'");
+    expect(wrapper).toContain("V021_RUNTIME_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("receipt.artifactSourceSha");
+    expect(source).toContain("receipt.sourceSha || '').toLowerCase() !== installedSha");
     expect(wrapper).toContain("tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk");
     expect(wrapper).not.toMatch(/gradle(?:\.bat)?/i);
     expect(source).not.toContain("input?.artifactId");
