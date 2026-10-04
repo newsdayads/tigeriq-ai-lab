@@ -170,6 +170,78 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
   };
 }
 
+export const LIVE_WORKER_VERSION='0.22.0-live-worker';
+
+export function liveMobileCompletionToken(seed='') {
+  const digest=createHash('sha256').update(String(seed||'')).digest('hex').slice(0,16).toUpperCase();
+  return `TIGERIQ_MOBILE_DONE_${digest}`;
+}
+
+export function liveMobileTaskPrompt({title='',body='',expectedToken=''}={}) {
+  const token=String(expectedToken||'').trim();
+  const match=token.match(/^TIGERIQ_MOBILE_DONE_([A-F0-9]{16})$/);
+  if(!match)throw new Error('MOBILE_LIVE_EXPECTED_TOKEN_INVALID');
+  const source=[text(title,240),text(body,2600)].filter(Boolean).join('\n\n');
+  const suffix=match[1];
+  return [
+    'LÀM — NO YAPPING.',
+    'Bạn là TigerIQ Mobile Live Worker. Thực hiện đúng công việc GitHub được giao dưới đây trong phạm vi đọc/suy luận hiện có.',
+    'Không tự quét backlog, không tự nhận việc khác, không sửa source hay thực hiện hành động ngoài phạm vi nếu prompt không cấp rõ.',
+    '',
+    source,
+    '',
+    'Trả lời nội dung kết quả hữu ích, ngắn gọn. Dòng CUỐI phải ghép LIỀN 3 phần sau thành đúng một token, không thêm ký tự:',
+    'TIGERIQ_MOBILE_ + DONE_ + '+suffix,
+  ].join('\n').slice(0,3900);
+}
+
+export async function enqueueFreshLiveMobileTask(db,{
+  idempotencyKey='',
+  prompt='',
+  expectedToken='',
+  now=new Date(),
+}={}) {
+  const key=text(idempotencyKey,160);
+  const taskPrompt=text(prompt,4000);
+  const token=text(expectedToken,500);
+  if(!key||!taskPrompt||!token)throw new Error('MOBILE_LIVE_TASK_INVALID');
+  const prior=(await db.query('select * from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',[key])).rows[0];
+  if(prior){
+    return {
+      idempotent:true,
+      taskId:String(prior.task_id),
+      runId:String(prior.run_id),
+      nodeId:String(prior.target_node_id),
+      employeeId:String(prior.employee_id),
+      status:String(prior.status),
+    };
+  }
+  const freshness=new Date(new Date(now).getTime()-120_000).toISOString();
+  const target=(await db.query(
+    `select node_id,employee_id,provider,agent_version,last_seen_at
+       from tigeriq_mobile_devices
+      where revoked=false and agent_version=$1 and last_seen_at>=$2
+      order by last_seen_at desc,node_id asc
+      limit 1`,
+    [LIVE_WORKER_VERSION,freshness]
+  )).rows[0];
+  if(!target)throw new Error('MOBILE_LIVE_WORKER_UNAVAILABLE');
+  const taskId='MT-'+randomToken(12),runId='MR-'+randomToken(12);
+  await db.query(
+    `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
+     values($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [taskId,key,target.node_id,target.employee_id,target.provider,taskPrompt,token,runId]
+  );
+  return {
+    idempotent:false,
+    taskId,runId,
+    nodeId:String(target.node_id),
+    employeeId:String(target.employee_id),
+    provider:String(target.provider),
+    status:'queued',
+  };
+}
+
 export function normalizeMobileProvider(value) {
   return String(value||'').trim().toLowerCase()==='gemini'?'Gemini':'ChatGPT';
 }
