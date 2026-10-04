@@ -6,7 +6,7 @@ const main = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/t
 const probe = readFileSync(new URL('../apps/android-worker/app/src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java', import.meta.url), 'utf8');
 const theme = readFileSync(new URL('../apps/android-worker/app/src/main/res/values/styles.xml', import.meta.url), 'utf8');
 
-describe('Android Worker v0.9 UI/runtime contract', () => {
+describe('Android Worker live UI/runtime contract', () => {
   it('declares provider visibility so native apps are launched without accidental web fallback', () => {
     expect(manifest).toContain('<package android:name="com.openai.chatgpt" />');
     expect(manifest).toContain('<package android:name="com.google.android.apps.bard" />');
@@ -28,7 +28,20 @@ describe('Android Worker v0.9 UI/runtime contract', () => {
     for (const token of ['#06101F', '#0B1A2F', '#164B7A', '#2CBCFF', '#28DF91', '#FFBD46', '#EFF7FF']) {
       expect(main + theme).toContain(token);
     }
-    expect(main).toContain('WorkerVersion.NAME + " · TigerIQ Core Mobile');
+    expect(main).toContain('WorkerVersion.NAME + " · Live Worker · Core poll 5s · heartbeat 30s · exactly-once"');
     expect(main).not.toContain('v0.7 Core Mobile');
   });
+  it('removes manual B1 controls and shows only live Core task states', () => {
+    expect(main).toContain('sectionTitle("Live Worker")');
+    expect(main).toContain('"CHỜ VIỆC"');
+    expect(main).toContain('"ĐANG NHẬN"');
+    expect(main).toContain('"ĐANG LÀM"');
+    expect(main).toContain('"ĐÃ TRẢ KẾT QUẢ"');
+    expect(main).not.toContain('primaryButton("Chạy 1 test")');
+    expect(main).not.toContain('secondaryButton("Chạy 10 test")');
+    expect(main).not.toContain('secondaryButton("Hủy B1 đang chạy")');
+    expect(main).toContain('liveTask.resultReported');
+    expect(main).toContain('b1.responseText');
+  });
+
 });
