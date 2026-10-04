@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $ExpectedUser='pc01\wdragons12x'
 $TaskName='TigerIQ Android Current OneShot Signer'
 $RepoRoot='D:\TigerIQ\Runtime\CoreSource'
-$MetadataPath=Join-Path $RepoRoot 'apps\android-worker\current-ci-artifact.json'
+$MetadataPath=Join-Path $RepoRoot 'config\android-worker-current-ci-artifact.json'
 $Wrapper=Join-Path $RepoRoot 'scripts\pc-worker\sign-current-reviewed-artifact.ps1'
 $ReceiptPath='D:\TigerIQ\Evidence\AndroidWorker\current\user-context-sign-receipt.json'
 $ArtifactDir='D:\TigerIQ\Releases\AndroidWorker\ci-artifact\current'
