@@ -326,8 +326,16 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     normalized={action,workerId};
   }else if(action==='tigeriq_live_3150_production_deploy'){
     const expectedSha=String(parsed.expectedSha||'').trim().toLowerCase();
+    const releaseIssue=String(parsed.releaseIssue||'').trim();
+    const releaseClass=String(parsed.releaseClass||'').trim().toUpperCase();
+    const ownerAuthorized=parsed.ownerAuthorized===true;
+    const releaseReason=String(parsed.releaseReason||'').trim();
     if(!/^[0-9a-f]{40}$/.test(expectedSha))return {present:true,valid:false,action:null,reason:'EXPECTED_SHA_INVALID'};
-    normalized={action,expectedSha};
+    if(!/^\d{1,10}$/.test(releaseIssue))return {present:true,valid:false,action:null,reason:'RELEASE_ISSUE_INVALID'};
+    if(releaseClass!=='WEB_LIVE')return {present:true,valid:false,action:null,reason:'RELEASE_CLASS_INVALID'};
+    if(!ownerAuthorized)return {present:true,valid:false,action:null,reason:'OWNER_RELEASE_AUTH_REQUIRED'};
+    if(!releaseReason||releaseReason.length>160||/[\r\n\0]/.test(releaseReason))return {present:true,valid:false,action:null,reason:'RELEASE_REASON_INVALID'};
+    normalized={action,expectedSha,releaseIssue,releaseClass,ownerAuthorized,releaseReason};
   }else if(action.startsWith('file_')){
     normalized={action,path:String(parsed.path||'')};
   }else{
