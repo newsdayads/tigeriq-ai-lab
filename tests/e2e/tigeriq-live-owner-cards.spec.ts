@@ -73,6 +73,7 @@ test('restores the old Work Package cards with verified percent bars', async ({ 
   await expect(task.locator('.package-task-progress-track')).toHaveAttribute('aria-valuenow', '70');
   await expect(task.locator('.package-task-progress-track i')).toHaveAttribute('style', 'width:70%');
   await expect(task).toContainText('Rà soát/evidence đã gom: 1');
+  await page.screenshot({ path: 'artifacts/old-cards-desktop.png', fullPage: true });
 });
 
 test('does not invent a percentage when progress is not verified', async ({ page }) => {
@@ -101,6 +102,7 @@ test('keeps old task cards readable on mobile without document overflow', async 
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.rawOpen).toBe(false);
   expect(metrics.streamsColumns.split(' ').length).toBe(1);
+  await page.screenshot({ path: 'artifacts/old-cards-mobile.png', fullPage: true });
 });
 
 test('keeps package selector readable and never renders the compact six-node workflow', async ({ page }) => {
