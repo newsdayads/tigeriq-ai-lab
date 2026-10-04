@@ -33,6 +33,7 @@ public final class ForegroundWorkerService extends Service {
     public void onCreate() {
         super.onCreate();
         WorkerIdentity.ensureDeviceKey();
+        ChatGptB1RunStore.cancelStaleManualRunForLiveWorker(this);
         ensureChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         executor = Executors.newSingleThreadScheduledExecutor();
@@ -129,7 +130,8 @@ public final class ForegroundWorkerService extends Service {
                         JSONObject result = new JSONObject();
                         result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
                         JSONObject output = new JSONObject();
-                        output.put("validatedToken", task.expectedToken);
+                        if ("COMPLETE".equals(run.state)) output.put("validatedToken", task.expectedToken);
+                        output.put("responseText", run.responseText == null ? "" : run.responseText);
                         output.put("runState", run.state);
                         output.put("sendCount", run.sendCount);
                         output.put("duplicateSendCount", run.duplicateSendCount);
