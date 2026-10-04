@@ -77,5 +77,5 @@
       ]
     }
   ],
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- release/3840-one-shot.txt"
+  "ignoreCommand": "test \"$(git diff --diff-filter=A --name-only HEAD^ HEAD -- release/3840-one-shot.txt)\" = \"release/3840-one-shot.txt\" && test \"$(git ls-tree HEAD release/3840-one-shot.txt | awk '{print $1\":\"$3}')\" = \"100644:e36b8cf43cbf5fa4c1b0992c2b097c873d244323\" && exit 1 || exit 0"
 }
