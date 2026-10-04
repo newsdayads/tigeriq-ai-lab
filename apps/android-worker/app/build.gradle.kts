@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 22
-        versionName = "0.22.0-project-bind-timeout"
+        versionName = "0.22.0-live-worker"
     }
 
     if (stableSigningEnabled) {
