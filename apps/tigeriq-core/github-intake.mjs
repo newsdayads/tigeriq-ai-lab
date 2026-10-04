@@ -999,7 +999,10 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         try{await client.query('rollback')}catch{}
         if(String(error?.message||error)==='MOBILE_LIVE_WORKER_UNAVAILABLE'){
           skipped++;
-          await recordRoutingFault(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason:'MOBILE_LIVE_WORKER_UNAVAILABLE',sourceRevision:spec.sourceRevision,ownerVisible:false,terminalBlocked:false});
+          // The pool is max=1 and this transaction still owns its only client.
+          // Record the unavailable-device fault through that same client; querying the
+          // pool here would deadlock before finally can release the client.
+          await recordRoutingFault(client,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason:'MOBILE_LIVE_WORKER_UNAVAILABLE',sourceRevision:spec.sourceRevision,ownerVisible:false,terminalBlocked:false});
           continue;
         }
         throw error;
