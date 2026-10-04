@@ -151,15 +151,18 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
   });
   const completed=jobs.filter(job=>job.status==='completed').length;
   const failed=jobs.filter(job=>job.status==='failed').length;
+  const queued=jobs.filter(job=>job.status==='queued').length;
+  const leased=jobs.filter(job=>job.status==='leased').length;
   const pending=jobs.filter(job=>!['completed','failed'].includes(job.status)).length;
   const invalid=jobs.filter(job=>job.status==='completed'&&!job.valid).length;
+  const attemptCount=jobs.reduce((sum,job)=>sum+(Number.isInteger(job.attempts)&&job.attempts>=0?job.attempts:0),0);
   const sendCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.sendCount)?job.sendCount:0),0);
   const duplicateSendCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.duplicateSendCount)?job.duplicateSendCount:0),0);
   const recoveryCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.recoveryCount)?job.recoveryCount:0),0);
   return {
     expected:GATE_C_V021_COUNT,
     taskCount:jobs.filter(job=>job.status!=='missing').length,
-    completed,failed,pending,invalid,sendCount,duplicateSendCount,recoveryCount,
+    completed,failed,queued,leased,pending,invalid,attemptCount,sendCount,duplicateSendCount,recoveryCount,
     pass:completed===GATE_C_V021_COUNT&&failed===0&&pending===0&&invalid===0,
     jobs,
   };

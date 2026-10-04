@@ -9,10 +9,10 @@ import {
 describe('Gate C bounded public evidence',()=>{
   it('keeps only requested safe Gate C scalar evidence',()=>{
     const requested=parsePublicEvidenceKeys(
-      'PUBLIC_EVIDENCE_KEYS=status,version,employeeId,online,lastSeenAt,expected,taskCount,completed,failed,pending,invalid,pass,sendCount,duplicateSendCount,recoveryCount,created,existing,count,raw,password'
+      'PUBLIC_EVIDENCE_KEYS=status,version,employeeId,online,lastSeenAt,expected,taskCount,completed,failed,queued,leased,pending,invalid,attemptCount,pass,sendCount,duplicateSendCount,recoveryCount,created,existing,count,raw,password'
     );
     expect(requested).toEqual([
-      'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','pending','invalid','pass',
+      'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass',
       'sendCount','duplicateSendCount','recoveryCount','created','existing','count'
     ]);
     expect(SUPPORTED_PUBLIC_EVIDENCE_KEYS).not.toContain('raw');
@@ -36,8 +36,11 @@ describe('Gate C bounded public evidence',()=>{
               taskCount:10,
               completed:10,
               failed:0,
+              queued:0,
+              leased:0,
               pending:0,
               invalid:0,
+              attemptCount:10,
               pass:true,
               sendCount:10,
               duplicateSendCount:0,
@@ -64,8 +67,11 @@ describe('Gate C bounded public evidence',()=>{
       taskCount:10,
       completed:10,
       failed:0,
+      queued:0,
+      leased:0,
       pending:0,
       invalid:0,
+      attemptCount:10,
       pass:true,
       sendCount:10,
       duplicateSendCount:0,
@@ -78,6 +84,9 @@ describe('Gate C bounded public evidence',()=>{
     expect(evidence).not.toHaveProperty('password');
 
     const block=formatPublicEvidenceBlock(evidence);
+    expect(block).toContain('"queued":0');
+    expect(block).toContain('"leased":0');
+    expect(block).toContain('"attemptCount":10');
     expect(block).toContain('"sendCount":10');
     expect(block).toContain('"duplicateSendCount":0');
     expect(block).toContain('"recoveryCount":1');
