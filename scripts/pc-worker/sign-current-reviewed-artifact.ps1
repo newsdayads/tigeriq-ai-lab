@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
 $RepoRoot='D:\TigerIQ\Runtime\CoreSource'
-$MetadataPath=Join-Path $RepoRoot 'apps\android-worker\current-ci-artifact.json'
+$MetadataPath=Join-Path $RepoRoot 'config\android-worker-current-ci-artifact.json'
 $ArtifactDir='D:\TigerIQ\Releases\AndroidWorker\ci-artifact\current'
 $Helper=Join-Path $RepoRoot 'scripts\pc-worker\sign-android-worker-with-dpapi.ps1'
 $SecretsDir='D:\TigerIQ\Secrets\AndroidSigning'
