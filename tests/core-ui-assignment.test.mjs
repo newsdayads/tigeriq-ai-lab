@@ -387,3 +387,19 @@ test('Core UI fails closed on GitHub source outage when there is no active DB as
   assert.equal(pool.jobs.length,0);
   assert.equal(pool.objectives.length,0);
 });
+
+
+test('Core UI admits only explicitly dispatched P0 read-only review for NV03/NV04',()=>{
+  const base=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P0','RESOURCE_SCOPE=P0_REVIEW_CANARY',
+    'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_DIRECT_MAIN=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    'CAPABILITY=review','OWNER_DIRECT=true','VY_DIRECT_REVIEW_DISPATCH=true','REVIEW_ONLY=true'
+  ];
+  let x=parseCoreUiIssue(issue(39051,[...base,'OWNER_REVIEWER=NV03'].join('\n'),'P0 review NV03'));
+  assert.equal(x.workerId,'NV03');assert.equal(x.priority,'P0');assert.equal(x.readOnly,true);
+  x=parseCoreUiIssue(issue(39052,[...base,'OWNER_REVIEWER=NV04'].join('\n'),'P0 review NV04'));
+  assert.equal(x.workerId,'NV04');assert.equal(x.priority,'P0');assert.equal(x.readOnly,true);
+  assert.equal(parseCoreUiIssue(issue(39053,[...base.filter(line=>line!=='VY_DIRECT_REVIEW_DISPATCH=true'),'OWNER_REVIEWER=NV03'].join('\n'),'P0 blocked')),null);
+  assert.equal(parseCoreUiIssue(issue(39054,[...base,'OWNER_REVIEWER=NV11'].join('\n'),'P0 invalid reviewer')),null);
+});
