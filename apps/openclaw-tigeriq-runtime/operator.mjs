@@ -888,7 +888,7 @@ async function signAndroidWorkerV021CiArtifact() {
 
 async function loadAndroidWorkerCurrentCiArtifactSpec() {
   const repoRoot='D:\\TigerIQ\\Runtime\\CoreSource';
-  const metadataPath=win.join(repoRoot,'apps','android-worker','release','current-ci-artifact.json');
+  const metadataPath=win.join(repoRoot,'config','android-worker-current-ci-artifact.json');
   const raw=await fs.readFile(await realPathInsideRoots(metadataPath),'utf8');
   let meta;
   try{meta=JSON.parse(String(raw).replace(/^\uFEFF/,''));}catch{throw new Error('TIGERIQ_ANDROID_CURRENT_CI_METADATA_INVALID');}
@@ -904,7 +904,6 @@ async function loadAndroidWorkerCurrentCiArtifactSpec() {
     artifactName:String(meta?.artifactName||'').trim(),
     sourceArtifactHead:String(meta?.sourceArtifactHead||'').trim().toLowerCase(),
     sourceArtifactAndroidTreeSha:String(meta?.sourceArtifactAndroidTreeSha||'').trim().toLowerCase(),
-    sourceArtifactAppTreeSha:String(meta?.sourceArtifactAppTreeSha||'').trim().toLowerCase(),
     expectedUnsignedSha256:String(meta?.unsignedApkSha256||'').replaceAll(':','').toUpperCase(),
     expectedApkSignerJarSha256:String(meta?.apksignerJarSha256||'').replaceAll(':','').toUpperCase(),
     expectedSignerSha256:String(meta?.signerSha256||'').replaceAll(':','').toUpperCase(),
@@ -916,7 +915,6 @@ async function loadAndroidWorkerCurrentCiArtifactSpec() {
       ||spec.artifactName!=='tigeriq-worker-unsigned-release-apk'
       ||!/^[0-9a-f]{40}$/.test(spec.sourceArtifactHead)
       ||!/^[0-9a-f]{40}$/.test(spec.sourceArtifactAndroidTreeSha)
-      ||!/^[0-9a-f]{40}$/.test(spec.sourceArtifactAppTreeSha)
       ||!/^[0-9A-F]{64}$/.test(spec.expectedUnsignedSha256)
       ||!/^[0-9A-F]{64}$/.test(spec.expectedApkSignerJarSha256)
       ||spec.expectedSignerSha256!=='63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293'){
@@ -932,12 +930,12 @@ async function signAndroidWorkerCurrentCiArtifact() {
     throw new Error('TIGERIQ_ANDROID_CURRENT_CI_VERSION_MISMATCH');
   }
   const treeResult=await spawnBounded(
-    'git.exe',['-C',spec.repoRoot,'rev-parse','HEAD:apps/android-worker/app'],
+    'git.exe',['-C',spec.repoRoot,'rev-parse','HEAD:apps/android-worker'],
     {cwd:spec.repoRoot,timeoutSec:15},
   );
   if(treeResult.timedOut||Number(treeResult.exitCode)!==0)throw new Error('TIGERIQ_ANDROID_CURRENT_CI_ANDROID_TREE_READ_FAILED');
-  const currentAppTree=String(treeResult.stdout||'').trim().toLowerCase();
-  if(currentAppTree!==spec.sourceArtifactAppTreeSha)throw new Error('TIGERIQ_ANDROID_CURRENT_CI_ANDROID_SOURCE_DRIFT');
+  const currentAndroidTree=String(treeResult.stdout||'').trim().toLowerCase();
+  if(currentAndroidTree!==spec.sourceArtifactAndroidTreeSha)throw new Error('TIGERIQ_ANDROID_CURRENT_CI_ANDROID_SOURCE_DRIFT');
 
   const ancestry=await spawnBounded(
     'git.exe',['-C',spec.repoRoot,'merge-base','--is-ancestor',spec.sourceArtifactHead,current.installedSha],
@@ -1037,7 +1035,6 @@ async function signAndroidWorkerCurrentCiArtifact() {
   if(sourceSha!==current.installedSha)throw new Error('TIGERIQ_ANDROID_CURRENT_CI_SOURCE_SHA_MISMATCH');
   if(String(receipt.sourceArtifactSha||'').toLowerCase()!==spec.sourceArtifactHead
       ||String(receipt.sourceArtifactAndroidTreeSha||'').toLowerCase()!==spec.sourceArtifactAndroidTreeSha
-      ||String(receipt.sourceArtifactAppTreeSha||'').toLowerCase()!==spec.sourceArtifactAppTreeSha
       ||String(receipt.sourceWorkflowRunId||'')!==spec.runId
       ||String(receipt.sourceArtifactId||'')!==spec.artifactId
       ||String(receipt.sourceArtifactName||'')!==spec.artifactName){
