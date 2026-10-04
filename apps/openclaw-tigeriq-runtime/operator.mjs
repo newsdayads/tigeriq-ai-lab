@@ -1177,6 +1177,8 @@ const ANDROID_V021_RELEASE = Object.freeze({
   signerSha256: '63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293',
   sourceArtifactSha: '1f80bc5c86a855b7a88f13e6d6e89d8035437f4c',
   sourceArtifactAndroidTreeSha: '34334f3707240974ca78bad14f85935a5205f267',
+  apkSha256: '1E27C82C9A8AC4ED09ADA80D3CEFBEF93303F90B0FE8F5B84337D5838CADDEF8',
+  repoRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
   releaseDir: 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.21.0-packageinstaller-stream-fix',
   apkPath: 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.21.0-packageinstaller-stream-fix\\tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk',
   releaseReceiptPath: 'D:\\TigerIQ\\Releases\\AndroidWorker\\signed\\0.21.0-packageinstaller-stream-fix\\release-manifest.json',
@@ -1188,11 +1190,18 @@ const ANDROID_V021_RELEASE = Object.freeze({
   chunkBytes: 3000,
 });
 
+async function runAndroidV021GitCheck(spec,args,errorCode){
+  const result=await spawnBounded('git.exe',['-C',spec.repoRoot,...args],{cwd:spec.repoRoot,timeoutSec:15});
+  if(result.timedOut||Number(result.exitCode)!==0)throw new Error(errorCode);
+  return String(result.stdout||'').trim().toLowerCase();
+}
+
 async function verifyAndroidWorkerV021SignedRelease() {
   const spec=ANDROID_V021_RELEASE;
   await realPathInsideRoots(spec.apkPath);
   await realPathInsideRoots(spec.releaseReceiptPath);
   await realPathInsideRoots(spec.runtimeStatePath);
+  await realPathInsideRoots(spec.repoRoot);
   const [apk,receiptRaw,stateRaw]=await Promise.all([
     fs.readFile(spec.apkPath),
     fs.readFile(spec.releaseReceiptPath,'utf8'),
@@ -1202,26 +1211,25 @@ async function verifyAndroidWorkerV021SignedRelease() {
   try{receipt=JSON.parse(receiptRaw.replace(/^\uFEFF/,''));state=JSON.parse(stateRaw.replace(/^\uFEFF/,''));}catch{throw new Error('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_INVALID');}
   const installedSha=String(state?.installedSha||'').trim().toLowerCase();
   if(!/^[0-9a-f]{40}$/.test(installedSha))throw new Error('TIGERIQ_ANDROID_V021_INSTALLED_SHA_MISSING');
+
+  const runtimeHead=await runAndroidV021GitCheck(spec,['rev-parse','HEAD'],'TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_READ_FAILED');
+  if(runtimeHead!==installedSha)throw new Error('TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_SHA_MISMATCH');
+  const currentAndroidTree=await runAndroidV021GitCheck(spec,['rev-parse','HEAD:apps/android-worker'],'TIGERIQ_ANDROID_V021_ANDROID_TREE_READ_FAILED');
+  if(currentAndroidTree!==spec.sourceArtifactAndroidTreeSha)throw new Error('TIGERIQ_ANDROID_V021_ANDROID_SOURCE_DRIFT');
+
   const sourceSha=String(receipt?.sourceSha||'').trim().toLowerCase();
-  if(!/^[0-9a-f]{40}$/.test(sourceSha))throw new Error('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
-  if(String(receipt?.sourceArtifactSha||'').toLowerCase()!==spec.sourceArtifactSha
-      || String(receipt?.sourceArtifactAndroidTreeSha||'').toLowerCase()!==spec.sourceArtifactAndroidTreeSha){
-    throw new Error('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
+  if(!/^[0-9a-f]{40}$/.test(sourceSha))throw new Error('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISSING');
+  if(String(receipt?.sourceArtifactSha||'').trim().toLowerCase()!==spec.sourceArtifactSha
+      || String(receipt?.sourceArtifactAndroidTreeSha||'').trim().toLowerCase()!==spec.sourceArtifactAndroidTreeSha){
+    throw new Error('TIGERIQ_ANDROID_V021_SOURCE_ARTIFACT_MISMATCH');
   }
-  const repoRoot='D:\\TigerIQ\\Runtime\\CoreSource';
-  const headResult=await spawnBounded('git.exe',['-C',repoRoot,'rev-parse','HEAD'],{cwd:repoRoot,timeoutSec:15});
-  const treeResult=await spawnBounded('git.exe',['-C',repoRoot,'rev-parse','HEAD:apps/android-worker'],{cwd:repoRoot,timeoutSec:15});
-  if(headResult.timedOut||treeResult.timedOut||Number(headResult.exitCode)!==0||Number(treeResult.exitCode)!==0){
-    throw new Error('TIGERIQ_ANDROID_V021_RUNTIME_PROVENANCE_UNAVAILABLE');
-  }
-  const currentHead=String(headResult.stdout||'').trim().toLowerCase();
-  const currentAndroidTree=String(treeResult.stdout||'').trim().toLowerCase();
-  if(currentHead!==installedSha)throw new Error('TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_MISMATCH');
-  if(currentAndroidTree!==spec.sourceArtifactAndroidTreeSha)throw new Error('TIGERIQ_ANDROID_V021_ANDROID_TREE_DRIFT');
-  if(sourceSha!==installedSha){
-    const ancestor=await spawnBounded('git.exe',['-C',repoRoot,'merge-base','--is-ancestor',sourceSha,installedSha],{cwd:repoRoot,timeoutSec:15});
-    if(ancestor.timedOut||Number(ancestor.exitCode)!==0)throw new Error('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
-  }
+  const ancestry=await spawnBounded(
+    'git.exe',
+    ['-C',spec.repoRoot,'merge-base','--is-ancestor',sourceSha,installedSha],
+    {cwd:spec.repoRoot,timeoutSec:15},
+  );
+  if(ancestry.timedOut||Number(ancestry.exitCode)!==0)throw new Error('TIGERIQ_ANDROID_V021_SOURCE_ANCESTRY_MISMATCH');
+
   if(String(receipt?.schema||'')!=='tigeriq.android-worker.release.v1'
       || String(receipt?.version||'')!==spec.versionName
       || String(receipt?.applicationId||'')!=='ai.tigeriq.worker'
@@ -1232,10 +1240,11 @@ async function verifyAndroidWorkerV021SignedRelease() {
     throw new Error('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
   }
   const apkSha256=createHash('sha256').update(apk).digest('hex').toUpperCase();
-  if(apkSha256!==String(receipt?.apkSha256||'').replaceAll(':','').toUpperCase()){
+  if(apkSha256!==spec.apkSha256
+      || apkSha256!==String(receipt?.apkSha256||'').replaceAll(':','').toUpperCase()){
     throw new Error('TIGERIQ_ANDROID_V021_APK_SHA256_MISMATCH');
   }
-  return {spec,apk,apkSha256,installedSha,sourceSha};
+  return {spec,apk,apkSha256,installedSha,sourceSha,currentAndroidTree};
 }
 
 async function exportAndroidWorkerV021SignedApkChunk(input = {}) {

@@ -519,24 +519,28 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("exportAndroidWorkerV020SignedApkChunk(input?.path");
   });
 
-  it('keeps v0.21 signed APK export fixed to the canonical release receipt and source SHA', async () => {
+  it('keeps v0.21 signed APK export pinned while allowing later tooling-only runtime commits', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_export_v021_signed_apk_chunk'");
     expect(source).toContain("versionName: '0.21.0-packageinstaller-stream-fix'");
-    expect(source).toContain('tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk');
-    expect(source).toContain('release-manifest.json');
     expect(source).toContain("sourceArtifactSha: '1f80bc5c86a855b7a88f13e6d6e89d8035437f4c'");
     expect(source).toContain("sourceArtifactAndroidTreeSha: '34334f3707240974ca78bad14f85935a5205f267'");
-    expect(source).toContain("'merge-base','--is-ancestor',sourceSha,installedSha");
-    expect(source).toContain("'HEAD:apps/android-worker'");
-    expect(source).toContain('TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_MISMATCH');
-    expect(source).toContain('TIGERIQ_ANDROID_V021_ANDROID_TREE_DRIFT');
-    expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
+    expect(source).toContain("apkSha256: '1E27C82C9A8AC4ED09ADA80D3CEFBEF93303F90B0FE8F5B84337D5838CADDEF8'");
+    expect(source).toContain("['rev-parse','HEAD']");
+    expect(source).toContain("['rev-parse','HEAD:apps/android-worker']");
+    expect(source).toContain("['-C',spec.repoRoot,'merge-base','--is-ancestor',sourceSha,installedSha]");
+    expect(source).toContain('runtimeHead!==installedSha');
+    expect(source).toContain('currentAndroidTree!==spec.sourceArtifactAndroidTreeSha');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_SHA_MISMATCH');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_ANDROID_SOURCE_DRIFT');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_ARTIFACT_MISMATCH');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_ANCESTRY_MISMATCH');
     expect(source).toContain('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
     expect(source).toContain("JSON.parse(receiptRaw.replace(/^\\uFEFF/,''))");
     expect(source).toContain("JSON.parse(stateRaw.replace(/^\\uFEFF/,''))");
     expect(source).toContain('TIGERIQ_ANDROID_V021_APK_SHA256_MISMATCH');
     expect(source).toContain('chunkIndex>31');
+    expect(source).not.toContain('sourceSha!==installedSha');
     expect(source).not.toContain('exportAndroidWorkerV021SignedApkChunk(input?.path');
   });
 
