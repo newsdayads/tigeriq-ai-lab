@@ -124,8 +124,30 @@ export function annotatePortfolioRows(rows = [], issues = []) {
       androidVersionMinor: workPackage.androidMinor ?? androidMinorVersion(row, issue),
       portfolioHidden: false,
       portfolioHiddenReason: null,
+      _portfolioProjectExplicit: Boolean(bodyValue(issue?.body || '', 'PROJECT_ID') || bodyValue(issue?.body || '', 'PROJECT_NAME')),
+      _portfolioPackageExplicit: Boolean(bodyValue(issue?.body || '', 'WORK_PACKAGE_ID') || bodyValue(issue?.body || '', 'WORK_PACKAGE_NAME')),
     };
   });
+
+  const stagedByNumber = new Map(staged.map((row) => [Number(row?.number), row]));
+  for (let pass = 0; pass < 4; pass += 1) {
+    for (const row of staged) {
+      const parent = stagedByNumber.get(Number(row?.parentNumber));
+      if (!parent) continue;
+      const reviewEvidence = row?.reviewOnly === true || /\[REVIEW\]/i.test(String(row?.title || ''));
+      if (!reviewEvidence) continue;
+      if (!row._portfolioProjectExplicit) {
+        row.projectId = parent.projectId;
+        row.projectName = parent.projectName;
+        row.projectOrder = parent.projectOrder;
+      }
+      if (!row._portfolioPackageExplicit) {
+        row.workPackageId = parent.workPackageId;
+        row.workPackageName = parent.workPackageName;
+        row.workPackageOrder = parent.workPackageOrder;
+      }
+    }
+  }
 
   const mobileVersions = staged
     .filter((row) => row.projectId === 'tigeriq-mobile-worker' && Number.isFinite(Number(row.androidVersionMinor)))
@@ -133,14 +155,15 @@ export function annotatePortfolioRows(rows = [], issues = []) {
   const currentMobileMinor = mobileVersions.length ? Math.max(...mobileVersions) : null;
 
   return staged.map((row) => {
-    if (row.projectId !== 'tigeriq-mobile-worker' || currentMobileMinor == null) return row;
-    const minor = Number(row.androidVersionMinor);
-    if (!Number.isFinite(minor) || minor >= currentMobileMinor) return row;
-    return {
-      ...row,
-      portfolioHidden: true,
-      portfolioHiddenReason: 'LEGACY_ANDROID_VERSION',
-    };
+    let next = row;
+    if (row.projectId === 'tigeriq-mobile-worker' && currentMobileMinor != null) {
+      const minor = Number(row.androidVersionMinor);
+      if (Number.isFinite(minor) && minor < currentMobileMinor) {
+        next = { ...row, portfolioHidden: true, portfolioHiddenReason: 'LEGACY_ANDROID_VERSION' };
+      }
+    }
+    const { _portfolioProjectExplicit, _portfolioPackageExplicit, ...clean } = next;
+    return clean;
   });
 }
 
