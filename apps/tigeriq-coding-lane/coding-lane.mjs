@@ -285,8 +285,11 @@ export function validateObjectiveRoutingInput({targetEmployee=null,currentPr=nul
 }
 
 export function selectCodingWorker(available=[],targetEmployee='',fallback=()=>null){
+  const pool=Array.isArray(available)?available:[];
   const target=String(targetEmployee||'').trim().toUpperCase();
-  if(target)return (available||[]).find(resource=>String(resource?.id||'').toUpperCase()===target)||null;
+  if(target)return pool.find(resource=>String(resource?.id||'').toUpperCase()===target)||null;
+  const nv09=pool.find(resource=>String(resource?.id||'').toUpperCase()==='NV09');
+  if(nv09)return nv09;
   return typeof fallback==='function'?fallback():null;
 }
 

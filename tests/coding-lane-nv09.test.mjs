@@ -4,6 +4,7 @@ import {
   configuredCodingResourceIds,
   invokeOllamaChat,
   normalizeLocalOllamaBaseUrl,
+  selectCodingWorker,
 } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 test('NV09 is registered as a Coding Lane resource without cloud credentials',()=>{
@@ -41,4 +42,28 @@ test('NV09 Ollama transport is bounded and sends no credential header',async()=>
   assert.strictEqual(body.max_tokens,64);
   assert.strictEqual(body.stream,false);
   assert.deepStrictEqual(body.messages,[{role:'user',content:'Return exactly NV09_CORE_DIRECT_OK'}]);
+});
+
+
+test('NV09 is preferred for untargeted Coding Lane implementation when healthy and available',()=>{
+  const nv11={id:'NV11'},nv09={id:'NV09'},nv12={id:'NV12'};
+  let fallbackCalls=0;
+  const chosen=selectCodingWorker([nv11,nv09,nv12],'',()=>{fallbackCalls++;return nv11});
+  assert.strictEqual(chosen,nv09);
+  assert.strictEqual(fallbackCalls,0);
+});
+
+test('explicit coding target takes precedence over NV09 preference',()=>{
+  const nv09={id:'NV09'},nv12={id:'NV12'};
+  assert.strictEqual(selectCodingWorker([nv09,nv12],'NV12',()=>nv09),nv12);
+});
+
+test('untargeted coding falls back when NV09 is unavailable',()=>{
+  const nv11={id:'NV11'},nv12={id:'NV12'};
+  assert.strictEqual(selectCodingWorker([nv11,nv12],'',()=>nv12),nv12);
+});
+
+test('explicit NV09 target fails closed when NV09 is unavailable',()=>{
+  const nv11={id:'NV11'};
+  assert.strictEqual(selectCodingWorker([nv11],'NV09',()=>nv11),null);
 });

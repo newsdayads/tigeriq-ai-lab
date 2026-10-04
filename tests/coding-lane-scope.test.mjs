@@ -78,7 +78,7 @@ test('coding lane scope validation tests',async(t)=>{
     const resources=[{id:'NV09'},{id:'NV12'}];
     assert.strictEqual(selectCodingWorker(resources,'NV09',()=>resources[1]).id,'NV09');
     assert.strictEqual(selectCodingWorker([{id:'NV12'}],'NV09',()=>resources[1]),null);
-    assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV12');
+    assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV09');
   });
 
   await t.test('validates objective routing input as an exact target/PR-head pair',()=>{
