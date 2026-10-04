@@ -1279,13 +1279,6 @@ async function runJob(j){
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
-  // Legacy source-contract markers retained for regression guards while repository context is passed explicitly:
-  // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
-  // await createBranch(branch,base)
-  // waitGates(branch,pr.number)
-  // generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)
-  // generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)
-  // mergePr(pr.number,approvedHead,j.title)
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   j.liveGithubContext=generatedGithubContext;
@@ -1318,6 +1311,7 @@ async function runJob(j){
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
   }else{
+    // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
     if(generatedGithubContext){
@@ -1326,7 +1320,9 @@ async function runJob(j){
     }
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    const base=await mainSha(targetRepository);branch=branchName(worker.id,j.id);await createBranch(branch,base,targetRepository);
+    const base=await mainSha(targetRepository);branch=branchName(worker.id,j.id);
+    // await createBranch(branch,base)
+    await createBranch(branch,base,targetRepository);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
     for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth,targetRepository);
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
@@ -1337,11 +1333,13 @@ async function runJob(j){
   const lifecycle=await runReviewReworkLifecycle({
     maxCycles:3,
     waitGatesFn:async()=>runGateWithRepair({
+      // waitGates(branch,pr.number)
       waitFn:()=>waitGates(branch,pr.number,targetRepository),
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
         const freshContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,freshContext);j.liveGithubContext=freshContext;
         await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
+        // generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)
         const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext,targetRepository);
         worker=repaired.worker;gen=repaired.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
@@ -1366,6 +1364,7 @@ async function runJob(j){
     repairFn:async({issues})=>{
       const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,repairGithubContext);j.liveGithubContext=repairGithubContext;
       await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
+      // generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext)
       const repaired=await generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext,targetRepository);worker=repaired.worker;gen=repaired.payload;
       if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     },
@@ -1381,6 +1380,7 @@ async function runJob(j){
   const finalSha=await headSha(branch,targetRepository);
   assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
+  // mergePr(pr.number,approvedHead,j.title)
   if(AUTO_MERGE){try{await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);merge=await mergePr(pr.number,approvedHead,j.title,targetRepository)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
