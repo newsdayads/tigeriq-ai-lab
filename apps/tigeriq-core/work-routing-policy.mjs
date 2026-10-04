@@ -59,6 +59,13 @@ export function classifyWorkOrder(body){
     &&exactBodyFlag(text,'VY_DIRECT_REVIEW_DISPATCH','true')
     &&exactBodyFlag(text,'REVIEW_ONLY','true')
     &&exactBodyFlag(text,'NO_CODE_CHANGE','true')
+    &&exactBodyFlag(text,'NO_PC01_SHELL','true')
+    &&exactBodyFlag(text,'NO_DIRECT_MAIN','true')
+    &&exactBodyFlag(text,'NO_PRODUCTION_RELEASE','true')
+    &&exactBodyFlag(text,'NO_PAID_COST','true')
+    &&exactBodyFlag(text,'NO_CREDENTIAL_CHANGE','true')
+    &&exactBodyFlag(text,'NO_SECURITY_BOUNDARY_CHANGE','true')
+    &&exactBodyFlag(text,'NO_DESTRUCTIVE','true')
     &&['NV03','NV04'].includes(ownerP0Reviewer);
   if(priority.sourcePriority==='P0'){
     if(ownerP0ReviewDispatch){
