@@ -124,6 +124,33 @@ describe('Core public evidence for direct PC receipts', () => {
     });
   });
 
+  it('exposes bounded mobile update request telemetry when explicitly requested',()=>{
+    const data={
+      status:'MOBILE_UPDATE_REQUEST_STATUS',
+      employeeId:'NV101',
+      version:'0.21.0-packageinstaller-stream-fix',
+      online:true,
+      lastSeenAt:'2026-10-04T15:00:00.000Z',
+      updateManifestSeenAt:'2026-10-04T15:00:10.000Z',
+      updateManifestVersion:22,
+      updateApkRequestedAt:'2026-10-04T15:00:20.000Z',
+      updateApkVersion:22,
+      token:'must-not-publish',
+    };
+    const requested=[
+      'status','employeeId','version','online','lastSeenAt',
+      'updateManifestSeenAt','updateManifestVersion','updateApkRequestedAt','updateApkVersion',
+    ];
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'android_worker_update_request_status',target:'pc01-local',data,
+    }}]}};
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS='+requested.join(','))).toEqual(requested);
+    expect(extractPublicEvidence(jobResult,requested)).toEqual(Object.fromEntries(
+      requested.map((key)=>[key,data[key]]),
+    ));
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('must-not-publish');
+  });
+
   it('exports a bounded v0.20 APK base64 chunk without raising generic evidence limits',()=>{
     const chunkBase64='A'.repeat(16000);
     const data={
