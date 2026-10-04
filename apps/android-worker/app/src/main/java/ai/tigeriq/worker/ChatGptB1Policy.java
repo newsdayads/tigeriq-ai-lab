@@ -7,6 +7,7 @@ public final class ChatGptB1Policy {
     public static final long INTER_CYCLE_COOLDOWN_MS = 8000L;
     public static final long PROJECT_NAV_STEP_MS = 2500L;
     public static final long PROJECT_NAV_RETRY_MS = 3000L;
+    public static final long PROJECT_BIND_TIMEOUT_MS = 60_000L;
 
     private ChatGptB1Policy() {}
 
@@ -24,6 +25,13 @@ public final class ChatGptB1Policy {
             && chatGptPackage
             && clickedEvent
             && exactProjectLabelSeen;
+    }
+
+    public static boolean waitingProjectTimedOut(String state, long startedAtMs, long nowMs) {
+        return "WAITING_PROJECT".equals(state)
+            && startedAtMs > 0L
+            && nowMs >= startedAtMs
+            && nowMs - startedAtMs >= PROJECT_BIND_TIMEOUT_MS;
     }
 
     public static long nextActionAfterFill(long nowMs) {
