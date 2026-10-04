@@ -129,8 +129,9 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
       : {};
     const sendCount=Number(output.sendCount);
     const duplicateSendCount=Number(output.duplicateSendCount);
-    const recoveryCount=Number(output.recoveryCount);
-    const recoveryCountValid=Number.isInteger(recoveryCount)&&recoveryCount>=0;
+    const recoveryCountRaw=output.recoveryCount;
+    const recoveryCountValid=Number.isInteger(recoveryCountRaw)&&recoveryCountRaw>=0;
+    const recoveryCount=recoveryCountValid?recoveryCountRaw:null;
     const valid=status==='completed'
       && Number.isFinite(sendCount)&&sendCount===1
       && Number.isFinite(duplicateSendCount)&&duplicateSendCount===0
@@ -140,7 +141,7 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
       index:spec.index,status,attempts:Number(row?.attempts||0),
       sendCount:Number.isFinite(sendCount)?sendCount:null,
       duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,
-      recoveryCount:recoveryCountValid?recoveryCount:null,
+      recoveryCount,
       valid
     };
   });
