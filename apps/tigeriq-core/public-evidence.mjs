@@ -57,9 +57,6 @@ const GATE_C_V021_PUBLIC_EVIDENCE_KEYS=new Set([
   'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass',
   'sendCount','duplicateSendCount','recoveryCount','created','existing','count',
 ]);
-const GATE_C_V021_STRONG_KEYS=new Set([
-  'expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass','sendCount','duplicateSendCount','recoveryCount','created','existing','count',
-]);
 const GATE_C_V021_ACTIONS=new Set([
   'android_worker_gate_c_v021_status',
   'android_worker_gate_c_v021_enqueue_10',
@@ -202,7 +199,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
-  const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls)&&requested.some(key=>GATE_C_V021_STRONG_KEYS.has(key));
+  const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls);
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
