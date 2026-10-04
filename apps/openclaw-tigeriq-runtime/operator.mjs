@@ -862,7 +862,7 @@ async function signAndroidWorkerV021CiArtifact() {
 
 async function loadAndroidWorkerCurrentCiArtifactSpec() {
   const current = await currentAndroidWorkerVersionSpec();
-  const metadataPath = win.join(current.repoRoot, 'apps', 'android-worker', 'current-ci-artifact.json');
+  const metadataPath = win.join(current.repoRoot, 'config', 'android-worker-current-ci-artifact.json');
   const raw = await fs.readFile(await realPathInsideRoots(metadataPath), 'utf8');
   let spec;
   try { spec = JSON.parse(String(raw).replace(/^\uFEFF/, '')); } catch { throw new Error('TIGERIQ_ANDROID_CURRENT_CI_METADATA_INVALID'); }
