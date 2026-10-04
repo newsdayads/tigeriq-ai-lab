@@ -305,6 +305,9 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     const taskName=String(parsed.taskName||'').trim();
     if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
     normalized={action,taskName};
+  }else if(action==='android_worker_sign_current_ci_artifact'){
+    if(Object.keys(parsed).some((key)=>key!=='action'))return {present:true,valid:false,action:null,reason:'SIGNER_INPUT_NOT_ALLOWED'};
+    normalized={action};
   }else if(action==='tcp_probe'){
     normalized={action,host:String(parsed.host||'127.0.0.1'),port:Number(parsed.port)};
   }else if(action==='paperclip_openai_device_auth_start'){
