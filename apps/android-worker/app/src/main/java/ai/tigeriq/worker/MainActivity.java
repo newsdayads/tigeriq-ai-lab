@@ -30,7 +30,7 @@ import org.json.JSONObject;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** TigerIQ AI Mobile Worker pilot console. */
+/** TigerIQ AI Mobile Worker live console. */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1001;
     private static final String CORE_URL = "http://100.97.23.87:8795";
@@ -205,35 +205,19 @@ public final class MainActivity extends Activity {
         aiCard.addView(aiProbeState, marginParams(0, dp(12), 0, 0));
         root.addView(aiCard, marginParams(0, dp(6), 0, dp(16)));
 
-        root.addView(sectionTitle("B1 · ChatGPT Adapter"));
-        LinearLayout b1Card = card();
-        TextView b1Help = text(
-            "DEV pilot: TigerIQ tự mở ChatGPT, tự vào Project TigerIQ AI Lab bằng Accessibility semantic, rồi mới điền/gửi. App chờ 5 giây sau khi điền, nghỉ 8 giây giữa các chu kỳ. Không dùng tọa độ, không nhận backlog, không ghi GitHub.",
+        root.addView(sectionTitle("Live Worker"));
+        LinearLayout liveCard = card();
+        TextView liveHelp = text(
+            "TigerIQ tự nhận việc thật từ Core, mở AI đã chọn, thực thi bằng Accessibility semantic, rồi trả kết quả về Core. Không cần bấm test.",
             12,
             false
         );
-        b1Help.setTextColor(MUTED);
-        b1Card.addView(b1Help);
-
-        LinearLayout b1Actions = horizontal();
-        Button runOne = primaryButton("Chạy 1 test");
-        runOne.setOnClickListener(v -> startB1Run(1));
-        b1Actions.addView(runOne, weightedParams(1f, 0, dp(10), dp(4), 0));
-        Button runTen = secondaryButton("Chạy 10 test");
-        runTen.setOnClickListener(v -> startB1Run(10));
-        b1Actions.addView(runTen, weightedParams(1f, dp(4), dp(10), 0, 0));
-        b1Card.addView(b1Actions);
-
-        Button cancelB1 = secondaryButton("Hủy B1 đang chạy");
-        cancelB1.setOnClickListener(v -> {
-            ChatGptB1RunStore.cancel(this);
-            refreshStatus();
-        });
-        b1Card.addView(cancelB1, marginParams(0, dp(8), 0, 0));
+        liveHelp.setTextColor(MUTED);
+        liveCard.addView(liveHelp);
 
         b1StateView = text("", 13, false);
-        b1Card.addView(b1StateView, marginParams(0, dp(12), 0, 0));
-        root.addView(b1Card, marginParams(0, dp(6), 0, dp(16)));
+        liveCard.addView(b1StateView, marginParams(0, dp(8), 0, 0));
+        root.addView(liveCard, marginParams(0, dp(6), 0, dp(16)));
 
         root.addView(sectionTitle("Hệ thống"));
         LinearLayout systemCard = card();
@@ -247,7 +231,7 @@ public final class MainActivity extends Activity {
         root.addView(systemCard, marginParams(0, dp(6), 0, dp(12)));
 
         TextView footer = text(
-            WorkerVersion.NAME + " · B1 DEV · auto-update · auto-resume · pacing 5s/8s · chưa nhận backlog/GitHub write",
+            WorkerVersion.NAME + " · LIVE WORKER · auto-update · auto-resume · Core task lease",
             11,
             false
         );
@@ -557,36 +541,35 @@ public final class MainActivity extends Activity {
         boolean ready = missing == null;
         readinessView.setText(
             ready
-                ? "SẴN SÀNG KIỂM TRA AI\n" + profile.employeeId + " · " + profile.provider + " · Core trực tuyến"
+                ? "SẴN SÀNG NHẬN VIỆC\n" + profile.employeeId + " · " + profile.provider + " · Core trực tuyến"
                 : "CHƯA SẴN SÀNG\n" + missing
         );
         readinessView.setTextColor(ready ? GREEN : AMBER);
         readinessView.setBackground(panelBox(ready ? Color.rgb(8, 56, 35) : Color.rgb(55, 45, 18), ready ? GREEN : AMBER, 14));
 
-        ChatGptB1RunStore.Snapshot b1 = ChatGptB1RunStore.read(this);
-        String b1Title = b1StateLabel(b1.state);
-        String b1Progress = b1.targetCycles > 0
-            ? b1.completedCycles + "/" + b1.targetCycles
-            : "chưa chạy";
-        String projectDiagMode = a11y.getString(AccessibilityBridgeService.KEY_PROJECT_GATE_MODE, "CHƯA CÓ");
-        String projectDiag = a11y.getString(AccessibilityBridgeService.KEY_PROJECT_GATE_DIAG, "");
-        long projectDiagAt = a11y.getLong(AccessibilityBridgeService.KEY_PROJECT_GATE_AT, 0L);
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        MobileTaskStore.Snapshot task = MobileTaskStore.read(this);
+        boolean resultPending = run.terminal() && run.evidenceSeq > run.reportedSeq;
+        String liveState;
+        if (task.present() && run.active()) liveState = "ĐANG LÀM";
+        else if (task.present()) liveState = "ĐÃ NHẬN VIỆC";
+        else if (resultPending) liveState = "ĐANG ĐỒNG BỘ KẾT QUẢ";
+        else if (run.active()) liveState = "ĐANG DỌN PHIÊN DEV CŨ";
+        else liveState = ready ? "CHỜ VIỆC" : "CHƯA SẴN SÀNG";
+
         b1StateView.setText(
-            "Trạng thái: " + b1Title
-                + "\nTiến độ: " + b1Progress
-                + " · Đã gửi " + b1.sendCount
-                + " · Chặn trùng " + b1.duplicateSendCount
-                + "\nProject: " + (b1.projectBound ? "ĐÃ XÁC NHẬN · " + ChatGptB1RunStore.REQUIRED_PROJECT : "CHƯA XÁC NHẬN")
-                + "\nDetector: " + projectDiagMode + (projectDiagAt > 0 ? " · " + age(projectDiagAt) : "")
-                + (projectDiag.isEmpty() ? "" : "\nChi tiết detector: " + compact(projectDiag, 180))
-                + "\nRecovery: " + b1.recoveryCount
-                + " · Busy seen: " + (b1.busySeen ? "CÓ" : "CHƯA")
-                + (b1.lastError == null || b1.lastError.isEmpty() ? "" : "\nLỗi: " + b1.lastError)
+            "Trạng thái: " + liveState
+                + "\nTask: " + (task.present() ? compact(task.taskId, 72) : "chưa có")
+                + "\nAI: " + profile.provider
+                + " · Đã gửi " + run.sendCount
+                + " · Chặn trùng " + run.duplicateSendCount
+                + (run.resultText == null || run.resultText.isEmpty() ? "" : "\nKết quả gần nhất: " + compact(run.resultText, 180))
+                + (run.lastError == null || run.lastError.isEmpty() ? "" : "\nLỗi: " + compact(run.lastError, 120))
         );
         b1StateView.setTextColor(
-            "COMPLETE".equals(b1.state) ? GREEN
-                : ("ERROR".equals(b1.state) ? RED
-                : (b1.active() ? AMBER : MUTED))
+            "ĐANG LÀM".equals(liveState) ? AMBER
+                : ("CHỜ VIỆC".equals(liveState) ? GREEN
+                : ("CHƯA SẴN SÀNG".equals(liveState) ? MUTED : CYAN))
         );
 
         technicalState.setText(
@@ -628,7 +611,7 @@ public final class MainActivity extends Activity {
                 else if ("UPDATE_IN_PROGRESS".equals(result.state)) message = "Một lượt cập nhật khác đang chạy";
                 else if ("NEEDS_INSTALL_PERMISSION".equals(result.state)) message = "Cho phép TigerIQ cài bản cập nhật một lần, sau đó app sẽ tự tiếp tục";
                 else if ("DEFERRED_CORE_TASK".equals(result.state)) message = "Đang xử lý việc Core, cập nhật sẽ chờ";
-                else if ("DEFERRED_B1_ACTIVE".equals(result.state)) message = "Đang chạy B1, cập nhật sẽ chờ";
+                else if ("DEFERRED_B1_ACTIVE".equals(result.state)) message = "Đang có phiên AI, cập nhật sẽ chờ";
                 else if ("DEFERRED_EVIDENCE_PENDING".equals(result.state)) message = "Đang gửi bằng chứng, cập nhật sẽ chờ";
                 else message = "Đã tải và gửi bản cập nhật cho Android";
             } catch (Exception error) {
@@ -721,8 +704,8 @@ public final class MainActivity extends Activity {
 
     private String[] capabilities(String provider) {
         return "Gemini".equals(provider)
-            ? new String[]{"android-ui", "research", "gemini-ui"}
-            : new String[]{"android-ui", "research", "chatgpt-ui"};
+            ? new String[]{"android-ui", "research", "gemini-ui", "mobile-live"}
+            : new String[]{"android-ui", "research", "chatgpt-ui", "mobile-live"};
     }
 
     private String selectedProvider() {
