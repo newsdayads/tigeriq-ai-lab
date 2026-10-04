@@ -32,6 +32,7 @@ public final class ForegroundWorkerService extends Service {
     public void onCreate() {
         super.onCreate();
         WorkerIdentity.ensureDeviceKey();
+        releaseLegacyManualRun();
         ensureChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         executor = Executors.newSingleThreadScheduledExecutor();
@@ -54,6 +55,13 @@ public final class ForegroundWorkerService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void releaseLegacyManualRun() {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (run.active() && (run.taskId == null || run.taskId.trim().isEmpty())) {
+            ChatGptB1RunStore.cancel(this);
+        }
     }
 
     private void heartbeat() {
@@ -125,6 +133,7 @@ public final class ForegroundWorkerService extends Service {
                         output.put("duplicateSendCount", run.duplicateSendCount);
                         output.put("recoveryCount", run.recoveryCount);
                         output.put("lastError", run.lastError);
+                        output.put("responseText", run.resultText);
                         result.put("output", output);
                         try {
                             client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
