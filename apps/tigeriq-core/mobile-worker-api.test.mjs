@@ -146,6 +146,12 @@ describe('mobile worker api helpers',()=>{
     });
     rows[4].result.output.duplicateSendCount=1;
     expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,sendCount:10,duplicateSendCount:1,recoveryCount:1,pass:false});
+    rows[4].result.output.duplicateSendCount=0;
+    rows[4].result.output.sendCount=2;
+    const duplicateSendAttempt=gateCV021Aggregate(rows,'NV101');
+    expect(duplicateSendAttempt).toMatchObject({completed:10,invalid:1,sendCount:11,duplicateSendCount:0,recoveryCount:1,pass:false});
+    expect(duplicateSendAttempt.jobs[4]).toMatchObject({sendCount:2,duplicateSendCount:0,valid:false});
+    rows[4].result.output.sendCount=1;
 
     const pendingRows=specs.map((spec,index)=>({
       idempotency_key:spec.idempotencyKey,
