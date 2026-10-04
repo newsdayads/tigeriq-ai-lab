@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const canonicalDeployScript = 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+const policyGuardScript = 'scripts/verify-vercel-deployment-policy.mjs';
 
 if (config?.git?.deploymentEnabled !== false) {
   throw new Error(
@@ -57,6 +58,7 @@ const scriptsDir = resolve(root, 'scripts');
 for (const file of walk(scriptsDir)) {
   if (!/\.(?:mjs|js|cjs|ts|ps1|sh)$/i.test(file)) continue;
   const relative = file.slice(root.length + 1).replaceAll('\\', '/');
+  if (relative === policyGuardScript) continue;
   const text = readFileSync(file, 'utf8');
   if (deployCommand.test(text) && relative !== canonicalDeployScript) {
     throw new Error(
