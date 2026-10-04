@@ -120,6 +120,8 @@ export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass)
   return handoffClass===current;
 }
 
+export function apiDoctorIsFreshRecurrence({failureTimestampMs=0, terminalCutoverMs=0}={}){return Number(failureTimestampMs)>0 && Number(terminalCutoverMs)>0 && Number(failureTimestampMs)>Number(terminalCutoverMs);}
+
 export function apiDoctorRepairLifecycleRelevant({
   hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',
 }={}){
