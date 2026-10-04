@@ -21,7 +21,11 @@ describe('Gate C bounded public evidence',()=>{
     const jobResult={
       evidence:{
         bridgeCalls:[{
+          tool:'tigeriq_pc',
           result:{
+            ok:true,
+            action:'android_worker_gate_c_v021_status',
+            target:'pc01-local',
             data:{
               status:'GATE_C_V021_STATUS',
               version:'0.21.0-packageinstaller-stream-fix',
@@ -43,7 +47,8 @@ describe('Gate C bounded public evidence',()=>{
               count:10,
               raw:'must-not-leak',
               password:'must-not-leak'
-            }
+            },
+            evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}
           }
         }]
       }
@@ -110,8 +115,8 @@ describe('Gate C bounded public evidence',()=>{
           }
         },
         bridgeCalls:[
-          {result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:{...trustedData,pass:true},evidence:{transport:'agent-assertion',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
-          {result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:trustedData,evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
+          {tool:'other_bridge',result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:{...trustedData,pass:true},evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
+          {tool:'tigeriq_pc',result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:trustedData,evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}}},
         ]
       }
     };
@@ -124,6 +129,7 @@ describe('Gate C bounded public evidence',()=>{
       evidence:{
         agentResult:{evidence:{pass:true,recoveryCount:7}},
         bridgeCalls:[{
+          tool:'tigeriq_pc',
           result:{
             ok:true,
             action:'android_worker_gate_c_v021_status',
@@ -137,5 +143,25 @@ describe('Gate C bounded public evidence',()=>{
     const evidence=extractPublicEvidence(jobResult,requested);
     expect(evidence).toEqual({pass:false});
     expect(evidence).not.toHaveProperty('recoveryCount');
+  });
+
+  it('fails closed for Gate C public evidence when no trusted tigeriq_pc receipt exists',()=>{
+    const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=status,version,pass,taskCount,recoveryCount');
+    const jobResult={
+      evidence:{
+        agentResult:{evidence:{status:'GATE_C_V021_STATUS',version:'0.21.0-packageinstaller-stream-fix',pass:true,taskCount:10,recoveryCount:5}},
+        bridgeCalls:[{
+          tool:'other_bridge',
+          result:{
+            ok:true,
+            action:'android_worker_gate_c_v021_status',
+            target:'pc01-local',
+            data:{status:'GATE_C_V021_STATUS',version:'0.21.0-packageinstaller-stream-fix',pass:true,taskCount:10,recoveryCount:5},
+            evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}
+          }
+        }]
+      }
+    };
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({});
   });
 });
