@@ -27,12 +27,15 @@ export function normalizeGitRemote(remote) {
   return value.replace(/\.git\/?$/, '').replace(/\/$/, '');
 }
 
-export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, remote, config, issue, uiHtml, releaseClass, ownerAuthorized, releaseReason, changedFiles }) {
+export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, mainRefSha, remote, config, issue, uiHtml, releaseClass, ownerAuthorized, releaseReason, changedFiles }) {
   if (!projectLink || projectLink.projectId !== EXPECTED_PROJECT_ID || projectLink.orgId !== EXPECTED_TEAM_ID) {
     throw new Error('VERCEL_PROJECT_SCOPE_MISMATCH');
   }
   const exactSha = validateExactSha(expectedSha, actualSha);
-  if (clean(branch) !== EXPECTED_BRANCH) throw new Error('VERCEL_GIT_BRANCH_MISMATCH');
+  const currentBranch = clean(branch);
+  const normalizedMainRefSha = clean(mainRefSha).toLowerCase();
+  const detachedAtExactMain = currentBranch === '' && normalizedMainRefSha === exactSha;
+  if (currentBranch !== EXPECTED_BRANCH && !detachedAtExactMain) throw new Error('VERCEL_GIT_BRANCH_MISMATCH');
   if (normalizeGitRemote(remote) !== 'https://github.com/' + EXPECTED_REPO) throw new Error('VERCEL_GIT_REPO_MISMATCH');
   if (config?.git?.deploymentEnabled !== false) throw new Error('VERCEL_AUTO_DEPLOY_POLICY_MISMATCH');
   if (clean(releaseClass).toUpperCase() !== 'WEB_LIVE') throw new Error('VERCEL_RELEASE_CLASS_INVALID');
@@ -53,6 +56,7 @@ export function validateReleaseContract({ projectLink, expectedSha, actualSha, b
     teamId: EXPECTED_TEAM_ID,
     repo: EXPECTED_REPO,
     branch: EXPECTED_BRANCH,
+    sourceMode: currentBranch === EXPECTED_BRANCH ? 'main-branch' : 'detached-exact-main',
     target: 'production',
     exactSha,
     issue: clean(issue),
@@ -124,6 +128,7 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, dep
   const uiHtml = readFileSync(resolve(root, 'command-center.html'), 'utf8');
   const actualSha = git(root, ['rev-parse', 'HEAD']);
   const branch = git(root, ['branch', '--show-current']);
+  const mainRefSha = git(root, ['rev-parse', 'refs/remotes/origin/main']);
   const remote = git(root, ['remote', 'get-url', 'origin']);
   const dirty = git(root, ['status', '--porcelain']);
   if (dirty) throw new Error('GIT_WORKTREE_NOT_CLEAN');
@@ -143,6 +148,7 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, dep
       expectedSha,
       actualSha,
       branch,
+      mainRefSha,
       remote,
       config,
       issue,
