@@ -106,7 +106,7 @@ $out=[ordered]@{
   status=[string]$receipt.status;version=[string]$receipt.version;versionCode=[int]$receipt.versionCode
   apkSha256=[string]$receipt.apkSha256;unsignedApkSha256=[string]$receipt.unsignedApkSha256
   certificateSha256=[string]$receipt.certificateSha256;sourceSha=[string]$receipt.sourceSha
-  sourceArtifactSha=[string]$receipt.sourceArtifactSha;sourceArtifactAndroidTreeSha=[string]$receipt.sourceArtifactAndroidTreeSha;sourceArtifactAppTreeSha=[string]$receipt.sourceArtifactAppTreeSha
+  sourceArtifactSha=[string]$receipt.sourceArtifactSha;sourceArtifactAndroidTreeSha=[string]$receipt.sourceArtifactAndroidTreeSha
   sourceWorkflowRunId=[string]$receipt.sourceWorkflowRunId;sourceArtifactId=[string]$receipt.sourceArtifactId
   sourceArtifactName=[string]$receipt.sourceArtifactName;signingIdentity=[string]$receipt.signingIdentity
   passwordTransport=[string]$receipt.passwordTransport;apksignerMode=[string]$receipt.apksignerMode
