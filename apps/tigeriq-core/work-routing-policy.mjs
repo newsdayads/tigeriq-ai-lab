@@ -66,6 +66,9 @@ export function classifyWorkOrder(body){
     }
     return {...priority,capability:cap,surface,assignedExecutor:assigned,preferredEmployee:preferred,route:'CORE_REASONING',workerId:assigned,autonomous:true};
   }
+  if(surface==='MOBILE'||cap==='mobile'){
+    return {...priority,capability:'mobile',surface:'MOBILE',assignedExecutor:'',preferredEmployee:preferred,route:'MOBILE',workerId:null,autonomous:true};
+  }
   if(cap==='pc_operator')return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'OPENCLAW',workerId:'NV06',autonomous:true};
   if(surface==='CODING'||cap==='coding'||(exactBodyFlag(text,'AUTONOMOUS_CODE','true')&&!exactBodyFlag(text,'NO_CODE_CHANGE','true'))){
     return {...priority,capability:'coding',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CODING',workerId:null,autonomous:true};
