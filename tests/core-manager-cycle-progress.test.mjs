@@ -48,6 +48,8 @@ describe('Core manager progress-aware cycle guard',()=>{
   it('production manager loop uses terminal progress and preserves phase reset',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("select max(completed_at) as latest_terminal_at");
+    expect(source).toContain("status='done'");
+    expect(source).not.toContain("status in ('done','failed')");
     expect(source).toContain('managerProgressSinceLastCycle');
     expect(source).toContain('MANAGER_PROGRESS_CYCLE_RESET');
     expect(source).toContain('manager_cycles=0');
