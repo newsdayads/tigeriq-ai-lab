@@ -596,6 +596,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("versionName\\s*=\\s*\"([^\"]+)\"");
     expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RUNTIME_SOURCE_SHA_MISMATCH");
     expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_APP_TREE_MISSING");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_APP_SOURCE_DRIFT");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_ANCESTRY_MISMATCH");
+    expect(source).toContain("['-C',spec.repoRoot,'rev-parse','HEAD:apps/android-worker/app']");
+    expect(source).toContain("['-C',spec.repoRoot,'merge-base','--is-ancestor',sourceSha,spec.installedSha]");
+    expect(source).not.toContain("sourceSha!==spec.installedSha");
     expect(source).toContain("TIGERIQ_ANDROID_CURRENT_APK_SHA256_MISMATCH");
     expect(source).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
     expect(source).toContain("TIQ Worker v\${shortVersion}.apk");
