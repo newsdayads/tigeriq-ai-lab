@@ -7,7 +7,6 @@ export const EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw';
 export const EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT';
 export const EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab';
 export const EXPECTED_BRANCH = 'main';
-export const AUTHORIZED_ISSUE = '3185';
 export const REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM';
 
 function clean(value) { return String(value || '').trim(); }
@@ -28,7 +27,7 @@ export function normalizeGitRemote(remote) {
   return value.replace(/\.git\/?$/, '').replace(/\/$/, '');
 }
 
-export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, remote, config, issue, uiHtml }) {
+export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, remote, config, issue, uiHtml, releaseClass, ownerAuthorized, releaseReason, changedFiles }) {
   if (!projectLink || projectLink.projectId !== EXPECTED_PROJECT_ID || projectLink.orgId !== EXPECTED_TEAM_ID) {
     throw new Error('VERCEL_PROJECT_SCOPE_MISMATCH');
   }
@@ -36,7 +35,18 @@ export function validateReleaseContract({ projectLink, expectedSha, actualSha, b
   if (clean(branch) !== EXPECTED_BRANCH) throw new Error('VERCEL_GIT_BRANCH_MISMATCH');
   if (normalizeGitRemote(remote) !== 'https://github.com/' + EXPECTED_REPO) throw new Error('VERCEL_GIT_REPO_MISMATCH');
   if (config?.git?.deploymentEnabled !== false) throw new Error('VERCEL_AUTO_DEPLOY_POLICY_MISMATCH');
-  if (clean(issue) !== AUTHORIZED_ISSUE) throw new Error('VERCEL_OWNER_AUTH_SCOPE_MISMATCH');
+  if (clean(releaseClass).toUpperCase() !== 'WEB_LIVE') throw new Error('VERCEL_RELEASE_CLASS_INVALID');
+  if (String(ownerAuthorized).trim().toLowerCase() !== 'true') throw new Error('VERCEL_OWNER_RELEASE_AUTH_REQUIRED');
+  if (!clean(releaseReason)) throw new Error('VERCEL_RELEASE_REASON_REQUIRED');
+  if (!/^\d+$/.test(clean(issue))) throw new Error('VERCEL_RELEASE_ISSUE_REQUIRED');
+  const webFiles = Array.isArray(changedFiles) ? changedFiles.map((item) => clean(item).replaceAll('\\\\', '/')) : [];
+  const hasWebArtifactChange = webFiles.some((file) =>
+    file === 'command-center.html' ||
+    file === 'vercel.json' ||
+    file.startsWith('public/') ||
+    file.startsWith('api/')
+  );
+  if (!hasWebArtifactChange) throw new Error('VERCEL_WEB_ARTIFACT_CHANGE_REQUIRED');
   if (!String(uiHtml || '').includes(REQUIRED_UI_MARKER)) throw new Error('VERCEL_UI_MARKER_MISSING');
   return {
     projectId: EXPECTED_PROJECT_ID,
@@ -45,7 +55,9 @@ export function validateReleaseContract({ projectLink, expectedSha, actualSha, b
     branch: EXPECTED_BRANCH,
     target: 'production',
     exactSha,
-    issue: AUTHORIZED_ISSUE,
+    issue: clean(issue),
+    releaseClass: 'WEB_LIVE',
+    releaseReason: clean(releaseReason),
     maxAttempts: 1,
   };
 }
@@ -107,7 +119,7 @@ function parseArgs(argv) {
   return out;
 }
 
-export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue = AUTHORIZED_ISSUE, deployImpl = deploy } = {}) {
+export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, deployImpl = deploy } = {}) {
   const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
   const uiHtml = readFileSync(resolve(root, 'command-center.html'), 'utf8');
   const actualSha = git(root, ['rev-parse', 'HEAD']);
@@ -115,6 +127,13 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue = AU
   const remote = git(root, ['remote', 'get-url', 'origin']);
   const dirty = git(root, ['status', '--porcelain']);
   if (dirty) throw new Error('GIT_WORKTREE_NOT_CLEAN');
+  const changedFiles = git(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'])
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const releaseClass = process.env.TIGERIQ_VERCEL_RELEASE_CLASS;
+  const ownerAuthorized = process.env.TIGERIQ_OWNER_RELEASE_AUTHORIZED;
+  const releaseReason = process.env.TIGERIQ_VERCEL_RELEASE_REASON;
 
   let linkState;
   try {
@@ -128,6 +147,10 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue = AU
       config,
       issue,
       uiHtml,
+      releaseClass,
+      ownerAuthorized,
+      releaseReason,
+      changedFiles,
     });
     const result = deployImpl(root);
     return { ok: true, status: 'TIGERIQ_LIVE_3150_PRODUCTION_DEPLOYED', ...plan, ...result, secretsPrinted: false };
