@@ -114,16 +114,27 @@ function deploy(root) {
 }
 
 function parseArgs(argv) {
-  const out = { sha: '', issue: '' };
+  const out = { sha: '', issue: '', releaseClass: '', ownerAuthorized: '', releaseReason: '' };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--sha') out.sha = argv[++i] || '';
     else if (argv[i] === '--issue') out.issue = argv[++i] || '';
+    else if (argv[i] === '--release-class') out.releaseClass = argv[++i] || '';
+    else if (argv[i] === '--owner-authorized') out.ownerAuthorized = argv[++i] || '';
+    else if (argv[i] === '--release-reason') out.releaseReason = argv[++i] || '';
     else throw new Error('UNKNOWN_ARG');
   }
   return out;
 }
 
-export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, deployImpl = deploy } = {}) {
+export function runOneShotDeploy({
+  root = process.cwd(),
+  expectedSha,
+  issue,
+  releaseClass = process.env.TIGERIQ_VERCEL_RELEASE_CLASS,
+  ownerAuthorized = process.env.TIGERIQ_OWNER_RELEASE_AUTHORIZED,
+  releaseReason = process.env.TIGERIQ_VERCEL_RELEASE_REASON,
+  deployImpl = deploy,
+} = {}) {
   const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
   const uiHtml = readFileSync(resolve(root, 'command-center.html'), 'utf8');
   const actualSha = git(root, ['rev-parse', 'HEAD']);
@@ -136,10 +147,6 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, dep
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
-  const releaseClass = process.env.TIGERIQ_VERCEL_RELEASE_CLASS;
-  const ownerAuthorized = process.env.TIGERIQ_OWNER_RELEASE_AUTHORIZED;
-  const releaseReason = process.env.TIGERIQ_VERCEL_RELEASE_REASON;
-
   let linkState;
   try {
     linkState = ensureProjectLink(root);
@@ -167,7 +174,13 @@ export function runOneShotDeploy({ root = process.cwd(), expectedSha, issue, dep
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const result = runOneShotDeploy({ expectedSha: args.sha, issue: args.issue });
+  const result = runOneShotDeploy({
+    expectedSha: args.sha,
+    issue: args.issue,
+    releaseClass: args.releaseClass,
+    ownerAuthorized: args.ownerAuthorized,
+    releaseReason: args.releaseReason,
+  });
   console.log(JSON.stringify(result));
 }
 
