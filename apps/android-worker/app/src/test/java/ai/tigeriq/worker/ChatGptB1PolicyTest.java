@@ -34,22 +34,19 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
-    public void boundsWaitingProjectWithoutAffectingOtherStates() {
-        long startedAt = 1_000_000L;
-        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
-            "WAITING_PROJECT", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS - 1L
+    public void boundsProjectBindingWithMonotonicElapsedTime() {
+        long startedElapsed = 1_000_000L;
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS - 1L
         ));
-        assertTrue(ChatGptB1Policy.waitingProjectTimedOut(
-            "WAITING_PROJECT", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        assertTrue(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
         ));
-        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
-            "REQUESTED", startedAt, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            0L, startedElapsed + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
         ));
-        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
-            "WAITING_PROJECT", 0L, startedAt + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
-        ));
-        assertFalse(ChatGptB1Policy.waitingProjectTimedOut(
-            "WAITING_PROJECT", startedAt + 10_000L, startedAt
+        assertFalse(ChatGptB1Policy.projectBindTimedOut(
+            startedElapsed + 10_000L, startedElapsed
         ));
         assertEquals(60_000L, ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS);
     }
