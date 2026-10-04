@@ -149,6 +149,11 @@ function collectTrustedFileReadJsonSources(node,depth=0,seen=new Set(),out=[]){
   return out;
 }
 
+function hasGateCV021BridgeAction(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls.some(call=>GATE_C_V021_ACTIONS.has(String(call?.result?.action||'')));
+}
+
 function trustedGateCV021ReceiptSources(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   const sources=[];
@@ -195,7 +200,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
-  const gateCV021Request=requested.some(key=>GATE_C_V021_STRONG_KEYS.has(key));
+  const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls)&&requested.some(key=>GATE_C_V021_STRONG_KEYS.has(key));
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
