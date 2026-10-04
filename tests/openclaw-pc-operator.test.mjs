@@ -440,6 +440,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain('workflow_run?.head_sha');
     expect(source).toContain('TIGERIQ_ANDROID_CURRENT_CI_ARTIFACT_METADATA_MISMATCH');
     expect(source).toContain('HEAD:apps/android-worker/app');
+    expect(source).toContain("sourceArtifactAppTreeSha:spec.sourceArtifactAppTreeSha");
     expect(source).toContain("merge-base','--is-ancestor',spec.sourceArtifactHead,current.installedSha");
     expect(source).not.toContain('input?.artifactId');
     expect(source).not.toContain('input?.sourceArtifactHead');
@@ -595,7 +596,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("versionCode\\s*=\\s*(\\d+)");
     expect(source).toContain("versionName\\s*=\\s*\"([^\"]+)\"");
     expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RUNTIME_SOURCE_SHA_MISMATCH");
-    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISSING");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_ANCESTRY_MISMATCH");
+    expect(source).toContain("TIGERIQ_ANDROID_CURRENT_RELEASE_APP_SOURCE_DRIFT");
+    expect(source).toContain("['-C',spec.repoRoot,'merge-base','--is-ancestor',sourceSha,spec.installedSha]");
+    expect(source).toContain("['-C',spec.repoRoot,'rev-parse','HEAD:apps/android-worker/app']");
+    expect(source).not.toContain("if(sourceSha!==spec.installedSha)");
     expect(source).toContain("TIGERIQ_ANDROID_CURRENT_APK_SHA256_MISMATCH");
     expect(source).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
     expect(source).toContain("TIQ Worker v\${shortVersion}.apk");
