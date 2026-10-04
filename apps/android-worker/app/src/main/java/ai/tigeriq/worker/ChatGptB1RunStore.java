@@ -38,6 +38,7 @@ public final class ChatGptB1RunStore {
     private static final String K_TASK_ID = "taskId";
     private static final String K_CUSTOM_PROMPT = "customPrompt";
     private static final String K_CUSTOM_EXPECTED_TOKEN = "customExpectedToken";
+    private static final String K_RESULT_TEXT = "resultText";
 
     private ChatGptB1RunStore() {}
 
@@ -61,6 +62,7 @@ public final class ChatGptB1RunStore {
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
             .putString(K_LATENCIES, "")
+            .putString(K_RESULT_TEXT, "")
             .putInt(K_EVIDENCE_SEQ, 0)
             .putInt(K_REPORTED_SEQ, 0)
             .putBoolean(K_PROJECT_BOUND, false)
@@ -115,7 +117,8 @@ public final class ChatGptB1RunStore {
             p.getLong(K_PROJECT_BOUND_AT, 0L),
             p.getString(K_TASK_ID, ""),
             p.getString(K_CUSTOM_PROMPT, ""),
-            p.getString(K_CUSTOM_EXPECTED_TOKEN, "")
+            p.getString(K_CUSTOM_EXPECTED_TOKEN, ""),
+            p.getString(K_RESULT_TEXT, "")
         );
     }
 
@@ -188,6 +191,13 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
+    public static void markResponseText(Context context, String responseText) {
+        String value = trim(responseText, 3500);
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(K_RESULT_TEXT, value)
+            .apply();
+    }
+
     public static void completeCurrentCycle(Context context) {
         Snapshot s = read(context);
         if (!s.active() || s.cycle <= 0) return;
@@ -251,6 +261,7 @@ public final class ChatGptB1RunStore {
         body.put("minFillToSendMs", MIN_FILL_TO_SEND_MS);
         body.put("interCycleCooldownMs", INTER_CYCLE_COOLDOWN_MS);
         body.put("workerVersion", WorkerVersion.NAME);
+        body.put("responseText", s.resultText);
         body.put("nodeId", new NodeIdentityStore(context).getOrCreate());
         if (s.taskId != null && !s.taskId.isEmpty()) body.put("taskId", s.taskId);
         payload.put("payload", body);
@@ -308,6 +319,7 @@ public final class ChatGptB1RunStore {
         public final String taskId;
         public final String customPrompt;
         public final String customExpectedToken;
+        public final String resultText;
 
         Snapshot(
             String runId,
@@ -332,7 +344,8 @@ public final class ChatGptB1RunStore {
             long projectBoundAt,
             String taskId,
             String customPrompt,
-            String customExpectedToken
+            String customExpectedToken,
+            String resultText
         ) {
             this.runId = runId;
             this.state = state;
@@ -357,6 +370,7 @@ public final class ChatGptB1RunStore {
             this.taskId = taskId;
             this.customPrompt = customPrompt;
             this.customExpectedToken = customExpectedToken;
+            this.resultText = resultText;
         }
 
         public boolean active() {
