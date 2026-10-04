@@ -280,11 +280,19 @@ export async function initMobileWorkerTables(pool) {
       agent_version text,
       capabilities jsonb not null default '[]'::jsonb,
       battery_pct int,
+      update_manifest_seen_at timestamptz,
+      update_manifest_version int,
+      update_apk_requested_at timestamptz,
+      update_apk_version int,
       last_seen_at timestamptz,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now(),
       revoked boolean not null default false
     );
+    alter table tigeriq_mobile_devices add column if not exists update_manifest_seen_at timestamptz;
+    alter table tigeriq_mobile_devices add column if not exists update_manifest_version int;
+    alter table tigeriq_mobile_devices add column if not exists update_apk_requested_at timestamptz;
+    alter table tigeriq_mobile_devices add column if not exists update_apk_version int;
     create index if not exists tigeriq_mobile_devices_seen_idx on tigeriq_mobile_devices(last_seen_at desc);
     create table if not exists tigeriq_mobile_evidence(
       node_id text not null,
@@ -355,7 +363,7 @@ async function gateCV020Target(pool,{requireFresh=false}={}){
 }
 async function gateCV021Target(pool,{requireFresh=false}={}){
   const result=await pool.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
        from tigeriq_mobile_devices
       where revoked=false and agent_version=$1
       order by last_seen_at desc nulls last`,
@@ -370,7 +378,7 @@ async function gateCV021Target(pool,{requireFresh=false}={}){
 }
 async function liveV022Target(pool){
   const result=await pool.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
        from tigeriq_mobile_devices
       where revoked=false and agent_version=$1
       order by last_seen_at desc nulls last`,
@@ -381,6 +389,42 @@ async function liveV022Target(pool){
   const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
   const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
+}
+function mobileUpdateRequestTelemetry(row={}){
+  const iso=(value)=>{const ms=value?new Date(value).getTime():NaN;return Number.isFinite(ms)?new Date(ms).toISOString():null;};
+  const int=(value)=>{const n=Number(value||0);return Number.isInteger(n)&&n>0?n:null;};
+  return {
+    updateManifestSeenAt:iso(row.update_manifest_seen_at),
+    updateManifestVersion:int(row.update_manifest_version),
+    updateApkRequestedAt:iso(row.update_apk_requested_at),
+    updateApkVersion:int(row.update_apk_version),
+  };
+}
+async function recordMobileUpdateObservation(pool,event,nodeId,kind,versionCode){
+  const version=Number(versionCode||0);
+  if(!nodeId||!Number.isInteger(version)||version<1)return false;
+  try{
+    if(kind==='manifest'){
+      await pool.query(
+        'update tigeriq_mobile_devices set update_manifest_seen_at=now(),update_manifest_version=$2,last_seen_at=now(),updated_at=now() where node_id=$1',
+        [nodeId,version]
+      );
+    }else if(kind==='apk'){
+      await pool.query(
+        'update tigeriq_mobile_devices set update_apk_requested_at=now(),update_apk_version=$2,last_seen_at=now(),updated_at=now() where node_id=$1',
+        [nodeId,version]
+      );
+    }
+    return true;
+  }catch(error){
+    try{
+      await event('MOBILE_UPDATE_OBSERVATION_FAILED',{
+        nodeId:String(nodeId),kind:String(kind),versionCode:version,
+        error:text(error?.message||error,160),
+      });
+    }catch{}
+    return false;
+  }
 }
 function mobileAuthHeaders(req) {
   const credentialId=text(req.headers['x-tigeriq-credential-id'],160);
@@ -445,6 +489,31 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       return send(res,200,{
         ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
         employeeId:String(target.row.employee_id),online:target.online,lastSeenAt:target.lastSeenAt,
+        ...mobileUpdateRequestTelemetry(target.row),
+      });
+    }
+
+    if(req.method==='GET'&&url.pathname==='/api/mobile/update/request-status'){
+      if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const employeeId=text(url.searchParams.get('employeeId'),80).toUpperCase();
+      if(!/^NV\d{2,4}$/.test(employeeId))return send(res,400,{ok:false,error:'mobile_update_employee_invalid'});
+      const result=await pool.query(
+        `select node_id,employee_id,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
+           from tigeriq_mobile_devices
+          where revoked=false and employee_id=$1
+          limit 1`,
+        [employeeId]
+      );
+      if(result.rowCount!==1)return send(res,404,{ok:false,error:'mobile_update_device_unavailable'});
+      const row=result.rows[0];
+      const seen=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
+      return send(res,200,{
+        ok:true,status:'MOBILE_UPDATE_REQUEST_STATUS',
+        employeeId:String(row.employee_id),version:text(row.agent_version,80)||null,
+        online:Number.isFinite(seen)&&Date.now()-seen<=120_000,
+        lastSeenAt:Number.isFinite(seen)?new Date(seen).toISOString():null,
+        ...mobileUpdateRequestTelemetry(row),
       });
     }
 
@@ -628,7 +697,8 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       const aggregate=gateCV021Aggregate(result.rows,employeeId);
       return send(res,200,{
         ok:true,status:'GATE_C_V021_STATUS',version:GATE_C_V021_VERSION,
-        employeeId,online:target.online,lastSeenAt:target.lastSeenAt,...aggregate,
+        employeeId,online:target.online,lastSeenAt:target.lastSeenAt,
+        ...mobileUpdateRequestTelemetry(target.row),...aggregate,
       });
     }
 
@@ -812,12 +882,14 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
     }
     if(req.method==='GET'&&url.pathname==='/api/mobile/update/manifest'){
       const manifest=readMobileReleaseManifest();
+      if(manifest.available)await recordMobileUpdateObservation(pool,event,device.node_id,'manifest',manifest.versionCode);
       const safe={...manifest};delete safe.apkPath;
       return send(res,200,{ok:true,...safe});
     }
     if(req.method==='GET'&&url.pathname==='/api/mobile/update/apk'){
       const manifest=readMobileReleaseManifest();
       if(!manifest.available||!manifest.apkPath||!existsSync(manifest.apkPath))return send(res,404,{ok:false,error:'mobile_release_unavailable'});
+      await recordMobileUpdateObservation(pool,event,device.node_id,'apk',manifest.versionCode);
       const size=statSync(manifest.apkPath).size;
       res.writeHead(200,{
         'content-type':'application/vnd.android.package-archive',
