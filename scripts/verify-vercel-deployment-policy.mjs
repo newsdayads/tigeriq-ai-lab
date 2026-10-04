@@ -2,9 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const deploymentEnabled = config?.git?.deploymentEnabled;
-const marker = new URL('../release/3840-one-shot.txt', import.meta.url);
-const markerBlob = 'e36b8cf43cbf5fa4c1b0992c2b097c873d244323';
-const ignore = 'test "$(git diff --diff-filter=A --name-only HEAD^ HEAD -- release/3840-one-shot.txt)" = "release/3840-one-shot.txt" && test "$(git ls-tree HEAD release/3840-one-shot.txt | awk \'{print $1":"$3}\')" = "100644:e36b8cf43cbf5fa4c1b0992c2b097c873d244323" && exit 1 || exit 0';
+const marker = new URL('../release/3840-retry-one-shot.txt', import.meta.url);
+const gateScript = new URL('./vercel-3840-one-shot.mjs', import.meta.url);
+const ignore = 'node scripts/vercel-3840-one-shot.mjs';
 const keys = deploymentEnabled && typeof deploymentEnabled === 'object' && !Array.isArray(deploymentEnabled)
   ? Object.keys(deploymentEnabled).sort()
   : [];
@@ -16,7 +16,8 @@ const oneShot =
   && deploymentEnabled.main === true
   && config?.ignoreCommand === ignore
   && existsSync(marker)
-  && readFileSync(marker, 'utf8') === 'TIGERIQ_LIVE_3840_ONE_SHOT_TRUE_PRODUCTION\n';
+  && existsSync(gateScript)
+  && readFileSync(marker, 'utf8') === 'TIGERIQ_LIVE_3840_RETRY_TRUE_PRODUCTION\n';
 
 if (deploymentEnabled !== false && !oneShot) {
   throw new Error('TigerIQ Vercel policy violation: Git deployment must be disabled except exact bounded #3840 one-shot main release.');
@@ -32,5 +33,5 @@ const htmlRewrite = rewrites.find((route) => String(route?.destination || '').en
 if (htmlRewrite) throw new Error('TigerIQ Vercel routing violation: cleanUrls cannot rewrite to .html.');
 if (existsSync(new URL('../public/index.html', import.meta.url))) throw new Error('TigerIQ Vercel routing violation: public/index.html must not self-shadow /.');
 console.log(oneShot
-  ? `Vercel deployment/routing policy PASS: exact bounded #3840 main-only one-shot Production release enabled; markerBlob=${markerBlob}.`
+  ? 'Vercel deployment/routing policy PASS: bounded #3840 Production retry gate enabled.'
   : 'Vercel deployment/routing policy PASS: Git auto-deploy disabled and cleanUrls root routing is loop-safe.');
