@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 
 import org.json.JSONObject;
 
@@ -86,13 +87,14 @@ public final class ForegroundWorkerService extends Service {
 
             if (task.present()) {
                 boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
-                if (sameTaskRun && ChatGptB1Policy.waitingProjectTimedOut(
-                    run.state,
-                    run.startedAt,
-                    System.currentTimeMillis()
+                if (sameTaskRun && ChatGptB1RunStore.failWaitingProjectIfTimedOut(
+                    this,
+                    task.runId,
+                    task.taskId,
+                    SystemClock.elapsedRealtime()
                 )) {
-                    ChatGptB1RunStore.fail(this, "PROJECT_BIND_TIMEOUT");
                     run = ChatGptB1RunStore.read(this);
+                    sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);
                 }
 
                 // A manual/different B1 run owns ChatGPT until it reaches terminal state.
