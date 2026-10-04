@@ -138,11 +138,14 @@ describe('mobile worker api helpers',()=>{
       idempotency_key:spec.idempotencyKey,
       status:'completed',
       attempts:1,
-      result:{output:{validatedToken:spec.expectedToken,sendCount:1,duplicateSendCount:0}},
+      result:{output:{validatedToken:spec.expectedToken,sendCount:1,duplicateSendCount:0,recoveryCount:spec.index===4?1:0}},
     }));
-    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({expected:10,taskCount:10,completed:10,failed:0,pending:0,invalid:0,pass:true});
+    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({
+      expected:10,taskCount:10,completed:10,failed:0,pending:0,invalid:0,
+      sendCount:10,duplicateSendCount:0,recoveryCount:1,pass:true
+    });
     rows[4].result.output.duplicateSendCount=1;
-    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,pass:false});
+    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,sendCount:10,duplicateSendCount:1,recoveryCount:1,pass:false});
   });
 
   it('fails closed if the prechecked Gate C v0.20 target changes before insert',async()=>{

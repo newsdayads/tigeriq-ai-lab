@@ -129,20 +129,30 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
       : {};
     const sendCount=Number(output.sendCount);
     const duplicateSendCount=Number(output.duplicateSendCount);
+    const recoveryCount=Number(output.recoveryCount);
     const valid=status==='completed'
       && Number.isFinite(sendCount)&&sendCount===1
       && Number.isFinite(duplicateSendCount)&&duplicateSendCount===0
       && String(output.validatedToken||'')===spec.expectedToken;
-    return {index:spec.index,status,attempts:Number(row?.attempts||0),sendCount:Number.isFinite(sendCount)?sendCount:null,duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,valid};
+    return {
+      index:spec.index,status,attempts:Number(row?.attempts||0),
+      sendCount:Number.isFinite(sendCount)?sendCount:null,
+      duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,
+      recoveryCount:Number.isFinite(recoveryCount)?recoveryCount:null,
+      valid
+    };
   });
   const completed=jobs.filter(job=>job.status==='completed').length;
   const failed=jobs.filter(job=>job.status==='failed').length;
   const pending=jobs.filter(job=>!['completed','failed'].includes(job.status)).length;
   const invalid=jobs.filter(job=>job.status==='completed'&&!job.valid).length;
+  const sendCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.sendCount)?job.sendCount:0),0);
+  const duplicateSendCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.duplicateSendCount)?job.duplicateSendCount:0),0);
+  const recoveryCount=jobs.reduce((sum,job)=>sum+(Number.isFinite(job.recoveryCount)?job.recoveryCount:0),0);
   return {
     expected:GATE_C_V021_COUNT,
     taskCount:jobs.filter(job=>job.status!=='missing').length,
-    completed,failed,pending,invalid,
+    completed,failed,pending,invalid,sendCount,duplicateSendCount,recoveryCount,
     pass:completed===GATE_C_V021_COUNT&&failed===0&&pending===0&&invalid===0,
     jobs,
   };
