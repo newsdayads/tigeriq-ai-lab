@@ -127,20 +127,24 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
     const output=row?.result&&typeof row.result==='object'&&!Array.isArray(row.result)
       ? (row.result.output&&typeof row.result.output==='object'&&!Array.isArray(row.result.output)?row.result.output:{})
       : {};
-    const sendCount=Number(output.sendCount);
-    const duplicateSendCount=Number(output.duplicateSendCount);
+    const sendCountRaw=output.sendCount;
+    const duplicateSendCountRaw=output.duplicateSendCount;
     const recoveryCountRaw=output.recoveryCount;
+    const sendCountValid=Number.isInteger(sendCountRaw)&&sendCountRaw===1;
+    const duplicateSendCountValid=Number.isInteger(duplicateSendCountRaw)&&duplicateSendCountRaw===0;
     const recoveryCountValid=Number.isInteger(recoveryCountRaw)&&recoveryCountRaw>=0;
+    const sendCount=sendCountValid?sendCountRaw:null;
+    const duplicateSendCount=duplicateSendCountValid?duplicateSendCountRaw:null;
     const recoveryCount=recoveryCountValid?recoveryCountRaw:null;
     const valid=status==='completed'
-      && Number.isFinite(sendCount)&&sendCount===1
-      && Number.isFinite(duplicateSendCount)&&duplicateSendCount===0
+      && sendCountValid
+      && duplicateSendCountValid
       && recoveryCountValid
       && String(output.validatedToken||'')===spec.expectedToken;
     return {
       index:spec.index,status,attempts:Number(row?.attempts||0),
-      sendCount:Number.isFinite(sendCount)?sendCount:null,
-      duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,
+      sendCount,
+      duplicateSendCount,
       recoveryCount,
       valid
     };
