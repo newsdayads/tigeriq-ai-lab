@@ -1197,7 +1197,7 @@ async function verifyAndroidWorkerV021SignedRelease() {
     fs.readFile(spec.runtimeStatePath,'utf8'),
   ]);
   let receipt,state;
-  try{receipt=JSON.parse(receiptRaw);state=JSON.parse(stateRaw);}catch{throw new Error('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_INVALID');}
+  try{receipt=JSON.parse(receiptRaw.replace(/^\uFEFF/,''));state=JSON.parse(stateRaw.replace(/^\uFEFF/,''));}catch{throw new Error('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_INVALID');}
   const installedSha=String(state?.installedSha||'').trim().toLowerCase();
   if(!/^[0-9a-f]{40}$/.test(installedSha))throw new Error('TIGERIQ_ANDROID_V021_INSTALLED_SHA_MISSING');
   const sourceSha=String(receipt?.sourceSha||'').trim().toLowerCase();
