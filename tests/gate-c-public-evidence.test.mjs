@@ -164,4 +164,10 @@ describe('Gate C bounded public evidence',()=>{
     };
     expect(extractPublicEvidence(jobResult,requested)).toEqual({});
   });
+
+  it('does not apply Gate C trusted-only rules to unrelated public evidence',()=>{
+    const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=status,count');
+    const jobResult={evidence:{agentResult:{evidence:{status:'OTHER_JOB_OK',count:7}}}};
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({status:'OTHER_JOB_OK',count:7});
+  });
 });
