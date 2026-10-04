@@ -168,6 +168,18 @@ body.drawer-open{overflow:hidden}
 @media(max-width:390px){.drawer{width:calc(100vw - 24px)}.summary-chip span{font-size:7.7px}.api-summary-grid b{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.focus-dot{animation:none!important}.drawer{transition:none!important}}
 
+/* #3730 Project hierarchy — preserve approved LIVE visual baseline */
+.project-picker{margin:0 0 10px}
+.project-picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 7px}.project-picker-head b{font-size:9px;letter-spacing:.08em;color:#83c8ff}.project-picker-head span{font-size:8.5px;color:#7891a8}
+.project-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:7px}
+.project-choice{position:relative;overflow:hidden;min-width:0;border:1px solid #27445f;background:linear-gradient(180deg,#0c1c2e,#091725);border-radius:12px;padding:9px 10px;text-align:left;color:inherit;font:inherit;cursor:pointer;transition:border-color .18s ease,transform .18s ease,background .18s ease}
+.project-choice:hover{border-color:#3f6b91}.project-choice:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}.project-choice.active{border-color:#4f83ad;background:linear-gradient(180deg,#102943,#0c1d31);box-shadow:0 0 0 1px rgba(88,166,255,.1)}
+.project-choice-top{display:flex;align-items:center;gap:7px;padding-left:12px}.project-choice-top b{min-width:0;flex:1;font-size:10.5px;line-height:1.25;color:#e8f2fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-choice-top em{font-size:7.8px;font-style:normal;font-weight:850;color:#9eb4c8;white-space:nowrap}
+.project-choice small{display:block;margin-top:5px;padding-left:12px;color:#7f96ac;font-size:8.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.project-live-dot{position:absolute;left:10px;top:12px;width:6px;height:6px;border-radius:50%;background:#5f7690}
+.project-choice.is-working .project-live-dot{background:#56d99a;animation:live-pulse 1.9s ease-out infinite}.project-choice.is-review .project-live-dot,.project-choice.is-verify .project-live-dot{background:#e9b65e;animation:package-dot 1.8s ease-in-out infinite}.project-choice.is-blocked .project-live-dot{background:#e56b76}.project-choice.is-done .project-live-dot{background:#58d8c6}
+@media(max-width:700px){.project-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,82vw);grid-template-columns:none;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:3px}.project-choice{scroll-snap-align:start}.project-picker-head span{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.project-choice,.project-live-dot{animation:none!important;transition:none!important}}
 /* #3374 Work Package v2 — package → workstream → major task → current leaf */
 .job-journey{margin:0 0 10px}
 .package-shell{position:relative;overflow:hidden;border:1px solid #2d5276;background:radial-gradient(circle at 88% 0,rgba(88,166,255,.12),transparent 34%),linear-gradient(145deg,#0d2036,#091725 60%,#101c2f);border-radius:18px;padding:12px;box-shadow:0 14px 38px rgba(0,0,0,.2)}
@@ -482,7 +494,8 @@ function renderOwnerSummary(){
 }
 
 let workPackageState=null;
-let selectedPackageNumber=null;
+let selectedProjectId=null;
+let selectedPackageId=null;
 function packageRows(){
   const merged=new Map();
   const add=row=>{
@@ -631,28 +644,72 @@ function packageStream(streamRoot,packageRows,byNumber){
   const aggregate=packageAggregate(groups.length?groups.flatMap(group=>group.primary):[streamRoot]);
   return {root:streamRoot,rows,groups,aggregate};
 }
-function packageBuildAll(){
-  const rows=packageRows(),byNumber=new Map(rows.map(row=>[Number(row.number),row])),superseded=packageSupersededSet(rows);
-  const openPrimary=rows.filter(row=>workStatus(row)!=='DONE'&&!packageIsReviewEvidence(row)&&!superseded.has(Number(row.number))&&workPriority(row)!=='P5');
-  const roots=new Map();
-  for(const row of openPrimary){
-    const root=packageResolveRoot(row,rows);if(!root||packageIsReviewEvidence(root))continue;
-    roots.set(Number(root.number),root);
+function projectStatus(project){
+  const c=project?.counts||{};
+  if(Number(c.working)>0)return 'WORKING';
+  if(Number(c.blocked)>0)return 'BLOCKED';
+  if(Number(c.review)>0)return 'REVIEW';
+  if(Number(c.waiting)>0)return 'WAITING';
+  if(Number(c.done)>0)return 'DONE';
+  return 'UNKNOWN';
+}
+function projectPortfolio(){
+  const source=Array.isArray(snapshot?.projectPortfolio)?snapshot.projectPortfolio:[];
+  return [...source].sort((a,b)=>packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)-Number(b.order||900)||String(a.name||'').localeCompare(String(b.name||'')));
+}
+function projectDefaultId(projects){
+  const active=new Set((snapshot?.activeWork||[]).map(row=>Number(row?.number)).filter(Boolean));
+  const rows=packageRows();
+  const activeRow=rows.find(row=>active.has(Number(row?.number))&&row?.portfolioHidden!==true&&row?.projectId);
+  if(activeRow&&projects.some(project=>project.id===activeRow.projectId))return activeRow.projectId;
+  return projects[0]?.id||null;
+}
+function projectPickerHtml(projects,selected){
+  if(!projects.length)return '';
+  const cards=projects.map(project=>{
+    const state=projectStatus(project),counts=project.counts||{};
+    const status=stateLabel[state]||state;
+    const meta=[Number(project.workPackageCount||0)+' việc lớn'];
+    if(Number(counts.working)>0)meta.push(counts.working+' đang làm');
+    if(Number(counts.blocked)>0)meta.push(counts.blocked+' bị chặn');
+    if(Number(project.hiddenTechnicalItems)>0)meta.push(project.hiddenTechnicalItems+' mục kỹ thuật ẩn');
+    return '<button type="button" class="project-choice '+packageStateClass(state)+(project.id===selected?' active':'')+'" data-project-select="'+esc(project.id)+'">'
+      +'<span class="project-live-dot" aria-hidden="true"></span>'
+      +'<div class="project-choice-top"><b>'+esc(project.name)+'</b><em>'+esc(status)+'</em></div>'
+      +'<small>'+esc(meta.join(' · '))+'</small></button>';
+  }).join('');
+  return '<section class="project-picker" aria-label="Dự án"><div class="project-picker-head"><b>DỰ ÁN</b><span>'+projects.length+' dự án đang theo dõi</span></div><div class="project-list">'+cards+'</div></section>';
+}
+function packageBuildAll(projectId){
+  const rows=packageRows().filter(row=>row?.portfolioHidden!==true&&(!projectId||row?.projectId===projectId));
+  const conceptual=new Map();
+  for(const row of rows){
+    const id=String(row?.workPackageId||'legacy-'+Number(row?.number));
+    if(!conceptual.has(id))conceptual.set(id,[]);
+    conceptual.get(id).push(row);
   }
   const packages=[];
-  for(const root of roots.values()){
-    const descendants=packageDescendants(root,rows),packageByNumber=new Map(descendants.map(row=>[Number(row.number),row]));
-    const focus=packageOperationalFocus(descendants)||root;
-    const streamRoots=packagePrimaryChildren(Number(root.number),descendants);
-    const streams=streamRoots.map(row=>packageStream(row,descendants,packageByNumber));
+  for(const [id,groupRows] of conceptual){
+    const superseded=packageSupersededSet(groupRows);
+    const primary=groupRows.filter(row=>!packageIsReviewEvidence(row)&&!superseded.has(Number(row.number)));
+    if(!primary.length)continue;
+    const byNumber=new Map(groupRows.map(row=>[Number(row.number),row]));
+    const rootCandidates=primary.filter(row=>{
+      const parent=byNumber.get(Number(row.parentNumber));
+      return !parent||packageIsReviewEvidence(parent);
+    }).sort((a,b)=>packageStatusRank(workStatus(a))-packageStatusRank(workStatus(b))||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
+    const focus=packageOperationalFocus(groupRows)||rootCandidates[0]||primary[0];
+    const streamRoots=rootCandidates.length?rootCandidates:[focus];
+    const streams=streamRoots.map(row=>packageStream(row,groupRows,byNumber));
     const majorGroups=streams.flatMap(stream=>stream.groups);
     const standaloneStreams=streams.filter(stream=>!stream.groups.length);
     const summaryUnits=[...majorGroups.map(group=>({aggregate:group.aggregate})),...standaloneStreams.map(stream=>({aggregate:stream.aggregate}))];
-    const aggregateRows=[...majorGroups.flatMap(group=>group.primary),...standaloneStreams.map(stream=>stream.root)];
-    const aggregate=packageAggregate(aggregateRows.length?aggregateRows:[root]);
-    packages.push({root,focus,rows:descendants,streams,majorGroups,summaryUnits,aggregate});
+    const aggregate=packageAggregate(primary);
+    const name=groupRows.find(row=>String(row?.workPackageName||'').trim())?.workPackageName||displayTitle(focus?.title||'Việc lớn');
+    const order=Math.min(...groupRows.map(row=>Number(row?.workPackageOrder)||900));
+    packages.push({id,name,order,root:rootCandidates[0]||focus,focus,rows:groupRows,streams,majorGroups,summaryUnits,aggregate});
   }
-  return packages.sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||priorityRank(workPriority(a.root))-priorityRank(workPriority(b.root))||Number(a.root.number)-Number(b.root.number));
+  return packages.sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||a.order-b.order||String(a.name).localeCompare(String(b.name)));
 }
 function packageDependencyLinks(streams){
   const links=[];
@@ -706,7 +763,7 @@ function packageStreamHtml(stream,packageFocus){
 }
 function packageTabsHtml(packages,selected){
   if(packages.length<=1)return '';
-  return '<div class="package-tabs" aria-label="Các việc lớn đang mở">'+packages.map(pack=>'<button type="button" class="package-tab'+(Number(pack.root.number)===Number(selected)?' active':'')+'" data-package-select="'+Number(pack.root.number)+'"><b>#'+Number(pack.root.number)+' · '+esc(pack.aggregate.label)+'</b><span>'+esc(displayTitle(pack.root.title))+'</span></button>').join('')+'</div>';
+  return '<div class="package-tabs" aria-label="Các việc lớn trong dự án">'+packages.map(pack=>'<button type="button" class="package-tab'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'"><b>'+esc(pack.aggregate.label)+'</b><span>'+esc(pack.name)+'</span></button>').join('')+'</div>';
 }
 function packageSummaryFromUnits(units){
   const counts={working:0,review:0,blocked:0,waiting:0,done:0};
@@ -809,24 +866,38 @@ function renderFlowEdges(container,edges){
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng cấu trúc để tránh hiển thị sai.</div>';return}
-  const packages=packageBuildAll();
-  if(!packages.length){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Việc lớn đang theo dõi</b><br>Hiện chưa có công việc thật đủ dữ liệu để gom.</div>';return}
+  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng cấu trúc để tránh hiển thị sai.</div>';return}
+  const projects=projectPortfolio();
+  if(!projects.length){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Hiện chưa có công việc thật đủ dữ liệu để gom.</div>';return}
+  if(!selectedProjectId||!projects.some(project=>project.id===selectedProjectId)){
+    selectedProjectId=projectDefaultId(projects);
+    selectedPackageId=null;
+  }
+  const selectedProject=projects.find(project=>project.id===selectedProjectId)||projects[0];
+  const packages=packageBuildAll(selectedProject.id);
+  if(!packages.length){
+    workPackageState={projects,project:selectedProject,packages:[],selected:null};
+    el.innerHTML=projectPickerHtml(projects,selectedProject.id)+'<div class="package-empty"><b>'+esc(selectedProject.name)+'</b><br>Không có việc lớn owner-facing đang hoạt động trong dự án này.</div>';
+    el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
+    return;
+  }
   const defaultPack=packages[0];
-  if(!selectedPackageNumber||!packages.some(pack=>Number(pack.root.number)===Number(selectedPackageNumber)))selectedPackageNumber=Number(defaultPack.root.number);
-  const pack=packages.find(item=>Number(item.root.number)===Number(selectedPackageNumber))||defaultPack;
-  workPackageState={packages,selected:pack};
+  if(!selectedPackageId||!packages.some(pack=>String(pack.id)===String(selectedPackageId)))selectedPackageId=defaultPack.id;
+  const pack=packages.find(item=>String(item.id)===String(selectedPackageId))||defaultPack;
+  workPackageState={projects,project:selectedProject,packages,selected:pack};
   const root=pack.root,focus=pack.focus||root,summary=packageSummaryFromUnits(pack.summaryUnits),focusStatus=workStatus(focus),focusWorker=workerFrom(focus);
   const focusWorkerText=focusWorker&&!['CHƯA GÁN','OWNER'].includes(focusWorker)?' · '+focusWorker:'';
   const streamsMarkup=pack.streams.length?pack.streams.map(stream=>packageStreamHtml(stream,focus)).join(''):'<div class="package-empty">Việc lớn này chưa có nhánh công việc con trong dữ liệu hiện hành.</div>';
-  el.innerHTML='<article class="package-shell">'+packageTabsHtml(packages,pack.root.number)
-    +'<div class="package-head"><div><div class="package-kicker">VIỆC LỚN · #'+Number(root.number)+'</div><div class="package-title">'+esc(displayTitle(root.title))+'</div></div>'
-    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.summaryUnits.length+' việc chính</span></div></div>'
+  el.innerHTML=projectPickerHtml(projects,selectedProject.id)
+    +'<article class="package-shell">'+packageTabsHtml(packages,pack.id)
+    +'<div class="package-head"><div><div class="package-kicker">'+esc(selectedProject.name)+' · VIỆC LỚN</div><div class="package-title">'+esc(pack.name)+'</div></div>'
+    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.rows.length+' mục kỹ thuật</span></div></div>'
     +'<div class="package-summary"><div class="is-working"><span>Đang làm</span><b>'+summary.working+'</b></div><div class="is-review"><span>Rà soát</span><b>'+summary.review+'</b></div><div class="is-blocked"><span>Bị chặn</span><b>'+summary.blocked+'</b></div><div><span>Đang chờ</span><b>'+summary.waiting+'</b></div><div class="is-done"><span>Hoàn tất</span><b>'+summary.done+'</b></div></div>'
     +'<div class="package-focus"><div class="package-focus-title"><b>Đang tập trung:</b> #'+Number(focus.number)+' · '+esc(displayTitle(focus.title))+'</div><div class="package-focus-sub">'+esc(stateLabel[focusStatus]||focusStatus)+focusWorkerText+' · Bước tới: '+esc(shortNext(focus))+'</div></div>'
     +packageDependenciesHtml(pack.streams)
     +'<div class="package-streams">'+streamsMarkup+'</div></article>';
-  el.querySelectorAll('[data-package-select]').forEach(button=>button.addEventListener('click',()=>{selectedPackageNumber=Number(button.getAttribute('data-package-select'));renderJobJourney()}));
+  el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
+  el.querySelectorAll('[data-package-select]').forEach(button=>button.addEventListener('click',()=>{selectedPackageId=button.getAttribute('data-package-select');renderJobJourney()}));
   el.querySelectorAll('[data-package-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-package-row')),row=pack.rows.find(item=>Number(item.number)===rowNumber);if(row)node.addEventListener('click',()=>openDrawer(row,node))});
 }
 
