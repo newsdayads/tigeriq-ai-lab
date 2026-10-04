@@ -474,6 +474,35 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("exportAndroidWorkerV020SignedApkChunk(input?.path");
   });
 
+  it('keeps v0.21 signed APK export fixed to the canonical release receipt and source SHA', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_export_v021_signed_apk_chunk'");
+    expect(source).toContain("versionName: '0.21.0-packageinstaller-stream-fix'");
+    expect(source).toContain('tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk');
+    expect(source).toContain('release-manifest.json');
+    expect(source).toContain('sourceSha!==installedSha');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_APK_SHA256_MISMATCH');
+    expect(source).toContain('chunkIndex>31');
+    expect(source).not.toContain('exportAndroidWorkerV021SignedApkChunk(input?.path');
+  });
+
+  it('publishes v0.21 runtime manifest only from verified signed release and validated Drive file id', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("action === 'android_worker_publish_v021_manifest'");
+    expect(source).toContain("driveFileId=String(input?.driveFileId||'').trim()");
+    expect(source).toContain('/^[A-Za-z0-9_-]{10,200}$/');
+    expect(source).toContain("'https://drive.google.com/file/d/'+driveFileId+'/view?usp=drivesdk'");
+    expect(source).toContain('versionCode: 21');
+    expect(source).toContain("fileName: 'TIQ Worker v0.21.apk'");
+    expect(source).toContain("spec.runtimeManifestPath+'.v021.tmp'");
+    expect(source).toContain('TIGERIQ_ANDROID_V021_MANIFEST_READBACK_MISMATCH');
+    expect(source).not.toContain('input?.apkPath');
+    expect(source).not.toContain('input?.versionName');
+    expect(source).not.toContain('input?.apkSha256');
+    expect(source).not.toContain('input?.driveUrl');
+  });
   it('surfaces only bounded Android build-tool discovery failure classes', async () => {
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_SDK_ROOT');
     expect(androidReleaseBuildFailureClass({ stderr: 'ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR' })).toBe('ANDROID_APKSIGNER_DISCOVERY_NO_BUILD_TOOLS_DIR');
