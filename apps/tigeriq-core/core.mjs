@@ -1294,7 +1294,7 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v021_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function directPcOperatorAction(job){
   const raw=job?.objective_metadata?.pcOperatorDirectAction;
