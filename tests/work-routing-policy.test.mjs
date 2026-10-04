@@ -137,7 +137,9 @@ test('read-only final review without explicit capability uses NV03 review route'
 test('P0 stays Owner-held except explicit Vy read-only review dispatch to NV03/NV04',()=>{
   const base=[
     'PRIORITY=P0','CAPABILITY=review','OWNER_DIRECT=true','VY_DIRECT_REVIEW_DISPATCH=true',
-    'REVIEW_ONLY=true','NO_CODE_CHANGE=true'
+    'REVIEW_ONLY=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_DIRECT_MAIN=true',
+    'NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true'
   ].join('\n');
   let s=classifyWorkOrder(base+'\nOWNER_REVIEWER=NV03');
   assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,true);
@@ -148,6 +150,7 @@ test('P0 stays Owner-held except explicit Vy read-only review dispatch to NV03/N
     'PRIORITY=P0\nCAPABILITY=review\nOWNER_REVIEWER=NV03',
     base+'\nOWNER_REVIEWER=NV11',
     base.replace('REVIEW_ONLY=true\n','')+'\nOWNER_REVIEWER=NV03',
+    base.replace('NO_SECURITY_BOUNDARY_CHANGE=true\n','')+'\nOWNER_REVIEWER=NV03',
     'PRIORITY=P0\nCAPABILITY=coding\nOWNER_DIRECT=true\nVY_DIRECT_REVIEW_DISPATCH=true\nREVIEW_ONLY=true\nNO_CODE_CHANGE=true\nOWNER_REVIEWER=NV03'
   ]){
     const blocked=classifyWorkOrder(body);
