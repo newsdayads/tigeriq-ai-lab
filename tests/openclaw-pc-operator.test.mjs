@@ -1261,7 +1261,11 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     const deploySource=await readFile(new URL('../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs',import.meta.url),'utf8');
     expect(operatorSource).toContain("action === 'tigeriq_live_3150_production_deploy'");
     expect(operatorSource).toContain("scripts\\\\pc-worker\\\\vercel-tigeriq-live-3150-deploy.mjs");
-    expect(operatorSource).toContain("'--issue', '3185'");
+    expect(operatorSource).toContain("'--issue', releaseIssue");
+    expect(operatorSource).toContain("'--release-class', releaseClass");
+    expect(operatorSource).toContain("'--owner-authorized', ownerAuthorized ? 'true' : 'false'");
+    expect(operatorSource).toContain("'--release-reason', releaseReason");
+    expect(operatorSource).toContain("receipt.issue !== releaseIssue");
     expect(operatorSource).toContain("extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME']");
     expect(operatorSource).toContain("productionMutationScope: action === 'tigeriq_live_3150_production_deploy'");
     expect(operatorSource).not.toContain("input?.command");
