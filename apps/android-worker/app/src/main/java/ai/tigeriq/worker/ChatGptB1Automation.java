@@ -24,7 +24,9 @@ public final class ChatGptB1Automation {
         if (now < s.nextActionAt) return;
 
         if ("WAITING_AI".equals(s.state)) {
-            if (treeContains(root, ChatGptB1RunStore.expectedToken(s))) {
+            String completedResponse = responseContainingToken(root, ChatGptB1RunStore.expectedToken(s));
+            if (!completedResponse.isEmpty()) {
+                ChatGptB1RunStore.markResponseText(service, completedResponse);
                 ChatGptB1RunStore.completeCurrentCycle(service);
                 return;
             }
@@ -243,6 +245,60 @@ public final class ChatGptB1Automation {
 
     private static boolean sameNode(AccessibilityNodeInfo left, AccessibilityNodeInfo right) {
         return left != null && right != null && left.equals(right);
+    }
+
+    public static String responseContainingToken(AccessibilityNodeInfo root, String token) {
+        String wanted = normalize(token);
+        if (root == null || wanted.isEmpty()) return "";
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            String direct = visibleText(node);
+            if (!normalize(direct).contains(wanted)) continue;
+            String best = direct;
+            AccessibilityNodeInfo current = node.getParent();
+            for (int depth = 0; current != null && depth < 4; depth++) {
+                String expanded = boundedVisibleText(current, 120, 3500);
+                if (normalize(expanded).contains(wanted)
+                    && expanded.length() >= best.length()
+                    && expanded.length() <= 3500) {
+                    best = expanded;
+                }
+                current = current.getParent();
+            }
+            return best.trim();
+        }
+        return "";
+    }
+
+    private static String visibleText(AccessibilityNodeInfo node) {
+        if (node == null) return "";
+        StringBuilder out = new StringBuilder();
+        append(out, node.getText());
+        append(out, node.getContentDescription());
+        append(out, node.getHintText());
+        return out.toString().trim();
+    }
+
+    private static String boundedVisibleText(AccessibilityNodeInfo root, int maxNodes, int maxChars) {
+        if (root == null) return "";
+        StringBuilder out = new StringBuilder();
+        Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int seen = 0;
+        while (!queue.isEmpty() && seen < maxNodes && out.length() < maxChars) {
+            AccessibilityNodeInfo node = queue.removeFirst();
+            seen++;
+            String text = visibleText(node);
+            if (!text.isEmpty() && out.indexOf(text) < 0) {
+                if (out.length() > 0) out.append("\n");
+                int remaining = maxChars - out.length();
+                out.append(text, 0, Math.min(text.length(), remaining));
+            }
+            for (int i = 0; i < node.getChildCount() && queue.size() < maxNodes; i++) {
+                AccessibilityNodeInfo child = node.getChild(i);
+                if (child != null) queue.addLast(child);
+            }
+        }
+        return out.toString().trim();
     }
 
     public static boolean treeContains(AccessibilityNodeInfo root, String needle) {
