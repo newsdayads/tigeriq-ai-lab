@@ -123,3 +123,12 @@ test('read-only final review without explicit capability uses NV03 review route'
   const s=classifyWorkOrder('PRIORITY=P1\nFINAL_REVIEW_REQUIRED=true\nNO_CODE_CHANGE=true');
   assert.equal(s.capability,'review');assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.surface,'CORE_UI_REVIEW');
 });
+
+test('explicit MOBILE surface routes safe work to the live Mobile Worker lane',()=>{
+  const s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=mobile\nEXECUTION_SURFACE=MOBILE');
+  assert.equal(s.route,'MOBILE');
+  assert.equal(s.capability,'mobile');
+  assert.equal(s.surface,'MOBILE');
+  assert.equal(s.autonomous,true);
+  assert.equal(s.workerId,null);
+});
