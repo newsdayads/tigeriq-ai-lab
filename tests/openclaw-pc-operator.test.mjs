@@ -334,6 +334,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293");
     expect(source).toContain("TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH");
     expect(source).toContain("TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH");
+    expect(source).toContain("extraEnvKeys: ['USERPROFILE','GRADLE_HOME']");
     expect(source).not.toContain("input?.script");
     expect(source).not.toContain("input?.secretsDir");
     expect(source).not.toContain("D:\\\\TigerIQ\\\\Workspace\\\\tigeriq-ai-lab");
