@@ -125,3 +125,37 @@ test('work-card picker stays readable with many open packages on mobile and sele
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.pickerScroll).toBeGreaterThan(metrics.pickerClient);
 });
+
+test('compact mobile workflow fits above the fold and full six-stage detail is collapsed', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openTiger(page);
+
+  const map = page.locator('.mobile-flow-map');
+  await expect(map).toBeVisible();
+  await expect(page.locator('.mobile-flow-node')).toHaveCount(6);
+  await expect(page.locator('.mobile-focus-card')).toBeVisible();
+  await expect(page.locator('.mobile-focus-card')).toContainText('Xây thẻ công việc đọc là hiểu');
+
+  const metrics = await page.evaluate(() => {
+    const board = document.querySelector('.workflow-board');
+    const rows = document.querySelector('.workflow-board .flow-rows');
+    const compact = document.querySelector('.mobile-flow-compact');
+    const focus = document.querySelector('.mobile-focus-card');
+    return {
+      boardTop: board?.getBoundingClientRect().top ?? 9999,
+      compactBottom: compact?.getBoundingClientRect().bottom ?? 9999,
+      focusHeight: focus?.getBoundingClientRect().height ?? 9999,
+      rowsDisplay: rows ? getComputedStyle(rows).display : 'missing',
+      docWidth: document.documentElement.scrollWidth,
+      viewport: window.innerWidth
+    };
+  });
+  expect(metrics.rowsDisplay).toBe('none');
+  expect(metrics.compactBottom).toBeLessThanOrEqual(844);
+  expect(metrics.focusHeight).toBeLessThan(145);
+  expect(metrics.docWidth).toBeLessThanOrEqual(metrics.viewport + 1);
+
+  await page.locator('[data-mobile-flow-toggle]').click();
+  await expect(page.locator('.workflow-board .flow-rows')).toBeVisible();
+  await expect(page.locator('[data-mobile-flow-toggle]')).toContainText('Thu gọn 6 bước');
+});
