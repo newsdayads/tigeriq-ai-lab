@@ -2,6 +2,7 @@ package ai.tigeriq.worker;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 
 import org.json.JSONObject;
 
@@ -25,6 +26,7 @@ public final class ChatGptB1RunStore {
     private static final String K_DUPLICATE_COUNT = "duplicateSendCount";
     private static final String K_RECOVERY_COUNT = "recoveryCount";
     private static final String K_STARTED_AT = "startedAt";
+    private static final String K_STARTED_ELAPSED_AT = "startedElapsedAt";
     private static final String K_CYCLE_STARTED_AT = "cycleStartedAt";
     private static final String K_SENT_AT = "sentAt";
     private static final String K_NEXT_ACTION_AT = "nextActionAt";
@@ -41,10 +43,11 @@ public final class ChatGptB1RunStore {
 
     private ChatGptB1RunStore() {}
 
-    public static Snapshot start(Context context, int requestedCycles) {
+    public static synchronized Snapshot start(Context context, int requestedCycles) {
         int target = Math.max(1, Math.min(10, requestedCycles));
         String runId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
+        long nowElapsed = SystemClock.elapsedRealtime();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
             .putString(K_RUN_ID, runId)
             .putString(K_STATE, "WAITING_PROJECT")
@@ -56,6 +59,7 @@ public final class ChatGptB1RunStore {
             .putInt(K_DUPLICATE_COUNT, 0)
             .putInt(K_RECOVERY_COUNT, 0)
             .putLong(K_STARTED_AT, now)
+            .putLong(K_STARTED_ELAPSED_AT, nowElapsed)
             .putLong(K_CYCLE_STARTED_AT, now)
             .putLong(K_NEXT_ACTION_AT, now)
             .putBoolean(K_BUSY_SEEN, false)
@@ -69,7 +73,7 @@ public final class ChatGptB1RunStore {
         return read(context);
     }
 
-    public static Snapshot startTask(Context context, String runId, String taskId, String prompt, String expectedToken) {
+    public static synchronized Snapshot startTask(Context context, String runId, String taskId, String prompt, String expectedToken) {
         if (runId == null || runId.trim().isEmpty()) throw new IllegalArgumentException("runId is required");
         if (taskId == null || taskId.trim().isEmpty()) throw new IllegalArgumentException("taskId is required");
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
@@ -103,6 +107,7 @@ public final class ChatGptB1RunStore {
             p.getInt(K_DUPLICATE_COUNT, 0),
             p.getInt(K_RECOVERY_COUNT, 0),
             p.getLong(K_STARTED_AT, 0L),
+            p.getLong(K_STARTED_ELAPSED_AT, 0L),
             p.getLong(K_CYCLE_STARTED_AT, 0L),
             p.getLong(K_SENT_AT, 0L),
             p.getLong(K_NEXT_ACTION_AT, 0L),
@@ -131,7 +136,7 @@ public final class ChatGptB1RunStore {
             + "TIGERIQ_ + B1_ + OK_ + " + s.cycle;
     }
 
-    public static void markProjectBound(Context context) {
+    public static synchronized void markProjectBound(Context context) {
         long now = System.currentTimeMillis();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(K_PROJECT_BOUND, true)
@@ -218,6 +223,29 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
+    public static synchronized boolean failWaitingProjectIfTimedOut(
+        Context context,
+        String expectedRunId,
+        String expectedTaskId,
+        long nowElapsedMs
+    ) {
+        Snapshot current = read(context);
+        if (!expectedRunId.equals(current.runId) || !expectedTaskId.equals(current.taskId)) return false;
+        if (!"WAITING_PROJECT".equals(current.state) || current.projectBound) return false;
+
+        long anchor = current.startedElapsedAt;
+        if (anchor <= 0L || nowElapsedMs < anchor) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putLong(K_STARTED_ELAPSED_AT, nowElapsedMs)
+                .apply();
+            return false;
+        }
+        if (!ChatGptB1Policy.projectBindTimedOut(anchor, nowElapsedMs)) return false;
+
+        finish(context, "ERROR", "PROJECT_BIND_TIMEOUT");
+        return true;
+    }
+
     public static void fail(Context context, String code) {
         finish(context, "ERROR", trim(code, 120));
     }
@@ -295,6 +323,7 @@ public final class ChatGptB1RunStore {
         public final int duplicateSendCount;
         public final int recoveryCount;
         public final long startedAt;
+        public final long startedElapsedAt;
         public final long cycleStartedAt;
         public final long sentAt;
         public final long nextActionAt;
@@ -320,6 +349,7 @@ public final class ChatGptB1RunStore {
             int duplicateSendCount,
             int recoveryCount,
             long startedAt,
+            long startedElapsedAt,
             long cycleStartedAt,
             long sentAt,
             long nextActionAt,
@@ -344,6 +374,7 @@ public final class ChatGptB1RunStore {
             this.duplicateSendCount = duplicateSendCount;
             this.recoveryCount = recoveryCount;
             this.startedAt = startedAt;
+            this.startedElapsedAt = startedElapsedAt;
             this.cycleStartedAt = cycleStartedAt;
             this.sentAt = sentAt;
             this.nextActionAt = nextActionAt;
