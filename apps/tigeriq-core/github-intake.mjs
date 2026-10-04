@@ -282,6 +282,81 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
+export function extractMobileInstruction(body){
+  const text=String(body||'');
+  const match=text.match(/(?:^|\n)(?:##\s*)?ASSIGNED_ACTION\s*\n([\s\S]*?)(?=\n(?:##\s*)?ACCEPTANCE\s*\n|$)/i);
+  return String(match?.[1]||'').trim().slice(0,3200);
+}
+
+const MOBILE_LIVE_VERSION='0.22.0-live-worker';
+
+function mobileCompletionToken(issueNumber,sourceRevision){
+  return `TIGERIQ_MOBILE_DONE_GH_${Number(issueNumber)}_${String(sourceRevision||'').toUpperCase()}`;
+}
+
+async function ensureGithubMobileTask(pool,row,sourceBody=''){
+  const metadata=row?.metadata||{};
+  const issueNumber=Number(metadata.issueNumber||0);
+  const sourceRevision=String(metadata.sourceRevision||'').trim().toLowerCase();
+  if(!issueNumber||!sourceRevision)return {state:'INVALID_SOURCE',taskId:null};
+  const instruction=extractMobileInstruction(sourceBody);
+  if(!instruction)return {state:'INVALID_INSTRUCTION',taskId:null};
+
+  const idempotencyKey=`github-mobile:${issueNumber}:${sourceRevision}`;
+  const existing=(await pool.query(
+    'select task_id,status,result from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',
+    [idempotencyKey]
+  )).rows[0];
+  if(existing){
+    if(metadata.mobileTaskId!==existing.task_id){
+      const patch={mobileTaskId:existing.task_id,mobileIdempotencyKey:idempotencyKey,mobileExpectedToken:mobileCompletionToken(issueNumber,sourceRevision)};
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(patch)]);
+      Object.assign(metadata,patch);
+    }
+    return {state:'EXISTING',taskId:existing.task_id,status:String(existing.status||''),result:existing.result||null};
+  }
+
+  const devices=(await pool.query(
+    `select node_id,employee_id,provider,agent_version,last_seen_at
+       from tigeriq_mobile_devices
+      where revoked=false and agent_version=$1 and last_seen_at>now()-interval '2 minutes'
+      order by last_seen_at desc`,
+    [MOBILE_LIVE_VERSION]
+  )).rows;
+  if(devices.length!==1)return {state:devices.length===0?'WAIT_DEVICE':'AMBIGUOUS_DEVICE',taskId:null};
+  const device=devices[0];
+  const expectedToken=mobileCompletionToken(issueNumber,sourceRevision);
+  const taskId=`MT-GH-${issueNumber}-${sourceRevision}`;
+  const runId=`MR-GH-${issueNumber}-${sourceRevision}`;
+  const prompt=[
+    instruction,
+    '',
+    'Đây là công việc thật từ TigerIQ Core. Hoàn thành nội dung trên, trả kết quả hữu ích và ngắn gọn.',
+    `Dòng cuối cùng phải đúng chính xác: ${expectedToken}`,
+  ].join('\n').slice(0,4000);
+  await pool.query(
+    `insert into tigeriq_mobile_tasks(task_id,idempotency_key,target_node_id,employee_id,provider,prompt,expected_token,run_id)
+     values($1,$2,$3,$4,$5,$6,$7,$8)
+     on conflict(idempotency_key) do nothing`,
+    [taskId,idempotencyKey,device.node_id,device.employee_id,device.provider,prompt,expectedToken,runId]
+  );
+  const task=(await pool.query(
+    'select task_id,status,result from tigeriq_mobile_tasks where idempotency_key=$1 limit 1',
+    [idempotencyKey]
+  )).rows[0];
+  const patch={
+    mobileTaskId:String(task?.task_id||taskId),
+    mobileIdempotencyKey:idempotencyKey,
+    mobileExpectedToken:expectedToken,
+    mobileWorkerEmployeeId:String(device.employee_id||''),
+    mobileWorkerNodeId:String(device.node_id||''),
+    mobileWorkerVersion:MOBILE_LIVE_VERSION,
+  };
+  await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(patch)]);
+  Object.assign(metadata,patch);
+  return {state:'DISPATCHED',taskId:patch.mobileTaskId,status:String(task?.status||'queued'),result:task?.result||null};
+}
+
 const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
@@ -388,6 +463,7 @@ export function safeAutoWorkAdmission(issue){
   const classification=classifyWorkOrder(body);
   if(['HOLD_OWNER','UI'].includes(classification.route))return {eligible:false,reason:'OWNER_OR_UI_ROUTE'};
   if(classification.route==='OPENCLAW')return {eligible:false,reason:'SPECIALIST_CONTRACT_REQUIRED'};
+  if(classification.route==='MOBILE'&&!extractMobileInstruction(body))return {eligible:false,reason:'MOBILE_ASSIGNED_ACTION_REQUIRED'};
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
   if(!resourceScope)return {eligible:false,reason:'RESOURCE_SCOPE_REQUIRED'};
   const mutationOwner=bodyValue(body,'MUTATION_OWNER').toUpperCase();
@@ -926,6 +1002,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       ? (spec.pcOperatorDirectAction
           ? `GitHub bounded PC operator work item #${spec.number}. Core must execute only the pre-admitted typed local action from PC_OPERATOR_DIRECT_ACTION_JSON. Do not invoke model reasoning or infer any different action. NO arbitrary shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when that exact action is satisfied.\n\n${context}`
           : `GitHub bounded PC operator work item #${spec.number}. Core must dispatch only the assigned pc_operator action through NV06/OpenClaw. Use approved bounded TigerIQ/OpenClaw tools; NO arbitrary PC01 shell, repository source edit, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action. Return structured verified evidence and complete only when the assigned bounded action is satisfied.\n\n${context}`)
+      : spec.dispatchLane==='MOBILE'
+        ? `GitHub live mobile work item #${spec.number}. TigerIQ Core must dispatch the explicit ASSIGNED_ACTION to the paired v0.22 Mobile Worker and accept only the returned terminal result. No PC01 shell, Production/main mutation, paid action, credential/security change, reboot/shutdown, or destructive action.\n\n${context}`
       : spec.requiresCodingHandoff
         ? `GitHub autonomous CORE_REASONING coordination work item #${spec.number}. Analyze and coordinate only. Repository/source mutation must be handed off to the bounded coding executor lane; this API worker must not mutate source or claim coding/review ownership. Do not use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Preserve one-resource-one-writer and require independent review after implementation.\n\n${context}`
         : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
@@ -933,7 +1011,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
-      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY'),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
+      dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.dispatchLane==='MOBILE'?'MOBILE_WORKER':(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY')),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
       liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
@@ -959,6 +1037,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
     };
     await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    if(spec.dispatchLane==='MOBILE'){
+      await ensureGithubMobileTask(pool,{id,metadata},spec.body);
+    }
     if(spec.capability==='pc_operator'){
       const jobId=githubPcOperatorJobId(id,spec.number);
       const prompt=pcOperatorPrompt;
@@ -1231,6 +1312,42 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       }catch(error){
         if(githubRateLimitCooldownMs(error)>0)throw error;
         console.error(JSON.stringify({event:'GITHUB_SOURCE_STATE_RECONCILE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+      }
+    }
+    if(row.status==='active'&&row.metadata?.executionSurface==='MOBILE_WORKER'){
+      const mobile=await ensureGithubMobileTask(pool,row,sourceBody);
+      if(mobile.state==='INVALID_INSTRUCTION'){
+        row.status='blocked';
+        row.summary='mobile live dispatch blocked: ASSIGNED_ACTION missing';
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }else if(mobile.taskId){
+        const task=(await pool.query(
+          'select task_id,status,result,attempts,completed_at from tigeriq_mobile_tasks where task_id=$1 limit 1',
+          [mobile.taskId]
+        )).rows[0];
+        const status=String(task?.status||'').toLowerCase();
+        if(status==='completed'){
+          const output=task?.result&&typeof task.result==='object'&&task.result.output&&typeof task.result.output==='object'
+            ? task.result.output : {};
+          const responseText=String(output?.responseText||'').trim();
+          const validatedToken=String(output?.validatedToken||'').trim();
+          const expectedToken=String(row.metadata?.mobileExpectedToken||'').trim();
+          if(!responseText||!expectedToken||validatedToken!==expectedToken){
+            row.status='blocked';
+            row.summary='mobile live result invalid: response text or completion token missing';
+            await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+          }else{
+            row.status='completed';
+            row.summary=`Mobile Worker completed real task: ${responseText.slice(0,4000)}`;
+            await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+          }
+        }else if(status==='failed'){
+          const output=task?.result&&typeof task.result==='object'&&task.result.output&&typeof task.result.output==='object'
+            ? task.result.output : {};
+          row.status='blocked';
+          row.summary=`mobile live task failed: ${String(output?.lastError||output?.runState||'terminal_failure').slice(0,300)}`;
+          await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+        }
       }
     }
     if(row.status==='active'&&['CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL'].includes(row.metadata?.executionSurface)){
