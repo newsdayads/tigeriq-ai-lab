@@ -148,6 +148,9 @@ public final class ForegroundWorkerService extends Service {
                             client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
                         }
                         MobileTaskStore.markResultReported(this);
+                        // Keep the bound task for one 5s task-loop interval so the owner UI can
+                        // observably render ĐÃ TRẢ KẾT QUẢ before the durable binding is cleared.
+                        return;
                     }
                     reportPendingB1Evidence(client);
                     run = ChatGptB1RunStore.read(this);
