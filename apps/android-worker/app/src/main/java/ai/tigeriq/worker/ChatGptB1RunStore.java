@@ -230,17 +230,27 @@ public final class ChatGptB1RunStore {
         long nowElapsedMs
     ) {
         Snapshot current = read(context);
+        if (expectedRunId == null || expectedTaskId == null) return false;
         if (!expectedRunId.equals(current.runId) || !expectedTaskId.equals(current.taskId)) return false;
         if (!"WAITING_PROJECT".equals(current.state) || current.projectBound) return false;
 
         long anchor = current.startedElapsedAt;
-        if (anchor <= 0L || nowElapsedMs < anchor) {
+        if (ChatGptB1Policy.projectBindElapsedAnchorInvalid(anchor, nowElapsedMs)) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putLong(K_STARTED_ELAPSED_AT, nowElapsedMs)
                 .apply();
             return false;
         }
-        if (!ChatGptB1Policy.projectBindTimedOut(anchor, nowElapsedMs)) return false;
+        if (!ChatGptB1Policy.shouldTimeoutBoundTask(
+            expectedRunId,
+            expectedTaskId,
+            current.runId,
+            current.taskId,
+            current.state,
+            current.projectBound,
+            anchor,
+            nowElapsedMs
+        )) return false;
 
         finish(context, "ERROR", "PROJECT_BIND_TIMEOUT");
         return true;
