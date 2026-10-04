@@ -157,4 +157,6 @@ test('compact mobile workflow fits above the fold and full six-stage detail is c
   await page.locator('[data-mobile-flow-toggle]').click();
   await expect(page.locator('.workflow-board .flow-rows')).toBeVisible();
   await expect(page.locator('[data-mobile-flow-toggle]')).toContainText('Thu gọn 6 bước');
+  await page.locator('[data-mobile-flow-toggle]').click();
+  await page.screenshot({ path: 'artifacts/compact-mobile-preview.png', fullPage: true });
 });
