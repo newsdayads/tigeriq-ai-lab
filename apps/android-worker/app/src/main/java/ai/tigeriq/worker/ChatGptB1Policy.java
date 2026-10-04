@@ -27,10 +27,32 @@ public final class ChatGptB1Policy {
             && exactProjectLabelSeen;
     }
 
+    public static boolean projectBindElapsedAnchorInvalid(long startedElapsedMs, long nowElapsedMs) {
+        return startedElapsedMs <= 0L || nowElapsedMs < startedElapsedMs;
+    }
+
     public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
-        return startedElapsedMs > 0L
-            && nowElapsedMs >= startedElapsedMs
+        return !projectBindElapsedAnchorInvalid(startedElapsedMs, nowElapsedMs)
             && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
+    }
+
+    public static boolean shouldTimeoutBoundTask(
+        String expectedRunId,
+        String expectedTaskId,
+        String currentRunId,
+        String currentTaskId,
+        String state,
+        boolean projectBound,
+        long startedElapsedMs,
+        long nowElapsedMs
+    ) {
+        return expectedRunId != null
+            && expectedTaskId != null
+            && expectedRunId.equals(currentRunId)
+            && expectedTaskId.equals(currentTaskId)
+            && "WAITING_PROJECT".equals(state)
+            && !projectBound
+            && projectBindTimedOut(startedElapsedMs, nowElapsedMs);
     }
 
     public static long nextActionAfterFill(long nowMs) {
