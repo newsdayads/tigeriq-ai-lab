@@ -525,7 +525,12 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("versionName: '0.21.0-packageinstaller-stream-fix'");
     expect(source).toContain('tigeriq-worker-0.21.0-packageinstaller-stream-fix.apk');
     expect(source).toContain('release-manifest.json');
-    expect(source).toContain('sourceSha!==installedSha');
+    expect(source).toContain("sourceArtifactSha: '1f80bc5c86a855b7a88f13e6d6e89d8035437f4c'");
+    expect(source).toContain("sourceArtifactAndroidTreeSha: '34334f3707240974ca78bad14f85935a5205f267'");
+    expect(source).toContain("'merge-base','--is-ancestor',sourceSha,installedSha");
+    expect(source).toContain("'HEAD:apps/android-worker'");
+    expect(source).toContain('TIGERIQ_ANDROID_V021_RUNTIME_SOURCE_MISMATCH');
+    expect(source).toContain('TIGERIQ_ANDROID_V021_ANDROID_TREE_DRIFT');
     expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
     expect(source).toContain('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
     expect(source).toContain("JSON.parse(receiptRaw.replace(/^\\uFEFF/,''))");
