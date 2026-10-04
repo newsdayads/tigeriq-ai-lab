@@ -120,10 +120,36 @@ export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass)
   return handoffClass===current;
 }
 
-export function apiDoctorRepairLifecycleRelevant({
-  hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',
+export function apiDoctorFreshRecurrence({
+  currentFailureClass='',
+  currentFailureAt=null,
+  terminalAt=null,
+  currentSignature='',
+  priorSignature='',
 }={}){
-  if(!hasHandoff)return false;
+  const failureClass=String(currentFailureClass||'').trim().toLowerCase();
+  const signature=String(currentSignature||'').trim();
+  const prior=String(priorSignature||'').trim();
+  const failureMs=Date.parse(String(currentFailureAt||''));
+  const terminalMs=Date.parse(String(terminalAt||''));
+  const sameSignature=Boolean(signature&&prior&&signature===prior);
+  if(failureClass!=='source_contract'||!signature||!Number.isFinite(failureMs)||!Number.isFinite(terminalMs)||failureMs<=terminalMs){
+    return {fresh:false,signature,sameSignature};
+  }
+  const terminalIso=new Date(terminalMs).toISOString();
+  return {
+    fresh:true,
+    signature:`${signature}|recurrence_after:${terminalIso}`,
+    sameSignature,
+    terminalAt:terminalIso,
+    currentFailureAt:new Date(failureMs).toISOString(),
+  };
+}
+
+export function apiDoctorRepairLifecycleRelevant({
+  hasHandoff=false,repairIssueNumber=0,handoffFailureClass='',currentFailureClass='',currentAction='',freshRecurrence=false,
+}={}){
+  if(!hasHandoff||freshRecurrence)return false;
   const current=String(currentFailureClass||'').trim().toLowerCase();
   const action=String(currentAction||'').trim().toLowerCase();
   if(current==='rate_limit'&&['wait','probe'].includes(action))return false;

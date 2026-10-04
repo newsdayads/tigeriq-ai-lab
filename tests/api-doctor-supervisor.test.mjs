@@ -5,6 +5,7 @@ import {
   apiDoctorAction,
   apiDoctorCurrentFailure,
   apiDoctorExistingHandoffAction,
+  apiDoctorFreshRecurrence,
   apiDoctorHandoffMatchesFailureClass,
   apiDoctorHealthEvidenceEvents,
   apiDoctorLocalRefreshHealth,
@@ -148,6 +149,59 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(a).toBe(b);
   });
 
+
+  it('creates one stable fresh-recurrence generation after a terminal repair cutover',()=>{
+    const base='NV15|cloudflare|source_contract|empty_response';
+    const a=apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',
+      currentFailureAt:'2026-10-05T01:10:00Z',
+      terminalAt:'2026-10-05T01:00:00Z',
+      currentSignature:base,
+      priorSignature:base,
+    });
+    const b=apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',
+      currentFailureAt:'2026-10-05T01:20:00Z',
+      terminalAt:'2026-10-05T01:00:00Z',
+      currentSignature:base,
+      priorSignature:base,
+    });
+    expect(a.fresh).toBe(true);
+    expect(a.sameSignature).toBe(true);
+    expect(a.signature).toBe(b.signature);
+    expect(a.signature).toBe(`${base}|recurrence_after:2026-10-05T01:00:00.000Z`);
+  });
+
+  it('does not call pre-cutover/equal-cutover or rate-limit evidence a fresh recurrence',()=>{
+    const base='NV15|cloudflare|source_contract|empty_response';
+    expect(apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',currentFailureAt:'2026-10-05T01:00:00Z',
+      terminalAt:'2026-10-05T01:00:00Z',currentSignature:base,priorSignature:base,
+    }).fresh).toBe(false);
+    expect(apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',currentFailureAt:'2026-10-05T00:59:59Z',
+      terminalAt:'2026-10-05T01:00:00Z',currentSignature:base,priorSignature:base,
+    }).fresh).toBe(false);
+    expect(apiDoctorFreshRecurrence({
+      currentFailureClass:'rate_limit',currentFailureAt:'2026-10-05T01:10:00Z',
+      terminalAt:'2026-10-05T01:00:00Z',currentSignature:'rate-limit',priorSignature:base,
+    }).fresh).toBe(false);
+  });
+
+  it('changes recurrence generation only after a newer terminal repair cutover',()=>{
+    const base='NV15|cloudflare|source_contract|empty_response';
+    const first=apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',currentFailureAt:'2026-10-05T01:10:00Z',
+      terminalAt:'2026-10-05T01:00:00Z',currentSignature:base,priorSignature:base,
+    });
+    const second=apiDoctorFreshRecurrence({
+      currentFailureClass:'source_contract',currentFailureAt:'2026-10-05T02:10:00Z',
+      terminalAt:'2026-10-05T02:00:00Z',currentSignature:base,priorSignature:first.signature,
+    });
+    expect(second.fresh).toBe(true);
+    expect(second.signature).not.toBe(first.signature);
+  });
+
   it('gates canonical repair lifecycle on completed repair Work Order',()=>{
     expect(apiDoctorRepairWorkOrderGate({issueNumber:9901,state:'open',stateReason:null})).toEqual({
       action:'wait_repair',reason:'canonical_repair_work_order_open',
@@ -172,6 +226,10 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorRepairLifecycleRelevant({
       hasHandoff:true,repairIssueNumber:9901,handoffFailureClass:'source_contract',
       currentFailureClass:'rate_limit',currentAction:'wait',
+    })).toBe(false);
+    expect(apiDoctorRepairLifecycleRelevant({
+      hasHandoff:true,repairIssueNumber:9901,handoffFailureClass:'source_contract',
+      currentFailureClass:'source_contract',currentAction:'probe_then_handoff',freshRecurrence:true,
     })).toBe(false);
   });
 
@@ -462,7 +520,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("apiDoctorCurrentFailure(events)");
     expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
     expect(core).toContain("row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class'");
-    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=repairLifecycleRelevant||apiDoctorHandoffMatchesFailureClass"));
+    expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=freshRecurrence?.fresh?null:("));
     expect(core).not.toContain("evidence:'stale_failure_class_reprobe_success'");
     expect(core).toContain("row.staleHandoffProbe='ok_wait_repair_lifecycle'");
     expect(core).toContain("healthState:resource.health_state");
@@ -479,6 +537,8 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation')");
     expect(core).toContain("apiDoctorRepairLifecycleEvidence(handoffCandidate)");
     expect(core).toContain("apiDoctorRepairLifecycleRelevant({");
+    expect(core).toContain("apiDoctorFreshRecurrence({");
+    expect(core).toContain("freshRecurrence?.fresh?{signatureOverride:freshRecurrence.signature}:{}");
     expect(core).toContain("legacy_handoff_migrated_to_canonical_p1");
     expect(core).toContain("signatureOverride:existingHandoff.data?.signature||''");
     expect(core).toContain("prior&&Number(prior.data?.repairIssueNumber||0)>0");
