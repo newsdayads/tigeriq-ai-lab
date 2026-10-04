@@ -265,9 +265,41 @@ function Invoke-V020Signer {
   if (-not $receipt) { throw 'TIGERIQ_V020_SIGNER_RECEIPT_MISSING' }
   return $receipt
 }
+function Invoke-V021Signer {
+  $wrapper = 'D:\TigerIQ\Runtime\CoreSource\scripts\pc-worker\sign-v021-reviewed-artifact.ps1'
+  if (-not (Test-Path -LiteralPath $wrapper -PathType Leaf)) { throw 'TIGERIQ_V021_SIGNER_WRAPPER_MISSING' }
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = 'powershell.exe'
+  $psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $wrapper + '"'
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $p = [System.Diagnostics.Process]::new(); $p.StartInfo = $psi
+  if (-not $p.Start()) { throw 'TIGERIQ_V021_SIGNER_START_FAILED' }
+  $stdoutTask = $p.StandardOutput.ReadToEndAsync(); $stderrTask = $p.StandardError.ReadToEndAsync()
+  if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; throw 'TIGERIQ_V021_SIGNER_TIMEOUT' }
+  $stdout = $stdoutTask.GetAwaiter().GetResult(); $stderr = $stderrTask.GetAwaiter().GetResult()
+  if ($p.ExitCode -ne 0) {
+    if ($stderr -match 'DPAPI_PASSWORD_DECRYPT_FAILED') { throw 'DPAPI_PASSWORD_DECRYPT_FAILED' }
+    if ($stderr -match 'ANDROID_[A-Z0-9_]+') { throw $Matches[0] }
+    throw 'TIGERIQ_V021_SIGNER_FAILED'
+  }
+  $receipt = $null
+  foreach ($line in @($stdout -split [Environment]::NewLine)) {
+    if (-not $line.Trim()) { continue }
+    try {
+      $candidate = $line | ConvertFrom-Json -ErrorAction Stop
+      if ([string]$candidate.status -eq 'ANDROID_WORKER_STABLE_RELEASE_READY') { $receipt = $candidate }
+    } catch {}
+  }
+  if (-not $receipt) { throw 'TIGERIQ_V021_SIGNER_RECEIPT_MISSING' }
+  return $receipt
+}
 function Invoke-Request($Request) {
   switch ([string]$Request.action) {
     'pad_android_sign_v020' { return Invoke-V020Signer }
+    'pad_android_sign_v021' { return Invoke-V021Signer }
     'pad_launch' {
       Start-Process 'ms-powerautomate:' | Out-Null
       return [pscustomobject]@{ Launched=$true }
