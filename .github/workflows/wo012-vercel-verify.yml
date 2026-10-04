@@ -1,4 +1,4 @@
-name: WO-012/013 Vercel Online Verify
+name: Web Hosting Contract Verify
 
 on:
   push:
@@ -6,10 +6,30 @@ on:
       - main
       - wo012/command-center-vercel-online
       - wo013/chief-of-staff-chat
+    paths:
+      - 'command-center.html'
+      - 'public/**'
+      - 'api/**'
+      - 'vercel.json'
+      - 'docs/VERCEL_DEPLOYMENT_POLICY.md'
+      - 'scripts/verify-vercel-deployment-policy.mjs'
+      - 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs'
+      - 'tests/vercel-deployment-boundary.test.mjs'
+      - '.github/workflows/wo012-vercel-verify.yml'
   pull_request:
     branches:
       - main
       - wo010/command-center-web-control
+    paths:
+      - 'command-center.html'
+      - 'public/**'
+      - 'api/**'
+      - 'vercel.json'
+      - 'docs/VERCEL_DEPLOYMENT_POLICY.md'
+      - 'scripts/verify-vercel-deployment-policy.mjs'
+      - 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs'
+      - 'tests/vercel-deployment-boundary.test.mjs'
+      - '.github/workflows/wo012-vercel-verify.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +37,7 @@ permissions:
 
 jobs:
   verify:
-    name: Vercel Online Verify
+    name: Web Hosting Guard Verify
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -27,11 +47,11 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Verify Vercel API syntax
+      - name: Verify hosted web API syntax
         run: node --check api/control.mjs && node --check api/chief.mjs && node --check api/chief-smoke.mjs
       - name: Verify Chief router invariants
         run: node scripts/test-chief-router.mjs
-      - name: Verify Vercel config
-        run: node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8')); console.log('vercel.json PASS')"
+      - name: Verify web-hosting boundary
+        run: node scripts/verify-vercel-deployment-policy.mjs
       - name: Existing TigerIQ gates
         run: npm run typecheck && npm run test && npm run build
