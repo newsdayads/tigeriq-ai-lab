@@ -54,4 +54,20 @@ describe('Core manager progress-aware cycle guard',()=>{
     expect(source).toContain('MANAGER_PROGRESS_CYCLE_RESET');
     expect(source).toContain('manager_cycles=0');
   });
+  it('resets the consecutive no-progress budget on campaign phase advance',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const advanceStart=source.indexOf("if(transition.action==='advance')");
+    const advanceEnd=source.indexOf('return;',advanceStart);
+    expect(advanceStart).toBeGreaterThan(-1);
+    expect(advanceEnd).toBeGreaterThan(advanceStart);
+    const advanceBlock=source.slice(advanceStart,advanceEnd);
+    expect(advanceBlock).toContain('manager_cycles=0');
+    expect(advanceBlock).toContain('CAMPAIGN_PHASE_ADVANCED');
+  });
+
+  it('keeps the per-manager-tick progress lookup bounded by a matching partial index',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("create index if not exists tigeriq_jobs_objective_phase_done_completed_idx on tigeriq_jobs(objective_id,phase_index,completed_at desc) where status='done'");
+  });
+
 });
