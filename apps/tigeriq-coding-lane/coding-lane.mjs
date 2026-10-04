@@ -319,6 +319,23 @@ const DATABASE_URL=process.env.DATABASE_URL?.trim(); if(!DATABASE_URL&&process.e
 const GH_TOKEN=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim(); if(!GH_TOKEN&&process.env.NODE_ENV!=='test')throw new Error('GITHUB_TOKEN_MISSING');
 const OWNER=process.env.TIGERIQ_GITHUB_OWNER||'newsdayads';
 const REPO=process.env.TIGERIQ_GITHUB_REPO||'tigeriq-ai-lab';
+const SOURCE_REPOSITORY={owner:OWNER,repo:REPO,fullName:`${OWNER}/${REPO}`,isSource:true};
+const DEFAULT_ALLOWED_TARGET_REPOSITORIES=new Set([SOURCE_REPOSITORY.fullName.toLowerCase(),'newsdayads/tigeriq-media']);
+export function targetRepositoryFromObjective(objective=''){
+  return String(String(objective||'').match(/^TARGET_REPOSITORY=(.+)$/m)?.[1]||'').trim();
+}
+export function resolveCodingRepository(targetRepository='',{sourceRepository=SOURCE_REPOSITORY.fullName,allowedRepositories=DEFAULT_ALLOWED_TARGET_REPOSITORIES}={}){
+  const source=String(sourceRepository||'').trim();
+  const sourceMatch=source.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  if(!sourceMatch)throw Object.assign(new Error('CODING_SOURCE_REPOSITORY_INVALID'),{code:'CODING_SOURCE_REPOSITORY_INVALID'});
+  const raw=String(targetRepository||'').trim()||source;
+  const match=raw.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  if(!match)throw Object.assign(new Error('CODING_TARGET_REPOSITORY_INVALID'),{code:'CODING_TARGET_REPOSITORY_INVALID'});
+  const normalized=raw.toLowerCase();
+  const allowed=new Set([source.toLowerCase(),...[...allowedRepositories].map(x=>String(x||'').toLowerCase())]);
+  if(!allowed.has(normalized))throw Object.assign(new Error('CODING_TARGET_REPOSITORY_NOT_ALLOWED'),{code:'CODING_TARGET_REPOSITORY_NOT_ALLOWED',detail:{targetRepository:raw}});
+  return {owner:match[1],repo:match[2],fullName:raw,isSource:normalized===source.toLowerCase()};
+}
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||HOST}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
@@ -556,7 +573,11 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   const error=new Error(code);error.code=code;error.detail={attempts,tried,failureLedger};throw error;
 }
 
-async function gh(path,init={}){return fetchJson(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{...init,headers:{accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Lane/1.0','x-github-api-version':'2022-11-28',authorization:`Bearer ${GH_TOKEN}`,...(init.headers||{})}},30000)}
+async function ghRepo(repository,path,init={}){
+  const target=repository||SOURCE_REPOSITORY;
+  return fetchJson(`https://api.github.com/repos/${target.owner}/${target.repo}${path}`,{...init,headers:{accept:'application/vnd.github+json','content-type':'application/json','user-agent':'TigerIQ-Coding-Lane/1.0','x-github-api-version':'2022-11-28',authorization:`Bearer ${GH_TOKEN}`,...(init.headers||{})}},30000);
+}
+async function gh(path,init={}){return ghRepo(SOURCE_REPOSITORY,path,init)}
 
 export function requiresLiveGithubContext(objective=''){
   return /^REQUIRES_LIVE_GITHUB_CONTEXT=true\s*$/mi.test(String(objective||''));
@@ -644,43 +665,43 @@ export async function loadAuthoritativeGithubContext(objective='',{
   }
 }
 
-async function ghText(path,accept){const res=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
-async function mainSha(){return (await gh('/git/ref/heads/main')).object.sha}
-async function reconcileExistingPrBranch(pr,expectedHeadSha){
-  const identity=validateExistingPrResume(pr,{number:pr?.number,targetHead:expectedHeadSha,repoFullName:`${OWNER}/${REPO}`});
-  const baseSha=await mainSha();
-  const compare=await gh(`/compare/${baseSha}...${identity.headSha}`);
+async function ghTextRepo(repository,path,accept){const target=repository||SOURCE_REPOSITORY;const res=await fetch(`https://api.github.com/repos/${target.owner}/${target.repo}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
+async function mainSha(repository=SOURCE_REPOSITORY){return (await ghRepo(repository,'/git/ref/heads/main')).object.sha}
+async function reconcileExistingPrBranch(pr,expectedHeadSha,repository=SOURCE_REPOSITORY){
+  const identity=validateExistingPrResume(pr,{number:pr?.number,targetHead:expectedHeadSha,repoFullName:repository.fullName});
+  const baseSha=await mainSha(repository);
+  const compare=await ghRepo(repository,`/compare/${baseSha}...${identity.headSha}`);
   if(!existingPrNeedsBaseUpdate(compare))return identity;
   try{
-    await gh(`/pulls/${identity.number}/update-branch`,{method:'PUT',body:JSON.stringify({expected_head_sha:identity.headSha})});
+    await ghRepo(repository,`/pulls/${identity.number}/update-branch`,{method:'PUT',body:JSON.stringify({expected_head_sha:identity.headSha})});
   }catch(error){
     const e=new Error(`EXISTING_PR_RECONCILE_FAILED:${String(error?.message||error).slice(0,300)}`);e.code='EXISTING_PR_RECONCILE_FAILED';throw e;
   }
   for(let attempt=0;attempt<20;attempt++){
-    const updated=await gh(`/pulls/${identity.number}`);
-    const current=validateExistingPrResume(updated,{number:identity.number,repoFullName:`${OWNER}/${REPO}`});
-    const nextCompare=await gh(`/compare/${baseSha}...${current.headSha}`);
+    const updated=await ghRepo(repository,`/pulls/${identity.number}`);
+    const current=validateExistingPrResume(updated,{number:identity.number,repoFullName:repository.fullName});
+    const nextCompare=await ghRepo(repository,`/compare/${baseSha}...${current.headSha}`);
     if(!existingPrNeedsBaseUpdate(nextCompare))return current;
     await sleep(1000);
   }
   const e=new Error('EXISTING_PR_RECONCILE_TIMEOUT');e.code='EXISTING_PR_RECONCILE_TIMEOUT';throw e;
 }
-async function repoTree(){const sha=await mainSha();const t=await gh(`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
-async function readRepoFile(path,ref='main'){try{const x=await gh(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
-async function createBranch(name,sha){
-  try{return await gh('/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
+async function repoTree(repository=SOURCE_REPOSITORY){const sha=await mainSha(repository);const t=await ghRepo(repository,`/git/trees/${sha}?recursive=1`);return (t.tree||[]).filter(x=>x.type==='blob').map(x=>x.path).filter(safeRepoPath).slice(0,3000)}
+async function readRepoFile(path,ref='main',repository=SOURCE_REPOSITORY){try{const x=await ghRepo(repository,`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);return {path,sha:x.sha,content:Buffer.from(x.content||'','base64').toString('utf8')};}catch(e){if(e.status===404)return {path,sha:null,content:''};throw e}}
+async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
+  try{return await ghRepo(repository,'/git/refs',{method:'POST',body:JSON.stringify({ref:`refs/heads/${name}`,sha})})}
   catch(error){
     if(Number(error?.status)!==422)throw error;
-    const existing=await gh(`/git/ref/heads/${encodeURIComponent(name)}`);
+    const existing=await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(name)}`);
     if(String(existing?.object?.sha||'')===String(sha||''))return existing;
     throw error;
   }
 }
-async function writeFile(branch,change,mutationAuth={}){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return gh(`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
-async function openPr(branch,title,body){return gh('/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
-async function headSha(branch){return (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
-async function waitGates(branch,prNumber,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await gh(`/pulls/${prNumber}`));const sha=await headSha(branch);const x=await gh(`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
-async function mergePr(number,sha,title=''){return gh(`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
+async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
+async function openPr(branch,title,body,repository=SOURCE_REPOSITORY){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
+async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
+async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
+async function mergePr(number,sha,title='',repository=SOURCE_REPOSITORY){return ghRepo(repository,`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
 
 function reviewLine(value,max=1000){return String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,max)}
 export function formatIndependentReviewArtifact({implementerId,reviewerId,targetHead,review={}}={}){
@@ -700,9 +721,9 @@ export function assertIndependentReviewApproval({implementerId,reviewerId,target
   if(!approved||!current||approved!==current)throw new Error('REVIEW_HEAD_STALE');
   return true;
 }
-async function persistIndependentReviewArtifact(prNumber,data){
+async function persistIndependentReviewArtifact(prNumber,data,repository=SOURCE_REPOSITORY){
   const body=formatIndependentReviewArtifact(data);
-  const out=await gh(`/issues/${prNumber}/comments`,{method:'POST',body:JSON.stringify({body})});
+  const out=await ghRepo(repository,`/issues/${prNumber}/comments`,{method:'POST',body:JSON.stringify({body})});
   if(!out?.id)throw new Error('DURABLE_REVIEW_ARTIFACT_WRITE_UNVERIFIED');
   return {id:out.id,body};
 }
@@ -813,7 +834,8 @@ async function managerTick(){
     return;
   }
   const liveGithubContextBlock=formatAuthoritativeGithubContext(liveGithubContext);
-  const tree=await repoTree();
+  const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(o.objective));
+  const tree=await repoTree(targetRepository);
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
   const liveContextText=liveGithubContextBlock?`\n\n${liveGithubContextBlock}\n`:'';
   const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
@@ -832,8 +854,8 @@ async function managerTick(){
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let resumeBranch=null,resumePr=null,resumeHead=null;
     if(o.current_pr){
-      const livePr=await gh(`/pulls/${Number(o.current_pr)}`);
-      const resume=validateExistingPrResume(livePr,{number:o.current_pr,targetHead:o.target_head,repoFullName:`${OWNER}/${REPO}`});
+      const livePr=await ghRepo(targetRepository,`/pulls/${Number(o.current_pr)}`);
+      const resume=validateExistingPrResume(livePr,{number:o.current_pr,targetHead:o.target_head,repoFullName:targetRepository.fullName});
       resumeBranch=resume.branch;resumePr=resume.number;resumeHead=resume.headSha;
     }
     const id=`CODE-${randomUUID()}`;
@@ -1114,8 +1136,8 @@ async function claimJob(){
   }catch(e){await c.query('rollback');throw e}finally{c.release()}
 }
 export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
-async function filesFor(paths,ref='main'){const files=[];for(const p of paths){const f=await readRepoFile(p,ref);files.push({path:p,content:f.content})}return files}
-async function contextFor(paths,ref='main'){return buildLocalFileContext(await filesFor(paths,ref))}
+async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
+async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
 export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   const batches=[];let current=[],size=0;
   const flush=()=>{if(current.length){batches.push(current);current=[];size=0}};
@@ -1128,8 +1150,8 @@ export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   flush();
   return batches;
 }
-async function generationContextsFor(paths,ref='main',maxBatchChars=9000){
-  return partitionGenerationFiles(await filesFor(paths,ref),maxBatchChars).map(files=>({paths:files.map(x=>x.path),context:buildLocalFileContext(files)}));
+async function generationContextsFor(paths,ref='main',maxBatchChars=9000,repository=SOURCE_REPOSITORY){
+  return partitionGenerationFiles(await filesFor(paths,ref,repository),maxBatchChars).map(files=>({paths:files.map(x=>x.path),context:buildLocalFileContext(files)}));
 }
 export function validateCompactEdits(edits,allowedPaths=[]){
   if(!Array.isArray(edits)||edits.length<1||edits.length>12)throw new Error('CODING_COMPACT_EDITS_COUNT_INVALID');
@@ -1199,8 +1221,8 @@ export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCo
   return true;
 }
 
-async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],canonicalObjective='',liveGithubContext=null){
-  const batches=await generationContextsFor(j.paths,ref);
+async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
+  const batches=await generationContextsFor(j.paths,ref,9000,repository);
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const scopedJob={...j,paths:batch.paths};
@@ -1213,20 +1235,20 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
   validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
 }
-async function writeRepairChanges(branch,changes,mutationAuth={}){
-  for(const change of changes)await writeFile(branch,change,mutationAuth);
+async function writeRepairChanges(branch,changes,mutationAuth={},repository=SOURCE_REPOSITORY){
+  for(const change of changes)await writeFile(branch,change,mutationAuth,repository);
 }
 export function isRefreshableCompactPatchError(error){
   return /CODING_COMPACT_EDIT_(?:OLD_NOT_FOUND|OLD_NOT_UNIQUE)|COMPACT_EDIT_(?:SEARCH_MISSING|SEARCH_AMBIGUOUS)/i.test(String(error?.message||error||''));
 }
-async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutationAuth={},canonicalObjective='',liveGithubContext=null){
+async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutationAuth={},canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
   let selected=worker,last=null;
   for(let attempt=1;attempt<=2;attempt++){
     const retryIssues=attempt===1?issues:[...issues,'Refresh the CURRENT FILES from this same PR branch and regenerate the compact patch; keep the same PR and scope.'];
     try{
-      const generated=await generateRepairChanges(selected,j,branch,retryIssues,exclude,canonicalObjective,liveGithubContext);
+      const generated=await generateRepairChanges(selected,j,branch,retryIssues,exclude,canonicalObjective,liveGithubContext,repository);
       selected=generated.resource;
-      await writeRepairChanges(branch,generated.payload.changes,mutationAuth);
+      await writeRepairChanges(branch,generated.payload.changes,mutationAuth,repository);
       return {worker:selected,payload:generated.payload};
     }catch(error){
       last=error;
@@ -1236,8 +1258,8 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
   }
   throw last||new Error('CODING_COMPACT_PATCH_REFRESH_EXHAUSTED');
 }
-async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],canonicalObjective='',liveGithubContext=null){
-  const batches=await generationContextsFor(j.paths,ref);
+async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
+  const batches=await generationContextsFor(j.paths,ref,9000,repository);
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
@@ -1256,6 +1278,7 @@ async function runJob(j){
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
+  const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   j.liveGithubContext=generatedGithubContext;
@@ -1278,17 +1301,17 @@ async function runJob(j){
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
   if(shouldResumeExistingPr(j)){
-    const livePr=await gh(`/pulls/${pr.number}`);
-    const reconciled=await reconcileExistingPrBranch(livePr,j.head_sha);
+    const livePr=await ghRepo(targetRepository,`/pulls/${pr.number}`);
+    const reconciled=await reconcileExistingPrBranch(livePr,j.head_sha,targetRepository);
     branch=reconciled.branch;
     j.head_sha=reconciled.headSha;
     await pool.query("update tigeriq_coding_jobs set branch=$2,pr_number=$3,head_sha=$4 where id=$1",[j.id,branch,reconciled.number,reconciled.headSha]);
-    context=await contextFor(j.paths,branch);
+    context=await contextFor(j.paths,branch,targetRepository);
     reviewer=selectableResources([worker.id,...cooldownExcludes]).find(r=>r.id===j.reviewer_employee_id)||pickResource([worker.id,...cooldownExcludes]);
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
   }else{
-    generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext);worker=generated.resource;gen=generated.payload;
+    generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
     if(generatedGithubContext){
       await pool.query("update tigeriq_coding_jobs set live_github_context=$2,live_github_context_fingerprint=$3 where id=$1",[j.id,JSON.stringify(generatedGithubContext),generatedGithubContext.fingerprint]);
@@ -1296,23 +1319,23 @@ async function runJob(j){
     }
     reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    const base=await mainSha();branch=branchName(worker.id,j.id);await createBranch(branch,base);
+    const base=await mainSha(targetRepository);branch=branchName(worker.id,j.id);await createBranch(branch,base,targetRepository);
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
-    for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth);
+    for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth,targetRepository);
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`);
+    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nTarget repository: ${targetRepository.fullName}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`,targetRepository);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
   let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
   const lifecycle=await runReviewReworkLifecycle({
     maxCycles:3,
     waitGatesFn:async()=>runGateWithRepair({
-      waitFn:()=>waitGates(branch,pr.number),
+      waitFn:()=>waitGates(branch,pr.number,targetRepository),
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
       repairFn:async({evidence})=>{
         const freshContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,freshContext);j.liveGithubContext=freshContext;
         await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext);
+        const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext,targetRepository);
         worker=repaired.worker;gen=repaired.payload;
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
@@ -1326,17 +1349,17 @@ async function runJob(j){
     reviewFn:async({gates:cycleGates})=>{
       if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
       const reviewGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,reviewGithubContext);j.liveGithubContext=reviewGithubContext;
-      const diff=await ghText(`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
+      const diff=await ghTextRepo(targetRepository,`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
       const reviewed=await reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext);reviewer=reviewed.resource;
       if(reviewer.id===worker.id)throw new Error('REVIEWER_IMPLEMENTER_COLLISION');
       await pool.query("update tigeriq_coding_jobs set reviewer_employee_id=$2 where id=$1",[j.id,reviewer.id]);
-      await persistIndependentReviewArtifact(pr.number,{implementerId:worker.id,reviewerId:reviewer.id,targetHead:cycleGates.sha,review:reviewed.review});
+      await persistIndependentReviewArtifact(pr.number,{implementerId:worker.id,reviewerId:reviewer.id,targetHead:cycleGates.sha,review:reviewed.review},targetRepository);
       return reviewed.review;
     },
     repairFn:async({issues})=>{
       const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,repairGithubContext);j.liveGithubContext=repairGithubContext;
       await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-      const repaired=await generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext);worker=repaired.worker;gen=repaired.payload;
+      const repaired=await generateAndWriteRepair(worker,j,branch,issues,cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext,targetRepository);worker=repaired.worker;gen=repaired.payload;
       if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     },
     onWaitingCi:async()=>{
@@ -1346,12 +1369,12 @@ async function runJob(j){
   review=lifecycle.review;gates=lifecycle.gates;
   approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;
   if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
-  assertPrOpenState(await gh(`/pulls/${pr.number}`));
+  assertPrOpenState(await ghRepo(targetRepository,`/pulls/${pr.number}`));
   const mergeGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,mergeGithubContext);
-  const finalSha=await headSha(branch);
+  const finalSha=await headSha(branch,targetRepository);
   assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){try{await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);merge=await mergePr(pr.number,approvedHead,j.title)}catch(e){merge={merged:false,message:String(e.message||e)}}}
+  if(AUTO_MERGE){try{await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);merge=await mergePr(pr.number,approvedHead,j.title,targetRepository)}catch(e){merge={merged:false,message:String(e.message||e)}}}
   const status=merge?.merged?'done':'blocked';
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
