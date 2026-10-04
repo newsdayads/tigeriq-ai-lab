@@ -1236,7 +1236,7 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     remote:'https://github.com/'+EXPECTED_REPO+'.git',
     config:{git:{deploymentEnabled:false}},
     issue:releaseIssue,
-    uiHtml:'<div>JOB TRỌNG TÂM</div>',
+    uiHtml:'<link rel="stylesheet" href="/work-ui.css">',
     releaseClass:'WEB_LIVE',
     ownerAuthorized:'true',
     releaseReason,
@@ -1296,7 +1296,7 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     expect(deploySource).toContain("EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT'");
     expect(deploySource).toContain("EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab'");
     expect(deploySource).toContain("EXPECTED_BRANCH = 'main'");
-    expect(deploySource).toContain("REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM'");
+    expect(deploySource).toContain('REQUIRED_UI_MARKER = \'href="/work-ui.css"\'');
     expect(deploySource).toContain("'--release-class'");
     expect(deploySource).toContain("'--owner-authorized'");
     expect(deploySource).toContain("'--release-reason'");
