@@ -130,15 +130,17 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
     const sendCount=Number(output.sendCount);
     const duplicateSendCount=Number(output.duplicateSendCount);
     const recoveryCount=Number(output.recoveryCount);
+    const recoveryCountValid=Number.isInteger(recoveryCount)&&recoveryCount>=0;
     const valid=status==='completed'
       && Number.isFinite(sendCount)&&sendCount===1
       && Number.isFinite(duplicateSendCount)&&duplicateSendCount===0
+      && recoveryCountValid
       && String(output.validatedToken||'')===spec.expectedToken;
     return {
       index:spec.index,status,attempts:Number(row?.attempts||0),
       sendCount:Number.isFinite(sendCount)?sendCount:null,
       duplicateSendCount:Number.isFinite(duplicateSendCount)?duplicateSendCount:null,
-      recoveryCount:Number.isFinite(recoveryCount)?recoveryCount:null,
+      recoveryCount:recoveryCountValid?recoveryCount:null,
       valid
     };
   });
