@@ -528,6 +528,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain('sourceSha!==installedSha');
     expect(source).toContain('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
     expect(source).toContain('TIGERIQ_ANDROID_V021_RELEASE_RECEIPT_MISMATCH');
+    expect(source).toContain("replace(/^\\uFEFF/,'')");
     expect(source).toContain('TIGERIQ_ANDROID_V021_APK_SHA256_MISMATCH');
     expect(source).toContain('chunkIndex>31');
     expect(source).not.toContain('exportAndroidWorkerV021SignedApkChunk(input?.path');
