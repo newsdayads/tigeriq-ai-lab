@@ -358,7 +358,7 @@ async function ensureGithubMobileTask(pool,row,sourceBody=''){
 }
 
 const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','paperclip_lab_preflight','paperclip_lab_health']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_release_build_user_context','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
   const text=String(body||'');
@@ -384,11 +384,11 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     const sessionId=String(parsed.sessionId||'').trim().toLowerCase();
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId))return {present:true,valid:false,action:null,reason:'SESSION_ID_INVALID'};
     normalized={action,sessionId};
-  }else if(action==='android_worker_export_v020_signed_apk_chunk'||action==='android_worker_export_v021_signed_apk_chunk'){
+  }else if(action==='android_worker_export_current_signed_apk_chunk'||action==='android_worker_export_v020_signed_apk_chunk'||action==='android_worker_export_v021_signed_apk_chunk'){
     const chunkIndex=Number(parsed.chunkIndex);
     if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>31)return {present:true,valid:false,action:null,reason:'CHUNK_INDEX_INVALID'};
     normalized={action,chunkIndex};
-  }else if(action==='android_worker_publish_v021_manifest'){
+  }else if(action==='android_worker_publish_current_manifest'||action==='android_worker_publish_v021_manifest'){
     const driveFileId=String(parsed.driveFileId||'').trim();
     if(!/^[A-Za-z0-9_-]{10,200}$/.test(driveFileId))return {present:true,valid:false,action:null,reason:'DRIVE_FILE_ID_INVALID'};
     normalized={action,driveFileId};
