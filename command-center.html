@@ -334,6 +334,75 @@ body.drawer-open{overflow:hidden}
 
 
 
+
+<style>
+/* #3833 Owner Clean View — Project → Work Package → Live Flow */
+#ownerSummary{display:none!important}
+.page-foot{display:none}
+.project-picker{margin:0 0 10px}
+.project-picker-head{margin-bottom:6px}
+.project-picker-head span{display:none}
+.project-list{display:flex!important;grid-template-columns:none!important;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.project-list::-webkit-scrollbar{display:none}
+.project-choice{flex:0 0 auto;min-width:0!important;border-radius:999px!important;padding:7px 11px 7px 22px!important;background:#0b1829!important}
+.project-choice.active{background:#102943!important}
+.project-choice small{display:none!important}
+.project-choice-top{padding-left:0!important}
+.project-choice-top b{font-size:10px!important;max-width:180px}
+.project-choice-top em{font-size:7.5px!important}
+.project-live-dot{left:9px!important;top:50%!important;transform:translateY(-50%)}
+.owner-clean-packages{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 8px}
+.owner-clean-packages::-webkit-scrollbar{display:none}
+.owner-clean-package{appearance:none;border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1.15 inherit;white-space:nowrap;cursor:pointer}
+.owner-clean-package.active{border-color:#4f83ad;background:#102943;color:#e3f2ff}
+.owner-clean-package em{font-style:normal;margin-left:5px;color:#8fa8bd;font-size:7.5px}
+.owner-clean-board{border:1px solid #294b68;background:radial-gradient(circle at 88% 0,rgba(88,166,255,.09),transparent 30%),linear-gradient(180deg,#0c1c2e,#081522);border-radius:16px;padding:13px;box-shadow:0 12px 34px rgba(0,0,0,.18)}
+.owner-clean-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.owner-clean-head small{display:block;font-size:8px;letter-spacing:.08em;color:#7fc6f4;font-weight:900}
+.owner-clean-head h2{margin:4px 0 0;font-size:17px;line-height:1.28;color:#f2f7fd}
+.owner-clean-status{flex:none;border:1px solid #35556f;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#a9bed1}
+.owner-clean-status.is-working{border-color:#2b7655;background:#113b2a;color:#9af0bc;animation:clean-live-pulse 2s ease-in-out infinite}
+.owner-clean-status.is-review{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f;animation:clean-review-pulse 2.5s ease-in-out infinite}
+.owner-clean-status.is-blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}
+.owner-clean-status.is-done{border-color:#27736a;background:#0f3a35;color:#94ecdf}
+.owner-clean-current{margin-top:10px;border:1px solid #203b55;background:#0a1726;border-radius:12px;padding:10px 11px}
+.owner-clean-current>span{font-size:7.5px;letter-spacing:.08em;color:#6f8ca7;font-weight:900}
+.owner-clean-current>b{display:block;margin-top:4px;font-size:12.5px;line-height:1.4;color:#edf5fb}
+.owner-clean-current>small{display:block;margin-top:4px;font-size:9px;line-height:1.35;color:#8fa8bd}
+.owner-clean-flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin-top:12px;overflow:visible}
+.owner-clean-stage{position:relative;min-width:0;border:1px solid #263f56;background:#091725;border-radius:11px;padding:10px 8px;text-align:center}
+.owner-clean-stage:not(:last-child)::after{content:"";position:absolute;left:calc(100% + 1px);top:50%;width:18px;height:1px;background:#31536d}
+.owner-clean-stage:not(:last-child).is-done::after{background:#3d8d7f}
+.owner-clean-stage-dot{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;margin:0 auto 6px;border:1px solid #35536c;background:#10253a;color:#8fa8bd;font-size:9px;font-weight:900}
+.owner-clean-stage b{display:block;font-size:9px;color:#c7d6e4}
+.owner-clean-stage small{display:block;margin-top:3px;font-size:7.5px;color:#71879c}
+.owner-clean-stage.is-done .owner-clean-stage-dot{border-color:#27736a;background:#0f3a35;color:#94ecdf}
+.owner-clean-stage.is-working{border-color:#2b7655}.owner-clean-stage.is-working .owner-clean-stage-dot{border-color:#46d48f;background:#113b2a;color:#9af0bc;animation:clean-live-pulse 1.8s ease-in-out infinite}
+.owner-clean-stage.is-review{border-color:#7a5b2a}.owner-clean-stage.is-review .owner-clean-stage-dot{border-color:#efb85c;background:#3b2d18;color:#ffd58f;animation:clean-review-pulse 2.2s ease-in-out infinite}
+.owner-clean-stage.is-blocked{border-color:#81404a}.owner-clean-stage.is-blocked .owner-clean-stage-dot{border-color:#ff747e;background:#401f26;color:#ffb8bf}
+.owner-clean-actions{display:flex;justify-content:flex-end;margin-top:10px}
+.owner-clean-detail{border:1px solid #294661;background:#0b1829;color:#9eb4c8;border-radius:9px;padding:7px 9px;font:800 8.5px/1 inherit;cursor:pointer}
+#rawWorkDetails{margin-top:10px;opacity:.55}
+#rawWorkDetails>summary{font-size:8.5px;color:#71879c}
+@keyframes clean-live-pulse{0%,100%{box-shadow:0 0 0 0 rgba(70,212,143,0)}50%{box-shadow:0 0 0 4px rgba(70,212,143,.12)}}
+@keyframes clean-review-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,184,92,0)}50%{box-shadow:0 0 0 4px rgba(239,184,92,.10)}}
+@media(max-width:700px){
+  .top{padding-bottom:10px}.brand h1{font-size:19px}.brand p{font-size:10px}
+  .project-choice-top b{max-width:150px}
+  .owner-clean-board{padding:11px}
+  .owner-clean-head h2{font-size:15px}
+  .owner-clean-flow{grid-template-columns:1fr;gap:8px;margin-top:10px}
+  .owner-clean-stage{display:grid;grid-template-columns:28px minmax(0,1fr);grid-template-rows:auto auto;column-gap:8px;text-align:left;padding:8px 9px}
+  .owner-clean-stage-dot{grid-row:1/3;margin:0;width:26px;height:26px}
+  .owner-clean-stage b{align-self:end;font-size:9.5px}.owner-clean-stage small{align-self:start;margin-top:2px}
+  .owner-clean-stage:not(:last-child)::after{left:21px;top:100%;width:1px;height:8px}
+  .owner-clean-actions{justify-content:stretch}.owner-clean-detail{width:100%;padding:9px}
+}
+@media(prefers-reduced-motion:reduce){
+  .owner-clean-status,.owner-clean-stage-dot{animation:none!important}
+}
+</style>
+
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -679,18 +748,13 @@ function projectDefaultId(projects){
 function projectPickerHtml(projects,selected){
   if(!projects.length)return '';
   const cards=projects.map(project=>{
-    const state=projectStatus(project),counts=project.counts||{};
-    const status=stateLabel[state]||state;
-    const meta=[Number(project.workPackageCount||0)+' việc lớn'];
-    if(Number(counts.working)>0)meta.push(counts.working+' đang làm');
-    if(Number(counts.blocked)>0)meta.push(counts.blocked+' bị chặn');
-    if(Number(project.hiddenTechnicalItems)>0)meta.push(project.hiddenTechnicalItems+' mục kỹ thuật ẩn');
+    const state=projectStatus(project),status=stateLabel[state]||state;
     return '<button type="button" class="project-choice '+packageStateClass(state)+(project.id===selected?' active':'')+'" data-project-select="'+esc(project.id)+'">'
       +'<span class="project-live-dot" aria-hidden="true"></span>'
       +'<div class="project-choice-top"><b>'+esc(project.name)+'</b><em>'+esc(status)+'</em></div>'
-      +'<small>'+esc(meta.join(' · '))+'</small></button>';
+      +'</button>';
   }).join('');
-  return '<section class="project-picker" aria-label="Dự án"><div class="project-picker-head"><b>DỰ ÁN</b><span>'+projects.length+' dự án đang theo dõi</span></div><div class="project-list">'+cards+'</div></section>';
+  return '<section class="project-picker" aria-label="Dự án"><div class="project-picker-head"><b>DỰ ÁN</b></div><div class="project-list">'+cards+'</div></section>';
 }
 function packageBuildAll(projectId){
   const allRows=packageRows();
@@ -901,12 +965,52 @@ function renderFlowEdges(container,edges){
   }
   board.prepend(svg);
 }
+function ownerCleanStateClass(state=''){
+  const value=String(state||'').toUpperCase();
+  if(value==='WORKING')return 'is-working';
+  if(value==='REVIEW'||value==='VERIFY')return 'is-review';
+  if(value==='BLOCKED')return 'is-blocked';
+  if(value==='OWNER_GATE')return 'is-review';
+  if(value==='DONE')return 'is-done';
+  return 'is-waiting';
+}
+function ownerCleanPackageTabs(packages,selected){
+  if(packages.length<=1)return '';
+  return '<nav class="owner-clean-packages" aria-label="Việc lớn">'+packages.map(pack=>{
+    const state=String(pack?.aggregate?.state||'WAITING').toUpperCase();
+    return '<button type="button" class="owner-clean-package'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'">'+esc(pack.name)+'<em>'+esc(stateLabel[state]||pack.aggregate?.label||state)+'</em></button>';
+  }).join('')+'</nav>';
+}
+function ownerCleanStages(pack,focus){
+  const rows=Array.isArray(pack?.rows)?pack.rows:[];
+  const aggregate=String(pack?.aggregate?.state||'WAITING').toUpperCase();
+  const focusState=String(workStatus(focus)||'WAITING').toUpperCase();
+  const reviewRow=rows.find(row=>row?.reviewOnly===true||['REVIEW','VERIFY'].includes(String(workStatus(row)||'').toUpperCase()));
+  const executionState=['REVIEW','VERIFY','DONE'].includes(focusState)?'DONE':focusState;
+  const coordinationState=rows.length>1?'DONE':(focusState==='OPEN'?'WAITING':'DONE');
+  const reviewState=reviewRow?String(workStatus(reviewRow)||'WAITING').toUpperCase():(aggregate==='DONE'?'DONE':'WAITING');
+  const resultState=aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':(aggregate==='OWNER_GATE'?'OWNER_GATE':'WAITING'));
+  return [
+    {label:'Giao việc',state:'DONE'},
+    {label:'Điều phối',state:coordinationState},
+    {label:'Thực hiện',state:executionState},
+    {label:'Kiểm tra',state:reviewState},
+    {label:'Kết quả',state:resultState},
+  ];
+}
+function ownerCleanFlowHtml(pack,focus){
+  return '<div class="owner-clean-flow" aria-label="Luồng công việc">'+ownerCleanStages(pack,focus).map((stage,index)=>{
+    const cls=ownerCleanStateClass(stage.state);
+    const mark=stage.state==='DONE'?'✓':String(index+1);
+    return '<div class="owner-clean-stage '+cls+'"><span class="owner-clean-stage-dot" aria-hidden="true">'+mark+'</span><b>'+esc(stage.label)+'</b><small>'+esc(stateLabel[stage.state]||stage.state)+'</small></div>';
+  }).join('')+'</div>';
+}
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Dữ liệu hiện tại đã cũ nên chưa dựng cấu trúc để tránh hiển thị sai.</div>';return}
+  if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Dữ liệu hiện tại đã cũ nên chưa hiển thị để tránh sai.</div>';return}
   const projects=projectPortfolio();
-  if(!projects.length){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Hiện chưa có công việc thật đủ dữ liệu để gom.</div>';return}
+  if(!projects.length){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Chưa có công việc owner-facing để hiển thị.</div>';return}
   if(!selectedProjectId||!projects.some(project=>project.id===selectedProjectId)){
     selectedProjectId=projectDefaultId(projects);
     selectedPackageId=null;
@@ -915,28 +1019,32 @@ function renderJobJourney(){
   const packages=packageBuildAll(selectedProject.id);
   if(!packages.length){
     workPackageState={projects,project:selectedProject,packages:[],selected:null};
-    el.innerHTML=projectPickerHtml(projects,selectedProject.id)+'<div class="package-empty"><b>'+esc(selectedProject.name)+'</b><br>Không có việc lớn owner-facing đang hoạt động trong dự án này.</div>';
+    el.innerHTML=projectPickerHtml(projects,selectedProject.id)+'<div class="package-empty"><b>'+esc(selectedProject.name)+'</b><br>Không có việc lớn đang hoạt động.</div>';
     el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
     return;
   }
-  const defaultPack=packages[0];
-  if(!selectedPackageId||!packages.some(pack=>String(pack.id)===String(selectedPackageId)))selectedPackageId=defaultPack.id;
-  const pack=packages.find(item=>String(item.id)===String(selectedPackageId))||defaultPack;
-  workPackageState={projects,project:selectedProject,packages,selected:pack};
-  const root=pack.root,focus=pack.focus||root,summary=packageSummaryFromUnits(pack.summaryUnits),focusStatus=workStatus(focus),focusWorker=workerFrom(focus);
-  const focusWorkerText=focusWorker&&!['CHƯA GÁN','OWNER'].includes(focusWorker)?' · '+focusWorker:'';
-  const streamsMarkup=pack.streams.length?pack.streams.map(stream=>packageStreamHtml(stream,focus)).join(''):'<div class="package-empty">Việc lớn này chưa có nhánh công việc con trong dữ liệu hiện hành.</div>';
+  const ordered=packageOwnerSorted(packages);
+  const defaultPack=ordered[0];
+  if(!selectedPackageId||!ordered.some(pack=>String(pack.id)===String(selectedPackageId)))selectedPackageId=defaultPack.id;
+  const pack=ordered.find(item=>String(item.id)===String(selectedPackageId))||defaultPack;
+  const focus=packageOwnerFocus(pack)||pack.root;
+  const state=String(pack?.aggregate?.state||workStatus(focus)||'WAITING').toUpperCase();
+  const current=ownerCardCurrent(focus)||ownerCardDone(focus)||(stateLabel[workStatus(focus)]||workStatus(focus));
+  const next=ownerNextText(focus)||shortNext(focus)||'Chưa có bước kế tiếp được xác minh';
+  workPackageState={projects,project:selectedProject,packages:ordered,selected:pack};
+
   el.innerHTML=projectPickerHtml(projects,selectedProject.id)
-    +'<article class="package-shell">'+packageTabsHtml(packages,pack.id)
-    +'<div class="package-head"><div><div class="package-kicker">'+esc(selectedProject.name)+' · VIỆC LỚN</div><div class="package-title">'+esc(pack.name)+'</div></div>'
-    +'<div class="package-meta"><span class="package-badge">'+pack.streams.length+' nhánh</span><span class="package-badge">'+pack.rows.length+' mục kỹ thuật</span></div></div>'
-    +'<div class="package-summary"><div class="is-working"><span>Đang làm</span><b>'+summary.working+'</b></div><div class="is-review"><span>Rà soát</span><b>'+summary.review+'</b></div><div class="is-blocked"><span>Bị chặn</span><b>'+summary.blocked+'</b></div><div><span>Đang chờ</span><b>'+summary.waiting+'</b></div><div class="is-done"><span>Hoàn tất</span><b>'+summary.done+'</b></div></div>'
-    +'<div class="package-focus"><div class="package-focus-title"><b>Đang tập trung:</b> #'+Number(focus.number)+' · '+esc(displayTitle(focus.title))+'</div><div class="package-focus-sub">'+esc(stateLabel[focusStatus]||focusStatus)+focusWorkerText+' · Bước tới: '+esc(shortNext(focus))+'</div></div>'
-    +packageDependenciesHtml(pack.streams)
-    +'<div class="package-streams">'+streamsMarkup+'</div></article>';
+    +ownerCleanPackageTabs(ordered,pack.id)
+    +'<article class="owner-clean-board">'
+    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(stateLabel[state]||pack.aggregate?.label||state)+'</span></header>'
+    +'<section class="owner-clean-current"><span>HIỆN TẠI</span><b>'+esc(current)+'</b><small>Bước tới: '+esc(next)+'</small></section>'
+    +ownerCleanFlowHtml(pack,focus)
+    +'<div class="owner-clean-actions"><button type="button" class="owner-clean-detail" data-package-row="'+Number(focus.number)+'">Chi tiết kỹ thuật</button></div>'
+    +'</article>';
+
   el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
   el.querySelectorAll('[data-package-select]').forEach(button=>button.addEventListener('click',()=>{selectedPackageId=button.getAttribute('data-package-select');renderJobJourney()}));
-  el.querySelectorAll('[data-package-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-package-row')),row=pack.rows.find(item=>Number(item.number)===rowNumber);if(row)node.addEventListener('click',()=>openDrawer(row,node))});
+  el.querySelectorAll('[data-package-row]').forEach(node=>{const rowNumber=Number(node.getAttribute('data-package-row')),row=pack.rows.find(item=>Number(item.number)===rowNumber)||focus;if(row)node.addEventListener('click',()=>openDrawer(row,node))});
 }
 
 function renderNowRunning(){
