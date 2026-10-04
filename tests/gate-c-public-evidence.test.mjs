@@ -132,6 +132,39 @@ describe('Gate C bounded public evidence',()=>{
     expect(extractPublicEvidence(jobResult,requested)).toEqual(trustedData);
   });
 
+  it('prefers the trusted v0.21 receipt for metadata-only Gate C requests',()=>{
+    const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=status,version,employeeId,online,lastSeenAt');
+    const trustedData={
+      status:'GATE_C_V021_STATUS',
+      version:'0.21.0-packageinstaller-stream-fix',
+      employeeId:'NV101',
+      online:false,
+      lastSeenAt:'2026-10-04T05:30:00.000Z',
+    };
+    const jobResult={
+      evidence:{
+        agentResult:{evidence:{
+          status:'AGENT_ASSERTED_OK',
+          version:'wrong',
+          employeeId:'NV999',
+          online:true,
+          lastSeenAt:'2099-01-01T00:00:00.000Z',
+        }},
+        bridgeCalls:[{
+          tool:'tigeriq_pc',
+          result:{
+            ok:true,
+            action:'android_worker_gate_c_v021_status',
+            target:'pc01-local',
+            data:trustedData,
+            evidence:{transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true}
+          }
+        }]
+      }
+    };
+    expect(extractPublicEvidence(jobResult,requested)).toEqual(trustedData);
+  });
+
   it('does not mix Gate C fields across old and new trusted receipts',()=>{
     const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=pass,recoveryCount');
     const trustedEvidence={transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true};
