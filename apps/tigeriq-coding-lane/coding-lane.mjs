@@ -666,6 +666,19 @@ export async function loadAuthoritativeGithubContext(objective='',{
 }
 
 async function ghTextRepo(repository,path,accept){const target=repository||SOURCE_REPOSITORY;const res=await fetch(`https://api.github.com/repos/${target.owner}/${target.repo}${path}`,{headers:{accept,authorization:`Bearer ${GH_TOKEN}`,'user-agent':'TigerIQ-Coding-Lane/1.0'},signal:AbortSignal.timeout(30000)});const text=await res.text();if(!res.ok)throw new Error(`GITHUB_HTTP_${res.status}:${text.slice(0,250)}`);return text}
+export function checkRepositoryGateState(checkRuns,repository=SOURCE_REPOSITORY){
+  if(repository?.isSource!==false)return checkGateState(checkRuns);
+  const fullName=String(repository?.fullName||'').toLowerCase();
+  if(fullName==='newsdayads/tigeriq-media'){
+    const rows=(Array.isArray(checkRuns)?checkRuns:[]).filter(row=>String(row?.name||'').toLowerCase()==='verify');
+    const states=rows.map(row=>({name:String(row?.name||''),status:String(row?.status||'missing'),conclusion:row?.conclusion||null}));
+    const failed=states.filter(row=>['failure','cancelled','timed_out','action_required','startup_failure'].includes(String(row.conclusion||'')));
+    if(failed.length)return {state:'failed',states};
+    if(states.length>=2&&states.every(row=>row.status==='completed'&&row.conclusion==='success'))return {state:'passed',states};
+    return {state:'pending',states};
+  }
+  return {state:'failed',states:[{name:'TARGET_REPOSITORY_GATE_POLICY',status:'completed',conclusion:'failure'}]};
+}
 async function mainSha(repository=SOURCE_REPOSITORY){return (await ghRepo(repository,'/git/ref/heads/main')).object.sha}
 async function reconcileExistingPrBranch(pr,expectedHeadSha,repository=SOURCE_REPOSITORY){
   const identity=validateExistingPrResume(pr,{number:pr?.number,targetHead:expectedHeadSha,repoFullName:repository.fullName});
@@ -700,7 +713,7 @@ async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
 async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body,repository=SOURCE_REPOSITORY){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:false,maintainer_can_modify:true})})}
 async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
-async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkGateState(x.check_runs||[]);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
+async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkRepositoryGateState(x.check_runs||[],repository);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
 async function mergePr(number,sha,title='',repository=SOURCE_REPOSITORY){return ghRepo(repository,`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
 
 function reviewLine(value,max=1000){return String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,max)}
