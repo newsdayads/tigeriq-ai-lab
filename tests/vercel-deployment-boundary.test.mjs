@@ -39,21 +39,20 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
     expect(() => validateReleaseContract({ ...base, ...override })).toThrow(code);
   });
 
-  it('allows the isolated runtime worktree only when detached HEAD equals exact origin/main', () => {
-    expect(validateReleaseContract({
-      ...base,
-      branch: '',
-      mainRefSha: 'a'.repeat(40),
-    })).toMatchObject({
-      sourceMode: 'detached-exact-main',
+  it.each([
+    { branch: '', mainRefSha: 'a'.repeat(40) },
+    { branch: 'core-runtime-sync', mainRefSha: 'a'.repeat(40) },
+  ])('allows an isolated source when HEAD is exactly origin/main: %o', (override) => {
+    expect(validateReleaseContract({ ...base, ...override })).toMatchObject({
+      sourceMode: 'exact-remote-main-source',
       exactSha: 'a'.repeat(40),
     });
   });
 
   it.each([
     [{ branch: '', mainRefSha: 'b'.repeat(40) }, 'VERCEL_GIT_BRANCH_MISMATCH'],
-    [{ branch: 'feature/not-main', mainRefSha: 'a'.repeat(40) }, 'VERCEL_GIT_BRANCH_MISMATCH'],
-  ])('rejects non-main release source: %o', (override, code) => {
+    [{ branch: 'feature/not-main', mainRefSha: 'b'.repeat(40) }, 'VERCEL_GIT_BRANCH_MISMATCH'],
+  ])('rejects a non-main source identity: %o', (override, code) => {
     expect(() => validateReleaseContract({ ...base, ...override })).toThrow(code);
   });
 
