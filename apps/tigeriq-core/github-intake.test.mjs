@@ -239,12 +239,13 @@ describe('GitHub Core intake guardrails',()=>{
 
   it('accepts only the Owner-authorized exact-SHA TigerIQ Live production direct action',()=>{
     const sha='a'.repeat(40);
-    const raw='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"'+sha+'"}';
+    const directAction={action:'tigeriq_live_3150_production_deploy',expectedSha:sha,releaseIssue:'3945',releaseClass:'WEB_LIVE',ownerAuthorized:true,releaseReason:'Publish #3918 API Health UI'};
+    const raw='PC_OPERATOR_DIRECT_ACTION_JSON='+JSON.stringify(directAction);
     expect(parsePcOperatorDirectAction(raw,true)).toMatchObject({
-      present:true,valid:true,action:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha},mutating:true
+      present:true,valid:true,action:directAction,mutating:true
     });
     expect(parsePcOperatorDirectAction(raw,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
-    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"bad"}',true))
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON='+JSON.stringify({...directAction,expectedSha:'bad'}),true))
       .toMatchObject({present:true,valid:false,reason:'EXPECTED_SHA_INVALID'});
 
     const body=[
@@ -258,7 +259,7 @@ describe('GitHub Core intake guardrails',()=>{
       capability:'pc_operator',
       dispatchLane:'PC_OPERATOR',
       targetWorker:'NV06',
-      pcOperatorDirectAction:{action:'tigeriq_live_3150_production_deploy',expectedSha:sha}
+      pcOperatorDirectAction:directAction
     });
   });
 
