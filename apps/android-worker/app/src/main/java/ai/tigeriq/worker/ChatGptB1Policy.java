@@ -27,11 +27,10 @@ public final class ChatGptB1Policy {
             && exactProjectLabelSeen;
     }
 
-    public static boolean waitingProjectTimedOut(String state, long startedAtMs, long nowMs) {
-        return "WAITING_PROJECT".equals(state)
-            && startedAtMs > 0L
-            && nowMs >= startedAtMs
-            && nowMs - startedAtMs >= PROJECT_BIND_TIMEOUT_MS;
+    public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
+        return startedElapsedMs > 0L
+            && nowElapsedMs >= startedElapsedMs
+            && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
     }
 
     public static long nextActionAfterFill(long nowMs) {
