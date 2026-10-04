@@ -24,8 +24,10 @@ public final class ChatGptB1Automation {
         if (now < s.nextActionAt) return;
 
         if ("WAITING_AI".equals(s.state)) {
-            if (treeContains(root, ChatGptB1RunStore.expectedToken(s))) {
-                ChatGptB1RunStore.completeCurrentCycle(service);
+            String expectedToken = ChatGptB1RunStore.expectedToken(s);
+            String responseText = responseTextContaining(root, expectedToken);
+            if (!responseText.isEmpty()) {
+                ChatGptB1RunStore.completeCurrentCycle(service, responseText);
                 return;
             }
             if (treeContainsAny(root, "stop", "dừng", "stop generating", "đang trả lời")) {
@@ -252,6 +254,21 @@ public final class ChatGptB1Automation {
             if (searchable(node).contains(wanted)) return true;
         }
         return false;
+    }
+
+    static String responseTextContaining(AccessibilityNodeInfo root, String token) {
+        String wanted = normalize(token);
+        if (root == null || wanted.isEmpty()) return "";
+        String best = "";
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser()) continue;
+            String raw = text(node.getText());
+            if (raw.isEmpty()) raw = text(node.getContentDescription());
+            if (raw.isEmpty() || !normalize(raw).contains(wanted)) continue;
+            if (raw.length() > best.length()) best = raw;
+        }
+        if (best.length() > 4000) return best.substring(0, 4000);
+        return best;
     }
 
     public static boolean treeContainsExactLabel(AccessibilityNodeInfo root, String label) {
