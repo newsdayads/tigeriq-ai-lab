@@ -1612,7 +1612,25 @@ async function verifyAndroidWorkerCurrentSignedRelease() {
     throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_RECEIPT_MISMATCH');
   }
   const sourceSha=String(receipt?.sourceSha||'').trim().toLowerCase();
-  if(sourceSha!==spec.installedSha)throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISMATCH');
+  if(!/^[0-9a-f]{40}$/.test(sourceSha))throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_SHA_MISMATCH');
+  const sourceArtifactAppTreeSha=String(receipt?.sourceArtifactAppTreeSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(sourceArtifactAppTreeSha))throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_APP_TREE_MISSING');
+  const currentAppTreeResult=await spawnBounded(
+    'git.exe',['-C',spec.repoRoot,'rev-parse','HEAD:apps/android-worker/app'],
+    {cwd:spec.repoRoot,timeoutSec:15},
+  );
+  if(currentAppTreeResult.timedOut||Number(currentAppTreeResult.exitCode)!==0){
+    throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_APP_TREE_READ_FAILED');
+  }
+  const currentAppTree=String(currentAppTreeResult.stdout||'').trim().toLowerCase();
+  if(currentAppTree!==sourceArtifactAppTreeSha)throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_APP_SOURCE_DRIFT');
+  const ancestry=await spawnBounded(
+    'git.exe',['-C',spec.repoRoot,'merge-base','--is-ancestor',sourceSha,spec.installedSha],
+    {cwd:spec.repoRoot,timeoutSec:15},
+  );
+  if(ancestry.timedOut||Number(ancestry.exitCode)!==0){
+    throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_SOURCE_ANCESTRY_MISMATCH');
+  }
   const apkPath=win.join(spec.releaseDir,spec.expectedApkName);
   const apk=await fs.readFile(await realPathInsideRoots(apkPath));
   const apkSha256=createHash('sha256').update(apk).digest('hex').toUpperCase();
