@@ -345,6 +345,47 @@ describe('mobile worker api helpers',()=>{
     expect(rolledBack).toBe(true);
   });
 
+  it('reports exact v0.22 live-worker status without enqueueing work',async()=>{
+    const now=new Date().toISOString();
+    const pool={
+      async query(sql,params=[]){
+        if(sql.includes('from tigeriq_mobile_devices')&&sql.includes('agent_version=$1')){
+          expect(params).toEqual([LIVE_WORKER_VERSION]);
+          return {rowCount:1,rows:[{
+            node_id:'node-live',employee_id:'NV101',provider:'ChatGPT',
+            agent_version:LIVE_WORKER_VERSION,last_seen_at:now
+          }]};
+        }
+        throw new Error('unexpected pool sql: '+sql);
+      }
+    };
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const req={method:'GET',headers:{authorization:'Bearer core-secret'},socket:{remoteAddress:'127.0.0.1'},async *[Symbol.asyncIterator](){}};
+    const res={status:0,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}};
+    await handle(req,res,new URL('http://core/api/mobile/live/v022/status'));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
+      employeeId:'NV101',online:true,lastSeenAt:now
+    });
+  });
+
+  it('reports unavailable when no exact v0.22 live worker is enrolled',async()=>{
+    const pool={async query(sql,params=[]){
+      if(sql.includes('from tigeriq_mobile_devices')&&sql.includes('agent_version=$1')){
+        expect(params).toEqual([LIVE_WORKER_VERSION]);
+        return {rowCount:0,rows:[]};
+      }
+      throw new Error('unexpected pool sql: '+sql);
+    }};
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const req={method:'GET',headers:{authorization:'Bearer core-secret'},socket:{remoteAddress:'127.0.0.1'},async *[Symbol.asyncIterator](){}};
+    const res={status:0,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}};
+    await handle(req,res,new URL('http://core/api/mobile/live/v022/status'));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ok:false,error:'mobile_live_v022_device_unavailable'});
+  });
+
   it('reads a local release manifest without exposing implicit defaults',()=>{
     tempPath=mkdtempSync(join(tmpdir(),'tigeriq-mobile-'));
     const path=join(tempPath,'release.json');
