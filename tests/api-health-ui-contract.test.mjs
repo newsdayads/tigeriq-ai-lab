@@ -37,6 +37,9 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('class="work-next"');
     expect(dashboard).not.toContain('<div class="work-facts"><div><b>Vừa xong:</b>');
     expect(dashboard).toContain("while(/^\\[[^\\]]+\\]\\s*/.test(t))");
+    expect(dashboard).toContain("'RÀ SOÁT':'REVIEW'");
+    expect(dashboard).toContain("'ĐANG XỬ LÝ':'WORKING'");
+    expect(dashboard).toContain("'ĐANG CHỜ':'WAITING'");
     expect(shared).toContain('/* #3918 visual parity R2');
     expect(shared).toContain('.work-row.status-review,.work-row.status-waiting,.work-row.status-verify');
     expect(shared).toContain('.work-row .state.review,.work-row .state.waiting,.work-row .state.verify');
