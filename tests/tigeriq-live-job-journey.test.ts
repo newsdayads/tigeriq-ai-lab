@@ -9,11 +9,14 @@ describe('TigerIQ Live restored Work Package cards #3576', () => {
     expect(publicHtml).toBe(rootHtml);
   });
 
-  it('restores the proven Work Package v2 hierarchy as the primary Owner surface', () => {
-    expect(rootHtml).toContain("el.innerHTML='<article class=\"package-shell\">'");
+  it('keeps the proven Work Package hierarchy under the approved Project layer', () => {
+    expect(rootHtml).toContain('function projectPickerHtml(projects,selected)');
+    expect(rootHtml).toContain('function packageBuildAll(projectId)');
+    expect(rootHtml).toContain("projectPickerHtml(projects,selectedProject.id)");
+    expect(rootHtml).toContain('<article class="package-shell">');
     expect(rootHtml).toContain('function packageStreamHtml(stream,packageFocus)');
     expect(rootHtml).toContain('function packageTaskHtml(group,packageFocus)');
-    expect(rootHtml).toContain('VIỆC LỚN · #');
+    expect(rootHtml).toContain('VIỆC LỚN');
     expect(rootHtml).toContain('NHÁNH CÔNG VIỆC');
     expect(rootHtml).toContain('Đang ở #');
     expect(rootHtml).not.toContain('const mobileCompact=');
@@ -47,7 +50,8 @@ describe('TigerIQ Live restored Work Package cards #3576', () => {
     expect(rootHtml).toContain('Number.isFinite(pct)');
   });
 
-  it('keeps package cards mobile-first and raw technical jobs collapsed', () => {
+  it('keeps project/package cards responsive and raw technical jobs collapsed', () => {
+    expect(rootHtml).toContain('@media(max-width:700px){.project-list');
     expect(rootHtml).toContain('@media(max-width:700px){.package-shell');
     expect(rootHtml).toContain('.package-streams{grid-template-columns:1fr}');
     expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details">');
