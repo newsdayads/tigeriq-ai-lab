@@ -749,8 +749,10 @@ while($true){
     $appChromeInstall=Invoke-AppChromeZeroTouchHelper
     $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
     $appChromeRecovery=Invoke-AppChromeOwnerResume $runtimeIdentity
-    git -C $controlRepo fetch origin main --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
-    $remote=Head $controlRepo 'origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    git -C $controlRepo fetch origin '+refs/heads/main:refs/remotes/origin/main' --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
+    $remote=Head $controlRepo 'refs/remotes/origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    $fetchHead=Head $controlRepo 'FETCH_HEAD';if(-not $fetchHead){throw 'FETCH_HEAD_MISSING'}
+    if($fetchHead -ne $remote){throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}

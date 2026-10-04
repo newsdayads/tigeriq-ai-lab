@@ -5,6 +5,16 @@ import {join} from 'node:path';
 import {describe,expect,it} from 'vitest';
 
 describe('runtime updater squash merge gate resolution',()=>{
+  it('refreshes canonical main into origin/main with an explicit refspec and verifies FETCH_HEAD',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain("fetch origin '+refs/heads/main:refs/remotes/origin/main' --prune");
+    expect(src).toContain("$remote=Head $controlRepo 'refs/remotes/origin/main'");
+    expect(src).toContain("$fetchHead=Head $controlRepo 'FETCH_HEAD'");
+    expect(src).toContain("throw 'FETCH_HEAD_MISSING'");
+    expect(src).toContain("throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'");
+    expect(src).not.toContain('fetch origin main --prune');
+  });
+
   it('falls back from merge SHA to associated PR head SHA',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('function Resolve-GateSha');
