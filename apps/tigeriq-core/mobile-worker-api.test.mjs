@@ -141,11 +141,21 @@ describe('mobile worker api helpers',()=>{
       result:{output:{validatedToken:spec.expectedToken,sendCount:1,duplicateSendCount:0,recoveryCount:spec.index===4?1:0}},
     }));
     expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({
-      expected:10,taskCount:10,completed:10,failed:0,pending:0,invalid:0,
+      expected:10,taskCount:10,completed:10,failed:0,queued:0,leased:0,pending:0,invalid:0,attemptCount:10,
       sendCount:10,duplicateSendCount:0,recoveryCount:1,pass:true
     });
     rows[4].result.output.duplicateSendCount=1;
     expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,sendCount:10,duplicateSendCount:1,recoveryCount:1,pass:false});
+
+    const pendingRows=specs.map((spec,index)=>({
+      idempotency_key:spec.idempotencyKey,
+      status:index<2?'leased':'queued',
+      attempts:index<2?1:0,
+      result:null,
+    }));
+    expect(gateCV021Aggregate(pendingRows,'NV101')).toMatchObject({
+      taskCount:10,completed:0,failed:0,queued:8,leased:2,pending:10,invalid:0,attemptCount:2,pass:false
+    });
 
     rows[4].result.output.duplicateSendCount=0;
     delete rows[4].result.output.recoveryCount;
