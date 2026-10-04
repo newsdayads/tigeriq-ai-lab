@@ -412,6 +412,7 @@ async function invokeProvider(r, prompt) {
     alter table tigeriq_events add column if not exists resource_id text;
     alter table tigeriq_events add column if not exists task_kind text;
     create index if not exists tigeriq_jobs_status_idx on tigeriq_jobs(status,created_at);
+    create index if not exists tigeriq_jobs_objective_phase_done_completed_idx on tigeriq_jobs(objective_id,phase_index,completed_at desc) where status='done';
     create index if not exists tigeriq_ai_resources_employee_idx on tigeriq_ai_resources(employee_id);
     create index if not exists tigeriq_events_resource_task_idx on tigeriq_events(resource_id,task_kind,ts desc);
     create table if not exists tigeriq_self_audit_anomalies(
