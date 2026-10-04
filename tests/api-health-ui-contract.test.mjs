@@ -47,6 +47,12 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.api-health .work-row.status-review');
     expect(shared).toContain('.api-health .work-row .state.review');
     expect(shared).toContain('@keyframes tiq-status-pulse');
+    expect(shared).toContain('/* #3918 three-card work grid */');
+    expect(shared).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
+    expect(dashboard).toContain('function woProgress(x,s)');
+    expect(dashboard).not.toContain('Chưa xác minh</span>');
+    expect(dashboard).toContain("kind:'checks'");
+    expect(dashboard).toContain("kind:'stage'");
   });
 
   it('orders side panels performance then recent activity then alerts and uppercases headings',()=>{
