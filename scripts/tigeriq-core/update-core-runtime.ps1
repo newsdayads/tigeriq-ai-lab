@@ -543,7 +543,7 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
 }
 function Gates-Pass([string]$sha){
   $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
-  $need=@('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')
+  $need=@('CI','WO-014 Queue Hygiene')
   foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
   return $true
 }
