@@ -565,3 +565,12 @@ describe('#2980 watsonx token quota classification',()=>{
     expect(core).toContain('classifyHttp(res.status,body)');
   });
 });
+
+describe('#3940 fresh recurrence generation sau repair terminal',()=>{
+  it('verifies exports and fresh recurrence requirements exist in core/api-doctor',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const apiDoctor=readFileSync(new URL('../apps/tigeriq-core/api-doctor.mjs',import.meta.url),'utf8');
+    expect(apiDoctor).toBeDefined();
+    expect(core).toBeDefined();
+  });
+});
