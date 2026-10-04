@@ -1059,6 +1059,41 @@ test('Owner-direct v0.21 CI artifact signer is admitted only as fixed local acti
   assert.strictEqual(noOwnerPool.jobs.length,0);
 });
 
+
+test('Owner-direct current CI artifact signer is admitted only as fixed local action',async()=>{
+  const pool=coreBacklogPool();
+  const body=[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=ANDROID_CURRENT_CI_SIGN_TEST',
+    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_current_ci_artifact"}',
+    'ASSIGNED_ACTION','Sign exactly the reviewed current CI artifact with the canonical signer.','ACCEPTANCE','Return bounded receipt only.',
+  ].join('\n');
+  const issues=[{number:37110,state:'open',title:'current ci sign',body,html_url:'https://example/37110'}];
+  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'android_worker_sign_current_ci_artifact'});
+  assert.strictEqual(pool.objectives[0].metadata.ownerDirect,true);
+
+  const noOwnerPool=coreBacklogPool();
+  const blocked=await materializeGithubIssues({
+    pool:noOwnerPool,
+    openIssues:[{...issues[0],number:37111,body:body.replace('OWNER_DIRECT=true\n','')}],
+    token:'fake',
+  });
+  assert.strictEqual(blocked.created,0);
+  assert.strictEqual(noOwnerPool.jobs.length,0);
+
+  const callerOverridePool=coreBacklogPool();
+  const callerOverride=await materializeGithubIssues({
+    pool:callerOverridePool,
+    openIssues:[{...issues[0],number:37112,body:body.replace('{"action":"android_worker_sign_current_ci_artifact"}','{"action":"android_worker_sign_current_ci_artifact","artifactId":"999"}')}],
+    token:'fake',
+  });
+  assert.strictEqual(callerOverride.created,0);
+  assert.strictEqual(callerOverridePool.jobs.length,0);
+});
+
 test('Owner-direct v0.21 release export and manifest publish validate bounded inputs',async()=>{
   const exportPool=coreBacklogPool();
   const exportBody=[
