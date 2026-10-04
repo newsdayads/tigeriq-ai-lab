@@ -54,6 +54,9 @@ const GATE_C_V021_PUBLIC_EVIDENCE_KEYS=new Set([
   'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','pending','invalid','pass',
   'sendCount','duplicateSendCount','recoveryCount','created','existing','count',
 ]);
+const GATE_C_V021_STRONG_KEYS=new Set([
+  'expected','taskCount','completed','failed','pending','invalid','pass','sendCount','duplicateSendCount','recoveryCount','created','existing','count',
+]);
 const GATE_C_V021_ACTIONS=new Set([
   'android_worker_gate_c_v021_status',
   'android_worker_gate_c_v021_enqueue_10',
@@ -153,6 +156,7 @@ function trustedGateCV021ReceiptSources(bridgeCalls){
     const call=calls[index];
     const result=call?.result;
     const evidence=result?.evidence;
+    if(String(call?.tool||'')!=='tigeriq_pc')continue;
     if(!result||typeof result!=='object'||Array.isArray(result))continue;
     if(result.ok!==true||String(result.target||'').toLowerCase()!=='pc01-local')continue;
     if(!GATE_C_V021_ACTIONS.has(String(result.action||'')))continue;
@@ -191,6 +195,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
+  const gateCV021Request=requested.some(key=>GATE_C_V021_STRONG_KEYS.has(key));
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
@@ -199,7 +204,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const out={};
   for(const key of requested){
     let raw;
-    const sources=trustedGateCV021Sources.length&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
+    const sources=gateCV021Request&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
       ? trustedGateCV021Sources
       : fallbackSources;
     for(const source of sources){
