@@ -521,6 +521,18 @@ export function androidReleaseBuildFailureClass(result = {}) {
     'APK_V2_SIGNATURE_REQUIRED',
     'APK_V3_SIGNATURE_REQUIRED',
     'WORKER_VERSION_NOT_FOUND',
+    'CURRENT_RELEASE_RUNNER_MISSING',
+    'CURRENT_RELEASE_USER_CONTEXT_UNAVAILABLE',
+    'CURRENT_RELEASE_TASK_COLLISION',
+    'CURRENT_RELEASE_TASK_TIMEOUT',
+    'CURRENT_RELEASE_RECEIPT_INVALID',
+    'CURRENT_RELEASE_IDENTITY_MISMATCH',
+    'CURRENT_RELEASE_TASK_CLEANUP_FAILED',
+    'CURRENT_RELEASE_BUILD_FAILED',
+    'CURRENT_RELEASE_BUILDER_MISSING',
+    'CURRENT_RELEASE_RECEIPT_MISSING',
+    'CURRENT_RELEASE_STATUS_INVALID',
+    'CURRENT_RELEASE_USER_CONTEXT_INVALID',
   ];
   return allowed.find((code) => text.includes(code)) || 'UNCLASSIFIED';
 }
@@ -571,6 +583,171 @@ async function buildAndroidWorkerStableRelease() {
     sourceSha,
     installedSha,
     secretsPrinted: false,
+  };
+}
+
+
+async function buildAndroidWorkerStableReleaseUserContext() {
+  const repoRoot='D:\\TigerIQ\\Runtime\\CoreSource';
+  const bridge='D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\run-current-user-context-release-build-task.ps1';
+  const runtimeStatePath='D:\\TigerIQ\\State\\core-runtime-updater.json';
+  await realPathInsideRoots(bridge);
+  await realPathInsideRoots(runtimeStatePath);
+  const runtimeState=JSON.parse((await fs.readFile(runtimeStatePath,'utf8')).replace(/^\uFEFF/,''));
+  const installedSha=String(runtimeState?.installedSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(installedSha))throw new Error('TIGERIQ_ANDROID_RELEASE_INSTALLED_SHA_MISSING');
+  const result=await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',bridge],
+    {cwd:repoRoot,timeoutSec:210},
+  );
+  if(result.timedOut)throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_BUILD_TIMEOUT');
+  if(Number(result.exitCode)!==0){
+    throw new Error('TIGERIQ_ANDROID_CURRENT_RELEASE_BUILD_FAILED:'+androidReleaseBuildFailureClass(result));
+  }
+  const lines=String(result.stdout||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  let receipt=null;
+  for(let i=lines.length-1;i>=0;i-=1){
+    try{const parsed=JSON.parse(lines[i]);if(parsed?.status==='ANDROID_WORKER_STABLE_RELEASE_READY'){receipt=parsed;break;}}catch{}
+  }
+  if(!receipt)throw new Error('TIGERIQ_ANDROID_RELEASE_RECEIPT_MISSING');
+  const expectedSigner='63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293';
+  if(String(receipt.certificateSha256||'').replaceAll(':','').toUpperCase()!==expectedSigner){
+    throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
+  }
+  const sourceSha=String(receipt.sourceSha||'').trim().toLowerCase();
+  if(sourceSha!==installedSha)throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH');
+  if(receipt.secretsPrinted!==false||receipt.taskDeleted!==true)throw new Error('TIGERIQ_ANDROID_RELEASE_SECRET_OUTPUT_UNSAFE');
+  return {
+    status:receipt.status,
+    version:String(receipt.version||''),
+    apk:String(receipt.apk||''),
+    manifest:String(receipt.manifest||''),
+    apkSha256:String(receipt.apkSha256||'').toUpperCase(),
+    certificateSha256:expectedSigner,
+    sourceSha,
+    installedSha,
+    signingIdentity:String(receipt.signingIdentity||''),
+    executionIdentity:String(receipt.executionIdentity||''),
+    taskName:String(receipt.taskName||''),
+    taskPrincipal:String(receipt.taskPrincipal||''),
+    taskLogonType:String(receipt.taskLogonType||''),
+    taskRunLevel:String(receipt.taskRunLevel||''),
+    taskDeleted:true,
+    secretsPrinted:false,
+  };
+}
+
+const ANDROID_CURRENT_RELEASE=Object.freeze({
+  signerSha256:'63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293',
+  repoRoot:'D:\\TigerIQ\\Runtime\\CoreSource',
+  runtimeStatePath:'D:\\TigerIQ\\State\\core-runtime-updater.json',
+  runtimeManifestPath:'D:\\TigerIQ\\Runtime\\MobileWorker\\release.json',
+  releaseRoot:'D:\\TigerIQ\\Releases\\AndroidWorker\\signed',
+  chunkBytes:3000,
+});
+
+async function verifyCurrentAndroidWorkerSignedRelease(){
+  const spec=ANDROID_CURRENT_RELEASE;
+  const gradlePath=win.join(spec.repoRoot,'apps','android-worker','app','build.gradle.kts');
+  await realPathInsideRoots(gradlePath);
+  const [gradleRaw,stateRaw]=await Promise.all([
+    fs.readFile(gradlePath,'utf8'),
+    fs.readFile(await realPathInsideRoots(spec.runtimeStatePath),'utf8'),
+  ]);
+  const versionCode=Number(gradleRaw.match(/versionCode\s*=\s*(\d+)/)?.[1]||0);
+  const versionName=String(gradleRaw.match(/versionName\s*=\s*"([^"]+)"/)?.[1]||'').trim();
+  if(!Number.isInteger(versionCode)||versionCode<1||!versionName)throw new Error('TIGERIQ_ANDROID_CURRENT_VERSION_INVALID');
+  const state=JSON.parse(String(stateRaw).replace(/^\uFEFF/,''));
+  const installedSha=String(state?.installedSha||'').trim().toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(installedSha))throw new Error('TIGERIQ_ANDROID_RELEASE_INSTALLED_SHA_MISSING');
+  const head=await spawnBounded('git.exe',['-C',spec.repoRoot,'rev-parse','HEAD'],{cwd:spec.repoRoot,timeoutSec:15});
+  if(head.timedOut||Number(head.exitCode)!==0)throw new Error('TIGERIQ_ANDROID_CURRENT_SOURCE_READ_FAILED');
+  if(String(head.stdout||'').trim().toLowerCase()!==installedSha)throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_SHA_MISMATCH');
+  const releaseDir=win.join(spec.releaseRoot,versionName);
+  const apkPath=win.join(releaseDir,'tigeriq-worker-'+versionName+'.apk');
+  const receiptPath=win.join(releaseDir,'release-manifest.json');
+  await realPathInsideRoots(apkPath);
+  await realPathInsideRoots(receiptPath);
+  const [apk,receiptRaw]=await Promise.all([fs.readFile(apkPath),fs.readFile(receiptPath,'utf8')]);
+  let receipt;
+  try{receipt=JSON.parse(String(receiptRaw).replace(/^\uFEFF/,''));}catch{throw new Error('TIGERIQ_ANDROID_CURRENT_RECEIPT_INVALID');}
+  const apkSha256=createHash('sha256').update(apk).digest('hex').toUpperCase();
+  if(String(receipt?.schema||'')!=='tigeriq.android-worker.release.v1'
+      || String(receipt?.version||'')!==versionName
+      || String(receipt?.applicationId||'')!=='ai.tigeriq.worker'
+      || String(receipt?.sourceSha||'').trim().toLowerCase()!==installedSha
+      || String(receipt?.certificateSha256||'').replaceAll(':','').toUpperCase()!==spec.signerSha256
+      || receipt?.secretsIncluded!==false
+      || String(receipt?.apkSha256||'').replaceAll(':','').toUpperCase()!==apkSha256){
+    throw new Error('TIGERIQ_ANDROID_CURRENT_RECEIPT_MISMATCH');
+  }
+  return {spec,versionCode,versionName,installedSha,apkPath,receiptPath,apk,apkSha256};
+}
+
+async function exportCurrentAndroidWorkerSignedApkChunk(input={}){
+  const chunkIndex=Number(input?.chunkIndex);
+  if(!Number.isInteger(chunkIndex)||chunkIndex<0||chunkIndex>63)throw new Error('TIGERIQ_ANDROID_CURRENT_EXPORT_CHUNK_INDEX_INVALID');
+  const verified=await verifyCurrentAndroidWorkerSignedRelease();
+  const chunkCount=Math.ceil(verified.apk.length/verified.spec.chunkBytes);
+  if(chunkIndex>=chunkCount)throw new Error('TIGERIQ_ANDROID_CURRENT_EXPORT_CHUNK_INDEX_RANGE');
+  const start=chunkIndex*verified.spec.chunkBytes;
+  const chunk=verified.apk.subarray(start,Math.min(verified.apk.length,start+verified.spec.chunkBytes));
+  return {
+    status:'ANDROID_CURRENT_EXPORT_CHUNK_READY',
+    version:verified.versionName,
+    versionCode:verified.versionCode,
+    sourceSha:verified.installedSha,
+    apkSha256:verified.apkSha256,
+    totalBytes:verified.apk.length,
+    chunkIndex,
+    chunkCount,
+    chunkBytes:chunk.length,
+    chunkSha256:createHash('sha256').update(chunk).digest('hex').toUpperCase(),
+    chunkBase64:chunk.toString('base64'),
+  };
+}
+
+async function publishCurrentAndroidWorkerManifest(input={}){
+  const driveFileId=String(input?.driveFileId||'').trim();
+  if(!/^[A-Za-z0-9_-]{10,200}$/.test(driveFileId))throw new Error('TIGERIQ_ANDROID_CURRENT_DRIVE_FILE_ID_INVALID');
+  const verified=await verifyCurrentAndroidWorkerSignedRelease();
+  const driveUrl='https://drive.google.com/file/d/'+driveFileId+'/view?usp=drivesdk';
+  const manifestDir=win.dirname(verified.spec.runtimeManifestPath);
+  await fs.mkdir(manifestDir,{recursive:true});
+  const manifest={
+    versionCode:verified.versionCode,
+    versionName:verified.versionName,
+    sha256:verified.apkSha256.toLowerCase(),
+    signerSha256:verified.spec.signerSha256,
+    fileName:'TIQ Worker v0.'+verified.versionCode+'.apk',
+    releaseNotes:'TigerIQ Live Worker '+verified.versionName,
+    channel:'STABLE',
+    publishedAt:new Date().toISOString(),
+    apkPath:verified.apkPath,
+    driveUrl,
+  };
+  const tempPath=verified.spec.runtimeManifestPath+'.current.tmp';
+  await fs.writeFile(tempPath,JSON.stringify(manifest,null,2)+'\n','utf8');
+  await fs.rename(tempPath,verified.spec.runtimeManifestPath);
+  const readback=JSON.parse(await fs.readFile(verified.spec.runtimeManifestPath,'utf8'));
+  if(readback.versionCode!==manifest.versionCode||readback.versionName!==manifest.versionName
+      ||readback.sha256!==manifest.sha256||readback.signerSha256!==manifest.signerSha256
+      ||readback.apkPath!==manifest.apkPath||readback.driveUrl!==manifest.driveUrl){
+    throw new Error('TIGERIQ_ANDROID_CURRENT_MANIFEST_READBACK_MISMATCH');
+  }
+  return {
+    status:'ANDROID_CURRENT_RELEASE_MANIFEST_PUBLISHED',
+    version:verified.versionName,
+    versionCode:verified.versionCode,
+    sourceSha:verified.installedSha,
+    apkPath:verified.apkPath,
+    apkBytes:verified.apk.length,
+    apkSha256:verified.apkSha256,
+    certificateSha256:verified.spec.signerSha256,
+    driveFileId,
+    driveUrl,
+    publishedAt:readback.publishedAt,
   };
 }
 
@@ -1523,6 +1700,12 @@ export async function executePcAction(input, options = {}) {
     data = await listTigerIQTasks();
   } else if (action === 'android_worker_release_build') {
     data = await buildAndroidWorkerStableRelease();
+  } else if (action === 'android_worker_release_build_user_context') {
+    data = await buildAndroidWorkerStableReleaseUserContext();
+  } else if (action === 'android_worker_export_current_signed_apk_chunk') {
+    data = await exportCurrentAndroidWorkerSignedApkChunk(input || {});
+  } else if (action === 'android_worker_publish_current_manifest') {
+    data = await publishCurrentAndroidWorkerManifest(input || {});
   } else if (action === 'android_worker_sign_v020_ci_artifact') {
     data = await signAndroidWorkerV020CiArtifact();
   } else if (action === 'android_worker_sign_v021_ci_artifact') {
@@ -1589,11 +1772,11 @@ export async function executePcAction(input, options = {}) {
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
       taskListReadOnly: action === 'task_list',
-      androidReleaseBuild: ['android_worker_release_build', 'android_worker_sign_v020_ci_artifact', 'android_worker_sign_v020_user_context', 'android_worker_sign_v021_ci_artifact'].includes(action),
+      androidReleaseBuild: ['android_worker_release_build','android_worker_release_build_user_context','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact'].includes(action),
       userContextSigner: ['android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact'].includes(action),
       signerAclBootstrap: action === 'android_worker_grant_v020_signer_read_acl',
-      signedApkExport: ['android_worker_export_v020_signed_apk_chunk','android_worker_export_v021_signed_apk_chunk'].includes(action),
-      androidReleaseManifestPublish: ['android_worker_publish_v020_manifest','android_worker_publish_v021_manifest'].includes(action),
+      signedApkExport: ['android_worker_export_current_signed_apk_chunk','android_worker_export_v020_signed_apk_chunk','android_worker_export_v021_signed_apk_chunk'].includes(action),
+      androidReleaseManifestPublish: ['android_worker_publish_current_manifest','android_worker_publish_v020_manifest','android_worker_publish_v021_manifest'].includes(action),
       androidGateCV020: ['android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v020_status'].includes(action),
       androidGateCV021: ['android_worker_gate_c_v021_enqueue_10','android_worker_gate_c_v021_status'].includes(action),
       coreUiCancelledReconcile: action === 'chrome_ui_reconcile_cancelled_job',
