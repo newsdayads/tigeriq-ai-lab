@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -470,6 +470,19 @@ test('safe P1-P5 active external role lease is not claimed by Core',async()=>{
   assert.strictEqual(out.externalClaims,1);
   assert.strictEqual(pool.objectives.length,0);
   assert.strictEqual(pool.jobs.length,0);
+});
+
+test('current CI signer direct action is Owner-only and has no caller-selected inputs',()=>{
+  const raw='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_current_ci_artifact"}';
+  const denied=parsePcOperatorDirectAction(raw,false);
+  assert.strictEqual(denied.valid,false);
+  assert.strictEqual(denied.reason,'OWNER_DIRECT_REQUIRED');
+  const allowed=parsePcOperatorDirectAction(raw,true);
+  assert.strictEqual(allowed.valid,true);
+  assert.deepStrictEqual(allowed.action,{action:'android_worker_sign_current_ci_artifact'});
+  const withInput=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_current_ci_artifact","artifactId":"evil"}',true);
+  assert.strictEqual(withInput.valid,true);
+  assert.deepStrictEqual(withInput.action,{action:'android_worker_sign_current_ci_artifact'});
 });
 
 test('pc_operator public evidence prompt is opt-in, allowlisted, and forbids raw content',()=>{

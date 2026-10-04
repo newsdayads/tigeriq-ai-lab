@@ -415,6 +415,47 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(bridge).not.toMatch(/-Password\\b|\\/RP\\b|LogonType\\s+Password/i);
   });
 
+  it('keeps current CI artifact signing metadata-pinned and fixed-purpose', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
+    const metadata = JSON.parse(await readFile(new URL('../apps/android-worker/release/current-ci-artifact.json', import.meta.url), 'utf8'));
+    const wrapper = await readFile(new URL('../scripts/pc-worker/sign-current-reviewed-artifact.ps1', import.meta.url), 'utf8');
+    const runner = await readFile(new URL('../scripts/pc-worker/invoke-current-user-context-signer.ps1', import.meta.url), 'utf8');
+    const bridge = await readFile(new URL('../scripts/pc-worker/run-current-user-context-signer-task.ps1', import.meta.url), 'utf8');
+
+    expect(metadata).toMatchObject({
+      schema:'tigeriq.android-worker.ci-artifact.v1',
+      versionCode:22,
+      versionName:'0.22.0-live-worker',
+      workflowRunId:'37184369356',
+      artifactId:'11296700882',
+      sourceArtifactHead:'8932ef56f6542ca2ccea8a178e13dc748236d61e',
+      sourceArtifactAndroidTreeSha:'db3eeca87dc3078439887e11116cc18c5f3429fc',
+      unsignedApkSha256:'43BA8ACEF39CF3F0AE6A791999DB9949A016698043E5D010F1BCB46D7C1EC640',
+      signerSha256:'63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293',
+    });
+    expect(source).toContain("action === 'android_worker_sign_current_ci_artifact'");
+    expect(source).toContain("apps','android-worker','release','current-ci-artifact.json");
+    expect(source).toContain('actions/artifacts/${spec.artifactId}');
+    expect(source).toContain('workflow_run?.head_sha');
+    expect(source).toContain('TIGERIQ_ANDROID_CURRENT_CI_ARTIFACT_METADATA_MISMATCH');
+    expect(source).toContain('HEAD:apps/android-worker');
+    expect(source).toContain("merge-base','--is-ancestor',spec.sourceArtifactHead,current.installedSha");
+    expect(source).not.toContain('input?.artifactId');
+    expect(source).not.toContain('input?.sourceArtifactHead');
+    expect(source).not.toContain('input?.signerSha256');
+
+    expect(wrapper).toContain('current-ci-artifact.json');
+    expect(wrapper).toContain('CURRENT_CI_ANDROID_SOURCE_DRIFT');
+    expect(wrapper).toContain('sourceArtifactSha=$SourceArtifactSha');
+    expect(wrapper).toContain('sourceSha=$ReleaseSourceSha');
+    expect(wrapper).toContain('secretsIncluded=$false');
+    expect(runner).toContain("$ExpectedUser='pc01\\wdragons12x'");
+    expect(runner).toContain("$TaskName='TigerIQ Android Current CI OneShot Signer'");
+    expect(runner).not.toMatch(/ConvertFrom-SecureString|SecureStringToBSTR|PtrToString|Clipboard|Set-Clipboard/i);
+    expect(bridge).toContain('New-ScheduledTaskPrincipal -UserId $ExpectedUser -LogonType Interactive -RunLevel Highest');
+    expect(bridge).toContain('taskDeleted=$true');
+    expect(bridge).not.toMatch(/-Password\\b|\\/RP\\b|LogonType\\s+Password/i);
+  });
   it('publishes the v0.20 Core release manifest only from the pinned signed APK', async () => {
     const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs', import.meta.url), 'utf8');
     expect(source).toContain("action === 'android_worker_publish_v020_manifest'");
