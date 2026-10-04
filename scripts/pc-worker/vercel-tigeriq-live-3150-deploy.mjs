@@ -7,7 +7,7 @@ export const EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw';
 export const EXPECTED_TEAM_ID = 'team_K8HIG7zmwu0ZjCINX1VhlGiT';
 export const EXPECTED_REPO = 'newsdayads/tigeriq-ai-lab';
 export const EXPECTED_BRANCH = 'main';
-export const REQUIRED_UI_MARKER = 'JOB TRỌNG TÂM';
+export const REQUIRED_UI_MARKER = 'href="/work-ui.css"';
 
 function clean(value) { return String(value || '').trim(); }
 

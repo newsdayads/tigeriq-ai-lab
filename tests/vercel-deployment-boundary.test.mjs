@@ -13,7 +13,7 @@ const base = {
   remote: 'https://github.com/newsdayads/tigeriq-ai-lab.git',
   config: { git: { deploymentEnabled: false } },
   issue: '3897',
-  uiHtml: '<html>JOB TRỌNG TÂM</html>',
+  uiHtml: '<html><link rel="stylesheet" href="/work-ui.css"></html>',
   releaseClass: 'WEB_LIVE',
   ownerAuthorized: 'true',
   releaseReason: 'Publish owner-facing TigerIQ LIVE update',
@@ -35,6 +35,7 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
     [{ releaseReason: '' }, 'VERCEL_RELEASE_REASON_REQUIRED'],
     [{ issue: '' }, 'VERCEL_RELEASE_ISSUE_REQUIRED'],
     [{ changedFiles: ['apps/tigeriq-core/router.mjs'] }, 'VERCEL_WEB_ARTIFACT_CHANGE_REQUIRED'],
+    [{ uiHtml: '<html>legacy live without shared stylesheet</html>' }, 'VERCEL_UI_MARKER_MISSING'],
   ])('fails closed for non-web or unauthorized deployment: %o', (override, code) => {
     expect(() => validateReleaseContract({ ...base, ...override })).toThrow(code);
   });
