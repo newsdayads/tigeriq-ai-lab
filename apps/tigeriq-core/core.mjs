@@ -1788,7 +1788,7 @@ async function managerTick() {
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
-  const latestManagerProgress=(await pool.query("select max(completed_at) as latest_terminal_at from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status in ('done','failed')",[o.id,currentPhase])).rows[0]?.latest_terminal_at||null;
+  const latestManagerProgress=(await pool.query("select max(completed_at) as latest_terminal_at from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done'",[o.id,currentPhase])).rows[0]?.latest_terminal_at||null;
   const managerProgressed=managerProgressSinceLastCycle({latestTerminalAt:latestManagerProgress,objectiveUpdatedAt:o.updated_at});
   const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:managerProgressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
   if(managerGuard.reset){
