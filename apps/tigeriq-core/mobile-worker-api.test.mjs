@@ -159,6 +159,22 @@ describe('mobile worker api helpers',()=>{
       expect(invalidRecovery).toMatchObject({completed:10,invalid:1,recoveryCount:0,pass:false});
       expect(invalidRecovery.jobs[4]).toMatchObject({recoveryCount:null,valid:false});
     }
+
+    rows[4].result.output.recoveryCount=0;
+    for(const malformed of [null,false,'',[],1.5,'1']){
+      rows[4].result.output.sendCount=malformed;
+      const invalidSend=gateCV021Aggregate(rows,'NV101');
+      expect(invalidSend).toMatchObject({completed:10,invalid:1,sendCount:9,pass:false});
+      expect(invalidSend.jobs[4]).toMatchObject({sendCount:null,valid:false});
+    }
+
+    rows[4].result.output.sendCount=1;
+    for(const malformed of [null,false,'',[],1.5,'0']){
+      rows[4].result.output.duplicateSendCount=malformed;
+      const invalidDuplicate=gateCV021Aggregate(rows,'NV101');
+      expect(invalidDuplicate).toMatchObject({completed:10,invalid:1,duplicateSendCount:0,pass:false});
+      expect(invalidDuplicate.jobs[4]).toMatchObject({duplicateSendCount:null,valid:false});
+    }
   });
 
   it('fails closed if the prechecked Gate C v0.20 target changes before insert',async()=>{
