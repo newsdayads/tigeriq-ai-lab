@@ -9,9 +9,9 @@ $SecretsDir='D:\TigerIQ\Secrets\AndroidSigning'
 
 if(-not(Test-Path -LiteralPath $MetadataPath -PathType Leaf)){throw 'CURRENT_CI_METADATA_MISSING'}
 try{$spec=Get-Content -LiteralPath $MetadataPath -Raw|ConvertFrom-Json -ErrorAction Stop}catch{throw 'CURRENT_CI_METADATA_INVALID'}
-if([string]$spec.schema-ne'tigeriq.android-worker.ci-artifact.v1'){throw 'CURRENT_CI_METADATA_SCHEMA_INVALID'}
-if([string]$spec.repo-ne'newsdayads/tigeriq-ai-lab'){throw 'CURRENT_CI_METADATA_REPO_INVALID'}
-if([string]$spec.artifactName-ne'tigeriq-worker-unsigned-release-apk'){throw 'CURRENT_CI_METADATA_ARTIFACT_NAME_INVALID'}
+if(([string]$spec.schema) -ne 'tigeriq.android-worker.ci-artifact.v1'){throw 'CURRENT_CI_METADATA_SCHEMA_INVALID'}
+if(([string]$spec.repo) -ne 'newsdayads/tigeriq-ai-lab'){throw 'CURRENT_CI_METADATA_REPO_INVALID'}
+if(([string]$spec.artifactName) -ne 'tigeriq-worker-unsigned-release-apk'){throw 'CURRENT_CI_METADATA_ARTIFACT_NAME_INVALID'}
 
 $Version=[string]$spec.expectedVersion
 $ExpectedUnsignedSha256=([string]$spec.expectedUnsignedSha256).ToUpperInvariant()
@@ -23,10 +23,10 @@ $SourceArtifactAndroidTreeSha=([string]$spec.sourceArtifactAndroidTreeSha).ToLow
 $SourceWorkflowRunId=[string]$spec.runId
 $SourceArtifactId=[string]$spec.artifactId
 
-if($Version-notmatch '^\d+\.\d+\.\d+[A-Za-z0-9._-]*$'){throw 'CURRENT_CI_VERSION_INVALID'}
-foreach($hash in @($ExpectedUnsignedSha256,$ExpectedApkSignerJarSha256,$ExpectedSignerSha256)){if($hash-notmatch '^[0-9A-F]{64}
-foreach($sha in @($SourceArtifactSha,$SourceArtifactAndroidTreeSha)){if($sha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_CI_SOURCE_INVALID'}}
-foreach($id in @($SourceWorkflowRunId,$SourceArtifactId)){if($id-notmatch '^\d{6,20}$'){throw 'CURRENT_CI_ID_INVALID'}}
+if($Version -notmatch  '^\d+\.\d+\.\d+[A-Za-z0-9._-]*$'){throw 'CURRENT_CI_VERSION_INVALID'}
+foreach($hash in @($ExpectedUnsignedSha256,$ExpectedApkSignerJarSha256,$ExpectedSignerSha256)){if($hash -notmatch  '^[0-9A-F]{64}
+foreach($sha in @($SourceArtifactSha,$SourceArtifactAndroidTreeSha)){if($sha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_CI_SOURCE_INVALID'}}
+foreach($id in @($SourceWorkflowRunId,$SourceArtifactId)){if($id -notmatch  '^\d{6,20}$'){throw 'CURRENT_CI_ID_INVALID'}}
 
 $ReleaseDir=Join-Path 'D:\TigerIQ\Releases\AndroidWorker\signed' $Version
 $UnsignedApk=Join-Path $ArtifactDir 'tigeriq-worker-unsigned-release.apk'
@@ -41,14 +41,14 @@ if((Get-FileHash -LiteralPath $ApkSignerJar -Algorithm SHA256).Hash.ToUpperInvar
 $git=Get-Command git.exe -ErrorAction SilentlyContinue
 if(-not $git){throw 'CURRENT_GIT_REQUIRED'}
 $ReleaseSourceSha=(& $git.Source -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
-if($LASTEXITCODE-ne0 -or $ReleaseSourceSha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_RELEASE_SOURCE_SHA_INVALID'}
+if($LASTEXITCODE -ne 0 -or $ReleaseSourceSha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_RELEASE_SOURCE_SHA_INVALID'}
 $CurrentAndroidTreeSha=(& $git.Source -C $RepoRoot rev-parse 'HEAD:apps/android-worker').Trim().ToLowerInvariant()
-if($LASTEXITCODE-ne0 -or $CurrentAndroidTreeSha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_ANDROID_TREE_SHA_INVALID'}
-if($CurrentAndroidTreeSha-ne$SourceArtifactAndroidTreeSha){throw 'CURRENT_ANDROID_SOURCE_DRIFT'}
+if($LASTEXITCODE -ne 0 -or $CurrentAndroidTreeSha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_ANDROID_TREE_SHA_INVALID'}
+if($CurrentAndroidTreeSha -ne $SourceArtifactAndroidTreeSha){throw 'CURRENT_ANDROID_SOURCE_DRIFT'}
 
 $gradle=Get-Content -LiteralPath (Join-Path $RepoRoot 'apps\android-worker\app\build.gradle.kts') -Raw
 $versionMatch=[regex]::Match($gradle,'versionName\s*=\s*"([^"]+)"')
-if(-not $versionMatch.Success -or [string]$versionMatch.Groups[1].Value-ne$Version){throw 'CURRENT_VERSION_SOURCE_MISMATCH'}
+if(-not $versionMatch.Success -or ([string]$versionMatch.Groups[1].Value) -ne $Version){throw 'CURRENT_VERSION_SOURCE_MISMATCH'}
 
 $java=$null
 if($env:TIGERIQ_JAVA -and (Test-Path -LiteralPath $env:TIGERIQ_JAVA -PathType Leaf)){$java=$env:TIGERIQ_JAVA}
@@ -63,17 +63,17 @@ $helperOutput=& $Helper -UnsignedApk $UnsignedApk -OutputApk $OutputApk -Expecte
 $receiptLine=$helperOutput|Where-Object{-not[string]::IsNullOrWhiteSpace([string]$_)}|Select-Object -Last 1
 if(-not $receiptLine){throw 'CURRENT_SIGNER_RECEIPT_MISSING'}
 try{$receipt=$receiptLine|ConvertFrom-Json}catch{throw 'CURRENT_SIGNER_RECEIPT_INVALID'}
-if([string]$receipt.status-ne'ANDROID_WORKER_CANONICAL_SIGNING_READY'){throw 'CURRENT_SIGNER_STATUS_INVALID'}
+if(([string]$receipt.status) -ne 'ANDROID_WORKER_CANONICAL_SIGNING_READY'){throw 'CURRENT_SIGNER_STATUS_INVALID'}
 if(([string]$receipt.certificateSha256).ToUpperInvariant()-ne$ExpectedSignerSha256){throw 'CURRENT_SIGNER_IDENTITY_MISMATCH'}
 if(-not[bool]$receipt.v2 -or -not[bool]$receipt.v3){throw 'CURRENT_SIGNATURE_SCHEME_INVALID'}
-if([string]$receipt.passwordTransport-ne'stdin-only'){throw 'CURRENT_PASSWORD_TRANSPORT_INVALID'}
+if(([string]$receipt.passwordTransport) -ne 'stdin-only'){throw 'CURRENT_PASSWORD_TRANSPORT_INVALID'}
 if([bool]$receipt.plaintextSecretPrinted -or [bool]$receipt.plaintextSecretWrittenToDisk){throw 'CURRENT_SECRET_SAFETY_VIOLATION'}
-if([string]$receipt.apksignerMode-ne'portable-pinned-jar'){throw 'CURRENT_APKSIGNER_MODE_INVALID'}
+if(([string]$receipt.apksignerMode) -ne 'portable-pinned-jar'){throw 'CURRENT_APKSIGNER_MODE_INVALID'}
 if(-not[bool]$receipt.prealignedInput){throw 'CURRENT_PREALIGNED_RECEIPT_INVALID'}
 if(-not(Test-Path -LiteralPath $OutputApk -PathType Leaf)){throw 'CURRENT_SIGNED_APK_MISSING'}
 
 $signedHash=(Get-FileHash -LiteralPath $OutputApk -Algorithm SHA256).Hash.ToUpperInvariant()
-if($signedHash-ne([string]$receipt.signedSha256).ToUpperInvariant()){throw 'CURRENT_SIGNED_SHA256_MISMATCH'}
+if($signedHash -ne ([string]$receipt.signedSha256).ToUpperInvariant()){throw 'CURRENT_SIGNED_SHA256_MISMATCH'}
 
 $manifest=[ordered]@{
   schema='tigeriq.android-worker.release.v1';createdAt=(Get-Date).ToUniversalTime().ToString('o')
@@ -96,9 +96,9 @@ $manifest=[ordered]@{
   apksignerMode='portable-pinned-jar';prealignedInput=$true;secretsPrinted=$false
 }|ConvertTo-Json -Compress
 ){throw 'CURRENT_CI_HASH_INVALID'}}
-if($ExpectedSignerSha256-ne$CanonicalSignerSha256){throw 'CURRENT_CI_SIGNER_PIN_MISMATCH'}
-foreach($sha in @($SourceArtifactSha,$SourceArtifactAndroidTreeSha)){if($sha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_CI_SOURCE_INVALID'}}
-foreach($id in @($SourceWorkflowRunId,$SourceArtifactId)){if($id-notmatch '^\d{6,20}$'){throw 'CURRENT_CI_ID_INVALID'}}
+if($ExpectedSignerSha256 -ne $CanonicalSignerSha256){throw 'CURRENT_CI_SIGNER_PIN_MISMATCH'}
+foreach($sha in @($SourceArtifactSha,$SourceArtifactAndroidTreeSha)){if($sha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_CI_SOURCE_INVALID'}}
+foreach($id in @($SourceWorkflowRunId,$SourceArtifactId)){if($id -notmatch  '^\d{6,20}$'){throw 'CURRENT_CI_ID_INVALID'}}
 
 $ReleaseDir=Join-Path 'D:\TigerIQ\Releases\AndroidWorker\signed' $Version
 $UnsignedApk=Join-Path $ArtifactDir 'tigeriq-worker-unsigned-release.apk'
@@ -113,14 +113,14 @@ if((Get-FileHash -LiteralPath $ApkSignerJar -Algorithm SHA256).Hash.ToUpperInvar
 $git=Get-Command git.exe -ErrorAction SilentlyContinue
 if(-not $git){throw 'CURRENT_GIT_REQUIRED'}
 $ReleaseSourceSha=(& $git.Source -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
-if($LASTEXITCODE-ne0 -or $ReleaseSourceSha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_RELEASE_SOURCE_SHA_INVALID'}
+if($LASTEXITCODE -ne 0 -or $ReleaseSourceSha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_RELEASE_SOURCE_SHA_INVALID'}
 $CurrentAndroidTreeSha=(& $git.Source -C $RepoRoot rev-parse 'HEAD:apps/android-worker').Trim().ToLowerInvariant()
-if($LASTEXITCODE-ne0 -or $CurrentAndroidTreeSha-notmatch '^[0-9a-f]{40}$'){throw 'CURRENT_ANDROID_TREE_SHA_INVALID'}
-if($CurrentAndroidTreeSha-ne$SourceArtifactAndroidTreeSha){throw 'CURRENT_ANDROID_SOURCE_DRIFT'}
+if($LASTEXITCODE -ne 0 -or $CurrentAndroidTreeSha -notmatch  '^[0-9a-f]{40}$'){throw 'CURRENT_ANDROID_TREE_SHA_INVALID'}
+if($CurrentAndroidTreeSha -ne $SourceArtifactAndroidTreeSha){throw 'CURRENT_ANDROID_SOURCE_DRIFT'}
 
 $gradle=Get-Content -LiteralPath (Join-Path $RepoRoot 'apps\android-worker\app\build.gradle.kts') -Raw
 $versionMatch=[regex]::Match($gradle,'versionName\s*=\s*"([^"]+)"')
-if(-not $versionMatch.Success -or [string]$versionMatch.Groups[1].Value-ne$Version){throw 'CURRENT_VERSION_SOURCE_MISMATCH'}
+if(-not $versionMatch.Success -or ([string]$versionMatch.Groups[1].Value) -ne $Version){throw 'CURRENT_VERSION_SOURCE_MISMATCH'}
 
 $java=$null
 if($env:TIGERIQ_JAVA -and (Test-Path -LiteralPath $env:TIGERIQ_JAVA -PathType Leaf)){$java=$env:TIGERIQ_JAVA}
@@ -135,17 +135,17 @@ $helperOutput=& $Helper -UnsignedApk $UnsignedApk -OutputApk $OutputApk -Expecte
 $receiptLine=$helperOutput|Where-Object{-not[string]::IsNullOrWhiteSpace([string]$_)}|Select-Object -Last 1
 if(-not $receiptLine){throw 'CURRENT_SIGNER_RECEIPT_MISSING'}
 try{$receipt=$receiptLine|ConvertFrom-Json}catch{throw 'CURRENT_SIGNER_RECEIPT_INVALID'}
-if([string]$receipt.status-ne'ANDROID_WORKER_CANONICAL_SIGNING_READY'){throw 'CURRENT_SIGNER_STATUS_INVALID'}
+if(([string]$receipt.status) -ne 'ANDROID_WORKER_CANONICAL_SIGNING_READY'){throw 'CURRENT_SIGNER_STATUS_INVALID'}
 if(([string]$receipt.certificateSha256).ToUpperInvariant()-ne$ExpectedSignerSha256){throw 'CURRENT_SIGNER_IDENTITY_MISMATCH'}
 if(-not[bool]$receipt.v2 -or -not[bool]$receipt.v3){throw 'CURRENT_SIGNATURE_SCHEME_INVALID'}
-if([string]$receipt.passwordTransport-ne'stdin-only'){throw 'CURRENT_PASSWORD_TRANSPORT_INVALID'}
+if(([string]$receipt.passwordTransport) -ne 'stdin-only'){throw 'CURRENT_PASSWORD_TRANSPORT_INVALID'}
 if([bool]$receipt.plaintextSecretPrinted -or [bool]$receipt.plaintextSecretWrittenToDisk){throw 'CURRENT_SECRET_SAFETY_VIOLATION'}
-if([string]$receipt.apksignerMode-ne'portable-pinned-jar'){throw 'CURRENT_APKSIGNER_MODE_INVALID'}
+if(([string]$receipt.apksignerMode) -ne 'portable-pinned-jar'){throw 'CURRENT_APKSIGNER_MODE_INVALID'}
 if(-not[bool]$receipt.prealignedInput){throw 'CURRENT_PREALIGNED_RECEIPT_INVALID'}
 if(-not(Test-Path -LiteralPath $OutputApk -PathType Leaf)){throw 'CURRENT_SIGNED_APK_MISSING'}
 
 $signedHash=(Get-FileHash -LiteralPath $OutputApk -Algorithm SHA256).Hash.ToUpperInvariant()
-if($signedHash-ne([string]$receipt.signedSha256).ToUpperInvariant()){throw 'CURRENT_SIGNED_SHA256_MISMATCH'}
+if($signedHash -ne ([string]$receipt.signedSha256).ToUpperInvariant()){throw 'CURRENT_SIGNED_SHA256_MISMATCH'}
 
 $manifest=[ordered]@{
   schema='tigeriq.android-worker.release.v1';createdAt=(Get-Date).ToUniversalTime().ToString('o')
