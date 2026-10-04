@@ -23,19 +23,7 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(client).toContain('/api/mobile/tasks/lease');
     expect(service).toContain('client.pollLease()');
     expect(service).not.toMatch(/github|backlog|issues\/|pulls\//i);
-    it('runs v0.22 as a live worker and returns captured AI output', () => {
-    expect(gradle).toContain('versionCode = 22');
-    expect(gradle).toContain('versionName = "0.22.0-live-worker"');
-    expect(activity).toContain('sectionTitle("Live Worker")');
-    expect(activity).not.toContain('primaryButton("Chạy 1 test")');
-    expect(activity).not.toContain('secondaryButton("Chạy 10 test")');
-    expect(service).toContain('releaseLegacyManualRun();');
-    expect(runStore).toContain('K_RESULT_TEXT');
-    expect(automation).toContain('responseContainingToken');
-    expect(service).toContain('output.put("responseText", run.resultText)');
   });
-
-});
 
   it('defers a persisted Core task while a manual B1 run owns ChatGPT', () => {
     expect(service).toContain('boolean sameTaskRun = task.taskId.equals(run.taskId) && task.runId.equals(run.runId);');
@@ -113,4 +101,16 @@ describe('Android Gate C Core-issued task contract', () => {
     expect(nextLease).toBeGreaterThan(pendingGuard);
     expect(service).toContain('boolean evidencePending = run.terminal() && run.evidenceSeq > run.reportedSeq;');
   });
+  it('runs v0.22 as a live worker and returns captured AI output', () => {
+    expect(gradle).toContain('versionCode = 22');
+    expect(gradle).toContain('versionName = "0.22.0-live-worker"');
+    expect(activity).toContain('sectionTitle("Live Worker")');
+    expect(activity).not.toContain('primaryButton("Chạy 1 test")');
+    expect(activity).not.toContain('secondaryButton("Chạy 10 test")');
+    expect(service).toContain('releaseLegacyManualRun();');
+    expect(runStore).toContain('K_RESULT_TEXT');
+    expect(automation).toContain('responseContainingToken');
+    expect(service).toContain('output.put("responseText", run.resultText)');
+  });
+
 });
