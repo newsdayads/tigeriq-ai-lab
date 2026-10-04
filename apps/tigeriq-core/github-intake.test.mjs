@@ -192,6 +192,19 @@ describe('GitHub Core intake guardrails',()=>{
       present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'
     });
 
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_current_signed_apk_chunk","chunkIndex":7}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_export_current_signed_apk_chunk',chunkIndex:7},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_current_signed_apk_chunk","chunkIndex":256}',true)).toMatchObject({
+      present:true,valid:false,reason:'CHUNK_INDEX_INVALID'
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_publish_current_manifest","driveFileId":"1ABCDEFGHIJKLMNO"}',true)).toMatchObject({
+      present:true,valid:true,action:{action:'android_worker_publish_current_manifest',driveFileId:'1ABCDEFGHIJKLMNO'},mutating:true
+    });
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_publish_current_manifest","driveFileId":"bad"}',true)).toMatchObject({
+      present:true,valid:false,reason:'DRIVE_FILE_ID_INVALID'
+    });
+
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_release_build"}',true)).toMatchObject({
       present:true,valid:true,action:{action:'android_worker_release_build'},mutating:true
     });
