@@ -294,6 +294,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).toContain("action === 'android_worker_gate_c_v020_status'");
     expect(source).toContain("'/api/mobile/gate-c/v020/enqueue'");
     expect(source).toContain("'/api/mobile/gate-c/v020/status'");
+    expect(source).toContain("action === 'android_worker_gate_c_v021_enqueue_10'");
+    expect(source).toContain("action === 'android_worker_gate_c_v021_status'");
+    expect(source).toContain("'/api/mobile/gate-c/v021/enqueue'");
+    expect(source).toContain("'/api/mobile/gate-c/v021/status'");
     const coreSource = await readFile(new URL('../apps/tigeriq-core/core.mjs', import.meta.url), 'utf8');
     expect(source).toContain('TIGERIQ_CORE_TOKEN');
     expect(source).toContain('http://127.0.0.1:${port}${path}');
@@ -313,6 +317,10 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(source).not.toContain("status:'GATE_C_V020_BLOCKED'");
     expect(source).not.toContain("return {status:blockedStatus,reason");
     expect(source).toContain("TIGERIQ_GATE_C_V020_REQUEST_FAILED");
+    expect(source).toContain("gate_c_v021_device_unavailable:'GATE_C_V021_DEVICE_UNAVAILABLE'");
+    expect(source).toContain("gate_c_v021_device_ambiguous:'GATE_C_V021_DEVICE_AMBIGUOUS'");
+    expect(source).toContain("gate_c_v021_device_stale:'GATE_C_V021_DEVICE_STALE'");
+    expect(source).toContain("TIGERIQ_GATE_C_V021_REQUEST_FAILED");
   });
 
   it('keeps Android stable release build as one fixed typed local action', async () => {

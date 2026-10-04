@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, createMobileWorkerApi, gateCV020Aggregate, gateCV020TaskSpecs, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
+import { GATE_C_V020_COUNT, GATE_C_V020_VERSION, GATE_C_V021_COUNT, GATE_C_V021_VERSION, createMobileWorkerApi, gateCV020Aggregate, gateCV020TaskSpecs, gateCV021Aggregate, gateCV021TaskSpecs, mobileTaskLeaseFresh, mobileTaskResultDigest, mobileTaskTerminalDecision, normalizeMobileProvider, readMobileReleaseManifest, verifyCoreEnqueueAuth, verifyMobilePairingProof } from './mobile-worker-api.mjs';
 
 let tempPath='';
 afterEach(()=>{if(tempPath)rmSync(tempPath,{recursive:true,force:true});tempPath='';});
@@ -126,6 +126,25 @@ describe('mobile worker api helpers',()=>{
     expect(gateCV020Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,pass:false});
   });
 
+  it('builds a deterministic fixed 10-job v0.21 Gate C batch and validates exactly-once aggregate evidence',()=>{
+    expect(GATE_C_V021_VERSION).toBe('0.21.0-packageinstaller-stream-fix');
+    expect(GATE_C_V021_COUNT).toBe(10);
+    const specs=gateCV021TaskSpecs('NV101');
+    expect(specs).toHaveLength(10);
+    expect(specs[0]).toMatchObject({index:1,idempotencyKey:'gate-c:v021:NV101:01',expectedToken:'TIGERIQ_GATE_C_OK_1'});
+    expect(specs[9]).toMatchObject({index:10,idempotencyKey:'gate-c:v021:NV101:10',expectedToken:'TIGERIQ_GATE_C_OK_10'});
+    expect(new Set(specs.map(x=>x.idempotencyKey)).size).toBe(10);
+    const rows=specs.map(spec=>({
+      idempotency_key:spec.idempotencyKey,
+      status:'completed',
+      attempts:1,
+      result:{output:{validatedToken:spec.expectedToken,sendCount:1,duplicateSendCount:0}},
+    }));
+    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({expected:10,taskCount:10,completed:10,failed:0,pending:0,invalid:0,pass:true});
+    rows[4].result.output.duplicateSendCount=1;
+    expect(gateCV021Aggregate(rows,'NV101')).toMatchObject({completed:10,invalid:1,pass:false});
+  });
+
   it('fails closed if the prechecked Gate C v0.20 target changes before insert',async()=>{
     let rolledBack=false;
     let insertBoundNode='';
@@ -169,6 +188,53 @@ describe('mobile worker api helpers',()=>{
     const res={writeHead(){},end(){}};
     await expect(handle(req,res,new URL('http://core/api/mobile/gate-c/v020/enqueue')))
       .rejects.toThrow('GATE_C_V020_TARGET_CHANGED');
+    expect(insertBoundNode).toBe('node-prechecked');
+    expect(rolledBack).toBe(true);
+  });
+
+  it('fails closed if the prechecked Gate C v0.21 target changes before insert',async()=>{
+    let rolledBack=false;
+    let insertBoundNode='';
+    const now=new Date().toISOString();
+    const client={
+      async query(sql,params=[]){
+        if(sql==='begin'||sql==='commit')return {rowCount:0,rows:[]};
+        if(sql==='rollback'){rolledBack=true;return {rowCount:0,rows:[]};}
+        if(sql.startsWith('select pg_advisory_xact_lock'))return {rowCount:1,rows:[{}]};
+        if(sql.startsWith('select task_id from tigeriq_mobile_tasks'))return {rowCount:0,rows:[]};
+        if(sql.startsWith('insert into tigeriq_mobile_tasks')){
+          insertBoundNode=String(params[6]||'');
+          expect(sql).toContain('node_id=$7');
+          expect(params[7]).toBe(GATE_C_V021_VERSION);
+          return {rowCount:0,rows:[]};
+        }
+        throw new Error('unexpected client sql: '+sql);
+      },
+      release(){}
+    };
+    const pool={
+      async query(sql,params=[]){
+        if(sql.includes('from tigeriq_mobile_devices')&&sql.includes('agent_version=$1')){
+          expect(params).toEqual([GATE_C_V021_VERSION]);
+          return {rowCount:1,rows:[{
+            node_id:'node-prechecked',employee_id:'NV101',provider:'ChatGPT',
+            agent_version:GATE_C_V021_VERSION,last_seen_at:now
+          }]};
+        }
+        throw new Error('unexpected pool sql: '+sql);
+      },
+      async connect(){return client;}
+    };
+    const handle=createMobileWorkerApi({pool,coreAuthToken:'core-secret'});
+    const req={
+      method:'POST',
+      headers:{authorization:'Bearer core-secret'},
+      socket:{remoteAddress:'127.0.0.1'},
+      async *[Symbol.asyncIterator](){}
+    };
+    const res={writeHead(){},end(){}};
+    await expect(handle(req,res,new URL('http://core/api/mobile/gate-c/v021/enqueue')))
+      .rejects.toThrow('GATE_C_V021_TARGET_CHANGED');
     expect(insertBoundNode).toBe('node-prechecked');
     expect(rolledBack).toBe(true);
   });
