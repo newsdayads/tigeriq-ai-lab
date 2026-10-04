@@ -978,21 +978,29 @@ function ownerCleanPackageTabs(packages,selected){
   if(packages.length<=1)return '';
   return '<nav class="owner-clean-packages" aria-label="Việc lớn">'+packages.map(pack=>{
     const state=String(pack?.aggregate?.state||'WAITING').toUpperCase();
-    return '<button type="button" class="owner-clean-package'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'">'+esc(pack.name)+'<em>'+esc(stateLabel[state]||pack.aggregate?.label||state)+'</em></button>';
+    return '<button type="button" class="owner-clean-package'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'">'+esc(pack.name)+'<em>'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</em></button>';
   }).join('')+'</nav>';
 }
 function ownerCleanStages(pack,focus){
   const rows=Array.isArray(pack?.rows)?pack.rows:[];
   const aggregate=String(pack?.aggregate?.state||'WAITING').toUpperCase();
   const focusState=String(workStatus(focus)||'WAITING').toUpperCase();
-  const reviewRow=rows.find(row=>row?.reviewOnly===true||['REVIEW','VERIFY'].includes(String(workStatus(row)||'').toUpperCase()));
-  const executionState=['REVIEW','VERIFY','DONE'].includes(focusState)?'DONE':focusState;
-  const coordinationState=rows.length>1?'DONE':(focusState==='OPEN'?'WAITING':'DONE');
-  const reviewState=reviewRow?String(workStatus(reviewRow)||'WAITING').toUpperCase():(aggregate==='DONE'?'DONE':'WAITING');
-  const resultState=aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':(aggregate==='OWNER_GATE'?'OWNER_GATE':'WAITING'));
+  const primaryRows=rows.filter(row=>row?.reviewOnly!==true&&!['REVIEW','VERIFY'].includes(String(workStatus(row)||'').toUpperCase()));
+  const reviewRows=rows.filter(row=>row?.reviewOnly===true||['REVIEW','VERIFY'].includes(String(workStatus(row)||'').toUpperCase()));
+  const coordinationHasEvidence=primaryRows.some(row=>{
+    const state=String(workStatus(row)||'WAITING').toUpperCase();
+    const assigned=String(row?.employeeId||row?.targetWorker||row?.assignedExecutor||'').trim();
+    return ['WORKING','REVIEW','VERIFY','DONE','OWNER_GATE'].includes(state)||Boolean(assigned);
+  });
+  const executionState=(focusState==='OWNER_GATE'&&focus?.technicalComplete===true)||['REVIEW','VERIFY','DONE'].includes(focusState)?'DONE':focusState;
+  const reviewStates=reviewRows.map(row=>String(workStatus(row)||'WAITING').toUpperCase());
+  const reviewBlocked=reviewStates.includes('BLOCKED');
+  const reviewUnresolved=reviewRows.some(row=>String(workStatus(row)||'WAITING').toUpperCase()!=='DONE');
+  const reviewState=reviewBlocked?'BLOCKED':reviewStates.includes('REVIEW')?'REVIEW':reviewStates.includes('VERIFY')?'VERIFY':(reviewRows.length&&!reviewUnresolved)?'DONE':(aggregate==='DONE'?'DONE':'WAITING');
+  const resultState=reviewBlocked?'BLOCKED':reviewUnresolved?'WAITING':aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':(aggregate==='OWNER_GATE'?'OWNER_GATE':'WAITING'));
   return [
     {label:'Giao việc',state:'DONE'},
-    {label:'Điều phối',state:coordinationState},
+    {label:'Điều phối',state:coordinationHasEvidence?'DONE':'WAITING'},
     {label:'Thực hiện',state:executionState},
     {label:'Kiểm tra',state:reviewState},
     {label:'Kết quả',state:resultState},
@@ -1030,13 +1038,13 @@ function renderJobJourney(){
   const focus=packageOwnerFocus(pack)||pack.root;
   const state=String(pack?.aggregate?.state||workStatus(focus)||'WAITING').toUpperCase();
   const current=ownerCardCurrent(focus)||ownerCardDone(focus)||(stateLabel[workStatus(focus)]||workStatus(focus));
-  const next=ownerNextText(focus)||shortNext(focus)||'Chưa có bước kế tiếp được xác minh';
+  const next=shortNext(focus)||'Chưa có bước kế tiếp được xác minh';
   workPackageState={projects,project:selectedProject,packages:ordered,selected:pack};
 
   el.innerHTML=projectPickerHtml(projects,selectedProject.id)
     +ownerCleanPackageTabs(ordered,pack.id)
     +'<article class="owner-clean-board">'
-    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(stateLabel[state]||pack.aggregate?.label||state)+'</span></header>'
+    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
     +'<section class="owner-clean-current"><span>HIỆN TẠI</span><b>'+esc(current)+'</b><small>Bước tới: '+esc(next)+'</small></section>'
     +ownerCleanFlowHtml(pack,focus)
     +'<div class="owner-clean-actions"><button type="button" class="owner-clean-detail" data-package-row="'+Number(focus.number)+'">Chi tiết kỹ thuật</button></div>'
