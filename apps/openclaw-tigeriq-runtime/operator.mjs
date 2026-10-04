@@ -794,7 +794,18 @@ async function signAndroidWorkerV021CiArtifact() {
   if (String(receipt.certificateSha256 || '').replaceAll(':','').toUpperCase() !== spec.expectedSignerSha256) {
     throw new Error('TIGERIQ_ANDROID_RELEASE_SIGNER_MISMATCH');
   }
-  if (String(receipt.sourceSha || '').toLowerCase() !== spec.sourceHead
+  const runtimeStatePath = 'D:\\TigerIQ\\State\\core-runtime-updater.json';
+  await realPathInsideRoots(runtimeStatePath);
+  let runtimeState;
+  try { runtimeState = JSON.parse(await fs.readFile(runtimeStatePath, 'utf8')); } catch {
+    throw new Error('TIGERIQ_ANDROID_V021_INSTALLED_SHA_MISSING');
+  }
+  const installedSha = String(runtimeState?.installedSha || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(installedSha)) throw new Error('TIGERIQ_ANDROID_V021_INSTALLED_SHA_MISSING');
+  if (String(receipt.sourceSha || '').toLowerCase() !== installedSha) {
+    throw new Error('TIGERIQ_ANDROID_V021_SOURCE_SHA_MISMATCH');
+  }
+  if (String(receipt.artifactSourceSha || '').toLowerCase() !== spec.sourceHead
       || String(receipt.sourceWorkflowRunId || '') !== spec.runId
       || String(receipt.sourceArtifactId || '') !== spec.artifactId) {
     throw new Error('TIGERIQ_ANDROID_RELEASE_SOURCE_ARTIFACT_MISMATCH');
