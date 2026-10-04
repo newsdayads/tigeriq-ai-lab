@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.20.0-update-lease-guard"
+        versionCode = 21
+        versionName = "0.21.0-packageinstaller-stream-fix"
     }
 
     if (stableSigningEnabled) {
