@@ -25,7 +25,7 @@ $SourceArtifactAndroidTreeSha=([string]$meta.sourceArtifactAndroidTreeSha).ToLow
 $SourceWorkflowRunId=[string]$meta.workflowRunId
 $SourceArtifactId=[string]$meta.artifactId
 $SourceArtifactName=[string]$meta.artifactName
-if($VersionCode-lt1 -or [string]::IsNullOrWhiteSpace($Version) -or $ExpectedUnsignedSha256-notmatch'^[0-9A-F]{64}
+if($VersionCode-lt1 -or [string]::IsNullOrWhiteSpace($Version) -or $ExpectedUnsignedSha256-notmatch'^[0-9A-F]{64}$' -or $ExpectedApkSignerJarSha256-notmatch'^[0-9A-F]{64}$' -or $ExpectedSignerSha256-notmatch'^[0-9A-F]{64}$' -or $SourceArtifactSha-notmatch'^[0-9a-f]{40}$' -or $SourceArtifactAndroidTreeSha-notmatch'^[0-9a-f]{40}$' -or $SourceWorkflowRunId-notmatch'^\d+$' -or $SourceArtifactId-notmatch'^\d+$' -or [string]::IsNullOrWhiteSpace($SourceArtifactName)){throw 'CURRENT_CI_METADATA_INVALID'}
 
 $gradle=Get-Content -LiteralPath (Join-Path $RepoRoot 'apps\android-worker\app\build.gradle.kts') -Raw
 $workerVersion=Get-Content -LiteralPath (Join-Path $RepoRoot 'apps\android-worker\app\src\main\java\ai\tigeriq\worker\WorkerVersion.java') -Raw
