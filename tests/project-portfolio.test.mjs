@@ -33,6 +33,17 @@ describe('TigerIQ LIVE project portfolio', () => {
     expect(mobile.hiddenTechnicalItems).toBe(1);
   });
 
+  it('inherits parent work package for review evidence without collapsing versioned Android work', () => {
+    const rows = annotatePortfolioRows([
+      { number: 3730, title: '[P1][TIGERIQ LIVE] Project hierarchy', workKind: 'WORK', status: 'WORKING' },
+      { number: 3753, parentNumber: 3730, title: '[P1][REVIEW][NV11] PR #3742 exact-head', workKind: 'WORK', status: 'REVIEW', reviewOnly: true },
+      { number: 2949, title: '[P3][ANDROID] Mobile Worker v0.21', workKind: 'WORK', status: 'WAITING' },
+      { number: 3683, parentNumber: 2949, title: '[P1][ANDROID][LIVE] v0.22 Live Worker', workKind: 'WORK', status: 'WORKING' },
+    ]);
+    expect(rows.find((row) => row.number === 3753)?.workPackageId).toBe('live-ui');
+    expect(rows.find((row) => row.number === 3683)?.workPackageId).toBe('mobile-v0-22');
+  });
+
   it('groups owner-facing domains without changing execution status', () => {
     const rows = annotatePortfolioRows([
       { number: 3730, title: '[P1][TIGERIQ LIVE] Project hierarchy', workKind: 'WORK', status: 'REVIEW' },
