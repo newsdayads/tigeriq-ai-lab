@@ -156,7 +156,6 @@ function hasGateCV021BridgeAction(bridgeCalls){
 
 function trustedGateCV021ReceiptSources(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
-  const sources=[];
   for(let index=calls.length-1;index>=0;index--){
     const call=calls[index];
     const result=call?.result;
@@ -168,9 +167,9 @@ function trustedGateCV021ReceiptSources(bridgeCalls){
     if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))continue;
     if(String(evidence.transport||'')!=='local-process'||evidence.androidGateCV021!==true)continue;
     if(evidence.shell!==false||evidence.inheritedSecretEnvironment!==false)continue;
-    if(result.data&&typeof result.data==='object'&&!Array.isArray(result.data))sources.push(result.data);
+    if(result.data&&typeof result.data==='object'&&!Array.isArray(result.data))return [result.data];
   }
-  return sources;
+  return [];
 }
 
 function structuredBridgeEvidenceSources(bridgeCalls){
