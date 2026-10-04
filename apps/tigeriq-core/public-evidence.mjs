@@ -15,8 +15,11 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'taskCount',
   'completed',
   'failed',
+  'queued',
+  'leased',
   'pending',
   'invalid',
+  'attemptCount',
   'pass',
   'sendCount',
   'duplicateSendCount',
@@ -51,11 +54,11 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
 const GATE_C_V021_PUBLIC_EVIDENCE_KEYS=new Set([
-  'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','pending','invalid','pass',
+  'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass',
   'sendCount','duplicateSendCount','recoveryCount','created','existing','count',
 ]);
 const GATE_C_V021_STRONG_KEYS=new Set([
-  'expected','taskCount','completed','failed','pending','invalid','pass','sendCount','duplicateSendCount','recoveryCount','created','existing','count',
+  'expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass','sendCount','duplicateSendCount','recoveryCount','created','existing','count',
 ]);
 const GATE_C_V021_ACTIONS=new Set([
   'android_worker_gate_c_v021_status',
