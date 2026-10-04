@@ -123,6 +123,20 @@ describe('Gate C bounded public evidence',()=>{
     expect(extractPublicEvidence(jobResult,requested)).toEqual(trustedData);
   });
 
+  it('does not mix Gate C fields across old and new trusted receipts',()=>{
+    const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=pass,recoveryCount');
+    const trustedEvidence={transport:'local-process',shell:false,inheritedSecretEnvironment:false,androidGateCV021:true};
+    const jobResult={
+      evidence:{
+        bridgeCalls:[
+          {tool:'tigeriq_pc',result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:{pass:true,recoveryCount:9},evidence:trustedEvidence}},
+          {tool:'tigeriq_pc',result:{ok:true,action:'android_worker_gate_c_v021_status',target:'pc01-local',data:{pass:false},evidence:trustedEvidence}},
+        ]
+      }
+    };
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({pass:false});
+  });
+
   it('does not backfill missing trusted Gate C scalars from agent evidence',()=>{
     const requested=parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=pass,recoveryCount');
     const jobResult={
