@@ -35,6 +35,18 @@
 .work-row.status-verify::before,.wo-card.status-verify::before{background:#d9a84f}
 .work-row.status-goal::before,.wo-card.status-goal::before{background:var(--tiq-violet)}
 .work-row.status-system::before,.wo-card.status-system::before{background:#6c7987}
+.work-main{min-width:0}
+.work-top{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.rank{width:19px;height:19px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:#17375a;color:#cfe7ff;font-size:10px;font-weight:900;flex:none}
+.work-id{font-size:12px;font-weight:900;color:#dbeaff}
+.priority{font-size:9px;font-weight:850;border:1px solid #3a506b;background:#142337;color:#aebed0;border-radius:999px;padding:2px 6px}
+.priority.p0{border-color:#8a3e78;background:#35182f;color:#ffb7df}.priority.p1{border-color:#6b50a4;background:#251b43;color:#d3bdff}.priority.p2{border-color:#315f92;background:#102b4a;color:#a9d6ff}.priority.p3{border-color:#2e7181;background:#0f3038;color:#93e7f4}.priority.p4{border-color:#7c6330;background:#392f18;color:#f4d491}.priority.p5{border-color:#4a5969;background:#1a2430;color:#b5c1cd}.priority.meta{border-color:#3d4b59;background:#18212b;color:#9aa8b6}
+.work-nv{font-size:10px;color:#a7b8cb;font-weight:780}
+.state{display:inline-flex;align-items:center;border:1px solid #3a4d63;border-radius:999px;padding:4px 7px;font-weight:850;font-size:9px;white-space:nowrap;margin-left:auto}
+.state.working{border-color:#2b7655;background:#113b2a;color:#9af0bc}.state.review,.state.waiting{border-color:#7a5b2a;background:#3b2d18;color:#ffd58f}.state.queued{border-color:#37699f;background:#112f50;color:#b5dcff}.state.blocked{border-color:#81404a;background:#401f26;color:#ffb8bf}.state.done{border-color:#27736a;background:#0f3a35;color:#94ecdf}.state.open,.state.unknown{border-color:#455d76;background:#132234;color:#b0c1d3}.state.owner_gate{border-color:#914652;background:#421f27;color:#ffc0c7}.state.verify{border-color:#816126;background:#3b2d18;color:#ffda92}.state.goal{border-color:#68529a;background:#281f42;color:#d9c9ff}.state.system{border-color:#4b5968;background:#19242f;color:#bdc8d3}
+.work-facts b{color:#d7e5f3;font-weight:760}.work-facts .proof{color:#8fc8ff}.work-facts .owner-pending{color:#ffc0c7;font-weight:800}
+.progress{display:flex;align-items:center;gap:8px;margin-top:9px;color:#7f95ac}.progress-track{height:8px;flex:1;min-width:60px;background:#16283b;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}.progress-fill{height:100%;background:currentColor;border-radius:999px;position:relative;overflow:hidden;transition:width .45s ease}.progress-text{font-size:10px;font-weight:900;color:currentColor;white-space:nowrap;min-width:31px;text-align:right}
+.work-row.status-working .progress{color:var(--tiq-live)}.work-row.status-review .progress,.work-row.status-waiting .progress,.work-row.status-verify .progress{color:var(--tiq-review)}.work-row.status-queued .progress{color:var(--tiq-queue)}.work-row.status-blocked .progress,.work-row.status-owner_gate .progress{color:var(--tiq-error)}.work-row.status-done .progress{color:var(--tiq-done)}.work-row.status-goal .progress{color:var(--tiq-violet)}
 .work-title,.wo-title{font-size:13.5px;font-weight:780;line-height:1.38;margin-top:7px;overflow-wrap:anywhere;color:var(--tiq-work-text);letter-spacing:.002em}
 .work-summary,.wo-current{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px}
 .work-facts,.wo-facts{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid #1c344d;font-size:10.5px;line-height:1.35;color:#8fa5bc}
@@ -89,12 +101,12 @@
 .api-health .event:hover{background:rgba(20,70,105,.12);transform:translateX(2px)}
 .api-health .event.recent-activity{animation:tiq-event-in .45s ease-out}
 .api-health .issue-indicator.has-issues{animation:tiq-alert-breathe 2.8s ease-in-out infinite}
-.api-health .wo-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+.api-health .wo-list,.api-health .work-list{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;max-height:620px;overflow:auto}
 @keyframes tiq-worker-live{0%,100%{box-shadow:0 0 0 rgba(70,212,143,0)}50%{box-shadow:0 0 22px rgba(70,212,143,.08)}}
 @keyframes tiq-bar-scan{0%,35%{transform:translateX(-160%)}75%,100%{transform:translateX(360%)}}
 @keyframes tiq-event-in{from{opacity:.45;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 @keyframes tiq-alert-breathe{0%,100%{box-shadow:0 0 0 rgba(255,94,109,0)}50%{box-shadow:0 0 16px rgba(255,94,109,.14)}}
-@media(max-width:1200px){.api-health .wo-list{grid-template-columns:1fr}}
+@media(max-width:1200px){.api-health .wo-list,.api-health .work-list{grid-template-columns:1fr}}
 @media(max-width:720px){
   .api-health .sync-status{display:none}
   .api-health .workers{--employee-row-h:136px}
@@ -118,3 +130,5 @@
 /* #3918 typed release attestation R4 marker; no visual override. */
 
 /* #3918 current LIVE shared-stylesheet release marker R5; no visual override. */
+
+/* #3918 API Health local final: shared Work card contract. */
