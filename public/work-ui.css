@@ -1,0 +1,110 @@
+/* TigerIQ shared Work UI + API Health visual system — #3918 */
+:root{
+  --tiq-work-card:#0b1829;
+  --tiq-work-card-top:#102139;
+  --tiq-work-line:#203953;
+  --tiq-work-line-hover:#315a82;
+  --tiq-work-text:#f3f7fc;
+  --tiq-work-muted:#91a4ba;
+  --tiq-live:#46d48f;
+  --tiq-review:#efb85c;
+  --tiq-queue:#58a6ff;
+  --tiq-error:#ff747e;
+  --tiq-done:#58d8c6;
+  --tiq-violet:#8c72d6;
+}
+.work-row,.wo-card{
+  display:block;
+  position:relative;
+  overflow:hidden;
+  min-width:0;
+  border:1px solid var(--tiq-work-line);
+  background:linear-gradient(180deg,var(--tiq-work-card-top),var(--tiq-work-card));
+  border-radius:13px;
+  padding:9px 10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+  transition:border-color .18s ease,transform .18s ease,box-shadow .18s ease;
+}
+.work-row:hover,.wo-card:hover{border-color:var(--tiq-work-line-hover);transform:translateY(-1px);box-shadow:0 10px 28px rgba(0,0,0,.2),0 0 18px rgba(49,90,130,.1)}
+.work-row::before,.wo-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#71849a;opacity:.95}
+.work-row.status-working::before,.wo-card.status-working::before{background:var(--tiq-live)}
+.work-row.status-review::before,.work-row.status-waiting::before,.wo-card.status-review::before,.wo-card.status-waiting::before{background:var(--tiq-review)}
+.work-row.status-queued::before,.wo-card.status-queued::before{background:var(--tiq-queue)}
+.work-row.status-blocked::before,.work-row.status-owner_gate::before,.wo-card.status-blocked::before,.wo-card.status-owner_gate::before{background:var(--tiq-error)}
+.work-row.status-done::before,.wo-card.status-done::before{background:var(--tiq-done)}
+.work-row.status-verify::before,.wo-card.status-verify::before{background:#d9a84f}
+.work-row.status-goal::before,.wo-card.status-goal::before{background:var(--tiq-violet)}
+.work-row.status-system::before,.wo-card.status-system::before{background:#6c7987}
+.work-title,.wo-title{font-size:13.5px;font-weight:780;line-height:1.38;margin-top:7px;overflow-wrap:anywhere;color:var(--tiq-work-text);letter-spacing:.002em}
+.work-summary,.wo-current{font-size:11.75px;line-height:1.42;color:#a9bbce;margin-top:5px}
+.work-facts,.wo-facts{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid #1c344d;font-size:10.5px;line-height:1.35;color:#8fa5bc}
+.progress-track,.wo-track{height:7px;flex:1;background:#16283b;border-radius:999px;overflow:hidden}
+.progress-fill,.wo-fill{height:100%;border-radius:inherit;transition:width .45s ease}
+.work-row.status-working,.wo-card.status-working{animation:tiq-work-live 2.8s ease-in-out infinite}
+.work-row.status-working .progress-fill,.wo-card.status-working .wo-fill{position:relative;overflow:hidden;box-shadow:0 0 10px rgba(70,212,143,.18)}
+.work-row.status-working .progress-fill::after,.wo-card.status-working .wo-fill::after{content:"";position:absolute;inset:0;width:38%;transform:translateX(-140%) skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);animation:tiq-work-shimmer 2.3s ease-in-out infinite}
+@keyframes tiq-work-live{0%,100%{box-shadow:0 8px 24px rgba(0,0,0,.12)}50%{box-shadow:0 8px 24px rgba(0,0,0,.12),0 0 0 1px rgba(70,212,143,.14),0 0 18px rgba(70,212,143,.08)}}
+@keyframes tiq-work-shimmer{0%,28%{transform:translateX(-140%) skewX(-18deg)}70%,100%{transform:translateX(360%) skewX(-18deg)}}
+
+/* API Health is intentionally a compact variant of the same Work visual system. */
+.api-health{
+  background:
+    radial-gradient(circle at 82% -8%,rgba(44,188,255,.15),transparent 30%),
+    radial-gradient(circle at 12% 20%,rgba(140,114,214,.08),transparent 24%),
+    linear-gradient(135deg,#050d19,#07162a 55%,#061020);
+}
+.api-health .topbar{box-shadow:0 12px 30px rgba(0,0,0,.18)}
+.api-health .nav{display:none!important}
+.api-health .brand{margin-right:auto}
+.api-health .sync-status{font-size:10px;color:#78d9ff;border:1px solid #1f557d;background:#091d33;border-radius:999px;padding:5px 8px;white-space:nowrap}
+.api-health .panel{
+  background:linear-gradient(145deg,rgba(8,24,44,.94),rgba(9,23,42,.96));
+  box-shadow:0 14px 36px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.025);
+  transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease;
+}
+.api-health .panel:hover{border-color:#1c5d91;box-shadow:0 16px 42px rgba(0,0,0,.4),0 0 24px rgba(44,188,255,.045)}
+.api-health .panel-h h2{text-transform:uppercase;letter-spacing:.035em}
+.api-health .workers{
+  --employee-row-h:132px;
+  --employee-gap:9px;
+  grid-auto-rows:var(--employee-row-h)!important;
+  max-height:calc(var(--employee-row-h) * 2 + var(--employee-gap) + 20px);
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  align-content:start;
+  scrollbar-width:thin;
+  scrollbar-color:#286a9d #07182b;
+}
+.api-health .workers::-webkit-scrollbar{width:9px}
+.api-health .workers::-webkit-scrollbar-track{background:#07182b;border-radius:999px}
+.api-health .workers::-webkit-scrollbar-thumb{background:#286a9d;border-radius:999px;border:2px solid #07182b}
+.api-health .worker.employee-card{height:100%!important;min-height:0!important;overflow:hidden!important}
+.api-health .employee-task{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.api-health .worker.state-working{animation:tiq-worker-live 2.7s ease-in-out infinite}
+.api-health .metric{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.api-health .metric:hover{transform:translateY(-2px)}
+.api-health .perf-rate i,.api-health .bar i{transition:width .5s ease;position:relative;overflow:hidden}
+.api-health .perf-rate i::after,.api-health .bar i::after{content:"";position:absolute;inset:0;width:36%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);animation:tiq-bar-scan 3.2s ease-in-out infinite}
+.api-health .event{transition:background .18s ease,transform .18s ease}
+.api-health .event:hover{background:rgba(20,70,105,.12);transform:translateX(2px)}
+.api-health .event.recent-activity{animation:tiq-event-in .45s ease-out}
+.api-health .issue-indicator.has-issues{animation:tiq-alert-breathe 2.8s ease-in-out infinite}
+.api-health .wo-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+@keyframes tiq-worker-live{0%,100%{box-shadow:0 0 0 rgba(70,212,143,0)}50%{box-shadow:0 0 22px rgba(70,212,143,.08)}}
+@keyframes tiq-bar-scan{0%,35%{transform:translateX(-160%)}75%,100%{transform:translateX(360%)}}
+@keyframes tiq-event-in{from{opacity:.45;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tiq-alert-breathe{0%,100%{box-shadow:0 0 0 rgba(255,94,109,0)}50%{box-shadow:0 0 16px rgba(255,94,109,.14)}}
+@media(max-width:1200px){.api-health .wo-list{grid-template-columns:1fr}}
+@media(max-width:720px){
+  .api-health .sync-status{display:none}
+  .api-health .workers{--employee-row-h:136px}
+}
+@media(prefers-reduced-motion:reduce){
+  .work-row,.wo-card,.work-row.status-working,.wo-card.status-working,
+  .work-row .progress-fill::after,.wo-card .wo-fill::after,
+  .api-health .worker.state-working,.api-health .perf-rate i::after,.api-health .bar i::after,
+  .api-health .event.recent-activity,.api-health .issue-indicator.has-issues{
+    animation:none!important;
+    transition:none!important;
+  }
+}

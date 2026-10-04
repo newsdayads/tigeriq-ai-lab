@@ -1921,10 +1921,11 @@ async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of r
 async function readBody(req){const raw=await readRawBody(req,65536);return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
 const mobileWorkerApi=createMobileWorkerApi({pool,event,coreAuthToken:TOKEN});
-function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
     if(await mobileWorkerApi(req,res,url))return;
+    if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/public-evidence'){
       const jobId=String(url.searchParams.get('jobId')||'').trim();
