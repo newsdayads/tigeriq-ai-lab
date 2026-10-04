@@ -149,15 +149,18 @@ export function annotatePortfolioRows(rows = [], issues = []) {
     }
   }
 
+  const hasAndroidMinor = (row) => row?.androidVersionMinor !== null
+    && row?.androidVersionMinor !== undefined
+    && Number.isFinite(Number(row.androidVersionMinor));
   const mobileVersions = staged
-    .filter((row) => row.projectId === 'tigeriq-mobile-worker' && Number.isFinite(Number(row.androidVersionMinor)))
+    .filter((row) => row.projectId === 'tigeriq-mobile-worker' && hasAndroidMinor(row))
     .map((row) => Number(row.androidVersionMinor));
   const currentMobileMinor = mobileVersions.length ? Math.max(...mobileVersions) : null;
 
   if (currentMobileMinor != null) {
     for (const row of staged) {
       if (row.projectId !== 'tigeriq-mobile-worker' || row._portfolioPackageExplicit) continue;
-      if (Number.isFinite(Number(row.androidVersionMinor))) continue;
+      if (hasAndroidMinor(row)) continue;
       row.workPackageId = 'mobile-v0-' + currentMobileMinor;
       row.workPackageName = 'Live Worker v0.' + currentMobileMinor;
       row.workPackageOrder = 1000 - currentMobileMinor;
@@ -168,7 +171,7 @@ export function annotatePortfolioRows(rows = [], issues = []) {
     let next = row;
     if (row.projectId === 'tigeriq-mobile-worker' && currentMobileMinor != null) {
       const minor = Number(row.androidVersionMinor);
-      if (Number.isFinite(minor) && minor < currentMobileMinor) {
+      if (hasAndroidMinor(row) && minor < currentMobileMinor) {
         next = { ...row, portfolioHidden: true, portfolioHiddenReason: 'LEGACY_ANDROID_VERSION' };
       }
     }
