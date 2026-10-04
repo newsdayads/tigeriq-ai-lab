@@ -15,7 +15,7 @@ function Safe-BridgeFailureCode([string]$message){if($message-match'CURRENT_[A-Z
 function Assert-ExistingTaskSafe($task){
   if(-not $task){return};$principal=[string]$task.Principal.UserId;$principalSid=Resolve-AccountSid $principal;$expectedSid=Resolve-AccountSid $ExpectedUser
   $action=@($task.Actions|Select-Object -First 1)
-  if(-not $principalSid -or -not $expectedSid -or $principalSid-ne$expectedSid -or -not(Test-InteractiveTokenLogon ([string]$task.Principal.LogonType)) -or -not(Test-SignerRunLevel ([string]$task.Principal.RunLevel)) -or [string]$action.Execute-ine$PowerShell -or [string]$action.Arguments-notmatch[regex]::Escape($Runner)){throw 'CURRENT_USER_CONTEXT_TASK_COLLISION'}
+  if(-not $principalSid -or -not $expectedSid -or $principalSid-ne$expectedSid -or -not(Test-InteractiveTokenLogon ([string]$task.Principal.LogonType)) -or -not(Test-SignerRunLevel ([string]$task.Principal.RunLevel)) -or ([string]$action.Execute) -ine $PowerShell -or ([string]$action.Arguments) -notmatch [regex]::Escape($Runner)){throw 'CURRENT_USER_CONTEXT_TASK_COLLISION'}
 }
 try{
   if(-not(Test-Path -LiteralPath $Runner -PathType Leaf)){throw 'CURRENT_USER_CONTEXT_RUNNER_MISSING'}
@@ -38,7 +38,7 @@ try{
   if(-not(Test-Path -LiteralPath $ReceiptPath -PathType Leaf)){throw 'CURRENT_USER_CONTEXT_TASK_TIMEOUT'}
   try{$receipt=Get-Content -LiteralPath $ReceiptPath -Raw|ConvertFrom-Json -ErrorAction Stop}catch{throw 'CURRENT_USER_CONTEXT_RECEIPT_INVALID'}
   if([string]$receipt.status-ne'ANDROID_WORKER_STABLE_RELEASE_READY'){$code=[string]$receipt.failure;if(-not $code){$code='CURRENT_USER_CONTEXT_SIGN_FAILED'};throw $code}
-  if([string]$receipt.executionIdentity-ine$ExpectedUser){throw 'CURRENT_USER_CONTEXT_IDENTITY_MISMATCH'}
+  if(([string]$receipt.executionIdentity) -ine $ExpectedUser){throw 'CURRENT_USER_CONTEXT_IDENTITY_MISMATCH'}
 }catch{$failure=Safe-BridgeFailureCode ([string]$_.Exception.Message)}
 finally{
   if($registered -or (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)){
