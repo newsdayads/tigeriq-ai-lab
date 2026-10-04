@@ -108,3 +108,5 @@
     transition:none!important;
   }
 }
+
+/* #3918 runtime-gate bootstrap release marker; no visual override. */

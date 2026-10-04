@@ -1,4 +1,4 @@
-name: Web Hosting Contract Verify
+name: WO-012/013 Vercel Online Verify
 
 on:
   push:
