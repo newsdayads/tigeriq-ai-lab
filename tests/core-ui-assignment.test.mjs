@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -44,6 +44,17 @@ function fakePool(){
     if(sql.includes('CORE_UI_ASSIGNMENT_TERMINAL')){events.push({type:'CORE_UI_ASSIGNMENT_TERMINAL',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.startsWith('select prompt from tigeriq_jobs')){const j=jobs.find(x=>x.id===params[0]);return{rowCount:j?1:0,rows:j?[{prompt:j.prompt}]:[]};}
     if(sql.includes("set status='ui_running'")){const j=jobs.find(x=>x.id===params[0]);if(j){j.status='ui_running';j.started_at='2026-09-30T00:01:00Z';}return{rowCount:j?1:0,rows:[]};}
+    if(sql.startsWith("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb")){
+      const j=jobs.find(x=>x.id===params[0]&&x.status==='ui_assigned'&&x.employee_id===params[4]);
+      if(j){j.employee_id=params[1];j.resource_id=params[2];j.routing_decision=JSON.parse(params[3]);}
+      return{rowCount:j?1:0,rows:[]};
+    }
+    if(sql.startsWith("update tigeriq_objectives set metadata=jsonb_set(metadata,'{uiWorkerId}'")){
+      const o=objectives.find(x=>x.id===params[0]&&x.status==='active');
+      if(o){o.metadata={...o.metadata,uiWorkerId:JSON.parse(params[1])};o.summary=params[2];}
+      return{rowCount:o?1:0,rows:[]};
+    }
+    if(sql.includes('CORE_UI_ASSIGNMENT_FAILOVER')){events.push({type:'CORE_UI_ASSIGNMENT_FAILOVER',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.startsWith('update tigeriq_jobs set status=$2')){const j=jobs.find(x=>x.id===params[0]);if(j){j.status=params[1];j.completed_at='2026-09-30T00:02:00Z';j.result=JSON.parse(params[2]);}return{rowCount:j?1:0,rows:[]};}
     if(sql.startsWith('update tigeriq_objectives set status=$2')){const o=objectives.find(x=>x.id===params[0]);if(o){o.status=params[1];o.summary=params[2];}return{rowCount:o?1:0,rows:[]};}
     throw new Error('UNHANDLED_SQL:'+sql);
@@ -498,4 +509,36 @@ test('CORE_REVIEW overflow preserves reviewer independence for NV03/NV04',()=>{
     'IMPLEMENTER_EMPLOYEE=NV04',
   ]),'NV04 implemented'));
   assert.deepEqual(nv04Implemented.eligibleWorkerIds,['NV03']);
+});
+
+
+test('flexible review exposes NV03/NV04 as eligible failover workers',()=>{
+  const x=parseCoreUiIssue(issue(4301,safe([
+    'TARGET_EMPLOYEE=NV03',
+    'PREFERRED_REVIEWER=NV03',
+    'CAPABILITY=review',
+    'CORE_TARGET_STRICT=false',
+  ]),'Flexible review'));
+  assert.deepEqual(x.eligibleWorkerIds,['NV03','NV04']);
+});
+
+test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting a new objective',async()=>{
+  const pool=fakePool();
+  const review=issue(4302,safe([
+    'TARGET_EMPLOYEE=NV03',
+    'PREFERRED_REVIEWER=NV03',
+    'CAPABILITY=review',
+    'CORE_TARGET_STRICT=false',
+  ]).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=STALE_UI_FAILOVER'),'Stale UI review');
+  const fetchImpl=async url=>response(url.includes('/issues/4302')?review:[review]);
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.jobs[0].employee_id,'NV03');
+  pool.jobs[0].created_at=new Date(Date.now()-CORE_UI_ASSIGNMENT_STALE_MS-1000).toISOString();
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1,'must preserve the same job');
+  assert.equal(pool.objectives.length,1,'must preserve the same objective');
+  assert.equal(pool.jobs[0].employee_id,'NV04');
+  assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
+  assert.ok(pool.events.some(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER'));
 });
