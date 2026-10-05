@@ -12,10 +12,11 @@ import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPr
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
-export const GITHUB_RECONCILE_INTERVAL_MS=300000;
+export const GITHUB_RECONCILE_INTERVAL_MS=30000;
 const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
-const DEFAULT_MATERIALIZE_BATCH=Math.max(1,Math.min(20,Number(process.env.TIGERIQ_GITHUB_MATERIALIZE_BATCH||6)));
+export const GITHUB_MATERIALIZE_BATCH_DEFAULT=12;
+const DEFAULT_MATERIALIZE_BATCH=Math.max(1,Math.min(20,Number(process.env.TIGERIQ_GITHUB_MATERIALIZE_BATCH||GITHUB_MATERIALIZE_BATCH_DEFAULT)));
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
 const GITHUB_RATE_LIMIT_FALLBACK_MS=60000;
@@ -279,13 +280,51 @@ export function githubSpecBlockedByActive(spec,activeMetadata=[]){
   return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>String(metadata?.resourceScope||'')===scope);
 }
 
+export function normalizeWorkOrderScopeFamily(value=''){
+  return String(value||'').trim().toUpperCase()
+    .replace(/(?:_V\d+|_RETRY(?:_\d+)?|_REARM(?:_\d+)?)(?=_|$)/g,'')
+    .replace(/_20\d{6}(?:\d{0,6})?$/,'')
+    .replace(/_+/g,'_')
+    .replace(/^_|_$/g,'');
+}
+
+export function normalizeWorkOrderIntentTitle(value=''){
+  return String(value||'').trim().toLowerCase()
+    .replace(/\[nv\d{2}\]/gi,'')
+    .replace(/\b(?:retry|rearm)\b(?:\s*#?\d+)?/gi,'')
+    .replace(/\bv\d+\b/gi,'')
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+export function workOrderDedupIdentity(spec={}){
+  const body=String(spec?.body||'');
+  const scope=normalizeWorkOrderScopeFamily(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
+  const reviewOnly=spec?.capability==='review'||hasExactFlag(body,'REVIEW_ONLY')||bodyValue(body,'CAPABILITY').toLowerCase()==='review';
+  if(reviewOnly)return `review:${Number(spec?.number||0)}:${scope}`;
+  const title=normalizeWorkOrderIntentTitle(spec?.title||'');
+  return `${scope}|${title}`;
+}
+
+export function dedupeBacklogWorkOrders(specs=[]){
+  const out=[]; const seen=new Set();
+  for(const spec of Array.isArray(specs)?specs:[]){
+    const key=workOrderDedupIdentity(spec);
+    if(key&&seen.has(key))continue;
+    if(key)seen.add(key);
+    out.push(spec);
+  }
+  return out;
+}
+
 export function extractPcOperatorInstruction(body){
   const text=String(body||'');
   const match=text.match(/(?:^|\n)(?:##\s*)?ASSIGNED_ACTION\s*\n([\s\S]*?)(?=\n(?:##\s*)?ACCEPTANCE\s*\n|$)/i);
   return String(match?.[1]||'').trim();
 }
 
-const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','coding_issue_status_read','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_current_ci_artifact','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
@@ -306,6 +345,10 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     const taskName=String(parsed.taskName||'').trim();
     if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
     normalized={action,taskName};
+  }else if(action==='coding_issue_status_read'){
+    const issueNumber=Number(parsed.issueNumber);
+    if(!Number.isInteger(issueNumber)||issueNumber<1||issueNumber>999999)return {present:true,valid:false,action:null,reason:'ISSUE_NUMBER_INVALID'};
+    normalized={action,issueNumber};
   }else if(action==='core_status_read'){
     normalized={action};
   }else if(action==='tcp_probe'){
@@ -841,7 +884,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:fetchedRows});
-  const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
+  const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(rows.map(parseExecutableIssue).filter(Boolean)));
   const openIssueIndex=indexOpenGithubIssues(rows);
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});

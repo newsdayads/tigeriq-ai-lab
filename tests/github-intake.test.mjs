@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -528,6 +528,14 @@ test('safe P1-P5 active external role lease is not claimed by Core',async()=>{
   assert.strictEqual(pool.jobs.length,0);
 });
 
+
+test('coding_issue_status_read direct action requires bounded numeric issue',()=>{
+  const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"coding_issue_status_read","issueNumber":4190,"url":"http://evil"}',false);
+  assert.strictEqual(parsed.valid,true);
+  assert.deepStrictEqual(parsed.action,{action:'coding_issue_status_read',issueNumber:4190});
+  const bad=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"coding_issue_status_read","issueNumber":"evil"}',false);
+  assert.strictEqual(bad.valid,false);
+});
 
 test('core_status_read direct action is read-only and strips caller-selected transport inputs',()=>{
   const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read","url":"http://evil","host":"evil","path":"C:/evil"}',false);
@@ -1483,4 +1491,10 @@ test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',
   assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
+});
+
+
+test('GitHub backlog fallback cadence stays fast and bounded',()=>{
+  assert.equal(GITHUB_RECONCILE_INTERVAL_MS,30000);
+  assert.equal(GITHUB_MATERIALIZE_BATCH_DEFAULT,12);
 });
