@@ -1,4 +1,4 @@
-import { codingMicroContext, formatMicroContextTelemetry } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import { codingMicroContext, formatMicroContextTelemetry, codingIssueStatusSnapshot } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
@@ -907,4 +907,20 @@ test('Micro-Context telemetry summary is bounded and does not expose source text
     dependencyEdges:[],
   });
   assert.strictEqual(fallback,'MICRO_CONTEXT charsBefore=300 charsAfter=300 fallback=UNSUPPORTED_LANGUAGE symbols=0 edges=0');
+});
+
+
+test('coding issue status snapshot returns one bounded objective and latest job',async()=>{
+  const db={async query(sql,params){
+    if(sql.includes('from tigeriq_coding_objectives'))return {rows:[{id:'CODEOBJ-1',status:'active',summary:'MICRO_CONTEXT charsBefore=100 charsAfter=40 fallback=NONE symbols=1 edges=0',current_pr:123,target_head:'a'.repeat(40),updated_at:'2026-10-05T00:00:00Z'}]};
+    if(sql.includes('from tigeriq_coding_jobs'))return {rows:[{id:'CODE-1',status:'blocked',employee_id:'NV17',reviewer_employee_id:'NV11',branch:'tigeriq/nv17/code-x',pr_number:123,head_sha:'b'.repeat(40),result:{summary:'MICRO_CONTEXT charsBefore=100 charsAfter=40 fallback=NONE symbols=1 edges=0'},failure:{message:'NO_AI_RESOURCE_AVAILABLE'},completed_at:'2026-10-05T00:01:00Z'}]};
+    throw new Error('unexpected query');
+  }};
+  const out=await codingIssueStatusSnapshot(db,4190);
+  assert.equal(out.issueNumber,4190);
+  assert.equal(out.objective.id,'CODEOBJ-1');
+  assert.match(out.objective.summary,/MICRO_CONTEXT/);
+  assert.equal(out.job.reviewer,'NV11');
+  assert.equal(out.job.prNumber,123);
+  assert.equal(out.job.failureMessage,'NO_AI_RESOURCE_AVAILABLE');
 });
