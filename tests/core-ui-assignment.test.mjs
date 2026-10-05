@@ -209,6 +209,47 @@ test('Core UI injects bounded exact-head PR context for NV03 review',async()=>{
   assert.equal(seen.some(x=>!x.startsWith('https://api.github.com/repos/newsdayads/tigeriq-ai-lab/')),false);
 });
 
+test('Core UI exact-head context honors allowlisted TARGET_REPOSITORY',async()=>{
+  const pool=fakePool();
+  const head='f'.repeat(40);
+  const review=issue(27433,safe([
+    'TARGET_EMPLOYEE=NV03',
+    'CAPABILITY=review',
+    'TARGET_REPOSITORY=newsdayads/tigeriq-media',
+    'TARGET_PR=40',
+    'TARGET_HEAD='+head,
+  ]),'Cross-repo exact-head review');
+  const seen=[];
+  const fetchImpl=async url=>{
+    seen.push(url);
+    if(url.includes('/repos/newsdayads/tigeriq-media/pulls/40/files?'))return response([{filename:'services/news-engine/collector.mjs',status:'modified',patch:'@@ -1 +1 @@\n-old\n+new'}]);
+    if(url.endsWith('/repos/newsdayads/tigeriq-media/pulls/40'))return response({title:'News collector',state:'open',head:{sha:head},base:{sha:'b'.repeat(40)},changed_files:1,additions:1,deletions:1});
+    if(url.includes('/repos/newsdayads/tigeriq-ai-lab/issues?'))return response([review]);
+    if(url.endsWith('/repos/newsdayads/tigeriq-ai-lab/issues/27433'))return response(review);
+    return response([]);
+  };
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(snap.nextJobs[0].workerId,'NV03');
+  assert.match(pool.jobs[0].prompt,/REPOSITORY=newsdayads\/tigeriq-media/);
+  assert.equal(pool.objectives[0].metadata.targetRepository,'newsdayads/tigeriq-media');
+  assert.equal(pool.objectives[0].metadata.targetPr,40);
+  assert.equal(pool.objectives[0].metadata.targetHead,head);
+  assert.equal(seen.some(url=>url.includes('/repos/newsdayads/tigeriq-media/pulls/40')),true);
+  assert.equal(seen.some(url=>url.includes('/repos/newsdayads/tigeriq-ai-lab/pulls/40')),false);
+});
+
+test('Core UI fails closed for unsupported TARGET_REPOSITORY',()=>{
+  const review=issue(27434,safe([
+    'TARGET_EMPLOYEE=NV03',
+    'CAPABILITY=review',
+    'TARGET_REPOSITORY=example.com/not-allowed',
+    'TARGET_PR=40',
+    'TARGET_HEAD='+'a'.repeat(40),
+  ]),'Disallowed cross-repo review');
+  assert.equal(parseCoreUiIssue(review),null);
+});
+
 test('Core UI fails closed when TARGET_HEAD does not match current PR head',async()=>{
   const pool=fakePool();
   const expected='a'.repeat(40),actual='c'.repeat(40);
