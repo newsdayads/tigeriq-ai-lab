@@ -285,7 +285,7 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
-const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_current_ci_artifact','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
@@ -306,6 +306,8 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     const taskName=String(parsed.taskName||'').trim();
     if(!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName))return {present:true,valid:false,action:null,reason:'TASK_NOT_ALLOWLISTED'};
     normalized={action,taskName};
+  }else if(action==='core_status_read'){
+    normalized={action};
   }else if(action==='tcp_probe'){
     normalized={action,host:String(parsed.host||'127.0.0.1'),port:Number(parsed.port)};
   }else if(action==='paperclip_openai_device_auth_start'){
