@@ -1820,6 +1820,35 @@ async function readAndroidWorkerLiveV022Status(){
   return payload;
 }
 
+async function readAndroidWorkerUpdateRequestStatus(input={}){
+  const employeeId=String(input?.employeeId||'').trim().toUpperCase();
+  if(!/^NV\d{2,4}$/.test(employeeId))throw new Error('TIGERIQ_MOBILE_UPDATE_EMPLOYEE_INVALID');
+  const token=String(process.env.TIGERIQ_CORE_TOKEN||'').trim();
+  if(!token)throw new Error('TIGERIQ_MOBILE_UPDATE_CORE_TOKEN_MISSING');
+  const port=Number(process.env.TIGERIQ_CORE_PORT||8795);
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error('TIGERIQ_MOBILE_UPDATE_CORE_PORT_INVALID');
+  let response;
+  try{
+    response=await fetch(`http://127.0.0.1:${port}/api/mobile/update/request-status?employeeId=${encodeURIComponent(employeeId)}`,{
+      method:'GET',
+      headers:{authorization:`Bearer ${token}`,accept:'application/json'},
+      signal:AbortSignal.timeout(5000),
+    });
+  }catch{
+    throw new Error('TIGERIQ_MOBILE_UPDATE_CORE_UNREACHABLE');
+  }
+  let payload={};
+  try{payload=await response.json();}catch{throw new Error('TIGERIQ_MOBILE_UPDATE_RESPONSE_INVALID');}
+  if(!response.ok){
+    if(String(payload?.error||'')==='mobile_update_device_unavailable'){
+      return {status:'MOBILE_UPDATE_DEVICE_UNAVAILABLE',employeeId,httpStatus:response.status};
+    }
+    throw new Error('TIGERIQ_MOBILE_UPDATE_REQUEST_FAILED');
+  }
+  if(!payload||payload.ok!==true)throw new Error('TIGERIQ_MOBILE_UPDATE_RESPONSE_INVALID');
+  return payload;
+}
+
 const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
 async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestImpl=httpRequest}={}){
   const parsed=new URL(url);
@@ -2010,6 +2039,8 @@ export async function executePcAction(input, options = {}) {
     data = await readAndroidWorkerGateCV021Status();
   } else if (action === 'android_worker_live_v022_status') {
     data = await readAndroidWorkerLiveV022Status();
+  } else if (action === 'android_worker_update_request_status') {
+    data = await readAndroidWorkerUpdateRequestStatus(input || {});
   } else if (action === 'coding_issue_status_read') {
     data = await readCodingIssueStatus(input || {}, { fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'core_status_read') {
@@ -2064,6 +2095,7 @@ export async function executePcAction(input, options = {}) {
       androidGateCV020: ['android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v020_status'].includes(action),
       androidGateCV021: ['android_worker_gate_c_v021_enqueue_10','android_worker_gate_c_v021_status'].includes(action),
       androidLiveV022Status: action === 'android_worker_live_v022_status',
+      androidUpdateStatus: action === 'android_worker_update_request_status',
       coreUiCancelledReconcile: action === 'chrome_ui_reconcile_cancelled_job',
       taskListScope: action === 'task_list' ? 'TigerIQ only' : 'none',
       writeRoots: PC_WRITE_ROOTS,

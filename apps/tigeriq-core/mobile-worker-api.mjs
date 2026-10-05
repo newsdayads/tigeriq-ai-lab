@@ -280,11 +280,19 @@ export async function initMobileWorkerTables(pool) {
       agent_version text,
       capabilities jsonb not null default '[]'::jsonb,
       battery_pct int,
+      update_manifest_seen_at timestamptz,
+      update_manifest_version int,
+      update_apk_requested_at timestamptz,
+      update_apk_version int,
       last_seen_at timestamptz,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now(),
       revoked boolean not null default false
     );
+    alter table tigeriq_mobile_devices add column if not exists update_manifest_seen_at timestamptz;
+    alter table tigeriq_mobile_devices add column if not exists update_manifest_version int;
+    alter table tigeriq_mobile_devices add column if not exists update_apk_requested_at timestamptz;
+    alter table tigeriq_mobile_devices add column if not exists update_apk_version int;
     create index if not exists tigeriq_mobile_devices_seen_idx on tigeriq_mobile_devices(last_seen_at desc);
     create table if not exists tigeriq_mobile_evidence(
       node_id text not null,
@@ -355,7 +363,7 @@ async function gateCV020Target(pool,{requireFresh=false}={}){
 }
 async function gateCV021Target(pool,{requireFresh=false}={}){
   const result=await pool.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
        from tigeriq_mobile_devices
       where revoked=false and agent_version=$1
       order by last_seen_at desc nulls last`,
@@ -370,7 +378,7 @@ async function gateCV021Target(pool,{requireFresh=false}={}){
 }
 async function liveV022Target(pool){
   const result=await pool.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
        from tigeriq_mobile_devices
       where revoked=false and agent_version=$1
       order by last_seen_at desc nulls last`,
@@ -381,6 +389,106 @@ async function liveV022Target(pool){
   const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
   const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
+}
+function mobileUpdateRequestTelemetry(row={}){
+  const iso=(value)=>{const ms=value?new Date(value).getTime():NaN;return Number.isFinite(ms)?new Date(ms).toISOString():null;};
+  const int=(value)=>{const n=Number(value||0);return Number.isInteger(n)&&n>0?n:null;};
+  return {
+    updateManifestSeenAt:iso(row.update_manifest_seen_at),
+    updateManifestVersion:int(row.update_manifest_version),
+    updateApkRequestedAt:iso(row.update_apk_requested_at),
+    updateApkVersion:int(row.update_apk_version),
+  };
+}
+async function boundedMobileObservationQuery(pool,sql,params,timeoutMs=250){
+  if(typeof pool?.connect!=='function')throw new Error('mobile_update_observation_pool_connect_unavailable');
+  let acquireTimer;
+  let acquireTimedOut=false;
+  const pendingClient=Promise.resolve().then(()=>pool.connect());
+  pendingClient.catch(()=>{});
+  const acquireTimeout=new Promise((_,reject)=>{
+    acquireTimer=setTimeout(()=>{
+      acquireTimedOut=true;
+      reject(new Error('mobile_update_observation_acquire_timeout'));
+    },timeoutMs);
+    acquireTimer.unref?.();
+  });
+  let client;
+  try{
+    client=await Promise.race([pendingClient,acquireTimeout]);
+  }catch(error){
+    if(acquireTimedOut){
+      pendingClient.then(lateClient=>{try{lateClient.release();}catch{}}).catch(()=>{});
+    }
+    throw error;
+  }finally{
+    if(acquireTimer)clearTimeout(acquireTimer);
+  }
+  const run=(textValue,values=[])=>client.query({
+    text:textValue,
+    values,
+    query_timeout:Math.max(1,Math.trunc(timeoutMs)),
+  });
+  const queryReadTimedOut=(error)=>String(error?.message||error)==='Query read timeout';
+  let destroyClient=false;
+  try{
+    await run('begin');
+    await run(`set local lock_timeout='${Math.max(1,Math.trunc(timeoutMs))}ms'`);
+    await run(`set local statement_timeout='${Math.max(1,Math.trunc(timeoutMs))}ms'`);
+    const result=await run(sql,params);
+    await run('commit');
+    return result;
+  }catch(error){
+    if(queryReadTimedOut(error)){
+      destroyClient=true;
+    }else{
+      try{await run('rollback');}
+      catch(rollbackError){
+        if(queryReadTimedOut(rollbackError))destroyClient=true;
+      }
+    }
+    throw error;
+  }finally{
+    try{client.release(destroyClient);}catch{}
+  }
+}
+function logMobileUpdateObservationFailure(payload,error){
+  try{
+    console.error(JSON.stringify({
+      event:'MOBILE_UPDATE_OBSERVATION_FAILED',
+      ...payload,
+      fallback:'structured_stderr',
+      persistenceError:error?text(error?.message||error,160):null,
+    }));
+  }catch{}
+}
+async function recordMobileUpdateObservation(pool,event,nodeId,kind,versionCode){
+  const numericVersion=Number(versionCode||0);
+  const version=Number.isInteger(numericVersion)&&numericVersion>0?numericVersion:null;
+  if(!nodeId)return false;
+  try{
+    if(kind==='manifest'){
+      await boundedMobileObservationQuery(
+        pool,
+        'update tigeriq_mobile_devices set update_manifest_seen_at=now(),update_manifest_version=$2,last_seen_at=now(),updated_at=now() where node_id=$1',
+        [nodeId,version]
+      );
+    }else if(kind==='apk'){
+      await boundedMobileObservationQuery(
+        pool,
+        'update tigeriq_mobile_devices set update_apk_requested_at=now(),update_apk_version=$2,last_seen_at=now(),updated_at=now() where node_id=$1',
+        [nodeId,version]
+      );
+    }
+    return true;
+  }catch(error){
+    const payload={
+      nodeId:String(nodeId),kind:String(kind),versionCode:version,
+      error:text(error?.message||error,160),
+    };
+    logMobileUpdateObservationFailure(payload,null);
+    return false;
+  }
 }
 function mobileAuthHeaders(req) {
   const credentialId=text(req.headers['x-tigeriq-credential-id'],160);
@@ -429,7 +537,32 @@ export function readMobileReleaseManifest(path=releaseManifestPath()) {
     };
   } catch { return {available:false}; }
 }
-export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''}) {
+export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken='',updateTransferGraceMs=60_000}) {
+  const activeUpdateTransfers=new Map();
+  const updateGraceMs=Math.max(0,Number(updateTransferGraceMs)||0);
+  const updateTransferActive=(nodeId)=>activeUpdateTransfers.has(String(nodeId||''));
+  const markUpdateTransferActive=(nodeId)=>{
+    const key=String(nodeId||'');
+    if(!key)return;
+    const current=activeUpdateTransfers.get(key)||{count:0,timer:null};
+    if(current.timer){clearTimeout(current.timer);current.timer=null;}
+    current.count+=1;
+    activeUpdateTransfers.set(key,current);
+  };
+  const releaseUpdateTransfer=(nodeId)=>{
+    const key=String(nodeId||'');
+    const current=activeUpdateTransfers.get(key);
+    if(!key||!current)return;
+    current.count=Math.max(0,current.count-1);
+    if(current.count>0){activeUpdateTransfers.set(key,current);return;}
+    if(current.timer)clearTimeout(current.timer);
+    current.timer=setTimeout(()=>{
+      const latest=activeUpdateTransfers.get(key);
+      if(latest===current&&latest.count===0)activeUpdateTransfers.delete(key);
+    },updateGraceMs);
+    current.timer.unref?.();
+    activeUpdateTransfers.set(key,current);
+  };
   return async function handleMobile(req,res,url) {
     if(!url.pathname.startsWith('/api/mobile/'))return false;
 
@@ -444,7 +577,35 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       if(!target.ok)return send(res,409,target);
       return send(res,200,{
         ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
-        employeeId:String(target.row.employee_id),online:target.online,lastSeenAt:target.lastSeenAt,
+        employeeId:String(target.row.employee_id),
+        online:target.online||updateTransferActive(target.row.node_id),
+        lastSeenAt:target.lastSeenAt,
+        ...mobileUpdateRequestTelemetry(target.row),
+      });
+    }
+
+    if(req.method==='GET'&&url.pathname==='/api/mobile/update/request-status'){
+      if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
+      if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
+      const employeeId=text(url.searchParams.get('employeeId'),80).toUpperCase();
+      if(!/^NV\d{2,4}$/.test(employeeId))return send(res,400,{ok:false,error:'mobile_update_employee_invalid'});
+      const result=await pool.query(
+        `select node_id,employee_id,agent_version,last_seen_at,update_manifest_seen_at,update_manifest_version,update_apk_requested_at,update_apk_version
+           from tigeriq_mobile_devices
+          where revoked=false and employee_id=$1
+          order by last_seen_at desc nulls last, updated_at desc
+          limit 1`,
+        [employeeId]
+      );
+      if(result.rowCount!==1)return send(res,404,{ok:false,error:'mobile_update_device_unavailable'});
+      const row=result.rows[0];
+      const seen=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
+      return send(res,200,{
+        ok:true,status:'MOBILE_UPDATE_REQUEST_STATUS',
+        employeeId:String(row.employee_id),version:text(row.agent_version,80)||null,
+        online:(Number.isFinite(seen)&&Date.now()-seen<=120_000)||updateTransferActive(row.node_id),
+        lastSeenAt:Number.isFinite(seen)?new Date(seen).toISOString():null,
+        ...mobileUpdateRequestTelemetry(row),
       });
     }
 
@@ -628,7 +789,10 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
       const aggregate=gateCV021Aggregate(result.rows,employeeId);
       return send(res,200,{
         ok:true,status:'GATE_C_V021_STATUS',version:GATE_C_V021_VERSION,
-        employeeId,online:target.online,lastSeenAt:target.lastSeenAt,...aggregate,
+        employeeId,
+        online:target.online||updateTransferActive(target.row.node_id),
+        lastSeenAt:target.lastSeenAt,
+        ...mobileUpdateRequestTelemetry(target.row),...aggregate,
       });
     }
 
@@ -812,11 +976,13 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
     }
     if(req.method==='GET'&&url.pathname==='/api/mobile/update/manifest'){
       const manifest=readMobileReleaseManifest();
+      await recordMobileUpdateObservation(pool,event,device.node_id,'manifest',manifest.available?manifest.versionCode:null);
       const safe={...manifest};delete safe.apkPath;
       return send(res,200,{ok:true,...safe});
     }
     if(req.method==='GET'&&url.pathname==='/api/mobile/update/apk'){
       const manifest=readMobileReleaseManifest();
+      await recordMobileUpdateObservation(pool,event,device.node_id,'apk',manifest.available?manifest.versionCode:null);
       if(!manifest.available||!manifest.apkPath||!existsSync(manifest.apkPath))return send(res,404,{ok:false,error:'mobile_release_unavailable'});
       const size=statSync(manifest.apkPath).size;
       res.writeHead(200,{
@@ -825,7 +991,21 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
         'cache-control':'no-store',
         'content-disposition':`attachment; filename="${manifest.fileName||'TIQ-Worker.apk'}"`
       });
-      createReadStream(manifest.apkPath).pipe(res);return true;
+      markUpdateTransferActive(device.node_id);
+      const stream=createReadStream(manifest.apkPath);
+      let released=false;
+      const release=()=>{
+        if(released)return;
+        released=true;
+        releaseUpdateTransfer(device.node_id);
+      };
+      stream.once('error',release);
+      stream.once('close',release);
+      if(typeof res.once==='function'){
+        res.once('finish',release);
+        res.once('close',release);
+      }
+      stream.pipe(res);return true;
     }
     return send(res,404,{ok:false,error:'mobile_route_not_found'});
   };

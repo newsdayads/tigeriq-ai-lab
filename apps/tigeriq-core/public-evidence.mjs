@@ -11,6 +11,10 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'employeeId',
   'online',
   'lastSeenAt',
+  'updateManifestSeenAt',
+  'updateManifestVersion',
+  'updateApkRequestedAt',
+  'updateApkVersion',
   'expected',
   'taskCount',
   'completed',
@@ -78,6 +82,15 @@ const GATE_C_V021_ACTIONS=new Set([
   'android_worker_gate_c_v021_status',
   'android_worker_gate_c_v021_enqueue_10',
 ]);
+const MOBILE_UPDATE_REQUEST_STRICT_KEYS=new Set([
+  'updateManifestSeenAt','updateManifestVersion','updateApkRequestedAt','updateApkVersion',
+]);
+const MOBILE_UPDATE_REQUEST_BUNDLE_KEYS=new Set([
+  'status','employeeId','version','online','lastSeenAt',
+  ...MOBILE_UPDATE_REQUEST_STRICT_KEYS,
+]);
+const MOBILE_UPDATE_REQUEST_ACTION='android_worker_update_request_status';
+const LIVE_V022_STATUS_ACTION='android_worker_live_v022_status';
 const SENSITIVE_KEY_RE=/(?:secret|token|password|passwd|credential|authorization|cookie|session|api[_-]?key|private[_-]?key|env(?:ironment)?)/i;
 const RAW_OUTPUT_KEY_RE=/^(?:content|contentSnippet|content_snippet|text|stdout|stderr|raw|rawText|raw_text|payload|body)$/i;
 const blockedPublicKey=(key)=>SENSITIVE_KEY_RE.test(String(key))||RAW_OUTPUT_KEY_RE.test(String(key));
@@ -189,6 +202,52 @@ function trustedGateCV021ReceiptSources(bridgeCalls){
   return [];
 }
 
+function hasLiveV022BridgeAction(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls.some(call=>String(call?.result?.action||'')===LIVE_V022_STATUS_ACTION);
+}
+
+function trustedLiveV022ReceiptSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  for(let index=calls.length-1;index>=0;index--){
+    const call=calls[index];
+    const result=call?.result;
+    const evidence=result?.evidence;
+    if(String(call?.tool||'')!=='tigeriq_pc')continue;
+    if(!result||typeof result!=='object'||Array.isArray(result))continue;
+    if(result.ok!==true||String(result.target||'').toLowerCase()!=='pc01-local')continue;
+    if(String(result.action||'')!==LIVE_V022_STATUS_ACTION)continue;
+    if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))continue;
+    if(String(evidence.transport||'')!=='local-process'||evidence.androidLiveV022Status!==true)continue;
+    if(evidence.shell!==false||evidence.inheritedSecretEnvironment!==false)continue;
+    if(result.data&&typeof result.data==='object'&&!Array.isArray(result.data))return [result.data];
+  }
+  return [];
+}
+
+function hasMobileUpdateRequestBridgeAction(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls.some(call=>String(call?.result?.action||'')===MOBILE_UPDATE_REQUEST_ACTION);
+}
+
+function trustedMobileUpdateRequestReceiptSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  for(let index=calls.length-1;index>=0;index--){
+    const call=calls[index];
+    const result=call?.result;
+    const evidence=result?.evidence;
+    if(String(call?.tool||'')!=='tigeriq_pc')continue;
+    if(!result||typeof result!=='object'||Array.isArray(result))continue;
+    if(result.ok!==true||String(result.target||'').toLowerCase()!=='pc01-local')continue;
+    if(String(result.action||'')!==MOBILE_UPDATE_REQUEST_ACTION)continue;
+    if(!evidence||typeof evidence!=='object'||Array.isArray(evidence))continue;
+    if(String(evidence.transport||'')!=='local-process'||evidence.androidUpdateStatus!==true)continue;
+    if(evidence.shell!==false||evidence.inheritedSecretEnvironment!==false)continue;
+    if(result.data&&typeof result.data==='object'&&!Array.isArray(result.data))return [result.data];
+  }
+  return [];
+}
+
 function structuredBridgeEvidenceSources(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   const sources=[];
@@ -216,18 +275,28 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const primary=jobResult?.evidence?.agentResult?.evidence;
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
+  const trustedLiveV022Sources=trustedLiveV022ReceiptSources(bridgeCalls);
+  const trustedMobileUpdateSources=trustedMobileUpdateRequestReceiptSources(bridgeCalls);
   const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls);
+  const liveV022Request=hasLiveV022BridgeAction(bridgeCalls);
+  const mobileUpdateRequest=hasMobileUpdateRequestBridgeAction(bridgeCalls);
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
   ];
-  if(!fallbackSources.length&&!trustedGateCV021Sources.length)return {};
+  if(!fallbackSources.length&&!trustedGateCV021Sources.length&&!trustedLiveV022Sources.length&&!trustedMobileUpdateSources.length)return {};
   const out={};
   for(const key of requested){
     let raw;
-    const sources=gateCV021Request&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
-      ? trustedGateCV021Sources
-      : fallbackSources;
+    const sources=mobileUpdateRequest&&MOBILE_UPDATE_REQUEST_BUNDLE_KEYS.has(key)
+      ? trustedMobileUpdateSources
+      : liveV022Request&&MOBILE_UPDATE_REQUEST_BUNDLE_KEYS.has(key)
+        ? trustedLiveV022Sources
+        : gateCV021Request&&(GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)||MOBILE_UPDATE_REQUEST_STRICT_KEYS.has(key))
+          ? trustedGateCV021Sources
+          : MOBILE_UPDATE_REQUEST_STRICT_KEYS.has(key)
+            ? []
+            : fallbackSources;
     for(const source of sources){
       raw=findRequestedValue(source,key);
       if(raw!==undefined)break;
