@@ -40,6 +40,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final int MAX_B1_RECOVERIES = 2;
     private static final int PROJECT_STABLE_MIN_SAMPLES = 3;
     private static final long PROJECT_STABLE_MIN_MS = 1200L;
+    private static final long INACTIVE_TICK_MS = 2000L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
     private int projectContextSamples = 0;
@@ -51,7 +52,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         public void run() {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(AccessibilityBridgeService.this);
             if (!run.active()) {
-                b1TickScheduled = false;
+                recoveryHandler.postDelayed(this, INACTIVE_TICK_MS);
                 return;
             }
             AccessibilityNodeInfo current = getRootInActiveWindow();
@@ -82,6 +83,12 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         ChatGptB1RunStore.markRecovery(this);
         startActivity(launch);
     };
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        ensureB1Ticker();
+    }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -306,8 +313,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     }
 
     private void ensureB1Ticker() {
-        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || b1TickScheduled) return;
+        if (b1TickScheduled) return;
         b1TickScheduled = true;
         recoveryHandler.postDelayed(b1TickRunnable, 400L);
     }
