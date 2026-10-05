@@ -1059,7 +1059,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
     if(spec.dispatchLane==='MOBILE_WORKER'){
       const expectedToken=liveMobileCompletionToken(`github:${spec.number}:${spec.sourceRevision}`);
       const idempotencyKey=`github-mobile:${spec.number}:${spec.sourceRevision}`;
-      const taskPrompt=liveMobileTaskPrompt({title:spec.title,body:spec.body,expectedToken});
+      const taskPrompt=liveMobileTaskPrompt({title:spec.title,body:context,expectedToken});
       const client=await pool.connect();
       try{
         await client.query('begin');
