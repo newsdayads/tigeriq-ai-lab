@@ -8,6 +8,43 @@ import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
+
+/**
+ * Determine whether a failure should trigger a new repair lifecycle.
+ * Historical completed repairs are ignored if the current failure differs
+ * in class, signature, or is sufficiently later than the prior repair.
+ * This prevents stale `wait_repair` suppression of fresh recurrences.
+ */
+function isFreshFailure(currentFailure, priorRepair) {
+  if (!priorRepair) return true;
+  // If prior repair is not completed, treat as fresh (allow normal handling)
+  if (priorRepair.status !== 'completed') return true;
+  // Compare error class and signature; any change indicates a fresh issue
+  if (currentFailure.errorClass && priorRepair.errorClass && currentFailure.errorClass !== priorRepair.errorClass) return true;
+  if (currentFailure.signature && priorRepair.signature && currentFailure.signature !== priorRepair.signature) return true;
+  // If the prior completed repair is older than 24h, consider it stale
+  if (priorRepair.completedAt) {
+    const now = Date.now();
+    const completedTime = new Date(priorRepair.completedAt).getTime();
+    if (now - completedTime > 24 * 60 * 60 * 1000) return true;
+  }
+  // Otherwise, treat as not fresh (suppress new repair)
+  return false;
+}
+
+/**
+ * Exported helper used by API Doctor supervisor to decide the next action.
+ * Returns an object with `action` ('repair' or 'wait_repair') and a `reason`.
+ */
+export function decideRepairAction(currentFailure, getPriorRepair) {
+  // `getPriorRepair` is a callback that returns the most recent repair record for the provider.
+  const prior = getPriorRepair ? getPriorRepair(currentFailure.providerId) : null;
+  if (isFreshFailure(currentFailure, prior)) {
+    return { action: 'repair', reason: 'fresh failure detected' };
+  }
+  return { action: 'wait_repair', reason: 'stale completed repair suppresses new repair' };
+}
+
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
