@@ -1900,7 +1900,7 @@ async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestI
 }
 
 export async function readCoreStatus(options={}){
-  const payload=await boundedLocalJson('http://127.0.0.1:8795/api/status',{fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl});
+  const payload=await boundedLocalJson('http://127.0.0.1:8795/api/api-doctor-status',{fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl});
   const core=payload?.core&&typeof payload.core==='object'&&!Array.isArray(payload.core)?payload.core:{};
   const apiDoctor=payload?.apiDoctor&&typeof payload.apiDoctor==='object'&&!Array.isArray(payload.apiDoctor)?payload.apiDoctor:{};
   return {
