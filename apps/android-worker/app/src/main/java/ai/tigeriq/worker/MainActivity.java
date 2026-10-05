@@ -117,7 +117,11 @@ public final class MainActivity extends Activity {
 
         readinessView = text("", 15, true);
         readinessView.setPadding(dp(14), dp(12), dp(14), dp(12));
-        root.addView(readinessView, marginParams(0, dp(12), 0, dp(16)));
+        root.addView(readinessView, marginParams(0, dp(12), 0, dp(10)));
+
+        workerControlButton = secondaryButton("");
+        workerControlButton.setOnClickListener(v -> toggleWorkerPaused());
+        root.addView(workerControlButton, marginParams(0, 0, 0, dp(16)));
 
         root.addView(sectionTitle("Thiết bị & nhân viên"));
         LinearLayout identity = card();
@@ -219,9 +223,6 @@ public final class MainActivity extends Activity {
         b1StateView = text("", 13, false);
         b1Card.addView(b1StateView, marginParams(0, dp(12), 0, 0));
 
-        workerControlButton = secondaryButton("");
-        workerControlButton.setOnClickListener(v -> toggleWorkerPaused());
-        b1Card.addView(workerControlButton, marginParams(0, dp(12), 0, 0));
         root.addView(b1Card, marginParams(0, dp(6), 0, dp(16)));
 
         root.addView(sectionTitle("Hệ thống"));
