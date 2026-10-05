@@ -18,3 +18,14 @@ Use after UI implementation or when auditing whether a rendered interface matche
 
 ## Non-goals
 This skill does not self-approve its own implementation, widen browser permissions, release Production, or change credential/security boundaries.
+
+
+## Deterministic detector delta
+Machine-readable detector definitions live in `docs/skills/visual-quality-gate/detectors.json`.
+
+Rules:
+- Deterministic findings are implementation evidence, not proof of overall design quality.
+- Immediate mechanical findings may block only when the detector severity is `hard` and all false-positive guards are satisfied.
+- Advisory findings never hard-fail a visual gate by themselves.
+- Keep detector evidence separate from holistic visual judgment, then synthesize both before PASS/FAIL.
+- Do not auto-install Impeccable or create a parallel browser/design authority; these rules are adapted into this existing gate.
