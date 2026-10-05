@@ -1,10 +1,29 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
+
+  it('dedupes retry/rearm Work Orders by canonical scope family plus intent while preserving review independence',()=>{
+    const baseIssue={number:4093,title:'[P2][CORE][AUDIT] NV12 backlog eligibility audit',capability:'reasoning',resourceScope:'PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_20261005',body:'CAPABILITY=reasoning\nRESOURCE_SCOPE=PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_20261005'};
+    const retry={...baseIssue,number:4098,title:'[P2][CORE][AUDIT] NV12 backlog eligibility audit v2',resourceScope:'PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_V2_20261005',body:'CAPABILITY=reasoning\nRESOURCE_SCOPE=PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_V2_20261005'};
+    expect(normalizeWorkOrderScopeFamily(baseIssue.resourceScope)).toBe('PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT');
+    expect(normalizeWorkOrderScopeFamily(retry.resourceScope)).toBe('PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT');
+    expect(normalizeWorkOrderIntentTitle(retry.title)).toBe(normalizeWorkOrderIntentTitle(baseIssue.title));
+    expect(workOrderDedupIdentity(retry)).toBe(workOrderDedupIdentity(baseIssue));
+    expect(dedupeBacklogWorkOrders([baseIssue,retry])).toEqual([baseIssue]);
+
+    const different={...baseIssue,number:4102,title:'[P2][CORE][AUDIT] NV12 dependency health audit',resourceScope:'PARALLEL_CORE_DEPENDENCY_HEALTH_AUDIT_20261005'};
+    expect(workOrderDedupIdentity(different)).not.toBe(workOrderDedupIdentity(baseIssue));
+
+    const reviewA={...baseIssue,number:5001,capability:'review',body:'CAPABILITY=review\nREVIEW_ONLY=true\nRESOURCE_SCOPE=EXACT_HEAD_REVIEW_V1'};
+    const reviewB={...reviewA,number:5002};
+    expect(workOrderDedupIdentity(reviewA)).not.toBe(workOrderDedupIdentity(reviewB));
+    expect(dedupeBacklogWorkOrders([reviewA,reviewB])).toHaveLength(2);
+  });
+
 
   it('materializer has no global active-GitHub-objective stop gate',()=>{
     const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
