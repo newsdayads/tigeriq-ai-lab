@@ -1441,7 +1441,7 @@ async function claimJob() {
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
-    const employeeAllowlist=j.kind==='github_api_autowork'?['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
+    const employeeAllowlist=j.kind==='github_api_autowork'?['NV10','NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
     const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
     const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
