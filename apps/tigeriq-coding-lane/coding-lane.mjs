@@ -1157,6 +1157,7 @@ export function codingMicroContext(files=[],request='',budgetChars=9000){
     .filter(x=>!/^(const|function|return|export|import|async|await|true|false|null|undefined|current|files|change|review|issue|coding|context|source|branch|tests?)$/i.test(x))
     .slice(0,24))];
   const supported=path=>/\.(?:[cm]?[jt]sx?|tsx?)$/i.test(String(path||''));
+  const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   if(!list.length||!symbols.length||list.some(file=>!supported(file.path))){
     return {context:before,telemetry:{fallbackReason:!list.length?'NO_FILES':!symbols.length?'NO_TARGET_SYMBOL':'UNSUPPORTED_LANGUAGE',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
   }
@@ -1164,13 +1165,10 @@ export function codingMicroContext(files=[],request='',budgetChars=9000){
     const sliced=[];const selected=[];const edges=[];
     for(const file of list){
       const content=String(file.content??'');
-      const lines=content.split(/\r?\n/);
+      const fileLines=content.split(/\r?\n/);
       const hitLines=[];
-      for(let i=0;i<lines.length;i++){
-        if(symbols.some(symbol=>new RegExp(`\\b${symbol.replace(/[.*+?^$()|[\\]{}\\]/g,'\\export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
-async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
-async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
-')}\\b`).test(lines[i])))hitLines.push(i);
+      for(let i=0;i<fileLines.length;i++){
+        if(symbols.some(symbol=>new RegExp('\\b'+escapeRegex(symbol)+'\\b').test(fileLines[i])))hitLines.push(i);
       }
       if(!hitLines.length){
         sliced.push({path:file.path,content:'// MICRO_CONTEXT: no directly referenced symbol in this file'});
@@ -1178,8 +1176,8 @@ async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return 
       }
       const ranges=[];
       for(const line of hitLines.slice(0,12)){
-        const start=Math.max(0,line-4),end=Math.min(lines.length,line+9);
-        ranges.push([start,end]);
+        const rangeStart=Math.max(0,line-4),rangeEnd=Math.min(fileLines.length,line+9);
+        ranges.push([rangeStart,rangeEnd]);
       }
       ranges.sort((a,b)=>a[0]-b[0]);
       const merged=[];
@@ -1187,16 +1185,13 @@ async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return 
         const last=merged[merged.length-1];
         if(last&&r[0]<=last[1]+1)last[1]=Math.max(last[1],r[1]); else merged.push([...r]);
       }
-      const chunks=merged.map(([a,b])=>lines.slice(a,b).join('\n')).filter(Boolean);
-      const usedSymbols=symbols.filter(symbol=>chunks.some(chunk=>new RegExp(`\\b${symbol.replace(/[.*+?^$()|[\\]{}\\]/g,'\\export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
-async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
-async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
-')}\\b`).test(chunk)));
+      const chunks=merged.map(([a,b])=>fileLines.slice(a,b).join('\n')).filter(Boolean);
+      const usedSymbols=symbols.filter(symbol=>chunks.some(chunk=>new RegExp('\\b'+escapeRegex(symbol)+'\\b').test(chunk)));
       selected.push(...usedSymbols);
       sliced.push({path:file.path,content:chunks.join('\n\n// ... MICRO_CONTEXT GAP ...\n\n')});
       for(const symbol of usedSymbols)edges.push({path:file.path,symbol,reason:'request-symbol'});
     }
-    let context=buildLocalFileContext(sliced);
+    const context=buildLocalFileContext(sliced);
     if(context.length>=before.length||context.length>Math.max(2000,Number(budgetChars)||9000)){
       return {context:before,telemetry:{fallbackReason:context.length>=before.length?'NO_REDUCTION':'BUDGET_EXCEEDED',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
     }
