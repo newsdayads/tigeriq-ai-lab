@@ -105,6 +105,18 @@ public final class ChatGptB1Automation {
         return null;
     }
 
+    public static AccessibilityNodeInfo findNewChatControl(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser()) continue;
+            String label = searchable(node);
+            if (!containsAny(label, "new chat", "chat mới", "cuộc trò chuyện mới", "new conversation")) continue;
+            AccessibilityNodeInfo clickable = nearestClickable(node, 4);
+            if (clickable != null && clickable.isEnabled()) return clickable;
+        }
+        return null;
+    }
+
     public static AccessibilityNodeInfo findNavigationMenuControl(AccessibilityNodeInfo root) {
         if (root == null) return null;
         AccessibilityNodeInfo best = null;
