@@ -529,6 +529,14 @@ test('safe P1-P5 active external role lease is not claimed by Core',async()=>{
 });
 
 
+test('coding_issue_status_read direct action requires bounded numeric issue',()=>{
+  const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"coding_issue_status_read","issueNumber":4190,"url":"http://evil"}',false);
+  assert.strictEqual(parsed.valid,true);
+  assert.deepStrictEqual(parsed.action,{action:'coding_issue_status_read',issueNumber:4190});
+  const bad=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"coding_issue_status_read","issueNumber":"evil"}',false);
+  assert.strictEqual(bad.valid,false);
+});
+
 test('core_status_read direct action is read-only and strips caller-selected transport inputs',()=>{
   const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read","url":"http://evil","host":"evil","path":"C:/evil"}',false);
   assert.strictEqual(parsed.valid,true);

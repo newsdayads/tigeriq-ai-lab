@@ -214,4 +214,11 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('hidden');
   });
 
+  it('exports bounded Coding Lane diagnostic scalar evidence',()=>{
+    const data={status:'CODING_ISSUE_STATUS_READ',issueNumber:4190,objectiveId:'CODEOBJ-1',objectiveStatus:'active',objectiveSummary:'MICRO_CONTEXT charsBefore=100 charsAfter=40',jobId:'CODE-1',jobStatus:'done',implementer:'NV17',reviewer:'NV11',branch:'tigeriq/nv17/code-x',prNumber:123,headSha:'a'.repeat(40),resultSummary:'MICRO_CONTEXT charsBefore=100 charsAfter=40',failureMessage:''};
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{ok:true,action:'coding_issue_status_read',target:'pc01-local',data}}]}};
+    const keys=['status','issueNumber','objectiveId','objectiveStatus','objectiveSummary','jobId','jobStatus','implementer','reviewer','branch','prNumber','headSha','resultSummary','failureMessage'];
+    expect(extractPublicEvidence(jobResult,keys)).toEqual(data);
+  });
+
 });

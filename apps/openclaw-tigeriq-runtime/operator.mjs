@@ -1899,6 +1899,19 @@ async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestI
   });
 }
 
+export async function readCodingIssueStatus(input={},options={}){
+  const issueNumber=Number(input?.issueNumber);
+  if(!Number.isInteger(issueNumber)||issueNumber<1||issueNumber>999999)throw new Error('TIGERIQ_CODING_ISSUE_NUMBER_INVALID');
+  const payload=await boundedLocalJson('http://127.0.0.1:8797/api/issue-status?issue='+issueNumber,{fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl});
+  const objective=payload?.objective&&typeof payload.objective==='object'?payload.objective:{};
+  const job=payload?.job&&typeof payload.job==='object'?payload.job:{};
+  return {
+    status:'CODING_ISSUE_STATUS_READ',issueNumber,
+    objectiveId:String(objective.id||''),objectiveStatus:String(objective.status||''),objectiveSummary:String(objective.summary||'').slice(0,2400),
+    jobId:String(job.id||''),jobStatus:String(job.status||''),implementer:String(job.implementer||''),reviewer:String(job.reviewer||''),branch:String(job.branch||'').slice(0,180),prNumber:Number(job.prNumber)||null,headSha:String(job.headSha||'').slice(0,64),resultSummary:String(job.resultSummary||'').slice(0,2400),failureMessage:String(job.failureMessage||'').slice(0,1200),
+  };
+}
+
 export async function readCoreStatus(options={}){
   const payload=await boundedLocalJson('http://127.0.0.1:8795/api/api-doctor-status',{fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl});
   const core=payload?.core&&typeof payload.core==='object'&&!Array.isArray(payload.core)?payload.core:{};
@@ -1997,6 +2010,8 @@ export async function executePcAction(input, options = {}) {
     data = await readAndroidWorkerGateCV021Status();
   } else if (action === 'android_worker_live_v022_status') {
     data = await readAndroidWorkerLiveV022Status();
+  } else if (action === 'coding_issue_status_read') {
+    data = await readCodingIssueStatus(input || {}, { fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'core_status_read') {
     data = await readCoreStatus({ fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'chrome_ui_reconcile_cancelled_job') {

@@ -1494,9 +1494,28 @@ async function failJob(j,e){
   await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[j.objective_id,String(e?.message||e).slice(0,1000)]);
 }
 
+export async function codingIssueStatusSnapshot(db,issueNumber){
+  const n=Number(issueNumber);
+  if(!Number.isInteger(n)||n<1||n>999999)throw new Error('CODING_ISSUE_NUMBER_INVALID');
+  const pattern='%issue #'+n+':%';
+  const objectives=(await db.query("select id,status,summary,current_pr,target_head,updated_at from tigeriq_coding_objectives where objective ilike $1 order by updated_at desc limit 1",[pattern])).rows||[];
+  const objective=objectives[0]||null;
+  let job=null;
+  if(objective){
+    job=(await db.query("select id,status,employee_id,reviewer_employee_id,branch,pr_number,head_sha,result,failure,completed_at from tigeriq_coding_jobs where objective_id=$1 order by created_at desc limit 1",[objective.id])).rows?.[0]||null;
+  }
+  const result=job?.result&&typeof job.result==='object'?job.result:{};
+  const failure=job?.failure&&typeof job.failure==='object'?job.failure:{};
+  return {
+    ok:true,issueNumber:n,
+    objective:objective?{id:String(objective.id||''),status:String(objective.status||''),summary:String(objective.summary||'').slice(0,2400),currentPr:Number(objective.current_pr)||null,targetHead:String(objective.target_head||'').slice(0,64),updatedAt:objective.updated_at?String(objective.updated_at):null}:null,
+    job:job?{id:String(job.id||''),status:String(job.status||''),implementer:String(job.employee_id||''),reviewer:String(job.reviewer_employee_id||''),branch:String(job.branch||'').slice(0,180),prNumber:Number(job.pr_number)||null,headSha:String(job.head_sha||'').slice(0,64),resultSummary:String(result.summary||'').slice(0,2400),failureMessage:String(failure.message||'').slice(0,1200),completedAt:job.completed_at?String(job.completed_at):null}:null,
+  };
+}
+
 async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
-const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
+const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
 if(process.env.NODE_ENV!=='test'){
   installAiJsonTransport({maxAttempts:1,baseDelayMs:350,attemptTimeoutMs:45000});
