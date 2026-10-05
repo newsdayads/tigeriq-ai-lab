@@ -60,6 +60,7 @@ test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(selectCoreUiWorker('general'),null);
   assert.equal(selectCoreUiWorker('review'),'NV03');
   assert.equal(selectCoreUiWorker('research'),'NV04');
+  assert.equal(selectCoreUiWorker('second_opinion'),'NV04');
 });
 
 test('Core UI honors TARGET_EMPLOYEE precedence for NV03/NV04',()=>{
@@ -444,4 +445,40 @@ test('Core UI admits only explicitly dispatched P0 read-only review for NV03/NV0
   assert.equal(parseCoreUiIssue(issue(39053,[...base.filter(line=>line!=='VY_DIRECT_REVIEW_DISPATCH=true'),'OWNER_REVIEWER=NV03'].join('\n'),'P0 blocked')),null);
   assert.equal(parseCoreUiIssue(issue(39054,[...base,'OWNER_REVIEWER=NV11'].join('\n'),'P0 invalid reviewer')),null);
   assert.equal(parseCoreUiIssue(issue(39055,[...base.filter(line=>line!=='NO_SECURITY_BOUNDARY_CHANGE=true'),'OWNER_REVIEWER=NV03'].join('\n'),'P0 missing safety')),null);
+});
+
+
+test('Core UI uses NV04 for a second generic read-only review when NV03 is already utilized',async()=>{
+  const pool=fakePool();
+  const issues=[
+    issue(4101,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=REVIEW_OVERFLOW_A'),'Review A'),
+    issue(4102,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=REVIEW_OVERFLOW_B'),'Review B'),
+  ];
+  const fetchImpl=async url=>{const m=url.match(/\/issues\/(\d+)$/);return response(m?issues.find(x=>x.number===Number(m[1])):issues);};
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,2);
+  assert.deepEqual(snap.nextJobs.map(x=>x.workerId).sort(),['NV03','NV04']);
+  assert.equal(pool.jobs.find(x=>x.employee_id==='NV03').id,'GH-4101');
+  assert.equal(pool.jobs.find(x=>x.employee_id==='NV04').id,'GH-4102');
+  assert.equal(pool.objectives.find(x=>x.metadata.uiWorkerId==='NV04').metadata.routingDecision,'NV04_REVIEW_OVERFLOW');
+});
+
+test('Core UI never overflows an explicitly NV03-targeted review to NV04',async()=>{
+  const pool=fakePool();
+  const issues=[
+    issue(4111,safe(['TARGET_EMPLOYEE=NV03','CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=EXPLICIT_NV03_A'),'Explicit A'),
+    issue(4112,safe(['TARGET_EMPLOYEE=NV03','CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=EXPLICIT_NV03_B'),'Explicit B'),
+  ];
+  const fetchImpl=async url=>{const m=url.match(/\/issues\/(\d+)$/);return response(m?issues.find(x=>x.number===Number(m[1])):issues);};
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,1);
+  assert.equal(snap.nextJobs[0].workerId,'NV03');
+  assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+});
+
+test('Core UI sends second_opinion capability to NV04 with explicit role contract',()=>{
+  const spec=parseCoreUiIssue(issue(4120,safe(['CAPABILITY=second_opinion']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=SECOND_OPINION_A'),'Second opinion'));
+  assert.equal(spec.workerId,'NV04');
+  assert.equal(spec.capability,'second_opinion');
+  assert.match(buildCoreUiPrompt(spec),/NV04_ROLE=SECOND_OPINION/);
 });
