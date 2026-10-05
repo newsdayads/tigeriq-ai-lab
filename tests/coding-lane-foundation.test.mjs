@@ -857,9 +857,11 @@ test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{
 
 
 test('AST Micro-Context selects referenced JS symbols and preserves file markers',()=>{
+  const fillerA=Array.from({length:120},(_,i)=>`export const unrelatedA${i} = ${i};`).join('\n');
+  const fillerB=Array.from({length:120},(_,i)=>`export const unrelatedB${i} = ${i};`).join('\n');
   const files=[
-    {path:'apps/a.mjs',content:`export function targetThing(x){\n  return helperThing(x)+1;\n}\n\nexport function unrelatedThing(){\n  return 'x'.repeat(2000);\n}`},
-    {path:'apps/b.mjs',content:`export function helperThing(x){\n  return x*2;\n}\n\nexport const unrelatedData='y'.repeat(2000);`}
+    {path:'apps/a.mjs',content:`export function targetThing(x){\n  return helperThing(x)+1;\n}\n\n${fillerA}`},
+    {path:'apps/b.mjs',content:`export function helperThing(x){\n  return x*2;\n}\n\n${fillerB}`}
   ];
   const out=codingMicroContext(files,'Change targetThing and helperThing safely',12000);
   assert.strictEqual(out.telemetry.fallbackReason,null);
