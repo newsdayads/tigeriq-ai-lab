@@ -370,12 +370,27 @@ describe('GitHub Core intake guardrails',()=>{
     const fallbackReview=reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')
       +'\nREVIEW_FALLBACK_EMPLOYEE=NV17\nREVIEW_FALLBACK_REASON=NV03_UNAVAILABLE';
     expect(parseExecutableIssue({...base,number:1876,title:'API review fallback',body:fallbackReview})).toMatchObject({
-      capability:'review',dispatchLane:'CORE_REVIEW',requestedWorker:'NV17',targetWorker:null
+      capability:'review',dispatchLane:'CORE_REVIEW',requestedWorker:'NV17',targetWorker:'NV17'
     });
     const staleNv10=reviewBody
       .replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV10')
       +'\nTARGET_EMPLOYEE=NV10\nASSIGNED_EXECUTOR=NV10';
     expect(parseExecutableIssue({...base,number:1877,title:'stale generic NV10 review',body:staleNv10})).toBeNull();
+  });
+
+  it('treats an assigned API worker as non-strict for safe P1-P5 Core auto-work',()=>{
+    const body=[
+      'PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
+      'RESOURCE_SCOPE=DYNAMIC_SAFE_SCOPE','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'AUTO_QUEUE=INCLUDED','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true'
+    ].join('\n');
+    expect(parseExecutableIssue({...base,number:1878,title:'dynamic safe routing',body})).toMatchObject({
+      admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING',requestedWorker:'NV17',targetWorker:null
+    });
+    expect(parseExecutableIssue({...base,number:1879,title:'strict safe routing',body:body+'\nCORE_TARGET_STRICT=true'})).toMatchObject({
+      targetWorker:'NV17'
+    });
   });
 
   it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
