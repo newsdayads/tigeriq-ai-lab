@@ -88,5 +88,14 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}');
     expect(shared).toContain('@media(min-width:1200px) and (max-width:1449px)');
     expect(shared).toContain('@media(min-width:900px) and (max-width:1199px)');
+    expect(shared).toContain('/* #3918 Work-card detail parity with LIVE');
+    expect(shared).toContain('.api-health .work-row.status-review .work-title');
+    expect(shared).toContain('.work-detail-backdrop');
+    expect(shared).toContain('.work-detail-modal');
+    expect(dashboard).toContain('id="workDetailBackdrop"');
+    expect(dashboard).toContain('id="workDetailGithub"');
+    expect(dashboard).toContain('function openWorkDetail(row,trigger)');
+    expect(dashboard).toContain('data-work-number=');
+    expect(dashboard).not.toContain('target="_blank" rel="noopener"><div class="work-main"');
   });
 });
