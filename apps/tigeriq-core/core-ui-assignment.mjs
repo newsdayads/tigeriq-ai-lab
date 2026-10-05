@@ -309,6 +309,8 @@ function publicJob(item,{status='READY',executable=true,prompt}={}){
 
 async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt}={}){
   if(!item||String(item.status||'')!=='ui_assigned')return item;
+  const priorFailoverCount=Math.max(0,Number(item.routing_decision?.staleFailoverCount||0));
+  if(priorFailoverCount>=1)return item;
   const createdMs=Date.parse(String(item.created_at||''));
   const observedMs=Date.parse(String(observedAt||''));
   if(!Number.isFinite(createdMs)||!Number.isFinite(observedMs)||observedMs-createdMs<CORE_UI_ASSIGNMENT_STALE_MS)return item;
@@ -321,7 +323,7 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
   for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
     if(await row(pool,{workerId}))continue;
-    const routingDecision={...(item.routing_decision||{}),authority:'CORE',failoverFrom:currentWorker,workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs)};
+    const routingDecision={...(item.routing_decision||{}),authority:'CORE',failoverFrom:currentWorker,workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs),staleFailoverCount:priorFailoverCount+1,staleFailoverAt:observedAt};
     const changed=await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb where id=$1 and status='ui_assigned' and employee_id=$5",[item.job_id,workerId,resourceId(workerId),JSON.stringify(routingDecision),currentWorker]);
     if(changed.rowCount!==1)continue;
     await pool.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{uiWorkerId}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,JSON.stringify(workerId),'Core UI failover '+currentWorker+' -> '+workerId+' after stale unstarted assignment']);
