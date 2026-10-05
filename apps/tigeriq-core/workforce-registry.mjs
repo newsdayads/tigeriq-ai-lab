@@ -28,13 +28,19 @@ const fallbackAssignments = new Map([
 const slotId = n => `NV${String(n).padStart(2,'0')}`;
 
 function completeRoster(assignments, retired = new Set(['NV05','NV07','NV08'])) {
-  return Array.from({length:21},(_,i)=>{
+  const base=Array.from({length:21},(_,i)=>{
     const employee_id=slotId(i);
     const found=assignments.get(employee_id);
     if(found) return { ...found, assigned:true, retired:false };
     if(retired.has(employee_id)) return { employee_id, name:'Đã ngừng', admin_state:'RETIRED', assigned:false, retired:true };
     return { employee_id, name:'Chưa cấp', admin_state:'UNASSIGNED', assigned:false, retired:false };
   });
+  const baseIds=new Set(base.map(x=>x.employee_id));
+  const extras=[...assignments.values()]
+    .filter(x=>!baseIds.has(x.employee_id))
+    .sort((a,b)=>Number(a.employee_id.slice(2))-Number(b.employee_id.slice(2)))
+    .map(x=>({ ...x, assigned:true, retired:false }));
+  return [...base,...extras];
 }
 
 function parseRegistryBody(body) {
@@ -44,7 +50,7 @@ function parseRegistryBody(body) {
     const cells=line.split('|').map(x=>x.trim()).filter(Boolean);
     if(cells.length>=3) {
       const code=cells[0].replaceAll('`','').trim();
-      if(/^NV\d{2}$/.test(code)) {
+      if(/^NV\d{2,3}$/.test(code)) {
         assignments.set(code,{ employee_id:code, name:cells[1].replaceAll('`','').trim(), admin_state:cells[2].replaceAll('`','').trim() });
       }
     }
