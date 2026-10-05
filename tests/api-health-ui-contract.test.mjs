@@ -116,5 +116,11 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('lastWorkerSignatures=new Map()');
     expect(dashboard).toContain('event cuối');
     expect(dashboard).toContain('event/phút');
+    expect(shared).toContain('/* #3918 clipping audit fix */');
+    expect(shared).toContain('--employee-row-h:156px');
+    expect(shared).toContain('grid-auto-rows:minmax(var(--employee-row-h),auto)!important');
+    expect(shared).toContain('height:auto!important;min-height:var(--employee-row-h)!important');
+    expect(shared).toContain('.api-health .employee-task{display:block;white-space:normal;overflow:visible');
+    expect(shared).not.toContain('-webkit-line-clamp:2');
   });
 });

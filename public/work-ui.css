@@ -77,9 +77,9 @@
 .api-health .panel:hover{border-color:#1c5d91;box-shadow:0 16px 42px rgba(0,0,0,.4),0 0 24px rgba(44,188,255,.045)}
 .api-health .panel-h h2{text-transform:uppercase;letter-spacing:.035em}
 .api-health .workers{
-  --employee-row-h:132px;
+  --employee-row-h:156px;
   --employee-gap:9px;
-  grid-auto-rows:var(--employee-row-h)!important;
+  grid-auto-rows:minmax(var(--employee-row-h),auto)!important;
   max-height:calc(var(--employee-row-h) * 2 + var(--employee-gap) + 20px);
   overflow-y:auto!important;
   overflow-x:hidden!important;
@@ -90,8 +90,8 @@
 .api-health .workers::-webkit-scrollbar{width:9px}
 .api-health .workers::-webkit-scrollbar-track{background:#07182b;border-radius:999px}
 .api-health .workers::-webkit-scrollbar-thumb{background:#286a9d;border-radius:999px;border:2px solid #07182b}
-.api-health .worker.employee-card{height:100%!important;min-height:0!important;overflow:hidden!important}
-.api-health .employee-task{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.api-health .worker.employee-card{height:auto!important;min-height:var(--employee-row-h)!important;overflow:hidden!important;display:flex!important;flex-direction:column}
+.api-health .employee-task{display:block;white-space:normal;overflow:visible;overflow-wrap:anywhere;line-height:1.35}
 .api-health .worker.state-working{animation:tiq-worker-live 2.7s ease-in-out infinite}
 .api-health .metric{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
 .api-health .metric:hover{transform:translateY(-2px)}
@@ -109,7 +109,7 @@
 @media(max-width:1200px){.api-health .wo-list,.api-health .work-list{grid-template-columns:1fr}}
 @media(max-width:720px){
   .api-health .sync-status{display:none}
-  .api-health .workers{--employee-row-h:136px}
+  .api-health .workers{--employee-row-h:164px}
 }
 @media(prefers-reduced-motion:reduce){
   .work-row,.wo-card,.work-row.status-working,.wo-card.status-working,
@@ -584,3 +584,15 @@ body.work-detail-open{overflow:hidden}
     animation:none!important;
   }
 }
+
+/* #3918 clipping audit fix */
+.api-health .employee-name,
+.api-health .employee-task,
+.api-health .employee-live-line span:last-child,
+.api-health .panel-h h2,
+.api-health .panel-h small{
+  overflow-wrap:anywhere;
+}
+.api-health .employee-live-line{flex-shrink:0}
+.api-health .panel-h{min-width:0}
+.api-health .panel-h>div{min-width:0}
