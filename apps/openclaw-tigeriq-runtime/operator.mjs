@@ -1918,7 +1918,7 @@ const CORE_UI_RECONCILE_WORKERS=new Set(['NV03','NV04']);
 async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestImpl=httpRequest}={}){
   const parsed=new URL(url);
   if(parsed.protocol!=='http:'||!['127.0.0.1','localhost','::1'].includes(parsed.hostname))throw new Error('TIGERIQ_CORE_UI_RECONCILE_LOOPBACK_ONLY');
-  if(![8795,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');
+  if(![8795,8797,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');
   if(typeof fetchImpl==='function'){
     let response;
     try{
