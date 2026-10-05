@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -31,6 +31,26 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).toContain("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'");
     expect(source).toContain('githubSpecBlockedByActive(spec,activeMetadata)');
     expect(source).toContain('dispatchLane:spec.dispatchLane');
+  });
+
+  it('bounded-rearms transient same-revision safe fallback instead of permanently skipping it',()=>{
+    const spec={number:841,sourceRevision:'rev-a'};
+    const prior={status:'blocked',metadata:{coreFallbackReleased:true,admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING',sourceRevision:'rev-a'}};
+    expect(MAX_SAME_REVISION_FALLBACK_REARMS).toBe(2);
+    expect(sameRevisionFallbackRearmDecision({prior,spec,rearmCount:0})).toMatchObject({eligible:true,ordinal:1});
+    expect(sameRevisionFallbackRearmDecision({prior,spec,rearmCount:1})).toMatchObject({eligible:true,ordinal:2});
+    expect(sameRevisionFallbackRearmDecision({prior,spec,rearmCount:2})).toMatchObject({eligible:false,reason:'REARM_BUDGET_EXHAUSTED'});
+    expect(sameRevisionFallbackRearmDecision({prior:{...prior,status:'completed'},spec,rearmCount:0}).eligible).toBe(false);
+    expect(sameRevisionFallbackRearmDecision({prior:{...prior,metadata:{...prior.metadata,coreFallbackReleased:false}},spec,rearmCount:0}).eligible).toBe(false);
+  });
+
+  it('uses an atomic resource-scope lock across API/UI materialization and reports only actionable backlog',()=>{
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(source).toContain('insertGithubObjectiveIfScopeFree');
+    expect(source).toContain("pg_advisory_xact_lock(hashtext($1))");
+    expect(source).toContain('GITHUB_SAME_REVISION_FALLBACK_REARMED');
+    expect(source).toContain('actionableBacklogCount=Math.max(0,specs.length-skipped)');
+    expect(source).toContain('eligibleBacklogCount:actionableBacklogCount');
   });
 
 
