@@ -51,6 +51,17 @@ import {
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 
+describe('runtime Coding Lane loopback contract', () => {
+  it('binds Coding Lane to loopback and keeps Web Control internal coding hop on loopback', async () => {
+    const codingLauncher=await readFile(new URL('../scripts/tigeriq-core/run-coding-lane.ps1',import.meta.url),'utf8');
+    const webLauncher=await readFile(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
+    expect(codingLauncher).toContain("$env:TIGERIQ_CODING_HOST='127.0.0.1'");
+    expect(codingLauncher).not.toContain("$env:TIGERIQ_CODING_HOST=if($tail)");
+    expect(webLauncher).toContain("$env:TIGERIQ_CODING_LANE_URL='http://127.0.0.1:8797'");
+    expect(webLauncher).toContain("$env:TIGERIQ_WEB_CONTROL_HOST=$hostIp");
+  });
+});
+
 describe('typed Coding issue status read', () => {
   it('uses fixed Coding Lane loopback endpoint and numeric issue only', async () => {
     const calls=[];
