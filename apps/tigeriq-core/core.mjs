@@ -1787,6 +1787,40 @@ async function reconcileStabilityV2Objective(o){
   return true;
 }
 
+async function reconcileFailedSafeAutoworkObjectives(){
+  const rows=(await pool.query(`select o.id as objective_id,o.metadata as objective_metadata,j.id as job_id,j.failure
+    from tigeriq_objectives o
+    join lateral (
+      select id,failure
+      from tigeriq_jobs
+      where objective_id=o.id and kind='github_api_autowork' and status='failed'
+      order by completed_at desc nulls last,created_at desc
+      limit 1
+    ) j on true
+    where o.status='active'
+      and o.metadata->>'admissionMode'='SAFE_P1_P5_POLICY'
+      and o.metadata->>'dispatchLane' in ('CORE_REASONING','CORE_REVIEW')
+    order by o.updated_at
+    limit 20`)).rows;
+  let reconciled=0;
+  for(const row of rows){
+    const reason=String(row.failure?.message||row.failure?.kind||'CORE_AUTOWORK_FAILED').slice(0,300);
+    const summary=`Core API auto-work failed after bounded routing; released to unclaimed backlog; job=${row.job_id}; reason=${reason}`;
+    const updated=await pool.query(
+      "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",
+      [row.objective_id,summary]
+    );
+    if(updated.rowCount!==1)continue;
+    reconciled++;
+    await event('CORE_AUTOWORK_FALLBACK_RELEASED',{
+      objectiveId:row.objective_id,jobId:row.job_id,reason,
+      resourceScope:row.objective_metadata?.resourceScope||null,
+      reconciliation:'periodic_failed_safe_autowork'
+    });
+  }
+  return reconciled;
+}
+
 async function managerTick() {
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER')
@@ -2523,7 +2557,7 @@ async function loop(){
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
       }
       if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
-      if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
+      if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}

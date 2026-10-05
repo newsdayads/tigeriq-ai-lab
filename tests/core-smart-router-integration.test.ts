@@ -12,6 +12,15 @@ describe('#777 Core Smart Router integration',()=>{
   it('persists quota/rate-limit telemetry only from real provider signals or bounded cooldown evidence',()=>{expect(core).toContain('quota_state');expect(core).toContain('last_429_at');expect(core).toContain('syncQuotaFromHeaders');expect(core).toContain('x-ratelimit-limit-requests');expect(core).toContain('x-ratelimit-remaining-tokens');expect(core).toContain("kind==='rate_limit'");expect(core).toContain('rateLimitFailureState(currentQuota,policy.cooldownMs)');expect(core).toContain("select quota_state from tigeriq_ai_resources where resource_id=$1");});
   it('parses compound provider reset durations such as current Groq headers',()=>{const start=core.indexOf('function quotaResetDurationMs');const end=core.indexOf('\nfunction quotaResetAt',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const fn=new Function(`${core.slice(start,end)}; return quotaResetDurationMs;`)();expect(fn('2m59.56s')).toBeCloseTo(179560,5);expect(fn('7.66s')).toBeCloseTo(7660,5);expect(fn('n/a')).toBeNull();});
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
+  it('reconciles failed safe GitHub autowork independently of manager priority',()=>{
+    expect(core).toContain('async function reconcileFailedSafeAutoworkObjectives()');
+    expect(core).toContain("kind='github_api_autowork' and status='failed'");
+    expect(core).toContain("o.metadata->>'admissionMode'='SAFE_P1_P5_POLICY'");
+    expect(core).toContain("o.metadata->>'dispatchLane' in ('CORE_REASONING','CORE_REVIEW')");
+    expect(core).toContain("await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("reconciliation:'periodic_failed_safe_autowork'");
+  });
+
   it('exposes routing/performance truth through the existing status snapshot',()=>{expect(core).toContain('routingDecisions');expect(core).toContain('performanceByTask');expect(core).toContain('quota_state');});
   it('ensures Core remains sole AUTO_UI selector and coordinates NV02/NV03/NV04 routing cleanly without duplicate schedulers',()=>{expect(core).not.toContain('setInterval');});
   it('normalizes Watsonx shapes and retries only valid empty responses',()=>{
