@@ -459,3 +459,43 @@ test('Core UI routes NV04 second-opinion assignments and emits the dedicated rol
   prompt=buildCoreUiPrompt(x);
   assert.match(prompt,/NV04_ROLE=SECOND_OPINION/);
 });
+
+
+test('idle NV03/NV04 can absorb explicit CORE_REVIEW overflow without duplicate scope',async()=>{
+  const pool=fakePool();
+  const reviewA=issue(4201,safe([
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REVIEW',
+    'REVIEW_ONLY=true',
+    'INDEPENDENT_EVALUATION=true',
+  ]).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=CORE_REVIEW_OVERFLOW_A'),'Core review overflow A');
+  const reviewB=issue(4202,safe([
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REVIEW',
+    'REVIEW_ONLY=true',
+    'INDEPENDENT_EVALUATION=true',
+  ]).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=CORE_REVIEW_OVERFLOW_B'),'Core review overflow B');
+  const fetchImpl=async url=>{
+    const m=url.match(/\/issues\/(\d+)$/);
+    return response(m?[reviewA,reviewB].find(x=>x.number===Number(m[1])):[reviewA,reviewB]);
+  };
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,2);
+  assert.deepEqual(snap.nextJobs.map(x=>x.workerId).sort(),['NV03','NV04']);
+  assert.deepEqual(new Set(pool.objectives.map(x=>x.metadata.resourceScope)).size,2);
+});
+
+test('CORE_REVIEW overflow preserves reviewer independence for NV03/NV04',()=>{
+  const nv03Implemented=parseCoreUiIssue(issue(4203,safe([
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REVIEW',
+    'IMPLEMENTER=NV03',
+  ]),'NV03 implemented'));
+  assert.deepEqual(nv03Implemented.eligibleWorkerIds,['NV04']);
+  const nv04Implemented=parseCoreUiIssue(issue(4204,safe([
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REVIEW',
+    'IMPLEMENTER_EMPLOYEE=NV04',
+  ]),'NV04 implemented'));
+  assert.deepEqual(nv04Implemented.eligibleWorkerIds,['NV03']);
+});
