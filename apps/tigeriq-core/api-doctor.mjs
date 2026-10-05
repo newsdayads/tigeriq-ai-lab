@@ -33,7 +33,7 @@ export function apiDoctorResourceEligibleForCapability({
 }={}){
   if(String(employeeId||'').trim().toUpperCase()!=='NV10')return true;
   if(String(capability||'').trim().toLowerCase()===API_DOCTOR_CAPABILITY)return true;
-  return String(healthState||'').trim().toUpperCase()==='ONLINE';
+  return ['READY','ONLINE'].includes(String(healthState||'').trim().toUpperCase());
 }
 
 export function apiDoctorHealthEvidenceEvents(events=[]){
