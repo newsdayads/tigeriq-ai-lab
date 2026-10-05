@@ -268,6 +268,7 @@ describe('Owner-facing Vietnamese output gate', () => {
   it('fails closed on English operational prose and bare work references across direct chat', () => {
     expect(containsOwnerFacingEnglishOperationalProse('Đang review rồi merge sau')).toBe(true);
     expect(containsOwnerFacingEnglishOperationalProse('Đang rà soát rồi hợp nhất sau')).toBe(false);
+    expect(containsOwnerFacingEnglishOperationalProse('đã pass nhưng chưa done')).toBe(true);
     expect(containsOwnerFacingEnglishOperationalProse('Giữ nguyên `SAVE_NOT_DURABLE` trong log kỹ thuật')).toBe(false);
 
     expect(containsBareOwnerWorkReference('Đang xử lý #4129')).toBe(true);
@@ -279,7 +280,11 @@ describe('Owner-facing Vietnamese output gate', () => {
       .toEqual(expect.arrayContaining(['ENGLISH_OPERATIONAL_PROSE', 'BARE_WORK_REFERENCE', 'BARE_PR_REFERENCE']));
     expect(validateOwnerFacingOutput({
       text: '#4129 - Chặn cứng tiếng Anh đang được rà soát; PR #4130 - Chặn cứng tiếng Anh',
+      canonicalRefsResolved: true,
     })).toMatchObject({ ok: true, defects: [] });
+    expect(validateOwnerFacingOutput({
+      text: '#4129 - sai-tieu-de',
+    }).defects).toContain('UNRESOLVED_WORK_REFERENCE');
 
     const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
     const workflow = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
