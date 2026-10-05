@@ -541,4 +541,9 @@ test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting
   assert.equal(pool.jobs[0].employee_id,'NV04');
   assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
   assert.ok(pool.events.some(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER'));
+  const afterFirst=pool.jobs[0].employee_id;
+  const second=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs[0].employee_id,afterFirst,'must not ping-pong on a later snapshot');
+  assert.equal(pool.events.filter(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER').length,1);
+  assert.equal(second.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
 });
