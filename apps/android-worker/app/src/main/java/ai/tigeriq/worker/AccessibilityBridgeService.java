@@ -50,6 +50,11 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private final Runnable b1TickRunnable = new Runnable() {
         @Override
         public void run() {
+            if (WorkerRuntimeControl.isPaused(AccessibilityBridgeService.this)) {
+                recoveryHandler.removeCallbacks(recoveryRunnable);
+                recoveryHandler.postDelayed(this, INACTIVE_TICK_MS);
+                return;
+            }
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(AccessibilityBridgeService.this);
             if (!run.active()) {
                 recoveryHandler.postDelayed(this, INACTIVE_TICK_MS);
@@ -92,6 +97,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (WorkerRuntimeControl.isPaused(this)) return;
         CharSequence packageName = event == null ? null : event.getPackageName();
         if (packageName == null) return;
 
@@ -319,6 +325,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     }
 
     private void scheduleB1RecoveryIfNeeded() {
+        if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
         recoveryHandler.removeCallbacks(recoveryRunnable);
