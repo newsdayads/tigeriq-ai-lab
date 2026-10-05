@@ -90,10 +90,10 @@ test('keeps current/next owner-readable and moves technical evidence into the dr
   await expect(page.locator('#drawerProgress')).toContainText('70%');
 });
 
-test('keeps raw technical work collapsed by default', async ({ page }) => {
+test('shows raw Work list by default', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
-  await expect(page.locator('#rawWorkDetails')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
 });
 
 test('uses the same clean vertical flow on mobile without document overflow', async ({ page }) => {
@@ -107,7 +107,7 @@ test('uses the same clean vertical flow on mobile without document overflow', as
     rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
   }));
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
-  expect(metrics.rawOpen).toBe(false);
+  expect(metrics.rawOpen).toBe(true);
   expect(metrics.flowColumns.split(' ').length).toBe(1);
   await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
   await expect(page.locator('.owner-clean-detail')).toBeVisible();
