@@ -438,6 +438,20 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(prompt).toContain('không archive nếu chưa có durable terminal evidence');
   });
 
+  it('carries bounded independent-review failover and dedupe rules in the NV02 assignment prompt', () => {
+    const work = {
+      ...issue(3900, '[P1] review loop guard', safe('PRIORITY=P1\nRESOURCE_SCOPE=NEWS_REVIEW_GUARD\nCURRENT_STATE=READY_AUTO_EXECUTION')),
+      state: 'open',
+      state_reason: null,
+    };
+    const prompt = buildNv02LocalSelfPullPrompt(work, { resourceScope: 'NEWS_REVIEW_GUARD', leaseId: 'lease-review' });
+    expect(prompt).toContain('REVIEW LOOP GUARD');
+    expect(prompt).toContain('tối đa 2 failover reviewer');
+    expect(prompt).toContain('EXTERNAL_WAIT/REVIEW_RESOURCE_WAIT');
+    expect(prompt).toContain('Không đổi RESOURCE_SCOPE');
+    expect(prompt).toContain('Không sinh review-on-review');
+  });
+
   it('uses the prepended current authority block instead of stale duplicate metadata below it', () => {
     const work = issue(2475, '[P1] rearmed', [
       '## OWNER REARM — NV02 P1 SAFE WORK — 2026-09-30',
