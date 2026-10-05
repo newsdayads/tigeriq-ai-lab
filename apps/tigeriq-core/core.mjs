@@ -1639,9 +1639,11 @@ async function reconcileGithubCoreReviewObjective(o){
     const provider=String(job.provider||'UNKNOWN');
     const reviewEvidence=job.result?.reviewEvidence||null;
     const evidence=reviewEvidence?JSON.stringify(reviewEvidence):String(job.result?.text||'').trim().slice(0,4200);
-    const summary=`CORE_REVIEW completed by ${reviewer}/${provider}; resource=${resource}; job=${jobId}; evidence=${evidence||'EMPTY_REVIEW_EVIDENCE'}`.slice(0,5000);
-    await pool.query("update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,summary]);
-    await event('GITHUB_CORE_REVIEW_COMPLETED',{objectiveId:o.id,jobId,employeeId:reviewer,resourceId:resource,provider,evidence:evidence.slice(0,1800)});
+    const decision=String(reviewEvidence?.decision||'').toUpperCase();
+    const changesRequired=decision==='CHANGES_REQUIRED';
+    const summary=`CORE_REVIEW ${changesRequired?'changes required':'completed'} by ${reviewer}/${provider}; resource=${resource}; job=${jobId}; evidence=${evidence||'EMPTY_REVIEW_EVIDENCE'}`.slice(0,5000);
+    await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[o.id,changesRequired?'blocked':'completed',summary]);
+    await event(changesRequired?'GITHUB_CORE_REVIEW_CHANGES_REQUIRED':'GITHUB_CORE_REVIEW_COMPLETED',{objectiveId:o.id,jobId,employeeId:reviewer,resourceId:resource,provider,evidence:evidence.slice(0,1800),decision:decision||null});
     return true;
   }
   const failure=String(job?.failure?.message||job?.failure?.kind||`unexpected_status_${plan.status}`).slice(0,600);
