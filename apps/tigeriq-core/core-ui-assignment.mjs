@@ -323,8 +323,12 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
   for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
     if(await row(pool,{workerId}))continue;
+    const exactContext=await loadCoreUiExactHeadContext({fetchImpl,owner,repo,token,spec});
+    if(!exactContext.ok)continue;
+    const destinationSpec={...spec,workerId,jobId:item.job_id};
+    const destinationPrompt=buildCoreUiPrompt(destinationSpec,owner+'/'+repo,exactContext.bundle);
     const routingDecision={...(item.routing_decision||{}),authority:'CORE',failoverFrom:currentWorker,workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs),staleFailoverCount:priorFailoverCount+1,staleFailoverAt:observedAt};
-    const changed=await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb where id=$1 and status='ui_assigned' and employee_id=$5",[item.job_id,workerId,resourceId(workerId),JSON.stringify(routingDecision),currentWorker]);
+    const changed=await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb,prompt=$5 where id=$1 and status='ui_assigned' and employee_id=$6",[item.job_id,workerId,resourceId(workerId),JSON.stringify(routingDecision),destinationPrompt,currentWorker]);
     if(changed.rowCount!==1)continue;
     await pool.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{uiWorkerId}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,JSON.stringify(workerId),'Core UI failover '+currentWorker+' -> '+workerId+' after stale unstarted assignment']);
     await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_FAILOVER',$1,$2,$3,$4,'ui',$5)",[item.objective_id,item.job_id,workerId,resourceId(workerId),JSON.stringify({issueNumber:n,fromWorker:currentWorker,toWorker:workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs)})]);
