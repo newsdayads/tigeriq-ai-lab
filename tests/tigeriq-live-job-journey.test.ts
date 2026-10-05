@@ -22,12 +22,12 @@ describe('TigerIQ Live Owner Clean View #3833', () => {
     expect(rootHtml).toContain('Kết quả');
   });
 
-  it('removes summary overload and technical metadata from the primary board', () => {
+  it('keeps the Owner flow primary while exposing the Work list by default', () => {
     expect(rootHtml).toContain('#ownerSummary{display:none!important}');
     expect(rootHtml).toContain('Chi tiết kỹ thuật');
     expect(rootHtml).not.toContain('mục kỹ thuật ẩn');
-    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details">');
-    expect(rootHtml).not.toContain('<details id="rawWorkDetails" class="raw-work-details" open');
+    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
+    expect(rootHtml).toContain('DANH SÁCH CÔNG VIỆC');
   });
 
   it('keeps status-driven live motion with reduced-motion support', () => {
