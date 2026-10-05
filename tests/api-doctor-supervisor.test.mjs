@@ -355,15 +355,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
     }
   });
 
-  it('keeps READY NV10 api_doctor-only until a functional success restores ONLINE',()=>{
+  it('allows READY NV10 into bounded functional reprobe for general Core work',()=>{
     const ready=apiDoctorLocalRefreshHealth({
       modelAvailable:true,currentHealth:'ERROR',cooldownUntil:'2026-10-02T01:59:00Z',
       latestFunctionalEvent:'RESOURCE_FAILURE',nowMs:Date.parse('2026-10-02T02:00:00Z'),
     });
     expect(ready).toBe('READY');
     expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'api_doctor'})).toBe(true);
-    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'general'})).toBe(false);
-    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'review'})).toBe(false);
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'general'})).toBe(true);
+    expect(apiDoctorResourceEligibleForCapability({employeeId:'NV10',healthState:ready,capability:'review'})).toBe(true);
 
     const online=apiDoctorLocalRefreshHealth({
       modelAvailable:true,currentHealth:ready,latestFunctionalEvent:'RESOURCE_SUCCESS',
