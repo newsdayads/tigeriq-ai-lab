@@ -76,6 +76,21 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void enablesStandaloneFallbackBeforeHardTimeout() {
+        long start = 1_000_000L;
+        assertFalse(ChatGptB1Policy.shouldUseStandaloneFallback(
+            start, start + ChatGptB1Policy.STANDALONE_FALLBACK_AFTER_MS - 1L
+        ));
+        assertTrue(ChatGptB1Policy.shouldUseStandaloneFallback(
+            start, start + ChatGptB1Policy.STANDALONE_FALLBACK_AFTER_MS
+        ));
+        assertFalse(ChatGptB1Policy.shouldUseStandaloneFallback(
+            start, start + ChatGptB1Policy.PROJECT_BIND_TIMEOUT_MS
+        ));
+        assertEquals(20_000L, ChatGptB1Policy.STANDALONE_FALLBACK_AFTER_MS);
+    }
+
+    @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
         assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));
