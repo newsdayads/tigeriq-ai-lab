@@ -13,6 +13,7 @@ import {
   reconcileCancelledCoreUiJob,
   readCoreStatus,
   readCodingIssueStatus,
+  coreRestartReplacementAccepted,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -280,11 +281,20 @@ describe('OpenClaw PC01 guarded local operator', () => {
     const taskName='TigerIQ Core 24x7';
     const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
     const running={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0',previousLastRun:'10/2/2026 5:55:00 AM'};
-    const coreProcess={previousPids:[4100],newPid:4200,oldPidsGone:true,healthOk:true,replaced:true};
+    const coreProcess={previousPid:4100,newPid:4200,oldPidAlive:false,oldPidGone:true,healthOk:true,replaced:true};
     expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess})).toBe(true);
-    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,newPid:4100}})).toBe(false);
-    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,oldPidsGone:false}})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,newPid:4100,replaced:false}})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,oldPidAlive:true,replaced:false}})).toBe(false);
     expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running})).toBe(false);
+  });
+
+  it('evaluates Core restart PID/health acceptance without race-prone process sweeping', () => {
+    expect(coreRestartReplacementAccepted({previousPid:4100,newPid:4200,oldPidAlive:false,healthOk:true})).toBe(true);
+    expect(coreRestartReplacementAccepted({previousPid:null,newPid:4200,oldPidAlive:false,healthOk:true})).toBe(true);
+    expect(coreRestartReplacementAccepted({previousPid:4100,newPid:4100,oldPidAlive:false,healthOk:true})).toBe(false);
+    expect(coreRestartReplacementAccepted({previousPid:4100,newPid:4200,oldPidAlive:true,healthOk:true})).toBe(false);
+    expect(coreRestartReplacementAccepted({previousPid:4100,newPid:4200,oldPidAlive:false,healthOk:false})).toBe(false);
+    expect(coreRestartReplacementAccepted({previousPid:4100,newPid:null,oldPidAlive:false,healthOk:true})).toBe(false);
   });
 
   it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
