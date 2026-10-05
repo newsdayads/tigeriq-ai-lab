@@ -135,7 +135,7 @@ export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,re
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
-  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research')?'NV04':null;
+  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
 }
 
 export function parseCoreUiIssue(issue){
@@ -166,7 +166,8 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
   const body='WORK_ORDER_BODY_BEGIN\n'+String(spec.body||'').slice(0,12000)+'\nWORK_ORDER_BODY_END';
   const context=String(exactContext||'').trim();
   if(spec.workerId==='NV04'){
-    const role=String(spec.capability||'').toLowerCase()==='review'?'INDEPENDENT_REVIEW':'DEEP_RESEARCH';
+    const cap=String(spec.capability||'').toLowerCase();
+    const role=cap==='review'?'INDEPENDENT_REVIEW':cap==='second_opinion'?'SECOND_OPINION':'DEEP_RESEARCH';
     return [
       guard,
       'NV04_ROLE='+role,
@@ -270,9 +271,24 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
   return q.rowCount>0;
 }
 
-async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
+function explicitUiWorkerRequested(body=''){
+  return ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE','PREFERRED_REVIEWER','OWNER_REVIEWER']
+    .some(key=>String(value(body,key)||'').trim());
+}
+export function canOverflowCoreUiReviewToNv04(spec){
+  return Boolean(spec&&spec.workerId==='NV03'&&spec.capability==='review'&&spec.readOnly===true
+    &&spec.priority!=='P0'&&spec.sourcePriority!=='P0'&&!explicitUiWorkerRequested(spec.body));
+}
+async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows,allowReviewOverflow=false}){
   if(await row(pool,{workerId}))return null;
-  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&x.workerId===workerId).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
+  const parsed=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(Boolean);
+  const direct=parsed.filter(x=>x.workerId===workerId).map(x=>({...x,routingDecision:'DIRECT'}));
+  const overflow=workerId==='NV04'&&allowReviewOverflow
+    ? parsed.filter(canOverflowCoreUiReviewToNv04).map(x=>({...x,workerId:'NV04',routingDecision:'NV04_REVIEW_OVERFLOW'}))
+    : [];
+  const seen=new Set();
+  const specs=[...direct,...overflow].filter(x=>{if(seen.has(x.number))return false;seen.add(x.number);return true;})
+    .sort((a,b)=>rank(a.priority)-rank(b.priority)||(a.routingDecision==='DIRECT'?0:1)-(b.routingDecision==='DIRECT'?0:1)||a.number-b.number);
   for(const spec of specs){
     const prior=await latestCoreUiObjective(pool,spec);
     if(sameCoreUiRevision(prior,spec))continue;
@@ -282,11 +298,11 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
     if(!exactContext.ok)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,routingDecision:spec.routingDecision||'DIRECT',exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
     if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
     const materializedSpec={...spec,jobId:ids.jobId};
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo,exactContext.bundle),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null})]);
-    await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[ids.objectiveId,ids.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null})]);
+    await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_CREATED',$1,$2,$3,$4,'ui',$5)",[ids.objectiveId,ids.jobId,spec.workerId,resourceId(spec.workerId),JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,resourceScope:spec.resourceScope,capability:spec.capability,priority:spec.priority,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,routingDecision:spec.routingDecision||'DIRECT'})]);
     return row(pool,{jobId:ids.jobId});
   }
   return null;
@@ -321,7 +337,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     catch(error){sourceError=error;}
     if(Array.isArray(issues)){
       for(const workerId of missingWorkers){
-        const item=await materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows:issues});
+        const item=await materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows:issues,allowReviewOverflow:workerId==='NV04'});
         if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
       }
     }else if(!current.length){
