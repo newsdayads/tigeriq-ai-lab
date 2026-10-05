@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -1483,4 +1483,10 @@ test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',
   assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
+});
+
+
+test('GitHub backlog fallback cadence stays fast and bounded',()=>{
+  assert.equal(GITHUB_RECONCILE_INTERVAL_MS,30000);
+  assert.equal(GITHUB_MATERIALIZE_BATCH_DEFAULT,12);
 });
