@@ -258,7 +258,7 @@ describe('OpenClaw PC01 guarded local operator', () => {
   });
 
   it('trusts task-action data only with literal subprocess success and verified post-action state', () => {
-    const taskName='TigerIQ Core 24x7';
+    const taskName='TigerIQ Web Control 24x7';
     const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
     const running={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0',previousLastRun:'10/2/2026 5:55:00 AM'};
     const ready={taskName,state:'Ready',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0',previousLastRun:'10/2/2026 5:55:00 AM'};
@@ -274,6 +274,17 @@ describe('OpenClaw PC01 guarded local operator', () => {
     expect(trustedTigerIQTaskActionData('task_start',{taskName,...ok,verification:{...ready,previousLastRun:ready.lastRun}})).toBe(false);
     expect(trustedTigerIQTaskActionData('task_start',{taskName,...ok})).toBe(false);
     expect(trustedTigerIQTaskActionData('task_start',{taskName:'Not TigerIQ',...ok,verification:running})).toBe(false);
+  });
+
+  it('requires verified Core PID replacement for trusted Core task_restart evidence', () => {
+    const taskName='TigerIQ Core 24x7';
+    const ok={exitCode:0,timedOut:false,stdout:'',stderr:'',cwd:'D:\\TigerIQ'};
+    const running={taskName,state:'Running',lastRun:'10/2/2026 6:00:00 AM',lastResult:'0',previousLastRun:'10/2/2026 5:55:00 AM'};
+    const coreProcess={previousPids:[4100],newPid:4200,oldPidsGone:true,healthOk:true,replaced:true};
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess})).toBe(true);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,newPid:4100}})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running,coreProcess:{...coreProcess,oldPidsGone:false}})).toBe(false);
+    expect(trustedTigerIQTaskActionData('task_restart',{taskName,stopped:ok,started:ok,verification:running})).toBe(false);
   });
 
   it('parses task_list CSV into a bounded TigerIQ-only inventory', () => {
