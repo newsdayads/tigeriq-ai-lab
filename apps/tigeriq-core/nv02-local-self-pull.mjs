@@ -570,6 +570,10 @@ export function buildNv02LocalSelfPullPrompt(issue, lease) {
     'Trước mỗi lần tiếp tục hoặc mutation: đọc lại WORK_ORDER authoritative trên GitHub. Nếu terminal hoặc SOURCE_REVISION/state lệch context hiện tại thì dừng continuation cũ, refresh context có giới hạn và self-pull lại; không archive nếu chưa có durable terminal evidence.',
     lease.takeoverFrom ? `TAKEOVER_FROM=${lease.takeoverFrom}; TAKEOVER_REASON=${lease.takeoverReason || 'STALE_ASSIGNEE'}; lease cũ đã release trước claim.` : 'TAKEOVER_FROM=NONE',
     'Không tự tạo, mở rộng, claim hoặc allocate scope/resource ngoài Work Order này. Chỉ dùng đúng WORK_ORDER, RESOURCE_SCOPE và LEASE_ID đã cấp.',
+    'REVIEW LOOP GUARD: nếu Work Order cần independent review, KHÔNG được tự tạo chuỗi review child mới chỉ vì reviewer chưa terminal. Cùng TARGET_HEAD/REVIEW_TARGET_HEAD chỉ được tối đa 2 failover reviewer sau lần review đầu tiên; sau đó park chính Work Order hiện tại ở EXTERNAL_WAIT/REVIEW_RESOURCE_WAIT, release lease và self-pull việc hợp lệ kế tiếp.',
+    'Không đổi RESOURCE_SCOPE hoặc thêm hậu tố reviewer/version để né dedupe. Nếu exact head/evidence không đổi thì reuse canonical review intent; chỉ tạo review Work Order mới khi TARGET_HEAD thay đổi hoặc acceptance/review scope thay đổi thực chất.',
+    'Reviewer unavailable/rate-limited/offline/timeout là resource blocker, không phải lý do tạo vô hạn Work Order. Không chase reviewer liên tục; ghi blocker bền vững rồi move-on.',
+    'Nếu review trả CHANGES_REQUIRED thì quay lại implementation trên cùng canonical parent/PR; nếu PASS thì tiếp tục gate kế tiếp. Không sinh review-on-review.',
     'Ghi evidence vào GitHub trước khi release lease; terminal xong mới tự lấy việc P1-P5 kế tiếp.', String(issue.body || ''),
   ].join('\n');
 }
