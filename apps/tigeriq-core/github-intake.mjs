@@ -880,6 +880,45 @@ export async function reconcileStaleTerminalBlockedRearms({pool,fetchImpl=fetch,
   return out;
 }
 
+export const MAX_SAME_REVISION_FALLBACK_REARMS=2;
+
+export function sameRevisionFallbackRearmDecision({prior,spec,rearmCount=0}={}){
+  if(!prior||prior.status!=='blocked')return {eligible:false,reason:'PRIOR_NOT_BLOCKED'};
+  if(prior.metadata?.coreFallbackReleased!==true)return {eligible:false,reason:'FALLBACK_NOT_RELEASED'};
+  if(prior.metadata?.admissionMode!=='SAFE_P1_P5_POLICY')return {eligible:false,reason:'NOT_SAFE_P1_P5'};
+  if(!['CORE_REASONING','CORE_REVIEW'].includes(String(prior.metadata?.dispatchLane||'')))return {eligible:false,reason:'LANE_NOT_RETRYABLE'};
+  if(String(prior.metadata?.sourceRevision||'')!==String(spec?.sourceRevision||''))return {eligible:false,reason:'REVISION_CHANGED'};
+  const count=Math.max(0,Number(rearmCount)||0);
+  if(count>=MAX_SAME_REVISION_FALLBACK_REARMS)return {eligible:false,reason:'REARM_BUDGET_EXHAUSTED',count};
+  return {eligible:true,reason:'TRANSIENT_FALLBACK_RELEASED',count,ordinal:count+1};
+}
+
+async function sameRevisionFallbackRearmPlan(pool,prior,spec){
+  if(!prior||String(prior.metadata?.sourceRevision||'')!==String(spec?.sourceRevision||''))return {eligible:false,reason:'REVISION_CHANGED'};
+  const count=Number((await pool.query(
+    "select count(*)::int as count from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 and metadata->>'sourceRevision'=$2 and coalesce(metadata->>'sameRevisionFallbackRearm','false')='true'",
+    [String(spec.number),String(spec.sourceRevision||'')]
+  )).rows[0]?.count||0);
+  return sameRevisionFallbackRearmDecision({prior,spec,rearmCount:count});
+}
+
+async function insertGithubObjectiveIfScopeFree(pool,{id,objective,priority,metadata,resourceScope}){
+  const scope=String(resourceScope||'').trim();
+  if(!scope){
+    const q=await pool.query("insert into tigeriq_objectives(id,objective,priority,status,metadata) values($1,$2,$3,'active',$4) on conflict(id) do nothing returning id",[id,objective,priority,JSON.stringify(metadata)]);
+    return q.rowCount===1;
+  }
+  const q=await pool.query(
+    "with locked as materialized (select pg_advisory_xact_lock(hashtext($1)) as guard), inserted as ("+
+    "insert into tigeriq_objectives(id,objective,priority,status,metadata) "+
+    "select $2,$3,$4,'active',$5 from locked "+
+    "where not exists (select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1) "+
+    "on conflict(id) do nothing returning id) select id from inserted",
+    [scope,id,objective,priority,JSON.stringify(metadata)]
+  );
+  return q.rowCount===1;
+}
+
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
@@ -891,23 +930,24 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const hasPcOperator=specs.some((spec)=>spec.capability==='pc_operator');
   const openClawTerminalState=hasPcOperator?await loadOpenClawTerminalState(pool):null;
   let skipped=0,externalClaims=0;
+  const skipReasons={dependency:0,terminalSameRevision:0,activeScope:0,externalClaim:0,existingObjective:0,terminalPcOperator:0,scopeRace:0,other:0};
   for(const spec of specs){
     const dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,{number:spec.number,body:spec.body},openIssueIndex);
-    if(!dependencyGate.allow){skipped++;continue;}
+    if(!dependencyGate.allow){skipped++;skipReasons.dependency++;continue;}
     if(spec.capability==='pc_operator'){
       const reason='OPENCLAW_INSTRUCTION_INVALID';
       const issueKey=String(spec.number);
       const revisionKey=terminalRoutingKey(spec.number,spec.sourceRevision);
-      if(openClawTerminalState.terminalByRevision.has(revisionKey)){skipped++;continue;}
+      if(openClawTerminalState.terminalByRevision.has(revisionKey)){skipped++;skipReasons.terminalPcOperator++;continue;}
       if(openClawTerminalState.terminalByIssue.has(issueKey)&&!openClawTerminalState.clearedByRevision.has(revisionKey)){
         const cleared=await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
-        if(!cleared){skipped++;continue;}
+        if(!cleared){skipped++;skipReasons.terminalPcOperator++;continue;}
         const clearRecorded=await recordRoutingFaultClear(pool,{source:'github-intake',issueNumber:spec.number,resourceScope:spec.resourceScope||null,reason,sourceRevision:String(spec.sourceRevision||''),terminalBlockedCleared:true});
-        if(!clearRecorded){skipped++;continue;}
+        if(!clearRecorded){skipped++;skipReasons.terminalPcOperator++;continue;}
         openClawTerminalState.clearedByRevision.add(revisionKey);
       }
     }
-    if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;continue;}
+    if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;skipReasons.activeScope++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     const roleClaimLabeled=hasExternalRoleClaimLabel(spec);
     const labeledWorker=externalRoleClaimedWorkerId(spec);
@@ -916,23 +956,23 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       skipped++;continue;
     }
     const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
-    // A terminal objective for the exact current source revision is authoritative.
-    // A stale OPEN snapshot after GitHub close, or a historical githubClosed marker,
-    // must not rematerialize the same revision. Legitimate rearm changes the
-    // canonical issue body/title (for example REARMED_AT), which changes sourceRevision.
-    if(prior&&!sourceChanged){skipped++;continue;}
+    let fallbackRearm={eligible:false,reason:'NOT_APPLICABLE',ordinal:0};
+    if(prior&&!sourceChanged){
+      fallbackRearm=await sameRevisionFallbackRearmPlan(pool,prior,spec);
+      if(!fallbackRearm.eligible){skipped++;skipReasons.terminalSameRevision++;continue;}
+    }
     const externalClaim=await readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec);
     if(externalClaim){
       if(!roleClaimLabeled||labeledWorker!==externalClaim.workerId){
         if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
         await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,workerId:externalClaim.workerId,active:true});
       }
-      externalClaims++;skipped++;continue;
+      externalClaims++;skipped++;skipReasons.externalClaim++;continue;
     }
     if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
-    const id=prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`;
+    const id=fallbackRearm.eligible?`OBJ-GH-${spec.number}-F${fallbackRearm.ordinal}-${String(spec.sourceRevision||'').slice(0,12)}`:(prior?`OBJ-GH-${spec.number}-R${rearmKey(spec)}`:`OBJ-GH-${spec.number}`);
     const exists=(await pool.query('select 1 from tigeriq_objectives where id=$1',[id])).rowCount>0;
-    if(exists){skipped++;continue;}
+    if(exists){skipped++;skipReasons.existingObjective++;continue;}
     let pcOperatorPrompt=null;
     if(spec.capability==='pc_operator'){
       try{
@@ -1014,6 +1054,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       dependencyGateReason:dependencyGate.reason||null,
       admissionMode:spec.admissionMode||'LEGACY_EXECUTION_FLAGS',
       requiresCodingHandoff:spec.requiresCodingHandoff===true,
+      ...(fallbackRearm.eligible?{sameRevisionFallbackRearm:true,sameRevisionFallbackRearmOrdinal:fallbackRearm.ordinal,sameRevisionFallbackRearmFromObjectiveId:prior?.id||null}:{}),
     };
     if(spec.dispatchLane==='MOBILE_WORKER'){
       const expectedToken=liveMobileCompletionToken(`github:${spec.number}:${spec.sourceRevision}`);
@@ -1063,14 +1104,18 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       }finally{client.release();}
     }
 
-    await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4) on conflict(id) do nothing',[id,objective,spec.priority,JSON.stringify(metadata)]);
+    const objectiveInserted=await insertGithubObjectiveIfScopeFree(pool,{id,objective,priority:spec.priority,metadata,resourceScope:spec.resourceScope});
+    if(!objectiveInserted){skipped++;skipReasons.scopeRace++;continue;}
+    if(fallbackRearm.eligible){
+      await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_SAME_REVISION_FALLBACK_REARMED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,sourceRevision:spec.sourceRevision,ordinal:fallbackRearm.ordinal,fromObjectiveId:prior?.id||null,resourceScope:spec.resourceScope||null})]);
+    }
     if(spec.capability==='pc_operator'){
       const jobId=githubPcOperatorJobId(id,spec.number);
       const prompt=pcOperatorPrompt;
       await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'pc_operator','pc_operator','queued',2) on conflict(id) do nothing",[jobId,id,`GitHub #${spec.number} bounded PC operator`,prompt]);
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_PC_OPERATOR_JOB_MATERIALIZED',$1,$2,'pc_operator',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_OPENCLAW_BOUNDED'})]);
     }else if(spec.admissionMode==='SAFE_P1_P5_POLICY'&&spec.dispatchLane==='CORE_REASONING'&&!isStabilityV2ResourceScope(spec.resourceScope)){
-      const jobId=`JOB-GH-${spec.number}-API-AUTOWORK`;
+      const jobId=fallbackRearm.eligible?`JOB-${id}-API-AUTOWORK`:`JOB-GH-${spec.number}-API-AUTOWORK`;
       const prompt=spec.requiresCodingHandoff
         ? `Coordinate GitHub Work Order #${spec.number} without repository mutation. Determine the bounded implementation handoff needed, preserve RESOURCE_SCOPE=${spec.resourceScope}, and return concrete acceptance/evidence requirements for the coding executor. Do not perform independent review of implementation produced under this Work Order.`
         : `Execute the safe P1-P5 GitHub Work Order #${spec.number} using only the supplied objective context. Remain read-only with respect to repository source and all hard-gated surfaces.`;
@@ -1082,9 +1127,10 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   }
   let idleWorkers=0;
   try{idleWorkers=Number((await pool.query("select count(*)::int as count from tigeriq_ai_resources where enabled=true and current_job_id is null and credential_state in ('LOCAL','READY') and health_state in ('ONLINE','READY')")).rows[0]?.count||0);}catch{}
-  const fault=routingFault({eligibleBacklogCount:specs.length,activeWorkCount:activeMetadata.length+externalClaims,eligibleIdleWorkers:idleWorkers});
-  if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped});
-  return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
+  const actionableBacklogCount=Math.max(0,specs.length-skipped);
+  const fault=routingFault({eligibleBacklogCount:actionableBacklogCount,activeWorkCount:activeMetadata.length+externalClaims,eligibleIdleWorkers:idleWorkers});
+  if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped,skipReasons});
+  return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,actionableBacklogCount,skipReasons,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
 }
 
 
