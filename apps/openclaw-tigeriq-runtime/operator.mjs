@@ -20,6 +20,7 @@ const MAX_OUTPUT_CHARS = 64 * 1024;
 const MAX_TIMEOUT_SEC = 120;
 const ALLOWED_TCP_HOSTS = new Set(['127.0.0.1', 'localhost', '100.97.23.87']);
 const ALLOWED_TCP_PORTS = new Set([8793, 8794, 8795, 8796, 8797, 8798, 8799, 11434, 18789]);
+const CORE_TASK_NAME = 'TigerIQ Core 24x7';
 
 const DENIED_PATH_FRAGMENTS = [
   '\\secrets\\',
@@ -231,7 +232,13 @@ export function trustedTigerIQTaskActionData(action, data) {
   const subprocessOk = kind === 'task_restart'
     ? successfulTaskProcessResult(data.stopped) && successfulTaskProcessResult(data.started)
     : successfulTaskProcessResult(data);
-  return subprocessOk && trustedTaskVerification(kind, taskName, data.verification);
+  if (!subprocessOk || !trustedTaskVerification(kind, taskName, data.verification)) return false;
+  if (kind === 'task_restart' && taskName === CORE_TASK_NAME) {
+    const coreProcess = data.coreProcess;
+    if (!coreProcess || typeof coreProcess !== 'object' || Array.isArray(coreProcess)) return false;
+    return coreRestartReplacementAccepted(coreProcess);
+  }
+  return true;
 }
 
 function assertTaskProcessSuccess(result, phase) {
@@ -363,6 +370,92 @@ async function queryTigerIQTaskVerification(taskName) {
   };
 }
 
+export function coreRestartReplacementAccepted({ previousPid = null, newPid = null, oldPidAlive = false, healthOk = false } = {}) {
+  const previous = Number(previousPid);
+  const current = Number(newPid);
+  const hasPrevious = Number.isInteger(previous) && previous > 0;
+  if (!Number.isInteger(current) || current <= 0 || healthOk !== true || oldPidAlive === true) return false;
+  if (hasPrevious && previous === current) return false;
+  return true;
+}
+
+async function coreHealthSnapshot() {
+  try {
+    const health = await boundedLocalJson('http://127.0.0.1:8795/health');
+    const pid = Number(health?.pid);
+    return { ok: health?.ok === true, pid: Number.isInteger(pid) && pid > 0 ? pid : null };
+  } catch {
+    return { ok: false, pid: null };
+  }
+}
+
+async function isWindowsProcessAlive(pid) {
+  const numericPid = Number(pid);
+  if (!Number.isInteger(numericPid) || numericPid <= 0) return false;
+  const result = await spawnBounded(
+    'tasklist.exe',
+    ['/FI', `PID eq ${numericPid}`, '/FO', 'CSV', '/NH'],
+    { timeoutSec: 15 },
+  );
+  assertTaskProcessSuccess(result, 'CORE_PROCESS_VERIFY');
+  const text = String(result.stdout || '').trim();
+  if (!text || /^INFO:/i.test(text)) return false;
+  return text.split(/\r?\n/).some((line) => {
+    const fields = parseCsvRows(line);
+    const row = fields[0] || [];
+    const rowPid = Number(String(row[1] || '').replace(/[^0-9]/g, ''));
+    return rowPid === numericPid;
+  });
+}
+
+async function sleepMs(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function restartTigerIQCoreTask(name, before) {
+  const previousHealth = await coreHealthSnapshot();
+  const previousPid = previousHealth.pid;
+
+  const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
+  assertTaskProcessSuccess(stopped, 'RESTART_STOP');
+
+  if (previousPid && await isWindowsProcessAlive(previousPid)) {
+    const killed = await spawnBounded('taskkill.exe', ['/PID', String(previousPid), '/F'], { timeoutSec: 15 });
+    assertTaskProcessSuccess(killed, 'CORE_PROCESS_TERMINATE');
+  }
+
+  const stopDeadline = Date.now() + 10000;
+  while (previousPid && Date.now() < stopDeadline && await isWindowsProcessAlive(previousPid)) {
+    await sleepMs(250);
+  }
+  if (previousPid && await isWindowsProcessAlive(previousPid)) {
+    throw new Error('TIGERIQ_PC_CORE_OLD_PID_STILL_ALIVE');
+  }
+
+  const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
+  assertTaskProcessSuccess(started, 'RESTART_START');
+
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline) {
+    const health = await coreHealthSnapshot();
+    const oldPidAlive = previousPid ? await isWindowsProcessAlive(previousPid) : false;
+    const coreProcess = {
+      previousPid,
+      newPid: health.pid,
+      oldPidAlive,
+      oldPidGone: !oldPidAlive,
+      healthOk: health.ok,
+      replaced: coreRestartReplacementAccepted({ previousPid, newPid: health.pid, oldPidAlive, healthOk: health.ok }),
+    };
+    if (coreProcess.replaced) {
+      const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
+      return { taskName: name, stopped, started, verification, coreProcess };
+    }
+    await sleepMs(1000);
+  }
+  throw new Error('TIGERIQ_PC_CORE_RESTART_REPLACEMENT_NOT_VERIFIED');
+}
+
 async function runTaskAction(action, taskName) {
   const name = assertTigerIQTaskName(taskName);
   if (action === 'task_status') {
@@ -382,6 +475,7 @@ async function runTaskAction(action, taskName) {
   }
   if (action === 'task_restart') {
     const before = await queryTigerIQTaskVerification(name);
+    if (name === CORE_TASK_NAME) return await restartTigerIQCoreTask(name, before);
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
