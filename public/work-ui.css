@@ -441,3 +441,146 @@ body.work-detail-open{overflow:hidden}
   .work-detail-actions{grid-template-columns:1fr 1fr}
 }
 @media(prefers-reduced-motion:reduce){.work-detail-modal{animation:none!important}}
+
+
+/* #3918 live-system activity pass */
+.api-health::before{
+  content:"";
+  position:fixed;
+  inset:-40% 0 auto 0;
+  height:34%;
+  pointer-events:none;
+  z-index:0;
+  opacity:.028;
+  background:linear-gradient(180deg,transparent,rgba(104,210,255,.55),transparent);
+  animation:tiq-page-scan 15s linear infinite;
+}
+.api-health .app{position:relative;z-index:1}
+.api-health .live-indicator{gap:6px}
+.api-health .live-indicator small{font-size:8.5px;font-weight:800;color:#8fb8d7;white-space:nowrap}
+.api-health .live-indicator.degraded{border-color:#8a6525;background:#332713;color:#ffd474}
+.api-health .live-indicator.degraded .dot{background:#ffc04f;box-shadow:0 0 10px #ffc04f}
+.api-health .live-indicator.offline .dot{background:#ff6976;box-shadow:0 0 10px #ff6976}
+.api-health .workforce-panel .panel-h h2{
+  color:#79dcff;
+  text-shadow:0 0 16px rgba(63,196,255,.16);
+}
+.api-health .work-panel .panel-h h2{
+  color:#c8afff;
+  text-shadow:0 0 16px rgba(151,111,255,.16);
+}
+.api-health .api-perf-panel .panel-h h2{
+  color:#83f0cf;
+  text-shadow:0 0 16px rgba(64,220,175,.14);
+}
+.api-health .activity-panel .panel-h h2{
+  color:#77cfff;
+  text-shadow:0 0 16px rgba(77,176,255,.14);
+}
+.api-health .alert-panel .panel-h h2{
+  color:#aebfd0;
+  transition:color .2s ease,text-shadow .2s ease;
+}
+.api-health .alert-panel.has-alerts .panel-h h2{
+  color:#ffc76b;
+  text-shadow:0 0 16px rgba(255,185,71,.18);
+}
+.api-health .panel-h small[id$="Meta"]{font-weight:750}
+.api-health .workforce-panel .panel-h small{color:#79abc7}
+.api-health .work-panel .panel-h small{color:#9e8fc7}
+.api-health .activity-panel .panel-h small{color:#80abc5}
+.api-health .alert-panel .panel-h small{color:#9aa9b7}
+
+.api-health .employee-card{
+  position:relative;
+  isolation:isolate;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease;
+}
+.api-health .employee-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  opacity:0;
+  background:radial-gradient(circle at 15% 20%,rgba(112,197,255,.11),transparent 38%);
+  transition:opacity .2s ease;
+}
+.api-health .employee-card:hover{transform:translateY(-2px)}
+.api-health .employee-card:hover::after{opacity:1}
+.api-health .employee-card.state-working{
+  border-color:#258a61;
+  background:linear-gradient(115deg,rgba(55,224,145,.09),transparent 32%),#0b1d31;
+  box-shadow:0 0 0 1px rgba(55,224,145,.06),0 0 22px rgba(55,224,145,.07);
+}
+.api-health .employee-card.state-ready{
+  border-color:#28735f;
+}
+.api-health .employee-card.state-waiting{
+  border-color:#8a6424;
+  background:linear-gradient(115deg,rgba(240,185,77,.075),transparent 35%),#0b1d31;
+  animation:tiq-worker-wait 4.2s ease-in-out infinite;
+}
+.api-health .employee-card.state-attention{
+  border-color:#94424f;
+  background:linear-gradient(115deg,rgba(255,103,119,.08),transparent 35%),#0b1d31;
+}
+.api-health .employee-avatar{position:relative}
+.api-health .state-working .employee-avatar::after{
+  content:"";
+  position:absolute;
+  inset:-5px;
+  border-radius:16px;
+  border:1px solid rgba(72,225,151,.45);
+  border-top-color:transparent;
+  animation:tiq-avatar-orbit 2.4s linear infinite;
+}
+.api-health .employee-live-line{
+  margin-top:auto;
+  padding-top:7px;
+  border-top:1px solid rgba(73,111,145,.34);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-height:20px;
+  color:#7f9db9;
+  font-size:9.5px;
+  font-weight:700;
+}
+.api-health .employee-live-dot{
+  width:6px;height:6px;border-radius:50%;
+  flex:none;
+  background:#71849a;
+  box-shadow:0 0 8px currentColor;
+}
+.api-health .state-working .employee-live-line{color:#72dfaa}
+.api-health .state-working .employee-live-dot{background:#44dc92;animation:tiq-heartbeat 1.45s ease-in-out infinite}
+.api-health .state-ready .employee-live-line{color:#75cbb0}
+.api-health .state-ready .employee-live-dot{background:#55d3aa;animation:tiq-heartbeat 3.6s ease-in-out infinite}
+.api-health .state-waiting .employee-live-line{color:#d5ae60}
+.api-health .state-waiting .employee-live-dot{background:#e3b34e}
+.api-health .state-attention .employee-live-line{color:#ef8f99}
+.api-health .state-attention .employee-live-dot{background:#ff6c79}
+.api-health .employee-card.changed{animation:tiq-worker-change .8s ease-out 1}
+.api-health .event.recent-activity{animation:tiq-event-in .6s ease-out,tiq-event-glow 1.2s ease-out}
+.api-health .activity-panel .event:first-child .ico{box-shadow:0 0 11px rgba(95,196,255,.15)}
+.api-health .perf-rate i::after{animation-iteration-count:1}
+.api-health .sync-status{transition:border-color .2s ease,box-shadow .2s ease}
+.api-health .sync-status:hover{box-shadow:0 0 14px rgba(80,190,255,.08)}
+
+@keyframes tiq-page-scan{from{transform:translateY(-120vh)}to{transform:translateY(420vh)}}
+@keyframes tiq-avatar-orbit{to{transform:rotate(360deg)}}
+@keyframes tiq-heartbeat{0%,70%,100%{opacity:.55;transform:scale(.85)}78%{opacity:1;transform:scale(1.2)}84%{opacity:.7;transform:scale(.95)}90%{opacity:1;transform:scale(1.1)}}
+@keyframes tiq-worker-wait{0%,100%{box-shadow:0 0 0 rgba(240,185,77,0)}50%{box-shadow:0 0 18px rgba(240,185,77,.07)}}
+@keyframes tiq-worker-change{0%{box-shadow:0 0 0 1px rgba(95,196,255,.5),0 0 26px rgba(95,196,255,.22)}100%{box-shadow:inherit}}
+@keyframes tiq-event-glow{0%{background:rgba(65,174,240,.16)}100%{background:transparent}}
+@media(prefers-reduced-motion:reduce){
+  .api-health::before,
+  .api-health .state-working .employee-avatar::after,
+  .api-health .employee-live-dot,
+  .api-health .employee-card.state-waiting,
+  .api-health .employee-card.changed,
+  .api-health .event.recent-activity{
+    animation:none!important;
+  }
+}
