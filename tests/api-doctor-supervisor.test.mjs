@@ -518,6 +518,9 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("body:JSON.stringify({objective,priority:'P0'})");
     expect(core).toContain("API_DOCTOR_EXTERNAL_BLOCKED");
     expect(core).toContain("API_DOCTOR_RECOVERED");
+    expect(core).toContain("const analysisCandidates=degraded.filter(x=>!['wait','wait_repair','busy_skip','external_blocked'].includes(x.action))");
+    expect(core).toContain("degraded.length?'no_actionable_degraded':'no_degraded'");
+    expect(core).toContain("actionableDegradedCount:analysisCandidates.length");
     expect(core).toContain("row.action='wait_repair'");
     expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
