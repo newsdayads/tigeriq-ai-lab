@@ -2300,9 +2300,9 @@ async function collectSelfAuditSnapshot(store=pool){
       r.health_state,r.credential_state,r.cooldown_until
       from tigeriq_jobs j left join tigeriq_ai_resources r on r.resource_id=j.resource_id
       where j.status in ('dispatching','running') and j.resource_id is not null`),
-    store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,o.metadata
+    store.query(`select j.id as job_id,j.status,j.employee_id,j.resource_id,o.status as objective_status,o.metadata
       from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
-      where j.kind='github_review' and j.status in ('running','done')
+      where o.status='active' and j.kind='github_review' and j.status in ('running','done')
       order by j.created_at desc`),
     store.query(`select id,status,metadata from tigeriq_objectives
       where status='completed' and metadata ? 'dependencyGateRequired'
@@ -2348,7 +2348,7 @@ async function collectSelfAuditSnapshot(store=pool){
     const m=row.metadata||{};
     const employeeIds=[...(Array.isArray(m.finalReviewImplementerEmployeeIds)?m.finalReviewImplementerEmployeeIds:[]),...(Array.isArray(m.implementerEmployeeIds)?m.implementerEmployeeIds:[]),m.implementerEmployeeId].filter(Boolean);
     const resourceIds=[...(Array.isArray(m.finalReviewImplementerResourceIds)?m.finalReviewImplementerResourceIds:[]),...(Array.isArray(m.implementerResourceIds)?m.implementerResourceIds:[])].filter(Boolean);
-    return {jobId:row.job_id,status:row.status,reviewerEmployeeId:row.employee_id,reviewerResourceId:row.resource_id,implementerEmployeeIds:[...new Set(employeeIds)],implementerResourceIds:[...new Set(resourceIds)]};
+    return {jobId:row.job_id,status:row.status,objectiveStatus:row.objective_status,reviewerEmployeeId:row.employee_id,reviewerResourceId:row.resource_id,implementerEmployeeIds:[...new Set(employeeIds)],implementerResourceIds:[...new Set(resourceIds)]};
   });
   const dependencies=objectiveRows.rows.map(row=>({
     objectiveId:row.id,status:row.status,
