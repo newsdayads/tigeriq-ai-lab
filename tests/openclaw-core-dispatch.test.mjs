@@ -211,6 +211,34 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     },{timedOut:false,parsedPresent:true,expectedTaskAction:expected})).toMatchObject({success:false,terminalReceiptTool:true,bridgeTaskActionReceipt:false});
   });
 
+  it('treats known failure terminals as valid failures while unknown terminals remain fail-closed', () => {
+    for (const status of ['ERROR','FAILED','BLOCKER','BLOCKED']) {
+      expect(openClawTerminalDecision({
+        exitCode:1,status:'error',agentResult:{status,evidence:null,blocker:'bounded failure'},successfulToolNames:[],
+      },{timedOut:false,parsedPresent:true})).toMatchObject({
+        success:false,
+        invalidTerminal:false,
+        agentFailure:true,
+        agentStatus:status.toLowerCase(),
+      });
+    }
+
+    for (const status of ['UNKNOWN','PARTIAL','']) {
+      expect(openClawTerminalDecision({
+        exitCode:1,status:'error',agentResult:{status,evidence:null,blocker:'unrecognized terminal'},successfulToolNames:[],
+      },{timedOut:false,parsedPresent:true})).toMatchObject({
+        success:false,
+        invalidTerminal:true,
+        agentFailure:false,
+      });
+    }
+
+    expect(safeOpenClawFailureMessage({
+      terminal:{invalidTerminal:false,agentStatus:'error'},
+      result:{status:'error'},
+    })).toBe('OPENCLAW_DISPATCH_FAILED:status=error');
+  });
+
   it('uses classification-only public failure messages and never raw agent text or stderr', () => {
     const raw='TOP SECRET FILE CONTENT';
     expect(safeOpenClawFailureMessage({
