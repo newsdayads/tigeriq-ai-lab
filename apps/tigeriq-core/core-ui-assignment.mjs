@@ -320,7 +320,8 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   if(!spec)return item;
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
   for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
-    if(await row(pool,{workerId}))continue;
+    const occupied=await row(pool,{workerId});
+    if(occupied&&String(occupied.job_id)!==String(item.job_id))continue;
     const routingDecision={...(item.routing_decision||{}),authority:'CORE',failoverFrom:currentWorker,workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs)};
     const changed=await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb where id=$1 and status='ui_assigned' and employee_id=$5",[item.job_id,workerId,resourceId(workerId),JSON.stringify(routingDecision),currentWorker]);
     if(changed.rowCount!==1)continue;
