@@ -1250,23 +1250,19 @@ export function assertTigerIQLive3150DeployRequest(input = {}) {
 async function deployTigerIQLive3150(input = {}) {
   const { expectedSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason } = assertTigerIQLive3150DeployRequest(input);
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
-  const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\vercel-tigeriq-live-3150-deploy.mjs';
+  const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\run-vercel-user-context-deploy-task.ps1';
   await realPathInsideRoots(script);
   const result = await spawnBounded(
-    process.execPath,
+    'powershell.exe',
     [
-      script,
-      '--sha', expectedSha,
-      '--issue', releaseIssue,
-      '--release-class', releaseClass,
-      '--owner-authorized', ownerAuthorized ? 'true' : 'false',
-      '--release-reason', releaseReason,
+      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,
+      '--ExpectedSha', expectedSha,
+      '--ReleaseIssue', releaseIssue,
+      '--ReleaseClass', releaseClass,
+      '--OwnerAuthorized', ownerAuthorized ? 'true' : 'false',
+      '--ReleaseReason', releaseReason,
     ],
-    {
-      cwd: repoRoot,
-      timeoutSec: 120,
-      extraEnvKeys: ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME'],
-    },
+    { cwd: repoRoot, timeoutSec: 130 },
   );
   if (result.timedOut) throw new Error('TIGERIQ_VERCEL_DEPLOY_TIMEOUT');
   if (Number(result.exitCode) !== 0) {
