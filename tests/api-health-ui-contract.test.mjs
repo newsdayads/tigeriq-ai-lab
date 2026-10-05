@@ -73,5 +73,14 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain("let lastActivitySignature=''");
     expect(dashboard).toContain("classList.add('recent-activity')");
     expect(dashboard).toContain('class="sync-status"');
+    expect(dashboard).toContain('brand-product">API HEALTH');
+    expect(dashboard).not.toContain('id="clock"');
+    expect(dashboard).toContain("topLive.querySelector('b').textContent='LIVE'");
+    expect(dashboard).toContain("topLive.classList.add('offline')");
+    expect(shared).toContain('/* #3918 4K Health layout pass */');
+    expect(shared).toContain('grid-template-columns:repeat(5,minmax(0,1fr))');
+    expect(shared).toContain('grid-template-columns:repeat(4,minmax(0,1fr))');
+    expect(shared).toContain('.api-health .layout{grid-template-columns:minmax(0,3.55fr) minmax(285px,.82fr)');
+    expect(shared).toContain('.api-health .side .panel-h h2{font-size:14px}');
   });
 });
