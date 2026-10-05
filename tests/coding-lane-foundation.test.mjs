@@ -1,3 +1,4 @@
+import { codingMicroContext } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
@@ -852,4 +853,33 @@ test('bounded authoritative GitHub context is opt-in and fail-closed',async t=>{
     assert.strictEqual(out.length,16);
     assert.deepStrictEqual(out,[3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012,3013,3014,3015]);
   });
+});
+
+
+test('AST Micro-Context selects referenced JS symbols and preserves file markers',()=>{
+  const files=[
+    {path:'apps/a.mjs',content:`export function targetThing(x){\n  return helperThing(x)+1;\n}\n\nexport function unrelatedThing(){\n  return 'x'.repeat(2000);\n}`},
+    {path:'apps/b.mjs',content:`export function helperThing(x){\n  return x*2;\n}\n\nexport const unrelatedData='y'.repeat(2000);`}
+  ];
+  const out=codingMicroContext(files,'Change targetThing and helperThing safely',12000);
+  assert.strictEqual(out.telemetry.fallbackReason,null);
+  assert.ok(out.context.includes('FILE apps/a.mjs'));
+  assert.ok(out.context.includes('FILE apps/b.mjs'));
+  assert.ok(out.context.includes('targetThing'));
+  assert.ok(out.context.includes('helperThing'));
+  assert.ok(out.telemetry.charsAfter<out.telemetry.charsBefore);
+  assert.ok(out.telemetry.symbolsSelected.includes('targetThing'));
+  assert.ok(out.telemetry.dependencyEdges.some(x=>x.symbol==='helperThing'));
+});
+
+test('AST Micro-Context fails safe to full source for unsupported language or no target symbol',()=>{
+  const md=[{path:'docs/a.md',content:'alpha\nbeta\ngamma'}];
+  const unsupported=codingMicroContext(md,'change alpha',1000);
+  assert.strictEqual(unsupported.telemetry.fallbackReason,'UNSUPPORTED_LANGUAGE');
+  assert.strictEqual(unsupported.context, 'FILE docs/a.md\nalpha\nbeta\ngamma');
+
+  const js=[{path:'apps/a.mjs',content:'export const x=1;\n// tail must remain'}];
+  const noSymbol=codingMicroContext(js,'',1000);
+  assert.strictEqual(noSymbol.telemetry.fallbackReason,'NO_TARGET_SYMBOL');
+  assert.ok(noSymbol.context.includes('// tail must remain'));
 });
