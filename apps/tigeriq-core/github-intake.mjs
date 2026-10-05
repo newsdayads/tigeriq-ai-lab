@@ -15,6 +15,7 @@ const DEFAULT_REPO='tigeriq-ai-lab';
 export const GITHUB_RECONCILE_INTERVAL_MS=300000;
 const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
+const DEFAULT_MATERIALIZE_BATCH=Math.max(1,Math.min(20,Number(process.env.TIGERIQ_GITHUB_MATERIALIZE_BATCH||6)));
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
 const GITHUB_RATE_LIMIT_FALLBACK_MS=60000;
@@ -1447,9 +1448,16 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
       }
       const stableIssues=openIssues.filter(issue=>!handedOff.has(Number(issue.number)));
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
-      const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
+      let created=0,lastIssueNumber=null,lastActive=0;
+      for(let i=0;i<DEFAULT_MATERIALIZE_BATCH;i++){
+        const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
+        lastActive=a.active||lastActive;
+        if(!a.created)break;
+        created+=Number(a.created||0);
+        lastIssueNumber=a.issueNumber||lastIssueNumber;
+      }
       if(handedOff.size)console.log(JSON.stringify({event:'GITHUB_CHAT_OWNER_FALLBACK_HANDOFF',count:handedOff.size,issueNumbers:[...handedOff]}));
-      if(a.created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created:a.created,claims:b.claims,results:b.results,active:a.active||0,issueNumber:a.issueNumber||null}));
+      if(created||b.claims||b.results)console.log(JSON.stringify({event:'GITHUB_INTAKE_SYNC',created,claims:b.claims,results:b.results,active:lastActive||0,issueNumber:lastIssueNumber||null,materializeBatch:DEFAULT_MATERIALIZE_BATCH}));
     }catch(e){applyError(e,'fallback')}
     finally{
       busy=false;
