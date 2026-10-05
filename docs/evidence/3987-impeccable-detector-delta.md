@@ -42,3 +42,4 @@
 
 ## False-hard-fail policy
 Only `gradient-text` is hard in this delta, and only after both trigger clauses match. Glow and side-tab are advisory, so valid branded/status patterns cannot create a new hard failure without separate approved-design evidence.
+
