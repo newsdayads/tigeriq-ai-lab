@@ -37,6 +37,7 @@ public final class ChatGptB1RunStore {
     private static final String K_REPORTED_SEQ = "reportedSeq";
     private static final String K_PROJECT_BOUND = "projectBound";
     private static final String K_PROJECT_BOUND_AT = "projectBoundAt";
+    private static final String K_PROJECT_MODE = "projectMode";
     private static final String K_TASK_ID = "taskId";
     private static final String K_CUSTOM_PROMPT = "customPrompt";
     private static final String K_CUSTOM_EXPECTED_TOKEN = "customExpectedToken";
@@ -71,6 +72,7 @@ public final class ChatGptB1RunStore {
             .putInt(K_REPORTED_SEQ, 0)
             .putBoolean(K_PROJECT_BOUND, false)
             .putLong(K_PROJECT_BOUND_AT, 0L)
+            .putString(K_PROJECT_MODE, "WAITING_PROJECT")
             .apply();
         return read(context);
     }
@@ -127,6 +129,7 @@ public final class ChatGptB1RunStore {
             p.getInt(K_REPORTED_SEQ, 0),
             p.getBoolean(K_PROJECT_BOUND, false),
             p.getLong(K_PROJECT_BOUND_AT, 0L),
+            p.getString(K_PROJECT_MODE, "WAITING_PROJECT"),
             p.getString(K_TASK_ID, ""),
             p.getString(K_CUSTOM_PROMPT, ""),
             p.getString(K_CUSTOM_EXPECTED_TOKEN, ""),
@@ -151,6 +154,20 @@ public final class ChatGptB1RunStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(K_PROJECT_BOUND, true)
             .putLong(K_PROJECT_BOUND_AT, now)
+            .putString(K_PROJECT_MODE, "PROJECT")
+            .putString(K_STATE, "REQUESTED")
+            .putLong(K_CYCLE_STARTED_AT, now)
+            .putLong(K_NEXT_ACTION_AT, now + 750L)
+            .putString(K_LAST_ERROR, "")
+            .apply();
+    }
+
+    public static synchronized void markStandaloneFallbackReady(Context context) {
+        long now = System.currentTimeMillis();
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(K_PROJECT_BOUND, true)
+            .putLong(K_PROJECT_BOUND_AT, now)
+            .putString(K_PROJECT_MODE, "STANDALONE_FALLBACK")
             .putString(K_STATE, "REQUESTED")
             .putLong(K_CYCLE_STARTED_AT, now)
             .putLong(K_NEXT_ACTION_AT, now + 750L)
@@ -301,6 +318,7 @@ public final class ChatGptB1RunStore {
         body.put("requiredProject", REQUIRED_PROJECT);
         body.put("projectBound", s.projectBound);
         body.put("projectBoundAt", s.projectBoundAt);
+        body.put("projectMode", s.projectMode);
         body.put("minFillToSendMs", MIN_FILL_TO_SEND_MS);
         body.put("interCycleCooldownMs", INTER_CYCLE_COOLDOWN_MS);
         body.put("workerVersion", WorkerVersion.NAME);
@@ -366,6 +384,7 @@ public final class ChatGptB1RunStore {
         public final int reportedSeq;
         public final boolean projectBound;
         public final long projectBoundAt;
+        public final String projectMode;
         public final String taskId;
         public final String customPrompt;
         public final String customExpectedToken;
@@ -393,6 +412,7 @@ public final class ChatGptB1RunStore {
             int reportedSeq,
             boolean projectBound,
             long projectBoundAt,
+            String projectMode,
             String taskId,
             String customPrompt,
             String customExpectedToken,
@@ -419,6 +439,7 @@ public final class ChatGptB1RunStore {
             this.reportedSeq = reportedSeq;
             this.projectBound = projectBound;
             this.projectBoundAt = projectBoundAt;
+            this.projectMode = projectMode;
             this.taskId = taskId;
             this.customPrompt = customPrompt;
             this.customExpectedToken = customExpectedToken;
