@@ -92,9 +92,11 @@ export function classifyAutonomousRca(anomaly={}){
   const evidenceHash=hash(compactJson(evidence,12000));
   const rcaSignature=hash([anomalySignature,rcaClass].join('|'));
   const affectedScope=text(evidence.resourceScope||evidence.scope||evidence.component||contractId||'CORE',240);
+  const rcaFamilyKey=hash([contractId,rcaClass,affectedScope].join('|'));
   const mapped=Boolean(CONTRACT_CLASS[contractId]||inferred);
   return {
     rcaSignature,
+    rcaFamilyKey,
     anomalySignature,
     contractId,
     class:rcaClass,
@@ -116,8 +118,9 @@ export function dedupeAutonomousRca(items=[]){
   const out=[],seen=new Set();
   for(const item of Array.isArray(items)?items:[]){
     const rca=item?.rcaSignature?item:classifyAutonomousRca(item);
-    if(seen.has(rca.rcaSignature))continue;
-    seen.add(rca.rcaSignature);out.push(rca);
+    const dedupeKey=rca.rcaFamilyKey||rca.rcaSignature;
+    if(seen.has(dedupeKey))continue;
+    seen.add(dedupeKey);out.push(rca);
   }
   return out;
 }
@@ -163,6 +166,7 @@ export function buildImprovementWorkOrder(rca={}){
     'AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE',
     'CURRENT_STATE=READY_SELF_UPGRADE_GATE',
     `RCA_SIGNATURE=${rca.rcaSignature}`,
+    `RCA_FAMILY_KEY=${rca.rcaFamilyKey}`,
     `RCA_CLASS=${rca.class}`,
     `RCA_CONFIDENCE=${rca.confidence}`,
     `AFFECTED_SCOPE=${rca.affectedScope}`,
@@ -183,6 +187,7 @@ export function buildOwnerException(rca={}){
   return{
     type:'OWNER_EXCEPTION',
     rcaSignature:rca.rcaSignature,
+    rcaFamilyKey:rca.rcaFamilyKey,
     anomalySignature:rca.anomalySignature,
     class:rca.class,
     reason:rca.hardGateReason||'OWNER_GATE_REQUIRED',
