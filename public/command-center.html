@@ -421,6 +421,15 @@ body.drawer-open{overflow:hidden}
 .filter[data-filter="system"].active{color:#b7c2cc;border-color:#667687;background:rgba(135,150,166,.20)}
 .filter[data-filter="done"].active{color:#82eddd;border-color:#338a7d;background:rgba(85,216,196,.22)}
 a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.flow-package-tabs button{cursor:pointer}button:disabled,[aria-disabled="true"]{cursor:not-allowed}
+@media(max-width:700px){
+  .top,.brand,.brand h1{min-width:0;max-width:100%}
+  .brand{flex:1 1 auto}
+  .brand h1{font-size:20px;letter-spacing:-.45px;gap:6px;flex-wrap:wrap;overflow-wrap:anywhere}
+  .brand-logo{width:24px;height:24px;flex:none}
+  .live{flex:0 0 auto}
+  .raw-work-details,.raw-work-inner{min-width:0;max-width:100%}
+  .raw-work-details>summary{overflow-wrap:anywhere}
+}
 </style>
 <link rel="stylesheet" href="/work-ui.css">
 </head>
