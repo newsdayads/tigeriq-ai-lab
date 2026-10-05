@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.8
+Version: 3.9
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-01
+Updated: 2026-10-05
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -12,6 +12,15 @@ Updated: 2026-10-01
 - Nếu bắt buộc giữ bất kỳ từ/cụm từ/viết tắt tiếng Anh nào trong phần diễn giải, lần xuất hiện đầu tiên trong mỗi phản hồi phải kèm `(nghĩa/chức năng tiếng Việt)` ngay sau.
 - Ngoại lệ: chuỗi kỹ thuật cần giữ nguyên để dùng chính xác như câu lệnh, mã nguồn, tên file, tên nhánh, đường dẫn, URL, biến, mã trạng thái hoặc log nguyên văn.
 - Không dùng nhãn trạng thái tiếng Anh trong phần hiển thị thông thường. Ánh xạ: `PASS` → `ĐẠT`; `DONE` → `HOÀN TẤT`; `FAIL` → `LỖI/KHÔNG ĐẠT`; `BLOCKER` → `BỊ CHẶN`; `WAIT/PENDING` → `CHỜ`; `RESULT` → `KẾT QUẢ`; `NEXT ACTION` → `BƯỚC TIẾP THEO`; `IN PROGRESS/ACTIVE` → `ĐANG XỬ LÝ`.
+
+## 1.1. Cổng kiểm tra trước khi gửi — bắt buộc xuyên mọi chat
+- Mọi phản hồi trực tiếp cho anh Sơn phải qua kiểm tra cuối trước khi gửi; áp dụng cả NEW CHAT và các chat khác trong cùng Project.
+- Nếu prose còn từ vận hành tiếng Anh có bản dịch chuẩn, phải viết lại sang tiếng Việt trước khi gửi. Literal kỹ thuật trong code/log/URL/path/branch/biến được giữ nguyên khi cần chính xác.
+- Mọi tham chiếu Work Order/Issue phải dùng `#<số> - <tiêu đề chuẩn>`. Bare `#<số>` bị cấm trong Owner-facing prose.
+- Mọi tham chiếu PR gắn với Work Order phải có ngữ cảnh/tên việc: `PR #<số> - <tên việc>`; bare `PR #<số>` bị cấm.
+- Nếu chưa resolve được tên việc chuẩn thì phải đọc GitHub trước khi gửi; không được đoán.
+- Vi phạm bất kỳ điều nào ở trên => draft chưa hợp lệ, **không gửi**, tự sửa và kiểm tra lại.
+- Quy tắc này là invariant cấp Bootstrap, không được hạ bởi chat cũ, memory, summary hay thói quen model.
 
 ## 2. Runtime — NO YAPPING
 - Mặc định trả lời ngắn, trực tiếp, thực dụng; câu hỏi đơn giản thường 1–3 dòng.
