@@ -111,6 +111,9 @@ export function classifyWorkOrder(body){
     return nv04SecondOpinionRoute(priority,surface,preferred);
   }
   if(cap==='review'){
+    if(surface==='CORE_REVIEW'){
+      return {...priority,capability:'review',surface:'CORE_REVIEW',assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:null,autonomous:true,requestedReviewer:preferred||null,reviewRoutingReason:'CORE_DYNAMIC_REVIEW_POOL'};
+    }
     if(preferred){
       if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:CORE_ROUTED_UI_WORKERS.includes(preferred)};
       const specialist=reviewSpecialistRoute(text,preferred);
