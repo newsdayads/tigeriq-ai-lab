@@ -330,8 +330,10 @@ export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,ter
 export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true,expectedTaskAction=null}={}){
   const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
+  const failureAgentStatuses=new Set(['error','failed','blocker','blocked']);
   const agentStructured=Boolean(result?.agentResult&&typeof result.agentResult==='object');
   const agentSuccess=agentStructured&&successAgentStatuses.has(agentStatus);
+  const agentFailure=agentStructured&&failureAgentStatuses.has(agentStatus);
   const wrapperStatus=String(result?.status||'').toLowerCase();
   const wrapperClean=Number(result?.exitCode)===0&&Boolean(parsedPresent)&&!['timeout','failed','error','aborted'].includes(wrapperStatus);
   const terminalReceiptTool=(Array.isArray(result?.successfulToolNames)?result.successfulToolNames:[])
@@ -345,7 +347,7 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
   const success=!timedOut&&Boolean(parsedPresent)&&(standardSuccess||bridgeTaskActionReceipt);
   const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
-    || !successAgentStatuses.has(agentStatus)
+    || (!agentSuccess&&!agentFailure)
     || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
   );
   const successSource=success
@@ -354,7 +356,7 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
         :wrapperClean?'agent_terminal'
           :'trusted_tool_receipt')
     :null;
-  return {success,invalidTerminal,successSource,agentStatus,agentStructured,agentSuccess,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt,bridgeTaskActionReceipt};
+  return {success,invalidTerminal,successSource,agentStatus,agentStructured,agentSuccess,agentFailure,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt,bridgeTaskActionReceipt};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
