@@ -6,6 +6,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 const WORKER_ID='NV03';
 const CDP_PORT=Number(process.env.TIGERIQ_NV03_CDP_PORT||9223);
 const CONTROL_PORT=Number(process.env.TIGERIQ_NV03_CONTROL_PORT||8823);
+const CORE_UI_URL=String(process.env.TIGERIQ_CORE_UI_URL||'http://127.0.0.1:8795/api/ui-assignment');
+const CORE_UI_TERMINAL_URL=String(process.env.TIGERIQ_CORE_UI_TERMINAL_URL||'http://127.0.0.1:8795/api/ui-assignment/terminal');
 const HOME_URL=String(process.env.TIGERIQ_NV03_HOME_URL||'https://chatgpt.com/g/g-p-6a9e19b4deac8191938cca4486a7e12b-tigeriq-ai-lab/project#tigeriq-worker=NV03');
 const CHROME_PATH=String(process.env.TIGERIQ_CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
 const USER_DATA_DIR=String(process.env.TIGERIQ_NV03_USER_DATA||'D:\\TigerIQ\\Chrome\\NV03-Worker\\UserData');
@@ -53,6 +55,80 @@ async function fetchJson(url,init={}){
   }finally{clearTimeout(timer);}
 }
 
+async function syncCoreAssignmentFromCore(){
+  let snapshot;
+  try{snapshot=await fetchJson(CORE_UI_URL);}
+  catch(error){await log('NV03_CORE_SYNC_ERROR',{error:String(error?.message||error)}).catch(()=>{});return;}
+  const jobs=Array.isArray(snapshot?.nextJobs)?snapshot.nextJobs:(snapshot?.nextJob?[snapshot.nextJob]:[]);
+  const job=jobs.find((item)=>String(item?.workerId||'')===WORKER_ID&&item?.executable!==false);
+  if(!job)return;
+  const current=readAssignment();
+  if(current?.jobId===String(job.jobId||''))return;
+  const prompt=String(job.prompt||'');
+  const inputRevision=String((prompt.match(/TARGET_HEAD=([a-f0-9]{40})/i)||[])[1]||snapshot?.revision||job.jobId||'').trim();
+  const assignment={
+    jobId:String(job.jobId||''),
+    claimId:String(job.workItemId||('CORE-UI-'+String(job.jobId||''))),
+    workOrder:String(job.currentWorkOrder||job.jobId||''),
+    issueUrl:String(job.issueRef||''),
+    resourceScope:String(job.resourceScope||''),
+    inputRevision,
+    prompt,
+    assignedAt:now(),
+    dispatchedAt:null,
+    terminal:null,
+    targetId:'',
+    freshContext:true,
+    freshContextPreparedAt:'',
+  };
+  if(!assignment.jobId||!assignment.issueUrl||!assignment.resourceScope)return;
+  if(current&&current.jobId!==assignment.jobId){
+    await log('NV03_LOCAL_ASSIGNMENT_SUPERSEDED_BY_CORE',{localJobId:current.jobId,coreJobId:assignment.jobId});
+  }
+  await saveAssignment(assignment);
+  const state=readState();
+  await saveState({...state,phase:'ASSIGNED',activeJobId:assignment.jobId,nextContinueAt:0,terminal:''});
+  await log('NV03_CORE_ASSIGNMENT_SYNCED',{jobId:assignment.jobId,issueUrl:assignment.issueUrl,resourceScope:assignment.resourceScope});
+}
+
+async function completeCoreAssignment(assignment,terminal,assistantText=''){
+  const review=String(terminal||'').toUpperCase();
+  const coreTerminal=review==='BLOCKED'?'BLOCKED':'DONE';
+  const result=String(assistantText||('REVIEW='+review+' DONE=true')).slice(-3500);
+  const response=await fetchJson(CORE_UI_TERMINAL_URL,{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({jobId:assignment.jobId,workerId:WORKER_ID,terminal:coreTerminal,result}),
+  });
+  if(response?.ok!==true)throw new Error('CORE_UI_TERMINAL_REJECTED');
+  await log('NV03_CORE_TERMINAL_CONFIRMED',{jobId:assignment.jobId,terminal:coreTerminal,evidenceRef:String(response.evidenceRef||'')});
+  await saveAssignment(null);
+  const state=readState();
+  await saveState({...state,phase:'READY_UNASSIGNED',activeJobId:'',nextContinueAt:0,terminal:''});
+  return response;
+}
+
+function assignedIssueNumber(issueUrl=''){
+  const parts=String(issueUrl||'').split('/');
+  const n=Number(parts.at(-1));
+  return Number.isInteger(n)&&n>0?n:null;
+}
+
+async function assignedIssueTerminalEvidence(assignment){
+  const n=assignedIssueNumber(assignment?.issueUrl);
+  const claimId=String(assignment?.claimId||'').trim();
+  if(!n||!claimId)return null;
+  let comments;
+  try{comments=await fetchJson('https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/'+n+'/comments?per_page=100',{headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-NV03-Sidecar'}});}catch{return null;}
+  for(const comment of (Array.isArray(comments)?comments:[]).slice().reverse()){
+    const body=String(comment?.body||'');
+    if(!body.includes('CLAIM_ID='+claimId))continue;
+    if(body.includes('REVIEW=PASS'))return{terminal:'PASS',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+    if(body.includes('REVIEW=CHANGES_REQUIRED'))return{terminal:'CHANGES_REQUIRED',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+    if(body.includes('STATE=BLOCKED')||body.includes('STATE=EXTERNAL_WAIT'))return{terminal:'BLOCKED',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+  }
+  return null;
+}
 async function listTargets(){
   const data=await fetchJson(`http://127.0.0.1:${CDP_PORT}/json/list`);
   return Array.isArray(data)?data:Array.isArray(data?.value)?data.value:[];
@@ -193,6 +269,7 @@ async function cycle(){
   if(cycleBusy)return;
   cycleBusy=true;
   try{
+    await syncCoreAssignmentFromCore();
     let state=readState();
     const pair=await ensureTarget();
     if(!pair){
@@ -213,12 +290,26 @@ async function cycle(){
       await saveState(state);return;
     }
     state.activeJobId=assignment.jobId;
+    if(assignment.dispatchedAt){
+      const evidence=await assignedIssueTerminalEvidence(assignment);
+      if(evidence){
+        await log('NV03_ASSIGNED_ISSUE_TERMINAL_EVIDENCE',{jobId:assignment.jobId,terminal:evidence.terminal,evidenceRef:evidence.evidenceRef});
+        try{await completeCoreAssignment(assignment,evidence.terminal,evidence.result);}catch(error){await log('NV03_CORE_TERMINAL_ERROR',{jobId:assignment.jobId,error:String(error?.message||error)});}
+        return;
+      }
+    }
     if(assignment.dispatchedAt&&ui.terminal){
-      state={...state,phase:'TERMINAL',terminal:String(ui.terminal).toUpperCase(),nextContinueAt:0};
+      const terminal=String(ui.terminal).toUpperCase();
+      state={...state,phase:'TERMINAL',terminal,nextContinueAt:0};
       await saveState(state);
       if(!assignment.terminalObservedAt){
-        await saveAssignment({...assignment,terminal:String(ui.terminal).toUpperCase(),terminalObservedAt:now()});
-        await log('NV03_TERMINAL_OBSERVED',{jobId:assignment.jobId,terminal:String(ui.terminal).toUpperCase()});
+        await saveAssignment({...assignment,terminal,terminalObservedAt:now()});
+        await log('NV03_TERMINAL_OBSERVED',{jobId:assignment.jobId,terminal});
+      }
+      try{
+        await completeCoreAssignment(assignment,terminal,ui.assistantText);
+      }catch(error){
+        await log('NV03_CORE_TERMINAL_ERROR',{jobId:assignment.jobId,error:String(error?.message||error)});
       }
       return;
     }
