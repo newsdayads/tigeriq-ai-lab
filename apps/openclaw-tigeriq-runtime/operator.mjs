@@ -20,6 +20,11 @@ const MAX_OUTPUT_CHARS = 64 * 1024;
 const MAX_TIMEOUT_SEC = 120;
 const ALLOWED_TCP_HOSTS = new Set(['127.0.0.1', 'localhost', '100.97.23.87']);
 const ALLOWED_TCP_PORTS = new Set([8793, 8794, 8795, 8796, 8797, 8798, 8799, 11434, 18789]);
+const CORE_TASK_NAME = 'TigerIQ Core 24x7';
+const CORE_NODE_COMMAND_MARKERS = Object.freeze([
+  'd:\\tigeriq\\runtime\\coresource\\apps\\tigeriq-core\\core-entry.mjs',
+  'd:\\tigeriq\\workspace\\tigeriq-ai-lab\\apps\\tigeriq-core\\core-entry.mjs',
+]);
 
 const DENIED_PATH_FRAGMENTS = [
   '\\secrets\\',
@@ -231,7 +236,17 @@ export function trustedTigerIQTaskActionData(action, data) {
   const subprocessOk = kind === 'task_restart'
     ? successfulTaskProcessResult(data.stopped) && successfulTaskProcessResult(data.started)
     : successfulTaskProcessResult(data);
-  return subprocessOk && trustedTaskVerification(kind, taskName, data.verification);
+  if (!subprocessOk || !trustedTaskVerification(kind, taskName, data.verification)) return false;
+  if (kind === 'task_restart' && taskName === CORE_TASK_NAME) {
+    const coreProcess = data.coreProcess;
+    if (!coreProcess || typeof coreProcess !== 'object' || Array.isArray(coreProcess)) return false;
+    const previousPids = Array.isArray(coreProcess.previousPids) ? coreProcess.previousPids.map(Number) : null;
+    const newPid = Number(coreProcess.newPid);
+    if (!previousPids || !previousPids.every((pid) => Number.isInteger(pid) && pid > 0)) return false;
+    if (!Number.isInteger(newPid) || newPid <= 0 || previousPids.includes(newPid)) return false;
+    return coreProcess.oldPidsGone === true && coreProcess.healthOk === true && coreProcess.replaced === true;
+  }
+  return true;
 }
 
 function assertTaskProcessSuccess(result, phase) {
@@ -363,6 +378,83 @@ async function queryTigerIQTaskVerification(taskName) {
   };
 }
 
+function parseCoreNodeProcessJson(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { throw new Error('TIGERIQ_PC_CORE_PROCESS_JSON_INVALID'); }
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  return rows.map((row) => ({
+    pid: Number(row?.ProcessId),
+    commandLine: String(row?.CommandLine || ''),
+  })).filter((row) => Number.isInteger(row.pid) && row.pid > 0);
+}
+
+async function listCanonicalCoreNodeProcesses() {
+  const command = '$ErrorActionPreference=\'Stop\'; Get-CimInstance Win32_Process -Filter "Name=\'node.exe\'" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress';
+  const result = await spawnBounded(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
+    { timeoutSec: 15 },
+  );
+  assertTaskProcessSuccess(result, 'CORE_PROCESS_QUERY');
+  return parseCoreNodeProcessJson(result.stdout).filter((row) => {
+    const commandLine = row.commandLine.toLowerCase().replaceAll('/', '\\');
+    return CORE_NODE_COMMAND_MARKERS.some((marker) => commandLine.includes(marker));
+  });
+}
+
+async function sleepMs(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function restartTigerIQCoreTask(name, before) {
+  const previous = await listCanonicalCoreNodeProcesses();
+  const previousPids = previous.map((row) => row.pid);
+  const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
+  assertTaskProcessSuccess(stopped, 'RESTART_STOP');
+  await sleepMs(500);
+
+  const remaining = await listCanonicalCoreNodeProcesses();
+  for (const processInfo of remaining) {
+    const killed = await spawnBounded('taskkill.exe', ['/PID', String(processInfo.pid), '/F'], { timeoutSec: 15 });
+    assertTaskProcessSuccess(killed, 'CORE_PROCESS_TERMINATE');
+  }
+
+  const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
+  assertTaskProcessSuccess(started, 'RESTART_START');
+
+  const deadline = Date.now() + 45000;
+  let lastHealth = null;
+  let lastProcesses = [];
+  while (Date.now() < deadline) {
+    try { lastHealth = await boundedLocalJson('http://127.0.0.1:8795/health'); } catch { lastHealth = null; }
+    try { lastProcesses = await listCanonicalCoreNodeProcesses(); } catch { lastProcesses = []; }
+    const livePids = new Set(lastProcesses.map((row) => row.pid));
+    const oldPidsGone = previousPids.every((pid) => !livePids.has(pid));
+    const healthPid = Number(lastHealth?.pid);
+    const replacement = lastProcesses.find((row) => row.pid === healthPid);
+    if (lastHealth?.ok === true && replacement && oldPidsGone && !previousPids.includes(replacement.pid)) {
+      const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
+      return {
+        taskName: name,
+        stopped,
+        started,
+        verification,
+        coreProcess: {
+          previousPids,
+          newPid: replacement.pid,
+          oldPidsGone: true,
+          healthOk: true,
+          replaced: true,
+        },
+      };
+    }
+    await sleepMs(1000);
+  }
+  throw new Error('TIGERIQ_PC_CORE_RESTART_REPLACEMENT_NOT_VERIFIED');
+}
+
 async function runTaskAction(action, taskName) {
   const name = assertTigerIQTaskName(taskName);
   if (action === 'task_status') {
@@ -382,6 +474,7 @@ async function runTaskAction(action, taskName) {
   }
   if (action === 'task_restart') {
     const before = await queryTigerIQTaskVerification(name);
+    if (name === CORE_TASK_NAME) return await restartTigerIQCoreTask(name, before);
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
