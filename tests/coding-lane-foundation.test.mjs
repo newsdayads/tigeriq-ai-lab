@@ -1,4 +1,4 @@
-import { codingMicroContext } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import { codingMicroContext, formatMicroContextTelemetry } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
@@ -884,4 +884,27 @@ test('AST Micro-Context fails safe to full source for unsupported language or no
   const noSymbol=codingMicroContext(js,'',1000);
   assert.strictEqual(noSymbol.telemetry.fallbackReason,'NO_TARGET_SYMBOL');
   assert.ok(noSymbol.context.includes('// tail must remain'));
+});
+
+
+test('Micro-Context telemetry summary is bounded and does not expose source text',()=>{
+  const reduced=formatMicroContextTelemetry({
+    fallbackReason:null,
+    charsBefore:12000,
+    charsAfter:2400,
+    symbolsSelected:['targetThing','helperThing'],
+    dependencyEdges:[{path:'apps/a.mjs',symbol:'targetThing',reason:'request-symbol'}],
+  });
+  assert.strictEqual(reduced,'MICRO_CONTEXT charsBefore=12000 charsAfter=2400 fallback=NONE symbols=2 edges=1');
+  assert.ok(!reduced.includes('targetThing'));
+  assert.ok(!reduced.includes('apps/a.mjs'));
+
+  const fallback=formatMicroContextTelemetry({
+    fallbackReason:'UNSUPPORTED_LANGUAGE',
+    charsBefore:300,
+    charsAfter:300,
+    symbolsSelected:[],
+    dependencyEdges:[],
+  });
+  assert.strictEqual(fallback,'MICRO_CONTEXT charsBefore=300 charsAfter=300 fallback=UNSUPPORTED_LANGUAGE symbols=0 edges=0');
 });
