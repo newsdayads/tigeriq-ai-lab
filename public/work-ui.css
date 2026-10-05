@@ -596,3 +596,27 @@ body.work-detail-open{overflow:hidden}
 .api-health .employee-live-line{flex-shrink:0}
 .api-health .panel-h{min-width:0}
 .api-health .panel-h>div{min-width:0}
+
+/* #3918 final visual audit cleanup */
+.api-health .work-next{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+}
+.api-health .side .chart{
+  height:auto!important;
+  min-height:220px;
+  overflow:visible;
+}
+.api-health .metrics-lower .metric{
+  min-height:132px;
+  height:auto;
+  overflow:visible;
+}
+.api-health .metrics-lower .metric .k,
+.api-health .metrics-lower .metric .s{
+  white-space:normal;
+  overflow:visible;
+  overflow-wrap:anywhere;
+}

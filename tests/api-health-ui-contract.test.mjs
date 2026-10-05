@@ -122,5 +122,9 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('height:auto!important;min-height:var(--employee-row-h)!important');
     expect(shared).toContain('.api-health .employee-task{display:block;white-space:normal;overflow:visible');
     expect(shared).not.toContain('-webkit-line-clamp:2');
+    expect(shared).toContain('/* #3918 final visual audit cleanup */');
+    expect(shared).toContain('.api-health .work-next{');
+    expect(shared).toContain('height:auto!important;');
+    expect(shared).toContain('.api-health .metrics-lower .metric{');
   });
 });
