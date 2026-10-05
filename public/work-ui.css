@@ -711,3 +711,36 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
   }
   .api-health .side .perf-rate{width:62%!important;max-width:72px}
 }
+
+
+/* #3918 semantic status filters + interactive cursor affordance */
+.api-health .wo-filter{cursor:pointer!important}
+.api-health .wo-filter.action{color:#ff9ba7;border-color:#7e3c49;background:rgba(180,55,72,.12)}
+.api-health .wo-filter.owner{color:#d6b7ff;border-color:#664b8e;background:rgba(118,78,170,.12)}
+.api-health .wo-filter.running{color:#7ff0c0;border-color:#27785b;background:rgba(46,183,125,.12)}
+.api-health .wo-filter.review{color:#ffd27a;border-color:#8c6727;background:rgba(218,158,43,.12)}
+.api-health .wo-filter.waiting{color:#ff9c75;border-color:#874d36;background:rgba(211,91,47,.12)}
+.api-health .wo-filter.system{color:#8fd0ff;border-color:#315f8b;background:rgba(56,126,190,.12)}
+.api-health .wo-filter.done{color:#7ce6d4;border-color:#287468;background:rgba(46,174,153,.11)}
+.api-health .wo-filter.action.on{background:rgba(180,55,72,.26);box-shadow:0 0 16px rgba(255,91,112,.13)}
+.api-health .wo-filter.owner.on{background:rgba(118,78,170,.26);box-shadow:0 0 16px rgba(173,116,255,.13)}
+.api-health .wo-filter.running.on{background:rgba(46,183,125,.25);box-shadow:0 0 16px rgba(65,225,155,.13)}
+.api-health .wo-filter.review.on{background:rgba(218,158,43,.25);box-shadow:0 0 16px rgba(255,190,67,.14)}
+.api-health .wo-filter.waiting.on{background:rgba(211,91,47,.25);box-shadow:0 0 16px rgba(255,123,76,.14)}
+.api-health .wo-filter.system.on{background:rgba(56,126,190,.25);box-shadow:0 0 16px rgba(86,172,255,.13)}
+.api-health .wo-filter.done.on{background:rgba(46,174,153,.24);box-shadow:0 0 16px rgba(67,224,195,.12)}
+.api-health .wo-filter.running:not(.on) b:not(:empty){text-shadow:0 0 8px rgba(85,235,167,.45)}
+.api-health a[href],
+.api-health button:not(:disabled),
+.api-health [role="button"],
+.api-health [onclick],
+.api-health .filter,
+.api-health .wo-filter,
+.api-health .top-indicator,
+.api-health #navHealth,
+.api-health #navWork,
+.api-health .employee-card[tabindex],
+.api-health .work-row[tabindex]{
+  cursor:pointer!important;
+}
+.api-health button:disabled,.api-health [aria-disabled="true"]{cursor:not-allowed!important}
