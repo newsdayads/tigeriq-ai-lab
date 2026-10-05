@@ -346,7 +346,9 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
   for(const workerId of WORKERS){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
+    if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
+    if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
     else missingWorkers.push(workerId);
   }
