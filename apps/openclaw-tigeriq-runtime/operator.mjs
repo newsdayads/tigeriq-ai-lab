@@ -1899,6 +1899,22 @@ async function boundedLocalJson(url,{method='GET',payload,fetchImpl,httpRequestI
   });
 }
 
+export async function readCoreStatus(options={}){
+  const payload=await boundedLocalJson('http://127.0.0.1:8795/api/status',{fetchImpl:options?.fetchImpl,httpRequestImpl:options?.httpRequestImpl});
+  const core=payload?.core&&typeof payload.core==='object'&&!Array.isArray(payload.core)?payload.core:{};
+  const apiDoctor=payload?.apiDoctor&&typeof payload.apiDoctor==='object'&&!Array.isArray(payload.apiDoctor)?payload.apiDoctor:{};
+  return {
+    status:'CORE_STATUS_READ',
+    core:{host:core.host||null,port:Number(core.port)||null,pid:Number(core.pid)||null,uptimeSec:Number(core.uptimeSec)||0,time:core.time||null},
+    apiDoctor:{
+      lastScanAt:apiDoctor.lastScanAt||null,
+      degradedProviders:Array.isArray(apiDoctor.degradedProviders)?apiDoctor.degradedProviders:[],
+      actions:Array.isArray(apiDoctor.actions)?apiDoctor.actions:[],
+      postRepairValidations24h:Number(apiDoctor.postRepairValidations24h)||0,
+    },
+  };
+}
+
 export async function reconcileCancelledCoreUiJob(input={},options={}){
   const workerId=String(input?.workerId||'').trim().toUpperCase();
   if(!CORE_UI_RECONCILE_WORKERS.has(workerId))throw new Error('TIGERIQ_CORE_UI_RECONCILE_WORKER_INVALID');
@@ -1981,6 +1997,8 @@ export async function executePcAction(input, options = {}) {
     data = await readAndroidWorkerGateCV021Status();
   } else if (action === 'android_worker_live_v022_status') {
     data = await readAndroidWorkerLiveV022Status();
+  } else if (action === 'core_status_read') {
+    data = await readCoreStatus({ fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'chrome_ui_reconcile_cancelled_job') {
     data = await reconcileCancelledCoreUiJob(input || {}, { fetchImpl: options?.fetchImpl });
   } else if (action === 'tigeriq_live_3150_production_deploy') {
