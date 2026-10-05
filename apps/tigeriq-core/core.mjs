@@ -1796,6 +1796,21 @@ async function managerTick() {
   if(await reconcileAutonomousHandoff(o)) return;
   if(await reconcileGithubCoreReviewObjective(o)) return;
   if(await reconcileStabilityV2Objective(o)) return;
+  if(o.metadata?.admissionMode==='SAFE_P1_P5_POLICY'&&['CORE_REASONING','CORE_REVIEW'].includes(String(o.metadata?.dispatchLane||''))){
+    const failedAutowork=(await pool.query(
+      "select id,failure from tigeriq_jobs where objective_id=$1 and kind='github_api_autowork' and status='failed' order by completed_at desc nulls last,created_at desc limit 1",
+      [o.id]
+    )).rows[0]||null;
+    if(failedAutowork){
+      const reason=String(failedAutowork.failure?.message||failedAutowork.failure?.kind||'CORE_AUTOWORK_FAILED').slice(0,300);
+      await pool.query(
+        "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",
+        [o.id,`Core API auto-work failed after bounded routing; released to unclaimed backlog; job=${failedAutowork.id}; reason=${reason}`]
+      );
+      await event('CORE_AUTOWORK_FALLBACK_RELEASED',{objectiveId:o.id,jobId:failedAutowork.id,reason,resourceScope:o.metadata?.resourceScope||null});
+      return;
+    }
+  }
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
