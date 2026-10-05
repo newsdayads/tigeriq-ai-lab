@@ -370,12 +370,27 @@ describe('GitHub Core intake guardrails',()=>{
     const fallbackReview=reviewBody.replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV17')
       +'\nREVIEW_FALLBACK_EMPLOYEE=NV17\nREVIEW_FALLBACK_REASON=NV03_UNAVAILABLE';
     expect(parseExecutableIssue({...base,number:1876,title:'API review fallback',body:fallbackReview})).toMatchObject({
-      capability:'review',dispatchLane:'CORE_REVIEW',targetWorker:'NV17'
+      capability:'review',dispatchLane:'CORE_REVIEW',requestedWorker:'NV17',targetWorker:'NV17'
     });
     const staleNv10=reviewBody
       .replace('PREFERRED_REVIEWER=NV03','PREFERRED_REVIEWER=NV10')
       +'\nTARGET_EMPLOYEE=NV10\nASSIGNED_EXECUTOR=NV10';
     expect(parseExecutableIssue({...base,number:1877,title:'stale generic NV10 review',body:staleNv10})).toBeNull();
+  });
+
+  it('treats an assigned API worker as non-strict for safe P1-P5 Core auto-work',()=>{
+    const body=[
+      'PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
+      'RESOURCE_SCOPE=DYNAMIC_SAFE_SCOPE','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'AUTO_QUEUE=INCLUDED','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true'
+    ].join('\n');
+    expect(parseExecutableIssue({...base,number:1878,title:'dynamic safe routing',body})).toMatchObject({
+      admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING',requestedWorker:'NV17',targetWorker:null
+    });
+    expect(parseExecutableIssue({...base,number:1879,title:'strict safe routing',body:body+'\nCORE_TARGET_STRICT=true'})).toMatchObject({
+      targetWorker:'NV17'
+    });
   });
 
   it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
@@ -386,6 +401,30 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
   });
 
+
+  it('releases failed safe Core API work back to the unclaimed backlog without terminal-blocking it',async()=>{
+    const row={id:'OBJ-GH-841',status:'blocked',summary:'NO_AI_RESOURCE_AVAILABLE',metadata:{source:'github',issueNumber:841,githubClaimReported:true,githubResultReported:false,admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING'}};
+    const pool={async query(q,params=[]){
+      if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+      if(q.includes("select status,failure from tigeriq_jobs"))return {rowCount:1,rows:[{status:'failed',failure:{message:'NO_AI_RESOURCE_AVAILABLE'}}]};
+      if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      return {rowCount:0,rows:[]};
+    }};
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/issues/841/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
+      if(url.endsWith('/issues/841/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/841/labels')&&init.method==='POST'){calls.push('add-label');return new Response(JSON.stringify([]),{status:200,headers:{'content-type':'application/json'}});}
+      return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
+    expect(calls).toContain('clear-label');
+    expect(calls).not.toContain('add-label');
+    expect(row.metadata).toMatchObject({coreFallbackReleased:true,githubTerminalBlockedSuppressed:true,githubResultReported:true});
+  });
 
   it('syncs a blocked Core lifecycle label once before durable result reporting',async()=>{
     const row={id:'OBJ-GH-840',status:'blocked',summary:'terminal failure',metadata:{source:'github',issueNumber:840,githubClaimReported:true,githubResultReported:false}};

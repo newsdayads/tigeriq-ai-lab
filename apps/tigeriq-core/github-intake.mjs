@@ -434,10 +434,12 @@ export function parseExecutableIssue(issue){
   if(directAction.action?.action==='tigeriq_live_3150_production_deploy'){
     directAction.action.releaseIssue=String(Number(issue.number));
   }
+  const strictCoreTarget=hasExactFlag(body,'CORE_TARGET_STRICT');
+  const dynamicCoreLane=policyAdmission.eligible&&['CORE_REASONING','CORE_REVIEW'].includes(dispatchLane)&&!strictCoreTarget;
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
-    capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(classification.workerId||null),
+    capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(dynamicCoreLane?null:(classification.workerId||null)),
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
@@ -940,7 +942,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         ? `GitHub autonomous CORE_REASONING coordination work item #${spec.number}. Analyze and coordinate only. Repository/source mutation must be handed off to the bounded coding executor lane; this API worker must not mutate source or claim coding/review ownership. Do not use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Preserve one-resource-one-writer and require independent review after implementation.\n\n${context}`
         : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
-      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
+      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,preferredWorker:spec.preferredWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.dispatchLane==='MOBILE_WORKER'?'MOBILE_WORKER':(spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY')),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
@@ -1093,6 +1095,17 @@ async function inheritClosedAcceptedSiblingCompletion(pool,row,{sourceIssue=null
     return {siblingId:sibling.id,summary,metadataPatch};
   }
   return null;
+}
+
+async function coreFallbackReleaseEligible(pool,row){
+  if(row?.status!=='blocked')return false;
+  if(row?.metadata?.admissionMode!=='SAFE_P1_P5_POLICY')return false;
+  if(!['CORE_REASONING','CORE_REVIEW'].includes(String(row?.metadata?.dispatchLane||'')))return false;
+  const job=(await pool.query(
+    "select status,failure from tigeriq_jobs where objective_id=$1 and kind='github_api_autowork' order by created_at desc limit 1",
+    [row.id]
+  )).rows[0]||null;
+  return String(job?.status||'').toLowerCase()==='failed';
 }
 
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
@@ -1346,9 +1359,19 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     if(row.status==='blocked'&&row.metadata?.githubTerminalLabelSynced!==true){
       const codingHandoffNonTerminal=row.metadata?.requiresCodingHandoff===true;
-      if(codingHandoffNonTerminal)await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+      const fallbackReleased=await coreFallbackReleaseEligible(pool,row);
+      if(codingHandoffNonTerminal||fallbackReleased)await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
       else await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
-      const labelPatch={githubTerminalLabelSynced:true,...(codingHandoffNonTerminal?{githubCodingHandoffBlockedNonTerminal:true}:{})};
+      const labelPatch={
+        githubTerminalLabelSynced:true,
+        ...(codingHandoffNonTerminal?{githubCodingHandoffBlockedNonTerminal:true}:{}),
+        ...(fallbackReleased?{
+          coreFallbackReleased:true,
+          coreFallbackReleasedAt:new Date().toISOString(),
+          coreFallbackPolicy:'UNCLAIMED_BACKLOG_SELF_PULL',
+          githubTerminalBlockedSuppressed:true,
+        }:{})
+      };
       await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(labelPatch)]);
       row.metadata={...row.metadata,...labelPatch};
     }
