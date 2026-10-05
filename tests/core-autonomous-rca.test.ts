@@ -23,6 +23,19 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(dedupeAutonomousRca([a,b])).toHaveLength(1);
   });
 
+  it('dedupes changing anomaly signatures inside one logical RCA family but preserves concrete scope separation',()=>{
+    const a=classifyAutonomousRca({signature:'obs-a',contractId:'SERVICE_FUNCTIONAL_INTEGRITY',evidence:{}});
+    const b=classifyAutonomousRca({signature:'obs-b',contractId:'SERVICE_FUNCTIONAL_INTEGRITY',evidence:{}});
+    expect(a.rcaSignature).not.toBe(b.rcaSignature);
+    expect(a.rcaFamilyKey).toBe(b.rcaFamilyKey);
+    expect(dedupeAutonomousRca([a,b])).toHaveLength(1);
+
+    const apiA=classifyAutonomousRca({signature:'api-a',contractId:'SERVICE_FUNCTIONAL_INTEGRITY',evidence:{resourceScope:'API_PROVIDER_NV11'}});
+    const apiB=classifyAutonomousRca({signature:'api-b',contractId:'SERVICE_FUNCTIONAL_INTEGRITY',evidence:{resourceScope:'API_PROVIDER_NV17'}});
+    expect(apiA.rcaFamilyKey).not.toBe(apiB.rcaFamilyKey);
+    expect(dedupeAutonomousRca([apiA,apiB])).toHaveLength(2);
+  });
+
   it('dedupes only while the prior RCA Work Order remains open',()=>{
     expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'open'})).toBe(true);
     expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'closed'})).toBe(false);
@@ -62,7 +75,8 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
   it('wires RCA only after repeated durable OPEN evidence and exposes a read-only canary',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("where status='OPEN' and count>=2");
-    expect(source).toContain("where type=$1 and data->>'rcaSignature'=$2 order by seq desc limit 1");
+    expect(source).toContain("data->>'rcaFamilyKey'=$2");
+    expect(source).toContain("data#>>'{provenance,contractId}'=$3");
     expect(source).toContain('githubAutonomousRcaIssueState');
     expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
     expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");
