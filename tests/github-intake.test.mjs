@@ -164,14 +164,27 @@ RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
 
-test('GitHub intake admits explicit mobile_worker work without a generic API/coding route',()=>{
+test('GitHub intake fails closed on Android product work even with legacy auto flags',()=>{
   const body=[
     'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
-    'ZERO_COST=true','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'ZERO_COST=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
     'NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true',
-    'RESOURCE_SCOPE=MOBILE_LIVE_CANARY','CAPABILITY=mobile_worker','EXECUTION_SURFACE=MOBILE_WORKER'
+    'RESOURCE_SCOPE=NV102_V025_E2E_ACCEPTANCE_20261005','CAPABILITY=mobile_worker','EXECUTION_SURFACE=MOBILE_WORKER'
   ].join('\n');
-  const issue={number:3688,state:'open',title:'[P1][ANDROID] Mobile live canary',body,labels:[],html_url:'https://example/3688'};
+  const issue={number:4240,state:'open',title:'[P1][MOBILE-WORKER] NV102 v0.25 end-to-end acceptance',body,labels:[],html_url:'https://example/4240'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:false,reason:'ANDROID_PRODUCT_OWNER_DIRECT'});
+  assert.strictEqual(parseExecutableIssue(issue),null);
+});
+
+test('GitHub intake keeps unrelated real work executed by NV102 eligible',()=>{
+  const body=[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'ZERO_COST=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true',
+    'RESOURCE_SCOPE=NV102_REAL_WORK_3956_ACCEPTANCE_GAP_20261005','CAPABILITY=mobile_worker','EXECUTION_SURFACE=MOBILE_WORKER'
+  ].join('\n');
+  const issue={number:4243,state:'open',title:'[P1][MOBILE-WORKER] Phân tích khoảng trống acceptance #3956 trên NV102',body,labels:[],html_url:'https://example/4243'};
   const admission=safeAutoWorkAdmission(issue);
   assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:true,reason:'SAFE_P1_P5_POLICY'});
   const spec=parseExecutableIssue(issue);
@@ -179,7 +192,6 @@ test('GitHub intake admits explicit mobile_worker work without a generic API/cod
   assert.strictEqual(spec.capability,'mobile_worker');
   assert.strictEqual(spec.dispatchLane,'MOBILE_WORKER');
   assert.strictEqual(spec.route,'MOBILE_WORKER');
-  assert.strictEqual(spec.requiresCodingHandoff,false);
 });
 
 test('mobile unavailable routing fault uses the checked-out client and releases a max=1 pool',async()=>{

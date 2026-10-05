@@ -418,12 +418,27 @@ export function explicitAutoExecutionExclusion(body=''){
   return '';
 }
 
+export function androidProductAutoExecutionExclusion(issue){
+  const body=String(issue?.body||'');
+  const title=String(issue?.title||'');
+  const resourceScope=bodyValue(body,'RESOURCE_SCOPE').trim().toUpperCase();
+  if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
+  if(!/\[MOBILE-WORKER\]/i.test(title))return '';
+  if(/^NV\d+_REAL_WORK_/i.test(resourceScope))return '';
+  const syntheticScope=/^NV\d+_(?:V\d+_|REMOTE_NO_USB_)/i.test(resourceScope);
+  const syntheticInstruction=/TRẢ LỜI ĐÚNG MỘT DÒNG:/i.test(body);
+  const syntheticTitle=/\b(?:SMOKE TEST|COMPATIBILITY SMOKE|END-TO-END ACCEPTANCE)\b/i.test(title);
+  return syntheticScope||syntheticInstruction||syntheticTitle?'ANDROID_PRODUCT_OWNER_DIRECT':'';
+}
+
 export function safeAutoWorkAdmission(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return {eligible:false,reason:'NOT_OPEN_ISSUE'};
   const body=String(issue.body||'');
   const title=String(issue.title||'');
   const explicitExclusion=explicitAutoExecutionExclusion(body);
   if(explicitExclusion)return {eligible:false,reason:explicitExclusion};
+  const androidProductExclusion=androidProductAutoExecutionExclusion(issue);
+  if(androidProductExclusion)return {eligible:false,reason:androidProductExclusion};
   const priority=bodyValue(body,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
   const ownerPolicy=bodyValue(body,'OWNER_POLICY').toUpperCase();
@@ -458,6 +473,7 @@ export function parseExecutableIssue(issue){
   const title=String(issue.title||'');
   if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,title))return null;
+  if(androidProductAutoExecutionExclusion(issue))return null;
   const legacyExecutable=hasExactFlag(body,'TIGERIQ_EXECUTABLE')
     &&hasExactFlag(body,'OWNER_POLICY','AUTO')
     &&hasExactFlag(body,'NO_CODE_CHANGE')
