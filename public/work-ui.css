@@ -744,3 +744,32 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
   cursor:pointer!important;
 }
 .api-health button:disabled,.api-health [aria-disabled="true"]{cursor:not-allowed!important}
+
+
+/* Canonical API Health status palette: one semantic color per state across filters, cards and progress. */
+.api-health{
+  --status-working:#47db91;
+  --status-review:#f0b94d;
+  --status-waiting:#f0b94d;
+  --status-queued:#61adff;
+  --status-blocked:#ff747e;
+  --status-owner:#ff747e;
+  --status-done:#55d8c4;
+  --status-system:#8796a6;
+}
+.api-health .wo-filter.running{color:var(--status-working);border-color:#287453;background:rgba(71,219,145,.10)}
+.api-health .wo-filter.review,.api-health .wo-filter.waiting{color:var(--status-review);border-color:#8b6426;background:rgba(240,185,77,.10)}
+.api-health .wo-filter.action,.api-health .wo-filter.owner{color:var(--status-blocked);border-color:#87434d;background:rgba(255,116,126,.10)}
+.api-health .wo-filter.system{color:var(--status-system);border-color:#526170;background:rgba(135,150,166,.10)}
+.api-health .wo-filter.done{color:var(--status-done);border-color:#287468;background:rgba(85,216,196,.10)}
+.api-health .wo-filter.running.on{background:rgba(71,219,145,.23);box-shadow:0 0 16px rgba(71,219,145,.13)}
+.api-health .wo-filter.review.on,.api-health .wo-filter.waiting.on{background:rgba(240,185,77,.23);box-shadow:0 0 16px rgba(240,185,77,.13)}
+.api-health .wo-filter.action.on,.api-health .wo-filter.owner.on{background:rgba(255,116,126,.22);box-shadow:0 0 16px rgba(255,116,126,.13)}
+.api-health .wo-filter.system.on{background:rgba(135,150,166,.20);box-shadow:0 0 16px rgba(135,150,166,.10)}
+.api-health .wo-filter.done.on{background:rgba(85,216,196,.22);box-shadow:0 0 16px rgba(85,216,196,.12)}
+.api-health .work-row.status-working{border-left-color:var(--status-working)}
+.api-health .work-row.status-review,.api-health .work-row.status-waiting,.api-health .work-row.status-verify{border-left-color:var(--status-review)}
+.api-health .work-row.status-queued{border-left-color:var(--status-queued)}
+.api-health .work-row.status-blocked,.api-health .work-row.status-owner_gate{border-left-color:var(--status-blocked)}
+.api-health .work-row.status-done{border-left-color:var(--status-done)}
+.api-health .work-row.status-system{border-left-color:var(--status-system)}
