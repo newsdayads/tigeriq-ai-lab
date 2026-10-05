@@ -930,8 +930,10 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const hasPcOperator=specs.some((spec)=>spec.capability==='pc_operator');
   const openClawTerminalState=hasPcOperator?await loadOpenClawTerminalState(pool):null;
   let skipped=0,externalClaims=0;
+  const createdItems=[];
   const skipReasons={dependency:0,terminalSameRevision:0,activeScope:0,externalClaim:0,existingObjective:0,terminalPcOperator:0,scopeRace:0,other:0};
   for(const spec of specs){
+    if(createdItems.length>=DEFAULT_MATERIALIZE_BATCH)break;
     const dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,{number:spec.number,body:spec.body},openIssueIndex);
     if(!dependencyGate.allow){skipped++;skipReasons.dependency++;continue;}
     if(spec.capability==='pc_operator'){
@@ -1089,7 +1091,8 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
           id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})
         ]);
         await client.query('commit');
-        return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,mobileTaskId:mobile.taskId,cleanedOrphans:cleanup.cleaned};
+        createdItems.push({issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,mobileTaskId:mobile.taskId});
+        continue;
       }catch(error){
         try{await client.query('rollback')}catch{}
         if(String(error?.message||error)==='MOBILE_LIVE_WORKER_UNAVAILABLE'){
@@ -1123,14 +1126,18 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       await pool.query("insert into tigeriq_events(type,objective_id,job_id,task_kind,data) values('GITHUB_API_AUTOWORK_JOB_MATERIALIZED',$1,$2,'github_api_autowork',$3)",[id,jobId,JSON.stringify({issueNumber:spec.number,executionSurface:'CORE_REASONING_COORDINATION',requiresCodingHandoff:spec.requiresCodingHandoff===true})]);
     }
     await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_OBJECTIVE_MATERIALIZED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,issueUrl:spec.url,priority:spec.priority,sourcePriority:spec.sourcePriority,dispatchLane:spec.dispatchLane})]);
-    return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane,cleanedOrphans:cleanup.cleaned};
+    createdItems.push({issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane});
+    continue;
   }
   let idleWorkers=0;
   try{idleWorkers=Number((await pool.query("select count(*)::int as count from tigeriq_ai_resources where enabled=true and current_job_id is null and credential_state in ('LOCAL','READY') and health_state in ('ONLINE','READY')")).rows[0]?.count||0);}catch{}
-  const actionableBacklogCount=Math.max(0,specs.length-skipped);
-  const fault=routingFault({eligibleBacklogCount:actionableBacklogCount,activeWorkCount:activeMetadata.length+externalClaims,eligibleIdleWorkers:idleWorkers});
-  if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped,skipReasons});
-  return {created:0,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,actionableBacklogCount,skipReasons,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault};
+  const created=createdItems.length;
+  const actionableBacklogCount=Math.max(0,specs.length-skipped-created);
+  const activeWorkCount=activeMetadata.length+externalClaims+created;
+  const fault=routingFault({eligibleBacklogCount:actionableBacklogCount,activeWorkCount,eligibleIdleWorkers:idleWorkers});
+  if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped,created,skipReasons});
+  const first=createdItems[0]||{};
+  return {created,createdItems,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,actionableBacklogCount,skipReasons,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault,...(created===1?first:{})};
 }
 
 

@@ -49,8 +49,17 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).toContain('insertGithubObjectiveIfScopeFree');
     expect(source).toContain("pg_advisory_xact_lock(hashtext($1))");
     expect(source).toContain('GITHUB_SAME_REVISION_FALLBACK_REARMED');
-    expect(source).toContain('actionableBacklogCount=Math.max(0,specs.length-skipped)');
+    expect(source).toContain('actionableBacklogCount=Math.max(0,specs.length-skipped-created)');
     expect(source).toContain('eligibleBacklogCount:actionableBacklogCount');
+  });
+
+  it('fills a bounded materialization batch instead of returning after the first created item',()=>{
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(source).toContain('const createdItems=[]');
+    expect(source).toContain('if(createdItems.length>=DEFAULT_MATERIALIZE_BATCH)break');
+    expect(source).toContain('createdItems.push({issueNumber:spec.number,objectiveId:id,dispatchLane:spec.dispatchLane');
+    expect(source).toContain('const created=createdItems.length');
+    expect(source).not.toContain('return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length');
   });
 
 
