@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -32,6 +33,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String KEY_PROJECT_GATE_AT = "projectGateAt";
     public static final String KEY_AUTO_PROJECT_CLICK_AT = "autoProjectClickAt";
     public static final String KEY_AUTO_PROJECT_CLICK_COUNT = "autoProjectClickCount";
+    public static final String KEY_STANDALONE_NEW_CHAT_AT = "standaloneNewChatAt";
 
     private static final int MAX_PROBE_NODES = 500;
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
@@ -65,6 +67,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
                 driveProjectNavigationIfNeeded(current);
                 maybeBindProjectFromStableContext(current);
+                maybeActivateStandaloneFallback(current);
                 ChatGptB1Automation.drive(AccessibilityBridgeService.this, current);
             } else {
                 scheduleB1RecoveryIfNeeded();
@@ -131,6 +134,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             maybeBindRequiredProject(event, root);
             driveProjectNavigationIfNeeded(root);
             maybeBindProjectFromStableContext(root);
+            maybeActivateStandaloneFallback(root);
             ensureB1Ticker();
         }
 
@@ -297,6 +301,41 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             ChatGptB1RunStore.markProjectBound(this);
             resetProjectContextCandidate();
         }
+    }
+
+    private void maybeActivateStandaloneFallback(AccessibilityNodeInfo root) {
+        ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
+        if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state) || root == null) return;
+        if (!ChatGptB1Policy.shouldUseStandaloneFallback(run.startedElapsedAt, SystemClock.elapsedRealtime())) return;
+
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        long newChatAt = prefs.getLong(KEY_STANDALONE_NEW_CHAT_AT, 0L);
+        if (newChatAt < run.startedAt) {
+            AccessibilityNodeInfo newChat = ChatGptB1Automation.findNewChatControl(root);
+            if (newChat == null) {
+                writeProjectDiag("STANDALONE_WAIT_NEW_CHAT", "newChatControl=false");
+                return;
+            }
+            boolean clicked = newChat.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            writeProjectDiag(clicked ? "STANDALONE_NEW_CHAT_CLICK" : "STANDALONE_NEW_CHAT_CLICK_FAILED", "semanticNewChat=true");
+            if (clicked) {
+                prefs.edit().putLong(KEY_STANDALONE_NEW_CHAT_AT, System.currentTimeMillis()).apply();
+                projectNavigationNextActionAt = System.currentTimeMillis() + ChatGptB1Policy.PROJECT_NAV_STEP_MS;
+            }
+            return;
+        }
+
+        if (System.currentTimeMillis() - newChatAt < 1000L) return;
+        AccessibilityNodeInfo composer = ChatGptB1Automation.findComposerInput(root);
+        String composerText = composer == null || composer.getText() == null ? "" : composer.getText().toString().trim();
+        if (composer == null || !composerText.isEmpty()) {
+            writeProjectDiag("STANDALONE_WAIT_COMPOSER", "composer=" + (composer != null) + "; empty=" + composerText.isEmpty());
+            return;
+        }
+
+        writeProjectDiag("STANDALONE_FALLBACK_READY", "freshNewChat=true; composer=true; empty=true");
+        ChatGptB1RunStore.markStandaloneFallbackReady(this);
+        resetProjectContextCandidate();
     }
 
     private void resetProjectContextCandidate() {
