@@ -28,7 +28,7 @@ function Load-Environment {
   $env:PGPASSWORD=([string]$pgLine).Split(':',5)[4]
   $env:TIGERIQ_GITHUB_TOKEN=(Get-Content -Raw 'D:\TigerIQ\Secrets\github-command-center.token').Trim()
   $tail=(tailscale ip -4 2>$null|Select-Object -First 1)
-  $env:TIGERIQ_CODING_HOST=if($tail){[string]$tail}else{'127.0.0.1'}
+  $env:TIGERIQ_CODING_HOST='127.0.0.1'
   $env:TIGERIQ_CODING_PORT='8797'
   $env:TIGERIQ_CODING_AUTO_MERGE='true'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
