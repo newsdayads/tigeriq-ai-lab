@@ -149,14 +149,21 @@ export function parseCoreUiIssue(issue){
   const autonomousCode=yes(body,'AUTONOMOUS_CODE');
   if(!readOnly&&!autonomousCode)return null;
   const classification=classifyWorkOrder(body);
-  if(classification.route!=='UI'||!WORKERS.includes(String(classification.workerId||'')))return null;
+  const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review';
+  if(classification.route!=='UI'&&!coreReviewOverflow)return null;
+  const explicitWorker=String(classification.workerId||'');
+  const implementers=new Set(['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','CODING_EXECUTOR']
+    .map((key)=>String(value(body,key)||'').trim().toUpperCase())
+    .filter((workerId)=>WORKERS.includes(workerId)));
+  const eligibleWorkerIds=(coreReviewOverflow?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
+  if(!eligibleWorkerIds.length)return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
   const number=Number(issue.number);if(!Number.isInteger(number)||number<=0)return null;
   return {
     number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,sourceRevision:coreUiSourceRevision(issue),title:clean(issue.title),url:String(issue.html_url||''),
     priority:classification.priority,sourcePriority:classification.sourcePriority,legacyP0Autonomous:classification.legacyP0Autonomous,
-    ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:classification.workerId,targetRepository,
+    ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:coreReviewOverflow?null:classification.workerId,eligibleWorkerIds,targetRepository,
     readOnly,autonomousCode,body:String(issue.body||'').slice(0,12000),updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0)),
   };
 }
@@ -273,7 +280,7 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
   if(await row(pool,{workerId}))return null;
-  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&x.workerId===workerId).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
+  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
     const prior=await latestCoreUiObjective(pool,spec);
     if(sameCoreUiRevision(prior,spec))continue;
