@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private TextView coreState;
     private TextView aiProbeState;
     private TextView b1StateView;
+    private Button workerControlButton;
     private TextView technicalState;
 
     @Override
@@ -72,7 +73,7 @@ public final class MainActivity extends Activity {
         profileStore = new EmployeeProfileStore(this);
         setContentView(buildScreen());
         requestNotificationPermissionIfNeeded();
-        startWorkerService();
+        if (!WorkerRuntimeControl.isPaused(this)) startWorkerService();
         refreshStatus();
     }
 
@@ -217,6 +218,10 @@ public final class MainActivity extends Activity {
 
         b1StateView = text("", 13, false);
         b1Card.addView(b1StateView, marginParams(0, dp(12), 0, 0));
+
+        workerControlButton = secondaryButton("");
+        workerControlButton.setOnClickListener(v -> toggleWorkerPaused());
+        b1Card.addView(workerControlButton, marginParams(0, dp(12), 0, 0));
         root.addView(b1Card, marginParams(0, dp(6), 0, dp(16)));
 
         root.addView(sectionTitle("Hệ thống"));
@@ -303,6 +308,23 @@ public final class MainActivity extends Activity {
 
         parent.addView(row, marginParams(0, 0, 0, dp(15)));
         return stateView;
+    }
+
+    private void toggleWorkerPaused() {
+        boolean pause = !WorkerRuntimeControl.isPaused(this);
+        if (pause) {
+            WorkerRuntimeControl.pause(this);
+            ChatGptB1RunStore.cancel(this);
+            MobileTaskStore.clear(this);
+            stopService(new Intent(this, ForegroundWorkerService.class));
+            Toast.makeText(this, "Worker đã dừng. Anh có thể dùng máy bình thường.", Toast.LENGTH_LONG).show();
+        } else {
+            WorkerRuntimeControl.resume(this);
+            startWorkerService();
+            syncRuntime(null, false);
+            Toast.makeText(this, "Worker đã tiếp tục.", Toast.LENGTH_SHORT).show();
+        }
+        refreshStatus();
     }
 
     private void startB1Run(int cycles) {
@@ -583,6 +605,13 @@ public final class MainActivity extends Activity {
                 + (WorkerUpdateEngine.lastError(this).isEmpty() ? "" : "\nLỗi update: " + compact(WorkerUpdateEngine.lastError(this), 120))
                 + (lastError == null || lastError.isEmpty() ? "" : "\nLỗi gần nhất: " + compact(lastError, 140))
         );
+        if (workerControlButton != null) {
+            boolean paused = WorkerRuntimeControl.isPaused(this);
+            workerControlButton.setText(paused ? "TIẾP TỤC WORKER" : "DỪNG WORKER");
+            workerControlButton.setTextColor(paused ? BG : TEXT);
+            workerControlButton.setBackground(panelBox(paused ? GREEN : PANEL_2, LINE, 10));
+        }
+
     }
 
     private String firstMissing(
