@@ -44,9 +44,9 @@ function fakePool(){
     if(sql.includes('CORE_UI_ASSIGNMENT_TERMINAL')){events.push({type:'CORE_UI_ASSIGNMENT_TERMINAL',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.startsWith('select prompt from tigeriq_jobs')){const j=jobs.find(x=>x.id===params[0]);return{rowCount:j?1:0,rows:j?[{prompt:j.prompt}]:[]};}
     if(sql.includes("set status='ui_running'")){const j=jobs.find(x=>x.id===params[0]);if(j){j.status='ui_running';j.started_at='2026-09-30T00:01:00Z';}return{rowCount:j?1:0,rows:[]};}
-    if(sql.startsWith("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb")){
-      const j=jobs.find(x=>x.id===params[0]&&x.status==='ui_assigned'&&x.employee_id===params[4]);
-      if(j){j.employee_id=params[1];j.resource_id=params[2];j.routing_decision=JSON.parse(params[3]);}
+    if(sql.startsWith("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb,prompt=$5")){
+      const j=jobs.find(x=>x.id===params[0]&&x.status==='ui_assigned'&&x.employee_id===params[5]);
+      if(j){j.employee_id=params[1];j.resource_id=params[2];j.routing_decision=JSON.parse(params[3]);j.prompt=params[4];}
       return{rowCount:j?1:0,rows:[]};
     }
     if(sql.startsWith("update tigeriq_objectives set metadata=jsonb_set(metadata,'{uiWorkerId}'")){
@@ -539,6 +539,8 @@ test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting
   assert.equal(pool.jobs.length,1,'must preserve the same job');
   assert.equal(pool.objectives.length,1,'must preserve the same objective');
   assert.equal(pool.jobs[0].employee_id,'NV04');
+  assert.match(pool.jobs[0].prompt,/^NV04_ROLE=INDEPENDENT_REVIEW$/m);
+  assert.match(pool.jobs[0].prompt,/^EXACT_INPUT=https:\/\/github\.com\//m);
   assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
   assert.ok(pool.events.some(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER'));
   const afterFirst=pool.jobs[0].employee_id;
