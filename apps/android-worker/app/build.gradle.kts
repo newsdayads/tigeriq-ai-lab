@@ -1,4 +1,4 @@
-plugins { id("com.android.application") }
+﻿plugins { id("com.android.application") }
 
 val stableSigning = mapOf(
     "keystore" to System.getenv("TIGERIQ_ANDROID_KEYSTORE"),
@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.23.0-reboot-worker"
+        versionCode = 24
+        versionName = "0.24.0-pause-resume"
     }
 
     if (stableSigningEnabled) {
