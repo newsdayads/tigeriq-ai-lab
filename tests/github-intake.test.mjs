@@ -528,6 +528,13 @@ test('safe P1-P5 active external role lease is not claimed by Core',async()=>{
   assert.strictEqual(pool.jobs.length,0);
 });
 
+
+test('core_status_read direct action is read-only and strips caller-selected transport inputs',()=>{
+  const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read","url":"http://evil","host":"evil","path":"C:/evil"}',false);
+  assert.strictEqual(parsed.valid,true);
+  assert.deepStrictEqual(parsed.action,{action:'core_status_read'});
+});
+
 test('current CI signer direct action is Owner-only and has no caller-selected inputs',()=>{
   const raw='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_current_ci_artifact"}';
   const denied=parsePcOperatorDirectAction(raw,false);
