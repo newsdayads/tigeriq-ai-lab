@@ -1,6 +1,7 @@
 export const HEALTH_STATES = {
   IDLE_ON_DEMAND: 'IDLE_ON_DEMAND',
   BUSY: 'BUSY',
+  STOPPING: 'STOPPING',
   ERROR: 'ERROR'
 };
 
@@ -60,6 +61,29 @@ export async function nv09ModelAvailability(fetchImpl = fetch) {
   }
 }
 
+
+async function settleNv09AfterAbort(entry,{fetchImpl=fetch,timeoutMs=10000}={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||10000));
+  try{
+    const res=await fetchImpl(`${entry.endpoint}/api/generate`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:entry.model,prompt:'',stream:false,keep_alive:0}),
+      signal:controller.signal
+    });
+    if(!res.ok){
+      const error=new Error(`NV09_SETTLE_HTTP_${res.status}`);
+      error.kind='timeout_settle';
+      throw error;
+    }
+    try{await res.json();}catch{}
+    return {ok:true};
+  }catch(error){
+    return {ok:false,error:String(error?.message||error)};
+  }finally{clearTimeout(timer);}
+}
+
 export async function runBoundedInferenceNv09(prompt, options = {}) {
   const opts = typeof options === 'number' ? { timeoutMs: options } : (options || {});
   const timeoutMs = Math.max(1000, Number(opts.timeoutMs || 120000));
@@ -116,9 +140,13 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
     };
   } catch (error) {
     if (error?.name === 'AbortError') {
-      setModelHealth(NV09_EMPLOYEE_ID, HEALTH_STATES.IDLE_ON_DEMAND);
-      const timeout = new Error(`NV09_INFERENCE_TIMEOUT_${timeoutMs}MS`);
+      setModelHealth(NV09_EMPLOYEE_ID, HEALTH_STATES.STOPPING);
+      const settled=await settleNv09AfterAbort(entry,{fetchImpl,timeoutMs:opts.settleTimeoutMs||10000});
+      setModelHealth(NV09_EMPLOYEE_ID, settled.ok?HEALTH_STATES.IDLE_ON_DEMAND:HEALTH_STATES.ERROR);
+      const timeout = new Error(`NV09_INFERENCE_TIMEOUT_${timeoutMs}MS${settled.ok?'':':SETTLE_FAILED'}`);
       timeout.kind = 'timeout';
+      timeout.settled = settled.ok;
+      if(!settled.ok)timeout.settleError=settled.error;
       throw timeout;
     }
     setModelHealth(NV09_EMPLOYEE_ID, HEALTH_STATES.ERROR);
