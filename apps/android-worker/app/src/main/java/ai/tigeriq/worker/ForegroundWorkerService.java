@@ -44,6 +44,10 @@ public final class ForegroundWorkerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (WorkerRuntimeControl.isPaused(this)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
@@ -59,6 +63,7 @@ public final class ForegroundWorkerService extends Service {
     }
 
     private void heartbeat() {
+        if (WorkerRuntimeControl.isPaused(this)) return;
         try {
             SecureCredentialStore store = new SecureCredentialStore(this);
             if (store.load() == null) {
@@ -79,6 +84,7 @@ public final class ForegroundWorkerService extends Service {
     }
 
     private void taskLoop() {
+        if (WorkerRuntimeControl.isPaused(this)) return;
         try {
             SecureCredentialStore store = new SecureCredentialStore(this);
             if (store.load() == null) return;
@@ -231,6 +237,7 @@ public final class ForegroundWorkerService extends Service {
     }
 
     private void autoUpdate() {
+        if (WorkerRuntimeControl.isPaused(this)) return;
         try {
             ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
             boolean evidencePending = run.terminal() && run.evidenceSeq > run.reportedSeq;
