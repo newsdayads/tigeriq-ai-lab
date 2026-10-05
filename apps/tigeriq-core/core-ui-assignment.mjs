@@ -4,6 +4,8 @@ import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
 const OWNER='newsdayads',REPO='tigeriq-ai-lab';
+const DEFAULT_TARGET_REPOSITORY=OWNER+'/'+REPO;
+const ALLOWED_TARGET_REPOSITORIES=new Set([DEFAULT_TARGET_REPOSITORY.toLowerCase(),'newsdayads/tigeriq-media']);
 const ALL_WORKERS=['NV02','NV03','NV04'];
 const WORKERS=['NV03','NV04'];
 const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
@@ -68,6 +70,15 @@ function targetHeadSha(body=''){
   const raw=String(value(body,'TARGET_HEAD')||'').trim();
   return /^[a-f0-9]{40}$/i.test(raw)?raw.toLowerCase():'';
 }
+
+function resolveCoreUiTargetRepository(body=''){
+  const raw=String(value(body,'TARGET_REPOSITORY')||'').trim();
+  const selected=raw||DEFAULT_TARGET_REPOSITORY;
+  const match=selected.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  if(!match)return {valid:false,reason:'TARGET_REPOSITORY_INVALID',fullName:null,owner:null,repo:null};
+  if(!ALLOWED_TARGET_REPOSITORIES.has(selected.toLowerCase()))return {valid:false,reason:'TARGET_REPOSITORY_NOT_ALLOWED',fullName:null,owner:null,repo:null};
+  return {valid:true,reason:null,fullName:selected,owner:match[1],repo:match[2]};
+}
 function boundedPatchFiles(files=[]){
   let remaining=MAX_EXACT_CONTEXT_PATCH_CHARS;
   const out=[];
@@ -84,25 +95,27 @@ function boundedPatchFiles(files=[]){
 }
 export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,repo=REPO,token='',spec}={}){
   const body=String(spec?.body||'');
+  const targetRepository=spec?.targetRepository?.valid?spec.targetRepository:resolveCoreUiTargetRepository(body);
+  if(!targetRepository.valid)return {required:true,ok:false,reason:targetRepository.reason,targetPr:null,targetHead:null,targetRepository:null};
   const targetPr=targetPrNumber(body);
   const rawTargetHead=String(value(body,'TARGET_HEAD')||'').trim();
   const targetHead=targetHeadSha(body);
-  if(!targetPr&&!rawTargetHead)return {required:false,ok:true,bundle:'',targetPr:null,targetHead:null};
-  if(!targetPr)return {required:true,ok:false,reason:'TARGET_PR_REQUIRED',targetPr:null,targetHead:rawTargetHead||null};
-  if(!targetHead)return {required:true,ok:false,reason:'TARGET_HEAD_REQUIRED_OR_INVALID',targetPr,targetHead:rawTargetHead||null};
+  if(!targetPr&&!rawTargetHead)return {required:false,ok:true,bundle:'',targetPr:null,targetHead:null,targetRepository:targetRepository.fullName};
+  if(!targetPr)return {required:true,ok:false,reason:'TARGET_PR_REQUIRED',targetPr:null,targetHead:rawTargetHead||null,targetRepository:targetRepository.fullName};
+  if(!targetHead)return {required:true,ok:false,reason:'TARGET_HEAD_REQUIRED_OR_INVALID',targetPr,targetHead:rawTargetHead||null,targetRepository:targetRepository.fullName};
   let pr,files;
   try{
-    pr=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/pulls/'+targetPr,token);
+    pr=await gh(fetchImpl,'https://api.github.com/repos/'+targetRepository.owner+'/'+targetRepository.repo+'/pulls/'+targetPr,token);
     const actualHead=String(pr?.head?.sha||'').toLowerCase();
     if(actualHead!==targetHead)return {required:true,ok:false,reason:'TARGET_HEAD_MISMATCH',targetPr,targetHead,actualHead};
-    files=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/pulls/'+targetPr+'/files?per_page=100',token);
+    files=await gh(fetchImpl,'https://api.github.com/repos/'+targetRepository.owner+'/'+targetRepository.repo+'/pulls/'+targetPr+'/files?per_page=100',token);
   }catch(error){
     return {required:true,ok:false,reason:'EXACT_CONTEXT_LOAD_FAILED',targetPr,targetHead,error:String(error?.message||error)};
   }
   const patches=boundedPatchFiles(files);
   const bundle=[
     'EXACT_HEAD_CONTEXT_BEGIN',
-    'REPOSITORY='+owner+'/'+repo,
+    'REPOSITORY='+targetRepository.fullName,
     'TARGET_PR=#'+targetPr,
     'TARGET_HEAD='+targetHead,
     'PR_TITLE='+clean(pr?.title||''),
@@ -117,7 +130,7 @@ export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,re
     ...patches,
     'EXACT_HEAD_CONTEXT_END',
   ].join('\n');
-  return {required:true,ok:true,targetPr,targetHead,bundle,fileCount:patches.length,truncated:Number(pr?.changed_files||0)>patches.length||String(bundle).length>=MAX_EXACT_CONTEXT_PATCH_CHARS};
+  return {required:true,ok:true,targetPr,targetHead,targetRepository:targetRepository.fullName,bundle,fileCount:patches.length,truncated:Number(pr?.changed_files||0)>patches.length||String(bundle).length>=MAX_EXACT_CONTEXT_PATCH_CHARS};
 }
 
 export function selectCoreUiWorker(capability='general'){
@@ -129,6 +142,8 @@ export function parseCoreUiIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   if(!yes(body,'TIGERIQ_EXECUTABLE')||value(body,'OWNER_POLICY')!=='AUTO')return null;
+  const targetRepository=resolveCoreUiTargetRepository(body);
+  if(!targetRepository.valid)return null;
   if(REQUIRED.some(k=>!yes(body,k)))return null;
   const readOnly=yes(body,'NO_CODE_CHANGE');
   const autonomousCode=yes(body,'AUTONOMOUS_CODE');
@@ -141,7 +156,7 @@ export function parseCoreUiIssue(issue){
   return {
     number,jobId:'GH-'+number,workItemId:'CORE-UI-GH-'+number,sourceRevision:coreUiSourceRevision(issue),title:clean(issue.title),url:String(issue.html_url||''),
     priority:classification.priority,sourcePriority:classification.sourcePriority,legacyP0Autonomous:classification.legacyP0Autonomous,
-    ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:classification.workerId,
+    ownerControlled:classification.ownerControlled,capability:classification.capability,resourceScope,workerId:classification.workerId,targetRepository,
     readOnly,autonomousCode,body:String(issue.body||'').slice(0,12000),updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0)),
   };
 }
@@ -267,7 +282,7 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
     if(!exactContext.ok)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
     if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
     const materializedSpec={...spec,jobId:ids.jobId};
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo,exactContext.bundle),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null})]);
