@@ -688,3 +688,26 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
   .api-health .workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .api-health .wo-list,.api-health .work-list{grid-template-columns:1fr!important}
 }
+
+/* #3918 performance-card numeric columns */
+.api-health .side .perf-row{
+  grid-template-columns:42px minmax(64px,1fr) 48px 46px 54px!important;
+  gap:5px!important;
+}
+.api-health .side .perf-provider{min-width:0!important}
+.api-health .side .perf-rate{width:72%!important;max-width:92px}
+.api-health .side .perf-ok,
+.api-health .side .perf-fail,
+.api-health .side .perf-lat{
+  min-width:0;
+  white-space:nowrap;
+  overflow:visible;
+}
+@media(max-width:1799px){
+  .api-health .side .perf-row{
+    grid-template-columns:38px minmax(54px,1fr) 44px 42px 50px!important;
+    gap:4px!important;
+    font-size:9px!important;
+  }
+  .api-health .side .perf-rate{width:62%!important;max-width:72px}
+}
