@@ -1149,6 +1149,57 @@ async function claimJob(){
   }catch(e){await c.query('rollback');throw e}finally{c.release()}
 }
 export function buildLocalFileContext(files=[]){return files.map(file=>`FILE ${file.path}\n${String(file.content??'')}`).join('\n\n---\n\n')}
+export function codingMicroContext(files=[],request='',budgetChars=9000){
+  const list=Array.isArray(files)?files:[];
+  const before=buildLocalFileContext(list);
+  const requestText=String(request||'');
+  const symbols=[...new Set((requestText.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/g)||[])
+    .filter(x=>!/^(const|function|return|export|import|async|await|true|false|null|undefined|current|files|change|review|issue|coding|context|source|branch|tests?)$/i.test(x))
+    .slice(0,24))];
+  const supported=path=>/\.(?:[cm]?[jt]sx?|tsx?)$/i.test(String(path||''));
+  const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  if(!list.length||!symbols.length||list.some(file=>!supported(file.path))){
+    return {context:before,telemetry:{fallbackReason:!list.length?'NO_FILES':!symbols.length?'NO_TARGET_SYMBOL':'UNSUPPORTED_LANGUAGE',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
+  }
+  try{
+    const sliced=[];const selected=[];const edges=[];
+    for(const file of list){
+      const content=String(file.content??'');
+      const fileLines=content.split(/\r?\n/);
+      const hitLines=[];
+      for(let i=0;i<fileLines.length;i++){
+        if(symbols.some(symbol=>new RegExp('\\b'+escapeRegex(symbol)+'\\b').test(fileLines[i])))hitLines.push(i);
+      }
+      if(!hitLines.length){
+        sliced.push({path:file.path,content:'// MICRO_CONTEXT: no directly referenced symbol in this file'});
+        continue;
+      }
+      const ranges=[];
+      for(const line of hitLines.slice(0,12)){
+        const rangeStart=Math.max(0,line-4),rangeEnd=Math.min(fileLines.length,line+9);
+        ranges.push([rangeStart,rangeEnd]);
+      }
+      ranges.sort((a,b)=>a[0]-b[0]);
+      const merged=[];
+      for(const r of ranges){
+        const last=merged[merged.length-1];
+        if(last&&r[0]<=last[1]+1)last[1]=Math.max(last[1],r[1]); else merged.push([...r]);
+      }
+      const chunks=merged.map(([a,b])=>fileLines.slice(a,b).join('\n')).filter(Boolean);
+      const usedSymbols=symbols.filter(symbol=>chunks.some(chunk=>new RegExp('\\b'+escapeRegex(symbol)+'\\b').test(chunk)));
+      selected.push(...usedSymbols);
+      sliced.push({path:file.path,content:chunks.join('\n\n// ... MICRO_CONTEXT GAP ...\n\n')});
+      for(const symbol of usedSymbols)edges.push({path:file.path,symbol,reason:'request-symbol'});
+    }
+    const context=buildLocalFileContext(sliced);
+    if(context.length>=before.length||context.length>Math.max(2000,Number(budgetChars)||9000)){
+      return {context:before,telemetry:{fallbackReason:context.length>=before.length?'NO_REDUCTION':'BUDGET_EXCEEDED',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
+    }
+    return {context,telemetry:{fallbackReason:null,charsBefore:before.length,charsAfter:context.length,symbolsSelected:[...new Set(selected)],dependencyEdges:edges}};
+  }catch{
+    return {context:before,telemetry:{fallbackReason:'SLICE_ERROR',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
+  }
+}
 async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
 async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
 export function partitionGenerationFiles(files=[],maxBatchChars=9000){
@@ -1163,8 +1214,11 @@ export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   flush();
   return batches;
 }
-async function generationContextsFor(paths,ref='main',maxBatchChars=9000,repository=SOURCE_REPOSITORY){
-  return partitionGenerationFiles(await filesFor(paths,ref,repository),maxBatchChars).map(files=>({paths:files.map(x=>x.path),context:buildLocalFileContext(files)}));
+async function generationContextsFor(paths,ref='main',maxBatchChars=9000,repository=SOURCE_REPOSITORY,request=''){
+  return partitionGenerationFiles(await filesFor(paths,ref,repository),maxBatchChars).map(files=>{
+    const micro=codingMicroContext(files,request,maxBatchChars);
+    return {paths:files.map(x=>x.path),context:micro.context,contextTelemetry:micro.telemetry};
+  });
 }
 export function validateCompactEdits(edits,allowedPaths=[]){
   if(!Array.isArray(edits)||edits.length<1||edits.length>12)throw new Error('CODING_COMPACT_EDITS_COUNT_INVALID');
@@ -1235,7 +1289,7 @@ export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCo
 }
 
 async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
-  const batches=await generationContextsFor(j.paths,ref,9000,repository);
+  const batches=await generationContextsFor(j.paths,ref,9000,repository,[canonicalObjective,j.instruction,...issues].filter(Boolean).join('\n'));
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const scopedJob={...j,paths:batch.paths};
@@ -1272,7 +1326,7 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
   throw last||new Error('CODING_COMPACT_PATCH_REFRESH_EXHAUSTED');
 }
 async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
-  const batches=await generationContextsFor(j.paths,ref,9000,repository);
+  const batches=await generationContextsFor(j.paths,ref,9000,repository,[canonicalObjective,j.instruction,...reviewIssues].filter(Boolean).join('\n'));
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
