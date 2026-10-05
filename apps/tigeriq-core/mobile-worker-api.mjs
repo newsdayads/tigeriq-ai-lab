@@ -170,7 +170,33 @@ export function gateCV021Aggregate(rows=[],employeeId=''){
   };
 }
 
-export const LIVE_WORKER_VERSION='0.22.0-live-worker';
+export const LIVE_WORKER_MIN_VERSION='0.22.0';
+
+function parseMobileAgentVersion(value='') {
+  const match=String(value||'').trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  if(!match)return null;
+  return match.slice(1,4).map(Number);
+}
+function compareVersionTriples(left,right) {
+  for(let index=0;index<3;index++){
+    const delta=(left?.[index]??0)-(right?.[index]??0);
+    if(delta!==0)return delta;
+  }
+  return 0;
+}
+export function isLiveWorkerCompatible({agentVersion='',capabilities=[]}={}) {
+  const current=parseMobileAgentVersion(agentVersion);
+  const minimum=parseMobileAgentVersion(LIVE_WORKER_MIN_VERSION);
+  if(!current||!minimum||compareVersionTriples(current,minimum)<0)return false;
+  const caps=new Set(stringList(capabilities).map(item=>item.toLowerCase()));
+  return caps.has('android-ui') && (caps.has('chatgpt-ui') || caps.has('gemini-ui'));
+}
+export function selectCompatibleLiveWorker(rows=[]){
+  return (Array.isArray(rows)?rows:[]).find(row=>isLiveWorkerCompatible({
+    agentVersion:row?.agent_version,
+    capabilities:row?.capabilities,
+  }))||null;
+}
 
 export function liveMobileCompletionToken(seed='') {
   const digest=createHash('sha256').update(String(seed||'')).digest('hex').slice(0,16).toUpperCase();
@@ -217,14 +243,15 @@ export async function enqueueFreshLiveMobileTask(db,{
     };
   }
   const freshness=new Date(new Date(now).getTime()-120_000).toISOString();
-  const target=(await db.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+  const candidates=(await db.query(
+    `select node_id,employee_id,provider,agent_version,capabilities,last_seen_at
        from tigeriq_mobile_devices
-      where revoked=false and agent_version=$1 and last_seen_at>=$2
+      where revoked=false and last_seen_at>=$1
       order by last_seen_at desc,node_id asc
-      limit 1`,
-    [LIVE_WORKER_VERSION,freshness]
-  )).rows[0];
+      limit 50`,
+    [freshness]
+  )).rows;
+  const target=selectCompatibleLiveWorker(candidates);
   if(!target)throw new Error('MOBILE_LIVE_WORKER_UNAVAILABLE');
   const taskId='MT-'+randomToken(12),runId='MR-'+randomToken(12);
   await db.query(
@@ -368,16 +395,16 @@ async function gateCV021Target(pool,{requireFresh=false}={}){
   if(requireFresh&&!online)return {ok:false,error:'gate_c_v021_device_stale'};
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
 }
-async function liveV022Target(pool){
+async function liveCompatibleTarget(pool){
   const result=await pool.query(
-    `select node_id,employee_id,provider,agent_version,last_seen_at
+    `select node_id,employee_id,provider,agent_version,capabilities,last_seen_at
        from tigeriq_mobile_devices
-      where revoked=false and agent_version=$1
-      order by last_seen_at desc nulls last`,
-    [LIVE_WORKER_VERSION]
+      where revoked=false
+      order by last_seen_at desc nulls last,node_id asc
+      limit 50`
   );
-  if(result.rowCount!==1)return {ok:false,error:result.rowCount===0?'mobile_live_v022_device_unavailable':'mobile_live_v022_device_ambiguous'};
-  const row=result.rows[0];
+  const row=selectCompatibleLiveWorker(result.rows);
+  if(!row)return {ok:false,error:'mobile_live_worker_unavailable'};
   const lastSeenAt=row.last_seen_at?new Date(row.last_seen_at).getTime():NaN;
   const online=Number.isFinite(lastSeenAt)&&Date.now()-lastSeenAt<=120_000;
   return {ok:true,row,online,lastSeenAt:Number.isFinite(lastSeenAt)?new Date(lastSeenAt).toISOString():null};
@@ -440,11 +467,12 @@ export function createMobileWorkerApi({pool,event=async()=>{},coreAuthToken=''})
     if(req.method==='GET'&&url.pathname==='/api/mobile/live/v022/status'){
       if(!isLoopbackPeer(req))return send(res,403,{ok:false,error:'loopback_required'});
       if(!verifyCoreEnqueueAuth(req,coreAuthToken))return send(res,401,{ok:false,error:'core_auth_required'});
-      const target=await liveV022Target(pool);
+      const target=await liveCompatibleTarget(pool);
       if(!target.ok)return send(res,409,target);
       return send(res,200,{
-        ok:true,status:'MOBILE_LIVE_V022_STATUS',version:LIVE_WORKER_VERSION,
-        employeeId:String(target.row.employee_id),online:target.online,lastSeenAt:target.lastSeenAt,
+        ok:true,status:'MOBILE_LIVE_COMPATIBLE_STATUS',minimumVersion:LIVE_WORKER_MIN_VERSION,
+        agentVersion:String(target.row.agent_version||''),employeeId:String(target.row.employee_id),
+        online:target.online,lastSeenAt:target.lastSeenAt,
       });
     }
 
