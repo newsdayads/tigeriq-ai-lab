@@ -12,10 +12,11 @@ import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPr
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
-export const GITHUB_RECONCILE_INTERVAL_MS=300000;
+export const GITHUB_RECONCILE_INTERVAL_MS=30000;
 const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
-const DEFAULT_MATERIALIZE_BATCH=Math.max(1,Math.min(20,Number(process.env.TIGERIQ_GITHUB_MATERIALIZE_BATCH||6)));
+export const GITHUB_MATERIALIZE_BATCH_DEFAULT=12;
+const DEFAULT_MATERIALIZE_BATCH=Math.max(1,Math.min(20,Number(process.env.TIGERIQ_GITHUB_MATERIALIZE_BATCH||GITHUB_MATERIALIZE_BATCH_DEFAULT)));
 const MAX_CONTEXT_CHARS=50000;
 const SAFE_PATH_RE=/^[A-Za-z0-9._/-]+\.(?:md|mjs|js|ts|json|ya?ml)$/i;
 const GITHUB_RATE_LIMIT_FALLBACK_MS=60000;
