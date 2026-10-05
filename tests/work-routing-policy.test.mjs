@@ -158,3 +158,13 @@ test('P0 stays Owner-held except explicit Vy read-only review dispatch to NV03/N
     assert.equal(blocked.autonomous,false);
   }
 });
+
+
+test('second opinion routes to NV04 without changing generic NV03 review primary',()=>{
+  let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=second_opinion');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.autonomous,true);
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nREVIEW_SPECIALTY=SECOND_OPINION');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.reviewRoutingReason,'NV04_SECOND_OPINION');
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');
+});
