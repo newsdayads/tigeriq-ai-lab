@@ -803,3 +803,16 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
     align-content:start;
   }
 }
+
+
+/* #3918 exact-height follow-up: keep Work filters in normal flow; only card grid flexes/scrolls. */
+@media(min-width:1450px){
+  .api-health .work-panel{overflow:hidden!important}
+  .api-health .wo-filters{flex:0 0 auto;position:relative;z-index:2}
+  .api-health .work-panel .work-list,.api-health .work-panel .wo-list{
+    flex:1 1 0!important;
+    height:auto!important;
+    overflow-y:auto!important;
+    padding-top:10px!important;
+  }
+}
