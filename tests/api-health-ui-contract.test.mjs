@@ -82,5 +82,11 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('grid-template-columns:repeat(4,minmax(0,1fr))');
     expect(shared).toContain('.api-health .layout{grid-template-columns:minmax(0,3.55fr) minmax(285px,.82fr)');
     expect(shared).toContain('.api-health .side .panel-h h2{font-size:14px}');
+    expect(shared).toContain('/* #3918 window-responsive density pass');
+    expect(shared).toContain('@media(min-width:1450px)');
+    expect(shared).toContain('.api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}');
+    expect(shared).toContain('.api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}');
+    expect(shared).toContain('@media(min-width:1200px) and (max-width:1449px)');
+    expect(shared).toContain('@media(min-width:900px) and (max-width:1199px)');
   });
 });
