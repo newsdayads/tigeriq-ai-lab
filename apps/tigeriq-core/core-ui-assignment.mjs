@@ -233,7 +233,7 @@ async function row(pool,{jobId,workerId}={}){
   const params=[];let where="o.status='active' and o.metadata->>'executionSurface'='CORE_UI' and j.kind='ui' and j.status in ('ui_assigned','ui_running')";
   if(jobId){params.push(jobId);where="j.id=$1 and j.kind='ui'";}
   else if(workerId){params.push(workerId);where+=" and j.employee_id=$1";}
-  const q=await pool.query("select j.id job_id,j.objective_id,j.status,j.employee_id,j.resource_id,j.provider,j.created_at,j.started_at,j.completed_at,j.result,o.priority,o.metadata,o.updated_at objective_updated_at from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where "+where+" order by j.created_at limit 1",params);
+  const q=await pool.query("select j.id job_id,j.objective_id,j.status,j.employee_id,j.resource_id,j.provider,j.created_at,j.started_at,j.completed_at,j.result,j.routing_decision,o.priority,o.metadata,o.updated_at objective_updated_at from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where "+where+" order by j.created_at limit 1",params);
   return q.rows[0]||null;
 }
 
