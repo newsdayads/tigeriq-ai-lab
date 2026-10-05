@@ -107,6 +107,9 @@ export function classifyWorkOrder(body){
   if(surface==='CODING'||cap==='coding'||(exactBodyFlag(text,'AUTONOMOUS_CODE','true')&&!exactBodyFlag(text,'NO_CODE_CHANGE','true'))){
     return {...priority,capability:'coding',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CODING',workerId:null,autonomous:true};
   }
+  if(isNv04SecondOpinion(text,cap)){
+    return nv04SecondOpinionRoute(priority,surface,preferred);
+  }
   if(cap==='review'){
     if(preferred){
       if(UI_ROLE_WORKERS.includes(preferred))return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'UI',workerId:preferred,autonomous:CORE_ROUTED_UI_WORKERS.includes(preferred)};
