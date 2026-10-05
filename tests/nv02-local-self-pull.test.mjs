@@ -445,7 +445,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       state_reason: null,
     };
     const prompt = buildNv02LocalSelfPullPrompt(work, { resourceScope: 'NEWS_REVIEW_GUARD', leaseId: 'lease-review' });
-    expect(prompt).toContain('REVIEW LOOP GUARD');
+    expect(prompt).toContain('REVIEW CANONICAL GUARD');
     expect(prompt).toContain('ĐÚNG 01 Work Order review canonical');
     expect(prompt).toContain('EXECUTION_SURFACE=CORE_REVIEW');
     expect(prompt).toContain('KHÔNG tạo Work Order mới theo từng reviewer');
