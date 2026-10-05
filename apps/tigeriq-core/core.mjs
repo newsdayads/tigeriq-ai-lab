@@ -1249,10 +1249,13 @@ async function runApiDoctorScan(){
     actions.push(row);
   }
   const degraded=actions.filter(x=>!['idle'].includes(x.action));
-  const scanSignature=apiDoctorRepairSignature({employeeId:'SCAN',provider:'core',failureClass:'state',message:degraded.map(x=>`${x.employeeId}:${x.action}:${x.failureClass}`).join(',')});
-  const analysis=degraded.length?await runApiDoctorAnalysisJob(degraded,scanSignature):{skipped:'no_degraded'};
-  await event('API_DOCTOR_SCAN',{employeeId:OLLAMA_EMPLOYEE_ID,resourceId:nv10Resource.resourceId,provider:'ollama',taskKind:'api_doctor',signature:scanSignature,degradedCount:degraded.length,actions,analysis:analysis?.ok===true?'done':analysis?.skipped||'failed'});
-  return {degradedCount:degraded.length,actions,analysis};
+  const analysisCandidates=degraded.filter(x=>!['wait','wait_repair','busy_skip','external_blocked'].includes(x.action));
+  const scanSignature=apiDoctorRepairSignature({employeeId:'SCAN',provider:'core',failureClass:'state',message:analysisCandidates.map(x=>`${x.employeeId}:${x.action}:${x.failureClass}`).join(',')});
+  const analysis=analysisCandidates.length
+    ?await runApiDoctorAnalysisJob(analysisCandidates,scanSignature)
+    :{skipped:degraded.length?'no_actionable_degraded':'no_degraded'};
+  await event('API_DOCTOR_SCAN',{employeeId:OLLAMA_EMPLOYEE_ID,resourceId:nv10Resource.resourceId,provider:'ollama',taskKind:'api_doctor',signature:scanSignature,degradedCount:degraded.length,actionableDegradedCount:analysisCandidates.length,actions,analysis:analysis?.ok===true?'done':analysis?.skipped||'failed'});
+  return {degradedCount:degraded.length,actionableDegradedCount:analysisCandidates.length,actions,analysis};
 }
 async function apiDoctorTelemetry(){
   const last=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_SCAN' order by seq desc limit 1")).rows[0]||null;
