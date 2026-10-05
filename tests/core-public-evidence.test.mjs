@@ -189,4 +189,29 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('must-not-publish');
   });
 
+  it('exports only explicitly requested sanitized API Doctor telemetry fields',()=>{
+    const data={
+      status:'CORE_STATUS_READ',
+      apiDoctor:{
+        lastScanAt:'2026-10-05T07:44:00.000Z',
+        postRepairValidations24h:3,
+        actions:[{employeeId:'NV18',action:'wait_repair_lifecycle',token:'hidden'}],
+        degradedProviders:[{employeeId:'NV19',reason:'cooldown',password:'hidden'}],
+      },
+    };
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'core_status_read',target:'pc01-local',data,
+    }}]}};
+    const requested=['status','lastScanAt','postRepairValidations24h','actions','degradedProviders'];
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS='+requested.join(','))).toEqual(requested);
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({
+      status:'CORE_STATUS_READ',
+      lastScanAt:'2026-10-05T07:44:00.000Z',
+      postRepairValidations24h:3,
+      actions:[{employeeId:'NV18',action:'wait_repair_lifecycle'}],
+      degradedProviders:[{employeeId:'NV19',reason:'cooldown'}],
+    });
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('hidden');
+  });
+
 });

@@ -67,7 +67,13 @@ describe('typed Core status read', () => {
       core:{host:'127.0.0.1',port:8795,pid:123,uptimeSec:456,time:'2026-10-05T07:00:00.000Z'},
       apiDoctor:{lastScanAt:'2026-10-05T07:01:00.000Z',degradedProviders:[{employeeId:'NV18'}],actions:[{employeeId:'NV18',action:'wait_repair_lifecycle'}],postRepairValidations24h:3},
     });
-    expect(calls).toEqual([{url:'http://127.0.0.1:8795/api/status',method:'GET'}]);
+    expect(calls).toEqual([{url:'http://127.0.0.1:8795/api/api-doctor-status',method:'GET'}]);
+  });
+
+  it('Core exposes a lightweight API Doctor status endpoint', async () => {
+    const source=await readFile(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("url.pathname==='/api/api-doctor-status'");
+    expect(source).toContain("apiDoctor:await apiDoctorTelemetry()");
   });
 });
 
