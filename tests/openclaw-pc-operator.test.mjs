@@ -12,6 +12,7 @@ import {
   assertTigerIQLive3150DeployRequest,
   reconcileCancelledCoreUiJob,
   readCoreStatus,
+  readCodingIssueStatus,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -48,6 +49,16 @@ import {
   upgradeLegacyPaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
+
+describe('typed Coding issue status read', () => {
+  it('uses fixed Coding Lane loopback endpoint and numeric issue only', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{calls.push({url:String(url),method:init.method||'GET'});return {ok:true,status:200,async json(){return {objective:{id:'CODEOBJ-1',status:'active',summary:'MICRO_CONTEXT charsBefore=100 charsAfter=40'},job:{id:'CODE-1',status:'done',implementer:'NV17',reviewer:'NV11',prNumber:123,headSha:'a'.repeat(40),resultSummary:'MICRO_CONTEXT charsBefore=100 charsAfter=40'}};}}};
+    const out=await readCodingIssueStatus({issueNumber:4190},{fetchImpl});
+    expect(out).toMatchObject({status:'CODING_ISSUE_STATUS_READ',issueNumber:4190,objectiveId:'CODEOBJ-1',jobId:'CODE-1',implementer:'NV17',reviewer:'NV11',prNumber:123});
+    expect(calls).toEqual([{url:'http://127.0.0.1:8797/api/issue-status?issue=4190',method:'GET'}]);
+  });
+});
 
 describe('typed Core status read', () => {
   const response=(body,status=200)=>({ok:status>=200&&status<300,status,async json(){return body;}});
