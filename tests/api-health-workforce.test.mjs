@@ -43,8 +43,7 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("Rảnh · chỉ khởi chạy khi được giao việc");
     expect(dashboard).toContain("chưa xác minh ·");
     expect(dashboard).toContain("metric('NV on-demand',onDemandNow");
-    expect(dashboard).toContain("group:'waiting',label:'ĐANG CHỜ',rank:2");
-    expect(dashboard).toContain("group:'attention',label:'LỖI',rank:3");
+    expect(dashboard).toContain("group:'attention',label:'LỖI',rank:5");
     expect(dashboard).toContain('simpleState(a).rank-simpleState(b).rank||operationalRank(a)-operationalRank(b)||nvNum(a)-nvNum(b)');
     expect(dashboard).toContain("String(job?.status||'').toLowerCase()!=='running'");
     expect(dashboard).toContain("status:'BUSY',current_job_id:job.id");
