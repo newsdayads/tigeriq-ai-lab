@@ -1214,6 +1214,15 @@ export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   flush();
   return batches;
 }
+export function formatMicroContextTelemetry(telemetry={}){
+  const charsBefore=Math.max(0,Number(telemetry?.charsBefore)||0);
+  const charsAfter=Math.max(0,Number(telemetry?.charsAfter)||0);
+  const fallbackReason=telemetry?.fallbackReason==null?'NONE':String(telemetry.fallbackReason).slice(0,80).replace(/[^A-Z0-9_:-]/gi,'_');
+  const symbols=Array.isArray(telemetry?.symbolsSelected)?telemetry.symbolsSelected.length:0;
+  const edges=Array.isArray(telemetry?.dependencyEdges)?telemetry.dependencyEdges.length:0;
+  return `MICRO_CONTEXT charsBefore=${charsBefore} charsAfter=${charsAfter} fallback=${fallbackReason} symbols=${symbols} edges=${edges}`;
+}
+
 async function generationContextsFor(paths,ref='main',maxBatchChars=9000,repository=SOURCE_REPOSITORY,request=''){
   return partitionGenerationFiles(await filesFor(paths,ref,repository),maxBatchChars).map(files=>{
     const micro=codingMicroContext(files,request,maxBatchChars);
@@ -1296,6 +1305,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
     const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext);
     const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
     selected=invoked.resource;
+    summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
@@ -1332,6 +1342,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
     const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
     selected=invoked.resource;
+    summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
