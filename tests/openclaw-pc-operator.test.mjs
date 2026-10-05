@@ -59,6 +59,19 @@ describe('typed Coding issue status read', () => {
     expect(out).toMatchObject({status:'CODING_ISSUE_STATUS_READ',issueNumber:4190,objectiveId:'CODEOBJ-1',jobId:'CODE-1',implementer:'NV17',reviewer:'NV11',prNumber:123});
     expect(calls).toEqual([{url:'http://127.0.0.1:8797/api/issue-status?issue=4190',method:'GET'}]);
   });
+
+  it('keeps bounded local JSON transport closed to arbitrary loopback ports', async () => {
+    await expect(readCodingIssueStatus({issueNumber:4190},{
+      fetchImpl:async(url)=>{
+        expect(String(url)).toBe('http://127.0.0.1:8797/api/issue-status?issue=4190');
+        return {ok:true,status:200,async json(){return {objective:{id:'CODEOBJ-1',status:'active'},job:{id:'CODE-1',status:'done'}};}};
+      },
+    })).resolves.toMatchObject({status:'CODING_ISSUE_STATUS_READ',issueNumber:4190});
+
+    const source=await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
+    expect(source).toContain("if(![8795,8797,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');");
+    expect(source).not.toContain('[8795,8796,8797,8798]');
+  });
 });
 
 describe('typed Core status read', () => {
