@@ -1,8 +1,8 @@
 # TIGERIQ — UNIFIED SOURCE LOADER
-Version: 1.9
+Version: 2.0
 Status: Bootstrap Entry Point
 Priority: P0
-Updated: 2026-10-02
+Updated: 2026-10-05
 
 ## PREBOOT HARD COMMAND — OWNER AUTHORITY
 - `LÀM APP CHROME` is the primary hard command. Aliases `APP CHROME`, `APPCHROME`, and legacy `AC` are supported. Matching is trimmed and case-insensitive. The command MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
@@ -68,6 +68,16 @@ STATE=OWNER_INTERACTION_HARD_LOAD_V1
 - Mapping cố định: `✅=HOÀN TẤT`, `⚙️=ĐANG XỬ LÝ`, `⏳=ĐANG CHỜ`, `⚠️=LỖI/CẦN CHÚ Ý`, `🔒=CẦN OWNER`, `💡=GỢI Ý`, `📌=ĐIỂM CHÍNH`, `➡️=BƯỚC TIẾP THEO`.
 - Guard này áp dụng cho direct chat và NEW CHAT ngay cả khi nội dung đã đúng tiếng Việt; không được dựa vào model habit/memory.
 STATE=DIRECT_CHAT_ICON_GUARD_V1
+
+## DIRECT CHAT PRE-SEND VALIDATOR V2 — FAIL CLOSED XUYÊN MỌI CHAT
+- Áp dụng cho MỌI phản hồi hiển thị trực tiếp cho anh Sơn, gồm chat hiện tại, NEW CHAT, chat khác trong Project, báo cáo, lưu/checkpoint, bàn giao và phản hồi sau tool.
+- Trước khi gửi phải kiểm tra bản nháp cuối theo 2 invariant bắt buộc:
+  1. **Tiếng Việt trước:** không để từ vận hành tiếng Anh thông thường lọt ra khi có từ tiếng Việt tương đương. Các từ như `review`, `merge`, `runtime`, `deploy`, `blocker`, `pending`, `active`, `queued`, `ready`, `failed`, `exact-head`, `save_not_durable` phải được dịch trong prose Owner-facing. Chỉ được giữ nguyên literal kỹ thuật trong code/log/URL/tên file/tên nhánh/biến/trạng thái máy khi thật sự cần.
+  2. **Tham chiếu việc đầy đủ:** mọi Work Order/Issue phải là `#<số> - <tiêu đề chuẩn>`. Không gửi bare `#<số>`. Khi nhắc PR gắn với một việc, dùng `PR #<số> - <tên việc liên quan>`; không gửi bare `PR #<số>`.
+- Nếu draft vi phạm, **KHÔNG ĐƯỢC GỬI**. Phải tự viết lại rồi kiểm tra lần nữa. Đây là fail-closed pre-send gate, không phải guideline.
+- Khi chưa biết tiêu đề chuẩn của `#<số>`, phải đọc GitHub để resolve trước khi gửi; không được đoán hoặc bỏ tên.
+- Không được viện lý do chat khác, phiên mới, context ngắn, memory, model habit hoặc tool output để bỏ qua validator.
+STATE=DIRECT_CHAT_PRE_SEND_VALIDATOR_V2
 
 ## Dynamic Source of Truth — đọc khi task phụ thuộc trạng thái hiện hành
 1. `docs/CURRENT_STATE.md`
