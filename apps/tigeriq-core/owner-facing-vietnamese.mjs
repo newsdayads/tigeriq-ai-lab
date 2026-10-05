@@ -219,6 +219,6 @@ export function validateOwnerFacingOutput({ text = '', progress = null, evidence
   if (containsUnapprovedOwnerIcon(value)) defects.push('UNAPPROVED_ICON');
   if (hasPercent && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
   if (evidenceFresh === false && hasPercent) defects.push('STALE_PROGRESS_VISIBLE');
-  if (hasOwnerWorkReference(value) && canonicalRefsResolved !== true) defects.push('UNRESOLVED_WORK_REFERENCE');
+  if (canonicalRefsResolved === false || (hasOwnerWorkReference(value) && canonicalRefsResolved !== true)) defects.push('UNRESOLVED_WORK_REFERENCE');
   return { ok: defects.length === 0, defects };
 }
