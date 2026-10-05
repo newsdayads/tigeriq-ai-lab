@@ -12,7 +12,7 @@ function response(value,status=200){return{ok:status>=200&&status<300,status,jso
 
 function fakePool(){
   const objectives=[],jobs=[],events=[];let terminalLock=Promise.resolve();
-  const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
+  const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,routing_decision:j.routing_decision,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
   const pool={objectives,jobs,events,async connect(){
     let unlock=()=>{};
     return {
