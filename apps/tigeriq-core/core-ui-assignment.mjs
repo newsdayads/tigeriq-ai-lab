@@ -135,7 +135,7 @@ export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,re
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
-  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research')?'NV04':null;
+  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
 }
 
 export function parseCoreUiIssue(issue){
@@ -166,7 +166,8 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
   const body='WORK_ORDER_BODY_BEGIN\n'+String(spec.body||'').slice(0,12000)+'\nWORK_ORDER_BODY_END';
   const context=String(exactContext||'').trim();
   if(spec.workerId==='NV04'){
-    const role=String(spec.capability||'').toLowerCase()==='review'?'INDEPENDENT_REVIEW':'DEEP_RESEARCH';
+    const cap=String(spec.capability||'').toLowerCase();
+    const role=cap==='second_opinion'?'SECOND_OPINION':cap==='review'?'INDEPENDENT_REVIEW':'DEEP_RESEARCH';
     return [
       guard,
       'NV04_ROLE='+role,

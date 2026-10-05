@@ -445,3 +445,17 @@ test('Core UI admits only explicitly dispatched P0 read-only review for NV03/NV0
   assert.equal(parseCoreUiIssue(issue(39054,[...base,'OWNER_REVIEWER=NV11'].join('\n'),'P0 invalid reviewer')),null);
   assert.equal(parseCoreUiIssue(issue(39055,[...base.filter(line=>line!=='NO_SECURITY_BOUNDARY_CHANGE=true'),'OWNER_REVIEWER=NV03'].join('\n'),'P0 missing safety')),null);
 });
+
+test('Core UI routes NV04 second-opinion assignments and emits the dedicated role',()=>{
+  let x=parseCoreUiIssue(issue(29101,safe(['CAPABILITY=second_opinion']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=SECOND_OPINION_CANARY'),'Second opinion canary'));
+  assert.equal(x.workerId,'NV04');assert.equal(x.capability,'second_opinion');
+  assert.equal(selectCoreUiWorker('second_opinion'),'NV04');
+  let prompt=buildCoreUiPrompt(x);
+  assert.match(prompt,/NV04_ROLE=SECOND_OPINION/);
+  assert.match(prompt,/MUTATION_ALLOWED=false/);
+
+  x=parseCoreUiIssue(issue(29102,safe(['CAPABILITY=review','REVIEW_SPECIALTY=FACT_CHECK']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=FACT_CHECK_CANARY'),'Fact check canary'));
+  assert.equal(x.workerId,'NV04');assert.equal(x.capability,'second_opinion');
+  prompt=buildCoreUiPrompt(x);
+  assert.match(prompt,/NV04_ROLE=SECOND_OPINION/);
+});

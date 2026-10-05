@@ -17,6 +17,18 @@ function capability(body){
 
 export function preferredEmployee(body){return employee(bodyValue(body,'PREFERRED_REVIEWER'));}
 
+function isNv04SecondOpinion(body,cap=''){
+  const text=String(body||'');
+  const capabilityName=String(cap||'').trim().toLowerCase();
+  const mode=String(bodyValue(text,'REVIEW_MODE')||'').trim().toUpperCase();
+  const specialty=String(bodyValue(text,'REVIEW_SPECIALTY')||'').trim().toUpperCase();
+  return capabilityName==='second_opinion'||exactBodyFlag(text,'SECOND_OPINION','true')||mode==='SECOND_OPINION'||['SECOND_OPINION','FACT_CHECK','EVIDENCE_REVIEW','RESEARCH_VALIDATION'].includes(specialty);
+}
+
+function nv04SecondOpinionRoute(priority,surface,requestedReviewer=''){
+  return {...priority,capability:'second_opinion',surface:surface||'CORE_UI_REVIEW',assignedExecutor:'',preferredEmployee:'NV04',route:'UI',workerId:'NV04',autonomous:true,requestedReviewer:employee(requestedReviewer)||null,reviewRoutingReason:'NV04_SECOND_OPINION'};
+}
+
 function reviewSpecialistRoute(body,workerId){
   const id=employee(workerId);
   if(!id)return {allowed:false,reason:'REVIEWER_INVALID'};
@@ -94,6 +106,9 @@ export function classifyWorkOrder(body){
   if(cap==='pc_operator')return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'OPENCLAW',workerId:'NV06',autonomous:true};
   if(surface==='CODING'||cap==='coding'||(exactBodyFlag(text,'AUTONOMOUS_CODE','true')&&!exactBodyFlag(text,'NO_CODE_CHANGE','true'))){
     return {...priority,capability:'coding',surface,assignedExecutor:'',preferredEmployee:preferred,route:'CODING',workerId:null,autonomous:true};
+  }
+  if(isNv04SecondOpinion(text,cap)){
+    return nv04SecondOpinionRoute(priority,surface,preferred);
   }
   if(cap==='review'){
     if(preferred){
