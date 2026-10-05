@@ -84,6 +84,34 @@ export function containsBareEnglishOwnerStatus(value = '') {
   return /\b(?:PASS|DONE|COMPLETED|WORKING|RUNNING|READY|QUEUED|WAITING|WAIT_RESOURCE|BLOCKED|FAILED|ERROR|EXTERNAL_WAIT|OWNER_GATE|OWNER_APPROVAL_REQUIRED|READY_FOR_OWNER_APPROVAL)\b/.test(text);
 }
 
+
+function stripOwnerTechnicalLiterals(value = '') {
+  return String(value || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]+`/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ');
+}
+
+export function containsBareOwnerWorkReference(value = '') {
+  const text = stripOwnerTechnicalLiterals(value);
+  return /(^|[^\w/])#\d+\b(?!\s*-\s*\S)/m.test(text);
+}
+
+export function containsBareOwnerPrReference(value = '') {
+  const text = stripOwnerTechnicalLiterals(value);
+  return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
+}
+
+export function containsOwnerFacingEnglishOperationalProse(value = '') {
+  const text = stripOwnerTechnicalLiterals(value);
+  return /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable)\b/i.test(text);
+}
+
+function hasOwnerWorkReference(value = '') {
+  const text = stripOwnerTechnicalLiterals(value);
+  return /(^|[^\w/])#\d+\b|\bPR\s+#\d+\b/im.test(text);
+}
+
 export const OWNER_STATUS_LABELS = STATUS_LABELS;
 
 
@@ -180,14 +208,17 @@ export function ownerFacingPresentation({ status = '', result = '', blocker = ''
   };
 }
 
-export function validateOwnerFacingOutput({ text = '', progress = null, evidenceFresh = true, canonicalRefsResolved = true } = {}) {
+export function validateOwnerFacingOutput({ text = '', progress = null, evidenceFresh = true, canonicalRefsResolved = null } = {}) {
   const defects = [];
   const value = String(text || '');
   const hasPercent = value.includes('%') && /\d/.test(value);
   if (containsBareEnglishOwnerStatus(value)) defects.push('BARE_ENGLISH_STATUS');
+  if (containsOwnerFacingEnglishOperationalProse(value)) defects.push('ENGLISH_OPERATIONAL_PROSE');
+  if (containsBareOwnerWorkReference(value)) defects.push('BARE_WORK_REFERENCE');
+  if (containsBareOwnerPrReference(value)) defects.push('BARE_PR_REFERENCE');
   if (containsUnapprovedOwnerIcon(value)) defects.push('UNAPPROVED_ICON');
   if (hasPercent && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
   if (evidenceFresh === false && hasPercent) defects.push('STALE_PROGRESS_VISIBLE');
-  if (canonicalRefsResolved === false) defects.push('UNRESOLVED_WORK_REFERENCE');
+  if (canonicalRefsResolved === false || (hasOwnerWorkReference(value) && canonicalRefsResolved !== true)) defects.push('UNRESOLVED_WORK_REFERENCE');
   return { ok: defects.length === 0, defects };
 }

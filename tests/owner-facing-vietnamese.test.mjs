@@ -12,6 +12,9 @@ import {
   containsUnapprovedOwnerIcon,
   OWNER_ALLOWED_ICONS,
   OWNER_SURFACE_REGISTRY,
+  containsBareOwnerWorkReference,
+  containsBareOwnerPrReference,
+  containsOwnerFacingEnglishOperationalProse,
 } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
 import { formatResultComment } from '../apps/tigeriq-core/github-intake.mjs';
 import {
@@ -260,6 +263,35 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(loader).toContain('DIRECT CHAT PRE-SEND ICON GUARD V1');
     expect(loader).toContain('✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️');
     expect(loader).toContain('🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫');
+  });
+
+  it('fails closed on English operational prose and bare work references across direct chat', () => {
+    expect(containsOwnerFacingEnglishOperationalProse('Đang review rồi merge sau')).toBe(true);
+    expect(containsOwnerFacingEnglishOperationalProse('Đang rà soát rồi hợp nhất sau')).toBe(false);
+    expect(containsOwnerFacingEnglishOperationalProse('đã pass nhưng chưa done')).toBe(true);
+    expect(containsOwnerFacingEnglishOperationalProse('Giữ nguyên `SAVE_NOT_DURABLE` trong log kỹ thuật')).toBe(false);
+
+    expect(containsBareOwnerWorkReference('Đang xử lý #4129')).toBe(true);
+    expect(containsBareOwnerWorkReference('Đang xử lý #4129 - Chặn cứng tiếng Anh')).toBe(false);
+    expect(containsBareOwnerPrReference('PR #4130 đang chờ')).toBe(true);
+    expect(containsBareOwnerPrReference('PR #4130 - Chặn cứng tiếng Anh')).toBe(false);
+
+    expect(validateOwnerFacingOutput({ text: 'Đang review #4129 rồi merge PR #4130' }).defects)
+      .toEqual(expect.arrayContaining(['ENGLISH_OPERATIONAL_PROSE', 'BARE_WORK_REFERENCE', 'BARE_PR_REFERENCE']));
+    expect(validateOwnerFacingOutput({
+      text: '#4129 - Chặn cứng tiếng Anh đang được rà soát; PR #4130 - Chặn cứng tiếng Anh',
+      canonicalRefsResolved: true,
+    })).toMatchObject({ ok: true, defects: [] });
+    expect(validateOwnerFacingOutput({
+      text: '#4129 - sai-tieu-de',
+    }).defects).toContain('UNRESOLVED_WORK_REFERENCE');
+
+    const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
+    const workflow = readFileSync(new URL('../bootstrap/02_TIGERIQ_WORKFLOW.md', import.meta.url), 'utf8');
+    expect(loader).toContain('DIRECT CHAT PRE-SEND VALIDATOR V2');
+    expect(loader).toContain('KHÔNG ĐƯỢC GỬI');
+    expect(workflow).toContain('Cổng kiểm tra trước khi gửi — bắt buộc xuyên mọi chat');
+    expect(workflow).toContain('#<số> - <tiêu đề chuẩn>');
   });
 
   it('fails closed on guessed/stale progress and bare machine status', () => {
