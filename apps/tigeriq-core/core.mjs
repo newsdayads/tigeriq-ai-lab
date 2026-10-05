@@ -2474,22 +2474,34 @@ async function materializeAutonomousRca({store=pool}={}){
   for(const rca of rcas){
     const mode=rca.hardGate?'OWNER_EXCEPTION':(!rca.selfFixable?'OBSERVE_ONLY':'WORK_ORDER');
     const priorType=mode==='OWNER_EXCEPTION'?'AUTONOMOUS_RCA_OWNER_EXCEPTION':mode==='OBSERVE_ONLY'?'AUTONOMOUS_RCA_OBSERVE_ONLY':'AUTONOMOUS_RCA_WORK_ORDER';
-    const prior=(await store.query(`select type,data from tigeriq_events
-      where type=$1 and data->>'rcaSignature'=$2 order by seq desc limit 1`,[priorType,rca.rcaSignature])).rows?.[0]||null;
-    let priorIssueState='unknown';
-    if(priorType==='AUTONOMOUS_RCA_WORK_ORDER'&&prior){
-      priorIssueState=await githubAutonomousRcaIssueState(prior.data?.issueNumber);
-    }
+    const priorRows=(await store.query(`select type,data from tigeriq_events
+      where type=$1 and (
+        data->>'rcaFamilyKey'=$2
+        or (
+          coalesce(data->>'rcaFamilyKey','')=''
+          and data#>>'{provenance,contractId}'=$3
+          and data->>'class'=$4
+          and coalesce(nullif(data->>'affectedScope',''),$3)=$5
+        )
+      )
+      order by seq desc limit 20`,[priorType,rca.rcaFamilyKey,rca.contractId,rca.class,rca.affectedScope])).rows||[];
+    let prior=null,priorIssueState='unknown';
+    if(priorType==='AUTONOMOUS_RCA_WORK_ORDER'){
+      for(const candidate of priorRows){
+        const state=await githubAutonomousRcaIssueState(candidate.data?.issueNumber);
+        if(state!=='closed'){prior=candidate;priorIssueState=state;break;}
+      }
+    }else prior=priorRows[0]||null;
     if(autonomousRcaMaterializationDedupe({mode,priorType:prior?.type,priorIssueState})){deduped++;continue;}
     if(rca.hardGate){
       const exception=buildOwnerException(rca);
-      await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,confidence:rca.confidence,provenance:rca.provenance});
+      await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,affectedScope:rca.affectedScope,confidence:rca.confidence,provenance:rca.provenance});
       ownerExceptions++;continue;
     }
     if(!rca.selfFixable){
       await event('AUTONOMOUS_RCA_OBSERVE_ONLY',{
-        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
-        confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+        affectedScope:rca.affectedScope,confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
         reason:'NO_SAFE_AUTOMATIC_MUTATION',
       });
       observeOnly++;continue;
@@ -2498,16 +2510,16 @@ async function materializeAutonomousRca({store=pool}={}){
       const spec=buildImprovementWorkOrder(rca);
       const issue=await githubCreateAutonomousRcaIssue(spec);
       await event('AUTONOMOUS_RCA_WORK_ORDER',{
-        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
-        confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+        affectedScope:rca.affectedScope,confidence:rca.confidence,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
         issueNumber:Number(issue?.number)||null,issueUrl:String(issue?.html_url||''),resourceScope:spec.resourceScope,
       });
       workOrders++;
     }catch(error){
       blocked++;
       await event('AUTONOMOUS_RCA_MATERIALIZATION_BLOCKED',{
-        rcaSignature:rca.rcaSignature,anomalySignature:rca.anomalySignature,class:rca.class,
-        reason:String(error?.code||error?.message||error).slice(0,240),
+        rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+        affectedScope:rca.affectedScope,reason:String(error?.code||error?.message||error).slice(0,240),
       });
     }
   }
