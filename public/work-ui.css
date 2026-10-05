@@ -773,3 +773,19 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 .api-health .work-row.status-blocked,.api-health .work-row.status-owner_gate{border-left-color:var(--status-blocked)}
 .api-health .work-row.status-done{border-left-color:var(--status-done)}
 .api-health .work-row.status-system{border-left-color:var(--status-system)}
+
+
+/* #3918 Work list viewport: show two rows, then scroll internally to keep the right rail visually balanced. */
+.api-health .work-list,.api-health .wo-list{
+  max-height:calc((152px * 2) + 24px)!important;
+  overflow-y:auto!important;
+  align-content:start;
+  scrollbar-width:thin;
+  scrollbar-color:#286a9d #07182b;
+}
+.api-health .work-list::-webkit-scrollbar,.api-health .wo-list::-webkit-scrollbar{width:9px}
+.api-health .work-list::-webkit-scrollbar-track,.api-health .wo-list::-webkit-scrollbar-track{background:#07182b;border-radius:999px}
+.api-health .work-list::-webkit-scrollbar-thumb,.api-health .wo-list::-webkit-scrollbar-thumb{background:#286a9d;border-radius:999px;border:2px solid #07182b}
+@media(min-width:1450px){
+  .api-health .work-list,.api-health .wo-list{max-height:calc((152px * 2) + 24px)!important}
+}
