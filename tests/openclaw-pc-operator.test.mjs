@@ -11,6 +11,7 @@ import {
   androidReleaseBuildFailureClass,
   assertTigerIQLive3150DeployRequest,
   reconcileCancelledCoreUiJob,
+  readCoreStatus,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -46,6 +47,29 @@ import {
   validatePaperclipLabEnvText,
   upgradeLegacyPaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+
+
+describe('typed Core status read', () => {
+  const response=(body,status=200)=>({ok:status>=200&&status<300,status,async json(){return body;}});
+
+  it('reads only fixed loopback Core status and returns sanitized telemetry', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      calls.push({url:String(url),method:init.method||'GET'});
+      return response({
+        core:{host:'127.0.0.1',port:8795,pid:123,uptimeSec:456,time:'2026-10-05T07:00:00.000Z',secret:'drop'},
+        apiDoctor:{lastScanAt:'2026-10-05T07:01:00.000Z',degradedProviders:[{employeeId:'NV18'}],actions:[{employeeId:'NV18',action:'wait_repair_lifecycle'}],postRepairValidations24h:3,hidden:'drop'},
+        resources:[{sensitive:'drop'}],
+      });
+    };
+    await expect(readCoreStatus({fetchImpl})).resolves.toEqual({
+      status:'CORE_STATUS_READ',
+      core:{host:'127.0.0.1',port:8795,pid:123,uptimeSec:456,time:'2026-10-05T07:00:00.000Z'},
+      apiDoctor:{lastScanAt:'2026-10-05T07:01:00.000Z',degradedProviders:[{employeeId:'NV18'}],actions:[{employeeId:'NV18',action:'wait_repair_lifecycle'}],postRepairValidations24h:3},
+    });
+    expect(calls).toEqual([{url:'http://127.0.0.1:8795/api/status',method:'GET'}]);
+  });
+});
 
 describe('bounded Core UI cancelled-ledger reconcile', () => {
   const response=(body,status=200)=>({
