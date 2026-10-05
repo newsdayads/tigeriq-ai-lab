@@ -30,6 +30,10 @@ function reviewSpecialistRoute(body,workerId){
   return {allowed:false,reason:'GENERIC_REVIEW_NV03_PRIMARY'};
 }
 
+function nv04SecondOpinionRoute(priority,surface){
+  return {...priority,capability:'second_opinion',surface,assignedExecutor:'',preferredEmployee:'NV04',route:'UI',workerId:'NV04',autonomous:true,reviewRoutingReason:'NV04_SECOND_OPINION'};
+}
+
 function primaryReviewRoute(priority,cap,requestedReviewer=''){
   return {
     ...priority,
@@ -102,7 +106,12 @@ export function classifyWorkOrder(body){
       if(specialist.allowed)return {...priority,capability:cap,surface,assignedExecutor:'',preferredEmployee:preferred,route:'CORE_REVIEW',workerId:preferred,autonomous:true,reviewRoutingReason:specialist.reason};
       return primaryReviewRoute(priority,cap,preferred);
     }
+    const specialty=String(bodyValue(text,'REVIEW_SPECIALTY')||'').trim().toUpperCase();
+    if(specialty==='SECOND_OPINION')return nv04SecondOpinionRoute(priority,surface);
     return primaryReviewRoute(priority,cap);
+  }
+  if(['second_opinion','second-opinion','second opinion'].includes(cap)){
+    return {...priority,capability:'second_opinion',surface,assignedExecutor:'',preferredEmployee:'NV04',route:'UI',workerId:'NV04',autonomous:true,reviewRoutingReason:'NV04_SECOND_OPINION'};
   }
   if(cap==='research'||cap==='deep_research'||surface==='RESEARCH'){
     if(preferred){
