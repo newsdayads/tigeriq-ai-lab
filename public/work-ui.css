@@ -789,3 +789,17 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 @media(min-width:1450px){
   .api-health .work-list,.api-health .wo-list{max-height:calc((152px * 2) + 24px)!important}
 }
+
+
+/* #3918 vertical balance: Work panel bottom aligns with Current Alerts panel bottom at desktop widths. */
+@media(min-width:1450px){
+  .api-health .layout{align-items:stretch}
+  .api-health .work-panel{height:100%;display:flex;flex-direction:column;min-height:0}
+  .api-health .work-panel .work-list,.api-health .work-panel .wo-list{
+    flex:1 1 auto;
+    max-height:none!important;
+    min-height:0;
+    overflow-y:auto!important;
+    align-content:start;
+  }
+}
