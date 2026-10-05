@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "source": {
+    "project": "pbakaus/impeccable",
+    "commit": "ece38d9904b8a619b3f77cab476eacad09c4fb11",
+    "license": "Apache-2.0",
+    "adaptation": "concept/rule delta only; no framework/package copied"
+  },
+  "rules": [
+    {
+      "id": "gradient-text",
+      "tier": "immediate",
+      "severity": "hard",
+      "finding": "Gradient-filled text is used as decorative emphasis.",
+      "rationale": "Mechanical AI-design tell with legibility/theming risk; solid text color preserves hierarchy without decorative fill.",
+      "trigger": {
+        "all": [
+          {
+            "property": "background-image",
+            "matches": "(?:linear|radial|conic)-gradient\\("
+          },
+          {
+            "property": "background-clip",
+            "matches": "text"
+          }
+        ]
+      },
+      "falsePositiveGuards": [
+        "Do not flag non-text decorative surfaces.",
+        "Do not flag when background-clip is not text."
+      ],
+      "evidenceKind": "style"
+    },
+    {
+      "id": "glow-shadow",
+      "tier": "immediate",
+      "severity": "advisory",
+      "finding": "Large blurred chromatic glow is used as default surface decoration.",
+      "rationale": "Unbounded glow often creates design-system drift and can reduce visual clarity; purposeful state/status glows remain allowed.",
+      "trigger": {
+        "any": [
+          {
+            "property": "box-shadow",
+            "matches": "0\\s+0\\s+(?:[2-9]\\d|\\d{3,})px"
+          },
+          {
+            "property": "filter",
+            "matches": "drop-shadow\\([^)]*(?:[2-9]\\d|\\d{3,})px"
+          }
+        ]
+      },
+      "falsePositiveGuards": [
+        "Allow tiny status/live indicators documented by DESIGN.md.",
+        "Allow focus/accessibility rings and transient interaction feedback.",
+        "Advisory only unless approved design evidence explicitly forbids glow."
+      ],
+      "evidenceKind": "style"
+    },
+    {
+      "id": "side-tab",
+      "tier": "immediate",
+      "severity": "advisory",
+      "finding": "A narrow chromatic stripe is used as a decorative card/list side tab.",
+      "rationale": "Decorative side stripes are a recurring generic UI shortcut and should not replace product-specific hierarchy.",
+      "trigger": {
+        "geometry": {
+          "widthMinPx": 2,
+          "widthMaxPx": 12,
+          "minHostHeightRatio": 0.5,
+          "edgeTolerancePx": 3
+        },
+        "requires": [
+          "empty-child",
+          "chromatic-background",
+          "left-or-right-edge"
+        ]
+      },
+      "falsePositiveGuards": [
+        "Skip navigation, progress, slider, scrollbar, separator, tablist and status contexts.",
+        "Skip neutral/non-chromatic stripes.",
+        "Skip children with text/content.",
+        "Skip intentional active-state indicator when backed by approved design evidence."
+      ],
+      "evidenceKind": "dom+geometry+style"
+    }
+  ]
+}
