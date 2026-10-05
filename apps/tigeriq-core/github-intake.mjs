@@ -279,6 +279,44 @@ export function githubSpecBlockedByActive(spec,activeMetadata=[]){
   return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>String(metadata?.resourceScope||'')===scope);
 }
 
+export function normalizeWorkOrderScopeFamily(value=''){
+  return String(value||'').trim().toUpperCase()
+    .replace(/(?:_V\d+|_RETRY(?:_\d+)?|_REARM(?:_\d+)?)(?=_|$)/g,'')
+    .replace(/_20\d{6}(?:\d{0,6})?$/,'')
+    .replace(/_+/g,'_')
+    .replace(/^_|_$/g,'');
+}
+
+export function normalizeWorkOrderIntentTitle(value=''){
+  return String(value||'').trim().toLowerCase()
+    .replace(/\[nv\d{2}\]/gi,'')
+    .replace(/\b(?:retry|rearm)\b(?:\s*#?\d+)?/gi,'')
+    .replace(/\bv\d+\b/gi,'')
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+export function workOrderDedupIdentity(spec={}){
+  const body=String(spec?.body||'');
+  const scope=normalizeWorkOrderScopeFamily(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
+  const reviewOnly=spec?.capability==='review'||hasExactFlag(body,'REVIEW_ONLY')||bodyValue(body,'CAPABILITY').toLowerCase()==='review';
+  if(reviewOnly)return `review:${Number(spec?.number||0)}:${scope}`;
+  const title=normalizeWorkOrderIntentTitle(spec?.title||'');
+  return `${scope}|${title}`;
+}
+
+export function dedupeBacklogWorkOrders(specs=[]){
+  const out=[]; const seen=new Set();
+  for(const spec of Array.isArray(specs)?specs:[]){
+    const key=workOrderDedupIdentity(spec);
+    if(key&&seen.has(key))continue;
+    if(key)seen.add(key);
+    out.push(spec);
+  }
+  return out;
+}
+
 export function extractPcOperatorInstruction(body){
   const text=String(body||'');
   const match=text.match(/(?:^|\n)(?:##\s*)?ASSIGNED_ACTION\s*\n([\s\S]*?)(?=\n(?:##\s*)?ACCEPTANCE\s*\n|$)/i);
@@ -839,7 +877,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:fetchedRows});
-  const specs=sortBacklogSpecs(rows.map(parseExecutableIssue).filter(Boolean));
+  const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(rows.map(parseExecutableIssue).filter(Boolean)));
   const openIssueIndex=indexOpenGithubIssues(rows);
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const activeMetadata=activeRows.map((row)=>row?.metadata||{});
