@@ -108,6 +108,27 @@ async function completeCoreAssignment(assignment,terminal,assistantText=''){
   return response;
 }
 
+function assignedIssueNumber(issueUrl=''){
+  const parts=String(issueUrl||'').split('/');
+  const n=Number(parts.at(-1));
+  return Number.isInteger(n)&&n>0?n:null;
+}
+
+async function assignedIssueTerminalEvidence(assignment){
+  const n=assignedIssueNumber(assignment?.issueUrl);
+  const claimId=String(assignment?.claimId||'').trim();
+  if(!n||!claimId)return null;
+  let comments;
+  try{comments=await fetchJson('https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/'+n+'/comments?per_page=100',{headers:{accept:'application/vnd.github+json','user-agent':'TigerIQ-NV03-Sidecar'}});}catch{return null;}
+  for(const comment of (Array.isArray(comments)?comments:[]).slice().reverse()){
+    const body=String(comment?.body||'');
+    if(!body.includes('CLAIM_ID='+claimId))continue;
+    if(body.includes('REVIEW=PASS'))return{terminal:'PASS',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+    if(body.includes('REVIEW=CHANGES_REQUIRED'))return{terminal:'CHANGES_REQUIRED',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+    if(body.includes('STATE=BLOCKED')||body.includes('STATE=EXTERNAL_WAIT'))return{terminal:'BLOCKED',result:body.slice(-3500),evidenceRef:String(comment?.html_url||'')};
+  }
+  return null;
+}
 async function listTargets(){
   const data=await fetchJson(`http://127.0.0.1:${CDP_PORT}/json/list`);
   return Array.isArray(data)?data:Array.isArray(data?.value)?data.value:[];
@@ -269,6 +290,14 @@ async function cycle(){
       await saveState(state);return;
     }
     state.activeJobId=assignment.jobId;
+    if(assignment.dispatchedAt){
+      const evidence=await assignedIssueTerminalEvidence(assignment);
+      if(evidence){
+        await log('NV03_ASSIGNED_ISSUE_TERMINAL_EVIDENCE',{jobId:assignment.jobId,terminal:evidence.terminal,evidenceRef:evidence.evidenceRef});
+        try{await completeCoreAssignment(assignment,evidence.terminal,evidence.result);}catch(error){await log('NV03_CORE_TERMINAL_ERROR',{jobId:assignment.jobId,error:String(error?.message||error)});}
+        return;
+      }
+    }
     if(assignment.dispatchedAt&&ui.terminal){
       const terminal=String(ui.terminal).toUpperCase();
       state={...state,phase:'TERMINAL',terminal,nextContinueAt:0};
