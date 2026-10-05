@@ -9,6 +9,7 @@ const ALLOWED_TARGET_REPOSITORIES=new Set([DEFAULT_TARGET_REPOSITORY.toLowerCase
 const ALL_WORKERS=['NV02','NV03','NV04'];
 const WORKERS=['NV03','NV04'];
 const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
+export const CORE_UI_ASSIGNMENT_STALE_MS=Math.max(30000,Number(process.env.TIGERIQ_CORE_UI_ASSIGNMENT_STALE_MS||90000));
 
 function value(body,key){return bodyValue(body,key);}
 function yes(body,key){return exactBodyFlag(body,key,'true');}
@@ -152,10 +153,11 @@ export function parseCoreUiIssue(issue){
   const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review';
   if(classification.route!=='UI'&&!coreReviewOverflow)return null;
   const explicitWorker=String(classification.workerId||'');
+  const flexibleReview=classification.capability==='review'&&String(value(body,'CORE_TARGET_STRICT')||'').trim().toLowerCase()==='false';
   const implementers=new Set(['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','CODING_EXECUTOR']
     .map((key)=>String(value(body,key)||'').trim().toUpperCase())
     .filter((workerId)=>WORKERS.includes(workerId)));
-  const eligibleWorkerIds=(coreReviewOverflow?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
+  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
   if(!eligibleWorkerIds.length)return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
@@ -305,6 +307,30 @@ function publicJob(item,{status='READY',executable=true,prompt}={}){
   if(prompt!==undefined)out.prompt=String(prompt||'');return out;
 }
 
+async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt}={}){
+  if(!item||String(item.status||'')!=='ui_assigned')return item;
+  const createdMs=Date.parse(String(item.created_at||''));
+  const observedMs=Date.parse(String(observedAt||''));
+  if(!Number.isFinite(createdMs)||!Number.isFinite(observedMs)||observedMs-createdMs<CORE_UI_ASSIGNMENT_STALE_MS)return item;
+  const n=Number(item.metadata?.issueNumber||issueNo(item.job_id));
+  if(!n)return item;
+  let issue;
+  try{issue=await readIssue(fetchImpl,owner,repo,token,n);}catch{return item;}
+  const spec=parseCoreUiIssue(issue);
+  if(!spec)return item;
+  const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
+  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
+    if(await row(pool,{workerId}))continue;
+    const routingDecision={...(item.routing_decision||{}),authority:'CORE',failoverFrom:currentWorker,workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs)};
+    const changed=await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,routing_decision=$4::jsonb where id=$1 and status='ui_assigned' and employee_id=$5",[item.job_id,workerId,resourceId(workerId),JSON.stringify(routingDecision),currentWorker]);
+    if(changed.rowCount!==1)continue;
+    await pool.query("update tigeriq_objectives set metadata=jsonb_set(metadata,'{uiWorkerId}',$2::jsonb,true),summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,JSON.stringify(workerId),'Core UI failover '+currentWorker+' -> '+workerId+' after stale unstarted assignment']);
+    await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('CORE_UI_ASSIGNMENT_FAILOVER',$1,$2,$3,$4,'ui',$5)",[item.objective_id,item.job_id,workerId,resourceId(workerId),JSON.stringify({issueNumber:n,fromWorker:currentWorker,toWorker:workerId,reason:'STALE_UI_ASSIGNMENT_NOT_STARTED',staleMs:Math.max(0,observedMs-createdMs)})]);
+    return row(pool,{jobId:item.job_id});
+  }
+  return item;
+}
+
 export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,previousJobId}={}){
   if(!pool)throw new Error('CORE_UI_POOL_REQUIRED');
   const observedAt=new Date().toISOString();let previous;
@@ -320,6 +346,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
   for(const workerId of WORKERS){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
+    if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
     else missingWorkers.push(workerId);
   }
