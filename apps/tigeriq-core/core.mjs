@@ -2041,6 +2041,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
     }
     if(req.method==='GET'&&url.pathname==='/api/live-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await liveStatusSnapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
+    if(req.method==='GET'&&url.pathname==='/api/api-doctor-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},apiDoctor:await apiDoctorTelemetry()}));}
     if(req.method==='GET'&&url.pathname==='/api/self-audit'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await selfAuditStatus()));
