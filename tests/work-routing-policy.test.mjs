@@ -158,3 +158,18 @@ test('P0 stays Owner-held except explicit Vy read-only review dispatch to NV03/N
     assert.equal(blocked.autonomous,false);
   }
 });
+
+test('NV04 second-opinion policy routes review validation work without stealing generic NV03 review',()=>{
+  let s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=second_opinion');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV04');assert.equal(s.autonomous,true);assert.equal(s.capability,'second_opinion');assert.equal(s.reviewRoutingReason,'NV04_SECOND_OPINION');
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nSECOND_OPINION=true');
+  assert.equal(s.workerId,'NV04');assert.equal(s.capability,'second_opinion');
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nREVIEW_MODE=SECOND_OPINION');
+  assert.equal(s.workerId,'NV04');
+  for(const specialty of ['FACT_CHECK','EVIDENCE_REVIEW','RESEARCH_VALIDATION']){
+    s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nREVIEW_SPECIALTY='+specialty);
+    assert.equal(s.workerId,'NV04');assert.equal(s.reviewRoutingReason,'NV04_SECOND_OPINION');
+  }
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');
+  assert.equal(s.workerId,'NV03');assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
+});
