@@ -16,6 +16,14 @@ describe('Core Self-Audit expected behavior engine',()=>{
     expect(ids(out)).toContain('AUTO_DISPATCH_CONTINUITY');
   });
 
+  it('ignores historical self-review after objective is terminal',()=>{
+    const out=evaluateSelfAudit({reviews:[{
+      jobId:'R-HIST',status:'done',objectiveStatus:'completed',reviewerEmployeeId:'NV12',reviewerResourceId:'res-review',
+      implementerEmployeeIds:['NV12'],implementerResourceIds:['res-review']
+    }]});
+    expect(ids(out)).not.toContain('REVIEW_INDEPENDENCE');
+  });
+
   it('detects reviewer equal to implementer',()=>{
     const out=evaluateSelfAudit({reviews:[{
       jobId:'R1',status:'done',reviewerEmployeeId:'NV12',reviewerResourceId:'res-review',
