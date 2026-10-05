@@ -445,8 +445,10 @@ describe('NV02 local GitHub self-pull contract', () => {
       state_reason: null,
     };
     const prompt = buildNv02LocalSelfPullPrompt(work, { resourceScope: 'NEWS_REVIEW_GUARD', leaseId: 'lease-review' });
-    expect(prompt).toContain('REVIEW LOOP GUARD');
-    expect(prompt).toContain('tối đa 2 failover reviewer');
+    expect(prompt).toContain('REVIEW CANONICAL GUARD');
+    expect(prompt).toContain('ĐÚNG 01 Work Order review canonical');
+    expect(prompt).toContain('EXECUTION_SURFACE=CORE_REVIEW');
+    expect(prompt).toContain('KHÔNG tạo Work Order mới theo từng reviewer');
     expect(prompt).toContain('EXTERNAL_WAIT/REVIEW_RESOURCE_WAIT');
     expect(prompt).toContain('Không đổi RESOURCE_SCOPE');
     expect(prompt).toContain('Không sinh review-on-review');
