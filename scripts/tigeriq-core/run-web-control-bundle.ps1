@@ -36,5 +36,6 @@ $hostIp=if($tail){[string]$tail}else{'127.0.0.1'}
 $env:TIGERIQ_WEB_CONTROL_HOST=$hostIp
 $env:TIGERIQ_WEB_CONTROL_PORT='8796'
 $env:TIGERIQ_CORE_URL=('http://'+$hostIp+':8795')
+$env:TIGERIQ_CODING_LANE_URL='http://127.0.0.1:8797'
 & 'C:\Program Files\nodejs\node.exe' $app
 exit $LASTEXITCODE
