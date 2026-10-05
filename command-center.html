@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
 <meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400..800&display=swap" rel="stylesheet">
 <title>TigerIQ Live · Công việc</title>
 <style>
-:root{font-family:"Google Sans Flex","Google Sans","Helvetica Neue",sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff;--cyan:#65d7e8;--teal:#58d8c6;--slate:#8fa3b8}
+:root{font-family:"Roboto Flex","Segoe UI Variable Text","Segoe UI",Arial,sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--green:#46d48f;--amber:#efb85c;--red:#ff747e;--blue:#58a6ff;--violet:#c5a6ff;--cyan:#65d7e8;--teal:#58d8c6;--slate:#8fa3b8}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
 body{font-family:inherit;background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17);overflow-x:hidden}
@@ -403,12 +404,30 @@ body.drawer-open{overflow:hidden}
 }
 </style>
 
+<style>
+.brand h1{display:flex;align-items:center;gap:8px;font-size:26px;font-weight:800;letter-spacing:-1px;color:#e7f7ff;text-shadow:0 0 18px rgba(29,168,255,.33)}
+.brand h1 b{color:#3cc4ff}.brand-logo{width:28px;height:28px;object-fit:contain;filter:drop-shadow(0 0 8px rgba(60,196,255,.28))}
+.raw-work-details{opacity:1!important;border-color:#154879;background:linear-gradient(145deg,rgba(8,24,44,.94),rgba(9,23,42,.96))}
+.raw-work-details>summary{color:#bca7f3!important;font-size:11px!important;text-transform:uppercase;letter-spacing:.035em}
+.raw-work-details>summary .details-hint{color:#7893b2;font-size:8px;margin-left:5px}
+.filter{cursor:pointer}.filter[data-filter="action"],.filter[data-filter="owner"]{color:#ff747e;border-color:#87434d;background:rgba(255,116,126,.10)}
+.filter[data-filter="running"]{color:#47db91;border-color:#287453;background:rgba(71,219,145,.10)}
+.filter[data-filter="review"],.filter[data-filter="waiting"]{color:#f0b94d;border-color:#8b6426;background:rgba(240,185,77,.10)}
+.filter[data-filter="system"]{color:#8796a6;border-color:#526170;background:rgba(135,150,166,.10)}
+.filter[data-filter="done"]{color:#55d8c4;border-color:#287468;background:rgba(85,216,196,.10)}
+.filter[data-filter="action"].active,.filter[data-filter="owner"].active{color:#ff9ba3;border-color:#a64f59;background:rgba(255,116,126,.22)}
+.filter[data-filter="running"].active{color:#7df0b5;border-color:#329466;background:rgba(71,219,145,.23)}
+.filter[data-filter="review"].active,.filter[data-filter="waiting"].active{color:#ffd27a;border-color:#a8792c;background:rgba(240,185,77,.23)}
+.filter[data-filter="system"].active{color:#b7c2cc;border-color:#667687;background:rgba(135,150,166,.20)}
+.filter[data-filter="done"].active{color:#82eddd;border-color:#338a7d;background:rgba(85,216,196,.22)}
+a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.flow-package-tabs button{cursor:pointer}button:disabled,[aria-disabled="true"]{cursor:not-allowed}
+</style>
 <link rel="stylesheet" href="/work-ui.css">
 </head>
 <body>
 <main id="appMain" class="wrap">
 <header class="top">
-  <div class="brand"><h1>TigerIQ Live · Luồng công việc</h1><p>Giao việc → điều phối → thực thi → kiểm tra → kết quả</p></div>
+  <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b> · Luồng công việc</h1><p>Giao việc → điều phối → thực thi → kiểm tra → kết quả</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
@@ -419,8 +438,8 @@ body.drawer-open{overflow:hidden}
   <div class="flow-kpi progress-kpi"><span>Tổng tiến độ</span><b id="overallPct">—</b><small id="overallScope">chưa xác minh</small></div>
 </section>
 <section id="jobJourney" class="job-journey" aria-label="Việc lớn và các nhánh công việc đang theo dõi"></section>
-<details id="rawWorkDetails" class="raw-work-details">
-<summary>JOB kỹ thuật / chi tiết hệ thống</summary>
+<details id="rawWorkDetails" class="raw-work-details" open>
+<summary>JOB kỹ thuật / chi tiết hệ thống <span class="details-hint">· DANH SÁCH LUÔN HIỂN THỊ</span></summary>
 <div class="raw-work-inner">
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
