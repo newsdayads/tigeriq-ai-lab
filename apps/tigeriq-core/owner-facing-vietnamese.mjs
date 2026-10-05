@@ -104,7 +104,12 @@ export function containsBareOwnerPrReference(value = '') {
 
 export function containsOwnerFacingEnglishOperationalProse(value = '') {
   const text = stripOwnerTechnicalLiterals(value);
-  return /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|exact-head|save_not_durable)\b/i.test(text);
+  return /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable)\b/i.test(text);
+}
+
+function hasOwnerWorkReference(value = '') {
+  const text = stripOwnerTechnicalLiterals(value);
+  return /(^|[^\w/])#\d+\b|\bPR\s+#\d+\b/im.test(text);
 }
 
 export const OWNER_STATUS_LABELS = STATUS_LABELS;
@@ -203,7 +208,7 @@ export function ownerFacingPresentation({ status = '', result = '', blocker = ''
   };
 }
 
-export function validateOwnerFacingOutput({ text = '', progress = null, evidenceFresh = true, canonicalRefsResolved = true } = {}) {
+export function validateOwnerFacingOutput({ text = '', progress = null, evidenceFresh = true, canonicalRefsResolved = null } = {}) {
   const defects = [];
   const value = String(text || '');
   const hasPercent = value.includes('%') && /\d/.test(value);
@@ -214,6 +219,6 @@ export function validateOwnerFacingOutput({ text = '', progress = null, evidence
   if (containsUnapprovedOwnerIcon(value)) defects.push('UNAPPROVED_ICON');
   if (hasPercent && !verifiedOwnerProgress(progress)) defects.push('UNVERIFIED_PROGRESS_PERCENT');
   if (evidenceFresh === false && hasPercent) defects.push('STALE_PROGRESS_VISIBLE');
-  if (canonicalRefsResolved === false) defects.push('UNRESOLVED_WORK_REFERENCE');
+  if (hasOwnerWorkReference(value) && canonicalRefsResolved !== true) defects.push('UNRESOLVED_WORK_REFERENCE');
   return { ok: defects.length === 0, defects };
 }
