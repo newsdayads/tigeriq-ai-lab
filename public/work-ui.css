@@ -357,3 +357,44 @@
   .api-health .wo-list,.api-health .work-list{grid-template-columns:1fr!important}
   .api-health .side{grid-template-columns:1fr}
 }
+
+
+/* #3918 window-responsive density pass — tuned for common 1906x1045 @125% window (~1525 CSS px). */
+@media(min-width:1450px){
+  .api-health .app{max-width:none;width:100%;padding-left:14px;padding-right:14px}
+  .api-health .layout{grid-template-columns:minmax(0,4.25fr) minmax(270px,.78fr);gap:10px}
+  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .api-health .panel-h{padding:12px 14px}
+  .api-health .workers{padding:8px;gap:8px}
+  .api-health .wo-list,.api-health .work-list{padding:8px;gap:8px}
+  .api-health .worker.employee-card{padding:8px}
+  .api-health .work-row{min-height:152px;padding:9px}
+  .api-health .work-row .work-title{font-size:13.5px}
+  .api-health .work-row .work-summary,.api-health .work-row .work-next{font-size:10px}
+  .api-health .side{gap:8px}
+  .api-health .side .panel-h{padding:9px 10px}
+  .api-health .side .panel-h h2{font-size:13.5px}
+  .api-health .side .panel-h small{font-size:9px}
+  .api-health .side .chart{height:188px;padding:8px 9px}
+  .api-health .side .chartbox{height:130px}
+  .api-health .side .events{max-height:318px}
+  .api-health .side .event{padding:7px 8px}
+}
+@media(min-width:1200px) and (max-width:1449px){
+  .api-health .app{max-width:none;width:100%;padding-left:12px;padding-right:12px}
+  .api-health .layout{grid-template-columns:minmax(0,3.3fr) minmax(265px,.88fr);gap:10px}
+  .api-health .workers{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(min-width:900px) and (max-width:1199px){
+  .api-health .layout{grid-template-columns:minmax(0,2.4fr) minmax(250px,.95fr)}
+  .api-health .workers{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:899px){
+  .api-health .layout{grid-template-columns:1fr}
+  .api-health .workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:1fr!important}
+  .api-health .side{grid-template-columns:1fr}
+}
