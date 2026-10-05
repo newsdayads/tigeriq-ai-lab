@@ -11,6 +11,8 @@ public final class WorkerPackageReplacedReceiver extends BroadcastReceiver {
         if (intent == null || !Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
         WorkerUpdateEngine.markPackageReplaced(context);
 
+        if (WorkerRuntimeControl.isPaused(context)) return;
+
         Intent service = new Intent(context, ForegroundWorkerService.class);
         try {
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(service);
