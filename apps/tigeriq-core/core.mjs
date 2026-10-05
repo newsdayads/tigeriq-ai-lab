@@ -3,7 +3,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+const PROVIDER_ALIAS = { openrouter: 'openrouter-free' };
+const managerProviderBodyForHost = (provider, ...args) => {
+  const normalized = PROVIDER_ALIAS[provider] ?? provider;
+  return _managerProviderBodyForHost(normalized, ...args);
+};
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
