@@ -64,6 +64,7 @@ export function evaluateSelfAudit(snapshot={},{
 
   if(Array.isArray(snapshot.reviews))evaluatedContracts.add('REVIEW_INDEPENDENCE');
   for(const review of arr(snapshot.reviews)){
+    if(review.objectiveStatus&&upper(review.objectiveStatus)!=='ACTIVE')continue;
     if(!['RUNNING','DONE','COMPLETED'].includes(upper(review.status)))continue;
     const implEmployees=new Set(arr(review.implementerEmployeeIds).map(upper).filter(Boolean));
     const implResources=new Set(arr(review.implementerResourceIds).map(String).filter(Boolean));
