@@ -295,3 +295,65 @@
 .progress.checks .progress-fill{background:linear-gradient(90deg,#2f86d5,#58a6ff)}
 @keyframes tiq-stage-scan{0%{transform:translateX(-130%)}100%{transform:translateX(340%)}}
 @media(prefers-reduced-motion:reduce){.progress.stage .progress-fill{animation:none!important;opacity:.25}}
+
+
+/* #3918 4K Health layout pass */
+.api-health .brand-health{display:flex;align-items:center;gap:8px;margin-right:auto;letter-spacing:-.4px}
+.api-health .brand-health .brand-icon{font-size:22px;filter:drop-shadow(0 0 8px rgba(44,188,255,.25))}
+.api-health .brand-health .brand-product{
+  font-size:10px;
+  line-height:1;
+  letter-spacing:.11em;
+  font-weight:900;
+  color:#7ed9ff;
+  border:1px solid #205c83;
+  background:#0a2038;
+  border-radius:999px;
+  padding:4px 7px;
+  text-shadow:none;
+}
+.api-health .live-indicator.offline{color:#ff7d89;border-color:#8b3d4a;background:#32151b}
+.api-health .layout{grid-template-columns:minmax(0,3.55fr) minmax(285px,.82fr);gap:12px}
+.api-health .side{gap:10px}
+.api-health .side .panel{border-radius:13px}
+.api-health .side .panel-h{padding:10px 11px}
+.api-health .side .panel-h h2{font-size:14px}
+.api-health .side .panel-h small{font-size:9.5px}
+.api-health .side .chart{height:196px;padding:9px 10px}
+.api-health .side .chartbox{height:136px}
+.api-health .side .legend{font-size:9px;gap:8px;margin-top:5px;flex-wrap:wrap}
+.api-health .side .events{max-height:330px}
+.api-health .side .event{grid-template-columns:28px 1fr auto;gap:7px;padding:8px 9px}
+.api-health .side .event .ico{width:24px;height:24px}
+.api-health .side .event b{font-size:10.5px}
+.api-health .side .event small{font-size:9.5px}
+.api-health .side .tag{font-size:8.5px;padding:2px 5px}
+.api-health .side .perf-row{font-size:9px}
+.api-health .side .perf-name{font-size:9px}
+.api-health .side .perf-provider{font-size:9px}
+.api-health .side .perf-ok,.api-health .side .perf-fail,.api-health .side .perf-lat{font-size:8.5px}
+
+/* 4K / wide-desktop density */
+@media(min-width:1800px){
+  .api-health .app{max-width:none;width:100%;padding-left:16px;padding-right:16px}
+  .api-health .layout{grid-template-columns:minmax(0,4fr) minmax(300px,.78fr)}
+  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .api-health .worker.employee-card{padding:8px}
+  .api-health .work-row{min-height:160px;padding:10px}
+}
+@media(min-width:1400px) and (max-width:1799px){
+  .api-health .workers{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:1399px){
+  .api-health .layout{grid-template-columns:minmax(0,2.7fr) minmax(280px,.9fr)}
+  .api-health .workers{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:980px){
+  .api-health .layout{grid-template-columns:1fr}
+  .api-health .workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .api-health .wo-list,.api-health .work-list{grid-template-columns:1fr!important}
+  .api-health .side{grid-template-columns:1fr}
+}
