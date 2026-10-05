@@ -1497,4 +1497,15 @@ test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',
 test('GitHub backlog fallback cadence stays fast and bounded',()=>{
   assert.equal(GITHUB_RECONCILE_INTERVAL_MS,30000);
   assert.equal(GITHUB_MATERIALIZE_BATCH_DEFAULT,12);
+  const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-core.ps1',import.meta.url),'utf8');
+  assert.match(launcher,/TIGERIQ_GITHUB_RECONCILE_MS='30000'/);
+  assert.doesNotMatch(launcher,/TIGERIQ_GITHUB_RECONCILE_MS='300000'/);
+});
+
+
+test('CORE_REVIEW CHANGES_REQUIRED blocks objective instead of closing review as completed',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/decision==='CHANGES_REQUIRED'/);
+  assert.match(core,/changesRequired\?'blocked':'completed'/);
+  assert.match(core,/GITHUB_CORE_REVIEW_CHANGES_REQUIRED/);
 });
