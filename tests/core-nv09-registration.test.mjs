@@ -52,6 +52,49 @@ test('bounded inference preserves real Ollama 5xx evidence', async()=>{
   );
 });
 
+
+test('bounded inference settles Ollama before releasing timeout ownership', async()=>{
+  const calls=[];
+  const fake=async(url,init)=>{
+    const body=JSON.parse(init.body);
+    calls.push({url,body});
+    if(body.keep_alive===0)return {ok:true,status:200,json:async()=>({done:true})};
+    return await new Promise((resolve,reject)=>{
+      init.signal.addEventListener('abort',()=>{
+        const error=new Error('aborted'); error.name='AbortError'; reject(error);
+      },{once:true});
+    });
+  };
+  await assert.rejects(
+    ()=>runBoundedInferenceNv09('timeout canary',{fetchImpl:fake,timeoutMs:10,settleTimeoutMs:2000}),
+    error=>error?.kind==='timeout'&&error?.settled===true
+  );
+  assert.strictEqual(calls.length,2);
+  assert.strictEqual(calls[1].body.model,'qwen3-coder:30b');
+  assert.strictEqual(calls[1].body.keep_alive,0);
+  assert.strictEqual(getRegisteredModels().find(x=>x.employee_id==='NV09').health,HEALTH_STATES.IDLE_ON_DEMAND);
+});
+
+test('bounded inference exposes ERROR when timeout settle cannot be confirmed', async()=>{
+  let calls=0;
+  const fake=async(url,init)=>{
+    calls++;
+    const body=JSON.parse(init.body);
+    if(body.keep_alive===0)return {ok:false,status:500,json:async()=>({})};
+    return await new Promise((resolve,reject)=>{
+      init.signal.addEventListener('abort',()=>{
+        const error=new Error('aborted'); error.name='AbortError'; reject(error);
+      },{once:true});
+    });
+  };
+  await assert.rejects(
+    ()=>runBoundedInferenceNv09('timeout canary',{fetchImpl:fake,timeoutMs:10,settleTimeoutMs:2000}),
+    error=>error?.kind==='timeout'&&error?.settled===false&&/SETTLE_FAILED/.test(error.message)
+  );
+  assert.strictEqual(calls,2);
+  assert.strictEqual(getRegisteredModels().find(x=>x.employee_id==='NV09').health,HEALTH_STATES.ERROR);
+});
+
 test('Core wires NV09 as isolated on-demand local coder without changing NV10',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.match(core,/const NV09_TIMEOUT_MS/);
