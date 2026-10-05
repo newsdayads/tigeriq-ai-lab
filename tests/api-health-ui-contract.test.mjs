@@ -16,6 +16,8 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.work-title,.wo-title');
     expect(shared).toContain('.work-summary,.wo-current');
     expect(core).toContain("url.pathname==='/work-ui.css'");
+    expect(core).toContain("url.pathname==='/api/live-status'");
+    expect(core).toContain('async function liveStatusSnapshot()');
     expect(core).toContain("../../public/work-ui.css");
   });
 
@@ -110,6 +112,10 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('id="workforceMeta"');
     expect(dashboard).toContain('id="activityMeta"');
     expect(dashboard).toContain('function refreshLiveUi()');
+    expect(dashboard).toContain('function loadLiveStatus()');
+    expect(dashboard).toContain("fetch('/api/live-status',{cache:'no-store'})");
+    expect(dashboard).toContain('setInterval(load,5000)');
+    expect(dashboard).toContain('setInterval(loadLiveStatus,1000)');
     expect(dashboard).toContain('lastCoreSuccessAt=Date.now()');
     expect(dashboard).toContain("mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE'");
     expect(dashboard).toContain('employee-live-line');
@@ -123,6 +129,10 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.api-health .employee-task{display:block;white-space:normal;overflow:visible');
     expect(shared).not.toContain('-webkit-line-clamp:2');
     expect(shared).toContain('/* #3918 final visual audit cleanup */');
+    expect(shared).toContain('/* #3918 final viewport-fit + responsive rail */');
+    expect(shared).toContain('overflow-x:hidden!important');
+    expect(shared).toContain('grid-template-columns:minmax(0,1fr) minmax(270px,300px)!important');
+    expect(shared).toContain('@media(min-width:1450px) and (max-width:1799px)');
     expect(shared).toContain('.api-health .work-next{');
     expect(shared).toContain('height:auto!important;');
     expect(shared).toContain('.api-health .metrics-lower .metric{');

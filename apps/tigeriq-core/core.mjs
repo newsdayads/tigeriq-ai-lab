@@ -1950,6 +1950,20 @@ async function publicJobEvidence(jobId){
   return buildPublicJobEvidenceRecord(row);
 }
 
+async function liveStatusSnapshot(){
+  const resources=(await pool.query("select employee_id,resource_id,provider,health_state,work_state,current_job_id,last_seen_at,cooldown_until,enabled from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id")).rows.map(r=>({
+    employee_id:r.employee_id,
+    resource_id:r.resource_id,
+    provider:r.provider,
+    status:publicStatus(r),
+    current_job_id:r.current_job_id,
+    last_seen_at:r.last_seen_at,
+    cooldown_until:r.cooldown_until,
+  }));
+  const jobs=(await pool.query("select id,title,status,employee_id,resource_id,provider,started_at,completed_at from tigeriq_jobs where status in ('running','queued') order by created_at desc limit 40")).rows;
+  return {ok:true,core:{pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources,jobs};
+}
+
 async function snapshot(){
   const {workforce,workforceMeta}=await refreshRegistryWorkforce();
   const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=normalizeRuntimeResources(base,workforce).map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
@@ -1976,6 +1990,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       if(!['done','failed'].includes(evidence.status)){res.writeHead(409,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:false,error:'job_not_terminal',jobId,status:evidence.status}));}
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(evidence));
     }
+    if(req.method==='GET'&&url.pathname==='/api/live-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await liveStatusSnapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/self-audit'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
@@ -2492,7 +2507,7 @@ async function loop(){
       if (!preflightCheck.ok) {
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
       }
-      if(t-lastRefresh>15000){await refreshResources();lastRefresh=t;}
+      if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
