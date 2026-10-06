@@ -164,6 +164,20 @@ RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
 
+test('safe P1-P5 admission ignores generic display wait state when no real gate exists',()=>{
+  const body=[
+    SAFE_AUTO_POLICY_BASE,
+    'OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'CURRENT_STATE=WAIT_OPERATOR_WINDOW'
+  ].join('\n');
+  const issue={number:4384,state:'open',title:'[P1][CORE] display state separation',body,labels:[],html_url:'https://example/4384'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:true,reason:'SAFE_P1_P5_POLICY'});
+  assert.ok(parseExecutableIssue(issue));
+});
+
 test('GitHub intake fails closed on Android product work even with legacy auto flags',()=>{
   const body=[
     'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
