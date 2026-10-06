@@ -15,6 +15,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
+import { buildSkillOutcomeObservation, recordSkillOutcome } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
@@ -1510,8 +1511,37 @@ async function claimJob() {
     await hotPathStage(claimed,'CLAIMED');
     return claimed;
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
-}async function runJob(j) {
+}
+async function emitSkillEffectivenessObservations({ job, skillContext, outcome, resource = null, durationMs = null, failureSignature = null }) {
+  const skills = Array.isArray(skillContext?.skills) ? skillContext.skills : [];
+  for (const skill of skills) {
+    const input = {
+      jobId: job.id,
+      objectiveId: job.objective_id,
+      version: skill.version || 'unknown',
+      outcome,
+      verified: true,
+      resourceId: resource?.resourceId || resource?.resource_id || null,
+      employeeId: resource?.id || resource?.employeeId || resource?.employee_id || null,
+      provider: resource?.provider || null,
+      durationMs,
+      evidenceRef: `CORE_JOB:${job.id}`,
+      failureSignature,
+    };
+    const observation = buildSkillOutcomeObservation(skill.id, input);
+    const existing = await pool.query(
+      "select 1 from tigeriq_events where type='SKILL_EFFECTIVENESS_OBSERVED' and data->>'dedupeKey'=$1 limit 1",
+      [observation.dedupeKey],
+    );
+    if (existing.rowCount > 0) continue;
+    await event('SKILL_EFFECTIVENESS_OBSERVED', { objectiveId: job.objective_id, ...observation });
+    recordSkillOutcome(skill.id, input);
+  }
+}
+async function runJob(j) {
   let skillRoutingPreflight=null;
+  let jobSkillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
+  const skillUseStartedAt=Date.now();
   try {
     await hotPathStage(j,'WORKING');
     if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}
@@ -1527,7 +1557,6 @@ async function claimJob() {
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
-    let jobSkillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
     let skillRegistryError=null;
     try{
       jobSkillContext=matchAndLoadSkills(skillObjectiveText);
@@ -1557,6 +1586,13 @@ async function claimJob() {
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
     await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await emitSkillEffectivenessObservations({
+      job:j,
+      skillContext:jobSkillContext,
+      outcome:'completed',
+      resource:routed.resource,
+      durationMs:Math.max(0,Date.now()-skillUseStartedAt),
+    });
     if(hadResourceWait)await event('RESOURCE_WAIT_RELEASED',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai'});
     await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});
     await hotPathStage(j,'DONE');
@@ -1595,6 +1631,14 @@ async function claimJob() {
       }
     }
     await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures})]);
+    const blockedOutcome=/(?:NO_AI_RESOURCE_AVAILABLE|UNAVAILABLE|RATE_LIMIT|COOLDOWN)/i.test(message)?'blocked':'failed';
+    await emitSkillEffectivenessObservations({
+      job:j,
+      skillContext:jobSkillContext,
+      outcome:blockedOutcome,
+      durationMs:Math.max(0,Date.now()-skillUseStartedAt),
+      failureSignature:message.slice(0,180),
+    });
     await event('JOB_FAILED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai'});
     await hotPathStage(j,'FAILED',{reason:message.slice(0,180)});
   }
