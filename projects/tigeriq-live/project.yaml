@@ -1,0 +1,19 @@
+schema: tigeriq.project.v2
+id: tigeriq-live
+name: TigerIQ Live
+kind: project
+order: 40
+source_roots:
+  - command-center.html
+  - public/command-center.html
+  - api/live-status.mjs
+workstreams:
+  - id: owner-ui
+    name: Giao diện Owner
+    order: 10
+  - id: health-api
+    name: Health & API
+    order: 20
+  - id: release
+    name: Phát hành
+    order: 30
