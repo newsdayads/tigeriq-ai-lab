@@ -1,0 +1,18 @@
+schema: tigeriq.project.v2
+id: tigeriq-platform
+name: TigerIQ Platform
+kind: platform
+source_roots:
+  - apps/tigeriq-core
+  - packages/control-plane
+  - packages/workforce
+  - apps/openclaw-tigeriq-runtime
+workstreams:
+  - id: core
+    name: Lõi hệ thống
+  - id: orchestration
+    name: Điều phối & hàng đợi
+  - id: observability
+    name: Quan sát hệ thống
+  - id: auto-rca
+    name: Tự phân tích nguyên nhân
