@@ -45,7 +45,7 @@ export function classifyProject(row = {}, issue = null) {
   if (/\bPAPERCLIP\b/i.test(text)) return PROJECT_BY_ID.get('paperclip-vnext');
   if (/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(text)) return PROJECT_BY_ID.get('revenue-lab');
   if (/\bANDROID\b|MOBILE[_ -]?WORKER|\bZ[ _-]?FLIP\b|\bTIQ[ _-]?WORKER\b/i.test(text)) return PROJECT_BY_ID.get('tigeriq-mobile-worker');
-  if (/\bTIGERIQ[ _-]LIVE\b|\bAPI[ _-]HEALTH\b|COMMAND[ _-]?CENTER/i.test(text)) return PROJECT_BY_ID.get('tigeriq-live');
+  if (/\bTIGERIQ[ _-]LIVE\b|\bAPI[ _-]HEALTH\b|\[(?:LIVE|API HEALTH)\]|COMMAND[ _-]?CENTER/i.test(text)) return PROJECT_BY_ID.get('tigeriq-live');
   return PROJECT_BY_ID.get('tigeriq-platform');
 }
 
