@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
-import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePublicEvidenceKeys, validatePublicEvidenceKeys } from './public-evidence.mjs';
+import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
