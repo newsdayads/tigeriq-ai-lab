@@ -525,12 +525,36 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 @keyframes v2-progress-flow{0%{background-position:0 0}100%{background-position:200% 0}}
 @media(prefers-reduced-motion:reduce){
   .v2-project-choice,.v2-workstream-card,.v2-flow-job{transition:none!important;transform:none!important}
-  .v2-project-hero-icon,.v2-workstream-card,.v2-flow-job,.v2-workstream-progress i{animation:none!important}
+  .v2-project-hero-icon,.v2-workstream-card,.v2-flow-job,.v2-workstream-progress i,.v3-running-dot,.v3-running-pulse,.v3-running-job::after,.v3-live-beacon.is-live span,.v3-owner-ops::after{animation:none!important}
 }
 
+/* #4351 Owner Operations V3 */
+.v2-project-tabs .v2-tab-label{border:0;background:transparent;color:#7f99b1;font:800 10px/1 inherit;padding:9px 10px;border-bottom:2px solid transparent}
+.v2-project-tabs .v2-tab-label.active{color:#8fd3ff;border-bottom-color:#33a7ff}
+
+.v3-running-lane{border:1px solid #23577e;background:linear-gradient(135deg,#0b2440,#091a2d);border-radius:15px;padding:10px;box-shadow:0 0 28px rgba(34,139,230,.09)}
+.v3-running-lane>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.v3-running-lane>header>div{display:flex;align-items:center;gap:7px}.v3-running-lane>header b{font-size:10px;letter-spacing:.07em;color:#ccecff}.v3-running-lane>header em{font-size:8px;font-style:normal;color:#70a6c9}
+.v3-running-dot{width:9px;height:9px;border-radius:50%;background:#39c7ff;box-shadow:0 0 0 0 rgba(57,199,255,.45);animation:v3-live-ring 1.8s ease-out infinite}
+.v3-running-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.v3-running-job{position:relative;overflow:hidden;border:1px solid #245477;background:linear-gradient(135deg,rgba(18,67,105,.62),rgba(8,25,42,.95));border-radius:11px;padding:9px;color:inherit;text-align:left;font:inherit;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.v3-running-job:hover{transform:translateY(-1px);border-color:#43a8e9;box-shadow:0 0 18px rgba(50,167,255,.12)}
+.v3-running-job::after{content:"";position:absolute;top:0;bottom:0;width:80px;left:-100px;background:linear-gradient(90deg,transparent,rgba(111,211,255,.08),transparent);animation:v3-scan 3.4s linear infinite}
+.v3-running-path{font-size:7.5px;color:#79a3bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v3-running-path span{color:#42b7ff}.v3-running-main{display:flex;align-items:center;gap:7px;margin-top:5px}.v3-running-main b{font-size:10.5px}.v3-running-pulse{width:7px;height:7px;border-radius:50%;background:#44d2ff;box-shadow:0 0 10px #44d2ff;animation:v3-dot-pulse 1.2s ease-in-out infinite}.v3-running-job p{margin:5px 0 3px;font-size:9px;color:#d1e5f3;line-height:1.35}.v3-running-job small{font-size:7.5px;color:#6689a2}
+
+.v3-owner-ops{position:relative;overflow:hidden;margin:10px 0;border:1px solid #245a80;background:linear-gradient(135deg,#0b263f,#091a2c);border-radius:14px;padding:10px;box-shadow:0 0 24px rgba(50,167,255,.08)}
+.v3-owner-ops::after{content:"";position:absolute;inset:0 auto 0 -120px;width:120px;background:linear-gradient(90deg,transparent,rgba(87,192,255,.06),transparent);animation:v3-scan 4.4s linear infinite;pointer-events:none}
+.v3-owner-ops>header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding-bottom:8px;border-bottom:1px solid #1b4361}.v3-owner-ops>header>em{font-size:8px;font-style:normal;color:#a7c4d9}
+.v3-live-beacon{display:flex;align-items:center;gap:6px}.v3-live-beacon span{width:8px;height:8px;border-radius:50%;background:#688398}.v3-live-beacon b{font-size:8px;letter-spacing:.06em;color:#8da8bc}.v3-live-beacon.is-live span{background:#45d0ff;box-shadow:0 0 12px rgba(69,208,255,.65);animation:v3-dot-pulse 1.2s ease-in-out infinite}.v3-live-beacon.is-live b{color:#9ce5ff}
+.v3-owner-path{font-size:8px;color:#779db7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v3-owner-path span{color:#46b9ff}
+.v3-owner-grid{display:grid;grid-template-columns:140px 90px minmax(0,1fr) 120px 100px;gap:6px;margin-top:8px}.v3-owner-grid>div{border:1px solid #1b405e;background:rgba(8,24,40,.72);border-radius:9px;padding:7px;min-width:0}.v3-owner-grid>div.wide{grid-column:span 2}.v3-owner-grid>div.next{border-color:#2c6c57;background:linear-gradient(135deg,rgba(35,101,76,.2),rgba(8,24,40,.72))}.v3-owner-grid>div.alert{border-color:#7c3741;background:linear-gradient(135deg,rgba(121,42,57,.22),rgba(8,24,40,.72))}.v3-owner-grid span{display:block;font-size:7.5px;color:#6887a0}.v3-owner-grid b{display:block;margin-top:3px;font-size:9.5px;color:#d6e7f4;line-height:1.3;overflow-wrap:anywhere}
+.v3-owner-ops.is-working{border-color:#2e86ba}.v3-owner-ops.is-review{border-color:#7c602d}.v3-owner-ops.is-blocked{border-color:#833944}.v3-owner-ops.is-done{border-color:#33715a}
+
+@keyframes v3-live-ring{0%{box-shadow:0 0 0 0 rgba(57,199,255,.42)}75%,100%{box-shadow:0 0 0 8px rgba(57,199,255,0)}}
+@keyframes v3-dot-pulse{0%,100%{opacity:.55;transform:scale(.82)}50%{opacity:1;transform:scale(1.18)}}
+@keyframes v3-scan{0%{transform:translateX(0)}100%{transform:translateX(1100px)}}
+
 .v2-mobile-nav{display:none}
-@media(max-width:980px){.v2-portfolio-layout{grid-template-columns:1fr}.v2-project-sidebar{position:static}.v2-project-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,78vw);grid-template-columns:none;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:3px}.v2-project-choice{scroll-snap-align:start}.v2-project-sidebar-head span{display:none}.v2-workstream-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-project-header{grid-template-columns:1fr}.v2-project-stats{grid-column:auto}}
+@media(max-width:980px){.v3-owner-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v3-owner-grid>div.wide{grid-column:1/-1}.v2-portfolio-layout{grid-template-columns:1fr}.v2-project-sidebar{position:static}.v2-project-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,78vw);grid-template-columns:none;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:3px}.v2-project-choice{scroll-snap-align:start}.v2-project-sidebar-head span{display:none}.v2-workstream-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-project-header{grid-template-columns:1fr}.v2-project-stats{grid-column:auto}}
 @media(max-width:700px){
+  .v3-running-grid{grid-template-columns:1fr}.v3-owner-grid{grid-template-columns:1fr}.v3-owner-grid>div.wide{grid-column:auto}.v3-owner-ops>header{grid-template-columns:1fr auto}.v3-owner-path{grid-column:1/-1;grid-row:2}
   body{padding-bottom:62px}.top{padding-bottom:8px}.brand p{display:none}.v2-global-nav{display:none}.flow-kpis{display:none}
   .job-journey{margin-top:2px}.v2-project-sidebar{border:0;background:transparent;padding:0}.v2-project-sidebar-head{padding:4px 2px 7px}
   .v2-project-list{grid-auto-columns:86vw}.v2-project-choice{grid-template-columns:42px minmax(0,1fr) auto;padding:10px}.v2-project-icon{width:40px;height:40px}
@@ -871,7 +895,7 @@ function projectStatus(project){
 }
 function projectPortfolio(){
   const source=Array.isArray(snapshot?.projectPortfolio)?snapshot.projectPortfolio:[];
-  if(source.length)return [...source].sort((a,b)=>packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)-Number(b.order||900)||String(a.name||'').localeCompare(String(b.name||'')));
+  if(source.length)return [...source].sort((a,b)=>Number(a.order||900)-Number(b.order||900)||String(a.name||'').localeCompare(String(b.name||'')));
   const rows=packageRows().filter(row=>row?.workKind==='WORK'&&row?.portfolioHidden!==true);
   if(!rows.length)return [];
   const counts={working:0,review:0,blocked:0,waiting:0,done:0};
@@ -1246,6 +1270,37 @@ function v2EvidenceHtml(pack){
     +'<article class="v2-evidence-card"><header><b>Hoạt động gần đây</b><span>'+activity.length+'</span></header><div>'+(activity.length?activity.map(row=>'<button type="button" data-package-row="'+Number(row.number)+'"><b>•</b><span>'+esc(row.latestCompletedStep||displayTitle(row.title))+'</span><em>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</em></button>').join(''):'<p>Chưa có hoạt động đã xác minh.</p>')+'</div></article>'
     +'</section>';
 }
+function ownerAgeText(value){
+  const t=value?new Date(value).getTime():NaN;
+  if(!Number.isFinite(t))return 'Chưa xác minh';
+  const ms=Math.max(0,Date.now()-t);
+  if(ms<60000)return Math.floor(ms/1000)+' giây trước';
+  if(ms<3600000)return Math.floor(ms/60000)+' phút trước';
+  if(ms<86400000)return Math.floor(ms/3600000)+' giờ trước';
+  return Math.floor(ms/86400000)+' ngày trước';
+}
+function v3OwnerOpsHtml(row){
+  if(!row)return '';
+  const status=workStatus(row),working=status==='WORKING';
+  const project=String(row?.projectName||'Chưa phân dự án').trim();
+  const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
+  const worker=String(row?.assignee||workerFrom(row)||'CHƯA GÁN').trim();
+  const current=String(row?.currentStep||'Chưa có trạng thái xác minh').trim();
+  const done=String(row?.latestCompletedStep||'Chưa có bằng chứng bước vừa xong').trim();
+  const next=String(shortNext(row)||'Chưa xác định').trim();
+  const blocker=String(effectiveBlocker(row)||'Không có').trim();
+  return '<section class="v3-owner-ops '+packageStateClass(status)+'" data-owner-ops-job="'+Number(row.number)+'">'
+    +'<header><div class="v3-live-beacon '+(working?'is-live':'')+'"><span></span><b>'+(working?'ĐANG THỰC THI':'TRẠNG THÁI HIỆN TẠI')+'</b></div><div class="v3-owner-path">'+esc(project)+' <span>→</span> '+esc(stream)+' <span>→</span> JOB #'+Number(row.number)+'</div><em>'+esc(stateLabel[status]||status)+'</em></header>'
+    +'<div class="v3-owner-grid">'
+    +'<div><span>AI / Người làm</span><b>'+esc(worker)+'</b></div>'
+    +'<div><span>JOB</span><b>#'+Number(row.number)+'</b></div>'
+    +'<div class="wide"><span>Đang làm gì</span><b>'+esc(current)+'</b></div>'
+    +'<div class="wide"><span>Vừa xong</span><b>'+esc(done)+'</b></div>'
+    +'<div class="wide next"><span>Bước tiếp theo</span><b>'+esc(next)+'</b></div>'
+    +'<div class="'+(blocker!=='Không có'?'alert':'')+'"><span>Blocker</span><b>'+esc(blocker)+'</b></div>'
+    +'<div><span>Cập nhật</span><b>'+esc(ownerAgeText(row?.updatedAt))+'</b></div>'
+    +'</div></section>';
+}
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
   el.setAttribute('data-live-ui-version','2');
@@ -1278,11 +1333,11 @@ function renderJobJourney(){
 
   el.innerHTML='<div class="v2-portfolio-layout">'+picker+'<section class="v2-project-workspace">'
     +v2ProjectHeaderHtml(selectedProject,ordered)
-    +'<nav class="v2-project-tabs" aria-label="Dự án"><button class="active" type="button">Việc lớn ('+ordered.length+')</button><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">API Health ↗</a></nav>'
+    +'<nav class="v2-project-tabs" aria-label="Dự án"><span class="v2-tab-label active">Việc lớn ('+ordered.length+')</span><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">API Health ↗</a></nav>'
     +ownerCleanPackageTabs(ordered,pack.id)
     +'<article class="v2-workstream-detail">'
     +'<header class="v2-workstream-detail-head"><div><small>TẦNG 2 · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2><p>'+esc(current)+'</p></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
-    +'<div class="v2-workstream-current"><div><span>Người thực hiện</span><b>'+esc(focus?.assignee||workerFrom(focus))+'</b></div><div><span>JOB hiện tại</span><b>#'+Number(focus.number)+'</b></div><div class="wide"><span>Bước tiếp theo</span><b>'+esc(next)+'</b></div></div>'
+    +v3OwnerOpsHtml(focus)
     +v2FlowGridHtml(pack,focus)
     +v2EvidenceHtml(pack)
     +'</article></section></div>';
@@ -1295,12 +1350,27 @@ function renderJobJourney(){
 function renderNowRunning(){
   const el=$('nowRunning');
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!fresh){el.innerHTML='<div class="focus-empty"><b>Việc đang chạy ngay lúc này</b><span>Dữ liệu runtime đã cũ · chưa xác nhận job đang chạy.</span></div>';return}
-  const rows=(snapshot?.activeWork||[]).filter(row=>workStatus(row)==='WORKING');
-  if(!rows.length){el.innerHTML='<div class="focus-empty"><b>Việc đang chạy ngay lúc này</b><span>Không có job runtime đang chạy.</span></div>';return}
-  const row=rows[0];
-  el.innerHTML='<div class="focus-card"><span class="focus-dot"></span><div><b>Việc đang chạy ngay lúc này</b><div>#'+esc(row.number||'—')+' · '+esc(row.employeeId||'—')+'</div><small>'+esc(row.currentStep||'Đang xử lý')+'</small></div></div>';
+  if(!fresh){el.innerHTML='<div class="focus-empty"><b>Đang chạy ngay lúc này</b><span>Dữ liệu runtime đã cũ · chưa xác nhận JOB đang chạy.</span></div>';return}
+  const rows=(snapshot?.activeWork||[]).filter(row=>workStatus(row)==='WORKING').slice(0,4);
+  if(!rows.length){el.innerHTML='<div class="focus-empty"><b>Đang chạy ngay lúc này</b><span>Không có JOB runtime nào đang thực thi.</span></div>';return}
+  el.innerHTML='<section class="v3-running-lane"><header><div><span class="v3-running-dot"></span><b>ĐANG CHẠY NGAY LÚC NÀY</b></div><em>'+rows.length+' JOB</em></header><div class="v3-running-grid">'
+    +rows.map(row=>{
+      const project=String(row?.projectName||'Chưa phân dự án').trim();
+      const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
+      return '<button type="button" class="v3-running-job" data-running-job="'+Number(row.number)+'">'
+        +'<div class="v3-running-path">'+esc(project)+' <span>→</span> '+esc(stream)+'</div>'
+        +'<div class="v3-running-main"><span class="v3-running-pulse"></span><b>#'+Number(row.number)+' · '+esc(row?.assignee||workerFrom(row))+'</b></div>'
+        +'<p>'+esc(row?.currentStep||'Đang xử lý')+'</p>'
+        +'<small>Cập nhật '+esc(ownerAgeText(row?.updatedAt))+' · Bấm để xem chi tiết</small>'
+        +'</button>';
+    }).join('')+'</div></section>';
+  el.querySelectorAll('[data-running-job]').forEach(button=>{
+    const n=Number(button.getAttribute('data-running-job'));
+    const row=rows.find(item=>Number(item.number)===n);
+    if(row)button.addEventListener('click',()=>openDrawer(row,button));
+  });
 }
+
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
   const el=$('apiWorkforce');
