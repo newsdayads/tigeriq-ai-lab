@@ -8,7 +8,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       title: '[P2] Future product',
       body: 'PROJECT_ID=alpha-lab\nPROJECT_NAME=Alpha Lab',
     });
-    expect(project).toEqual({ id: 'alpha-lab', name: 'Alpha Lab', order: 900 });
+    expect(project).toEqual({ id: 'alpha-lab', name: 'Alpha Lab', order: 900, kind: 'project' });
   });
 
   it('maps historical TigerIQ Media naming to canonical TigerIQ News', () => {
@@ -52,8 +52,57 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 2293, title: '[P5][DEFERRED][REVENUE LAB] PoC Apify Website Audit', workKind: 'WORK', status: 'WAITING' },
     ]);
     expect(rows.map((row) => row.status)).toEqual(['REVIEW','BLOCKED','WAITING','WAITING']);
-    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-ai-lab','paperclip-vnext','revenue-lab']));
-    expect(rows[0].workPackageName).toBe('TigerIQ LIVE');
-    expect(rows[1].workPackageName).toBe('Auto-RCA & Observability');
+    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-live','tigeriq-platform','paperclip-vnext','revenue-lab']));
+    expect(rows[0].projectName).toBe('TigerIQ Live');
+    expect(rows[0].workstreamName).toBe('Giao diện Owner');
+    expect(rows[1].projectName).toBe('Nền tảng TigerIQ');
+    expect(rows[1].workstreamName).toBe('Auto-RCA & Quan sát');
+  });
+
+  it('maps legacy TigerIQ AI Lab project ids to the platform and exposes workstream aliases', () => {
+    const rows = annotatePortfolioRows([
+      { number: 4260, title: '[P1][CORE][OBSERVABILITY] tcp_probe', workKind: 'WORK', status: 'WAITING' },
+    ], [{
+      number: 4260,
+      title: '[P1][CORE][OBSERVABILITY] tcp_probe',
+      body: 'PROJECT_ID=tigeriq-ai-lab\nPROJECT_NAME=TigerIQ AI Lab\nWORK_PACKAGE_ID=core-observability\nWORK_PACKAGE_NAME=Core Observability',
+    }]);
+    expect(rows[0]).toMatchObject({
+      projectId: 'tigeriq-platform',
+      projectName: 'Nền tảng TigerIQ',
+      projectKind: 'platform',
+      workstreamId: 'core-observability',
+      workstreamName: 'Core Observability',
+      workPackageId: 'core-observability',
+    });
+  });
+
+  it('prefers canonical WORKSTREAM fields while preserving legacy work-package compatibility', () => {
+    const rows = annotatePortfolioRows([
+      { number: 9002, title: '[P1] Future job', workKind: 'WORK', status: 'WORKING' },
+    ], [{
+      number: 9002,
+      title: '[P1] Future job',
+      body: 'PROJECT_ID=alpha-lab\nPROJECT_NAME=Alpha Lab\nWORKSTREAM_ID=release\nWORKSTREAM_NAME=Phát hành',
+    }]);
+    expect(rows[0]).toMatchObject({
+      projectId: 'alpha-lab',
+      workstreamId: 'release',
+      workstreamName: 'Phát hành',
+      workPackageId: 'release',
+      workPackageName: 'Phát hành',
+    });
+  });
+
+  it('separates TigerIQ Live from the platform project', () => {
+    const rows = annotatePortfolioRows([
+      { number: 4311, title: '[P1][RELEASE][LIVE] Publish Health visual parity', workKind: 'WORK', status: 'WORKING' },
+    ]);
+    expect(rows[0]).toMatchObject({
+      projectId: 'tigeriq-live',
+      projectName: 'TigerIQ Live',
+      workstreamId: 'release',
+      workstreamName: 'Phát hành',
+    });
   });
 });
