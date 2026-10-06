@@ -18,7 +18,7 @@ import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, shouldQueueContinuousVerify } from './continuous-verify.mjs';
-import { autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
+import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
@@ -2450,15 +2450,52 @@ async function githubCreateAutonomousRcaIssue(spec){
   },10000);
 }
 
-async function githubAutonomousRcaIssueState(issueNumber){
+async function githubAutonomousRcaIssueLifecycle(issueNumber){
   const n=Number(issueNumber||0);
-  if(!Number.isInteger(n)||n<=0)return'unknown';
-  if(!GITHUB_TOKEN)return'unknown';
+  if(!Number.isInteger(n)||n<=0)return{state:'unknown',stateReason:'unknown',issue:null};
+  if(!GITHUB_TOKEN)return{state:'unknown',stateReason:'unknown',issue:null};
   try{
     const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
     const issue=await fetchJson(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Autonomous-RCA'}},10000);
-    return String(issue?.state||'unknown').toLowerCase();
-  }catch{return'unknown';}
+    return{
+      state:String(issue?.state||'unknown').toLowerCase(),
+      stateReason:String(issue?.state_reason||'unknown').toLowerCase(),
+      issue,
+    };
+  }catch{return{state:'unknown',stateReason:'unknown',issue:null};}
+}
+
+async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
+  const n=Number(issueNumber||0);
+  if(!Number.isInteger(n)||n<=0)throw new Error('RCA_CANONICAL_ISSUE_INVALID');
+  if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
+  const current=currentIssue||((await githubAutonomousRcaIssueLifecycle(n)).issue);
+  if(!current)throw new Error('RCA_CANONICAL_ISSUE_UNAVAILABLE');
+  const familyMarker=`RCA_FAMILY_KEY=${rca.rcaFamilyKey}`;
+  const priorBody=String(current.body||'');
+  const alreadyRearmed=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')&&priorBody.includes(familyMarker);
+  const rearmHeader=[
+    '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
+    `SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`,
+    'CURRENT_STATE=READY_SELF_UPGRADE_GATE',
+    'TIGERIQ_EXECUTABLE=false',
+    'AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE',
+    'SELF_UPGRADE_CANDIDATE=true',
+    `RCA_SIGNATURE=${rca.rcaSignature}`,
+    familyMarker,
+    `RCA_CLASS=${rca.class}`,
+    `AFFECTED_SCOPE=${rca.affectedScope}`,
+    `EVIDENCE_HASH=${rca.evidenceHash}`,
+    'DONE=false',
+    'SUPERSEDES_PRIOR_TERMINAL_STATE_BELOW=true',
+  ].join('\n');
+  const body=alreadyRearmed?priorBody:`${rearmHeader}\n\n${priorBody}`;
+  const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
+  return fetchJson(url,{
+    method:'PATCH',
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'Content-Type':'application/json','User-Agent':'TigerIQ-Core-Autonomous-RCA'},
+    body:JSON.stringify({state:'open',body}),
+  },10000);
 }
 
 async function materializeAutonomousRca({store=pool}={}){
@@ -2485,14 +2522,53 @@ async function materializeAutonomousRca({store=pool}={}){
         )
       )
       order by seq desc limit 20`,[priorType,rca.rcaFamilyKey,rca.contractId,rca.class,rca.affectedScope])).rows||[];
-    let prior=null,priorIssueState='unknown';
+    let prior=null,priorIssueState='unknown',priorStateReason='unknown',priorIssue=null;
     if(priorType==='AUTONOMOUS_RCA_WORK_ORDER'){
+      const evaluated=[];
       for(const candidate of priorRows){
-        const state=await githubAutonomousRcaIssueState(candidate.data?.issueNumber);
-        if(state!=='closed'){prior=candidate;priorIssueState=state;break;}
+        const lifecycle=await githubAutonomousRcaIssueLifecycle(candidate.data?.issueNumber);
+        evaluated.push({candidate,lifecycle});
+      }
+      const selected=evaluated.find(x=>x.lifecycle.state==='open')
+        ||evaluated.find(x=>x.lifecycle.state==='closed'&&x.lifecycle.stateReason==='completed')
+        ||evaluated[0]
+        ||null;
+      if(selected){
+        prior=selected.candidate;
+        priorIssueState=selected.lifecycle.state;
+        priorStateReason=selected.lifecycle.stateReason;
+        priorIssue=selected.lifecycle.issue;
       }
     }else prior=priorRows[0]||null;
-    if(autonomousRcaMaterializationDedupe({mode,priorType:prior?.type,priorIssueState})){deduped++;continue;}
+    const canonicalAction=autonomousRcaCanonicalAction({mode,priorType:prior?.type,priorIssueState,priorStateReason});
+    if(canonicalAction==='REARM_CANONICAL'){
+      try{
+        const canonicalIssueNumber=Number(prior?.data?.issueNumber)||null;
+        const issue=await githubRearmAutonomousRcaIssue(canonicalIssueNumber,rca,priorIssue);
+        await event('AUTONOMOUS_RCA_CANONICAL_REARMED',{
+          rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+          affectedScope:rca.affectedScope,evidenceHash:rca.evidenceHash,canonicalIssueNumber:Number(issue?.number)||canonicalIssueNumber,
+          priorIssueState,priorStateReason,provenance:rca.provenance,
+        });
+        deduped++;continue;
+      }catch(error){
+        blocked++;
+        await event('AUTONOMOUS_RCA_CANONICAL_REARM_BLOCKED',{
+          rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+          affectedScope:rca.affectedScope,priorIssueNumber:Number(prior?.data?.issueNumber)||null,
+          reason:String(error?.code||error?.message||error).slice(0,240),
+        });
+        continue;
+      }
+    }
+    if(autonomousRcaMaterializationDedupe({mode,priorType:prior?.type,priorIssueState,priorStateReason})){
+      await event('AUTONOMOUS_RCA_FAMILY_DEDUPED',{
+        rcaSignature:rca.rcaSignature,rcaFamilyKey:rca.rcaFamilyKey,anomalySignature:rca.anomalySignature,class:rca.class,
+        affectedScope:rca.affectedScope,canonicalAction,priorIssueNumber:Number(prior?.data?.issueNumber)||null,
+        priorIssueState,priorStateReason,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+      });
+      deduped++;continue;
+    }
     if(rca.hardGate){
       const exception=buildOwnerException(rca);
       await event('AUTONOMOUS_RCA_OWNER_EXCEPTION',{...exception,affectedScope:rca.affectedScope,confidence:rca.confidence,provenance:rca.provenance});

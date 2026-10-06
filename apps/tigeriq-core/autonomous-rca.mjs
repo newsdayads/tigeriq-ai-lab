@@ -125,15 +125,23 @@ export function dedupeAutonomousRca(items=[]){
   return out;
 }
 
-export function autonomousRcaMaterializationDedupe({mode,priorType,priorIssueState}={}){
+export function autonomousRcaCanonicalAction({mode,priorType,priorIssueState,priorStateReason}={}){
   const type=String(priorType||'').toUpperCase();
   const m=String(mode||'').toUpperCase();
+  if(m!=='WORK_ORDER'||type!=='AUTONOMOUS_RCA_WORK_ORDER')return'NONE';
+  const state=String(priorIssueState||'unknown').toLowerCase();
+  const reason=String(priorStateReason||'unknown').toLowerCase();
+  if(state==='closed'&&reason==='completed')return'REARM_CANONICAL';
+  if(state==='closed')return'SUPPRESS_CLOSED';
+  if(state==='open'||state==='reopened')return'DEDUPE_ACTIVE';
+  return'DEDUPE_UNKNOWN';
+}
+
+export function autonomousRcaMaterializationDedupe(args={}){
+  const type=String(args?.priorType||'').toUpperCase();
+  const m=String(args?.mode||'').toUpperCase();
   if(!type)return false;
-  if(m==='WORK_ORDER'){
-    if(type!=='AUTONOMOUS_RCA_WORK_ORDER')return false;
-    const state=String(priorIssueState||'unknown').toLowerCase();
-    return state!=='closed';
-  }
+  if(m==='WORK_ORDER')return autonomousRcaCanonicalAction(args)!=='NONE';
   if(m==='OWNER_EXCEPTION')return type==='AUTONOMOUS_RCA_OWNER_EXCEPTION';
   if(m==='OBSERVE_ONLY')return type==='AUTONOMOUS_RCA_OBSERVE_ONLY';
   return false;

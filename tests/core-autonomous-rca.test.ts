@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
 // @ts-expect-error runtime module intentionally has no TS declaration file.
-import {AUTONOMOUS_RCA_TAXONOMY,autonomousRcaMaterializationDedupe,classifyAutonomousRca,dedupeAutonomousRca,buildImprovementWorkOrder,buildOwnerException,syntheticAutonomousRcaCanary} from '../apps/tigeriq-core/autonomous-rca.mjs';
+import {AUTONOMOUS_RCA_TAXONOMY,autonomousRcaCanonicalAction,autonomousRcaMaterializationDedupe,classifyAutonomousRca,dedupeAutonomousRca,buildImprovementWorkOrder,buildOwnerException,syntheticAutonomousRcaCanary} from '../apps/tigeriq-core/autonomous-rca.mjs';
 
 describe('Core autonomous RCA + Improvement Work Order',()=>{
   it('implements the canonical 14-class taxonomy and classifies five distinct fault fixtures',()=>{
@@ -36,10 +36,24 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(dedupeAutonomousRca([apiA,apiB])).toHaveLength(2);
   });
 
-  it('dedupes only while the prior RCA Work Order remains open',()=>{
-    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'open'})).toBe(true);
-    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'closed'})).toBe(false);
-    expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_WORK_ORDER',priorIssueState:'unknown'})).toBe(true);
+  it('keeps one canonical RCA Work Order across open/closed/reopened lifecycle history',()=>{
+    const priorType='AUTONOMOUS_RCA_WORK_ORDER';
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'open'})).toBe('DEDUPE_ACTIVE');
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'reopened'})).toBe('DEDUPE_ACTIVE');
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'closed',priorStateReason:'completed'})).toBe('REARM_CANONICAL');
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'closed',priorStateReason:'not_planned'})).toBe('SUPPRESS_CLOSED');
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'closed',priorStateReason:'duplicate'})).toBe('SUPPRESS_CLOSED');
+    expect(autonomousRcaCanonicalAction({mode:'WORK_ORDER',priorType,priorIssueState:'unknown'})).toBe('DEDUPE_UNKNOWN');
+    for(const fixture of [
+      {priorIssueState:'open'},
+      {priorIssueState:'reopened'},
+      {priorIssueState:'closed',priorStateReason:'completed'},
+      {priorIssueState:'closed',priorStateReason:'not_planned'},
+      {priorIssueState:'closed',priorStateReason:'duplicate'},
+      {priorIssueState:'unknown'},
+    ]){
+      expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType,...fixture})).toBe(true);
+    }
     expect(autonomousRcaMaterializationDedupe({mode:'WORK_ORDER',priorType:'AUTONOMOUS_RCA_OWNER_EXCEPTION',priorIssueState:'open'})).toBe(false);
   });
 
@@ -77,7 +91,9 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(source).toContain("where status='OPEN' and count>=2");
     expect(source).toContain("data->>'rcaFamilyKey'=$2");
     expect(source).toContain("data#>>'{provenance,contractId}'=$3");
-    expect(source).toContain('githubAutonomousRcaIssueState');
+    expect(source).toContain('githubAutonomousRcaIssueLifecycle');
+    expect(source).toContain('AUTONOMOUS_RCA_CANONICAL_REARMED');
+    expect(source).toContain("stateReason==='completed'");
     expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
     expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");
   });
