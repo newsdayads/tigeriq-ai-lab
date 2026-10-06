@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+import { deploymentEndpoint, deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 
 const base = {
   projectLink: {
@@ -24,6 +24,12 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
   it('derives a verified GitHub login from the canonical noreply author email', () => {
     expect(githubAuthorLoginFromEmail('125233768+newsdayads@users.noreply.github.com')).toBe('newsdayads');
     expect(() => githubAuthorLoginFromEmail('unknown@example.com')).toThrow('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
+  });
+
+  it('uses a Windows-safe Vercel API endpoint with team scope', () => {
+    const endpoint = deploymentEndpoint();
+    expect(endpoint).toBe('/v13/deployments?teamId=team_K8HIG7zmwu0ZjCINX1VhlGiT');
+    expect(endpoint).not.toContain('&');
   });
 
   it('builds an exact production Git-source deployment request', () => {
