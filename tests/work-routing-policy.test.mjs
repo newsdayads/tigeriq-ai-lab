@@ -128,11 +128,13 @@ test('API reviewer fallback is explicit and carries an NV03 unavailable reason',
   assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
 });
 
-test('explicit CORE_REVIEW surface uses dynamic Core review pool with no hard worker target',()=>{
+test('generic CORE_REVIEW surface prefers NV03 UI; API reviewer needs explicit valid fallback',()=>{
   let s=classifyWorkOrder('PRIORITY=P1\nCAPABILITY=review\nEXECUTION_SURFACE=CORE_REVIEW');
-  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,null);assert.equal(s.autonomous,true);assert.equal(s.reviewRoutingReason,'CORE_DYNAMIC_REVIEW_POOL');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.autonomous,true);assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nEXECUTION_SURFACE=CORE_REVIEW\nPREFERRED_REVIEWER=NV17');
-  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,null);assert.equal(s.requestedReviewer,'NV17');
+  assert.equal(s.route,'UI');assert.equal(s.workerId,'NV03');assert.equal(s.requestedReviewer,'NV17');
+  s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review\nEXECUTION_SURFACE=CORE_REVIEW\nPREFERRED_REVIEWER=NV17\nREVIEW_FALLBACK_EMPLOYEE=NV17\nREVIEW_FALLBACK_REASON=NV03_UNAVAILABLE');
+  assert.equal(s.route,'CORE_REVIEW');assert.equal(s.workerId,'NV17');assert.match(s.reviewRoutingReason,/NV03_UNAVAILABLE_FALLBACK/);
 });
 
 test('read-only final review without explicit capability uses NV03 review route',()=>{

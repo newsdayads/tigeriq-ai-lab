@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -12,7 +12,7 @@ function response(value,status=200){return{ok:status>=200&&status<300,status,jso
 
 function fakePool(){
   const objectives=[],jobs=[],events=[];let terminalLock=Promise.resolve();
-  const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,routing_decision:j.routing_decision,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
+  const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,prompt:j.prompt,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,routing_decision:j.routing_decision,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
   const pool={objectives,jobs,events,async connect(){
     let unlock=()=>{};
     return {
@@ -55,7 +55,8 @@ function fakePool(){
       return{rowCount:o?1:0,rows:[]};
     }
     if(sql.includes('CORE_UI_ASSIGNMENT_FAILOVER')){events.push({type:'CORE_UI_ASSIGNMENT_FAILOVER',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
-    if(sql.startsWith('update tigeriq_jobs set status=$2')){const j=jobs.find(x=>x.id===params[0]);if(j){j.status=params[1];j.completed_at='2026-09-30T00:02:00Z';j.result=JSON.parse(params[2]);}return{rowCount:j?1:0,rows:[]};}
+    if(sql.startsWith("insert into tigeriq_events(type,objective_id,job_id")){events.push({type:params[0],objectiveId:params[1],jobId:params[2],workerId:params[3]});return{rowCount:1,rows:[]};}
+    if(sql.startsWith('update tigeriq_jobs set status=$2')){const j=jobs.find(x=>x.id===params[0]);if(j){j.status=params[1];j.completed_at='2026-09-30T00:02:00Z';j.result=JSON.parse(params[2]);j.failure=params[3]?JSON.parse(params[3]):null;}return{rowCount:j?1:0,rows:[]};}
     if(sql.startsWith('update tigeriq_objectives set status=$2')){const o=objectives.find(x=>x.id===params[0]);if(o){o.status=params[1];o.summary=params[2];}return{rowCount:o?1:0,rows:[]};}
     throw new Error('UNHANDLED_SQL:'+sql);
   }};
@@ -64,8 +65,8 @@ function fakePool(){
 
 test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(parseCoreUiIssue(issue(200,safe(['CAPABILITY=general']))),null);
-  let x=parseCoreUiIssue(issue(201,safe(['CAPABILITY=review'])));assert.equal(x.workerId,'NV03');
-  x=parseCoreUiIssue(issue(202,safe(['CAPABILITY=research'])));assert.equal(x.workerId,'NV04');
+  let x=parseCoreUiIssue(issue(201,safe(['CAPABILITY=review'])));assert.equal(x.workerId,'NV03');assert.deepEqual(x.eligibleWorkerIds,['NV03','NV04']);
+  x=parseCoreUiIssue(issue(202,safe(['CAPABILITY=research'])));assert.equal(x.workerId,'NV04');assert.deepEqual(x.eligibleWorkerIds,['NV04']);
   x=parseCoreUiIssue(issue(203,safe(['CAPABILITY=deep_research'])));assert.equal(x.workerId,'NV04');
   assert.equal(parseCoreUiIssue(issue(204,safe(['CAPABILITY=review']).replace('PRIORITY=P2','PRIORITY=P0'))),null);
   assert.equal(selectCoreUiWorker('general'),null);
@@ -548,4 +549,34 @@ test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting
   assert.equal(pool.jobs[0].employee_id,afterFirst,'must not ping-pong on a later snapshot');
   assert.equal(pool.events.filter(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER').length,1);
   assert.equal(second.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
+});
+
+test('internal final-review evidence accepts multiline findings',()=>{
+  const head='1234567890abcdef1234567890abcdef12345678';
+  const parsed=parseInternalReviewEvidence([
+    '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'REVIEW=PASS',
+    'TARGET_HEAD='+head,
+    'SUMMARY=verified',
+    'FINDINGS=first line',
+    'second line',
+  ].join('\n'),'TARGET_HEAD='+head);
+  assert.equal(parsed.valid,true);
+  assert.match(parsed.reviewEvidence.findings,/second line/);
+});
+
+test('internal final-review preserves BLOCKED and EXTERNAL_WAIT job semantics',async()=>{
+  for(const [terminal,expectedStatus,expectedEvent] of [
+    ['BLOCKED','blocked','CORE_UI_FINAL_REVIEW_BLOCKED'],
+    ['EXTERNAL_WAIT','external_wait','CORE_UI_FINAL_REVIEW_EXTERNAL_WAIT'],
+  ]){
+    const pool=fakePool();
+    pool.objectives.push({id:'OBJ-X',priority:'P1',status:'active',metadata:{issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/999',resourceScope:'REVIEW_X'},updated_at:'2026-10-06T00:00:00Z'});
+    pool.jobs.push({id:'FINAL-REVIEW-X-'+terminal,objective_id:'OBJ-X',status:'ui_assigned',employee_id:'NV03',resource_id:'res:ui:nv03:subscription:chrome',provider:'ui',kind:'ui',prompt:'TARGET_HEAD=1234567890abcdef1234567890abcdef12345678',routing_decision:{authority:'CORE_UI_FINAL_REVIEW'}});
+    const out=await completeCoreUiAssignment({pool,jobId:'FINAL-REVIEW-X-'+terminal,workerId:'NV03',terminal,result:terminal});
+    assert.equal(out.terminal,terminal);
+    assert.equal(pool.jobs[0].status,expectedStatus);
+    assert.equal(pool.jobs[0].failure.kind,terminal);
+    assert.ok(pool.events.some(e=>e.type===expectedEvent));
+  }
 });
