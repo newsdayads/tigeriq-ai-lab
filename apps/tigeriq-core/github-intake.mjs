@@ -8,6 +8,7 @@ import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 import { isStabilityV2ResourceScope } from './stability-v2.mjs';
+import { backlogHygieneFindings, backlogSweepDue, beginBacklogSweep, createBacklogSweepState, finishBacklogSweep } from './backlog-hygiene.mjs';
 import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPrompt } from './mobile-worker-api.mjs';
 
 const DEFAULT_OWNER='newsdayads';
@@ -1563,6 +1564,33 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
   const reconcileMs=Math.max(GITHUB_RECONCILE_INTERVAL_MS,Number(intervalMs)||GITHUB_RECONCILE_INTERVAL_MS);
   let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
   const pendingEvents=[];
+  let backlogSweepState=createBacklogSweepState(Date.now());
+
+  const runScheduledBacklogHygiene=async(openIssues)=>{
+    const now=Date.now();
+    const due=backlogSweepDue(backlogSweepState,now);
+    if(!due.due)return {ran:false,reason:due.reason};
+    backlogSweepState=beginBacklogSweep(backlogSweepState,due.kind,now);
+    try{
+      let auditIssues=Array.isArray(openIssues)?openIssues:[];
+      if(due.kind==='deep'){
+        const since=new Date(now-(7*24*60*60*1000)).toISOString();
+        auditIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=all&per_page=100&sort=updated&direction=desc&since=${encodeURIComponent(since)}`,token);
+      }
+      const findings=backlogHygieneFindings(auditIssues,{nowMs:now,deep:due.kind==='deep'});
+      const cursor=auditIssues.reduce((latest,row)=>{
+        const ts=Date.parse(String(row?.updated_at||'')); return Number.isFinite(ts)&&ts>latest?ts:latest;
+      },0);
+      const payload={kind:due.kind,scanned:auditIssues.length,findings:findings.length,types:[...new Set(findings.map((x)=>x.type))],cursor:cursor?new Date(cursor).toISOString():null};
+      await pool.query("insert into tigeriq_events(type,data) values('BACKLOG_HYGIENE_SWEEP',$1)",[JSON.stringify(payload)]).catch(()=>{});
+      backlogSweepState=finishBacklogSweep(backlogSweepState,due.kind,Date.now(),payload.cursor);
+      console.log(JSON.stringify({event:'BACKLOG_HYGIENE_SWEEP',...payload}));
+      return {ran:true,...payload};
+    }catch(error){
+      backlogSweepState=finishBacklogSweep(backlogSweepState,due.kind,Date.now(),backlogSweepState.cursor);
+      throw error;
+    }
+  };
 
   const applyError=(e,kind)=>{
     const delayMs=githubRateLimitCooldownMs(e,Date.now());
@@ -1620,6 +1648,7 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
     busy=true;
     try{
       const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token,{freshMs:30000});
+      await runScheduledBacklogHygiene(openIssues);
       const handedOff=new Set();
       for(const issue of openIssues){
         if(handedOff.size>=5)break;
