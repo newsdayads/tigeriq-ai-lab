@@ -27,7 +27,7 @@ Dự án mới không được hard-code vào UI. Issue mới có thể khai bá
 PROJECT_ID=<stable-slug>
 PROJECT_NAME=<owner-facing-name>
 WORKSTREAM_ID=<stable-slug>
-WORKSTREAM_NAME=<owner-facing-name>
+WORKSTREAM_NAME=<owner-facing-name>\nJOB_ID=<stable-job-id>\nASSIGNEE=<NVxx|Owner>\nDEPENDENCIES=<#issue,...>\nNEXT_ACTION=<owner-facing-next-action>
 ```
 Các field explicit có quyền cao hơn fallback legacy classifier.
 
