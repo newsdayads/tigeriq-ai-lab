@@ -52,8 +52,54 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 2293, title: '[P5][DEFERRED][REVENUE LAB] PoC Apify Website Audit', workKind: 'WORK', status: 'WAITING' },
     ]);
     expect(rows.map((row) => row.status)).toEqual(['REVIEW','BLOCKED','WAITING','WAITING']);
-    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-ai-lab','paperclip-vnext','revenue-lab']));
-    expect(rows[0].workPackageName).toBe('TigerIQ LIVE');
-    expect(rows[1].workPackageName).toBe('Auto-RCA & Observability');
+    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-live','tigeriq-platform','paperclip-vnext','revenue-lab']));
+    expect(rows[0].projectName).toBe('TigerIQ Live');
+    expect(rows[0].workstreamName).toBe('Web điều hành');
+    expect(rows[1].projectName).toBe('TigerIQ Platform');
+    expect(rows[1].workstreamName).toBe('Tự phân tích nguyên nhân');
   });
+  it('projects explicit workstream job assignee dependencies and next action', () => {
+    const rows = annotatePortfolioRows([{
+      number: 9002,
+      title: '[P1] Future delivery',
+      workKind: 'WORK',
+      status: 'WORKING',
+      employeeId: 'NV12',
+    }], [{
+      number: 9002,
+      title: '[P1] Future delivery',
+      body: [
+        'PROJECT_ID=alpha-lab',
+        'PROJECT_NAME=Alpha Lab',
+        'WORKSTREAM_ID=release',
+        'WORKSTREAM_NAME=Phát hành',
+        'JOB_ID=ALPHA-42',
+        'ASSIGNEE=NV12',
+        'DEPENDENCIES=#9000,#9001',
+        'NEXT_ACTION=Xác minh bản phát hành',
+      ].join('\n'),
+    }]);
+    expect(rows[0]).toMatchObject({
+      projectId: 'alpha-lab',
+      projectName: 'Alpha Lab',
+      workstreamId: 'release',
+      workstreamName: 'Phát hành',
+      jobId: 'ALPHA-42',
+      assignee: 'NV12',
+      dependencies: [9000, 9001],
+      nextAction: 'Xác minh bản phát hành',
+    });
+  });
+
+  it('separates platform Core from product projects', () => {
+    const rows = annotatePortfolioRows([
+      { number: 4260, title: '[P1][CORE][OBSERVABILITY] tcp_probe', workKind: 'WORK', status: 'WAITING' },
+      { number: 4311, title: '[P1][RELEASE][LIVE] Publish Health visual parity', workKind: 'WORK', status: 'WORKING' },
+    ]);
+    expect(rows[0].projectId).toBe('tigeriq-platform');
+    expect(rows[0].workstreamId).toBe('observability');
+    expect(rows[1].projectId).toBe('tigeriq-live');
+    expect(rows[1].workstreamId).toBe('release');
+  });
+
 });
