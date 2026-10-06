@@ -146,13 +146,32 @@ test('functional audit clicks every owner-facing control without console errors'
     await expect(page.locator('#workList')).toBeVisible();
   }
 
-  // "Việc lớn" is a label, not a fake button; navigation links are real.
+  // "Việc lớn" is a label; redundant All JOB / Health links are removed from project navigation.
   await expect(page.locator('.v2-project-tabs .v2-tab-label')).toContainText('Việc lớn');
   await expect(page.locator('.v2-project-tabs button')).toHaveCount(0);
-  await expect(page.locator('.v2-project-tabs a[href="#rawWorkDetails"]')).toHaveCount(1);
-  await expect(page.locator('.v2-project-tabs a[href="/index"]')).toHaveCount(1);
+  await expect(page.locator('.v2-project-tabs a')).toHaveCount(0);
+  await expect(page.locator('.health-utility[href="/index"]')).toHaveCount(1);
+  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
 
   expect(errors).toEqual([]);
+});
+
+
+test('keeps only useful navigation controls on desktop and mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openTiger(page);
+  await expect(page.locator('.v2-global-nav a')).toHaveCount(2);
+  await expect(page.locator('.v2-global-nav')).toContainText('Dự án');
+  await expect(page.locator('.v2-global-nav')).toContainText('Đang chạy');
+  await expect(page.locator('.v2-global-nav')).not.toContainText('Tất cả JOB');
+  await expect(page.locator('.v2-global-nav')).not.toContainText('API Health');
+  await expect(page.locator('.health-utility')).toHaveCount(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.v2-mobile-nav a')).toHaveCount(2);
+  await expect(page.locator('.v2-mobile-nav')).toContainText('Dự án');
+  await expect(page.locator('.v2-mobile-nav')).toContainText('Đang chạy');
+  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
 });
 
 test('running lane and owner snapshot use visible motion only for active work', async ({ page }) => {
