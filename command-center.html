@@ -1353,7 +1353,21 @@ function v3OwnerOpsHtml(row){
 function missionRows(){
   const map=new Map();
   for(const row of [...(snapshot?.openWork||[]),...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])]) {
-    if(Number(row?.number)&&row?.workKind!=='SYSTEM') map.set(Number(row.number),row);
+    const number=Number(row?.number);
+    if(!number||row?.workKind==='SYSTEM')continue;
+    const prior=map.get(number)||{};
+    map.set(number,{
+      ...prior,
+      ...row,
+      updatedAt:row?.updatedAt||prior?.updatedAt||null,
+      latestCompletedStep:row?.latestCompletedStep||prior?.latestCompletedStep||null,
+      nextStep:row?.nextStep||prior?.nextStep||null,
+      blocker:row?.blocker||prior?.blocker||null,
+      projectId:row?.projectId||prior?.projectId||null,
+      projectName:row?.projectName||prior?.projectName||null,
+      workstreamId:row?.workstreamId||prior?.workstreamId||null,
+      workstreamName:row?.workstreamName||prior?.workstreamName||null
+    });
   }
   return [...map.values()];
 }
