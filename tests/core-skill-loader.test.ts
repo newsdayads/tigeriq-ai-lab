@@ -143,7 +143,7 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
   const registryPath = join(process.cwd(), 'docs/skills/registry.yaml');
   const registry = parseSkillRegistry(readFileSync(registryPath, 'utf8'));
   assert.equal(registry.skills.length, 17);
-  assert.equal(new Set(registry.skills.map(skill => skill.id)).size, 17);
+  assert.equal(new Set(registry.skills.map((skill: Entry) => skill.id)).size, 17);
 
   for (const skill of registry.skills) {
     assert.ok(skill.version, `${skill.id} must have version`);
@@ -152,7 +152,7 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
     assert.ok(skill.target, `${skill.id} must have target`);
   }
 
-  const active = registry.skills.filter(skill => skill.state === 'ACTIVE');
+  const active = registry.skills.filter((skill: Entry) => skill.state === 'ACTIVE');
   assert.equal(active.length, 12);
   const requiredHeadings = [
     '## Identity',
@@ -179,6 +179,6 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
     assert.ok(skillContent.includes(`- Target: ${skill.target}`), `${skill.id} target mismatch`);
   }
 
-  const contextual = registry.skills.find(skill => skill.id === 'contextual-skill-loading');
+  const contextual = registry.skills.find((skill: Entry) => skill.id === 'contextual-skill-loading');
   assert.equal(contextual?.state, 'CANDIDATE');
 });
