@@ -444,6 +444,16 @@ describe('#1255 routing/runtime integration',()=>{
     expect(watsonxRetryDecision({unexpected:true},0,2)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
   });
 
+  it('forces non-empty NVIDIA chat content without consuming reasoning content as the answer',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain("const providerBody=managerProviderBodyForHost(host,prompt)");
+    expect(core).toContain("if(host==='integrate.api.nvidia.com')");
+    expect(core).toContain("force_nonempty_content:true");
+    expect(core).toContain("requestBody.chat_template_kwargs={...(providerBody.chat_template_kwargs||{}),force_nonempty_content:true}");
+    expect(core).toContain("case 'nvidia': return openAiCompat('https://integrate.api.nvidia.com/v1/chat/completions'");
+    expect(core).not.toContain("body?.choices?.[0]?.message?.reasoning_content");
+  });
+
   it('executes the Cloudflare manager JSON helper behavior and verifies provider wiring',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const extractFunction=(name)=>{
