@@ -155,6 +155,10 @@ export function deploymentRequestForGitSource(plan, gitInfo = {}) {
   };
 }
 
+export function deploymentEndpoint() {
+  return `/v13/deployments?teamId=${EXPECTED_TEAM_ID}`;
+}
+
 function deploy(root, plan) {
   const authorEmail = git(root, ['show', '-s', '--format=%ae', plan.exactSha]);
   const request = deploymentRequestForGitSource(plan, {
@@ -166,7 +170,7 @@ function deploy(root, plan) {
   const inputFile = resolve(root, '.vercel', `tigeriq-deploy-request-${process.pid}.json`);
   writeFileSync(inputFile, JSON.stringify(request), { encoding: 'utf8', flag: 'wx' });
   try {
-    const endpoint = `/v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1&teamId=${EXPECTED_TEAM_ID}`;
+    const endpoint = deploymentEndpoint();
     const apiArgs = ['api', endpoint, '-X', 'POST', '--input', inputFile];
     const options = {
       cwd: root,
