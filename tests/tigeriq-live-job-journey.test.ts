@@ -4,24 +4,52 @@ import fs from 'node:fs';
 const rootHtml = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
 const publicHtml = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 
-describe('TigerIQ LIVE Owner Operations V3 #4351', () => {
+describe('TigerIQ LIVE Mission Control V1 #4362', () => {
   it('keeps root and public exactly in sync', () => {
     expect(publicHtml).toBe(rootHtml);
   });
 
-  it('renders the approved Project → Workstream → Flow → Job hierarchy as the primary surface', () => {
-    expect(rootHtml).toContain('data-live-ui-version');
+  it('renders Mission Control as primary and keeps Project → Workstream → Flow → Job as drill-down', () => {
+    expect(rootHtml).toContain('id="missionControl"');
+    expect(rootHtml).toContain('function renderMissionControl()');
+    expect(rootHtml).toContain('mc-layout');
+    expect(rootHtml).toContain('mc-project-rail');
+    expect(rootHtml).toContain('mc-columns');
+    expect(rootHtml).toContain('mc-activity');
+    expect(rootHtml).toContain('<details id="projectDrilldown" class="project-drilldown">');
     expect(rootHtml).toContain('v2-portfolio-layout');
-    expect(rootHtml).toContain('v2-project-sidebar');
-    expect(rootHtml).toContain('v2-project-header');
-    expect(rootHtml).toContain('v2-workstream-grid');
     expect(rootHtml).toContain('v2-flow-grid');
     expect(rootHtml).toContain('v2-evidence-grid');
-    expect(rootHtml).toContain('TẦNG 1 · DỰ ÁN');
-    expect(rootHtml).toContain('TẦNG 2');
-    expect(rootHtml).toContain('TẦNG 3');
   });
 
+
+
+  it('provides owner-first KPIs, four Kanban columns and live activity', () => {
+    expect(rootHtml).toContain('ĐANG CHẠY');
+    expect(rootHtml).toContain('BỊ CHẶN');
+    expect(rootHtml).toContain('CHỜ ANH SƠN');
+    expect(rootHtml).toContain('XONG HÔM NAY');
+    expect(rootHtml).toContain("missionColumn('waiting','CHỜ'");
+    expect(rootHtml).toContain("missionColumn('working','ĐANG LÀM'");
+    expect(rootHtml).toContain("missionColumn('review','RÀ SOÁT'");
+    expect(rootHtml).toContain("missionColumn('done','XONG'");
+    expect(rootHtml).toContain('LIVE ACTIVITY');
+  });
+
+  it('lets project rail filter the board while job cards open existing detail drawer', () => {
+    expect(rootHtml).toContain('data-mc-project');
+    expect(rootHtml).toContain('missionProjectId');
+    expect(rootHtml).toContain('data-mc-job');
+    expect(rootHtml).toContain("openDrawer(row,button)");
+  });
+
+  it('shows live working animation but preserves reduced-motion', () => {
+    expect(rootHtml).toContain('mc-live-bars');
+    expect(rootHtml).toContain('@keyframes mc-bars');
+    expect(rootHtml).toContain('@keyframes mc-scan');
+    expect(rootHtml).toContain('@keyframes mc-ring');
+    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
+  });
 
   it('keeps project order stable instead of moving projects by runtime status', () => {
     expect(rootHtml).toContain("if(source.length)return [...source].sort((a,b)=>Number(a.order||900)-Number(b.order||900)");
