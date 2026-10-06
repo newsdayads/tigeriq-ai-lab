@@ -998,3 +998,8 @@ describe('GitHub Core intake guardrails',()=>{
   it('keeps clean wrapper success and rejects prose-only or timed-out terminals',()=>{
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:[]},{timedOut:false,parsedPresent:true})).toMatchObject({success:true,wrapperClean:true});
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:null,successfulToolNames:['tigeriq_pc']},{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true});
+    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
+  });
+
+  it('formats a terminal result with Vietnamese Owner-facing evidence',()=>{const out=formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'final review PASS'});expect(out).toContain('[KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-588');expect(out).toContain('rà soát cuối ĐẠT');expect(out).not.toMatch(/\\b(?:PASS|COMPLETED|BLOCKED)\\b/);});
+});
