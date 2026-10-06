@@ -99,11 +99,22 @@ describe('TigerIQ LIVE Owner Operations V3 #4351', () => {
     expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
-  it('keeps LIVE and API Health separated but directly linked', () => {
-    expect(rootHtml).toContain('API Health ↗');
+  it('keeps LIVE and API Health separated with Health as a header utility only', () => {
+    expect(rootHtml).toContain('class="health-utility"');
+    expect(rootHtml).toContain('aria-label="API Health"');
     expect(rootHtml).toContain('href="/index"');
+    expect(rootHtml).not.toContain('API Health ↗');
+    expect(rootHtml).not.toContain('<a href="#rawWorkDetails">Tất cả JOB</a>');
     expect(rootHtml).toContain("fetch('/api/live-status',{cache:'no-store'})");
     expect(rootHtml).toContain('href="/work-ui.css"');
+  });
+
+
+  it('removes redundant all-JOB and Health navigation while keeping the content visible', () => {
+    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
+    expect(rootHtml).not.toContain('<a href="#rawWorkDetails">Tất cả JOB</a>');
+    expect(rootHtml).not.toContain('<a href="/index">Health</a>');
+    expect(rootHtml).toContain('<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a></nav>');
   });
 
   it('provides mobile Project → Workstream → Flow → Job navigation', () => {
