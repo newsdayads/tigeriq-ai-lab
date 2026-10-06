@@ -1,15 +1,15 @@
 {
   "schema": "tigeriq.android-worker.ci-artifact.v1",
-  "versionCode": 25,
-  "versionName": "0.25.0-project-fallback",
+  "versionCode": 26,
+  "versionName": "0.26.0-vn-new-chat",
   "applicationId": "ai.tigeriq.worker",
-  "workflowRunId": "37328182772",
-  "artifactId": "11352883018",
+  "workflowRunId": "37400923670",
+  "artifactId": "11385411380",
   "artifactName": "tigeriq-worker-unsigned-release-apk",
-  "sourceArtifactHead": "673ed946e0c60fc37a23fa30fb7f95120f547a67",
-  "sourceArtifactAndroidTreeSha": "10ad6fd1906e09747561a7c4cce861a9c2747a3f",
-  "unsignedApkSha256": "DDC7AEE563B4D1C98393BED744882E2A7245CFFEFA6EDD2F92CAC88E2EAF11F6",
+  "sourceArtifactHead": "eb443ee9ee097987a056d447041c47830d3c286a",
+  "sourceArtifactAndroidTreeSha": "d64aa6eb860c52c520134fd96080717a574516d0",
+  "unsignedApkSha256": "9AFB8C7F215527D9BE5262841F0BCAD1031DA14CE8A4479EB895DD7819EB753F",
   "apksignerJarSha256": "00EF9948F843FE395D2440AE3EF41405B8040A6D5D46493BD1902AC0EE6DEAE7",
   "signerSha256": "63E027C013222139982B4F4FF43AFF8734EAC4B249FE85E94A3EADFDE19C8293",
-  "sourceArtifactAppTreeSha": "d804cfee6fcc8be544277ccc6decd2f285438178"
+  "sourceArtifactAppTreeSha": "d6d61130d135767f71f70fcda1d95bc8e15b0b2f"
 }
