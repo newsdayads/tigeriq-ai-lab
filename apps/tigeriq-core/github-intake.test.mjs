@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -1002,4 +1002,57 @@ describe('GitHub Core intake guardrails',()=>{
   });
 
   it('formats a terminal result with Vietnamese Owner-facing evidence',()=>{const out=formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'final review PASS'});expect(out).toContain('[KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-588');expect(out).toContain('rà soát cuối ĐẠT');expect(out).not.toMatch(/\\b(?:PASS|COMPLETED|BLOCKED)\\b/);});
+
+  it('selects NV03 then NV04 for final UI review while respecting busy/implementer exclusion',async()=>{
+    const pool={async query(sql){
+      if(sql.includes("kind='ui'")&&sql.includes("employee_id=any"))return {rows:[{employee_id:'NV03'}]};
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    expect(await selectUiFinalReviewer(pool,{implementerEmployeeIds:[]})).toBe('NV04');
+    const idlePool={async query(sql){
+      if(sql.includes("kind='ui'")&&sql.includes("employee_id=any"))return {rows:[]};
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    expect(await selectUiFinalReviewer(idlePool,{implementerEmployeeIds:['NV03']})).toBe('NV04');
+    expect(await selectUiFinalReviewer(idlePool,{implementerEmployeeIds:['NV04']})).toBe('NV03');
+  });
+
+  it('preserves an existing deterministic UI final-review assignment without reselecting reviewer',async()=>{
+    let activeQueries=0,inserts=0;
+    const existing={status:'ui_assigned',attempts:0,max_attempts:2,employee_id:'NV03',kind:'ui',resource_id:'res:ui:nv03:subscription:chrome',provider:'ui',routing_decision:{authority:'CORE_UI_FINAL_REVIEW'}};
+    const pool={async query(sql){
+      if(sql.startsWith('select status,attempts,max_attempts,employee_id,kind'))return {rows:[existing]};
+      if(sql.includes("kind='ui'")&&sql.includes("employee_id=any")){activeQueries++;return {rows:[]};}
+      if(sql.startsWith('insert into tigeriq_jobs')){inserts++;return {rowCount:1,rows:[]};}
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    const row={id:'OBJ-UI-1',metadata:{issueNumber:4388},summary:'ready'};
+    const out=await ensureFinalLiveReviewJob(pool,row,{comments:[],sourceRevision:'1234567890abcdef1234567890abcdef12345678',evidenceKey:'E1',implementationContext:{implementationTerminal:true,fingerprint:'fp1',implementerEmployeeIds:[]}});
+    expect(out).toMatchObject({state:'UI_ASSIGNED',workerId:'NV03'});
+    expect(activeQueries).toBe(0);
+    expect(inserts).toBe(0);
+  });
+
+  it('materializes a new final-review job on idle NV03 before API fallback',async()=>{
+    let created=null,selectCount=0;
+    const pool={async query(sql,params=[]){
+      if(sql.startsWith('select status,attempts,max_attempts,employee_id,kind')){
+        if(!created)return {rows:[]};
+        return {rows:[created]};
+      }
+      if(sql.includes("kind='ui'")&&sql.includes("employee_id=any")){selectCount++;return {rows:[]};}
+      if(sql.startsWith('insert into tigeriq_jobs')){
+        created={status:'ui_assigned',attempts:0,max_attempts:2,employee_id:String(params[4]),kind:'ui',resource_id:String(params[5]),provider:'ui',routing_decision:JSON.parse(params[6])};
+        return {rowCount:1,rows:[]};
+      }
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    const row={id:'OBJ-UI-2',metadata:{issueNumber:4388},summary:'ready'};
+    const out=await ensureFinalLiveReviewJob(pool,row,{comments:[],sourceRevision:'1234567890abcdef1234567890abcdef12345678',evidenceKey:'E2',implementationContext:{implementationTerminal:true,fingerprint:'fp2',implementerEmployeeIds:[]}});
+    expect(selectCount).toBe(1);
+    expect(created.employee_id).toBe('NV03');
+    expect(created.routing_decision.authority).toBe('CORE_UI_FINAL_REVIEW');
+    expect(out).toMatchObject({state:'UI_ASSIGNED',workerId:'NV03'});
+  });
+
 });
