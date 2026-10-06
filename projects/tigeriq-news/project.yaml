@@ -1,0 +1,23 @@
+schema: tigeriq.project.v2
+id: tigeriq-news
+name: TigerIQ News
+kind: project
+order: 30
+source_roots:
+  - services/news-engine
+workstreams:
+  - id: discovery
+    name: Phát hiện tin
+    order: 10
+  - id: research
+    name: Nghiên cứu & Fact Pack
+    order: 20
+  - id: editorial
+    name: Biên tập & Duyệt
+    order: 30
+  - id: publishing
+    name: Xuất bản
+    order: 40
+  - id: runtime
+    name: Runtime & Soak
+    order: 50
