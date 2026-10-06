@@ -114,32 +114,95 @@ function ensureProjectLink(root) {
   return { link, temporary: true, dir };
 }
 
-function deploy(root, plan) {
-  const metadata = releaseGitMetadata(root, plan.exactSha);
-  const metadataArgs = Object.entries(metadata).flatMap(([key, value]) => ['--meta', `${key}=${value}`]);
-  const deployArgs = ['deploy', '--prod', '--yes', '--team', EXPECTED_TEAM_ID, ...metadataArgs];
-  const options = {
-    cwd: root,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      VERCEL_ORG_ID: EXPECTED_TEAM_ID,
-      VERCEL_PROJECT_ID: EXPECTED_PROJECT_ID,
+export function deploymentRequestForGitSource(plan, gitInfo = {}) {
+  const [org, repo] = EXPECTED_REPO.split('/');
+  const exactSha = clean(plan?.exactSha).toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(exactSha)) throw new Error('VERCEL_EXPECTED_SHA_INVALID');
+  const authorLogin = clean(gitInfo.authorLogin);
+  const authorEmail = clean(gitInfo.authorEmail);
+  const authorName = clean(gitInfo.authorName);
+  if (!authorLogin || !authorEmail || !authorName) throw new Error('VERCEL_GIT_METADATA_INCOMPLETE');
+  return {
+    name: 'tigeriq-ai-lab',
+    project: EXPECTED_PROJECT_ID,
+    target: 'production',
+    gitSource: {
+      type: 'github',
+      org,
+      repo,
+      ref: EXPECTED_BRANCH,
+      sha: exactSha,
     },
-    windowsHide: true,
-    timeout: 110000,
-    maxBuffer: 2 * 1024 * 1024,
+    gitMetadata: {
+      remoteUrl: `https://github.com/${EXPECTED_REPO}.git`,
+      commitAuthorName: authorName,
+      commitAuthorEmail: authorEmail,
+      commitMessage: String(gitInfo.commitMessage || ''),
+      commitRef: EXPECTED_BRANCH,
+      commitSha: exactSha,
+      dirty: false,
+      ci: true,
+      ciType: 'tigeriq-pc01',
+      ciGitProviderUsername: authorLogin,
+      ciGitRepoVisibility: 'public',
+      rootDirectory: '',
+    },
+    meta: {
+      tigeriqReleaseIssue: clean(plan?.issue),
+      tigeriqReleaseClass: 'WEB_LIVE',
+      tigeriqExactSha: exactSha,
+    },
   };
-  const result = process.platform === 'win32'
-    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ['vercel.cmd', ...deployArgs].join(' ')], options)
-    : spawnSync('vercel', deployArgs, options);
-  if (result.error) throw new Error(result.error.code === 'ETIMEDOUT' ? 'VERCEL_DEPLOY_TIMEOUT' : 'VERCEL_CLI_EXEC_FAILED');
-  const output = String(result.stdout || '') + '\n' + String(result.stderr || '');
-  if (result.status !== 0) throw new Error(classifyDeployFailure(output));
-  const urls = [...output.matchAll(/https:\/\/[^\s]+\.vercel\.app\b/gi)].map((match) => match[0]);
-  const deploymentUrl = urls.at(-1) || null;
-  if (!deploymentUrl) throw new Error('VERCEL_DEPLOYMENT_URL_MISSING');
-  return { deploymentUrl };
+}
+
+function deploy(root, plan) {
+  const authorEmail = git(root, ['show', '-s', '--format=%ae', plan.exactSha]);
+  const request = deploymentRequestForGitSource(plan, {
+    authorLogin: githubAuthorLoginFromEmail(authorEmail),
+    authorEmail,
+    authorName: git(root, ['show', '-s', '--format=%an', plan.exactSha]),
+    commitMessage: git(root, ['show', '-s', '--format=%B', plan.exactSha]),
+  });
+  const inputFile = resolve(root, '.vercel', `tigeriq-deploy-request-${process.pid}.json`);
+  writeFileSync(inputFile, JSON.stringify(request), { encoding: 'utf8', flag: 'wx' });
+  try {
+    const endpoint = `/v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1&teamId=${EXPECTED_TEAM_ID}`;
+    const apiArgs = ['api', endpoint, '-X', 'POST', '--input', inputFile, '--team', EXPECTED_TEAM_ID];
+    const options = {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        VERCEL_ORG_ID: EXPECTED_TEAM_ID,
+        VERCEL_PROJECT_ID: EXPECTED_PROJECT_ID,
+      },
+      windowsHide: true,
+      timeout: 110000,
+      maxBuffer: 2 * 1024 * 1024,
+    };
+    const result = process.platform === 'win32'
+      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ['vercel.cmd', ...apiArgs.map((arg) => `"${String(arg).replaceAll('"', '\\"')}"`)].join(' ')], options)
+      : spawnSync('vercel', apiArgs, options);
+    if (result.error) throw new Error(result.error.code === 'ETIMEDOUT' ? 'VERCEL_DEPLOY_TIMEOUT' : 'VERCEL_CLI_EXEC_FAILED');
+    const output = String(result.stdout || '');
+    const combined = output + '\n' + String(result.stderr || '');
+    if (result.status !== 0) throw new Error(classifyDeployFailure(combined));
+    let response;
+    try { response = JSON.parse(output); }
+    catch { throw new Error('VERCEL_DEPLOYMENT_RESPONSE_INVALID'); }
+    const deploymentId = clean(response?.id || response?.uid);
+    const deploymentHost = clean(response?.url);
+    if (!/^dpl_[A-Za-z0-9]+$/.test(deploymentId) || !/^[^\s]+\.vercel\.app$/i.test(deploymentHost)) {
+      throw new Error('VERCEL_DEPLOYMENT_RESPONSE_INVALID');
+    }
+    return {
+      deploymentId,
+      deploymentUrl: 'https://' + deploymentHost,
+      deploymentSource: 'git',
+    };
+  } finally {
+    rmSync(inputFile, { force: true });
+  }
 }
 
 function parseArgs(argv) {
