@@ -124,8 +124,8 @@ function workstreamFor(project, row = {}, issue = null) {
     return { id: 'runtime', name: 'Vận hành', order: 50 };
   }
   if (project.id === 'tigeriq-live') {
-    if (/API|HEALTH|ENDPOINT/i.test(text)) return { id: 'api', name: 'API & sức khỏe hệ thống', order: 20 };
     if (/RELEASE|VERCEL|PRODUCTION|PUBLISH/i.test(text)) return { id: 'release', name: 'Phát hành', order: 30 };
+    if (/API|HEALTH|ENDPOINT/i.test(text)) return { id: 'api', name: 'API & sức khỏe hệ thống', order: 20 };
     return { id: 'web', name: 'Web điều hành', order: 10 };
   }
   if (project.id === 'paperclip-vnext') {
