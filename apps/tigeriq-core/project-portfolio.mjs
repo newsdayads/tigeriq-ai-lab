@@ -110,6 +110,12 @@ function legacyWorkPackage(project, row = {}, issue = null) {
   return { id: 'core-router-workforce', name: 'Core / Điều phối & Nhân sự', order: 10 };
 }
 
+function parseDependencies(value = '') {
+  return [...String(value || '').matchAll(/#?(\d+)/g)]
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+}
+
 function statusBucket(status = '') {
   const value = String(status || '').toUpperCase();
   if (value === 'WORKING' || value === 'ĐANG XỬ LÝ' || value === 'ĐANG LÀM') return 'working';
@@ -125,6 +131,8 @@ export function annotatePortfolioRows(rows = [], issues = []) {
     const issue = issueMap.get(Number(row?.number)) || null;
     const project = classifyProject(row, issue);
     const workPackage = legacyWorkPackage(project, row, issue);
+    const body = String(issue?.body || '');
+    const explicitDependencies = parseDependencies(bodyValue(body, 'DEPENDENCIES') || bodyValue(body, 'DEPENDS_ON'));
     return {
       ...row,
       projectId: project.id,
@@ -137,6 +145,10 @@ export function annotatePortfolioRows(rows = [], issues = []) {
       workPackageId: workPackage.id,
       workPackageName: workPackage.name,
       workPackageOrder: workPackage.order,
+      jobId: bodyValue(body, 'JOB_ID') || (row?.number ? 'GH-' + row.number : null),
+      assignee: bodyValue(body, 'ASSIGNEE') || bodyValue(body, 'TARGET_EMPLOYEE') || row?.employeeId || null,
+      dependencies: explicitDependencies.length ? explicitDependencies : (Array.isArray(row?.dependencies) ? row.dependencies : []),
+      nextAction: bodyValue(body, 'NEXT_ACTION') || bodyValue(body, 'NEXT') || row?.nextStep || row?.currentStep || null,
       androidVersionMinor: workPackage.androidMinor ?? androidMinorVersion(row, issue),
       portfolioHidden: false,
       portfolioHiddenReason: null,
