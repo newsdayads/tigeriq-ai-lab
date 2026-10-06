@@ -471,7 +471,7 @@ function issueEmployeeId(issue) {
 function issueIsTerminal(issue) {
   if (!issue || issue.pull_request || issue.state !== 'open') return true;
   const body = String(issue.body || '');
-  const state = bodyValue(body, 'STATE').toUpperCase();
+  const state = firstBodyValue(body, ['CURRENT_STATE', 'STATE']).toUpperCase();
   return ['CLOSED', 'DONE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'].includes(state)
     || /^SUPERSEDED(?:_BY)?=/mi.test(body);
 }
@@ -953,6 +953,9 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
     || bodyFlag(body, 'OWNER_HOLD')
     || bodyFlag(body, 'OWNER_GATE')
     || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || bodyFlag(body, 'OWNER_REVIEW_REQUIRED')
+    || bodyFlag(body, 'OWNER_ACCEPTANCE_REQUIRED')
+    || bodyFlag(body, 'MANUAL_GATE')
     || hardGateState) return 'HARD_GATE';
 
   const blockedBy = bodyValue(body, 'BLOCKED_BY').trim().toUpperCase();
@@ -1164,7 +1167,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
         ? safeEvidenceTimestamp(issue.updated_at)
         : null;
   const activeWorker = active?.live === true && active?.employeeId ? active.employeeId : null;
-  const activeLease = Boolean(activeWorker && status === 'WORKING');
+  const activeLease = Boolean(activeWorker && ['WORKING','REVIEW','VERIFY'].includes(status));
   const heartbeatFresh = active?.live === true ? true : null;
   const waitReason = queued?.waitReason
     || (['WAITING','BLOCKED'].includes(status) ? (rawBlocker || bodyValue(body, 'WAIT_REASON') || phase || null) : null);
