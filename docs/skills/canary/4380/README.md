@@ -45,3 +45,7 @@ No package install, no credential/cookie expansion, no Production/App Chrome mut
 **Gap rule:** Sales/Marketing/Finance-specific execution skills remain gaps; the canary does not invent replacements.
 
 **Acceptance:** PASS — only existing ACTIVE skills are composed, no definitions are copied, no second scheduler/registry is introduced, and uncovered domains remain explicit.
+
+
+## Promotion eligibility state semantics
+The canary PASS step first yields `PROMOTION_READY + promotionEligible=true`. The proposed reviewed registry mutation then consumes that one-shot gate: terminal queue state becomes `ACTIVE + promotionEligible=false`, while the USE/MEASURE PASS evidence is retained. This prevents re-promoting an already ACTIVE skill and is the existing `reconcilePromotionQueue` contract, not a failed eligibility signal.

@@ -76,5 +76,12 @@
         "Finance-specific execution skill"
       ]
     }
-  ]
+  ],
+  "promotionSemantics": {
+    "preActivationStatus": "PROMOTION_READY",
+    "preActivationPromotionEligible": true,
+    "terminalStatus": "ACTIVE",
+    "terminalPromotionEligible": false,
+    "meaning": "promotionEligible is consumed after evidence-backed reviewed activation; false at ACTIVE prevents replay and does not invalidate PASS evidence"
+  }
 }
