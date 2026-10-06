@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+import { githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 
 const base = {
   projectLink: {
@@ -21,6 +21,11 @@ const base = {
 };
 
 describe('Vercel web-hosting-only hard boundary #3897', () => {
+  it('derives a verified GitHub login from the canonical noreply author email', () => {
+    expect(githubAuthorLoginFromEmail('125233768+newsdayads@users.noreply.github.com')).toBe('newsdayads');
+    expect(() => githubAuthorLoginFromEmail('unknown@example.com')).toThrow('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
+  });
+
   it('allows only an explicitly authorized real web release contract', () => {
     expect(validateReleaseContract(base)).toMatchObject({
       target: 'production',
