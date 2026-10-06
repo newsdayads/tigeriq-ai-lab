@@ -30,10 +30,22 @@ const snapshot = {
       currentStep: null,
       nextStep: 'Chờ điều phối'
     }))
-  ],
+  ].map(row=>({
+    ...row,
+    projectId:'tigeriq-platform',
+    projectName:'Nền tảng TigerIQ',
+    workstreamId:Number(row.number)>=300?'aux-'+row.number:'live-ui',
+    workstreamName:Number(row.number)>=300?'Việc phụ '+row.number:'TigerIQ Live UI'
+  })),
   activeWork: [
     { number: 111, parentNumber: 110, title: '[P1][UI] Xây thẻ công việc đọc là hiểu', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P1', employeeId: 'NV03', currentStep: 'Dựng mặt thẻ công việc', latestCompletedStep: 'Đã chốt cấu trúc card', nextStep: 'Kiểm tra browser desktop và mobile', targetPrNumber: 200, progressPercent: 70, progressSource: 'explicit_verified' }
-  ],
+  ].map(row=>({
+    ...row,
+    projectId:'tigeriq-platform',
+    projectName:'Nền tảng TigerIQ',
+    workstreamId:'live-ui',
+    workstreamName:'TigerIQ Live UI'
+  })),
   nextQueue: [],
   recentWork: [],
   workers: [
