@@ -300,9 +300,14 @@ export function isBoundedAppChromeRequestOnly(body){
 }
 
 export function githubSpecBlockedByActive(spec,activeMetadata=[]){
-  const scope=String(spec?.resourceScope||'');
-  if(!scope)return false;
-  return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>String(metadata?.resourceScope||'')===scope);
+  const scope=normalizeWorkOrderScopeFamily(spec?.resourceScope||'');
+  const dedupeKey=workOrderDedupIdentity(spec);
+  return (Array.isArray(activeMetadata)?activeMetadata:[]).some((metadata)=>{
+    const activeKey=String(metadata?.workOrderDedupeKey||'');
+    if(dedupeKey&&activeKey&&activeKey===dedupeKey)return true;
+    const activeScope=normalizeWorkOrderScopeFamily(metadata?.resourceScope||'');
+    return Boolean(scope&&activeScope&&scope===activeScope);
+  });
 }
 
 export function normalizeWorkOrderScopeFamily(value=''){
@@ -323,13 +328,20 @@ export function normalizeWorkOrderIntentTitle(value=''){
     .trim();
 }
 
+function normalizeDedupField(value=''){
+  return String(value||'').trim().toLowerCase().replace(/[^a-z0-9#._/-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+}
+
 export function workOrderDedupIdentity(spec={}){
   const body=String(spec?.body||'');
   const scope=normalizeWorkOrderScopeFamily(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
   const reviewOnly=spec?.capability==='review'||hasExactFlag(body,'REVIEW_ONLY')||bodyValue(body,'CAPABILITY').toLowerCase()==='review';
   if(reviewOnly)return `review:${Number(spec?.number||0)}:${scope}`;
-  const title=normalizeWorkOrderIntentTitle(spec?.title||'');
-  return `${scope}|${title}`;
+  const project=normalizeDedupField(bodyValue(body,'PROJECT_ID')||'tigeriq-ai-lab');
+  const workstream=normalizeDedupField(bodyValue(body,'WORKSTREAM_ID')||bodyValue(body,'WORK_PACKAGE_ID'));
+  const family=normalizeDedupField(bodyValue(body,'OBJECTIVE_FAMILY')||bodyValue(body,'FAMILY')||bodyValue(body,'CANONICAL_SPEC')||normalizeWorkOrderIntentTitle(spec?.title||''));
+  const artifact=normalizeDedupField(bodyValue(body,'TARGET_ARTIFACT')||bodyValue(body,'TARGET_PATH')||bodyValue(body,'TARGET_PR'));
+  return [project,workstream,family,normalizeDedupField(scope),artifact].join('|');
 }
 
 export function dedupeBacklogWorkOrders(specs=[]){
@@ -531,7 +543,7 @@ export function parseExecutableIssue(issue){
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(dynamicCoreLane?null:(classification.workerId||null)),
-    url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
+    url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),createdAt:String(issue.created_at||''),readyAt:bodyValue(body,'READY_AT')||String(issue.created_at||issue.updated_at||''),executable:true,dependencySatisfied:true,capabilityMatch:true,
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
@@ -948,19 +960,20 @@ async function sameRevisionFallbackRearmPlan(pool,prior,spec){
   return sameRevisionFallbackRearmDecision({prior,spec,rearmCount:count});
 }
 
-async function insertGithubObjectiveIfScopeFree(pool,{id,objective,priority,metadata,resourceScope}){
+async function insertGithubObjectiveIfScopeFree(pool,{id,objective,priority,metadata,resourceScope,dedupeKey}){
   const scope=String(resourceScope||'').trim();
-  if(!scope){
+  const key=String(dedupeKey||scope||'').trim();
+  if(!scope&&!key){
     const q=await pool.query("insert into tigeriq_objectives(id,objective,priority,status,metadata) values($1,$2,$3,'active',$4) on conflict(id) do nothing returning id",[id,objective,priority,JSON.stringify(metadata)]);
     return q.rowCount===1;
   }
   const q=await pool.query(
-    "with locked as materialized (select pg_advisory_xact_lock(hashtext($1)) as guard), inserted as ("+
+    "with locked as materialized (select pg_advisory_xact_lock(hashtext($5)) as guard), inserted as ("+
     "insert into tigeriq_objectives(id,objective,priority,status,metadata) "+
-    "select $2,$3,$4,'active',$5 from locked "+
-    "where not exists (select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1) "+
+    "select $1,$2,$3,'active',$4 from locked "+
+    "where not exists (select 1 from tigeriq_objectives where status='active' and (metadata->>'resourceScope'=$6 or metadata->>'workOrderDedupeKey'=$5)) "+
     "on conflict(id) do nothing returning id) select id from inserted",
-    [scope,id,objective,priority,JSON.stringify(metadata)]
+    [id,objective,priority,JSON.stringify(metadata),key,scope]
   );
   return q.rowCount===1;
 }
@@ -1075,7 +1088,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         ? `GitHub autonomous CORE_REASONING coordination work item #${spec.number}. Analyze and coordinate only. Repository/source mutation must be handed off to the bounded coding executor lane; this API worker must not mutate source or claim coding/review ownership. Do not use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Preserve one-resource-one-writer and require independent review after implementation.\n\n${context}`
         : `GitHub autonomous ${spec.dispatchLane} work item #${spec.number}. Execute only the read-only task below. Do not edit repository source, use PC01 shell, deploy, change credentials/security, spend money, reboot, or perform destructive actions. Ground conclusions only in supplied GitHub context.\n\n${context}`;
     const metadata={
-      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,preferredWorker:spec.preferredWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,
+      source:'github',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,requestedCapability:spec.requestedCapability||spec.capability,requestedWorker:spec.requestedWorker||null,preferredWorker:spec.preferredWorker||null,dispatchLane:spec.dispatchLane,resourceScope:spec.resourceScope||null,workOrderDedupeKey:workOrderDedupIdentity(spec),
       ownerDirect:spec.ownerDirect,ownerControlled:spec.ownerControlled,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.dispatchLane==='MOBILE_WORKER'?'MOBILE_WORKER':(spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY')),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
@@ -1153,7 +1166,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       }finally{client.release();}
     }
 
-    const objectiveInserted=await insertGithubObjectiveIfScopeFree(pool,{id,objective,priority:spec.priority,metadata,resourceScope:spec.resourceScope});
+    const objectiveInserted=await insertGithubObjectiveIfScopeFree(pool,{id,objective,priority:spec.priority,metadata,resourceScope:spec.resourceScope,dedupeKey:metadata.workOrderDedupeKey});
     if(!objectiveInserted){skipped++;skipReasons.scopeRace++;continue;}
     if(fallbackRearm.eligible){
       await pool.query("insert into tigeriq_events(type,objective_id,data) values('GITHUB_SAME_REVISION_FALLBACK_REARMED',$1,$2)",[id,JSON.stringify({issueNumber:spec.number,sourceRevision:spec.sourceRevision,ordinal:fallbackRearm.ordinal,fromObjectiveId:prior?.id||null,resourceScope:spec.resourceScope||null})]);
