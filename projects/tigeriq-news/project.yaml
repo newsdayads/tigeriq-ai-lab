@@ -1,0 +1,17 @@
+schema: tigeriq.project.v2
+id: tigeriq-news
+name: TigerIQ News
+kind: product
+source_roots:
+  - services/news-engine
+workstreams:
+  - id: discovery
+    name: Phát hiện nguồn tin
+  - id: research
+    name: Nghiên cứu & xác minh
+  - id: editorial
+    name: Biên tập & duyệt
+  - id: publishing
+    name: Xuất bản
+  - id: runtime
+    name: Vận hành
