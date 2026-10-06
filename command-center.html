@@ -612,6 +612,17 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   .v2-mobile-nav a{display:grid;place-items:center;min-height:42px;border-radius:9px;color:#7792aa;font-size:8px;font-weight:850;text-align:center}.v2-mobile-nav a.active{background:#113b64;color:#cdeaff}
 }
 </style>
+<style>
+/* #4372 LIVE work-list focus: project portfolio moved to /projects */
+[hidden]{display:none!important}
+.live-work-shell{margin:0;border:0;background:transparent}
+.live-work-shell>.raw-work-inner{padding-top:0}
+@media(max-width:700px){
+  .live-work-shell{margin-top:2px}
+  .list-head{padding-top:2px}
+  .filters{top:0}
+}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -620,26 +631,26 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   <div class="top-actions"><a class="health-utility" href="/index" aria-label="API Health" title="API Health">⚕</a><div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div></div>
 </header>
 <nav class="v2-global-nav" aria-label="Điều hướng TigerIQ Live">
-  <a class="active" href="#jobJourney">Dự án</a>
-  <a href="#nowRunning">Đang chạy</a>
+  <a class="active" href="/command-center">Công việc</a>
+  <a href="/projects">Dự án</a>
 </nav>
 <div id="err" class="err"></div>
-<section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc">
+<section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc" hidden>
   <div class="flow-kpi live-kpi"><span>Kết nối</span><b id="kpiLive">ĐANG KIỂM TRA</b></div>
   <div class="flow-kpi"><span>Việc đang làm</span><b id="sumRunning">0</b></div>
   <div class="flow-kpi"><span>Nhân sự hoạt động</span><b id="sumWorkers">0</b></div>
   <div class="flow-kpi progress-kpi"><span>Tổng tiến độ</span><b id="overallPct">—</b><small id="overallScope">chưa xác minh</small></div>
 </section>
-<section id="missionControl" class="mc-shell" aria-label="Mission Control"></section>
-<details id="projectDrilldown" class="project-drilldown">
+<section id="missionControl" class="mc-shell" aria-label="Mission Control" hidden></section>
+<details id="projectDrilldown" class="project-drilldown" hidden>
   <summary>Chi tiết Dự án / Việc lớn / Flow <span>· mở khi cần đào sâu</span></summary>
   <section id="jobJourney" class="job-journey" aria-label="Việc lớn và các nhánh công việc đang theo dõi"></section>
 </details>
-<details id="rawWorkDetails" class="raw-work-details" open>
-<summary>Tất cả JOB / chi tiết kỹ thuật <span class="details-hint">· ĐANG HIỂN THỊ</span></summary>
+<details id="rawWorkDetails" class="raw-work-details live-work-shell" open>
+<summary hidden>Danh sách công việc</summary>
 <div class="raw-work-inner">
-<section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
-<section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
+<section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này" hidden></section>
+<section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce" hidden></section>
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
@@ -657,7 +668,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 </details>
 <footer class="page-foot" aria-label="STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái">Dữ liệu tự cập nhật 10 giây · % chỉ hiển thị khi đã xác minh</footer>
 </main>
-<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a></nav>
+<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="/command-center">Công việc</a><a href="/projects">Dự án</a></nav>
 <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
 <aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
   <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
