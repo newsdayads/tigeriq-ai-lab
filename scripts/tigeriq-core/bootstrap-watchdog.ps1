@@ -60,22 +60,47 @@ function Save-State($rows){
   $tmp=$statePath+'.tmp';[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $statePath
 }
 function Ensure-UpdaterTask(){
-  # TIGERIQ_UPDATER_TASK_SELF_HEAL_V1: outer recovery removes the post-reboot deadlock where
-  # Remote Guard needs the updater but the updater task itself is absent.
+  # TIGERIQ_UPDATER_TASK_SELF_HEAL_V2: outer recovery removes the post-reboot deadlock where
+  # the updater task is missing, disabled, or survives with a stale action/settings contract.
   if(-not(Test-Path -LiteralPath $updaterRuntime)){return @{action='blocked';reason='UPDATER_RUNTIME_MISSING'}}
   try{
-    $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
-    if($task){return @{action='none';reason='TASK_PRESENT'}}
     $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
     $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds 120"
     $action=New-ScheduledTaskAction -Execute $ps -Argument $args
     $trigger=New-ScheduledTaskTrigger -AtStartup
     $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances IgnoreNew
     $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force|Out-Null
-    Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
-    return @{action='installed';reason='UPDATER_TASK_RECREATED'}
-  }catch{return @{action='blocked';reason=('UPDATER_TASK_RECREATE_'+$_.Exception.GetType().Name)}}
+    $task=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+    if(-not $task){
+      Register-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force|Out-Null
+      Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
+      return @{action='installed';reason='UPDATER_TASK_RECREATED'}
+    }
+    $first=@($task.Actions|Select-Object -First 1)
+    $currentExe=if($first){[string]$first.Execute}else{''}
+    $currentArgs=if($first){[string]$first.Arguments}else{''}
+    $multiple=[string]$task.Settings.MultipleInstances
+    $actionOk=($currentExe -ieq $ps -and $currentArgs -match [regex]::Escape($updaterRuntime))
+    $settingsOk=($multiple -eq 'IgnoreNew' -and [bool]$task.Settings.StartWhenAvailable)
+    $repaired=$false
+    if(-not $actionOk -or -not $settingsOk){
+      Set-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal|Out-Null
+      $repaired=$true
+    }
+    $fresh=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+    $enabled=$false
+    if($fresh -and [string]$fresh.State -eq 'Disabled'){
+      Enable-ScheduledTask -TaskName $updaterTask -ErrorAction Stop|Out-Null
+      $enabled=$true
+      $fresh=Get-ScheduledTask -TaskName $updaterTask -ErrorAction SilentlyContinue
+    }
+    if($fresh -and [string]$fresh.State -ne 'Running'){
+      Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
+    }
+    if($enabled){return @{action='enabled';reason='UPDATER_TASK_ENABLED'}}
+    if($repaired){return @{action='repaired';reason='UPDATER_TASK_CONTRACT_REPAIRED'}}
+    return @{action='none';reason='TASK_PRESENT_HEALTHY_CONTRACT'}
+  }catch{return @{action='blocked';reason=('UPDATER_TASK_RECONCILE_'+$_.Exception.GetType().Name)}}
 }
 function Test-AppChromeTaskContract($task){
   if(-not $task){return $false}
@@ -102,7 +127,7 @@ while($true){
     if($t.key -eq 'appchrome'){
       $bootstrapRepair=Ensure-AppChromeTask
       $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
-    }elseif($t.key -eq 'updater' -and -not $task){
+    }elseif($t.key -eq 'updater'){
       $bootstrapRepair=Ensure-UpdaterTask
       $task=Get-ScheduledTask -TaskName $t.task -ErrorAction SilentlyContinue
     }
