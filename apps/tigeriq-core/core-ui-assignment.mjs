@@ -394,13 +394,13 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
 }
 
 
-function parseInternalReviewEvidence(result='',prompt=''){
+export function parseInternalReviewEvidence(result='',prompt=''){
   const raw=String(result||'').trim();
   const expected=String(prompt||'').match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
   const decision=raw.match(/^REVIEW=(PASS|CHANGES_REQUIRED)$/mi)?.[1]?.toUpperCase()||'';
   const targetHead=raw.match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
   const summary=raw.match(/^SUMMARY=(.+)$/mi)?.[1]?.trim().slice(0,600)||'';
-  const findings=raw.match(/^FINDINGS=(.+)$/mi)?.[1]?.trim().slice(0,1800)||'';
+  const findings=raw.match(/^FINDINGS=([\s\S]+)$/mi)?.[1]?.trim().slice(0,1800)||'';
   const valid=raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&Boolean(expected)&&Boolean(decision)&&targetHead===expected&&Boolean(summary)&&Boolean(findings);
   return {valid,reviewEvidence:valid?{schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings}:null,expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
 }
@@ -429,13 +429,14 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
     if(internalFinalReview){
       const parsed=parseInternalReviewEvidence(terminalResult,item.prompt||'');
       const pass=requestedState==='DONE'&&parsed.valid;
-      const jobStatus=pass?'done':'failed';
+      const jobStatus=pass?'done':requestedState==='BLOCKED'?'blocked':requestedState==='EXTERNAL_WAIT'?'external_wait':'failed';
       const evidenceRef=String(item?.metadata?.issueUrl||'');
       const payload=pass
         ? {source:'app_chrome_ui_final_review',terminal:requestedState,evidenceRef,result:terminalResult,reviewEvidence:parsed.reviewEvidence,terminalKey}
         : {source:'app_chrome_ui_final_review',terminal:requestedState,evidenceRef,result:terminalResult,terminalKey,failure:{kind:requestedState==='DONE'?'invalid_response':requestedState,expectedHead:parsed.expectedHead,targetHead:parsed.targetHead,decision:parsed.decision}};
+      const eventType=pass?'CORE_UI_FINAL_REVIEW_DONE':requestedState==='BLOCKED'?'CORE_UI_FINAL_REVIEW_BLOCKED':requestedState==='EXTERNAL_WAIT'?'CORE_UI_FINAL_REVIEW_EXTERNAL_WAIT':'CORE_UI_FINAL_REVIEW_FAILED';
       await client.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=$3::jsonb,failure=$4::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify(payload),pass?null:JSON.stringify(payload.failure)]);
-      await client.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values($1,$2,$3,$4,$5,'ui',$6)",[pass?'CORE_UI_FINAL_REVIEW_DONE':'CORE_UI_FINAL_REVIEW_FAILED',item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:requestedState,evidenceRef,reviewEvidence:parsed.reviewEvidence,failure:payload.failure||null})]);
+      await client.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values($1,$2,$3,$4,$5,'ui',$6)",[eventType,item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:requestedState,evidenceRef,reviewEvidence:parsed.reviewEvidence,failure:payload.failure||null})]);
       await client.query('commit');
       return {ok:true,jobId,workerId,terminal:requestedState,evidenceRef,issueRef:evidenceRef,reviewEvidence:parsed.reviewEvidence,accepted:pass};
     }
