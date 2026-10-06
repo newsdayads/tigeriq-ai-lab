@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -159,6 +159,21 @@ export function deploymentEndpoint() {
   return `/v13/deployments?teamId=${EXPECTED_TEAM_ID}`;
 }
 
+export function vercelNpxCacheCandidates(localAppData = '') {
+  const root = clean(localAppData);
+  if (!root) return [];
+  const npxRoot = resolve(root, 'npm-cache', '_npx');
+  let entries = [];
+  try {
+    entries = readdirSync(npxRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => resolve(npxRoot, entry.name, 'node_modules', 'vercel', 'dist', 'vc.js'));
+}
+
 function vercelNodeEntrypoint() {
   if (process.platform !== 'win32') return null;
   const candidates = [];
@@ -175,6 +190,7 @@ function vercelNodeEntrypoint() {
     if (!clean(root)) continue;
     candidates.push(resolve(root, 'npm', 'node_modules', 'vercel', 'dist', 'vc.js'));
     candidates.push(resolve(root, 'npm-cache', '_npx', 'node_modules', 'vercel', 'dist', 'vc.js'));
+    candidates.push(...vercelNpxCacheCandidates(root));
   }
 
   try {

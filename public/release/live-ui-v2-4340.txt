@@ -1,0 +1,7 @@
+TIGERIQ_LIVE_RELEASE_V1
+RELEASE_ISSUE=4340
+PARENT_ISSUE=4336
+SOURCE_UI_PR=4337
+SOURCE_UI_MERGE_SHA=a3d29c16153e86b98d8b0bf741dcc20f4fed9758
+RELEASE_CLASS=WEB_LIVE
+REASON=Publish Owner-approved LIVE UI V2 after fixing service-runtime discovery of an already-installed Vercel CLI in hashed npx cache directories.

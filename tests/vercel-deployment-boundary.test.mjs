@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deploymentEndpoint, deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+import { deploymentEndpoint, deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract, vercelNpxCacheCandidates } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 
 const base = {
   projectLink: {
@@ -24,6 +24,23 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
   it('derives a verified GitHub login from the canonical noreply author email', () => {
     expect(githubAuthorLoginFromEmail('125233768+newsdayads@users.noreply.github.com')).toBe('newsdayads');
     expect(() => githubAuthorLoginFromEmail('unknown@example.com')).toThrow('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
+  });
+
+  it('discovers Vercel entrypoints inside hashed npx cache directories', async () => {
+    const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, resolve } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'tigeriq-vercel-npx-'));
+    try {
+      mkdirSync(join(root, 'npm-cache', '_npx', 'abc123'), { recursive: true });
+      mkdirSync(join(root, 'npm-cache', '_npx', 'def456'), { recursive: true });
+      expect(vercelNpxCacheCandidates(root)).toEqual([
+        resolve(root, 'npm-cache', '_npx', 'abc123', 'node_modules', 'vercel', 'dist', 'vc.js'),
+        resolve(root, 'npm-cache', '_npx', 'def456', 'node_modules', 'vercel', 'dist', 'vc.js'),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('uses a Windows-safe Vercel API endpoint with team scope', () => {
