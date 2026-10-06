@@ -137,4 +137,25 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('height:auto!important;');
     expect(shared).toContain('.api-health .metrics-lower .metric{');
   });
+
+  it('#4383 keeps Work motion truthful and state-specific',()=>{
+    expect(shared).toContain('/* #4383 truthful Work-card live motion V2 */');
+    expect(shared).toContain('@keyframes tiq-work-card-working');
+    expect(shared).toContain('@keyframes tiq-work-card-review');
+    expect(shared).toContain('@keyframes tiq-work-card-waiting');
+    expect(shared).toContain('@keyframes tiq-work-card-attention');
+    expect(shared).toContain('@keyframes tiq-verified-progress-flow');
+    expect(shared).toContain('.api-health .progress.stage-working .progress-fill');
+    expect(shared).toContain('.api-health .progress.stage-waiting .progress-fill');
+    expect(shared).toContain('.api-health .progress.stage-queued .progress-fill');
+    expect(shared).toContain('.api-health .work-row.status-queued,');
+    expect(shared).toContain('.api-health .work-row.status-open{');
+    expect(shared).toContain('animation:none;');
+    expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(dashboard).toContain("prog.pct===null?");
+    expect(dashboard).toContain("class=\"progress stage stage-");
+    expect(dashboard).toContain("style=\"width:${prog.pct}%\"");
+    expect(dashboard).toContain("mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE'");
+  });
+
 });
