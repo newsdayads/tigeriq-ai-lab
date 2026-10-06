@@ -91,16 +91,22 @@ const MAX_EXPORT_BLOCK_CHARS=17500;
 
 export {SUPPORTED_PUBLIC_EVIDENCE_KEYS};
 
-export function parsePublicEvidenceKeys(body=''){
+export function validatePublicEvidenceKeys(body=''){
   const raw=String(body||'').match(/^PUBLIC_EVIDENCE_KEYS=(.+)$/mi)?.[1];
-  if(raw==null)return [];
-  const out=[];const seen=new Set();
+  if(raw==null)return {present:false,requested:[],unsupported:[]};
+  const requested=[];const unsupported=[];const seen=new Set();
   for(const token of raw.split(',')){
     const key=token.trim();
-    if(!SUPPORTED_SET.has(key)||seen.has(key))continue;
-    seen.add(key);out.push(key);
+    if(!key||seen.has(key))continue;
+    seen.add(key);
+    if(SUPPORTED_SET.has(key))requested.push(key);
+    else unsupported.push(key);
   }
-  return out;
+  return {present:true,requested,unsupported};
+}
+
+export function parsePublicEvidenceKeys(body=''){
+  return validatePublicEvidenceKeys(body).requested;
 }
 
 function sanitizeScalar(value){
