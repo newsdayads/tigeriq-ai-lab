@@ -161,18 +161,24 @@ export function deploymentEndpoint() {
 
 function vercelNodeEntrypoint() {
   if (process.platform !== 'win32') return null;
-  let cmdPath = '';
+  const candidates = [];
   try {
-    cmdPath = execFileSync('where.exe', ['vercel.cmd'], {
+    const cmdPath = execFileSync('where.exe', ['vercel.cmd'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     }).split(/\r?\n/).map((item) => item.trim()).find(Boolean) || '';
-  } catch {
-    throw new Error('VERCEL_CLI_MISSING');
+    if (cmdPath) candidates.push(resolve(dirname(cmdPath), '..', 'vercel', 'dist', 'vc.js'));
+  } catch {}
+
+  for (const root of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
+    if (!clean(root)) continue;
+    candidates.push(resolve(root, 'npm', 'node_modules', 'vercel', 'dist', 'vc.js'));
+    candidates.push(resolve(root, 'npm-cache', '_npx', 'node_modules', 'vercel', 'dist', 'vc.js'));
   }
-  const entrypoint = resolve(dirname(cmdPath), '..', 'vercel', 'dist', 'vc.js');
-  if (!existsSync(entrypoint)) throw new Error('VERCEL_CLI_MISSING');
+
+  const entrypoint = candidates.find((candidate) => existsSync(candidate));
+  if (!entrypoint) throw new Error('VERCEL_CLI_MISSING');
   return entrypoint;
 }
 
