@@ -174,7 +174,7 @@ export function backlogCanonicalDedupeKey(spec={}){
   const project=firstBodyValue(body,['PROJECT_ID','PROJECT']);
   const workstream=firstBodyValue(body,['WORKSTREAM_ID','WORK_PACKAGE_ID','WORKSTREAM','WORK_PACKAGE']);
   const objective=firstBodyValue(body,['OBJECTIVE_ID','RCA_FAMILY_KEY','RCA_SIGNATURE','API_DOCTOR_REPAIR_SIGNATURE','OBJECTIVE'])
-    || String(spec?.title||'').replace(/^\s*\[[^\]]+\]\s*/g,'');
+    || String(spec?.title||'').replace(/^(?:\s*\[[^\]]+\])+\s*/g,'');
   const scope=String(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
   const target=firstBodyValue(body,['TARGET_ARTIFACT','TARGET_PR','TARGET_REPOSITORY','TARGET_BRANCH','TARGET_HEAD','TARGET_FILE']);
   return [project,workstream,objective,scope,target].map(normalizedBacklogKeyPart).join('|');
@@ -191,8 +191,9 @@ function backlogQueueClass(spec={}){
   const body=String(spec?.body||'');
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
   const eligibility=bodyValue(body,'EXECUTION_ELIGIBILITY').toUpperCase();
-  const ownerGate=backlogOwnerControlled(body)||eligibility==='HARD_GATE'||/OWNER_(?:GATE|REVIEW|ACCEPTANCE)|CHỜ.*OWNER|WAIT.*OWNER/.test(state);
-  const terminal=exactBodyFlag(body,'DONE','true')||eligibility==='TERMINAL'||/DONE_VERIFIED|COMPLETED|SUPERSEDED/.test(state);
+  const ownerGate=['OWNER_CONTROLLED','OWNER_HOLD','OWNER_GATE','OWNER_APPROVAL_REQUIRED'].some((key)=>bodyValue(body,key).toLowerCase()==='true')
+    ||eligibility==='HARD_GATE'||/OWNER_(?:GATE|REVIEW|ACCEPTANCE)|CHỜ.*OWNER|WAIT.*OWNER/.test(state);
+  const terminal=bodyValue(body,'DONE').toLowerCase()==='true'||eligibility==='TERMINAL'||/DONE_VERIFIED|COMPLETED|SUPERSEDED/.test(state);
   if(terminal)return 50;
   if(ownerGate)return 40;
   if(eligibility.startsWith('PARKED')||/(?:WAIT|BLOCKED|CHỜ|BỊ_CHẶN)/.test(state))return 30;
@@ -200,8 +201,8 @@ function backlogQueueClass(spec={}){
     || String(spec?.dispatchLane||'').toUpperCase()==='CORE_REVIEW'
     || exactBodyFlag(body,'REVIEW_ONLY','true')
     || /REVIEW|VERIFY|RÀ_SOÁT/.test(state);
-  const leaseActive=(exactBodyFlag(body,'ACTIVE_LEASE','true')||bodyValue(body,'LEASE_STATE').toUpperCase()==='ACTIVE')
-    &&(exactBodyFlag(body,'HEARTBEAT_FRESH','true')||bodyValue(body,'HEARTBEAT_STATE').toUpperCase()==='FRESH');
+  const leaseActive=(bodyValue(body,'ACTIVE_LEASE').toLowerCase()==='true'||bodyValue(body,'LEASE_STATE').toUpperCase()==='ACTIVE')
+    &&(bodyValue(body,'HEARTBEAT_FRESH').toLowerCase()==='true'||bodyValue(body,'HEARTBEAT_STATE').toUpperCase()==='FRESH');
   if(leaseActive)return 0;
   if(review)return 20;
   const priority=String(spec?.priority||spec?.effectivePriority||spec?.sourcePriority||backlogPriority(body,'P3')).toUpperCase();
