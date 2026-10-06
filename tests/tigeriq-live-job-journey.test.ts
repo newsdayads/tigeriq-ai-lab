@@ -27,7 +27,7 @@ describe('TigerIQ Live Owner Clean View #3833', () => {
   it('shows Project → Workstream → Job breadcrumbs in the raw work list', () => {
     expect(rootHtml).toContain('class="work-path"');
     expect(rootHtml).toContain("row?.workstreamName||row?.workPackageName");
-    expect(rootHtml).toContain("JOB #'+esc(row.number)");
+    expect(rootHtml).toContain("row?.jobId||('GH-'+row.number)");
   });
 
   it('keeps the Owner flow primary while exposing the Work list by default', () => {
