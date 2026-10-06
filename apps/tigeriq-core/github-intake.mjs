@@ -447,8 +447,8 @@ export function backlogHygieneFindings(issues=[],nowMs=Date.now()){
   for(const issue of open){
     const body=String(issue.body||'');
     if(isOwnerOnlyP0(body,issue.title||''))continue;
-    const executable=hasExactFlag(body,'TIGERIQ_EXECUTABLE')||bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED';
-    if(hasExactFlag(body,'DONE','true')&&executable)terminalExecutable.push({issueNumber:Number(issue.number)});
+    const executable=bodyValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'||bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED';
+    if(bodyValue(body,'DONE').toLowerCase()==='true'&&executable)terminalExecutable.push({issueNumber:Number(issue.number)});
     const owner=bodyValue(body,'MUTATION_OWNER');
     const expiry=leaseExpiryMs(body);
     if(expiry&&expiry.ms<=now&&!mutationOwnerReleasedValue(owner)){
@@ -1729,7 +1729,7 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
         const canonicalIssue=openIssues.find((row)=>Number(row?.number)===Number(dedupe.canonical.number));
         if(canonicalIssue)intakeIssue=canonicalIssue;
         const ownerValue=bodyValue(eventIssue.body||'','MUTATION_OWNER');
-        const activeLease=hasExactFlag(eventIssue.body||'','ACTIVE_LEASE')&&!mutationOwnerReleasedValue(ownerValue);
+        const activeLease=bodyValue(eventIssue.body||'','ACTIVE_LEASE').toLowerCase()==='true'&&!mutationOwnerReleasedValue(ownerValue);
         if(!activeLease){
           await patchIssueBody(fetchImpl,owner,repo,token,n,duplicateSupersedeBody(eventIssue.body||'',dedupe.canonical.number));
         }
@@ -1854,7 +1854,7 @@ export async function runGithubBacklogHygieneSweep({pool,fetchImpl=fetch,owner=D
     if(!issue||issue.state!=='open'||touched.has(Number(issue.number)))continue;
     const body=String(issue.body||'');
     const ownerValue=bodyValue(body,'MUTATION_OWNER');
-    const activeLease=hasExactFlag(body,'ACTIVE_LEASE')&&!mutationOwnerReleasedValue(ownerValue);
+    const activeLease=bodyValue(body,'ACTIVE_LEASE').toLowerCase()==='true'&&!mutationOwnerReleasedValue(ownerValue);
     if(activeLease)continue;
     if(await patchIssueBody(fetchImpl,owner,repo,token,issue.number,duplicateSupersedeBody(body,finding.canonicalIssueNumber))){
       touched.add(Number(issue.number));
