@@ -49,7 +49,7 @@ function normalizedProjects(data){
   const rows=allRows(data), map=new Map();
   for(const source of data?.projectPortfolio||[]){
     const id=String(source?.id||'').trim();if(!id)continue;
-    map.set(id,{id,name:String(source?.name||id),kind:String(source?.kind||'project'),order:Number(source?.order||900),counts:{...(source?.counts||{})},streams:new Map((source?.workstreams||[]).map(s=>[String(s.id),{id:String(s.id),name:String(s.name||s.id),order:Number(s.order||900),count:Number(s.itemCount||0)}]))});
+    map.set(id,{id,name:String(source?.name||id),kind:String(source?.kind||'project'),order:Number(source?.order||900),counts:{},streams:new Map((source?.workstreams||[]).map(s=>[String(s.id),{id:String(s.id),name:String(s.name||s.id),order:Number(s.order||900),count:0}]))});
   }
   for(const row of rows){
     const id=String(row?.projectId||'').trim();if(!id)continue;
