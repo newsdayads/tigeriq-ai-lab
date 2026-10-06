@@ -449,6 +449,8 @@ export function readMobileReleaseManifest(path=releaseManifestPath()) {
       fileName:text(parsed.fileName,160),
       releaseNotes:text(parsed.releaseNotes,1000),
       channel:text(parsed.channel||'DEV',20).toUpperCase(),
+      installMode:text(parsed.installMode||'SELF_INSTALL',32).toUpperCase(),
+      managedPackage:text(parsed.managedPackage||'ai.tigeriq.worker',160),
       downloadPath:'/api/mobile/update/apk',
       publishedAt:text(parsed.publishedAt,80),
       apkPath:text(parsed.apkPath,500),
