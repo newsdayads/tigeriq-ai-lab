@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<title>TigerIQ Live · Dự án</title>
+<style>
+:root{font-family:"Segoe UI Variable Text","Segoe UI",Arial,sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}body{background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17)}
+a{color:inherit;text-decoration:none}.wrap{width:min(1180px,100%);margin:auto;padding:max(14px,env(safe-area-inset-top)) 12px max(76px,env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.brand h1{font-size:22px;margin:0}.brand p{font-size:11px;color:var(--muted);margin:5px 0 0}.health{border:1px solid #294661;border-radius:10px;padding:8px 10px;color:#b9dcff}
+.nav{display:flex;gap:6px;margin-bottom:14px}.nav a{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:10px;padding:8px 12px;font-size:11px;font-weight:800}.nav a.active{border-color:#4f83ad;background:#102943;color:#d9efff}
+.status{font-size:10px;color:var(--muted);margin:0 2px 10px}.status.warn{color:#ffd187}
+.project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.project-card{border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:16px;padding:13px;min-width:0}.project-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.project-head h2{font-size:15px;line-height:1.25;margin:0;overflow-wrap:anywhere}.kind{font-size:8px;color:#a9d6ff;border:1px solid #315f92;background:#102b4a;border-radius:999px;padding:3px 6px;white-space:nowrap}.stats{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}.stat{font-size:9px;border:1px solid #29445f;border-radius:999px;padding:4px 7px;color:#9fb4c8}.stat.working{color:#9af0bc}.stat.blocked{color:#ffb8bf}.stat.review{color:#ffd38d}
+.streams{display:grid;gap:6px;margin-top:10px}.stream{border:1px solid #27445f;background:#091725;border-radius:10px;padding:8px 9px}.stream b{font-size:11px}.stream small{display:block;color:#8097ad;font-size:9px;margin-top:3px}.empty{border:1px dashed #2a425d;border-radius:16px;padding:24px;text-align:center;color:var(--muted);font-size:12px}
+.mobile-nav{display:none}
+@media(max-width:700px){body{padding-bottom:64px}.wrap{padding-left:10px;padding-right:10px}.brand h1{font-size:20px}.brand p{display:none}.nav{display:none}.project-grid{grid-template-columns:1fr}.project-card{padding:11px}.mobile-nav{display:grid;position:fixed;z-index:20;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));grid-template-columns:1fr 1fr;gap:4px;border:1px solid #24435f;background:rgba(8,20,34,.96);border-radius:14px;padding:5px}.mobile-nav a{display:grid;place-items:center;min-height:42px;border-radius:9px;color:#7792aa;font-size:9px;font-weight:850}.mobile-nav a.active{background:#113b64;color:#cdeaff}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<header class="top"><div class="brand"><h1>TigerIQ Live · Dự án</h1><p>Danh mục dự án và các nhánh việc từ dữ liệu hiện hành</p></div><a class="health" href="/index" aria-label="API Health">Health</a></header>
+<nav class="nav" aria-label="Điều hướng TigerIQ Live"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>
+<div id="status" class="status">ĐANG CẬP NHẬT</div>
+<section id="projectGrid" class="project-grid" aria-label="Danh sách dự án"></section>
+</main>
+<nav class="mobile-nav" aria-label="Điều hướng mobile"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>{const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML};
+function statusBucket(value=''){
+  const s=String(value||'').toUpperCase();
+  if(s.includes('ĐANG XỬ LÝ')||s==='WORKING')return 'working';
+  if(s.includes('RÀ SOÁT')||s==='REVIEW'||s==='VERIFY')return 'review';
+  if(s.includes('BỊ CHẶN')||s==='BLOCKED'||s==='OWNER_GATE')return 'blocked';
+  if(s.includes('HOÀN TẤT')||s==='DONE')return 'done';
+  return 'waiting';
+}
+function allRows(data){
+  const map=new Map();
+  for(const row of [...(data?.openWork||[]),...(data?.activeWork||[]),...(data?.recentWork||[])]){
+    const key=Number(row?.number)||String(row?.jobId||'');
+    if(key)map.set(key,{...(map.get(key)||{}),...row});
+  }
+  return [...map.values()];
+}
+function normalizedProjects(data){
+  const rows=allRows(data), map=new Map();
+  for(const source of data?.projectPortfolio||[]){
+    const id=String(source?.id||'').trim();if(!id)continue;
+    map.set(id,{id,name:String(source?.name||id),kind:String(source?.kind||'project'),order:Number(source?.order||900),counts:{...(source?.counts||{})},streams:new Map((source?.workstreams||[]).map(s=>[String(s.id),{id:String(s.id),name:String(s.name||s.id),order:Number(s.order||900),count:Number(s.itemCount||0)}]))});
+  }
+  for(const row of rows){
+    const id=String(row?.projectId||'').trim();if(!id)continue;
+    if(!map.has(id))map.set(id,{id,name:String(row?.projectName||id),kind:String(row?.projectKind||'project'),order:Number(row?.projectOrder||900),counts:{},streams:new Map()});
+    const project=map.get(id), sid=String(row?.workstreamId||row?.workPackageId||'').trim();
+    if(sid){
+      const prior=project.streams.get(sid)||{id:sid,name:String(row?.workstreamName||row?.workPackageName||sid),order:Number(row?.workstreamOrder||row?.workPackageOrder||900),count:0};
+      prior.count+=1;project.streams.set(sid,prior);
+    }
+    const bucket=statusBucket(row?.status);project.counts[bucket]=Number(project.counts[bucket]||0)+1;
+  }
+  return [...map.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name)).map(p=>({...p,streams:[...p.streams.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name))}));
+}
+function render(data){
+  const grid=$('projectGrid'),projects=normalizedProjects(data);grid.replaceChildren();
+  if(!projects.length){grid.innerHTML='<div class="empty">Chưa có dữ liệu dự án đã xác minh.</div>';return}
+  for(const project of projects){
+    const card=document.createElement('article');card.className='project-card';card.dataset.projectId=project.id;
+    const c=project.counts||{},streams=project.streams||[];
+    card.innerHTML='<div class="project-head"><h2>'+esc(project.name)+'</h2><span class="kind">'+esc(project.kind==='platform'?'NỀN TẢNG':'DỰ ÁN')+'</span></div>'
+      +'<div class="stats"><span class="stat working">Đang làm '+Number(c.working||0)+'</span><span class="stat review">Rà soát '+Number(c.review||0)+'</span><span class="stat blocked">Bị chặn '+Number(c.blocked||0)+'</span><span class="stat">Chờ '+Number(c.waiting||0)+'</span><span class="stat">Xong '+Number(c.done||0)+'</span></div>'
+      +'<div class="streams">'+(streams.length?streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.count||0)+' công việc</small></div>').join(''):'<div class="stream"><b>Chưa phân nhánh</b><small>Không có công việc hiện hành</small></div>')+'</div>';
+    grid.append(card);
+  }
+}
+async function load(){
+  try{
+    const r=await fetch('/api/live-status',{cache:'no-store'}),data=await r.json();
+    if(!data?.ok)throw new Error(data?.reason||'Nguồn trạng thái chưa sẵn sàng');
+    $('status').classList.remove('warn');$('status').textContent='DỮ LIỆU HIỆN HÀNH · '+new Date(data?.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour12:false});render(data);
+  }catch(error){$('status').classList.add('warn');$('status').textContent='CHƯA ĐỌC ĐƯỢC DỮ LIỆU DỰ ÁN';$('projectGrid').innerHTML='<div class="empty">Không có snapshot dự án để hiển thị.</div>'}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});load();setInterval(()=>{if(!document.hidden)load()},10000);
+</script>
+</body>
+</html>
