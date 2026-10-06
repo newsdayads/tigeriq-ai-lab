@@ -1,7 +1,10 @@
+import { register } from 'node:module';
 import { startGithubIntake } from './github-intake.mjs';
 import { startGithubCodingIntake } from './github-coding-intake.mjs';
 import { installOllamaProbeAdapter } from './ollama-probe-adapter.mjs';
 import { startUiAutopilotSnapshotServer } from './ui-autopilot-snapshot.mjs';
+
+register('./core-throughput-loader.mjs',import.meta.url);
 
 const restoreFetch=installOllamaProbeAdapter();
 const intake=startGithubIntake();
