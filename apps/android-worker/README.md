@@ -116,3 +116,15 @@ No Android execution claim is valid until two physical phones prove:
 4. structured result + screenshot/evidence returned;
 5. one independent reviewer worker evaluates combined evidence;
 6. disconnect/restart produces bounded recovery rather than duplicate execution.
+
+
+## Managed update policy
+
+Production fleet updates must use a managed Android channel rather than UI automation around package-install or Play Protect prompts.
+
+- `MANAGED_PLAY`: preferred for Android Enterprise / Managed Google Play private-app rollout.
+- `MANAGED_MDM`: equivalent managed-device rollout for an approved MDM, including Samsung enterprise tooling.
+- `SELF_INSTALL`: DEV/fallback only. The Worker downloads the signed APK and uses PackageInstaller, which may still require OS or Play Protect confirmation.
+- Unknown install modes fail closed.
+- The application ID and signing certificate lineage must remain stable across all channels.
+- Core heartbeat `agentVersion` is the acceptance source for fleet version convergence; an update is not DONE merely because a release was published.
