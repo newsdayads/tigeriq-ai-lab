@@ -436,9 +436,13 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <link rel="stylesheet" href="/work-ui.css">
 
 <style id="live-ui-v2">
+
+.top-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+.health-utility{display:grid;place-items:center;width:30px;height:30px;border:1px solid #274861;background:#0b1e30;color:#80cfff;border-radius:9px;font-size:15px;text-decoration:none;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+.health-utility:hover{border-color:#3f86b4;background:#102a43;transform:translateY(-1px)}
 .v2-global-nav{display:flex;align-items:center;gap:7px;margin:-4px 0 14px;padding:5px;border:1px solid #1c3550;background:#091625;border-radius:12px;overflow-x:auto;scrollbar-width:none}
 .v2-global-nav::-webkit-scrollbar{display:none}.v2-global-nav a{padding:8px 12px;border-radius:9px;color:#89a2ba;font-size:11px;font-weight:800;white-space:nowrap}
-.v2-global-nav a.active{background:#11345b;color:#dff1ff;box-shadow:inset 0 -2px #4aa7ff}.v2-global-nav a:last-child{margin-left:auto;color:#8fd9ff}
+.v2-global-nav a.active{background:#11345b;color:#dff1ff;box-shadow:inset 0 -2px #4aa7ff}.v2-global-nav a:last-child{color:#8fd9ff}
 .v2-portfolio-layout{display:grid;grid-template-columns:238px minmax(0,1fr);gap:12px;align-items:start}
 .v2-project-sidebar{position:sticky;top:10px;border:1px solid #1d3855;background:#091727;border-radius:16px;padding:10px;min-width:0}
 .v2-project-sidebar-head{display:flex;justify-content:space-between;align-items:center;padding:3px 4px 9px}.v2-project-sidebar-head b{font-size:10px;color:#c5d8ea;letter-spacing:.06em}.v2-project-sidebar-head span{font-size:8px;color:#6f88a0}
@@ -563,7 +567,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   .v2-workstream-detail{padding:9px}.v2-workstream-detail-head h2{font-size:16px}.v2-workstream-current{grid-template-columns:1fr 1fr}.v2-workstream-current .wide{grid-column:1/-1}
   .v2-flow-grid{grid-template-columns:1fr}.v2-flow-stage{padding:8px}.v2-flow-job-copy b{font-size:10px}.v2-flow-job-copy small{font-size:8px}
   .v2-evidence-grid{grid-template-columns:1fr}.raw-work-details{margin-top:10px}
-  .v2-mobile-nav{display:grid;position:fixed;z-index:35;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));grid-template-columns:repeat(4,1fr);gap:3px;border:1px solid #24435f;background:rgba(8,20,34,.96);backdrop-filter:blur(10px);border-radius:14px;padding:5px;box-shadow:0 16px 40px rgba(0,0,0,.4)}
+  .v2-mobile-nav{display:grid;position:fixed;z-index:35;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));grid-template-columns:repeat(2,1fr);gap:3px;border:1px solid #24435f;background:rgba(8,20,34,.96);backdrop-filter:blur(10px);border-radius:14px;padding:5px;box-shadow:0 16px 40px rgba(0,0,0,.4)}
   .v2-mobile-nav a{display:grid;place-items:center;min-height:42px;border-radius:9px;color:#7792aa;font-size:8px;font-weight:850;text-align:center}.v2-mobile-nav a.active{background:#113b64;color:#cdeaff}
 }
 </style>
@@ -572,13 +576,11 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <main id="appMain" class="wrap">
 <header class="top">
   <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b> · Luồng công việc</h1><p>Nhận việc → điều phối → thực hiện → kiểm tra → kết quả</p></div>
-  <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
+  <div class="top-actions"><a class="health-utility" href="/index" aria-label="API Health" title="API Health">⚕</a><div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div></div>
 </header>
 <nav class="v2-global-nav" aria-label="Điều hướng TigerIQ Live">
   <a class="active" href="#jobJourney">Dự án</a>
-  <a href="#rawWorkDetails">Tất cả JOB</a>
   <a href="#nowRunning">Đang chạy</a>
-  <a href="/index">API Health ↗</a>
 </nav>
 <div id="err" class="err"></div>
 <section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc">
@@ -610,7 +612,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 </details>
 <footer class="page-foot" aria-label="STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái">Dữ liệu tự cập nhật 10 giây · % chỉ hiển thị khi đã xác minh</footer>
 </main>
-<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">Health</a></nav>
+<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a></nav>
 <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
 <aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
   <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
@@ -1333,7 +1335,7 @@ function renderJobJourney(){
 
   el.innerHTML='<div class="v2-portfolio-layout">'+picker+'<section class="v2-project-workspace">'
     +v2ProjectHeaderHtml(selectedProject,ordered)
-    +'<nav class="v2-project-tabs" aria-label="Dự án"><span class="v2-tab-label active">Việc lớn ('+ordered.length+')</span><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">API Health ↗</a></nav>'
+    +'<nav class="v2-project-tabs" aria-label="Dự án"><span class="v2-tab-label active">Việc lớn ('+ordered.length+')</span></nav>'
     +ownerCleanPackageTabs(ordered,pack.id)
     +'<article class="v2-workstream-detail">'
     +'<header class="v2-workstream-detail-head"><div><small>TẦNG 2 · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2><p>'+esc(current)+'</p></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
