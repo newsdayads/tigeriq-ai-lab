@@ -177,6 +177,15 @@ function vercelNodeEntrypoint() {
     candidates.push(resolve(root, 'npm-cache', '_npx', 'node_modules', 'vercel', 'dist', 'vc.js'));
   }
 
+  try {
+    const npmRoot = execFileSync('npm.cmd', ['root', '-g'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    }).trim();
+    if (npmRoot) candidates.push(resolve(npmRoot, 'vercel', 'dist', 'vc.js'));
+  } catch {}
+
   const entrypoint = candidates.find((candidate) => existsSync(candidate));
   if (!entrypoint) throw new Error('VERCEL_CLI_MISSING');
   return entrypoint;
