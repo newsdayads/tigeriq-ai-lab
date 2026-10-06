@@ -153,7 +153,7 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
   }
 
   const active = registry.skills.filter((skill: Entry) => skill.state === 'ACTIVE');
-  assert.equal(active.length, 12);
+  assert.equal(active.length, 16);
   const requiredHeadings = [
     '## Identity',
     '## Trigger',

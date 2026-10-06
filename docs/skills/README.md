@@ -62,5 +62,6 @@ Rules:
 - a canary needs an explicit fixture or real task plus provenance before it can run;
 - retries are bounded and blocked entries keep an explicit blocker + next condition;
 - PASS requires measurable USE/MEASURE evidence before becoming PROMOTION_READY; ACTIVE only after the registry change passes branch → PR → independent review → merge;
+- `promotionEligible` is a transitional gate flag: it is `true` only while status is `PROMOTION_READY`; once a reviewed registry mutation activates the skill, reconciliation sets queue status `ACTIVE` and consumes the gate back to `false` so the same promotion cannot be replayed. `ACTIVE + promotionEligible=false` means promotion completed, not evidence rejected;
 - runtime loading remains fail-closed: only registry `state: ACTIVE` is loadable;
 - external packages are never installed by this queue and remain subject to the external skill security gate.
