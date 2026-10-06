@@ -583,6 +583,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("data->>'policyVersion'=$3");
     expect(core).toContain("min(ts) as first_at,max(ts) as last_at");
     expect(core).toContain("issue_durable_terminal_evidence");
+    expect(core).toContain("SOURCE_FIX_REUSED");
     expect(core).toContain("DURABLE_TERMINAL_NORMAL_WORK");
     expect(core).toContain("repair_issue_terminal_normal_work_recovery");
     expect(core).toContain("const repairTerminalAt=validationEvidence.firstAt||lifecycle.successAfterAt||null");
