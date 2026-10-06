@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -164,18 +164,76 @@ RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
 
-test('safe P1-P5 admission ignores generic display wait state when no real gate exists',()=>{
+test('safe P1-P5 admission ignores owner-facing DISPLAY_STATE when execution state is ready',()=>{
   const body=[
     SAFE_AUTO_POLICY_BASE,
     'OWNER_POLICY=AUTO',
     'TIGERIQ_EXECUTABLE=true',
     'AUTO_QUEUE=INCLUDED',
-    'CURRENT_STATE=WAIT_OPERATOR_WINDOW'
+    'CURRENT_STATE=READY',
+    'DISPLAY_STATE=WAITING'
   ].join('\n');
   const issue={number:4384,state:'open',title:'[P1][CORE] display state separation',body,labels:[],html_url:'https://example/4384'};
   const admission=safeAutoWorkAdmission(issue);
   assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:true,reason:'SAFE_P1_P5_POLICY'});
   assert.ok(parseExecutableIssue(issue));
+});
+
+test('parked or resource-blocked work does not stop the next compatible P1-P5 claim',async()=>{
+  const pool=coreBacklogPool();
+  const parkedBody=[
+    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=PARKED_SCOPE'),
+    'OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=false',
+    'AUTO_QUEUE=EXCLUDED_REVIEW_WAIT',
+    'CURRENT_STATE=BLOCKED_REVIEW_RESOURCE',
+    'BLOCKER=NO_AI_RESOURCE_AVAILABLE',
+    'REARM_ONLY=RESOURCE_STATE_CHANGE|NEW_EVIDENCE'
+  ].join('\n');
+  const readyBody=[
+    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=NEXT_COMPATIBLE_SCOPE'),
+    'OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'CURRENT_STATE=READY'
+  ].join('\n');
+  const parked={number:43840,state:'open',title:'[P1][CORE] parked resource wait',body:parkedBody,labels:[],comments:0,html_url:'https://example/43840'};
+  const ready={number:43841,state:'open',title:'[P1][CORE] next compatible',body:readyBody,labels:[],comments:0,html_url:'https://example/43841'};
+  assert.strictEqual(parseExecutableIssue(parked),null);
+  const out=await materializeGithubIssues({pool,openIssues:[parked,ready],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,43841);
+  assert.strictEqual(pool.objectives.length,1);
+  assert.strictEqual(pool.objectives[0].metadata.issueNumber,43841);
+});
+
+test('resource fallback rearm is bounded and cannot become an infinite same-revision loop',()=>{
+  const prior={status:'blocked',metadata:{coreFallbackReleased:true,admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING',sourceRevision:'rev-4384'}};
+  const spec={sourceRevision:'rev-4384'};
+  assert.deepStrictEqual(
+    sameRevisionFallbackRearmDecision({prior,spec,rearmCount:0}),
+    {eligible:true,reason:'TRANSIENT_FALLBACK_RELEASED',count:0,ordinal:1}
+  );
+  assert.deepStrictEqual(
+    sameRevisionFallbackRearmDecision({prior,spec,rearmCount:1}),
+    {eligible:true,reason:'TRANSIENT_FALLBACK_RELEASED',count:1,ordinal:2}
+  );
+  assert.deepStrictEqual(
+    sameRevisionFallbackRearmDecision({prior,spec,rearmCount:MAX_SAME_REVISION_FALLBACK_REARMS}),
+    {eligible:false,reason:'REARM_BUDGET_EXHAUSTED',count:MAX_SAME_REVISION_FALLBACK_REARMS}
+  );
+});
+
+test('active writer blocks only its scope while queue continues to another compatible scope',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({id:'OBJ-ACTIVE-4384',status:'active',metadata:{source:'github',issueNumber:43842,resourceScope:'SCOPE_HELD'}});
+  const held={number:43843,state:'open',title:'[P1][CORE] same scope',body:SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=SCOPE_HELD'),labels:[],comments:0,html_url:'https://example/43843'};
+  const next={number:43844,state:'open',title:'[P1][CORE] independent scope',body:SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=SCOPE_FREE'),labels:[],comments:0,html_url:'https://example/43844'};
+  const out=await materializeGithubIssues({pool,openIssues:[held,next],token:'fake'});
+  assert.strictEqual(out.created,1);
+  assert.strictEqual(out.issueNumber,43844);
+  assert.strictEqual(pool.objectives.filter(x=>x.status==='active'&&x.metadata?.resourceScope==='SCOPE_HELD').length,1);
+  assert.strictEqual(pool.objectives.filter(x=>x.status==='active'&&x.metadata?.resourceScope==='SCOPE_FREE').length,1);
 });
 
 test('GitHub intake fails closed on Android product work even with legacy auto flags',()=>{
