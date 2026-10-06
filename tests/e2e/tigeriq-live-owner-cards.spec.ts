@@ -25,6 +25,7 @@ const snapshot = {
     { number: 113, parentNumber: 111, title: '[P1][RESULT] Xuất bản giao diện mới', status: 'CHỜ ANH SƠN DUYỆT', workKind: 'WORK', priority: 'P1', technicalComplete: true, latestCompletedStep: 'Production đã sẵn sàng', nextStep: 'Duyệt kết quả cuối', targetPrNumber: 200 },
     { number: 120, parentNumber: 100, title: '[P1][UI] Nhánh không có phần trăm xác minh', status: 'ĐANG CHỜ', workKind: 'WORK', priority: 'P1', currentStep: 'Chờ dữ liệu', nextStep: 'Xác minh tiến độ' },
     { number: 121, parentNumber: 120, title: '[P1][UI] Thẻ chưa xác minh tiến độ', status: 'ĐANG CHỜ', workKind: 'WORK', priority: 'P1', employeeId: 'NV04', currentStep: 'Chờ xác minh', nextStep: 'Bổ sung evidence' },
+    { number: 122, parentNumber: 120, title: '[P1][UI] JOB đang bị chặn', status: 'BỊ CHẶN', workKind: 'WORK', priority: 'P1', employeeId: 'NV04', currentStep: 'Chờ dependency', blocker: 'Thiếu runtime evidence', nextStep: 'Gỡ dependency', updatedAt:'2026-10-04T02:28:40.000Z' },
     { number: 500, title: '[P0][ANDROID] Mobile Worker v0.26', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P0', employeeId: 'NV06', currentStep: 'Xác minh runtime Android', latestCompletedStep: 'APK đã build', nextStep: 'Runtime acceptance', updatedAt:'2026-10-04T02:29:40.000Z', projectId:'tigeriq-mobile-worker', projectName:'TigerIQ Mobile Worker', workstreamId:'release', workstreamName:'Phát hành' },
     ...Array.from({ length: 8 }, (_, i) => ({
       number: 300 + i,
@@ -52,7 +53,9 @@ const snapshot = {
     workstreamName:'TigerIQ Live UI'
   })),
   nextQueue: [],
-  recentWork: [],
+  recentWork: [
+    { number: 90, title: '[P1][UI] Chuẩn hóa dữ liệu card', status: 'HOÀN TẤT', workKind: 'WORK', priority: 'P1', employeeId: 'NV02', latestCompletedStep: 'Đã chuẩn hóa', updatedAt:'2026-10-04T02:29:30.000Z', projectId:'tigeriq-platform', projectName:'Nền tảng TigerIQ', workstreamId:'live-ui', workstreamName:'TigerIQ Live UI' }
+  ],
   workers: [
     { employeeId: 'NV03', label: 'ChatGPT Go', state: 'working', status: 'ĐANG LÀM', detail: 'Đang xử lý card giao diện', source: 'PC01 live runtime' }
   ]
@@ -72,90 +75,115 @@ async function openTiger(page: Page) {
     await route.fulfill({ status: 204, body: '' });
   });
   await page.goto('https://tigeriq.test/command-center');
-  await expect(page.locator('.v2-portfolio-layout')).toBeVisible();
+  await expect(page.locator('.mc-layout')).toBeVisible();
 }
 
 
-test('keeps project order stable while highlighting live state', async ({ page }) => {
+test('Mission Control shows stable project rail, KPI and four Kanban columns', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  const names = await page.locator('[data-project-select] .v2-project-copy b').allTextContents();
-  expect(names.slice(0,2)).toEqual(['Nền tảng TigerIQ','TigerIQ Mobile Worker']);
-  await expect(page.locator('[data-project-select="tigeriq-platform"]')).toHaveClass(/active/);
+  const projects = await page.locator('[data-mc-project] b').allTextContents();
+  expect(projects.slice(0,3)).toEqual(['Tất cả dự án','Nền tảng TigerIQ','TigerIQ Mobile Worker']);
+  await expect(page.locator('[data-mc-project="all"]')).toHaveClass(/active/);
+
+  await expect(page.locator('.mc-kpi.running')).toContainText('ĐANG CHẠY');
+  await expect(page.locator('.mc-kpi.blocked')).toContainText('BỊ CHẶN');
+  await expect(page.locator('.mc-kpi.owner')).toContainText('CHỜ ANH SƠN');
+  await expect(page.locator('.mc-kpi.done')).toContainText('XONG HÔM NAY');
+
+  await expect(page.locator('.mc-column')).toHaveCount(4);
+  await expect(page.locator('.mc-column.waiting')).toContainText('CHỜ');
+  await expect(page.locator('.mc-column.working')).toContainText('ĐANG LÀM');
+  await expect(page.locator('.mc-column.review')).toContainText('RÀ SOÁT');
+  await expect(page.locator('.mc-column.done')).toContainText('XONG');
 });
 
-test('owner can see exactly where the active work is and what happens next', async ({ page }) => {
+test('Mission Control reads like live operations instead of technical hierarchy', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  await expect(page.locator('.v3-running-lane')).toBeVisible();
-  await expect(page.locator('.v3-running-lane')).toContainText('Nền tảng TigerIQ');
-  await expect(page.locator('.v3-running-lane')).toContainText('TigerIQ Live UI');
-  await expect(page.locator('.v3-running-lane')).toContainText('#111 · NV03');
-  await expect(page.locator('.v3-running-lane')).toContainText('Dựng mặt thẻ công việc');
+  const working = page.locator('.mc-column.working');
+  await expect(working).toContainText('#111');
+  await expect(working).toContainText('NV03');
+  await expect(working).toContainText('Dựng mặt thẻ công việc');
+  await expect(working).toContainText('Kiểm tra browser desktop và mobile');
 
-  const ops = page.locator('.v3-owner-ops');
-  await expect(ops).toBeVisible();
-  await expect(ops).toContainText('ĐANG THỰC THI');
-  await expect(ops).toContainText('Đang làm gì');
-  await expect(ops).toContainText('Dựng mặt thẻ công việc');
-  await expect(ops).toContainText('Vừa xong');
-  await expect(ops).toContainText('Đã chốt cấu trúc card');
-  await expect(ops).toContainText('Bước tiếp theo');
-  await expect(ops).toContainText('Kiểm tra browser desktop và mobile');
-  await expect(ops).toContainText('Blocker');
-  await expect(ops).toContainText('Không có');
-  await expect(ops).toContainText('Cập nhật');
+  const waiting = page.locator('.mc-column.waiting');
+  await expect(waiting).toContainText('JOB đang bị chặn');
+  await expect(waiting).toContainText('Thiếu runtime evidence');
+
+  await expect(page.locator('.mc-activity')).toContainText('LIVE ACTIVITY');
+  await expect(page.locator('.mc-activity')).toContainText('#111');
 });
 
-test('functional audit clicks every owner-facing control without console errors', async ({ page }) => {
+test('project rail filters Kanban and a Job card opens the existing detail drawer', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openTiger(page);
+
+  await page.locator('[data-mc-project="tigeriq-mobile-worker"]').click();
+  await expect(page.locator('[data-mc-project="tigeriq-mobile-worker"]')).toHaveClass(/active/);
+  await expect(page.locator('.mc-board>header')).toContainText('TigerIQ Mobile Worker');
+  await expect(page.locator('.mc-column.working')).toContainText('#500');
+  await expect(page.locator('.mc-column.working')).not.toContainText('#111');
+
+  await page.locator('[data-mc-project="tigeriq-platform"]').click();
+  await page.locator('[data-mc-job="111"]').first().click();
+  await expect(page.locator('#workDrawer')).toHaveClass(/open/);
+  await expect(page.locator('#drawerTitle')).toContainText('Xây thẻ công việc đọc là hiểu');
+  await page.locator('#drawerCloseBottom').click();
+});
+
+test('functional audit clicks Mission Control, drill-down and all-JOB controls without console errors', async ({ page }) => {
   const errors:string[]=[];
   page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text())});
   page.on('pageerror',err=>errors.push(String(err)));
   await page.setViewportSize({ width: 1440, height: 1100 });
   await openTiger(page);
 
-  // Project switch.
+  await page.locator('[data-mc-project="tigeriq-platform"]').click();
+  await page.locator('[data-mc-project="tigeriq-mobile-worker"]').click();
+  await page.locator('[data-mc-project="all"]').click();
+
+  await page.locator('[data-mc-job="111"]').first().click();
+  await expect(page.locator('#workDrawer')).toHaveClass(/open/);
+  await page.locator('#drawerCloseBottom').click();
+
+  await page.locator('#projectDrilldown summary').click();
+  await expect(page.locator('#projectDrilldown')).toHaveAttribute('open','');
+  await expect(page.locator('.v2-portfolio-layout')).toBeVisible();
+
   await page.locator('[data-project-select="tigeriq-mobile-worker"]').click();
   await expect(page.locator('.v2-project-header')).toContainText('TigerIQ Mobile Worker');
-  await expect(page.locator('.v2-workstream-card')).toHaveCount(1);
   await page.locator('[data-project-select="tigeriq-platform"]').click();
-  await expect(page.locator('.v2-project-header')).toContainText('Nền tảng TigerIQ');
 
-  // Workstream switch and return.
   const streams=page.locator('[data-package-select]');
   expect(await streams.count()).toBeGreaterThan(1);
   await streams.nth(1).click();
-  await expect(streams.nth(1)).toHaveClass(/active/);
   await streams.first().click();
-  await expect(streams.first()).toHaveClass(/active/);
 
-  // Running JOB opens and closes real drawer.
-  await page.locator('[data-running-job="111"]').click();
-  await expect(page.locator('#workDrawer')).toHaveClass(/open/);
-  await expect(page.locator('#drawerTitle')).toContainText('Xây thẻ công việc đọc là hiểu');
-  await page.locator('#drawerCloseBottom').click();
-  await expect(page.locator('#workDrawer')).not.toHaveClass(/open/);
-
-  // All filters really change active state and render.
   for (const filter of ['action','running','review','waiting','done']) {
     const button=page.locator('.filter[data-filter="'+filter+'"]');
     await button.click();
     await expect(button).toHaveClass(/active/);
-    await expect(page.locator('#workList')).toBeVisible();
   }
-
-  // "Việc lớn" is a label; redundant All JOB / Health links are removed from project navigation.
-  await expect(page.locator('.v2-project-tabs .v2-tab-label')).toContainText('Việc lớn');
-  await expect(page.locator('.v2-project-tabs button')).toHaveCount(0);
-  await expect(page.locator('.v2-project-tabs a')).toHaveCount(0);
-  await expect(page.locator('.health-utility[href="/index"]')).toHaveCount(1);
-  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
 
   expect(errors).toEqual([]);
 });
 
+test('Mission Control working cards visibly animate and drill-down is secondary by default', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openTiger(page);
+  await expect(page.locator('#projectDrilldown')).not.toHaveAttribute('open','');
+  const motion=await page.evaluate(()=>({
+    bars:getComputedStyle(document.querySelector('.mc-live-bars i')!).animationName,
+    scan:getComputedStyle(document.querySelector('.mc-job.working')!,'::after').animationName,
+    pulse:getComputedStyle(document.querySelector('.mc-column-dot.working')!).animationName
+  }));
+  expect(motion.bars).toContain('mc-bars');
+  expect(motion.scan).toContain('mc-scan');
+  expect(motion.pulse).toContain('mc-ring');
+});
 
 test('keeps only useful navigation controls on desktop and mobile', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -187,9 +215,10 @@ test('running lane and owner snapshot use visible motion only for active work', 
   expect(motion.liveBeacon).toContain('v3-dot-pulse');
 });
 
-test('shows the approved Project → Workstream → Flow → Job hierarchy on desktop', async ({ page }) => {
+test('keeps Project → Workstream → Flow → Job as secondary drill-down', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
+  await page.locator('#projectDrilldown summary').click();
 
   await expect(page.locator('.v2-portfolio-layout')).toBeVisible();
   await expect(page.locator('.v2-project-sidebar')).toBeVisible();
@@ -203,9 +232,10 @@ test('shows the approved Project → Workstream → Flow → Job hierarchy on de
   await expect(page.locator('.v2-evidence-grid')).toBeVisible();
 });
 
-test('shows current Job context and opens technical detail from the flow', async ({ page }) => {
+test('shows current Job context and opens technical detail from the drill-down flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
+  await page.locator('#projectDrilldown summary').click();
 
   await expect(page.locator('.v2-workstream-detail')).toContainText('Dựng mặt thẻ công việc');
   await expect(page.locator('.v2-workstream-detail')).toContainText('Kiểm tra browser desktop và mobile');
@@ -228,9 +258,10 @@ test('keeps raw all-JOB list visible by default', async ({ page }) => {
 });
 
 
-test('applies distinct status colors and live motion hooks', async ({ page }) => {
+test('drill-down retains distinct status colors and motion hooks', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
+  await page.locator('#projectDrilldown summary').click();
 
   const working = page.locator('.v2-flow-job.is-working').first();
   const review = page.locator('.v2-flow-job.is-review').first();
@@ -259,23 +290,32 @@ test('uses the same hierarchy on mobile without document overflow', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  const metrics = await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    documentScroll: document.documentElement.scrollWidth,
-    flowColumns: getComputedStyle(document.querySelector('.v2-flow-grid')!).gridTemplateColumns,
-    rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
-  }));
+  const metrics = await page.evaluate(() => {
+    const board=document.querySelector('.mc-columns') as HTMLElement;
+    const cols=[...document.querySelectorAll('.mc-column')].map(node=>(node as HTMLElement).getBoundingClientRect().width);
+    return {
+      viewport: window.innerWidth,
+      documentScroll: document.documentElement.scrollWidth,
+      boardClient: board?.clientWidth||0,
+      boardScroll: board?.scrollWidth||0,
+      colWidths: cols,
+      rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
+    };
+  });
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.rawOpen).toBe(true);
-  expect(metrics.flowColumns.split(' ').length).toBe(1);
+  expect(metrics.boardScroll).toBeGreaterThan(metrics.boardClient);
+  expect(metrics.colWidths).toHaveLength(4);
+  expect(Math.min(...metrics.colWidths)).toBeGreaterThan(250);
   await expect(page.locator('.v2-mobile-nav')).toBeVisible();
-  await expect(page.locator('.v2-project-list')).toBeVisible();
-  await expect(page.locator('.v2-workstream-card')).toHaveCount(9);
+  await expect(page.locator('.mc-project-rail')).toBeVisible();
+  await expect(page.locator('.mc-column')).toHaveCount(4);
 });
 
-test('keeps multiple large workstreams selectable instead of rendering every Job as a top-level card', async ({ page }) => {
+test('keeps multiple large workstreams selectable in the secondary drill-down', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
+  await page.locator('#projectDrilldown summary').click();
 
   await expect(page.locator('.v2-workstream-card')).toHaveCount(9);
   await expect(page.locator('.package-tab')).toHaveCount(0);
