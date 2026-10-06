@@ -153,10 +153,41 @@ export function isActiveExecutionSpec(body){
   return executionContractV1Missing(body).length===0;
 }
 
+function backlogTimeRank(spec={}){
+  const raw=spec?.readyAt||spec?.createdAt||spec?.updatedAt||'';
+  const ms=Date.parse(String(raw||''));
+  return Number.isFinite(ms)?ms:Number.MAX_SAFE_INTEGER;
+}
+
+export function backlogQueueLane(spec={}){
+  if(spec?.activeLeaseValid===true)return 0;
+  if(spec?.terminal===true||spec?.done===true)return 5;
+  if(spec?.ownerControlled===true||spec?.ownerGate===true)return 4;
+  if(spec?.parked===true||spec?.executable===false)return 3;
+  const capability=String(spec?.capability||spec?.requestedCapability||'').toLowerCase();
+  const review=capability==='review'||spec?.reviewVerify===true;
+  if(review)return spec?.resourceAvailable===true?2:3;
+  return 1;
+}
+
+function backlogBooleanRank(value){
+  return value===false?1:0;
+}
+
 export function compareBacklogSpecs(a,b){
+  const laneA=backlogQueueLane(a),laneB=backlogQueueLane(b);
+  if(laneA!==laneB)return laneA-laneB;
   const pa=PRIORITY_RANK[a?.priority||a?.effectivePriority||a?.sourcePriority]??PRIORITY_RANK.P3;
   const pb=PRIORITY_RANK[b?.priority||b?.effectivePriority||b?.sourcePriority]??PRIORITY_RANK.P3;
   if(pa!==pb)return pa-pb;
+  const dependencyA=backlogBooleanRank(a?.dependencySatisfied);
+  const dependencyB=backlogBooleanRank(b?.dependencySatisfied);
+  if(dependencyA!==dependencyB)return dependencyA-dependencyB;
+  const capabilityA=backlogBooleanRank(a?.capabilityMatch);
+  const capabilityB=backlogBooleanRank(b?.capabilityMatch);
+  if(capabilityA!==capabilityB)return capabilityA-capabilityB;
+  const ta=backlogTimeRank(a),tb=backlogTimeRank(b);
+  if(ta!==tb)return ta-tb;
   return Number(a?.number||0)-Number(b?.number||0);
 }
 
