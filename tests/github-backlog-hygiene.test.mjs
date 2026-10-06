@@ -40,8 +40,8 @@ function body({
     'OBJECTIVE_ID='+objective,
     'RESOURCE_SCOPE='+scope,
     'TARGET_ARTIFACT='+target,
-    safety,
     extra,
+    safety,
   ].filter(Boolean).join('\n');
 }
 
