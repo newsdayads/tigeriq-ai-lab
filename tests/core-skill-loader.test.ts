@@ -138,3 +138,47 @@ test('Core manager invokes loader and appends matched skill context', () => {
   assert.match(core, /SKILL_REGISTRY_REJECTED/);
   assert.match(core, /SKILL_CONTEXT_LOADED/);
 });
+
+test('all ACTIVE registry skills have canonical contract files and fields', () => {
+  const registryPath = join(process.cwd(), 'docs/skills/registry.yaml');
+  const registry = parseSkillRegistry(readFileSync(registryPath, 'utf8'));
+  assert.equal(registry.skills.length, 17);
+  assert.equal(new Set(registry.skills.map(skill => skill.id)).size, 17);
+
+  for (const skill of registry.skills) {
+    assert.ok(skill.version, `${skill.id} must have version`);
+    assert.ok(skill.provenance_batch, `${skill.id} must have provenance_batch`);
+    assert.ok(skill.source_log, `${skill.id} must have source_log`);
+    assert.ok(skill.target, `${skill.id} must have target`);
+  }
+
+  const active = registry.skills.filter(skill => skill.state === 'ACTIVE');
+  assert.equal(active.length, 12);
+  const requiredHeadings = [
+    '## Identity',
+    '## Trigger',
+    '## Input',
+    '## Steps',
+    '## Tools / Output',
+    '## Acceptance',
+    '## Evidence',
+    '## Fallback',
+    '## Safety',
+    '## Non-goals',
+  ];
+
+  for (const skill of active) {
+    const skillPath = join(process.cwd(), 'docs/skills', skill.id, 'SKILL.md');
+    const skillContent = readFileSync(skillPath, 'utf8');
+    for (const heading of requiredHeadings) {
+      assert.ok(skillContent.includes(heading), `${skill.id} missing ${heading}`);
+    }
+    assert.ok(skillContent.includes(`- ID: ${skill.id}`), `${skill.id} identity mismatch`);
+    assert.ok(skillContent.includes(`- Version: ${skill.version}`), `${skill.id} version mismatch`);
+    assert.ok(skillContent.includes('- State: ACTIVE'), `${skill.id} state mismatch`);
+    assert.ok(skillContent.includes(`- Target: ${skill.target}`), `${skill.id} target mismatch`);
+  }
+
+  const contextual = registry.skills.find(skill => skill.id === 'contextual-skill-loading');
+  assert.equal(contextual?.state, 'CANDIDATE');
+});
