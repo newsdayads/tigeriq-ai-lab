@@ -1,0 +1,9 @@
+schema: tigeriq.project.v2
+id: revenue-lab
+name: Revenue Lab
+kind: project
+source_roots:
+  - docs
+workstreams:
+  - id: apify-audit
+    name: Apify Website Audit
