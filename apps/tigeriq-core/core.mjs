@@ -949,6 +949,7 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
   const durableTexts=[body,...(Array.isArray(issueComments)?issueComments.map(comment=>String(comment?.body||'')):[])];
   const durablePrNumbers=[];
   const durableReviewIssueNumbers=[];
+  const durableReuseIssueNumbers=[];
   for(const evidenceText of durableTexts){
     for(const match of evidenceText.matchAll(/^(?:SOURCE_FIX_PR|PR)=#?(\d+)\b/gm)){
       const value=Number(match[1]); if(Number.isInteger(value)&&value>0&&!durablePrNumbers.includes(value))durablePrNumbers.push(value);
@@ -956,6 +957,17 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     for(const match of evidenceText.matchAll(/^(?:INDEPENDENT_REVIEW|SOURCE_FIX_REVIEW)=#?(\d+)\|(?:PASS|ĐẠT)\b/gm)){
       const value=Number(match[1]); if(Number.isInteger(value)&&value>0&&!durableReviewIssueNumbers.includes(value))durableReviewIssueNumbers.push(value);
     }
+    for(const match of evidenceText.matchAll(/^SOURCE_FIX_REUSED=#?(\d+)\b/gm)){
+      const value=Number(match[1]); if(Number.isInteger(value)&&value>0&&!durableReuseIssueNumbers.includes(value))durableReuseIssueNumbers.push(value);
+    }
+  }
+  const durableAllowed=[...allowed];
+  for(const reuseIssueNumber of durableReuseIssueNumbers){
+    const reuseIssue=await fetchJson(`${base}/issues/${reuseIssueNumber}`,{headers},10000);
+    if(String(reuseIssue?.state||'').toLowerCase()!=='closed'||String(reuseIssue?.state_reason||'').toLowerCase()!=='completed')continue;
+    const reuseBody=String(reuseIssue?.body||'');
+    if(!/^NO_DIRECT_MAIN=true$/m.test(reuseBody))continue;
+    for(const prefix of apiDoctorAllowedRepairPaths(reuseBody))if(!durableAllowed.includes(prefix))durableAllowed.push(prefix);
   }
   for(const prNumber of durablePrNumbers){
     const pr=await fetchJson(`${base}/pulls/${prNumber}`,{headers},10000);
@@ -964,7 +976,7 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     if(!headSha)continue;
     const files=await fetchJson(`${base}/pulls/${prNumber}/files?per_page=100`,{headers},10000);
     if(!Array.isArray(files)||!files.length||files.length>=100)continue;
-    const scopeOk=files.every(file=>allowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
+    const scopeOk=files.every(file=>durableAllowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
     if(!scopeOk)continue;
     const prComments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
     let reviewOk=(Array.isArray(prComments)?prComments:[]).some(comment=>{
