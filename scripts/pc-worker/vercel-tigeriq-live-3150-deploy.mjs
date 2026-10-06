@@ -167,7 +167,7 @@ function deploy(root, plan) {
   writeFileSync(inputFile, JSON.stringify(request), { encoding: 'utf8', flag: 'wx' });
   try {
     const endpoint = `/v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1&teamId=${EXPECTED_TEAM_ID}`;
-    const apiArgs = ['api', endpoint, '-X', 'POST', '--input', inputFile, '--team', EXPECTED_TEAM_ID];
+    const apiArgs = ['api', endpoint, '-X', 'POST', '--input', inputFile];
     const options = {
       cwd: root,
       encoding: 'utf8',
