@@ -160,6 +160,7 @@ test('failed and blocked outcomes expose recurring failure signature without aut
 test('Core emits effectiveness evidence only after terminal job outcome with durable dedupe', () => {
   const core=fs.readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.match(core,/SKILL_EFFECTIVENESS_OBSERVED/);
+  assert.match(core,/SKILL_EFFECTIVENESS_PARKED/);
   assert.match(core,/data->>'dedupeKey'=\$1/);
   assert.match(core,/emitSkillEffectivenessObservations\(\{[\s\S]*outcome:'completed'/);
   assert.match(core,/status='failed'[\s\S]*emitSkillEffectivenessObservations\(\{/);
