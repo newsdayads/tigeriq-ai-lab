@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { buildSkillOutcomeObservation, recordSkillOutcome, summarizeSkillEffectiveness, useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-core/skill-effectiveness.mjs';
+import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision, summarizeSkillEffectiveness, useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-core/skill-effectiveness.mjs';
 
 import fs from 'node:fs';
 
@@ -165,4 +165,32 @@ test('Core emits effectiveness evidence only after terminal job outcome with dur
   assert.match(core,/emitSkillEffectivenessObservations\(\{[\s\S]*outcome:'completed'/);
   assert.match(core,/status='failed'[\s\S]*emitSkillEffectivenessObservations\(\{/);
   assert.match(core,/RESOURCE_WAIT_QUEUED/);
+});
+
+
+test('failure-loop decision parks only after durable recurrence or bounded retry exhaustion', () => {
+  assert.deepStrictEqual(
+    skillFailureLoopDecision({outcome:'blocked',failureSignature:'NO_AI_RESOURCE_AVAILABLE',retryCount:5,maxRetries:6,recurringCount:1}),
+    {state:'CLEAR',reason:null,retryCount:5,maxRetries:6,recurringCount:1,failureSignature:'NO_AI_RESOURCE_AVAILABLE'},
+  );
+  assert.deepStrictEqual(
+    skillFailureLoopDecision({outcome:'blocked',failureSignature:'NO_AI_RESOURCE_AVAILABLE',retryCount:6,maxRetries:6,recurringCount:1}),
+    {state:'PARKED',reason:'RETRY_BUDGET_EXHAUSTED',retryCount:6,maxRetries:6,recurringCount:1,failureSignature:'NO_AI_RESOURCE_AVAILABLE'},
+  );
+  assert.equal(
+    skillFailureLoopDecision({outcome:'failed',failureSignature:'SAME_SIGNATURE',retryCount:0,maxRetries:6,recurringCount:2}).reason,
+    'RECURRING_FAILURE_SIGNATURE',
+  );
+});
+
+test('Core durable measurement dedupe is atomic and retry exhaustion releases before PARKED evidence', () => {
+  const core=fs.readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/create table if not exists tigeriq_skill_effectiveness_dedupe/);
+  assert.match(core,/dedupe_key text primary key/);
+  assert.match(core,/on conflict\(dedupe_key\) do nothing returning dedupe_key/);
+  assert.doesNotMatch(core,/select 1 from tigeriq_events where type='SKILL_EFFECTIVENESS_OBSERVED' and data->>'dedupeKey'/);
+  assert.match(core,/count\(distinct data->>'dedupeKey'\)::int as count/);
+  assert.match(core,/resourceWaitExhausted=\{retryCount:plan\.count,maxRetries:RESOURCE_WAIT_MAX_RETRIES,ageMs:plan\.ageMs\}/);
+  assert.match(core,/retryBudgetExhausted:Boolean\(resourceWaitExhausted\)/);
+  assert.match(core,/leaseReleased: true/);
 });
