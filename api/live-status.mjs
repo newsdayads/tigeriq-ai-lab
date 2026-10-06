@@ -1,4 +1,4 @@
-import { parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
+import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
@@ -473,8 +473,7 @@ function issueIsTerminal(issue) {
   const body = String(issue.body || '');
   const state = bodyValue(body, 'STATE').toUpperCase();
   return ['CLOSED', 'DONE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'].includes(state)
-    || /^SUPERSEDED(?:_BY)?=/mi.test(body)
-    || bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false');
+    || /^SUPERSEDED(?:_BY)?=/mi.test(body);
 }
 
 function issueIsTerminalOrExcluded(issue) {
@@ -937,6 +936,58 @@ export function classifyOpenIssue(issue) {
   };
 }
 
+export function executionEligibilityForIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return 'TERMINAL';
+  const body = String(issue.body || '');
+  const phase = issueCanonicalState(issue);
+  const priority = issuePriority(issue);
+  const classification = classifyOpenIssue(issue);
+
+  if (['CLOSED', 'DONE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'].includes(phase)
+    || /^SUPERSEDED(?:_BY)?=/mi.test(body)) return 'TERMINAL';
+
+  const hardGateState = /(?:OWNER(?:_|$)|PRODUCTION|PAID|FINANCIAL|CREDENTIAL|SECRET|SECURITY|PERMISSION|DESTRUCTIVE|IRREVERSIBLE|PHYSICAL_OWNER)/.test(phase)
+    && /(?:WAIT|BLOCKED|HOLD|GATE|REQUIRED|PENDING)/.test(phase);
+  if (classification.ownerGate
+    || priority === 'P0'
+    || bodyFlag(body, 'OWNER_HOLD')
+    || bodyFlag(body, 'OWNER_GATE')
+    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || hardGateState) return 'HARD_GATE';
+
+  const blockedBy = bodyValue(body, 'BLOCKED_BY').trim().toUpperCase();
+  const dependencyStatus = bodyValue(body, 'DEPENDENCY_STATUS').trim().toUpperCase();
+  const dependencyWait = /(?:DEPENDENCY|PARENT_GATE)/.test(phase)
+    && /(?:WAIT|BLOCKED|PENDING|HOLD)/.test(phase);
+  if (dependencyWait
+    || (blockedBy && !['NONE','NO','CLEAR','CLEARED'].includes(blockedBy))
+    || (dependencyStatus && !['PASS','DONE','COMPLETED','SATISFIED','CLEAR','CLEARED'].includes(dependencyStatus))) {
+    return 'PARKED_DEPENDENCY';
+  }
+
+  const waitText = [
+    phase,
+    bodyValue(body, 'WAIT_REASON'),
+    bodyValue(body, 'BLOCKER'),
+    bodyValue(body, 'BLOCKED_REASON'),
+    bodyValue(body, 'REARM_ONLY'),
+    bodyValue(body, 'REARM_REASON'),
+    bodyValue(body, 'AUTO_QUEUE'),
+  ].join(' ').toUpperCase();
+  if (/(?:NO_AI_RESOURCE_AVAILABLE|REVIEW_RESOURCE|REVIEWER|RESOURCE_STATE|PROVIDER|COOLDOWN|RATE_LIMIT|RESOURCE_UNAVAILABLE)/.test(waitText)) {
+    return 'ELIGIBLE_AFTER_RESOURCE';
+  }
+
+  if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
+  if (overlays.queued?.eligibleNow === true) return 'READY';
+
+  const admission = safeAutoWorkAdmission(issue);
+  if (admission.eligible) return 'READY';
+
+  // Fail closed for uncategorized exclusions while keeping them visible as non-terminal work.
+  return 'PARKED_DEPENDENCY';
+}
+
 function actionableStatus(issue, overlays = {}) {
   const body = String(issue?.body || '');
   const lifecycle = overlays.lifecycle || null;
@@ -1063,6 +1114,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const canonicalPhase = issueCanonicalState(issue);
   const phase = String(classification.ownerGate ? canonicalPhase : lifecycle?.state || canonicalPhase).toUpperCase();
   const status = actionableStatus(issue, overlays);
+  const executionEligibility = executionEligibilityForIssue(issue, overlays);
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
@@ -1111,6 +1163,12 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
       : technicalComplete
         ? safeEvidenceTimestamp(issue.updated_at)
         : null;
+  const activeWorker = active?.live === true && active?.employeeId ? active.employeeId : null;
+  const activeLease = Boolean(activeWorker && status === 'WORKING');
+  const heartbeatFresh = active?.live === true ? true : null;
+  const waitReason = queued?.waitReason
+    || (['WAITING','BLOCKED'].includes(status) ? (rawBlocker || bodyValue(body, 'WAIT_REASON') || phase || null) : null);
+  const rearmCondition = firstBodyValue(body, ['REARM_CONDITION','REARM_ONLY','REPEAT_REQUIRES','NEXT_CONDITION']) || null;
 
   return {
     number,
@@ -1124,6 +1182,13 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
         ? issueDisplayOwner(issue)
         : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
+    displayState: status,
+    executionEligibility,
+    waitReason,
+    rearmCondition,
+    activeLease,
+    activeWorker,
+    heartbeatFresh,
     workKind: classification.workKind,
     ...relations,
     ownerGate: classification.ownerGate,
@@ -1135,9 +1200,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     currentStep,
     latestCompletedStep,
     nextStep,
+    nextAction: nextStep,
     blocker,
     evidenceUrl,
     evidenceAt,
+    latestEvidenceAt: evidenceAt,
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
