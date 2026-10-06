@@ -269,6 +269,41 @@ test('safe P1-P5 admission uses the authoritative top TIGERIQ_EXECUTABLE marker'
   assert.ok(parseExecutableIssue(issue));
 });
 
+test('GitHub intake fails closed when PUBLIC_EVIDENCE_KEYS contains unsupported keys',()=>{
+  const body=[
+    'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'ZERO_COST=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','MUTATION_OWNER=NONE',
+    'RESOURCE_SCOPE=PUBLIC_EVIDENCE_UNSUPPORTED_PREFLIGHT_TEST','CAPABILITY=reasoning',
+    'PUBLIC_EVIDENCE_KEYS=installedSha,candidateSha,changedPaths'
+  ].join('\n');
+  const issue={number:4300,state:'open',title:'[P2][CORE][EVIDENCE] unsupported key preflight',body,labels:[],html_url:'https://example/4300'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual(
+    {eligible:admission.eligible,reason:admission.reason,unsupported:admission.unsupportedPublicEvidenceKeys},
+    {eligible:false,reason:'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',unsupported:['candidateSha']}
+  );
+  assert.strictEqual(parseExecutableIssue(issue),null);
+});
+
+test('GitHub intake preserves supported PUBLIC_EVIDENCE_KEYS',()=>{
+  const body=[
+    'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'ZERO_COST=true','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','MUTATION_OWNER=NONE',
+    'RESOURCE_SCOPE=PUBLIC_EVIDENCE_SUPPORTED_PREFLIGHT_TEST','CAPABILITY=reasoning',
+    'PUBLIC_EVIDENCE_KEYS=installedSha,changedPaths'
+  ].join('\n');
+  const issue={number:4301,state:'open',title:'[P2][CORE][EVIDENCE] supported key preflight',body,labels:[],html_url:'https://example/4301'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.strictEqual(admission.eligible,true);
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  assert.deepStrictEqual(spec.publicEvidenceKeys,['installedSha','changedPaths']);
+});
+
 test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
   const admission=safeAutoWorkAdmission(issue);
