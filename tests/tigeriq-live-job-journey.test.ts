@@ -41,14 +41,31 @@ describe('TigerIQ LIVE UI V2 #4336', () => {
     expect(rootHtml).toContain('Phát hành & xác minh');
   });
 
-  it('keeps all-JOB list as a secondary drill-down while preserving filters', () => {
-    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details">');
-    expect(rootHtml).not.toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
+  it('keeps all-JOB list visible by default while preserving filters', () => {
+    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
     expect(rootHtml).toContain('Tất cả JOB / chi tiết kỹ thuật');
+    expect(rootHtml).toContain('ĐANG HIỂN THỊ');
     expect(rootHtml).toContain('DANH SÁCH CÔNG VIỆC');
     expect(rootHtml).toContain('data-filter="action"');
     expect(rootHtml).toContain('data-filter="running"');
     expect(rootHtml).toContain('data-filter="done"');
+  });
+
+
+  it('uses vivid status colors and bounded motion with reduced-motion fallback', () => {
+    expect(rootHtml).toContain('.v2-project-choice.is-working');
+    expect(rootHtml).toContain('.v2-project-choice.is-blocked');
+    expect(rootHtml).toContain('.v2-workstream-card.is-review');
+    expect(rootHtml).toContain('.v2-flow-stage:nth-child(4)');
+    expect(rootHtml).toContain('.v2-flow-job.is-working');
+    expect(rootHtml).toContain('.v2-flow-job.is-review');
+    expect(rootHtml).toContain('.v2-flow-job.is-blocked');
+    expect(rootHtml).toContain('.v2-flow-job.is-done');
+    expect(rootHtml).toContain('@keyframes v2-working-pulse');
+    expect(rootHtml).toContain('@keyframes v2-review-breathe');
+    expect(rootHtml).toContain('@keyframes v2-blocked-alert');
+    expect(rootHtml).toContain('@keyframes v2-progress-flow');
+    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
   it('keeps LIVE and API Health separated but directly linked', () => {
