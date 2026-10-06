@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const EXPECTED_PROJECT_ID = 'prj_gg7AuV6y62TALzEpby8XUAFisLKw';
@@ -159,6 +159,23 @@ export function deploymentEndpoint() {
   return `/v13/deployments?teamId=${EXPECTED_TEAM_ID}`;
 }
 
+function vercelNodeEntrypoint() {
+  if (process.platform !== 'win32') return null;
+  let cmdPath = '';
+  try {
+    cmdPath = execFileSync('where.exe', ['vercel.cmd'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    }).split(/\r?\n/).map((item) => item.trim()).find(Boolean) || '';
+  } catch {
+    throw new Error('VERCEL_CLI_MISSING');
+  }
+  const entrypoint = resolve(dirname(cmdPath), '..', 'vercel', 'dist', 'vc.js');
+  if (!existsSync(entrypoint)) throw new Error('VERCEL_CLI_MISSING');
+  return entrypoint;
+}
+
 function deploy(root, plan) {
   const authorEmail = git(root, ['show', '-s', '--format=%ae', plan.exactSha]);
   const request = deploymentRequestForGitSource(plan, {
@@ -185,7 +202,7 @@ function deploy(root, plan) {
       maxBuffer: 2 * 1024 * 1024,
     };
     const result = process.platform === 'win32'
-      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ['vercel.cmd', ...apiArgs.map((arg) => `"${String(arg).replaceAll('"', '\\"')}"`)].join(' ')], options)
+      ? spawnSync(process.execPath, [vercelNodeEntrypoint(), ...apiArgs], options)
       : spawnSync('vercel', apiArgs, options);
     if (result.error) throw new Error(result.error.code === 'ETIMEDOUT' ? 'VERCEL_DEPLOY_TIMEOUT' : 'VERCEL_CLI_EXEC_FAILED');
     const output = String(result.stdout || '');
