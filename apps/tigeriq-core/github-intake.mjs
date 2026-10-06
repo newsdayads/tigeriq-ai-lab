@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
-import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
+import { applyChatMutationOwnerHandoff, backlogCanonicalDedupeKey, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -13,6 +13,8 @@ import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPr
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 export const GITHUB_RECONCILE_INTERVAL_MS=30000;
+export const GITHUB_LIGHT_HYGIENE_INTERVAL_MS=15*60*1000;
+export const GITHUB_DEEP_HYGIENE_INTERVAL_MS=6*60*60*1000;
 const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
 export const GITHUB_MATERIALIZE_BATCH_DEFAULT=12;
@@ -328,19 +330,60 @@ export function workOrderDedupIdentity(spec={}){
   const scope=normalizeWorkOrderScopeFamily(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
   const reviewOnly=spec?.capability==='review'||hasExactFlag(body,'REVIEW_ONLY')||bodyValue(body,'CAPABILITY').toLowerCase()==='review';
   if(reviewOnly)return `review:${Number(spec?.number||0)}:${scope}`;
-  const title=normalizeWorkOrderIntentTitle(spec?.title||'');
-  return `${scope}|${title}`;
+  return backlogCanonicalDedupeKey({...spec,resourceScope:scope});
+}
+
+function explicitCanonicalIssueNumber(spec={}){
+  const body=String(spec?.body||'');
+  const raw=bodyValue(body,'CANONICAL_SPEC')||bodyValue(body,'CANONICAL_ISSUE')||bodyValue(body,'SUPERSEDED_BY');
+  const match=String(raw||'').match(/#?(\d{1,9})/);
+  return match?Number(match[1]):null;
+}
+
+function preferCanonicalWorkOrder(a,b){
+  if(!a)return b;
+  if(!b)return a;
+  const aExplicit=hasExactFlag(a.body||'','CANONICAL_WORK')||hasExactFlag(a.body||'','CANONICAL','true');
+  const bExplicit=hasExactFlag(b.body||'','CANONICAL_WORK')||hasExactFlag(b.body||'','CANONICAL','true');
+  if(aExplicit!==bExplicit)return aExplicit?a:b;
+  const aPoints=explicitCanonicalIssueNumber(a);
+  const bPoints=explicitCanonicalIssueNumber(b);
+  if(aPoints===Number(a.number))return a;
+  if(bPoints===Number(b.number))return b;
+  if(aPoints===Number(b.number))return b;
+  if(bPoints===Number(a.number))return a;
+  return Number(a?.number||Number.MAX_SAFE_INTEGER)<=Number(b?.number||Number.MAX_SAFE_INTEGER)?a:b;
 }
 
 export function dedupeBacklogWorkOrders(specs=[]){
-  const out=[]; const seen=new Set();
+  const byKey=new Map();
+  const unkeyed=[];
   for(const spec of Array.isArray(specs)?specs:[]){
     const key=workOrderDedupIdentity(spec);
-    if(key&&seen.has(key))continue;
-    if(key)seen.add(key);
-    out.push(spec);
+    if(!key){unkeyed.push(spec);continue}
+    byKey.set(key,preferCanonicalWorkOrder(byKey.get(key),spec));
   }
-  return out;
+  return [...byKey.values(),...unkeyed];
+}
+
+export function eventBacklogDedupeDecision(eventSpec,specs=[]){
+  if(!eventSpec)return {duplicate:false,canonical:null,key:''};
+  const key=workOrderDedupIdentity(eventSpec);
+  if(!key)return {duplicate:false,canonical:eventSpec,key:''};
+  const matches=(Array.isArray(specs)?specs:[]).filter((spec)=>workOrderDedupIdentity(spec)===key);
+  let canonical=eventSpec;
+  for(const spec of matches)canonical=preferCanonicalWorkOrder(canonical,spec);
+  return {duplicate:Number(canonical?.number)!==Number(eventSpec?.number),canonical,key};
+}
+
+export function githubBacklogHygieneSweepPlan({nowMs=Date.now(),lastLightMs=0,lastDeepMs=0,running=false,lightIntervalMs=GITHUB_LIGHT_HYGIENE_INTERVAL_MS,deepIntervalMs=GITHUB_DEEP_HYGIENE_INTERVAL_MS}={}){
+  if(running)return {kind:'NONE',reason:'ALREADY_RUNNING'};
+  const now=Number(nowMs)||Date.now();
+  const lightDue=now-Number(lastLightMs||0)>=Math.max(1000,Number(lightIntervalMs)||GITHUB_LIGHT_HYGIENE_INTERVAL_MS);
+  const deepDue=now-Number(lastDeepMs||0)>=Math.max(1000,Number(deepIntervalMs)||GITHUB_DEEP_HYGIENE_INTERVAL_MS);
+  if(deepDue)return {kind:'DEEP',reason:'DEEP_INTERVAL_DUE'};
+  if(lightDue)return {kind:'LIGHT',reason:'LIGHT_INTERVAL_DUE'};
+  return {kind:'NONE',reason:'NOT_DUE'};
 }
 
 export function extractPcOperatorInstruction(body){
