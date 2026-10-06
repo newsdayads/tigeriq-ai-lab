@@ -232,4 +232,21 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(extractPublicEvidence(jobResult,keys)).toEqual(data);
   });
 
+
+  it('exports only requested tcp_probe reachability fields',()=>{
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'tcp_probe',target:'pc01-local',
+      data:{host:'127.0.0.1',port:8796,reachable:true,reason:'connected',token:'must-not-publish'},
+    }}]}};
+    const requested=['reachable','host','port'];
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS='+requested.join(','))).toEqual(requested);
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({
+      reachable:true,
+      host:'127.0.0.1',
+      port:8796,
+    });
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('connected');
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('must-not-publish');
+  });
+
 });
