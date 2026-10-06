@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
-import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePublicEvidenceKeys } from './public-evidence.mjs';
+import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, parsePublicEvidenceKeys, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
 import { githubEventIssue, subscribeGithubEvents } from './github-event-bus.mjs';
@@ -438,6 +438,8 @@ export function safeAutoWorkAdmission(issue){
   const title=String(issue.title||'');
   const explicitExclusion=explicitAutoExecutionExclusion(body);
   if(explicitExclusion)return {eligible:false,reason:explicitExclusion};
+  const publicEvidenceRequest=validatePublicEvidenceKeys(body);
+  if(publicEvidenceRequest.unsupported.length)return {eligible:false,reason:'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',unsupportedPublicEvidenceKeys:publicEvidenceRequest.unsupported};
   const androidProductExclusion=androidProductAutoExecutionExclusion(issue);
   if(androidProductExclusion)return {eligible:false,reason:androidProductExclusion};
   const priority=bodyValue(body,'PRIORITY').toUpperCase();
@@ -493,6 +495,8 @@ export function parseExecutableIssue(issue){
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
   if(directAction.present&&!directAction.valid)return null;
+  const publicEvidenceRequest=validatePublicEvidenceKeys(body);
+  if(publicEvidenceRequest.unsupported.length)return null;
   if(directAction.action?.action==='tigeriq_live_3150_production_deploy'){
     directAction.action.releaseIssue=String(Number(issue.number));
   }
@@ -503,7 +507,7 @@ export function parseExecutableIssue(issue){
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(dynamicCoreLane?null:(classification.workerId||null)),
     url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),
-    commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:parsePublicEvidenceKeys(body),publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
+    commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
     liveAcceptanceRequired:hasExactFlag(body,'LIVE_ACCEPTANCE_REQUIRED'),
