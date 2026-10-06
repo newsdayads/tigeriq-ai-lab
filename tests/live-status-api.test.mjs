@@ -291,11 +291,12 @@ describe('TigerIQ Live Work Order projection', () => {
       'RESOURCE_SCOPE=DISPLAY_STATE_TEST',
       'CAPABILITY=reasoning',
       'EXECUTION_SURFACE=CORE',
-      'CURRENT_STATE=WAIT_OPERATOR_WINDOW',
+      'CURRENT_STATE=READY',
+      'DISPLAY_STATE=WAITING',
     ].join('\n');
     const row = parseOpenWorkIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody));
     expect(row).toMatchObject({
-      status: 'WAITING',
+      status: 'OPEN',
       displayState: 'WAITING',
       executionEligibility: 'READY',
       activeLease: false,
@@ -322,7 +323,11 @@ describe('TigerIQ Live Work Order projection', () => {
       'TIGERIQ_EXECUTABLE=false',
       'CURRENT_STATE=WAIT_DEPENDENCY',
       'DEPENDENCY_STATUS=WAIT',
-    ].join('\n')))).toMatchObject({ executionEligibility: 'PARKED_DEPENDENCY' });
+    ].join('\n')))).toMatchObject({
+      executionEligibility: 'PARKED_DEPENDENCY',
+      waitReason: 'EXPLICIT_EXECUTION_DISABLED',
+      rearmCondition: 'SOURCE_STATE_OR_DEPENDENCY_CHANGE',
+    });
 
     expect(parseOpenWorkIssue(issue(3006, '[P1] Owner gate', [
       'PRIORITY=P1',
@@ -335,6 +340,23 @@ describe('TigerIQ Live Work Order projection', () => {
       'CURRENT_STATE=DONE',
       'TIGERIQ_EXECUTABLE=false',
     ].join('\n')))).toBe('TERMINAL');
+  });
+
+  it('does not mislabel uncategorized policy exclusions as dependency waits', () => {
+    const unsafe = issue(3009, '[P1] incomplete safety contract', [
+      'PRIORITY=P1',
+      'OWNER_POLICY=AUTO',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'CURRENT_STATE=READY',
+      'RESOURCE_SCOPE=INCOMPLETE_SAFETY',
+      'CAPABILITY=reasoning',
+      'EXECUTION_SURFACE=CORE',
+    ].join('\n'));
+    const row = parseOpenWorkIssue(unsafe);
+    expect(row.executionEligibility).toBe('HARD_GATE');
+    expect(row.executionEligibilityReason).toBe('HARD_GATE_SAFETY_FLAGS_INCOMPLETE');
+    expect(row.waitReason).toBe('HARD_GATE_SAFETY_FLAGS_INCOMPLETE');
   });
 
   it('exposes only evidence-backed active worker and heartbeat fields', () => {
