@@ -630,7 +630,7 @@ function Ensure-ServiceHealth([string]$key,[string]$url){
   try{
     if($key-eq'core'){$after=Restart-Core $null}
     elseif($key-eq'web'){Sync-WebRuntime;$after=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath}
-    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+    elseif($key-eq'coding'){$after=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath}
     else{throw ('UNKNOWN_SERVICE:'+ $key)}
     if($after){$healthFailures[$key]=0;return @{service=$key;healthy=$true;action='restarted';pid=$after.pid;previousPid=$after.previousPid}}
     return @{service=$key;healthy=$false;action='restart_failed';failures=$healthFailures[$key]}
@@ -666,7 +666,7 @@ function Runtime-Watchdog(){
   $events=@(
     (Ensure-ServiceHealth 'core' 'http://100.97.23.87:8795/health'),
     (Ensure-ServiceHealth 'web' 'http://100.97.23.87:8796/health'),
-    (Ensure-ServiceHealth 'coding' 'http://100.97.23.87:8797/health'),
+    (Ensure-ServiceHealth 'coding' 'http://127.0.0.1:8797/health'),
     (Ensure-OpenClawHealth),
     (Ensure-AppChromeTransportHealth)
   )
@@ -699,7 +699,7 @@ function Invoke-RuntimeRollback([string]$previousRuntimeSha,[string]$remote,[has
   }
   if($impact.coding){
     $restartActions.Add('coding')
-    if(-not $CanaryMode -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath}
+    if(-not $CanaryMode -and (Task-Exists $codingTask)){$null=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath}
   }
   if($impact.openclaw){
     $restartActions.Add('openclaw')
@@ -802,7 +802,7 @@ while($true){
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
       elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
-      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://100.97.23.87:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
       if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
       if($impact.openclaw){
         $tree=OpenClaw-TreeSha
