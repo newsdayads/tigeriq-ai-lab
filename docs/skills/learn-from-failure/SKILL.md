@@ -1,26 +1,45 @@
 # Learn From Failure
 
-Status: ACTIVE (source)
-Issue: #899 - Activate Learn-from-Failure Skill
-Target: knowledge-system
+## Identity
+- ID: learn-from-failure
+- Version: 1.0.0
+- State: ACTIVE
+- Target: knowledge-system
+- Provenance: registry.yaml; #899
 
-## Apply when
-TigerIQ sees repeated, equivalent failures in durable runtime evidence and can propose a reusable prevention rule/check.
+## Trigger
+Use when TigerIQ sees repeated equivalent failures in durable runtime evidence and can propose a reusable prevention rule/check.
 
-## Rules
-- Learn only from durable failure events with real event sequence + timestamp evidence.
-- One isolated failure is not enough; candidate threshold is at least two equivalent verified failures.
-- Deduplicate by deterministic signature before creating a new candidate.
-- Every candidate must include occurrence count, affected component, evidence refs, first/last seen, and proposed prevention.
-- Runtime creates only `FAILURE_LEARNING_CANDIDATE` evidence. It never edits repository files or the Skill Registry.
-- A candidate never promotes itself. ACTIVE promotion still requires source implementation, tests, independent review, and merge.
-- Credential/security/Production/paid/destructive/irreversible-related candidates are proposal-only and explicitly require Owner authorization.
-- Never invent provenance, timestamps, hashes, URLs, or evidence references.
+## Input
+- Durable failure events with real sequence/timestamp evidence.
+- Affected component/resource and failure signature.
+- Existing learning candidates for dedupe.
+
+## Steps
+1. Require at least two equivalent verified failures.
+2. Build a deterministic failure signature.
+3. Deduplicate against existing candidates.
+4. Record occurrence count, component, evidence refs, first/last seen, and proposed prevention.
+5. Emit a candidate only; promotion remains a separate evidence-gated path.
+
+## Tools / Output
+Use the current failure-learning runtime. Output durable `FAILURE_LEARNING_CANDIDATE` evidence; never mutate the repository or Skill Registry directly.
+
+## Acceptance
+- One isolated failure never creates a learned rule.
+- Equivalent candidates are deduplicated.
+- Every candidate contains occurrence count, affected component, evidence refs, first/last seen, and proposed prevention.
 
 ## Evidence
 - apps/tigeriq-core/failure-learning.mjs
 - apps/tigeriq-core/core.mjs
 - tests/core-failure-learning.test.ts
 
+## Fallback
+If evidence is insufficient or non-equivalent, do not create a candidate; retain the raw failure evidence only.
+
+## Safety
+Credential/security/Production/paid/destructive/irreversible-related candidates are proposal-only and require Owner authorization. Never invent provenance, timestamps, hashes, URLs, or evidence references.
+
 ## Non-goals
-This skill does not authorize policy mutation, credential/security changes, paid actions, Production/runtime release, destructive actions, or APP Chrome/Worker Utility mutation.
+This skill does not self-promote rules, mutate policy, alter credentials/security, spend money, release Production, or perform destructive actions.

@@ -1,22 +1,47 @@
 # Automated Code Review Gate
 
+## Identity
+- ID: automated-code-review-gate
+- Version: 1.0.0
+- State: ACTIVE
+- Target: engineering-review
+- Provenance: registry.yaml; review evidence #1874/#2194
+
 ## Trigger
-Use before merging repository/source changes when an independent review materially reduces correctness, scope, or regression risk.
+Use before merging repository/source changes when independent review materially reduces correctness, scope, security, or regression risk.
 
-## Rules
-- Review the exact PR head; stale-head review evidence does not satisfy the gate.
-- Reviewer must be independent from the implementer when the workflow requires independence.
-- Verify allowlisted diff scope, acceptance criteria, required checks, and prohibited mutations.
-- Return PASS or CHANGES_REQUIRED with exact TARGET_HEAD and concise evidence.
-- A PASS does not override explicit Owner/hard gates outside the review scope.
+## Input
+- Canonical Work Order and acceptance.
+- Exact PR head SHA and diff.
+- Required checks/gates.
+- Implementer identity and prohibited mutation boundaries.
 
-## Output
-A durable review result containing TARGET_HEAD, PASS/CHANGES_REQUIRED, relevant gate/check evidence, and any precise blocker or required change.
+## Steps
+1. Pin review to the exact PR head.
+2. Ensure reviewer independence when required.
+3. Check allowlisted scope, acceptance, tests/checks, and prohibited mutations.
+4. Return PASS or CHANGES_REQUIRED with exact evidence.
+5. Re-review after any head change.
+
+## Tools / Output
+Use existing GitHub PR/diff/check/review surfaces. Output a durable review record containing TARGET_HEAD, decision, check evidence, and precise blockers/required changes.
+
+## Acceptance
+- Stale-head review never satisfies the gate.
+- Required independent reviewer is distinct from implementer.
+- Scope and required checks are verified before PASS.
+- PASS never overrides explicit Owner/hard gates.
 
 ## Evidence
-- #1874 independently reviewed PR #1568 after exact-head rebase and fresh checks.
-- #2194 independently reviewed PR #2193 at exact head b437f531977b5f0fb4ca7080a24740ab1d3be96c with CI, Queue Hygiene, and Vercel Online Verify PASS.
-- Existing TigerIQ engineering flows repeatedly require branch -> PR -> exact-head checks -> independent review -> merge.
+- #1874 independent review of PR #1568.
+- #2194 independent review of PR #2193.
+- Existing TigerIQ branch -> PR -> exact-head checks -> independent-review flows.
+
+## Fallback
+If exact-head evidence or an independent reviewer is unavailable, keep the PR unapproved/parked and record the missing gate.
+
+## Safety
+The reviewer does not mutate the implementation under review, self-approve when independence is required, or bypass Production/credential/security/destructive gates.
 
 ## Non-goals
-This skill never permits the reviewer to mutate the implementation under review, self-approve its own change when independence is required, or bypass Production/credential/security/destructive gates.
+This skill does not merge by itself merely because a textual review says PASS.
