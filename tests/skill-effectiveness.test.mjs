@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-core/skill-effectiveness.mjs';
+import { buildSkillOutcomeObservation, recordSkillOutcome, summarizeSkillEffectiveness, useSkill, measureEffectiveness, retireSkill } from '../apps/tigeriq-core/skill-effectiveness.mjs';
 
 import fs from 'node:fs';
 
@@ -96,4 +96,72 @@ test('Full skill effectiveness lifecycle: USE -> MEASURE -> RETIRE with isolatio
   const postRetire = measureEffectiveness(skillId);
   assert.strictEqual(postRetire.total, 0);
   assert.strictEqual(postRetire.successRate, 0);
+});
+
+
+test('verified outcomes preserve version, resource, evidence and duration', () => {
+  const skillId='measured-skill';
+  retireSkill(skillId);
+  const observed=recordSkillOutcome(skillId,{
+    jobId:'JOB-1',objectiveId:'OBJ-1',version:'2.1.0',outcome:'completed',verified:true,
+    resourceId:'res:test',employeeId:'NV12',provider:'test',durationMs:1234,evidenceRef:'CORE_JOB:JOB-1'
+  });
+  assert.strictEqual(observed.counted,true);
+  const metrics=measureEffectiveness(skillId);
+  assert.deepStrictEqual({usage:metrics.usage,completed:metrics.completed,failedBlocked:metrics.failedBlocked},{usage:1,completed:1,failedBlocked:0});
+  assert.strictEqual(metrics.observedSuccessRatio,1);
+  assert.deepStrictEqual(metrics.versions,['2.1.0']);
+  assert.deepStrictEqual(metrics.evidenceRefs,['CORE_JOB:JOB-1']);
+  assert.deepStrictEqual(metrics.duration,{observedCount:1,averageMs:1234});
+  retireSkill(skillId);
+});
+
+test('logical job retry is deduplicated by job + skill + version', () => {
+  const skillId='dedupe-skill';
+  retireSkill(skillId);
+  const input={jobId:'JOB-RETRY',version:'1.0.0',outcome:'completed',verified:true,evidenceRef:'CORE_JOB:JOB-RETRY'};
+  const first=recordSkillOutcome(skillId,input);
+  const retry=recordSkillOutcome(skillId,input);
+  assert.strictEqual(first.counted,true);
+  assert.strictEqual(retry.duplicate,true);
+  const metrics=measureEffectiveness(skillId);
+  assert.strictEqual(metrics.usage,1);
+  assert.strictEqual(metrics.completed,1);
+  retireSkill(skillId);
+});
+
+test('unverified or unrelated work remains UNKNOWN and is not counted', () => {
+  const skillId='unknown-skill';
+  retireSkill(skillId);
+  recordSkillOutcome(skillId,{jobId:'JOB-UNKNOWN',version:'1.0.0',outcome:'completed',verified:false});
+  const metrics=measureEffectiveness(skillId);
+  assert.strictEqual(metrics.state,'UNKNOWN');
+  assert.strictEqual(metrics.usage,0);
+  const unrelated=summarizeSkillEffectiveness('other-skill',[]);
+  assert.strictEqual(unrelated.state,'UNKNOWN');
+  assert.strictEqual(unrelated.observedSuccessRatio,null);
+  retireSkill(skillId);
+});
+
+test('failed and blocked outcomes expose recurring failure signature without auto promotion', () => {
+  const records=[
+    buildSkillOutcomeObservation('failure-skill',{jobId:'JOB-F1',version:'1.0.0',outcome:'blocked',verified:true,evidenceRef:'E1',failureSignature:'NO_AI_RESOURCE_AVAILABLE'}),
+    buildSkillOutcomeObservation('failure-skill',{jobId:'JOB-F2',version:'1.0.0',outcome:'failed',verified:true,evidenceRef:'E2',failureSignature:'NO_AI_RESOURCE_AVAILABLE'}),
+  ];
+  const metrics=summarizeSkillEffectiveness('failure-skill',records);
+  assert.strictEqual(metrics.usage,2);
+  assert.strictEqual(metrics.failedBlocked,2);
+  assert.strictEqual(metrics.failureLoopState,'PARKED');
+  assert.deepStrictEqual(metrics.recurringFailureSignatures,[{signature:'NO_AI_RESOURCE_AVAILABLE',count:2}]);
+  assert.ok(!('promotion' in metrics));
+  assert.ok(!('retire' in metrics));
+});
+
+test('Core emits effectiveness evidence only after terminal job outcome with durable dedupe', () => {
+  const core=fs.readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  assert.match(core,/SKILL_EFFECTIVENESS_OBSERVED/);
+  assert.match(core,/data->>'dedupeKey'=\$1/);
+  assert.match(core,/emitSkillEffectivenessObservations\(\{[\s\S]*outcome:'completed'/);
+  assert.match(core,/status='failed'[\s\S]*emitSkillEffectivenessObservations\(\{/);
+  assert.match(core,/RESOURCE_WAIT_QUEUED/);
 });
