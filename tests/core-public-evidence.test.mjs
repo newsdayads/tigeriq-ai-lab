@@ -4,9 +4,20 @@ import {
   buildPublicJobEvidenceRecord,
   extractPublicEvidence,
   parsePublicEvidenceKeys,
+  validatePublicEvidenceKeys,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
+  it('reports unsupported PUBLIC_EVIDENCE_KEYS instead of silently treating them as supported',()=>{
+    const body='PUBLIC_EVIDENCE_KEYS=installedSha,candidateSha,changedPaths,candidateSha';
+    expect(validatePublicEvidenceKeys(body)).toEqual({
+      present:true,
+      requested:['installedSha','changedPaths'],
+      unsupported:['candidateSha'],
+    });
+    expect(parsePublicEvidenceKeys(body)).toEqual(['installedSha','changedPaths']);
+  });
+
   it('maps a trusted pc01-local receipt data payload to requested result evidence', () => {
     const jobResult={
       ok:true,
