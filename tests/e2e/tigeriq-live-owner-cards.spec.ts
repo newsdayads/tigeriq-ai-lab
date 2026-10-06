@@ -64,7 +64,7 @@ test('shows only the owner-readable work package and five-stage live flow on des
 
   await expect(page.locator('#ownerSummary')).toBeHidden();
   await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
-  await expect(page.locator('.owner-clean-flow')).toContainText('Giao việc');
+  await expect(page.locator('.owner-clean-flow')).toContainText('Nhận việc');
   await expect(page.locator('.owner-clean-flow')).toContainText('Điều phối');
   await expect(page.locator('.owner-clean-flow')).toContainText('Thực hiện');
   await expect(page.locator('.owner-clean-flow')).toContainText('Kiểm tra');
