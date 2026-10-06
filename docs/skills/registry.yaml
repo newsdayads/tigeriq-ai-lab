@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-09-27
+updated: 2026-10-06
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
   source_type: chatgpt_attachment
@@ -166,7 +166,7 @@ skills:
 
   - id: document-normalization-ingest
     title: Document Normalization Ingest
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -176,7 +176,7 @@ skills:
 
   - id: source-grounded-knowledge-retrieval
     title: Source-Grounded Knowledge Retrieval
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -186,7 +186,7 @@ skills:
 
   - id: external-research-capability-routing
     title: External Research Capability Routing
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md
@@ -196,7 +196,7 @@ skills:
 
   - id: domain-skill-packaging
     title: Domain Skill Packaging
-    state: VALIDATED
+    state: ACTIVE
     version: 1.0.0
     provenance_batch: owner-agent-review-document-research-2026-09-23
     source_log: learning-log/2026-09-23-agent-review-document-research.md

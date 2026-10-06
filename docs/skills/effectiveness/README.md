@@ -1,32 +1,20 @@
 # Skill Effectiveness Tracking
 
-This module provides lightweight, in-memory tracking for TigerIQ skill execution and effectiveness measurement.
+This contract records **verified real-job outcomes** for ACTIVE skills and derives bounded effectiveness signals. Durable Core events remain the evidence source; the module does not create a new database or promotion authority.
 
-## The Lifecycle Loop
+## Contract
 
-1. **USE**: Record skill executions via `useSkill(id, input)`.
-2. **MEASURE**: Calculate success rates via `measureEffectiveness(id)`.
-3. **RETIRE**: Clear historical execution data via `retireSkill(id)`.
+1. **USE** — a real job loads an ACTIVE skill through the existing skill loader.
+2. **MEASURE** — terminal job outcome emits `SKILL_EFFECTIVENESS_OBSERVED` with `jobId + skillId + version + resource + outcome + evidence`.
+3. **DEDUPE** — `jobId + skillId + version` is claimed atomically in a durable PostgreSQL primary-key ledger before `SKILL_EFFECTIVENESS_OBSERVED` is inserted; concurrent retry/replay cannot count twice.
+4. **SIGNALS** — usage, completed, failed/blocked, observed success ratio, duration when measured, recurring failure signatures, versions and evidence references.
+5. **UNKNOWN** — missing verified evidence is not scored.
+6. **PARK** — recurring identical durable failure evidence, or exhaustion of the bounded resource-wait retry budget, emits `SKILL_EFFECTIVENESS_PARKED` only after the job lease is released; it does not self-promote, self-retire or bypass routing policy.
 
-## Usage Example
+## Safety
 
-javascript
-import { useSkill, measureEffectiveness, retireSkill } from '../../../apps/tigeriq-core/skill-effectiveness.mjs';
-
-// 1. Record usage
-useSkill('data-parser', { success: true });
-useSkill('data-parser', { success: false });
-
-// 2. Measure effectiveness
-const stats = measureEffectiveness('data-parser');
-console.log(stats); // { id: 'data-parser', total: 2, successRate: 0.5 }
-
-// 3. Retire skill data
-retireSkill('data-parser');
-
-
-## Safety Notes
-
-- Data is stored strictly in an in-memory `Map` scoped to the module instance. No external persistence or disk writes occur.
-- The module does not depend on Chrome-controller or worker-utility code, ensuring clean separation of concerns.
-- Ensure skill IDs are unique strings to prevent unintended collision in the shared map.
+- Measurement never proves causality from one job.
+- No chat text, credential, secret or private payload is stored for metrics.
+- `retireSkill()` only clears the module's measurement cache; it does **not** mutate Skill Registry state.
+- Promotion/demotion/retirement remains a separate evidence-gated governance path.
+- App Chrome, Production, paid actions and credential/security boundaries are outside this contract.
