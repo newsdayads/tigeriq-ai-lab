@@ -549,6 +549,7 @@ test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting
   assert.equal(pool.jobs[0].employee_id,afterFirst,'must not ping-pong on a later snapshot');
   assert.equal(pool.events.filter(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER').length,1);
   assert.equal(second.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
+});
 
 test('internal final-review evidence accepts multiline findings',()=>{
   const head='1234567890abcdef1234567890abcdef12345678';
@@ -578,6 +579,4 @@ test('internal final-review preserves BLOCKED and EXTERNAL_WAIT job semantics',a
     assert.equal(pool.jobs[0].failure.kind,terminal);
     assert.ok(pool.events.some(e=>e.type===expectedEvent));
   }
-});
-
 });
