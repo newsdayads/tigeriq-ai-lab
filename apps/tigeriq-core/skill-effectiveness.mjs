@@ -52,6 +52,32 @@ export function buildSkillOutcomeObservation(id, input = {}) {
   };
 }
 
+export function skillFailureLoopDecision({
+  outcome = 'unknown',
+  failureSignature = '',
+  retryBudgetExhausted = false,
+  retryCount = 0,
+  maxRetries = 0,
+  recurringCount = 0,
+} = {}) {
+  const normalized = normalizedOutcome({ outcome });
+  const signature = String(failureSignature || '').trim();
+  const terminalFailure = ['failed', 'blocked'].includes(normalized) && Boolean(signature);
+  const retries = Math.max(0, Number(retryCount) || 0);
+  const max = Math.max(0, Number(maxRetries) || 0);
+  const recurring = Math.max(0, Number(recurringCount) || 0);
+  const exhausted = retryBudgetExhausted === true || (max > 0 && retries >= max);
+  const parked = terminalFailure && (exhausted || recurring >= 2);
+  return {
+    state: parked ? 'PARKED' : 'CLEAR',
+    reason: parked ? (exhausted ? 'RETRY_BUDGET_EXHAUSTED' : 'RECURRING_FAILURE_SIGNATURE') : null,
+    retryCount: retries,
+    maxRetries: max,
+    recurringCount: recurring,
+    failureSignature: signature || null,
+  };
+}
+
 export function summarizeSkillEffectiveness(id, records = []) {
   if (!id) throw new Error('Skill ID is required');
   const unique = new Map();
