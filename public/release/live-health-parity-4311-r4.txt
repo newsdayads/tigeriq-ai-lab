@@ -1,0 +1,8 @@
+TIGERIQ_LIVE_RELEASE_V4
+RELEASE_ISSUE=4311
+SOURCE_PR=4088
+SOURCE_MERGE_SHA=0d30834a66ed1c44d1e5fa9e80d7066ebf878e17
+RELEASE_PATH_FIX=GIT_SOURCE_API_TEAM_SCOPE
+BASE_MAIN_SHA=26f265ec96af868180ea3fb7f66bb6e83f27cc87
+RELEASE_CLASS=WEB_LIVE
+REASON=Publish Owner-approved TigerIQ Live through exact Git-source Production deployment with authenticated teamId query scope.
