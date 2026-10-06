@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+import { deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 
 const base = {
   projectLink: {
@@ -24,6 +24,43 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
   it('derives a verified GitHub login from the canonical noreply author email', () => {
     expect(githubAuthorLoginFromEmail('125233768+newsdayads@users.noreply.github.com')).toBe('newsdayads');
     expect(() => githubAuthorLoginFromEmail('unknown@example.com')).toThrow('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
+  });
+
+  it('builds an exact production Git-source deployment request', () => {
+    const request = deploymentRequestForGitSource(
+      { exactSha: 'a'.repeat(40), issue: '4311' },
+      {
+        authorLogin: 'newsdayads',
+        authorEmail: '125233768+newsdayads@users.noreply.github.com',
+        authorName: 'Nguyễn Trường Sơn',
+        commitMessage: 'release',
+      },
+    );
+    expect(request).toMatchObject({
+      project: 'prj_gg7AuV6y62TALzEpby8XUAFisLKw',
+      target: 'production',
+      gitSource: {
+        type: 'github',
+        org: 'newsdayads',
+        repo: 'tigeriq-ai-lab',
+        ref: 'main',
+        sha: 'a'.repeat(40),
+      },
+      gitMetadata: {
+        ciGitProviderUsername: 'newsdayads',
+        commitSha: 'a'.repeat(40),
+        commitRef: 'main',
+      },
+      meta: {
+        tigeriqReleaseIssue: '4311',
+        tigeriqReleaseClass: 'WEB_LIVE',
+        tigeriqExactSha: 'a'.repeat(40),
+      },
+    });
+    expect(() => deploymentRequestForGitSource(
+      { exactSha: 'b'.repeat(40), issue: '4311' },
+      { authorLogin: '', authorEmail: '', authorName: '' },
+    )).toThrow('VERCEL_GIT_METADATA_INCOMPLETE');
   });
 
   it('allows only an explicitly authorized real web release contract', () => {
