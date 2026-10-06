@@ -78,6 +78,28 @@ function git(root, args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }).trim();
 }
 
+export function githubAuthorLoginFromEmail(email = '') {
+  const match = clean(email).match(/^\d+\+([a-z0-9-]{1,39})@users\.noreply\.github\.com$/i);
+  if (!match) throw new Error('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
+  return match[1];
+}
+
+export function releaseGitMetadata(root, exactSha) {
+  const [org, repo] = EXPECTED_REPO.split('/');
+  const authorEmail = git(root, ['show', '-s', '--format=%ae', exactSha]);
+  const authorLogin = githubAuthorLoginFromEmail(authorEmail);
+  return {
+    githubDeployment: '1',
+    githubCommitSha: exactSha,
+    githubCommitAuthorLogin: authorLogin,
+    githubCommitRef: EXPECTED_BRANCH,
+    githubOrg: org,
+    githubRepo: repo,
+    githubCommitOrg: org,
+    githubCommitRepo: repo,
+  };
+}
+
 function ensureProjectLink(root) {
   const dir = resolve(root, '.vercel');
   const file = resolve(dir, 'project.json');
@@ -92,18 +114,25 @@ function ensureProjectLink(root) {
   return { link, temporary: true, dir };
 }
 
-function deploy(root) {
+function deploy(root, plan) {
+  const metadata = releaseGitMetadata(root, plan.exactSha);
+  const metadataArgs = Object.entries(metadata).flatMap(([key, value]) => ['--meta', `${key}=${value}`]);
+  const deployArgs = ['deploy', '--prod', '--yes', '--team', EXPECTED_TEAM_ID, ...metadataArgs];
   const options = {
     cwd: root,
     encoding: 'utf8',
-    env: process.env,
+    env: {
+      ...process.env,
+      VERCEL_ORG_ID: EXPECTED_TEAM_ID,
+      VERCEL_PROJECT_ID: EXPECTED_PROJECT_ID,
+    },
     windowsHide: true,
     timeout: 110000,
     maxBuffer: 2 * 1024 * 1024,
   };
   const result = process.platform === 'win32'
-    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'vercel.cmd deploy --prod --yes'], options)
-    : spawnSync('vercel', ['deploy', '--prod', '--yes'], options);
+    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ['vercel.cmd', ...deployArgs].join(' ')], options)
+    : spawnSync('vercel', deployArgs, options);
   if (result.error) throw new Error(result.error.code === 'ETIMEDOUT' ? 'VERCEL_DEPLOY_TIMEOUT' : 'VERCEL_CLI_EXEC_FAILED');
   const output = String(result.stdout || '') + '\n' + String(result.stderr || '');
   if (result.status !== 0) throw new Error(classifyDeployFailure(output));
@@ -165,7 +194,7 @@ export function runOneShotDeploy({
       releaseReason,
       changedFiles,
     });
-    const result = deployImpl(root);
+    const result = deployImpl(root, plan);
     return { ok: true, status: 'TIGERIQ_LIVE_3150_PRODUCTION_DEPLOYED', ...plan, ...result, secretsPrinted: false };
   } finally {
     if (linkState?.temporary) rmSync(linkState.dir, { recursive: true, force: true });
