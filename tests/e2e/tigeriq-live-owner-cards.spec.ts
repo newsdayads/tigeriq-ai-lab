@@ -290,15 +290,23 @@ test('uses the same hierarchy on mobile without document overflow', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  const metrics = await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    documentScroll: document.documentElement.scrollWidth,
-    missionColumns: getComputedStyle(document.querySelector('.mc-columns')!).gridTemplateColumns,
-    rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
-  }));
+  const metrics = await page.evaluate(() => {
+    const board=document.querySelector('.mc-columns') as HTMLElement;
+    const cols=[...document.querySelectorAll('.mc-column')].map(node=>(node as HTMLElement).getBoundingClientRect().width);
+    return {
+      viewport: window.innerWidth,
+      documentScroll: document.documentElement.scrollWidth,
+      boardClient: board?.clientWidth||0,
+      boardScroll: board?.scrollWidth||0,
+      colWidths: cols,
+      rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
+    };
+  });
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
   expect(metrics.rawOpen).toBe(true);
-  expect(metrics.missionColumns).toContain('78vw');
+  expect(metrics.boardScroll).toBeGreaterThan(metrics.boardClient);
+  expect(metrics.colWidths).toHaveLength(4);
+  expect(Math.min(...metrics.colWidths)).toBeGreaterThan(250);
   await expect(page.locator('.v2-mobile-nav')).toBeVisible();
   await expect(page.locator('.mc-project-rail')).toBeVisible();
   await expect(page.locator('.mc-column')).toHaveCount(4);
