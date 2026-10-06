@@ -102,11 +102,40 @@ test('shows current Job context and opens technical detail from the flow', async
   await expect(page.locator('#drawerJob')).toContainText('GH-111');
 });
 
-test('keeps raw all-JOB list secondary and collapsed by default', async ({ page }) => {
+test('keeps raw all-JOB list visible by default', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
-  await expect(page.locator('#rawWorkDetails')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
   await expect(page.locator('#rawWorkDetails summary')).toContainText('Tất cả JOB');
+  await expect(page.locator('#workList')).toBeVisible();
+});
+
+
+test('applies distinct status colors and live motion hooks', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openTiger(page);
+
+  const working = page.locator('.v2-flow-job.is-working').first();
+  const review = page.locator('.v2-flow-job.is-review').first();
+  await expect(working).toBeVisible();
+  await expect(review).toBeVisible();
+
+  const styles = await page.evaluate(() => {
+    const working = document.querySelector('.v2-flow-job.is-working');
+    const review = document.querySelector('.v2-flow-job.is-review');
+    const stage1 = document.querySelector('.v2-flow-stage:nth-child(1)');
+    const stage4 = document.querySelector('.v2-flow-stage:nth-child(4)');
+    return {
+      workingBorder: working ? getComputedStyle(working).borderColor : '',
+      reviewBorder: review ? getComputedStyle(review).borderColor : '',
+      stage1Border: stage1 ? getComputedStyle(stage1).borderColor : '',
+      stage4Border: stage4 ? getComputedStyle(stage4).borderColor : '',
+      workingAnimation: working ? getComputedStyle(working).animationName : '',
+    };
+  });
+  expect(styles.workingBorder).not.toBe(styles.reviewBorder);
+  expect(styles.stage1Border).not.toBe(styles.stage4Border);
+  expect(styles.workingAnimation).toContain('v2-working-pulse');
 });
 
 test('uses the same hierarchy on mobile without document overflow', async ({ page }) => {
@@ -120,7 +149,7 @@ test('uses the same hierarchy on mobile without document overflow', async ({ pag
     rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
   }));
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
-  expect(metrics.rawOpen).toBe(false);
+  expect(metrics.rawOpen).toBe(true);
   expect(metrics.flowColumns.split(' ').length).toBe(1);
   await expect(page.locator('.v2-mobile-nav')).toBeVisible();
   await expect(page.locator('.v2-project-list')).toBeVisible();
