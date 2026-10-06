@@ -292,13 +292,21 @@ test('bootstrap watchdog detects a running-but-stale updater and only cleans exa
   assert.doesNotMatch(bootstrapWatchdog,/Stop-Process[^\n]+Where-Object[^\n]*powershell/i);
 });
 
-test('updater task uses StopExisting so a stale scheduled instance cannot block a fresh start',()=>{
+test('updater task uses supported IgnoreNew policy while watchdog owns bounded stale-instance recovery',()=>{
   const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
-  assert.match(installer,/MultipleInstances StopExisting/);
+  const watchdog=readFileSync(new URL('../scripts/tigeriq-core/bootstrap-watchdog.ps1',import.meta.url),'utf8');
+  assert.match(installer,/MultipleInstances IgnoreNew/);
+  assert.doesNotMatch(installer,/MultipleInstances StopExisting/);
   const target=script.slice(script.indexOf('function Ensure-UpdaterTaskRuntimeTarget'),script.indexOf('function Ensure-BootstrapWatchdogTask'));
-  assert.match(target,/MultipleInstances StopExisting/);
+  assert.match(target,/MultipleInstances IgnoreNew/);
+  assert.doesNotMatch(target,/MultipleInstances StopExisting/);
   assert.match(target,/Settings\.MultipleInstances/);
   assert.match(target,/previousMultipleInstances=\$multiple/);
+  assert.match(watchdog,/MultipleInstances IgnoreNew/);
+  assert.doesNotMatch(watchdog,/MultipleInstances StopExisting/);
+  const recovery=watchdog.slice(watchdog.indexOf('if($healthy){$failures[$t.key]=0}'),watchdog.indexOf('$rows+='));
+  assert.ok(recovery.indexOf('Stop-ScheduledTask -TaskName $t.task') < recovery.indexOf('Stop-ExactUpdaterProcesses'),'scheduled task stop must precede exact updater process cleanup');
+  assert.ok(recovery.indexOf('Stop-ExactUpdaterProcesses') < recovery.indexOf('Start-ScheduledTask -TaskName $t.task'),'exact updater process cleanup must precede restart');
 });
 
 test('runtime watchdog includes OpenClaw and App Chrome transport but does not make them global update gates',()=>{
