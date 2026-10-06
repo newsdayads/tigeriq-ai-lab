@@ -62,6 +62,16 @@ public final class WorkerUpdateEngine {
             return new Result("UP_TO_DATE", targetVersion, false);
         }
 
+        String installMode = manifest.optString("installMode", "SELF_INSTALL").trim().toUpperCase(Locale.ROOT);
+        if ("MANAGED_PLAY".equals(installMode) || "MANAGED_MDM".equals(installMode)) {
+            write(app, "MANAGED_UPDATE_PENDING", "", targetVersion, -1, userInitiated, "", "");
+            return new Result("MANAGED_UPDATE_PENDING", targetVersion, false);
+        }
+        if (!"SELF_INSTALL".equals(installMode)) {
+            write(app, "UPDATE_POLICY_BLOCKED", "unsupported_install_mode", targetVersion, -1, userInitiated, "", "");
+            throw new IllegalStateException("unsupported update install mode");
+        }
+
         String expectedSha256 = normalizeHex(manifest.optString("sha256", ""));
         String expectedSigner = normalizeHex(manifest.optString("signerSha256", ""));
         if (expectedSha256.length() != 64 || expectedSigner.length() != 64) {
