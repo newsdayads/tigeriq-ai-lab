@@ -134,7 +134,7 @@ export async function trustedFinalLiveReviewEvidence(pool,{objectiveId='',source
   return {accepted:true,jobId,employeeId,resourceId,provider:String(job.provider||''),review,implementationFingerprint:context.fingerprint};
 }
 
-async function selectUiFinalReviewer(pool,implementationContext={}){
+export async function selectUiFinalReviewer(pool,implementationContext={}){
   const excluded=new Set((implementationContext?.implementerEmployeeIds||[]).map((x)=>String(x||'').trim().toUpperCase()).filter(Boolean));
   const active=await pool.query("select employee_id from tigeriq_jobs where kind='ui' and status in ('ui_assigned','ui_running') and employee_id=any($1::text[])",[['NV03','NV04']]);
   const busy=new Set(active.rows.map((row)=>String(row.employee_id||'').trim().toUpperCase()).filter(Boolean));
@@ -145,7 +145,7 @@ async function selectUiFinalReviewer(pool,implementationContext={}){
 }
 function uiReviewerResourceId(workerId){return 'res:ui:'+String(workerId||'').trim().toLowerCase()+':subscription:chrome';}
 
-async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',evidenceKey='',evidenceCommentId=null,implementationContext=null,sourceBody=''}={}){
+export async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',evidenceKey='',evidenceCommentId=null,implementationContext=null,sourceBody=''}={}){
   const context=implementationContext||{implementationTerminal:true,fingerprint:'base'};
   if(context.implementationTerminal===false)return {jobId:null,state:'WAIT_IMPLEMENTATION',blockingJobs:context.blockingJobs||[]};
   const jobId=finalLiveReviewJobId(row.id,evidenceKey,context.fingerprint);
@@ -176,15 +176,23 @@ async function ensureFinalLiveReviewJob(pool,row,{comments=[],sourceRevision='',
     'DURABLE_EVIDENCE_NEWEST_FIRST:',
     evidenceText||'NONE',
   ].join('\n');
-  const uiReviewer=await selectUiFinalReviewer(pool,context).catch(()=>'');
-  if(uiReviewer){
-    const resourceId=uiReviewerResourceId(uiReviewer);
-    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,'review','ui','ui_assigned',$5,$6,'ui','UI',$7,2) on conflict(id) do nothing",[jobId,row.id,`Final acceptance review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt,uiReviewer,resourceId,JSON.stringify({authority:'CORE_UI_FINAL_REVIEW',workerId:uiReviewer,reason:uiReviewer==='NV03'?'NV03_PRIMARY_FINAL_REVIEW':'NV04_REVIEW_OVERFLOW',sourceRevision})]);
-  }else{
-    await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,row.id,`Final acceptance review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt]);
+  let existing=(await pool.query("select status,attempts,max_attempts,employee_id,kind,resource_id,provider,routing_decision from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
+  let uiReviewer='';
+  if(!existing){
+    uiReviewer=await selectUiFinalReviewer(pool,context).catch(()=>'');
+    if(uiReviewer){
+      const resourceId=uiReviewerResourceId(uiReviewer);
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,'review','ui','ui_assigned',$5,$6,'ui','UI',$7,2) on conflict(id) do nothing",[jobId,row.id,`Final acceptance review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt,uiReviewer,resourceId,JSON.stringify({authority:'CORE_UI_FINAL_REVIEW',workerId:uiReviewer,reason:uiReviewer==='NV03'?'NV03_PRIMARY_FINAL_REVIEW':'NV04_REVIEW_OVERFLOW',sourceRevision})]);
+    }else{
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'review','github_review','queued',2) on conflict(id) do nothing",[jobId,row.id,`Final acceptance review GitHub #${Number(row.metadata?.issueNumber)||row.id}`,prompt]);
+    }
+    existing=(await pool.query("select status,attempts,max_attempts,employee_id,kind,resource_id,provider,routing_decision from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
   }
-  const existing=(await pool.query("select status,attempts,max_attempts,employee_id from tigeriq_jobs where id=$1",[jobId])).rows[0]||null;
   if(existing&&String(existing.status||'').toLowerCase()==='failed'&&Number(existing.attempts||0)<Number(existing.max_attempts||2)){
+    if(String(existing.kind||'')==='ui'){
+      await pool.query("update tigeriq_jobs set status='ui_assigned',result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null where id=$1",[jobId]);
+      return {jobId,state:'UI_ASSIGNED',workerId:String(existing.employee_id||'')||null};
+    }
     await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null where id=$1",[jobId]);
     return {jobId,state:'REQUEUED'};
   }
