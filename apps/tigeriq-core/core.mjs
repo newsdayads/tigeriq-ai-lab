@@ -1535,7 +1535,17 @@ async function emitSkillEffectivenessObservations({ job, skillContext, outcome, 
     );
     if (existing.rowCount > 0) continue;
     await event('SKILL_EFFECTIVENESS_OBSERVED', { objectiveId: job.objective_id, ...observation });
-    recordSkillOutcome(skill.id, input);
+    const measurement = recordSkillOutcome(skill.id, input);
+    if (measurement.metrics.failureLoopState === 'PARKED' && ['failed','blocked'].includes(outcome)) {
+      await event('SKILL_EFFECTIVENESS_PARKED', {
+        objectiveId: job.objective_id,
+        jobId: job.id,
+        skillId: skill.id,
+        version: skill.version || 'unknown',
+        dedupeKey: observation.dedupeKey,
+        recurringFailureSignatures: measurement.metrics.recurringFailureSignatures,
+      });
+    }
   }
 }
 async function runJob(j) {
