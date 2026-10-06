@@ -99,6 +99,19 @@ test('no-skill path is deterministic and explicitly generic', () => {
   assert.equal(preflight.status, 'RESOURCE_PENDING');
 });
 
+test('registry rejection remains deterministic and does not invent a skill match', () => {
+  const preflight = buildSkillRoutingPreflight({
+    jobId: 'JOB-REGISTRY-ERROR',
+    skillContext: { skills: [], skipped: [] },
+    requiredCapability: 'reasoning',
+    registryError: 'SKILL_REGISTRY_MALFORMED',
+  });
+  assert.deepEqual(preflight.selectedSkillIds, []);
+  assert.equal(preflight.skillPolicy, 'ALLOW_GENERIC_WITH_REASON');
+  assert.equal(preflight.skillReason, 'SKILL_REGISTRY_REJECTED_ALLOW_GENERIC');
+  assert.equal(preflight.registryError, 'SKILL_REGISTRY_MALFORMED');
+});
+
 test('resource unavailable parks bounded and reviewer collision fails closed', () => {
   const preflight = buildSkillRoutingPreflight({
     jobId: 'JOB-REVIEW',
