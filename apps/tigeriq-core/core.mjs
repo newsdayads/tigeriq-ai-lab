@@ -15,7 +15,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runB
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
-import { buildSkillOutcomeObservation, recordSkillOutcome } from './skill-effectiveness.mjs';
+import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
@@ -422,6 +422,17 @@ async function invokeProvider(r, prompt) {
     create index if not exists tigeriq_jobs_objective_phase_done_completed_idx on tigeriq_jobs(objective_id,phase_index,completed_at desc) where status='done';
     create index if not exists tigeriq_ai_resources_employee_idx on tigeriq_ai_resources(employee_id);
     create index if not exists tigeriq_events_resource_task_idx on tigeriq_events(resource_id,task_kind,ts desc);
+    create table if not exists tigeriq_skill_effectiveness_dedupe(
+      dedupe_key text primary key,
+      first_event_seq bigint,
+      created_at timestamptz not null default now());
+    insert into tigeriq_skill_effectiveness_dedupe(dedupe_key,first_event_seq)
+      select data->>'dedupeKey',min(seq)
+      from tigeriq_events
+      where type='SKILL_EFFECTIVENESS_OBSERVED'
+        and coalesce(data->>'dedupeKey','')<>''
+      group by data->>'dedupeKey'
+      on conflict(dedupe_key) do nothing;
     create table if not exists tigeriq_self_audit_anomalies(
       signature text primary key,
       contract_id text not null,
@@ -437,6 +448,30 @@ async function invokeProvider(r, prompt) {
 }
 async function event(type, data = {}) {
   await pool.query('insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values($1,$2,$3,$4,$5,$6,$7)',[type,data.objectiveId||null,data.jobId||null,data.employeeId||null,data.resourceId||null,data.taskKind||null,JSON.stringify(data)]);
+}
+async function insertSkillEffectivenessObservation(data = {}) {
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const claimed=await client.query(
+      "insert into tigeriq_skill_effectiveness_dedupe(dedupe_key) values($1) on conflict(dedupe_key) do nothing returning dedupe_key",
+      [String(data.dedupeKey||'')],
+    );
+    if(claimed.rowCount!==1){await client.query('commit');return false;}
+    const inserted=await client.query(
+      "insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('SKILL_EFFECTIVENESS_OBSERVED',$1,$2,$3,$4,'skill_effectiveness',$5::jsonb) returning seq",
+      [data.objectiveId||null,data.jobId||null,data.employeeId||null,data.resourceId||null,JSON.stringify(data)],
+    );
+    await client.query(
+      "update tigeriq_skill_effectiveness_dedupe set first_event_seq=$2 where dedupe_key=$1",
+      [String(data.dedupeKey||''),inserted.rows[0]?.seq||null],
+    );
+    await client.query('commit');
+    return true;
+  }catch(error){
+    await client.query('rollback').catch(()=>{});
+    throw error;
+  }finally{client.release();}
 }
 function hotPathTiming(j, stage, extra = {}) {
   const now = Date.now();
@@ -1512,7 +1547,17 @@ async function claimJob() {
     return claimed;
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
 }
-async function emitSkillEffectivenessObservations({ job, skillContext, outcome, resource = null, durationMs = null, failureSignature = null }) {
+async function emitSkillEffectivenessObservations({
+  job,
+  skillContext,
+  outcome,
+  resource = null,
+  durationMs = null,
+  failureSignature = null,
+  retryBudgetExhausted = false,
+  retryCount = 0,
+  maxRetries = 0,
+}) {
   const skills = Array.isArray(skillContext?.skills) ? skillContext.skills : [];
   for (const skill of skills) {
     const input = {
@@ -1529,21 +1574,39 @@ async function emitSkillEffectivenessObservations({ job, skillContext, outcome, 
       failureSignature,
     };
     const observation = buildSkillOutcomeObservation(skill.id, input);
-    const existing = await pool.query(
-      "select 1 from tigeriq_events where type='SKILL_EFFECTIVENESS_OBSERVED' and data->>'dedupeKey'=$1 limit 1",
-      [observation.dedupeKey],
-    );
-    if (existing.rowCount > 0) continue;
-    await event('SKILL_EFFECTIVENESS_OBSERVED', { objectiveId: job.objective_id, ...observation });
+    const inserted = await insertSkillEffectivenessObservation({ objectiveId: job.objective_id, ...observation });
+    if (!inserted) continue;
     const measurement = recordSkillOutcome(skill.id, input);
-    if (measurement.metrics.failureLoopState === 'PARKED' && ['failed','blocked'].includes(outcome)) {
+    let recurringCount = 0;
+    if (['failed','blocked'].includes(outcome) && observation.failureSignature) {
+      const durable = await pool.query(
+        "select count(distinct data->>'dedupeKey')::int as count from tigeriq_events where type='SKILL_EFFECTIVENESS_OBSERVED' and data->>'skillId'=$1 and data->>'version'=$2 and data->>'failureSignature'=$3 and data->>'verified'='true' and data->>'outcome' in ('failed','blocked')",
+        [skill.id,skill.version||'unknown',observation.failureSignature],
+      );
+      recurringCount = Number(durable.rows[0]?.count || 0);
+    }
+    const loop = skillFailureLoopDecision({
+      outcome,
+      failureSignature: observation.failureSignature,
+      retryBudgetExhausted,
+      retryCount,
+      maxRetries,
+      recurringCount,
+    });
+    if (loop.state === 'PARKED') {
       await event('SKILL_EFFECTIVENESS_PARKED', {
         objectiveId: job.objective_id,
         jobId: job.id,
         skillId: skill.id,
         version: skill.version || 'unknown',
         dedupeKey: observation.dedupeKey,
-        recurringFailureSignatures: measurement.metrics.recurringFailureSignatures,
+        reason: loop.reason,
+        retryCount: loop.retryCount,
+        maxRetries: loop.maxRetries,
+        recurringCount: loop.recurringCount,
+        failureSignature: loop.failureSignature,
+        leaseReleased: true,
+        inMemoryFailureLoopState: measurement.metrics.failureLoopState,
       });
     }
   }
@@ -1626,6 +1689,7 @@ async function runJob(j) {
         return;
       }
     }
+    let resourceWaitExhausted=null;
     const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
     const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
     if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||targetedReviewWait){
@@ -1639,6 +1703,7 @@ async function runJob(j) {
         await hotPathStage(j,'WAITING_RESOURCE',{reason:waitCode,retryCount:plan.count,nextAttemptAt:plan.nextAttemptAt});
         return;
       }
+      resourceWaitExhausted={retryCount:plan.count,maxRetries:RESOURCE_WAIT_MAX_RETRIES,ageMs:plan.ageMs};
     }
     await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures})]);
     const blockedOutcome=/(?:NO_AI_RESOURCE_AVAILABLE|UNAVAILABLE|RATE_LIMIT|COOLDOWN)/i.test(message)?'blocked':'failed';
@@ -1648,6 +1713,9 @@ async function runJob(j) {
       outcome:blockedOutcome,
       durationMs:Math.max(0,Date.now()-skillUseStartedAt),
       failureSignature:message.slice(0,180),
+      retryBudgetExhausted:Boolean(resourceWaitExhausted),
+      retryCount:resourceWaitExhausted?.retryCount||0,
+      maxRetries:resourceWaitExhausted?.maxRetries||0,
     });
     await event('JOB_FAILED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai'});
     await hotPathStage(j,'FAILED',{reason:message.slice(0,180)});
