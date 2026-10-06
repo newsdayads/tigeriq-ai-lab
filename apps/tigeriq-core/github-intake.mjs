@@ -421,6 +421,18 @@ function mutationOwnerReleasedValue(value=''){
   return !owner||['NONE','NONE_TERMINAL','RELEASED','UNASSIGNED','UNCLAIMED'].includes(owner);
 }
 
+function mutationOwnerHasActiveLease(body='',nowMs=Date.now()){
+  const owner=bodyValue(body,'MUTATION_OWNER');
+  if(mutationOwnerReleasedValue(owner))return false;
+  const expiry=leaseExpiryMs(body);
+  if(expiry&&expiry.ms<=Number(nowMs||Date.now()))return false;
+  const active=bodyValue(body,'ACTIVE_LEASE').toLowerCase();
+  const leaseState=bodyValue(body,'LEASE_STATE').toUpperCase();
+  if(active==='false'||leaseState==='RELEASED')return false;
+  if(active==='true'||leaseState==='ACTIVE'||expiry)return true;
+  return true;
+}
+
 export function backlogHygieneFindings(issues=[],nowMs=Date.now()){
   const rows=(Array.isArray(issues)?issues:[]).filter((issue)=>issue&&!issue.pull_request);
   const open=rows.filter((issue)=>issue.state==='open');
@@ -444,9 +456,13 @@ export function backlogHygieneFindings(issues=[],nowMs=Date.now()){
     }
   }
   const terminalExecutable=[];
+  const closedExecutableMarkers=[];
   const staleLeases=[];
+  const orphanLeases=[];
   const parkedHoldingLease=[];
+  const parentChildDrift=[];
   const now=Number(nowMs)||Date.now();
+  const issueIndex=new Map(rows.map((issue)=>[Number(issue?.number),issue]));
   for(const issue of open){
     const body=String(issue.body||'');
     if(isOwnerOnlyP0(body,issue.title||''))continue;
@@ -457,13 +473,30 @@ export function backlogHygieneFindings(issues=[],nowMs=Date.now()){
     if(expiry&&expiry.ms<=now&&!mutationOwnerReleasedValue(owner)){
       staleLeases.push({issueNumber:Number(issue.number),owner,leaseKey:expiry.key,leaseUntil:expiry.raw});
     }
+    const activeLease=bodyValue(body,'ACTIVE_LEASE').toLowerCase();
+    const leaseState=bodyValue(body,'LEASE_STATE').toUpperCase();
+    if(!expiry&&!mutationOwnerReleasedValue(owner)&&(activeLease==='false'||leaseState==='RELEASED')){
+      orphanLeases.push({issueNumber:Number(issue.number),owner,activeLease,leaseState});
+    }
     const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
-    const parked=/(?:WAIT|BLOCKED|PARKED|CHỜ|BỊ_CHẶN|EXTERNAL_WAIT)/.test(state);
+    const parked=/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT|CHỜ|BỊ_CHẶN)/.test(state);
     if(parked&&!mutationOwnerReleasedValue(owner)){
       parkedHoldingLease.push({issueNumber:Number(issue.number),owner,state});
     }
+    const childRaw=bodyValue(body,'ACTIVE_CHILD')||bodyValue(body,'CURRENT_CHILD');
+    const childMatch=String(childRaw||'').match(/#?(\d{1,9})/);
+    if(childMatch){
+      const child=issueIndex.get(Number(childMatch[1]));
+      if(child&&child.state==='closed')parentChildDrift.push({issueNumber:Number(issue.number),childIssueNumber:Number(child.number),reason:'CLOSED_CHILD_STILL_ACTIVE'});
+    }
   }
-  return {duplicates,terminalExecutable,staleLeases,parkedHoldingLease};
+  for(const issue of rows.filter((row)=>row?.state==='closed')){
+    const body=String(issue.body||'');
+    if(isOwnerOnlyP0(body,issue.title||''))continue;
+    const executable=bodyValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'||bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED';
+    if(executable)closedExecutableMarkers.push({issueNumber:Number(issue.number),reason:'CLOSED_SOURCE_STILL_EXECUTABLE'});
+  }
+  return {duplicates,terminalExecutable,closedExecutableMarkers,staleLeases,orphanLeases,parkedHoldingLease,parentChildDrift};
 }
 
 function prependBodyOverride(body,lines=[]){
@@ -528,16 +561,14 @@ export async function runGithubBacklogHygieneSweep({pool,fetchImpl=fetch,owner=D
     const issue=byNumber.get(Number(finding.issueNumber));
     if(!issue||issue.state!=='open'||touched.has(Number(issue.number)))continue;
     const body=String(issue.body||'');
-    const ownerValue=bodyValue(body,'MUTATION_OWNER');
-    const activeLease=bodyValue(body,'ACTIVE_LEASE').toLowerCase()==='true'&&!mutationOwnerReleasedValue(ownerValue);
-    if(activeLease)continue;
+    if(mutationOwnerHasActiveLease(body,nowMs))continue;
     if(await patchIssueBody(fetchImpl,owner,repo,token,issue.number,duplicateSupersedeBody(body,finding.canonicalIssueNumber))){
       touched.add(Number(issue.number));
       actions.duplicatesSuperseded++;
     }
   }
 
-  const releaseCandidates=[...findings.staleLeases,...findings.parkedHoldingLease];
+  const releaseCandidates=[...findings.staleLeases,...findings.orphanLeases,...findings.parkedHoldingLease];
   for(const finding of releaseCandidates){
     const issue=byNumber.get(Number(finding.issueNumber));
     if(!issue||issue.state!=='open'||touched.has(Number(issue.number)))continue;
@@ -559,8 +590,11 @@ export async function runGithubBacklogHygieneSweep({pool,fetchImpl=fetch,owner=D
   const eventData={kind:normalizedKind,at:new Date(Number(nowMs)||Date.now()).toISOString(),counts:{
     duplicates:findings.duplicates.length,
     terminalExecutable:findings.terminalExecutable.length,
+    closedExecutableMarkers:findings.closedExecutableMarkers.length,
     staleLeases:findings.staleLeases.length,
+    orphanLeases:findings.orphanLeases.length,
     parkedHoldingLease:findings.parkedHoldingLease.length,
+    parentChildDrift:findings.parentChildDrift.length,
   },actions};
   try{await pool?.query?.("insert into tigeriq_events(type,data) values('GITHUB_BACKLOG_HYGIENE_SWEEP',$1)",[JSON.stringify(eventData)]);}catch{}
   return {...eventData,findings};
@@ -1818,9 +1852,8 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
       if(dedupe.duplicate&&dedupe.canonical){
         const canonicalIssue=openIssues.find((row)=>Number(row?.number)===Number(dedupe.canonical.number));
         if(canonicalIssue)intakeIssue=canonicalIssue;
-        const ownerValue=bodyValue(eventIssue.body||'','MUTATION_OWNER');
-        const activeLease=bodyValue(eventIssue.body||'','ACTIVE_LEASE').toLowerCase()==='true'&&!mutationOwnerReleasedValue(ownerValue);
-        if(!activeLease){
+        const activeWriter=mutationOwnerHasActiveLease(eventIssue.body||'',Date.now());
+        if(!activeWriter){
           await patchIssueBody(fetchImpl,owner,repo,token,n,duplicateSupersedeBody(eventIssue.body||'',dedupe.canonical.number));
         }
         const evidence={source:'github-event',issueNumber:n,canonicalIssueNumber:Number(dedupe.canonical.number),dedupeKey:dedupe.key,deliveryId:String(event.deliveryId||'')};
