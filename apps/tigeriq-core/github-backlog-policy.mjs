@@ -153,10 +153,77 @@ export function isActiveExecutionSpec(body){
   return executionContractV1Missing(body).length===0;
 }
 
+function normalizedBacklogKeyPart(value=''){
+  return String(value||'').trim().toLowerCase()
+    .replace(/https?:\/\/github\.com\//g,'')
+    .replace(/[^a-z0-9._#:/-]+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'');
+}
+
+function firstBodyValue(body,keys=[]){
+  for(const key of keys){
+    const value=bodyValue(body,key);
+    if(value)return value;
+  }
+  return '';
+}
+
+export function backlogCanonicalDedupeKey(spec={}){
+  const body=String(spec?.body||'');
+  const project=firstBodyValue(body,['PROJECT_ID','PROJECT']);
+  const workstream=firstBodyValue(body,['WORKSTREAM_ID','WORK_PACKAGE_ID','WORKSTREAM','WORK_PACKAGE']);
+  const objective=firstBodyValue(body,['OBJECTIVE_ID','RCA_FAMILY_KEY','RCA_SIGNATURE','API_DOCTOR_REPAIR_SIGNATURE','OBJECTIVE'])
+    || String(spec?.title||'').replace(/^\s*\[[^\]]+\]\s*/g,'');
+  const scope=String(spec?.resourceScope||bodyValue(body,'RESOURCE_SCOPE'));
+  const target=firstBodyValue(body,['TARGET_ARTIFACT','TARGET_PR','TARGET_REPOSITORY','TARGET_BRANCH','TARGET_HEAD','TARGET_FILE']);
+  return [project,workstream,objective,scope,target].map(normalizedBacklogKeyPart).join('|');
+}
+
+function backlogReadyAtMs(spec={}){
+  const body=String(spec?.body||'');
+  const raw=String(spec?.readyAt||bodyValue(body,'READY_AT')||spec?.createdAt||spec?.updatedAt||'');
+  const ms=Date.parse(raw);
+  return Number.isFinite(ms)?ms:Number.MAX_SAFE_INTEGER;
+}
+
+function backlogQueueClass(spec={}){
+  const body=String(spec?.body||'');
+  const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
+  const eligibility=bodyValue(body,'EXECUTION_ELIGIBILITY').toUpperCase();
+  const ownerGate=backlogOwnerControlled(body)||eligibility==='HARD_GATE'||/OWNER_(?:GATE|REVIEW|ACCEPTANCE)|CHỜ.*OWNER|WAIT.*OWNER/.test(state);
+  const terminal=exactBodyFlag(body,'DONE','true')||eligibility==='TERMINAL'||/DONE_VERIFIED|COMPLETED|SUPERSEDED/.test(state);
+  if(terminal)return 50;
+  if(ownerGate)return 40;
+  if(eligibility.startsWith('PARKED')||/(?:WAIT|BLOCKED|CHỜ|BỊ_CHẶN)/.test(state))return 30;
+  const review=String(spec?.capability||'').toLowerCase()==='review'
+    || String(spec?.dispatchLane||'').toUpperCase()==='CORE_REVIEW'
+    || exactBodyFlag(body,'REVIEW_ONLY','true')
+    || /REVIEW|VERIFY|RÀ_SOÁT/.test(state);
+  const leaseActive=(exactBodyFlag(body,'ACTIVE_LEASE','true')||bodyValue(body,'LEASE_STATE').toUpperCase()==='ACTIVE')
+    &&(exactBodyFlag(body,'HEARTBEAT_FRESH','true')||bodyValue(body,'HEARTBEAT_STATE').toUpperCase()==='FRESH');
+  if(leaseActive)return 0;
+  if(review)return 20;
+  const priority=String(spec?.priority||spec?.effectivePriority||spec?.sourcePriority||backlogPriority(body,'P3')).toUpperCase();
+  return 10+(PRIORITY_RANK[priority]??PRIORITY_RANK.P3);
+}
+
 export function compareBacklogSpecs(a,b){
+  const ca=backlogQueueClass(a);
+  const cb=backlogQueueClass(b);
+  if(ca!==cb)return ca-cb;
   const pa=PRIORITY_RANK[a?.priority||a?.effectivePriority||a?.sourcePriority]??PRIORITY_RANK.P3;
   const pb=PRIORITY_RANK[b?.priority||b?.effectivePriority||b?.sourcePriority]??PRIORITY_RANK.P3;
   if(pa!==pb)return pa-pb;
+  const dependencyA=bodyValue(a?.body||'','DEPENDENCY_SATISFIED').toLowerCase()==='false'?1:0;
+  const dependencyB=bodyValue(b?.body||'','DEPENDENCY_SATISFIED').toLowerCase()==='false'?1:0;
+  if(dependencyA!==dependencyB)return dependencyA-dependencyB;
+  const resourceA=bodyValue(a?.body||'','RESOURCE_MATCH').toLowerCase()==='false'?1:0;
+  const resourceB=bodyValue(b?.body||'','RESOURCE_MATCH').toLowerCase()==='false'?1:0;
+  if(resourceA!==resourceB)return resourceA-resourceB;
+  const readyA=backlogReadyAtMs(a);
+  const readyB=backlogReadyAtMs(b);
+  if(readyA!==readyB)return readyA-readyB;
   return Number(a?.number||0)-Number(b?.number||0);
 }
 
