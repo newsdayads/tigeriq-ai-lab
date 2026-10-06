@@ -736,13 +736,21 @@ describe('GitHub Core intake guardrails',()=>{
     expect(githubPcOperatorJobId(rearmA,588)).not.toBe(githubPcOperatorJobId(rearmB,588));
   });
 
-  it('parses only supported PUBLIC_EVIDENCE_KEYS and preserves marker-absent behavior',()=>{
+  it('parses supported PUBLIC_EVIDENCE_KEYS but fails executable intake closed on unsupported raw keys',()=>{
     expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=installedSha,result,token,changedPaths,installedSha,foo')).toEqual(['installedSha','result','changedPaths']);
     expect(parsePublicEvidenceKeys('NO_PUBLIC_EVIDENCE=true')).toEqual([]);
-    const parsed=parseExecutableIssue({...base,body:[
+    const rejected=parseExecutableIssue({...base,body:[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator',
       'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=READBACK_X',
       'PUBLIC_EVIDENCE_KEYS=installedSha,result,remoteDesktopGuard,changedPaths,updaterTaskTarget,token',
+      'ASSIGNED_ACTION','tigeriq_pc file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json"',
+      'ACCEPTANCE','PASS'
+    ].join('\n')});
+    expect(rejected).toBeNull();
+    const parsed=parseExecutableIssue({...base,body:[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true','RESOURCE_SCOPE=READBACK_X',
+      'PUBLIC_EVIDENCE_KEYS=installedSha,result,remoteDesktopGuard,changedPaths,updaterTaskTarget',
       'ASSIGNED_ACTION','tigeriq_pc file_read path="D:\\TigerIQ\\State\\core-runtime-updater.json"',
       'ACCEPTANCE','PASS'
     ].join('\n')});
