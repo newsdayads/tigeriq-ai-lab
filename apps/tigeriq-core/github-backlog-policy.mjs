@@ -199,7 +199,7 @@ function backlogQueueClass(spec={}){
   if(eligibility.startsWith('PARKED')||/(?:WAIT|BLOCKED|CHỜ|BỊ_CHẶN)/.test(state))return 30;
   const review=String(spec?.capability||'').toLowerCase()==='review'
     || String(spec?.dispatchLane||'').toUpperCase()==='CORE_REVIEW'
-    || exactBodyFlag(body,'REVIEW_ONLY','true')
+    || bodyValue(body,'REVIEW_ONLY').toLowerCase()==='true'
     || /REVIEW|VERIFY|RÀ_SOÁT/.test(state);
   const leaseActive=(bodyValue(body,'ACTIVE_LEASE').toLowerCase()==='true'||bodyValue(body,'LEASE_STATE').toUpperCase()==='ACTIVE')
     &&(bodyValue(body,'HEARTBEAT_FRESH').toLowerCase()==='true'||bodyValue(body,'HEARTBEAT_STATE').toUpperCase()==='FRESH');
