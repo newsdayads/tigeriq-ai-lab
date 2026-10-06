@@ -1,172 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 
-const rootHtml = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
-const publicHtml = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
+const live = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
+const livePublic = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
+const projects = fs.readFileSync(new URL('../projects.html', import.meta.url), 'utf8');
+const projectsPublic = fs.readFileSync(new URL('../public/projects.html', import.meta.url), 'utf8');
 
-describe('TigerIQ LIVE Mission Control V1 #4362', () => {
-  it('keeps root and public exactly in sync', () => {
-    expect(publicHtml).toBe(rootHtml);
+describe('TigerIQ LIVE mobile work-list split #4372', () => {
+  it('keeps root/public LIVE and Projects surfaces in exact sync', () => {
+    expect(livePublic).toBe(live);
+    expect(projectsPublic).toBe(projects);
   });
 
-  it('renders Mission Control as primary and keeps Project → Workstream → Flow → Job as drill-down', () => {
-    expect(rootHtml).toContain('id="missionControl"');
-    expect(rootHtml).toContain('function renderMissionControl()');
-    expect(rootHtml).toContain('mc-layout');
-    expect(rootHtml).toContain('mc-project-rail');
-    expect(rootHtml).toContain('mc-columns');
-    expect(rootHtml).toContain('mc-activity');
-    expect(rootHtml).toContain('<details id="projectDrilldown" class="project-drilldown">');
-    expect(rootHtml).toContain('v2-portfolio-layout');
-    expect(rootHtml).toContain('v2-flow-grid');
-    expect(rootHtml).toContain('v2-evidence-grid');
+  it('makes LIVE a work-list surface and removes project blocks from layout', () => {
+    expect(live).toContain('<a class="active" href="/command-center">Công việc</a>');
+    expect(live).toContain('<a href="/projects">Dự án</a>');
+    expect(live).toContain('id="missionControl" class="mc-shell" aria-label="Mission Control" hidden');
+    expect(live).toContain('id="projectDrilldown" class="project-drilldown" hidden');
+    expect(live).toContain('id="rawWorkDetails" class="raw-work-details live-work-shell" open');
+    expect(live).toContain('id="workListHeading">DANH SÁCH CÔNG VIỆC');
+    expect(live).toContain('id="workList" class="work-list"');
   });
 
-
-
-  it('provides owner-first KPIs, four Kanban columns and live activity', () => {
-    expect(rootHtml).toContain('ĐANG CHẠY');
-    expect(rootHtml).toContain('BỊ CHẶN');
-    expect(rootHtml).toContain('CHỜ ANH SƠN');
-    expect(rootHtml).toContain('XONG HÔM NAY');
-    expect(rootHtml).toContain("missionColumn('waiting','CHỜ'");
-    expect(rootHtml).toContain("missionColumn('working','ĐANG LÀM'");
-    expect(rootHtml).toContain("missionColumn('review','RÀ SOÁT'");
-    expect(rootHtml).toContain("missionColumn('done','XONG'");
-    expect(rootHtml).toContain('LIVE ACTIVITY');
+  it('preserves Project → Workstream → Job context in each work row', () => {
+    expect(live).toContain('class="work-path"');
+    expect(live).toContain("row?.projectName||'Chưa phân dự án'");
+    expect(live).toContain("row?.workstreamName||row?.workPackageName");
+    expect(live).toContain("row?.jobId||('GH-'+row.number)");
+    expect(live).toContain("row?.assignee||workerFrom(row)");
   });
 
-  it('lets project rail filter the board while job cards open existing detail drawer', () => {
-    expect(rootHtml).toContain('data-mc-project');
-    expect(rootHtml).toContain('missionProjectId');
-    expect(rootHtml).toContain('data-mc-job');
-    expect(rootHtml).toContain("openDrawer(row,button)");
+  it('builds the separate Projects page from live data instead of a hard-coded catalog', () => {
+    expect(projects).toContain("fetch('/api/live-status',{cache:'no-store'})");
+    expect(projects).toContain('data?.projectPortfolio||[]');
+    expect(projects).toContain('row?.projectId');
+    expect(projects).toContain('row?.workstreamId||row?.workPackageId');
+    expect(projects).not.toContain('TigerIQ Mobile Worker');
+    expect(projects).not.toContain('TigerIQ News');
+    expect(projects).not.toContain('Revenue Lab');
   });
 
-  it('shows live working animation but preserves reduced-motion', () => {
-    expect(rootHtml).toContain('mc-live-bars');
-    expect(rootHtml).toContain('@keyframes mc-bars');
-    expect(rootHtml).toContain('@keyframes mc-scan');
-    expect(rootHtml).toContain('@keyframes mc-ring');
-    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
-  });
-
-  it('keeps project order stable instead of moving projects by runtime status', () => {
-    expect(rootHtml).toContain("if(source.length)return [...source].sort((a,b)=>Number(a.order||900)-Number(b.order||900)");
-    expect(rootHtml).not.toContain("packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)");
-  });
-
-  it('shows one owner-operational snapshot with location, assignee, current, done, next, blocker and age', () => {
-    expect(rootHtml).toContain('function v3OwnerOpsHtml(row)');
-    expect(rootHtml).toContain('v3-owner-ops');
-    expect(rootHtml).toContain('Đang làm gì');
-    expect(rootHtml).toContain('Vừa xong');
-    expect(rootHtml).toContain('Bước tiếp theo');
-    expect(rootHtml).toContain('Blocker');
-    expect(rootHtml).toContain('Cập nhật');
-    expect(rootHtml).toContain('function ownerAgeText(value)');
-  });
-
-  it('shows an unmistakable live running lane for actual WORKING jobs', () => {
-    expect(rootHtml).toContain('v3-running-lane');
-    expect(rootHtml).toContain('ĐANG CHẠY NGAY LÚC NÀY');
-    expect(rootHtml).toContain('data-running-job');
-    expect(rootHtml).toContain('@keyframes v3-live-ring');
-    expect(rootHtml).toContain('@keyframes v3-dot-pulse');
-    expect(rootHtml).toContain('@keyframes v3-scan');
-  });
-
-  it('does not present a fake clickable Việc lớn control', () => {
-    expect(rootHtml).toContain('<span class="v2-tab-label active">Việc lớn (');
-    expect(rootHtml).not.toContain('<button class="active" type="button">Việc lớn (');
-  });
-
-  it('keeps projects independent and selectable without hard-coding one active project', () => {
-    expect(rootHtml).toContain('function projectPortfolio()');
-    expect(rootHtml).toContain('function projectPickerHtml(projects,selected)');
-    expect(rootHtml).toContain('data-project-select');
-    expect(rootHtml).toContain('selectedProjectId');
-    expect(rootHtml).toContain('packageBuildAll(selectedProject.id)');
-  });
-
-  it('shows large workstreams and factual job flow from existing portfolio data', () => {
-    expect(rootHtml).toContain('function ownerCleanPackageTabs(packages,selected)');
-    expect(rootHtml).toContain('data-package-select');
-    expect(rootHtml).toContain('function v2FlowGridHtml(pack,focus)');
-    expect(rootHtml).toContain('data-package-row');
-    expect(rootHtml).toContain('Nguồn & kế hoạch');
-    expect(rootHtml).toContain('Phát triển');
-    expect(rootHtml).toContain('Rà soát');
-    expect(rootHtml).toContain('Phát hành & xác minh');
-  });
-
-  it('keeps all-JOB list visible by default while preserving filters', () => {
-    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
-    expect(rootHtml).toContain('Tất cả JOB / chi tiết kỹ thuật');
-    expect(rootHtml).toContain('ĐANG HIỂN THỊ');
-    expect(rootHtml).toContain('DANH SÁCH CÔNG VIỆC');
-    expect(rootHtml).toContain('data-filter="action"');
-    expect(rootHtml).toContain('data-filter="running"');
-    expect(rootHtml).toContain('data-filter="done"');
-  });
-
-
-  it('uses vivid status colors and bounded motion with reduced-motion fallback', () => {
-    expect(rootHtml).toContain('.v2-project-choice.is-working');
-    expect(rootHtml).toContain('.v2-project-choice.is-blocked');
-    expect(rootHtml).toContain('.v2-workstream-card.is-review');
-    expect(rootHtml).toContain('.v2-flow-stage:nth-child(4)');
-    expect(rootHtml).toContain('.v2-flow-job.is-working');
-    expect(rootHtml).toContain('.v2-flow-job.is-review');
-    expect(rootHtml).toContain('.v2-flow-job.is-blocked');
-    expect(rootHtml).toContain('.v2-flow-job.is-done');
-    expect(rootHtml).toContain('@keyframes v2-working-pulse');
-    expect(rootHtml).toContain('@keyframes v2-review-breathe');
-    expect(rootHtml).toContain('@keyframes v2-blocked-alert');
-    expect(rootHtml).toContain('@keyframes v2-progress-flow');
-    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
-  });
-
-  it('keeps LIVE and API Health separated with Health as a header utility only', () => {
-    expect(rootHtml).toContain('class="health-utility"');
-    expect(rootHtml).toContain('aria-label="API Health"');
-    expect(rootHtml).toContain('href="/index"');
-    expect(rootHtml).not.toContain('API Health ↗');
-    expect(rootHtml).not.toContain('<a href="#rawWorkDetails">Tất cả JOB</a>');
-    expect(rootHtml).toContain("fetch('/api/live-status',{cache:'no-store'})");
-    expect(rootHtml).toContain('href="/work-ui.css"');
-  });
-
-
-  it('removes redundant all-JOB and Health navigation while keeping the content visible', () => {
-    expect(rootHtml).toContain('<details id="rawWorkDetails" class="raw-work-details" open>');
-    expect(rootHtml).not.toContain('<a href="#rawWorkDetails">Tất cả JOB</a>');
-    expect(rootHtml).not.toContain('<a href="/index">Health</a>');
-    expect(rootHtml).toContain('<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a></nav>');
-  });
-
-  it('provides mobile Project → Workstream → Flow → Job navigation', () => {
-    expect(rootHtml).toContain('v2-mobile-nav');
-    expect(rootHtml).toContain('@media(max-width:700px)');
-    expect(rootHtml).toContain('.v2-workstream-grid{grid-template-columns:1fr}');
-    expect(rootHtml).toContain('.v2-flow-grid{grid-template-columns:1fr}');
-    expect(rootHtml).toContain('.v2-evidence-grid{grid-template-columns:1fr}');
-  });
-
-  it('opens a Job detail view with Project, Workstream, Job, assignee and evidence context', () => {
-    expect(rootHtml).toContain('id="drawerProject"');
-    expect(rootHtml).toContain('id="drawerWorkstream"');
-    expect(rootHtml).toContain('id="drawerJob"');
-    expect(rootHtml).toContain("row?.projectName||'Chưa phân dự án'");
-    expect(rootHtml).toContain("row?.workstreamName||row?.workPackageName");
-    expect(rootHtml).toContain("row?.jobId||('GH-'+row.number)");
-    expect(rootHtml).toContain('function populateDrawer(row)');
-  });
-
-  it('preserves verified-progress and reduced-motion guards', () => {
-    expect(rootHtml).toContain('function verifiedProgress(row)');
-    expect(rootHtml).toContain("['explicit_verified','checklist_verified','terminal']");
-    expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
-    expect(rootHtml).toContain('.v3-running-dot,.v3-running-pulse');
+  it('keeps desktop/mobile navigation between Work and Projects', () => {
+    expect(projects).toContain('<a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a>');
+    expect(live).toContain('<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="/command-center">Công việc</a><a href="/projects">Dự án</a></nav>');
+    expect(projects).toContain('<nav class="mobile-nav" aria-label="Điều hướng mobile"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>');
   });
 });
