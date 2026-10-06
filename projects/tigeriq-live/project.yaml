@@ -1,0 +1,15 @@
+schema: tigeriq.project.v2
+id: tigeriq-live
+name: TigerIQ Live
+kind: product
+source_roots:
+  - apps/tigeriq-core/dashboard.html
+  - api/live-status.mjs
+  - public
+workstreams:
+  - id: web
+    name: Web điều hành
+  - id: api
+    name: API & sức khỏe hệ thống
+  - id: release
+    name: Phát hành
