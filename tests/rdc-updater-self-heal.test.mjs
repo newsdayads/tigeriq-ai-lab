@@ -12,7 +12,7 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain("New-ScheduledTaskTrigger -AtStartup");
     expect(source).toContain("New-ScheduledTaskPrincipal -UserId 'SYSTEM'");
     expect(source).toContain("-RunLevel Highest");
-    expect(source).toContain("-MultipleInstances StopExisting");
+    expect(source).toContain("-MultipleInstances IgnoreNew");
     expect(source).toContain("RestartCount 999");
     expect(source).toContain("updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}");
   });
@@ -25,8 +25,11 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain("Start-ScheduledTask -TaskName $updaterTask");
     expect(source).toContain("New-ScheduledTaskTrigger -AtStartup");
     expect(source).toContain("New-ScheduledTaskPrincipal -UserId 'SYSTEM'");
-    expect(source).toContain("-MultipleInstances StopExisting");
+    expect(source).toContain("-MultipleInstances IgnoreNew");
     expect(source).toContain("UPDATER_TASK_RECREATED");
+    expect(source).toContain('Stop-ExactUpdaterProcesses');
+    expect(source).toContain("Stop-ScheduledTask -TaskName $t.task");
+    expect(source).toContain("Start-ScheduledTask -TaskName $t.task");
   });
   it('reconciles RDC lifecycle to one launcher plus one local MCP child with a one-shot generation marker', async () => {
     const source = await readFile(updaterUrl, 'utf8');
