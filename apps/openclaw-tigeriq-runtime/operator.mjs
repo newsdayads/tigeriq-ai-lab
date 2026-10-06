@@ -224,6 +224,12 @@ function trustedTaskVerification(action, taskName, verification) {
     && lastRun !== previousLastRun;
 }
 
+export function taskActionSuccessStatus(action) {
+  const kind = String(action || '').toLowerCase();
+  if (!['task_start', 'task_stop', 'task_restart'].includes(kind)) throw new Error('TIGERIQ_PC_TASK_STATUS_ACTION_NOT_ALLOWED');
+  return `TASK_${kind.slice('task_'.length).toUpperCase()}_VERIFIED`;
+}
+
 export function trustedTigerIQTaskActionData(action, data) {
   const kind = String(action || '').toLowerCase();
   if (!['task_start', 'task_stop', 'task_restart'].includes(kind) || !data || typeof data !== 'object' || Array.isArray(data)) return false;
@@ -466,22 +472,22 @@ async function runTaskAction(action, taskName) {
     const result = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(result, 'START');
     const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
-    return { taskName: name, ...result, verification };
+    return { status: taskActionSuccessStatus(action), taskName: name, ...result, verification };
   }
   if (action === 'task_stop') {
     const result = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(result, 'STOP');
-    return { taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
+    return { status: taskActionSuccessStatus(action), taskName: name, ...result, verification: await queryTigerIQTaskVerification(name) };
   }
   if (action === 'task_restart') {
     const before = await queryTigerIQTaskVerification(name);
-    if (name === CORE_TASK_NAME) return await restartTigerIQCoreTask(name, before);
+    if (name === CORE_TASK_NAME) return { status: taskActionSuccessStatus(action), ...(await restartTigerIQCoreTask(name, before)) };
     const stopped = await spawnBounded('schtasks.exe', ['/End', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(stopped, 'RESTART_STOP');
     const started = await spawnBounded('schtasks.exe', ['/Run', '/TN', name], { timeoutSec: 15 });
     assertTaskProcessSuccess(started, 'RESTART_START');
     const verification = { ...(await queryTigerIQTaskVerification(name)), previousLastRun: before.lastRun };
-    return { taskName: name, stopped, started, verification };
+    return { status: taskActionSuccessStatus(action), taskName: name, stopped, started, verification };
   }
   throw new Error('TIGERIQ_PC_TASK_ACTION_NOT_ALLOWED');
 }
