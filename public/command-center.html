@@ -430,13 +430,15 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   .raw-work-details,.raw-work-inner{min-width:0;max-width:100%}
   .raw-work-details>summary{overflow-wrap:anywhere}
 }
+.work-path{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:5px 0 4px;font-size:8px;color:#6f8ca7}
+.work-path b{color:#9cb7ce;font-weight:850}.work-path span{color:#46647d}
 </style>
 <link rel="stylesheet" href="/work-ui.css">
 </head>
 <body>
 <main id="appMain" class="wrap">
 <header class="top">
-  <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b> · Luồng công việc</h1><p>Giao việc → điều phối → thực thi → kiểm tra → kết quả</p></div>
+  <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b> · Luồng công việc</h1><p>Nhận việc → điều phối → thực hiện → kiểm tra → kết quả</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
 <div id="err" class="err"></div>
@@ -765,7 +767,7 @@ function projectPortfolio(){
     else if(s==='DONE')counts.done++;
     else counts.waiting++;
   }
-  return [{id:'tigeriq-ai-lab',name:'TigerIQ AI Lab',order:10,counts,workPackageCount:0,hiddenTechnicalItems:0,legacyFallback:true}];
+  return [{id:'tigeriq-platform',name:'Nền tảng TigerIQ',order:10,kind:'platform',counts,workPackageCount:0,workstreamCount:0,hiddenTechnicalItems:0,legacyFallback:true}];
 }
 function projectDefaultId(projects){
   const active=new Set((snapshot?.activeWork||[]).map(row=>Number(row?.number)).filter(Boolean));
@@ -815,7 +817,7 @@ function packageBuildAll(projectId){
   const rows=allRows.filter(row=>row?.portfolioHidden!==true&&(!projectId||row?.projectId===projectId));
   const conceptual=new Map();
   for(const row of rows){
-    const id=String(row?.workPackageId||'legacy-'+Number(row?.number));
+    const id=String(row?.workstreamId||row?.workPackageId||'legacy-'+Number(row?.number));
     if(!conceptual.has(id))conceptual.set(id,[]);
     conceptual.get(id).push(row);
   }
@@ -836,8 +838,9 @@ function packageBuildAll(projectId){
     const standaloneStreams=streams.filter(stream=>!stream.groups.length);
     const summaryUnits=[...majorGroups.map(group=>({aggregate:group.aggregate})),...standaloneStreams.map(stream=>({aggregate:stream.aggregate}))];
     const aggregate=packageAggregate(primary);
-    const name=groupRows.find(row=>String(row?.workPackageName||'').trim())?.workPackageName||displayTitle(focus?.title||'Việc lớn');
-    const order=Math.min(...groupRows.map(row=>Number(row?.workPackageOrder)||900));
+    const named=groupRows.find(row=>String(row?.workstreamName||row?.workPackageName||'').trim());
+    const name=named?.workstreamName||named?.workPackageName||displayTitle(focus?.title||'Nhánh công việc');
+    const order=Math.min(...groupRows.map(row=>Number(row?.workstreamOrder||row?.workPackageOrder)||900));
     packages.push({id,name,order,root:rootCandidates[0]||focus,focus,rows:groupRows,streams,majorGroups,summaryUnits,aggregate});
   }
   return packages.sort((a,b)=>packageStatusRank(a.aggregate.state)-packageStatusRank(b.aggregate.state)||a.order-b.order||String(a.name).localeCompare(String(b.name)));
@@ -1028,7 +1031,7 @@ function ownerCleanStages(pack,focus){
   const reviewState=reviewBlocked?'BLOCKED':reviewStates.includes('REVIEW')?'REVIEW':reviewStates.includes('VERIFY')?'VERIFY':(reviewRows.length&&!reviewUnresolved)?'DONE':(aggregate==='DONE'?'DONE':'WAITING');
   const resultState=reviewBlocked?'BLOCKED':reviewUnresolved?'WAITING':aggregate==='DONE'?'DONE':(aggregate==='BLOCKED'?'BLOCKED':(aggregate==='OWNER_GATE'?'OWNER_GATE':'WAITING'));
   return [
-    {label:'Giao việc',state:'DONE'},
+    {label:'Nhận việc',state:'DONE'},
     {label:'Điều phối',state:coordinationHasEvidence?'DONE':'WAITING'},
     {label:'Thực hiện',state:executionState},
     {label:'Kiểm tra',state:reviewState},
@@ -1073,7 +1076,7 @@ function renderJobJourney(){
   el.innerHTML=projectPickerHtml(projects,selectedProject.id)
     +ownerCleanPackageTabs(ordered,pack.id)
     +'<article class="owner-clean-board">'
-    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
+    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · NHÁNH CÔNG VIỆC</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
     +'<section class="owner-clean-current"><span>HIỆN TẠI</span><b>'+esc(current)+'</b><small>Bước tới: '+esc(next)+'</small></section>'
     +ownerCleanFlowHtml(pack,focus)
     +'<div class="owner-clean-actions"><button type="button" class="owner-clean-detail" data-package-row="'+Number(focus.number)+'">Chi tiết kỹ thuật</button></div>'
@@ -1197,7 +1200,10 @@ function render(){
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
+    const projectLabel=String(row?.projectName||'Chưa phân dự án').trim();
+    const workstreamLabel=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
+    const workPath='<div class="work-path"><b>'+esc(projectLabel)+'</b><span>→</span><b>'+esc(workstreamLabel)+'</b><span>→</span><b>JOB #'+esc(row.number)+'</b></div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div>'+workPath+'<div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
