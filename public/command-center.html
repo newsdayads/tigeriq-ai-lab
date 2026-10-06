@@ -434,6 +434,43 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 .work-path b{color:#9cb7ce;font-weight:850}.work-path span{color:#46647d}
 </style>
 <link rel="stylesheet" href="/work-ui.css">
+
+<style id="live-ui-v2">
+.v2-global-nav{display:flex;align-items:center;gap:7px;margin:-4px 0 14px;padding:5px;border:1px solid #1c3550;background:#091625;border-radius:12px;overflow-x:auto;scrollbar-width:none}
+.v2-global-nav::-webkit-scrollbar{display:none}.v2-global-nav a{padding:8px 12px;border-radius:9px;color:#89a2ba;font-size:11px;font-weight:800;white-space:nowrap}
+.v2-global-nav a.active{background:#11345b;color:#dff1ff;box-shadow:inset 0 -2px #4aa7ff}.v2-global-nav a:last-child{margin-left:auto;color:#8fd9ff}
+.v2-portfolio-layout{display:grid;grid-template-columns:238px minmax(0,1fr);gap:12px;align-items:start}
+.v2-project-sidebar{position:sticky;top:10px;border:1px solid #1d3855;background:#091727;border-radius:16px;padding:10px;min-width:0}
+.v2-project-sidebar-head{display:flex;justify-content:space-between;align-items:center;padding:3px 4px 9px}.v2-project-sidebar-head b{font-size:10px;color:#c5d8ea;letter-spacing:.06em}.v2-project-sidebar-head span{font-size:8px;color:#6f88a0}
+.v2-project-list{display:grid;gap:7px}.v2-project-choice{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;border:1px solid #213d59;background:#0c1b2d;color:inherit;border-radius:11px;padding:9px;text-align:left;font:inherit;cursor:pointer}
+.v2-project-choice:hover{border-color:#355f85}.v2-project-choice.active{border-color:#2585dc;background:linear-gradient(145deg,#12365c,#0d2744);box-shadow:inset 3px 0 #32a7ff}
+.v2-project-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:#113253;font-size:20px}.v2-project-copy{display:block;min-width:0}.v2-project-copy b{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v2-project-copy small{display:block;color:#8399af;font-size:8.5px;margin-top:2px}.v2-project-copy em{display:block;color:#64809a;font-size:7.5px;font-style:normal;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v2-project-state{font-size:7.5px;color:#86a4bf}
+.v2-project-workspace{min-width:0;display:grid;gap:10px}.v2-project-header{display:grid;grid-template-columns:minmax(280px,1.4fr) minmax(180px,.8fr);gap:10px;border:1px solid #203f60;background:linear-gradient(135deg,#0d2035,#0a1828);border-radius:16px;padding:14px}
+.v2-project-hero{display:flex;align-items:center;gap:12px}.v2-project-hero-icon{display:grid;place-items:center;width:52px;height:52px;border-radius:13px;background:#123c66;border:1px solid #2d628e;font-size:28px}.v2-project-hero small,.v2-workstream-detail-head small{color:#62b9f3;font-size:8px;font-weight:900;letter-spacing:.08em}.v2-project-hero h2,.v2-workstream-detail-head h2{margin:3px 0 0;font-size:20px}.v2-project-hero p,.v2-workstream-detail-head p{margin:4px 0 0;color:#829bb3;font-size:10px}
+.v2-project-completion{align-self:center}.v2-project-completion>div:first-child{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:#839cb4}.v2-project-completion b{color:#ddebfa;font-size:15px}.v2-project-completion-track{height:8px;background:#16283b;border-radius:999px;overflow:hidden;margin-top:6px}.v2-project-completion-track i{display:block;height:100%;background:linear-gradient(90deg,#36a3ff,#4f7fff);border-radius:999px}
+.v2-project-stats{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;border-top:1px solid #193550;padding-top:10px}.v2-project-stats div{text-align:center}.v2-project-stats span{display:block;color:#7890a8;font-size:8px}.v2-project-stats b{display:block;font-size:15px;margin-top:2px}
+.v2-project-tabs{display:flex;gap:5px;border-bottom:1px solid #1b3854;padding:0 2px}.v2-project-tabs button,.v2-project-tabs a{border:0;background:transparent;color:#7f99b1;font:800 10px/1 inherit;padding:9px 10px;border-bottom:2px solid transparent}.v2-project-tabs .active{color:#8fd3ff;border-bottom-color:#33a7ff}
+.v2-section-head{display:flex;justify-content:space-between;align-items:end;margin:0 2px 7px}.v2-section-head div span{display:block;color:#4daef0;font-size:7.5px;font-weight:900;letter-spacing:.08em}.v2-section-head div b{display:block;font-size:12px;margin-top:2px}.v2-section-head>em{font-size:8.5px;color:#728ba3;font-style:normal}
+.v2-workstream-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.v2-workstream-card{border:1px solid #254660;background:#0b1c2e;color:inherit;border-radius:13px;padding:10px;text-align:left;font:inherit;min-width:0;cursor:pointer}.v2-workstream-card.active{border-color:#378ee0;background:linear-gradient(145deg,#102c49,#0c2137);box-shadow:0 0 0 1px rgba(55,142,224,.16)}.v2-workstream-top{display:flex;align-items:center;gap:5px}.v2-workstream-index{display:grid;place-items:center;width:23px;height:23px;border-radius:7px;background:#174a74;color:#d9f0ff;font-size:9px;font-weight:900}.v2-workstream-top em{margin-left:auto;color:#8da7be;font-size:8px;font-style:normal}.v2-workstream-card strong{display:block;font-size:12px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v2-workstream-card>small{display:block;color:#748ea6;font-size:8.5px;margin-top:5px}.v2-workstream-progress{display:flex;align-items:center;gap:7px;margin-top:8px;height:7px;background:#16283b;border-radius:999px;position:relative;overflow:visible}.v2-workstream-progress i{display:block;height:100%;background:#3d8fec;border-radius:999px}.v2-workstream-progress b{position:absolute;right:0;top:-13px;font-size:8px;color:#a8bdd0}.v2-workstream-progress.unverified i{width:0}
+.v2-workstream-detail{border:1px solid #203f60;background:#091827;border-radius:16px;padding:12px}.v2-workstream-detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid #19344f;padding:2px 2px 10px}.v2-workstream-detail-head h2{font-size:18px}.v2-workstream-detail-head p{max-width:760px}.v2-workstream-current{display:grid;grid-template-columns:160px 120px minmax(0,1fr);gap:6px;margin:10px 0}.v2-workstream-current>div{border:1px solid #1d3853;background:#0b1b2b;border-radius:10px;padding:8px}.v2-workstream-current span{display:block;color:#728aa2;font-size:8px}.v2-workstream-current b{display:block;font-size:10.5px;margin-top:3px;overflow-wrap:anywhere}
+.v2-flow-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.v2-flow-stage{border:1px solid #1c3853;background:#0a1827;border-radius:12px;padding:8px;min-width:0}.v2-flow-stage>header{display:flex;align-items:center;gap:6px;padding-bottom:7px;border-bottom:1px solid #183149}.v2-flow-stage>header>span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#144a70;color:#bfe6ff;font-size:9px;font-weight:900}.v2-flow-stage>header b{font-size:10px;min-width:0;flex:1}.v2-flow-stage>header em{font-size:8px;color:#7390a8;font-style:normal}.v2-flow-items{display:grid;gap:5px;margin-top:7px}.v2-flow-job{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:6px;align-items:center;width:100%;border:1px solid #1c3349;background:#0d1e30;color:inherit;border-radius:8px;padding:7px;text-align:left;font:inherit;cursor:pointer}.v2-flow-job.is-focus{border-color:#3b8bc9;background:#102c45}.v2-flow-check{display:grid;place-items:center;width:17px;height:17px;border:1px solid #36526b;border-radius:50%;color:#92edc1;font-size:9px}.v2-flow-job.is-done .v2-flow-check{background:#14613e;border-color:#2c9162}.v2-flow-job-copy{min-width:0}.v2-flow-job-copy b{display:block;font-size:9px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v2-flow-job-copy small{display:block;color:#718aa2;font-size:7.5px;margin-top:2px}.v2-flow-job>em{font-size:7px;font-style:normal;color:#86a2ba;white-space:nowrap}.v2-flow-empty{color:#59738a;font-size:8px;padding:10px 4px}
+.v2-evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.v2-evidence-card{border:1px solid #1d3853;background:#0a1827;border-radius:12px;padding:9px;min-width:0}.v2-evidence-card>header{display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;border-bottom:1px solid #173047}.v2-evidence-card>header b{font-size:10px}.v2-evidence-card>header span{font-size:8px;color:#6f89a1}.v2-evidence-card>div{display:grid;gap:4px;margin-top:6px}.v2-evidence-card button,.v2-evidence-card a{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px;align-items:center;border:0;background:transparent;color:inherit;text-align:left;font:inherit;padding:5px 2px}.v2-evidence-card button b,.v2-evidence-card a b{font-size:8px;color:#68b9f5}.v2-evidence-card button span,.v2-evidence-card a span{font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v2-evidence-card button em,.v2-evidence-card a em{font-size:7.5px;color:#68829a;font-style:normal}.v2-evidence-card p{font-size:8px;color:#637b91;margin:8px 0}
+.raw-work-details{margin-top:14px}.raw-work-details:not([open]){background:#081522}.raw-work-details>summary{padding:10px 12px}
+.v2-mobile-nav{display:none}
+@media(max-width:980px){.v2-portfolio-layout{grid-template-columns:1fr}.v2-project-sidebar{position:static}.v2-project-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,78vw);grid-template-columns:none;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:3px}.v2-project-choice{scroll-snap-align:start}.v2-project-sidebar-head span{display:none}.v2-workstream-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-project-header{grid-template-columns:1fr}.v2-project-stats{grid-column:auto}}
+@media(max-width:700px){
+  body{padding-bottom:62px}.top{padding-bottom:8px}.brand p{display:none}.v2-global-nav{display:none}.flow-kpis{display:none}
+  .job-journey{margin-top:2px}.v2-project-sidebar{border:0;background:transparent;padding:0}.v2-project-sidebar-head{padding:4px 2px 7px}
+  .v2-project-list{grid-auto-columns:86vw}.v2-project-choice{grid-template-columns:42px minmax(0,1fr) auto;padding:10px}.v2-project-icon{width:40px;height:40px}
+  .v2-project-header{padding:11px}.v2-project-hero-icon{width:46px;height:46px}.v2-project-hero h2{font-size:17px}.v2-project-stats{grid-template-columns:repeat(5,minmax(58px,1fr));overflow-x:auto}.v2-project-stats span{font-size:7px}.v2-project-stats b{font-size:13px}
+  .v2-project-tabs{overflow-x:auto}.v2-project-tabs button,.v2-project-tabs a{white-space:nowrap}.v2-workstream-grid{grid-template-columns:1fr}.v2-workstream-card strong{font-size:13px}
+  .v2-workstream-detail{padding:9px}.v2-workstream-detail-head h2{font-size:16px}.v2-workstream-current{grid-template-columns:1fr 1fr}.v2-workstream-current .wide{grid-column:1/-1}
+  .v2-flow-grid{grid-template-columns:1fr}.v2-flow-stage{padding:8px}.v2-flow-job-copy b{font-size:10px}.v2-flow-job-copy small{font-size:8px}
+  .v2-evidence-grid{grid-template-columns:1fr}.raw-work-details{margin-top:10px}
+  .v2-mobile-nav{display:grid;position:fixed;z-index:35;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));grid-template-columns:repeat(4,1fr);gap:3px;border:1px solid #24435f;background:rgba(8,20,34,.96);backdrop-filter:blur(10px);border-radius:14px;padding:5px;box-shadow:0 16px 40px rgba(0,0,0,.4)}
+  .v2-mobile-nav a{display:grid;place-items:center;min-height:42px;border-radius:9px;color:#7792aa;font-size:8px;font-weight:850;text-align:center}.v2-mobile-nav a.active{background:#113b64;color:#cdeaff}
+}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -441,6 +478,12 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b> · Luồng công việc</h1><p>Nhận việc → điều phối → thực hiện → kiểm tra → kết quả</p></div>
   <div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div>
 </header>
+<nav class="v2-global-nav" aria-label="Điều hướng TigerIQ Live">
+  <a class="active" href="#jobJourney">Dự án</a>
+  <a href="#rawWorkDetails">Tất cả JOB</a>
+  <a href="#nowRunning">Đang chạy</a>
+  <a href="/index">API Health ↗</a>
+</nav>
 <div id="err" class="err"></div>
 <section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc">
   <div class="flow-kpi live-kpi"><span>Kết nối</span><b id="kpiLive">ĐANG KIỂM TRA</b></div>
@@ -449,8 +492,8 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   <div class="flow-kpi progress-kpi"><span>Tổng tiến độ</span><b id="overallPct">—</b><small id="overallScope">chưa xác minh</small></div>
 </section>
 <section id="jobJourney" class="job-journey" aria-label="Việc lớn và các nhánh công việc đang theo dõi"></section>
-<details id="rawWorkDetails" class="raw-work-details" open>
-<summary>JOB kỹ thuật / chi tiết hệ thống <span class="details-hint">· DANH SÁCH LUÔN HIỂN THỊ</span></summary>
+<details id="rawWorkDetails" class="raw-work-details">
+<summary>Tất cả JOB / chi tiết kỹ thuật <span class="details-hint">· MỞ KHI CẦN TRA CỨU</span></summary>
 <div class="raw-work-inner">
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này"></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce"></section>
@@ -471,13 +514,14 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 </details>
 <footer class="page-foot" aria-label="STT · Work Order · Tên việc · NV thực hiện / Owner · Trạng thái">Dữ liệu tự cập nhật 10 giây · % chỉ hiển thị khi đã xác minh</footer>
 </main>
+<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="#jobJourney">Dự án</a><a href="#nowRunning">Đang chạy</a><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">Health</a></nav>
 <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
 <aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
   <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
   <div class="drawer-body">
     <section class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
     <section class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
-    <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
+    <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
@@ -776,16 +820,36 @@ function projectDefaultId(projects){
   if(activeRow&&projects.some(project=>project.id===activeRow.projectId))return activeRow.projectId;
   return projects[0]?.id||null;
 }
+function v2ProjectIcon(project){
+  const id=String(project?.id||'').toLowerCase();
+  if(id.includes('mobile'))return '🤖';
+  if(id.includes('news'))return '▤';
+  if(id.includes('paperclip'))return '⚗';
+  if(id.includes('revenue'))return '↗';
+  if(id.includes('live'))return '◉';
+  return '⚙';
+}
+function v2ProjectKind(project){
+  const id=String(project?.id||'').toLowerCase();
+  if(id.includes('mobile'))return 'Android Worker';
+  if(id.includes('news'))return 'News & Content';
+  if(id.includes('paperclip'))return 'Experimental';
+  if(id.includes('revenue'))return 'Growth & Revenue';
+  if(id.includes('live'))return 'Owner-facing Web';
+  return project?.kind==='platform'?'Core Platform':'Project';
+}
 function projectPickerHtml(projects,selected){
   if(!projects.length)return '';
   const cards=projects.map(project=>{
-    const state=projectStatus(project),status=stateLabel[state]||state;
-    return '<button type="button" class="project-choice '+packageStateClass(state)+(project.id===selected?' active':'')+'" data-project-select="'+esc(project.id)+'">'
-      +'<span class="project-live-dot" aria-hidden="true"></span>'
-      +'<div class="project-choice-top"><b>'+esc(project.name)+'</b><em>'+esc(status)+'</em></div>'
+    const state=projectStatus(project),status=stateLabel[state]||state,c=project?.counts||{};
+    const active=Number(c.working||0)+Number(c.review||0),done=Number(c.done||0),blocked=Number(c.blocked||0);
+    return '<button type="button" class="v2-project-choice '+packageStateClass(state)+(project.id===selected?' active':'')+'" data-project-select="'+esc(project.id)+'">'
+      +'<span class="v2-project-icon" aria-hidden="true">'+v2ProjectIcon(project)+'</span>'
+      +'<span class="v2-project-copy"><b>'+esc(project.name)+'</b><small>'+esc(v2ProjectKind(project))+'</small><em>'+active+' đang xử lý · '+done+' hoàn tất'+(blocked?' · '+blocked+' bị chặn':'')+'</em></span>'
+      +'<span class="v2-project-state">'+esc(status)+'</span>'
       +'</button>';
   }).join('');
-  return '<section class="project-picker" aria-label="Dự án"><div class="project-picker-head"><b>DỰ ÁN</b></div><div class="project-list">'+cards+'</div></section>';
+  return '<aside class="v2-project-sidebar" aria-label="Danh sách dự án"><div class="v2-project-sidebar-head"><b>DỰ ÁN ('+projects.length+')</b><span>Danh mục</span></div><div class="v2-project-list">'+cards+'</div></aside>';
 }
 function packageBuildAll(projectId){
   const allRows=packageRows();
@@ -1007,11 +1071,21 @@ function ownerCleanStateClass(state=''){
   return 'is-waiting';
 }
 function ownerCleanPackageTabs(packages,selected){
-  if(packages.length<=1)return '';
-  return '<nav class="owner-clean-packages" aria-label="Việc lớn">'+packages.map(pack=>{
+  const cards=packages.map((pack,index)=>{
     const state=String(pack?.aggregate?.state||'WAITING').toUpperCase();
-    return '<button type="button" class="owner-clean-package'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'">'+esc(pack.name)+'<em>'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</em></button>';
-  }).join('')+'</nav>';
+    const focus=packageOwnerFocus(pack)||pack.root;
+    const worker=focus?.assignee||workerFrom(focus);
+    const priority=workPriority(focus);
+    const verified=verifiedProgress(focus);
+    const progress=verified.verified?'<div class="v2-workstream-progress"><i style="width:'+verified.pct+'%"></i><b>'+verified.pct+'%</b></div>':'<div class="v2-workstream-progress unverified"><i></i><b>—</b></div>';
+    return '<button type="button" class="v2-workstream-card'+(String(pack.id)===String(selected)?' active':'')+'" data-package-select="'+esc(pack.id)+'">'
+      +'<div class="v2-workstream-top"><span class="v2-workstream-index">'+String(index+1).padStart(2,'0')+'</span><span class="priority '+String(priority).toLowerCase()+'">'+esc(priority)+'</span><em>'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</em></div>'
+      +'<strong>'+esc(pack.name)+'</strong>'
+      +'<small>'+pack.rows.length+' JOB · '+esc(worker)+'</small>'
+      +progress
+      +'</button>';
+  }).join('');
+  return '<section class="v2-workstreams" aria-label="Việc lớn"><div class="v2-section-head"><div><span>TẦNG 2</span><b>Việc lớn / Nhánh công việc</b></div><em>'+packages.length+' nhánh</em></div><div class="v2-workstream-grid">'+cards+'</div></section>';
 }
 function ownerCleanStages(pack,focus){
   const rows=Array.isArray(pack?.rows)?pack.rows:[];
@@ -1045,8 +1119,64 @@ function ownerCleanFlowHtml(pack,focus){
     return '<div class="owner-clean-stage '+cls+'"><span class="owner-clean-stage-dot" aria-hidden="true">'+mark+'</span><b>'+esc(stage.label)+'</b><small>'+esc(stateLabel[stage.state]||stage.state)+'</small></div>';
   }).join('')+'</div>';
 }
+function v2ProjectHeaderHtml(project,packages){
+  const c=project?.counts||{};
+  const working=Number(c.working||0),review=Number(c.review||0),blocked=Number(c.blocked||0),waiting=Number(c.waiting||0),done=Number(c.done||0);
+  const total=working+review+blocked+waiting+done;
+  const donePct=total?Math.round(done*100/total):0;
+  return '<header class="v2-project-header">'
+    +'<div class="v2-project-hero"><span class="v2-project-hero-icon">'+v2ProjectIcon(project)+'</span><div><small>TẦNG 1 · DỰ ÁN</small><h2>'+esc(project.name)+'</h2><p>'+esc(v2ProjectKind(project))+' · '+packages.length+' việc lớn</p></div></div>'
+    +'<div class="v2-project-completion"><div><span>JOB hoàn tất</span><b>'+donePct+'%</b></div><div class="v2-project-completion-track"><i style="width:'+donePct+'%"></i></div></div>'
+    +'<div class="v2-project-stats"><div><span>Việc lớn</span><b>'+packages.length+'</b></div><div><span>Đang làm</span><b>'+working+'</b></div><div><span>Rà soát</span><b>'+review+'</b></div><div><span>Bị chặn</span><b>'+blocked+'</b></div><div><span>Hoàn tất</span><b>'+done+'</b></div></div>'
+    +'</header>';
+}
+function v2FlowPhase(row){
+  const text=[row?.title,row?.capability,row?.currentStep,row?.nextStep].filter(Boolean).join(' ').toLowerCase();
+  if(row?.reviewOnly===true||/review|rà soát|approve|approval|kiểm tra độc lập|independent/.test(text))return 'review';
+  if(/deploy|publish|release|runtime|e2e|smoke|verify|sign|artifact|production|rollout|sync/.test(text))return 'deploy';
+  if(/source|plan|planning|architecture|thiết kế|research|nghiên cứu|audit|phân tích|spec|bootstrap|scope/.test(text))return 'source';
+  return 'dev';
+}
+function v2FlowGridHtml(pack,focus){
+  const phases=[
+    {id:'source',index:'1',name:'Nguồn & kế hoạch'},
+    {id:'dev',index:'2',name:'Phát triển'},
+    {id:'review',index:'3',name:'Rà soát'},
+    {id:'deploy',index:'4',name:'Phát hành & xác minh'}
+  ];
+  const seen=new Set();
+  const rows=(pack?.rows||[]).filter(row=>{
+    const n=Number(row?.number);if(!n||seen.has(n))return false;seen.add(n);return row?.workKind!=='SYSTEM';
+  }).sort((a,b)=>packageStatusRank(workStatus(a))-packageStatusRank(workStatus(b))||Number(a.number)-Number(b.number));
+  return '<section class="v2-flow-section"><div class="v2-section-head"><div><span>TẦNG 3</span><b>Flow việc nhỏ</b></div><em>'+rows.length+' JOB</em></div><div class="v2-flow-grid">'
+    +phases.map(phase=>{
+      const items=rows.filter(row=>v2FlowPhase(row)===phase.id);
+      return '<article class="v2-flow-stage"><header><span>'+phase.index+'</span><b>'+phase.name+'</b><em>'+items.length+'</em></header><div class="v2-flow-items">'
+        +(items.length?items.map(row=>{
+          const status=workStatus(row),isFocus=Number(row.number)===Number(focus?.number),worker=row?.assignee||workerFrom(row);
+          return '<button type="button" class="v2-flow-job '+ownerCleanStateClass(status)+(isFocus?' is-focus':'')+'" data-package-row="'+Number(row.number)+'">'
+            +'<span class="v2-flow-check">'+(status==='DONE'?'✓':'')+'</span>'
+            +'<span class="v2-flow-job-copy"><b>'+esc(displayTitle(row.title))+'</b><small>#'+Number(row.number)+' · '+esc(worker)+'</small></span>'
+            +'<em>'+esc(stateLabel[status]||status)+'</em>'
+            +'</button>';
+        }).join(''):'<div class="v2-flow-empty">Chưa có JOB trong pha này.</div>')
+        +'</div></article>';
+    }).join('')+'</div></section>';
+}
+function v2EvidenceHtml(pack){
+  const rows=[...(pack?.rows||[])].sort((a,b)=>new Date(b?.updatedAt||0)-new Date(a?.updatedAt||0));
+  const artifacts=packageArtifactsFromRows(rows);
+  const issues=rows.slice(0,5);
+  const activity=rows.filter(row=>row?.updatedAt||row?.latestCompletedStep).slice(0,5);
+  return '<section class="v2-evidence-grid" aria-label="Chi tiết và bằng chứng">'
+    +'<article class="v2-evidence-card"><header><b>Issue & Pull Request</b><span>'+issues.length+'</span></header><div>'+issues.map(row=>'<button type="button" data-package-row="'+Number(row.number)+'"><b>#'+Number(row.number)+'</b><span>'+esc(displayTitle(row.title))+'</span><em>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</em></button>').join('')+'</div></article>'
+    +'<article class="v2-evidence-card"><header><b>Evidence</b><span>'+artifacts.length+'</span></header><div>'+(artifacts.length?artifacts.map(item=>'<a href="'+esc(item.url||'#')+'" target="_blank" rel="noopener noreferrer"><b>✓</b><span>'+esc(item.label)+'</span><em>mở ↗</em></a>').join(''):'<p>Chưa có artifact/PR evidence được chiếu vào LIVE.</p>')+'</div></article>'
+    +'<article class="v2-evidence-card"><header><b>Hoạt động gần đây</b><span>'+activity.length+'</span></header><div>'+(activity.length?activity.map(row=>'<button type="button" data-package-row="'+Number(row.number)+'"><b>•</b><span>'+esc(row.latestCompletedStep||displayTitle(row.title))+'</span><em>'+esc(stateLabel[workStatus(row)]||workStatus(row))+'</em></button>').join(''):'<p>Chưa có hoạt động đã xác minh.</p>')+'</div></article>'
+    +'</section>';
+}
 function renderJobJourney(){
   const el=$('jobJourney');if(!el)return;
+  el.setAttribute('data-live-ui-version','2');
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   if(!fresh){workPackageState=null;el.innerHTML='<div class="package-empty"><b>Dự án / việc lớn</b><br>Dữ liệu hiện tại đã cũ nên chưa hiển thị để tránh sai.</div>';return}
   const projects=projectPortfolio();
@@ -1057,9 +1187,10 @@ function renderJobJourney(){
   }
   const selectedProject=projects.find(project=>project.id===selectedProjectId)||projects[0];
   const packages=packageBuildAll(selectedProject.id);
+  const picker=projectPickerHtml(projects,selectedProject.id);
   if(!packages.length){
     workPackageState={projects,project:selectedProject,packages:[],selected:null};
-    el.innerHTML=projectPickerHtml(projects,selectedProject.id)+'<div class="package-empty"><b>'+esc(selectedProject.name)+'</b><br>Không có việc lớn đang hoạt động.</div>';
+    el.innerHTML='<div class="v2-portfolio-layout">'+picker+'<section class="v2-project-workspace">'+v2ProjectHeaderHtml(selectedProject,[])+'<div class="package-empty"><b>'+esc(selectedProject.name)+'</b><br>Không có việc lớn đang hoạt động.</div></section></div>';
     el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
     return;
   }
@@ -1073,14 +1204,16 @@ function renderJobJourney(){
   const next=shortNext(focus)||'Chưa có bước kế tiếp được xác minh';
   workPackageState={projects,project:selectedProject,packages:ordered,selected:pack};
 
-  el.innerHTML=projectPickerHtml(projects,selectedProject.id)
+  el.innerHTML='<div class="v2-portfolio-layout">'+picker+'<section class="v2-project-workspace">'
+    +v2ProjectHeaderHtml(selectedProject,ordered)
+    +'<nav class="v2-project-tabs" aria-label="Dự án"><button class="active" type="button">Việc lớn ('+ordered.length+')</button><a href="#rawWorkDetails">Tất cả JOB</a><a href="/index">API Health ↗</a></nav>'
     +ownerCleanPackageTabs(ordered,pack.id)
-    +'<article class="owner-clean-board">'
-    +'<header class="owner-clean-head"><div><small>'+esc(selectedProject.name)+' · NHÁNH CÔNG VIỆC</small><h2>'+esc(pack.name)+'</h2></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
-    +'<section class="owner-clean-current"><span>HIỆN TẠI</span><b>'+esc(current)+'</b><small>Bước tới: '+esc(next)+'</small></section>'
-    +ownerCleanFlowHtml(pack,focus)
-    +'<div class="owner-clean-actions"><button type="button" class="owner-clean-detail" data-package-row="'+Number(focus.number)+'">Chi tiết kỹ thuật</button></div>'
-    +'</article>';
+    +'<article class="v2-workstream-detail">'
+    +'<header class="v2-workstream-detail-head"><div><small>TẦNG 2 · VIỆC LỚN</small><h2>'+esc(pack.name)+'</h2><p>'+esc(current)+'</p></div><span class="owner-clean-status '+ownerCleanStateClass(state)+'">'+esc(pack.aggregate?.label||stateLabel[state]||state)+'</span></header>'
+    +'<div class="v2-workstream-current"><div><span>Người thực hiện</span><b>'+esc(focus?.assignee||workerFrom(focus))+'</b></div><div><span>JOB hiện tại</span><b>#'+Number(focus.number)+'</b></div><div class="wide"><span>Bước tiếp theo</span><b>'+esc(next)+'</b></div></div>'
+    +v2FlowGridHtml(pack,focus)
+    +v2EvidenceHtml(pack)
+    +'</article></section></div>';
 
   el.querySelectorAll('[data-project-select]').forEach(button=>button.addEventListener('click',()=>{selectedProjectId=button.getAttribute('data-project-select');selectedPackageId=null;renderJobJourney()}));
   el.querySelectorAll('[data-package-select]').forEach(button=>button.addEventListener('click',()=>{selectedPackageId=button.getAttribute('data-package-select');renderJobJourney()}));
@@ -1132,7 +1265,10 @@ function populateDrawer(row){
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
-  $('drawerWorker').textContent=workerFrom(row);
+  $('drawerProject').textContent=row?.projectName||'Chưa phân dự án';
+  $('drawerWorkstream').textContent=row?.workstreamName||row?.workPackageName||'Chưa phân nhánh';
+  $('drawerJob').textContent=row?.jobId||('GH-'+row.number);
+  $('drawerWorker').textContent=row?.assignee||workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||(row?.technicalComplete?'Đã có bằng chứng canonical':'Chưa có bằng chứng');
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
   const url=row.url||row.evidenceUrl||'';

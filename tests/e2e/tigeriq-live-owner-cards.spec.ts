@@ -30,10 +30,22 @@ const snapshot = {
       currentStep: null,
       nextStep: 'Chờ điều phối'
     }))
-  ],
+  ].map(row=>({
+    ...row,
+    projectId:'tigeriq-platform',
+    projectName:'Nền tảng TigerIQ',
+    workstreamId:Number(row.number)>=300?'aux-'+row.number:'live-ui',
+    workstreamName:Number(row.number)>=300?'Việc phụ '+row.number:'TigerIQ Live UI'
+  })),
   activeWork: [
     { number: 111, parentNumber: 110, title: '[P1][UI] Xây thẻ công việc đọc là hiểu', status: 'ĐANG XỬ LÝ', workKind: 'WORK', priority: 'P1', employeeId: 'NV03', currentStep: 'Dựng mặt thẻ công việc', latestCompletedStep: 'Đã chốt cấu trúc card', nextStep: 'Kiểm tra browser desktop và mobile', targetPrNumber: 200, progressPercent: 70, progressSource: 'explicit_verified' }
-  ],
+  ].map(row=>({
+    ...row,
+    projectId:'tigeriq-platform',
+    projectName:'Nền tảng TigerIQ',
+    workstreamId:'live-ui',
+    workstreamName:'TigerIQ Live UI'
+  })),
   nextQueue: [],
   recentWork: [],
   workers: [
@@ -55,74 +67,75 @@ async function openTiger(page: Page) {
     await route.fulfill({ status: 204, body: '' });
   });
   await page.goto('https://tigeriq.test/command-center');
-  await expect(page.locator('.owner-clean-board')).toBeVisible();
+  await expect(page.locator('.v2-portfolio-layout')).toBeVisible();
 }
 
-test('shows only the owner-readable work package and five-stage live flow on desktop', async ({ page }) => {
+test('shows the approved Project → Workstream → Flow → Job hierarchy on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  await expect(page.locator('#ownerSummary')).toBeHidden();
-  await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
-  await expect(page.locator('.owner-clean-flow')).toContainText('Nhận việc');
-  await expect(page.locator('.owner-clean-flow')).toContainText('Điều phối');
-  await expect(page.locator('.owner-clean-flow')).toContainText('Thực hiện');
-  await expect(page.locator('.owner-clean-flow')).toContainText('Kiểm tra');
-  await expect(page.locator('.owner-clean-flow')).toContainText('Kết quả');
-  await expect(page.locator('.package-task')).toHaveCount(0);
-  await expect(page.locator('.package-stream')).toHaveCount(0);
+  await expect(page.locator('.v2-portfolio-layout')).toBeVisible();
+  await expect(page.locator('.v2-project-sidebar')).toBeVisible();
+  await expect(page.locator('.v2-project-header')).toBeVisible();
+  await expect(page.locator('.v2-workstream-grid')).toBeVisible();
+  await expect(page.locator('.v2-flow-stage')).toHaveCount(4);
+  await expect(page.locator('.v2-flow-grid')).toContainText('Nguồn & kế hoạch');
+  await expect(page.locator('.v2-flow-grid')).toContainText('Phát triển');
+  await expect(page.locator('.v2-flow-grid')).toContainText('Rà soát');
+  await expect(page.locator('.v2-flow-grid')).toContainText('Phát hành & xác minh');
+  await expect(page.locator('.v2-evidence-grid')).toBeVisible();
 });
 
-test('keeps current/next owner-readable and moves technical evidence into the drawer', async ({ page }) => {
+test('shows current Job context and opens technical detail from the flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
 
-  const current = page.locator('.owner-clean-current');
-  await expect(current).toContainText('Dựng mặt thẻ công việc');
-  await expect(current).toContainText('Kiểm tra browser desktop và mobile');
-  await expect(page.locator('.owner-clean-board')).not.toContainText('#111');
-  await expect(page.locator('.owner-clean-board')).not.toContainText('NV03');
-  await expect(page.locator('.owner-clean-board')).not.toContainText('70%');
+  await expect(page.locator('.v2-workstream-detail')).toContainText('Dựng mặt thẻ công việc');
+  await expect(page.locator('.v2-workstream-detail')).toContainText('Kiểm tra browser desktop và mobile');
+  await expect(page.locator('.v2-workstream-detail')).toContainText('#111');
+  await expect(page.locator('.v2-workstream-detail')).toContainText('NV03');
 
-  await page.locator('.owner-clean-detail').click();
+  await page.locator('[data-package-row="111"]').first().click();
   await expect(page.locator('#workDrawer')).toHaveClass(/open/);
   await expect(page.locator('#drawerTitle')).toContainText('Xây thẻ công việc đọc là hiểu');
   await expect(page.locator('#drawerProgress')).toContainText('70%');
+  await expect(page.locator('#drawerJob')).toContainText('GH-111');
 });
 
-test('shows raw Work list by default', async ({ page }) => {
+test('keeps raw all-JOB list secondary and collapsed by default', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openTiger(page);
-  await expect(page.locator('#rawWorkDetails')).toHaveAttribute('open', '');
+  await expect(page.locator('#rawWorkDetails')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#rawWorkDetails summary')).toContainText('Tất cả JOB');
 });
 
-test('uses the same clean vertical flow on mobile without document overflow', async ({ page }) => {
+test('uses the same hierarchy on mobile without document overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
   const metrics = await page.evaluate(() => ({
     viewport: window.innerWidth,
     documentScroll: document.documentElement.scrollWidth,
-    flowColumns: getComputedStyle(document.querySelector('.owner-clean-flow')!).gridTemplateColumns,
+    flowColumns: getComputedStyle(document.querySelector('.v2-flow-grid')!).gridTemplateColumns,
     rawOpen: document.querySelector('#rawWorkDetails')?.hasAttribute('open') ?? false
   }));
   expect(metrics.documentScroll).toBeLessThanOrEqual(metrics.viewport + 1);
-  expect(metrics.rawOpen).toBe(true);
+  expect(metrics.rawOpen).toBe(false);
   expect(metrics.flowColumns.split(' ').length).toBe(1);
-  await expect(page.locator('.owner-clean-stage')).toHaveCount(5);
-  await expect(page.locator('.owner-clean-detail')).toBeVisible();
+  await expect(page.locator('.v2-mobile-nav')).toBeVisible();
+  await expect(page.locator('.v2-project-list')).toBeVisible();
+  await expect(page.locator('.v2-workstream-card')).toHaveCount(9);
 });
 
-test('keeps multiple work packages as compact pills instead of rendering all cards at once', async ({ page }) => {
+test('keeps multiple large workstreams selectable instead of rendering every Job as a top-level card', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTiger(page);
 
-  await expect(page.locator('.owner-clean-package')).toHaveCount(9);
+  await expect(page.locator('.v2-workstream-card')).toHaveCount(9);
   await expect(page.locator('.package-tab')).toHaveCount(0);
   await expect(page.locator('.package-stream')).toHaveCount(0);
   await expect(page.locator('.package-task')).toHaveCount(0);
 });
-
 
 test('derives clean-flow status from evidence instead of row count', async ({ page }) => {
   await openTiger(page);
