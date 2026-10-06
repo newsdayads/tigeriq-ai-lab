@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { normalizeInstruction, workFingerprint, issueStage, issueEvidenceSummary, issuePriority, issueType, workItemSummary, lifecycleEvents, latestLifecycleStage } from '../api/control.mjs';
+import { BACKLOG_DEEP_SWEEP_MS, BACKLOG_LIGHT_SWEEP_MS, backlogHygieneFindings, backlogSweepDue, beginBacklogSweep, createBacklogSweepState, finishBacklogSweep } from '../apps/tigeriq-core/backlog-hygiene.mjs';
+import { sortBacklogSpecs } from '../apps/tigeriq-core/github-backlog-policy.mjs';
+import { workOrderDedupIdentity } from '../apps/tigeriq-core/github-intake.mjs';
 
 assert.equal(normalizeInstruction('  Kiểm tra   PC01\nngay  '), 'kiểm tra pc01 ngay');
 assert.equal(workFingerprint('Kiểm tra PC01'), workFingerprint('  kiểm tra   pc01  '));
@@ -66,5 +69,35 @@ assert.equal(boardSummary.stale, true);
 assert.equal(boardSummary.evidence.reviewPass, true);
 assert.equal(Object.hasOwn(boardSummary, 'body'), false);
 assert.equal(Object.hasOwn(boardSummary, 'comments'), false);
+
+const sweepBase=Date.parse('2026-10-06T00:00:00Z');
+let sweep=createBacklogSweepState(sweepBase);
+assert.deepEqual(backlogSweepDue(sweep,sweepBase+BACKLOG_LIGHT_SWEEP_MS),{due:true,kind:'light',reason:'LIGHT_INTERVAL'});
+sweep=beginBacklogSweep(sweep,'light',sweepBase+BACKLOG_LIGHT_SWEEP_MS);
+assert.equal(backlogSweepDue(sweep,sweepBase+BACKLOG_LIGHT_SWEEP_MS+1).reason,'SWEEP_ALREADY_RUNNING');
+sweep=finishBacklogSweep(sweep,'light',sweepBase+BACKLOG_LIGHT_SWEEP_MS,'light-1');
+sweep=beginBacklogSweep(sweep,'light',sweepBase+(2*BACKLOG_LIGHT_SWEEP_MS));
+sweep=finishBacklogSweep(sweep,'light',sweepBase+(2*BACKLOG_LIGHT_SWEEP_MS),'light-2');
+assert.deepEqual(backlogSweepDue(sweep,sweepBase+BACKLOG_DEEP_SWEEP_MS),{due:true,kind:'deep',reason:'DEEP_INTERVAL'});
+
+assert.deepEqual(sortBacklogSpecs([
+  {number:4,priority:'P2',readyAt:'2026-10-04T00:00:00Z'},
+  {number:2,priority:'P1',readyAt:'2026-10-03T00:00:00Z'},
+  {number:1,priority:'P1',readyAt:'2026-10-02T00:00:00Z'},
+]).map(x=>x.number),[1,2,4]);
+
+const dedupeBase='PROJECT_ID=TIGERIQ\nWORKSTREAM_ID=QUEUE\nOBJECTIVE_FAMILY=BACKLOG_HYGIENE\nTARGET_ARTIFACT=github-intake';
+assert.equal(
+  workOrderDedupIdentity({number:1,title:'retry v1',body:dedupeBase+'\nRESOURCE_SCOPE=BACKLOG_FAMILY_V1',resourceScope:'BACKLOG_FAMILY_V1',capability:'coding'}),
+  workOrderDedupIdentity({number:2,title:'rearm v2',body:dedupeBase+'\nRESOURCE_SCOPE=BACKLOG_FAMILY_V2',resourceScope:'BACKLOG_FAMILY_V2',capability:'coding'})
+);
+
+const hygieneFindings=backlogHygieneFindings([
+  {number:1,state:'open',title:'canonical',body:dedupeBase+'\nRESOURCE_SCOPE=BACKLOG_FAMILY_V1\nCURRENT_STATE=READY\nTIGERIQ_EXECUTABLE=true'},
+  {number:2,state:'open',title:'retry',body:dedupeBase+'\nRESOURCE_SCOPE=BACKLOG_FAMILY_V2\nCURRENT_STATE=READY\nTIGERIQ_EXECUTABLE=true'},
+  {number:3,state:'closed',title:'terminal',body:'RESOURCE_SCOPE=TERM\nCURRENT_STATE=DONE\nDONE=true\nTIGERIQ_EXECUTABLE=true'},
+],{nowMs:sweepBase,deep:true});
+assert.ok(hygieneFindings.some(x=>x.type==='DUPLICATE_FAMILY'));
+assert.ok(hygieneFindings.some(x=>x.type==='TERMINAL_EXECUTABLE_MARKER'));
 
 console.log('WO014_QUEUE_HYGIENE_PASS');
