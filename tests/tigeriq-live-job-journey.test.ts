@@ -4,7 +4,7 @@ import fs from 'node:fs';
 const rootHtml = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
 const publicHtml = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 
-describe('TigerIQ LIVE UI V2 #4336', () => {
+describe('TigerIQ LIVE Owner Operations V3 #4351', () => {
   it('keeps root and public exactly in sync', () => {
     expect(publicHtml).toBe(rootHtml);
   });
@@ -20,6 +20,37 @@ describe('TigerIQ LIVE UI V2 #4336', () => {
     expect(rootHtml).toContain('TẦNG 1 · DỰ ÁN');
     expect(rootHtml).toContain('TẦNG 2');
     expect(rootHtml).toContain('TẦNG 3');
+  });
+
+
+  it('keeps project order stable instead of moving projects by runtime status', () => {
+    expect(rootHtml).toContain("if(source.length)return [...source].sort((a,b)=>Number(a.order||900)-Number(b.order||900)");
+    expect(rootHtml).not.toContain("packageStatusRank(projectStatus(a))-packageStatusRank(projectStatus(b))||Number(a.order||900)");
+  });
+
+  it('shows one owner-operational snapshot with location, assignee, current, done, next, blocker and age', () => {
+    expect(rootHtml).toContain('function v3OwnerOpsHtml(row)');
+    expect(rootHtml).toContain('v3-owner-ops');
+    expect(rootHtml).toContain('Đang làm gì');
+    expect(rootHtml).toContain('Vừa xong');
+    expect(rootHtml).toContain('Bước tiếp theo');
+    expect(rootHtml).toContain('Blocker');
+    expect(rootHtml).toContain('Cập nhật');
+    expect(rootHtml).toContain('function ownerAgeText(value)');
+  });
+
+  it('shows an unmistakable live running lane for actual WORKING jobs', () => {
+    expect(rootHtml).toContain('v3-running-lane');
+    expect(rootHtml).toContain('ĐANG CHẠY NGAY LÚC NÀY');
+    expect(rootHtml).toContain('data-running-job');
+    expect(rootHtml).toContain('@keyframes v3-live-ring');
+    expect(rootHtml).toContain('@keyframes v3-dot-pulse');
+    expect(rootHtml).toContain('@keyframes v3-scan');
+  });
+
+  it('does not present a fake clickable Việc lớn control', () => {
+    expect(rootHtml).toContain('<span class="v2-tab-label active">Việc lớn (');
+    expect(rootHtml).not.toContain('<button class="active" type="button">Việc lớn (');
   });
 
   it('keeps projects independent and selectable without hard-coding one active project', () => {
@@ -97,5 +128,6 @@ describe('TigerIQ LIVE UI V2 #4336', () => {
     expect(rootHtml).toContain('function verifiedProgress(row)');
     expect(rootHtml).toContain("['explicit_verified','checklist_verified','terminal']");
     expect(rootHtml).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(rootHtml).toContain('.v3-running-dot,.v3-running-pulse');
   });
 });
