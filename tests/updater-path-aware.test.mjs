@@ -292,13 +292,16 @@ test('bootstrap watchdog detects a running-but-stale updater and only cleans exa
   assert.doesNotMatch(bootstrapWatchdog,/Stop-Process[^\n]+Where-Object[^\n]*powershell/i);
 });
 
-test('updater task uses StopExisting so a stale scheduled instance cannot block a fresh start',()=>{
+test('updater task uses supported IgnoreNew while watchdog explicitly replaces stale updater execution',()=>{
   const installer=readFileSync(new URL('../scripts/tigeriq-core/install-core-updater.ps1',import.meta.url),'utf8');
-  assert.match(installer,/MultipleInstances StopExisting/);
+  assert.match(installer,/MultipleInstances IgnoreNew/);
   const target=script.slice(script.indexOf('function Ensure-UpdaterTaskRuntimeTarget'),script.indexOf('function Ensure-BootstrapWatchdogTask'));
-  assert.match(target,/MultipleInstances StopExisting/);
+  assert.match(target,/MultipleInstances IgnoreNew/);
   assert.match(target,/Settings\.MultipleInstances/);
   assert.match(target,/previousMultipleInstances=\$multiple/);
+  assert.match(bootstrapWatchdog,/Stop-ScheduledTask -TaskName \$t\.task/);
+  assert.match(bootstrapWatchdog,/Stop-ExactUpdaterProcesses/);
+  assert.match(bootstrapWatchdog,/Start-ScheduledTask -TaskName \$t\.task/);
 });
 
 test('runtime watchdog includes OpenClaw and App Chrome transport but does not make them global update gates',()=>{
