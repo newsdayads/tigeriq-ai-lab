@@ -1,0 +1,15 @@
+schema: tigeriq.project.v2
+id: revenue-lab
+name: Revenue Lab
+kind: project
+order: 60
+source_roots:
+  - tools
+  - scripts
+workstreams:
+  - id: apify-audit
+    name: Apify Website Audit
+    order: 10
+  - id: experiments
+    name: Thử nghiệm doanh thu
+    order: 20
