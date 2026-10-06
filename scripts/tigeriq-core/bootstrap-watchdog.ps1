@@ -70,7 +70,7 @@ function Ensure-UpdaterTask(){
     $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$updaterRuntime`" -IntervalSeconds 120"
     $action=New-ScheduledTaskAction -Execute $ps -Argument $args
     $trigger=New-ScheduledTaskTrigger -AtStartup
-    $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances StopExisting
+    $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -MultipleInstances IgnoreNew
     $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     Register-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force|Out-Null
     Start-ScheduledTask -TaskName $updaterTask -ErrorAction Stop
