@@ -94,6 +94,33 @@ describe('TigerIQ LIVE project portfolio', () => {
     });
   });
 
+
+  it('exposes canonical Job ownership, dependencies and next action metadata', () => {
+    const rows = annotatePortfolioRows([
+      { number: 9003, title: '[P1] Future release', workKind: 'WORK', status: 'WORKING', employeeId: 'NV11' },
+    ], [{
+      number: 9003,
+      title: '[P1] Future release',
+      body: [
+        'PROJECT_ID=alpha-lab',
+        'PROJECT_NAME=Alpha Lab',
+        'WORKSTREAM_ID=release',
+        'WORKSTREAM_NAME=Phát hành',
+        'JOB_ID=ALPHA-42',
+        'ASSIGNEE=NV12',
+        'DEPENDENCIES=#9001,#9002',
+        'NEXT_ACTION=Xác minh bản phát hành',
+      ].join('\n'),
+    }]);
+    expect(rows[0]).toMatchObject({
+      jobId: 'ALPHA-42',
+      assignee: 'NV12',
+      dependencies: [9001, 9002],
+      nextAction: 'Xác minh bản phát hành',
+    });
+  });
+
+
   it('separates TigerIQ Live from the platform project', () => {
     const rows = annotatePortfolioRows([
       { number: 4311, title: '[P1][RELEASE][LIVE] Publish Health visual parity', workKind: 'WORK', status: 'WORKING' },
