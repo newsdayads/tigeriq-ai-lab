@@ -816,3 +816,86 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
     padding-top:10px!important;
   }
 }
+
+
+/* #4383 truthful Work-card live motion V2 */
+.api-health .work-row.status-working{
+  animation:tiq-work-card-working 2.6s ease-in-out infinite;
+}
+.api-health .work-row.status-review,
+.api-health .work-row.status-verify{
+  animation:tiq-work-card-review 5.2s ease-in-out infinite;
+}
+.api-health .work-row.status-waiting{
+  animation:tiq-work-card-waiting 5.8s ease-in-out infinite;
+}
+.api-health .work-row.status-blocked,
+.api-health .work-row.status-owner_gate{
+  animation:tiq-work-card-attention 6.4s ease-in-out infinite;
+}
+.api-health .work-row.status-queued,
+.api-health .work-row.status-open{
+  animation:none;
+}
+
+/* Unverified stage bars remain indeterminate: motion communicates phase, never a percentage. */
+.api-health .progress.stage-working .progress-fill{animation-duration:1.55s;opacity:.62}
+.api-health .progress.stage-review .progress-fill,
+.api-health .progress.stage-verify .progress-fill{animation-duration:2.6s;opacity:.44}
+.api-health .progress.stage-waiting .progress-fill{animation-duration:3.25s;opacity:.34}
+.api-health .progress.stage-blocked .progress-fill,
+.api-health .progress.stage-owner_gate .progress-fill{animation-duration:4.8s;opacity:.28}
+.api-health .progress.stage-queued .progress-fill,
+.api-health .progress.stage-open .progress-fill{animation:none;opacity:.22;transform:translateX(30%)}
+
+/* Verified fills may flow inside their real width; this never changes the measured width. */
+.api-health .work-row.status-working .progress:not(.stage) .progress-fill::after,
+.api-health .work-row.status-review .progress:not(.stage) .progress-fill::after,
+.api-health .work-row.status-verify .progress:not(.stage) .progress-fill::after,
+.api-health .work-row.status-waiting .progress:not(.stage) .progress-fill::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  width:34%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.24),transparent);
+  transform:translateX(-150%) skewX(-16deg);
+  animation:tiq-verified-progress-flow 3.1s ease-in-out infinite;
+}
+.api-health .work-row.status-review .progress:not(.stage) .progress-fill::after,
+.api-health .work-row.status-verify .progress:not(.stage) .progress-fill::after{animation-duration:4.1s}
+.api-health .work-row.status-waiting .progress:not(.stage) .progress-fill::after{animation-duration:5.2s;opacity:.7}
+
+@keyframes tiq-work-card-working{
+  0%,100%{box-shadow:0 10px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.018)}
+  50%{box-shadow:0 10px 26px rgba(0,0,0,.22),0 0 0 1px rgba(71,219,145,.12),0 0 24px rgba(71,219,145,.10),inset 0 1px 0 rgba(255,255,255,.024)}
+}
+@keyframes tiq-work-card-review{
+  0%,100%{box-shadow:0 10px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.018)}
+  50%{box-shadow:0 10px 25px rgba(0,0,0,.22),0 0 18px rgba(240,185,77,.075),inset 0 1px 0 rgba(255,255,255,.022)}
+}
+@keyframes tiq-work-card-waiting{
+  0%,100%{box-shadow:0 10px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.018)}
+  50%{box-shadow:0 10px 24px rgba(0,0,0,.22),0 0 14px rgba(240,185,77,.055),inset 0 1px 0 rgba(255,255,255,.020)}
+}
+@keyframes tiq-work-card-attention{
+  0%,100%{box-shadow:0 10px 24px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.018)}
+  50%{box-shadow:0 10px 25px rgba(0,0,0,.22),0 0 16px rgba(255,116,126,.065),inset 0 1px 0 rgba(255,255,255,.020)}
+}
+@keyframes tiq-verified-progress-flow{
+  0%,34%{transform:translateX(-150%) skewX(-16deg)}
+  72%,100%{transform:translateX(390%) skewX(-16deg)}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .api-health .work-row.status-working,
+  .api-health .work-row.status-review,
+  .api-health .work-row.status-verify,
+  .api-health .work-row.status-waiting,
+  .api-health .work-row.status-blocked,
+  .api-health .work-row.status-owner_gate,
+  .api-health .progress.stage .progress-fill,
+  .api-health .progress:not(.stage) .progress-fill::after{
+    animation:none!important;
+    transition:none!important;
+  }
+}
