@@ -987,8 +987,34 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
   const admission = safeAutoWorkAdmission(issue);
   if (admission.eligible) return 'READY';
 
-  // Fail closed for uncategorized exclusions while keeping them visible as non-terminal work.
-  return 'PARKED_DEPENDENCY';
+  const admissionReason = String(admission.reason || '').toUpperCase();
+  if (admissionReason === 'TERMINAL_BLOCKED') return 'TERMINAL';
+
+  if ([
+    'P0_OR_INVALID_PRIORITY',
+    'OWNER_POLICY_NOT_AUTO',
+    'OWNER_OR_HOLD_GATE',
+    'OWNER_WAIT_STATE',
+    'OWNER_OR_UI_ROUTE',
+    'HARD_GATE_SAFETY_FLAGS_INCOMPLETE',
+    'DIRECT_MAIN_GUARD_REQUIRED',
+    'APP_CHROME_EXCLUDED',
+    'ANDROID_PRODUCT_OWNER_DIRECT',
+  ].includes(admissionReason)) return 'HARD_GATE';
+
+  if ([
+    'DEPENDENCY_BLOCKED',
+    'NON_EXECUTABLE_STATE',
+    'MUTATION_OWNER_CONFLICT',
+    'RESOURCE_SCOPE_REQUIRED',
+    'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',
+    'SPECIALIST_CONTRACT_REQUIRED',
+    'EXPLICIT_EXECUTION_DISABLED',
+    'AUTO_QUEUE_EXCLUDED',
+  ].includes(admissionReason)) return 'PARKED_DEPENDENCY';
+
+  // Unknown policy exclusions fail closed as a hard gate instead of being mislabeled as dependency wait.
+  return 'HARD_GATE';
 }
 
 function actionableStatus(issue, overlays = {}) {
@@ -1185,10 +1211,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
         ? issueDisplayOwner(issue)
         : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
     status,
-    displayState: status,
+    displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
-    waitReason,
-    rearmCondition,
+    executionEligibilityReason: executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null),
+    waitReason: waitReason || (executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null)),
+    rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
     activeLease,
     activeWorker,
     heartbeatFresh,
