@@ -1682,6 +1682,8 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
   const pool=new Pool({connectionString:databaseUrl,max:1});
   const reconcileMs=Math.max(GITHUB_RECONCILE_INTERVAL_MS,Number(intervalMs)||GITHUB_RECONCILE_INTERVAL_MS);
   let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
+  const hygieneStartedAt=Date.now();
+  let lastLightHygieneMs=hygieneStartedAt,lastDeepHygieneMs=hygieneStartedAt,hygieneRunning=false;
   const pendingEvents=[];
 
   const applyError=(e,kind)=>{
@@ -1717,10 +1719,28 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
         console.log(JSON.stringify({event:'GITHUB_CHAT_OWNER_AUTO_HANDOFF',deliveryId:event.deliveryId,issueNumber:n,reason:handoff.reason}));
         return;
       }
-      const issues=[issue];
-      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[n]});
+      const openIssues=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token,{freshMs:0});
+      const eventIssue=openIssues.find((row)=>Number(row?.number)===n)||issue;
+      const eventSpec=hygieneSpecFromIssue(eventIssue);
+      const allSpecs=openIssues.map(hygieneSpecFromIssue).filter(Boolean);
+      const dedupe=eventBacklogDedupeDecision(eventSpec,allSpecs);
+      let intakeIssue=eventIssue;
+      if(dedupe.duplicate&&dedupe.canonical){
+        const canonicalIssue=openIssues.find((row)=>Number(row?.number)===Number(dedupe.canonical.number));
+        if(canonicalIssue)intakeIssue=canonicalIssue;
+        const ownerValue=bodyValue(eventIssue.body||'','MUTATION_OWNER');
+        const activeLease=hasExactFlag(eventIssue.body||'','ACTIVE_LEASE')&&!mutationOwnerReleasedValue(ownerValue);
+        if(!activeLease){
+          await patchIssueBody(fetchImpl,owner,repo,token,n,duplicateSupersedeBody(eventIssue.body||'',dedupe.canonical.number));
+        }
+        const evidence={source:'github-event',issueNumber:n,canonicalIssueNumber:Number(dedupe.canonical.number),dedupeKey:dedupe.key,deliveryId:String(event.deliveryId||'')};
+        try{await pool.query("insert into tigeriq_events(type,data) values('GITHUB_BACKLOG_DUPLICATE_REUSED',$1)",[JSON.stringify(evidence)]);}catch{}
+        console.log(JSON.stringify({event:'GITHUB_BACKLOG_DUPLICATE_REUSED',...evidence}));
+      }
+      const issues=[intakeIssue];
+      const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[Number(intakeIssue.number)]});
       const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:issues});
-      console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,created:a.created,claims:b.claims,results:b.results}));
+      console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,canonicalIssueNumber:Number(intakeIssue.number),created:a.created,claims:b.claims,results:b.results}));
     }catch(e){applyError(e,'event')}
     finally{
       busy=false;
@@ -1747,6 +1767,17 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
         if(handoff.changed)handedOff.add(Number(issue.number));
       }
       const stableIssues=openIssues.filter(issue=>!handedOff.has(Number(issue.number)));
+      const sweepPlan=githubBacklogHygieneSweepPlan({nowMs:Date.now(),lastLightMs:lastLightHygieneMs,lastDeepMs:lastDeepHygieneMs,running:hygieneRunning});
+      if(sweepPlan.kind!=='NONE'){
+        hygieneRunning=true;
+        try{
+          const sweep=await runGithubBacklogHygieneSweep({pool,fetchImpl,owner,repo,token,openIssues:stableIssues,kind:sweepPlan.kind,nowMs:Date.now()});
+          const completedAt=Date.now();
+          lastLightHygieneMs=completedAt;
+          if(sweepPlan.kind==='DEEP')lastDeepHygieneMs=completedAt;
+          console.log(JSON.stringify({event:'GITHUB_BACKLOG_HYGIENE_SWEEP',kind:sweepPlan.kind,counts:sweep.counts,actions:sweep.actions}));
+        }finally{hygieneRunning=false}
+      }
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
       let created=0,lastIssueNumber=null,lastActive=0;
       for(let i=0;i<DEFAULT_MATERIALIZE_BATCH;i++){
