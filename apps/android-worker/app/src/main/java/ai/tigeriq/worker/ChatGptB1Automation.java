@@ -110,7 +110,7 @@ public final class ChatGptB1Automation {
         for (AccessibilityNodeInfo node : nodes(root)) {
             if (!node.isVisibleToUser()) continue;
             String label = searchable(node);
-            if (!containsAny(label, "new chat", "chat mới", "cuộc trò chuyện mới", "new conversation")) continue;
+            if (!containsAny(label, "new chat", "chat mới", "trò chuyện mới", "cuộc trò chuyện mới", "new conversation")) continue;
             AccessibilityNodeInfo clickable = nearestClickable(node, 4);
             if (clickable != null && clickable.isEnabled()) return clickable;
         }
