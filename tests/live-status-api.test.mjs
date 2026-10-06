@@ -10,6 +10,7 @@ import {
   parseQueueIssue,
   classifyOpenIssue,
   parseOpenWorkIssue,
+  executionEligibilityForIssue,
   workflowRelationsForIssue,
   parseClearedBlockerLifecycleComment,
   progressForIssue,
@@ -271,6 +272,88 @@ describe('TigerIQ Live Work Order projection', () => {
 
     const meta = parseOpenWorkIssue(issue(3002, '[TÀI NGUYÊN] Nguồn lực', 'STATE=OPEN'));
     expect(meta).toMatchObject({ number: 3002, priority: null, status: 'SYSTEM', workKind: 'SYSTEM', progressPercent: null, meta: true });
+  });
+
+  it('separates display state from execution eligibility for safe P1-P5 work', () => {
+    const safeBody = [
+      'PRIORITY=P2',
+      'OWNER_POLICY=AUTO',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'ZERO_COST=true',
+      'NO_PC01_SHELL=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'NO_DIRECT_MAIN=true',
+      'RESOURCE_SCOPE=DISPLAY_STATE_TEST',
+      'CAPABILITY=reasoning',
+      'EXECUTION_SURFACE=CORE',
+      'CURRENT_STATE=WAIT_OPERATOR_WINDOW',
+    ].join('\n');
+    const row = parseOpenWorkIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody));
+    expect(row).toMatchObject({
+      status: 'WAITING',
+      displayState: 'WAITING',
+      executionEligibility: 'READY',
+      activeLease: false,
+      activeWorker: null,
+    });
+    expect(executionEligibilityForIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody))).toBe('READY');
+  });
+
+  it('classifies resource, dependency, owner and terminal gates independently from display state', () => {
+    expect(parseOpenWorkIssue(issue(3004, '[P1] Review resource unavailable', [
+      'PRIORITY=P1',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_UNTIL_REVIEW_RESOURCE',
+      'CURRENT_STATE=BLOCKED_REVIEW_RESOURCE',
+      'REARM_ONLY=RESOURCE_STATE_CHANGE|NEW_EVIDENCE',
+    ].join('\n')))).toMatchObject({
+      displayState: 'BLOCKED',
+      executionEligibility: 'ELIGIBLE_AFTER_RESOURCE',
+      rearmCondition: 'RESOURCE_STATE_CHANGE|NEW_EVIDENCE',
+    });
+
+    expect(parseOpenWorkIssue(issue(3005, '[P1] Dependency wait', [
+      'PRIORITY=P1',
+      'TIGERIQ_EXECUTABLE=false',
+      'CURRENT_STATE=WAIT_DEPENDENCY',
+      'DEPENDENCY_STATUS=WAIT',
+    ].join('\n')))).toMatchObject({ executionEligibility: 'PARKED_DEPENDENCY' });
+
+    expect(parseOpenWorkIssue(issue(3006, '[P1] Owner gate', [
+      'PRIORITY=P1',
+      'CURRENT_STATE=OWNER_REVIEW_REQUIRED',
+      'OWNER_APPROVAL_REQUIRED=true',
+    ].join('\n')))).toMatchObject({ executionEligibility: 'HARD_GATE' });
+
+    expect(executionEligibilityForIssue(issue(3007, '[P1] Terminal marker', [
+      'PRIORITY=P1',
+      'CURRENT_STATE=DONE',
+      'TIGERIQ_EXECUTABLE=false',
+    ].join('\n')))).toBe('TERMINAL');
+  });
+
+  it('exposes only evidence-backed active worker and heartbeat fields', () => {
+    const row = parseOpenWorkIssue(issue(3008, '[P1] Live worker', 'PRIORITY=P1\nCURRENT_STATE=WORKING'), {
+      active: {
+        status: 'WORKING',
+        employeeId: 'NV12',
+        currentStep: 'Đang xử lý',
+        live: true,
+        updatedAt: '2026-10-06T14:20:00Z',
+      },
+    });
+    expect(row).toMatchObject({
+      displayState: 'WORKING',
+      activeWorker: 'NV12',
+      activeLease: true,
+      heartbeatFresh: true,
+      nextAction: null,
+    });
   });
 
   it('does not expose VY mutation ownership as the executor of a non-executable Owner goal', () => {
