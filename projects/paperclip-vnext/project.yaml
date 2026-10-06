@@ -1,0 +1,13 @@
+schema: tigeriq.project.v2
+id: paperclip-vnext
+name: Paperclip vNext
+kind: project
+source_roots:
+  - docs
+workstreams:
+  - id: shadow
+    name: Đánh giá song song
+  - id: orchestration
+    name: Điều phối
+  - id: experiments
+    name: Thử nghiệm
