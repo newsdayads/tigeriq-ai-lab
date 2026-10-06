@@ -28,6 +28,7 @@ public final class WorkerUpdateEngine {
     public static final String KEY_SESSION_ID = "sessionId";
     public static final String KEY_LAST_CHECK_AT = "lastCheckAt";
     public static final String KEY_LAST_PACKAGE_REPLACED_AT = "lastPackageReplacedAt";
+    public static final String KEY_STATE_AT = "stateAt";
     public static final String KEY_USER_INITIATED = "userInitiated";
     public static final String KEY_EXPECTED_SHA256 = "expectedSha256";
     public static final String KEY_EXPECTED_SIGNER_SHA256 = "expectedSignerSha256";
@@ -138,12 +139,39 @@ public final class WorkerUpdateEngine {
     }
 
     private static boolean installPending(Context context) {
-        String state = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_STATE, "");
-        return "INSTALL_COMMITTED".equals(state)
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String state = prefs.getString(KEY_STATE, "");
+        boolean pending = "INSTALL_COMMITTED".equals(state)
             || "PENDING_USER_ACTION".equals(state)
             || "PENDING_USER_ACTION_OPENED".equals(state)
             || "INSTALL_SUCCESS_CALLBACK".equals(state);
+        if (!pending) return false;
+
+        int sessionId = prefs.getInt(KEY_SESSION_ID, -1);
+        long stateAt = prefs.getLong(KEY_STATE_AT, 0L);
+        boolean sessionAlive = false;
+        if (sessionId >= 0) {
+            try {
+                sessionAlive = context.getPackageManager().getPackageInstaller().getSessionInfo(sessionId) != null;
+            } catch (RuntimeException ignored) {
+                sessionAlive = false;
+            }
+        }
+        long ageMs = stateAt > 0 ? Math.max(0L, System.currentTimeMillis() - stateAt) : Long.MAX_VALUE;
+        boolean stale = !sessionAlive || ageMs > 10 * 60 * 1000L;
+        if (stale) {
+            prefs.edit()
+                .putString(KEY_STATE, "STALE_INSTALL_SESSION_RECOVERED")
+                .putString(KEY_LAST_ERROR, "")
+                .putInt(KEY_SESSION_ID, -1)
+                .putLong(KEY_STATE_AT, System.currentTimeMillis())
+                .apply();
+            synchronized (OPERATION_GATE) {
+                updateInProgress = false;
+            }
+            return false;
+        }
+        return true;
     }
 
     public static void endTaskLease() {
@@ -183,6 +211,7 @@ public final class WorkerUpdateEngine {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_STATE, state)
             .putString(KEY_LAST_ERROR, safe(error))
+            .putLong(KEY_STATE_AT, System.currentTimeMillis())
             .apply();
         if (state != null && (state.startsWith("INSTALL_FAILED_")
             || "UPDATE_FAILED".equals(state)
@@ -198,6 +227,7 @@ public final class WorkerUpdateEngine {
             .putString(KEY_STATE, "UPDATED_AND_RESUMED")
             .putString(KEY_LAST_ERROR, "")
             .putLong(KEY_LAST_PACKAGE_REPLACED_AT, System.currentTimeMillis())
+            .putLong(KEY_STATE_AT, System.currentTimeMillis())
             .apply();
         synchronized (OPERATION_GATE) {
             updateInProgress = false;
@@ -337,6 +367,7 @@ public final class WorkerUpdateEngine {
             .putBoolean(KEY_USER_INITIATED, userInitiated)
             .putString(KEY_EXPECTED_SHA256, expectedSha256)
             .putString(KEY_EXPECTED_SIGNER_SHA256, expectedSigner)
+            .putLong(KEY_STATE_AT, System.currentTimeMillis())
             .apply();
     }
 
