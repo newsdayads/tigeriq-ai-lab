@@ -121,6 +121,7 @@ a{color:inherit;text-decoration:none}
 .summary-note{font-size:10px;color:#8198b1}.summary-tile{display:flex;flex-direction:column;justify-content:center;gap:3px}.summary-tile b{font-size:20px}.summary-tile span{font-size:10px;color:#91a4ba}
 .progress.unverified{color:#71849a}.progress.unverified .progress-track{background:repeating-linear-gradient(90deg,#16283b 0 12px,#1b3047 12px 20px)}.progress.unverified .progress-fill{display:none}.progress.unverified .progress-text{min-width:78px;color:#91a4ba}
 .work-next,.work-blocker{font-size:10.75px;line-height:1.4;margin-top:4px;color:#8fa5bc}.work-next b{color:#bcd0e4}.work-blocker{color:#ff9fa7}.work-blocker b{color:#ffb8bf}
+.work-execution{font-size:10.5px;line-height:1.45;margin-top:5px;color:#9cb2c8}.work-execution b{color:#c8daec}.mc-job-execution{display:block;margin-top:4px;color:#8fa5bc;font-size:10px;line-height:1.35}
 .work-row.status-working{animation:working-live 2.8s ease-in-out infinite}
 @keyframes working-live{0%,100%{box-shadow:0 8px 24px rgba(0,0,0,.12)}50%{box-shadow:0 8px 24px rgba(0,0,0,.12),0 0 0 1px rgba(70,212,143,.16),0 0 18px rgba(70,212,143,.08)}}
 .drawer-backdrop{position:fixed;inset:0;background:rgba(2,8,16,.54);backdrop-filter:blur(2px);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s ease}
@@ -736,6 +737,22 @@ function shortNext(row){
     return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw;
   }
   return workStatus(row)==='OWNER_GATE'?'Duyệt quyết định':'Chưa xác định';
+}
+const executionLabelMap={
+  READY:'SẴN SÀNG CHẠY',
+  ELIGIBLE_AFTER_RESOURCE:'TỰ CHẠY KHI CÓ TÀI NGUYÊN',
+  PARKED_DEPENDENCY:'CHỜ ĐIỀU KIỆN',
+  HARD_GATE:'CẦN ANH SƠN',
+  TERMINAL:'ĐÃ KẾT THÚC'
+};
+function executionLabel(row){const key=String(row?.executionEligibility||'').trim().toUpperCase();return executionLabelMap[key]||'CHƯA XÁC MINH'}
+function activeHolder(row){const value=String(row?.activeWorker||'').trim().toUpperCase();return /^(?:NV\d{2}|CODEX|AUTO)$/.test(value)?value:'chưa giữ AI'}
+function executionWaitReason(row){
+  const value=String(row?.waitReason||'').trim();
+  if(value)return value;
+  return ['ELIGIBLE_AFTER_RESOURCE','PARKED_DEPENDENCY','HARD_GATE'].includes(String(row?.executionEligibility||'').trim().toUpperCase())
+    ?'Chưa có lý do chờ xác minh'
+    :'Không có';
 }
 function normalizeRows(value){
   const fallbackOpen=()=>{
@@ -1432,6 +1449,7 @@ function missionCard(row){
     +'<div class="mc-job-head"><span>#'+Number(row.number)+'</span><span class="priority '+String(workPriority(row)).toLowerCase()+'">'+esc(workPriority(row))+'</span>'+live+'<em>'+esc(worker)+'</em></div>'
     +'<strong>'+esc(displayTitle(row.title))+'</strong>'
     +'<p>'+esc(row?.currentStep||stateLabel[status]||status)+'</p>'
+    +'<small class="mc-job-execution">AI giữ: '+esc(activeHolder(row))+' · Quyền chạy: '+esc(executionLabel(row))+'</small>'
     +(blocker?'<div class="mc-job-blocker">⚠ '+esc(blocker)+'</div>':'')
     +'<footer><span>'+esc(ownerAgeText(row?.updatedAt))+'</span><b>→ '+esc(next)+'</b></footer>'
     +'</button>';
@@ -1593,7 +1611,7 @@ function effectiveBlocker(row){
 }
 function populateDrawer(row){
   drawerRow=row;
-  $('drawerKicker').textContent='#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row));
+  $('drawerKicker').textContent='#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row);
   $('drawerTitle').textContent=displayTitle(row.title);
   $('drawerProgress').innerHTML=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
@@ -1667,16 +1685,18 @@ function render(){
     const doneText=String(row?.latestCompletedStep||'').trim();
     const nextText=shortNext(row);
     const blockerText=effectiveBlocker(row).trim();
+    const executionText=executionLabel(row),activeHolderText=activeHolder(row),waitReasonText=executionWaitReason(row);
+    const executionLine='<div class="work-execution"><b>AI giữ:</b> '+esc(activeHolderText)+' · <b>Quyền chạy:</b> '+esc(executionText)+' · <b>Lý do chờ:</b> '+esc(waitReasonText)+'</div>';
     const nextLine='<div class="work-next"><b>Bước tới:</b> '+esc(nextText)+'</div>';
     const blockerLine=blockerText?'<div class="work-blocker"><b>Blocker:</b> '+esc(blockerText)+'</div>':'';
-    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+nextText+'|'+blockerText;
+    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText;
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
     const projectLabel=String(row?.projectName||'Chưa phân dự án').trim();
     const workstreamLabel=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
     const jobLabel=String(row?.jobId||('GH-'+row.number)).trim();const workPath='<div class="work-path"><b>'+esc(projectLabel)+'</b><span>→</span><b>'+esc(workstreamLabel)+'</b><span>→</span><b>JOB '+esc(jobLabel)+'</b></div>';
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div>'+workPath+'<div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div>'+workPath+'<div class="work-title">'+esc(title)+'</div>'+progress+summary+executionLine+nextLine+blockerLine+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);

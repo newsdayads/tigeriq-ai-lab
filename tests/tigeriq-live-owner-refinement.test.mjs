@@ -82,4 +82,14 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('.work-row.status-working');
     expect(html).toContain('recently-updated');
   });
+
+  it('shows display state separately from execution eligibility on work cards', () => {
+    expect(html).toContain('executionLabelMap');
+    expect(html).toContain('SẴN SÀNG CHẠY');
+    expect(html).toContain('TỰ CHẠY KHI CÓ TÀI NGUYÊN');
+    expect(html).toContain('<b>AI giữ:</b>');
+    expect(html).toContain('<b>Quyền chạy:</b>');
+    expect(html).toContain('<b>Lý do chờ:</b>');
+    expect(html).toContain('<b>Bước tới:</b>');
+  });
 });
