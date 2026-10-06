@@ -19,7 +19,7 @@ describe('RDC updater post-reboot self-heal', () => {
 
   it('lets Bootstrap Watchdog recreate and immediately start a missing updater task', async () => {
     const source = await readFile(watchdogUrl, 'utf8');
-    expect(source).toContain('TIGERIQ_UPDATER_TASK_SELF_HEAL_V1');
+    expect(source).toContain('TIGERIQ_UPDATER_TASK_SELF_HEAL_V2');
     expect(source).toContain("function Ensure-UpdaterTask()");
     expect(source).toContain("Register-ScheduledTask -TaskName $updaterTask");
     expect(source).toContain("Start-ScheduledTask -TaskName $updaterTask");
@@ -30,6 +30,17 @@ describe('RDC updater post-reboot self-heal', () => {
     expect(source).toContain('Stop-ExactUpdaterProcesses');
     expect(source).toContain("Stop-ScheduledTask -TaskName $t.task");
     expect(source).toContain("Start-ScheduledTask -TaskName $t.task");
+  });
+
+  it('reconciles an existing disabled or stale updater task before evaluating health', async () => {
+    const source = await readFile(watchdogUrl, 'utf8');
+    expect(source).toContain("elseif($t.key -eq 'updater')");
+    expect(source).toContain("Set-ScheduledTask -TaskName $updaterTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal");
+    expect(source).toContain("Enable-ScheduledTask -TaskName $updaterTask");
+    expect(source).toContain("UPDATER_TASK_ENABLED");
+    expect(source).toContain("UPDATER_TASK_CONTRACT_REPAIRED");
+    expect(source).toContain("TASK_PRESENT_HEALTHY_CONTRACT");
+    expect(source).toContain("UPDATER_TASK_RECONCILE_");
   });
   it('reconciles RDC lifecycle to one launcher plus one local MCP child with a one-shot generation marker', async () => {
     const source = await readFile(updaterUrl, 'utf8');
