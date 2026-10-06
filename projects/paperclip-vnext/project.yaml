@@ -1,0 +1,17 @@
+schema: tigeriq.project.v2
+id: paperclip-vnext
+name: Paperclip vNext
+kind: project
+order: 50
+source_roots:
+  - docs
+workstreams:
+  - id: shadow
+    name: Shadow evaluation
+    order: 10
+  - id: orchestration
+    name: Điều phối
+    order: 20
+  - id: experiments
+    name: Thử nghiệm
+    order: 30

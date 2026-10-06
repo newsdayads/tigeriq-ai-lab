@@ -9,17 +9,25 @@ describe('TigerIQ Live Owner Clean View #3833', () => {
     expect(publicHtml).toBe(rootHtml);
   });
 
-  it('keeps Project → Work Package → Live Flow as the primary Owner surface', () => {
+  it('keeps Project → Workstream → Job flow as the primary Owner surface', () => {
     expect(rootHtml).toContain('function projectPickerHtml(projects,selected)');
     expect(rootHtml).toContain('function ownerCleanPackageTabs(packages,selected)');
     expect(rootHtml).toContain('function ownerCleanStages(pack,focus)');
     expect(rootHtml).toContain('class="owner-clean-board"');
     expect(rootHtml).toContain('class="owner-clean-flow"');
-    expect(rootHtml).toContain('Giao việc');
+    expect(rootHtml).toContain('Nhận việc');
     expect(rootHtml).toContain('Điều phối');
     expect(rootHtml).toContain('Thực hiện');
     expect(rootHtml).toContain('Kiểm tra');
     expect(rootHtml).toContain('Kết quả');
+    expect(rootHtml).toContain('NHÁNH CÔNG VIỆC');
+  });
+
+
+  it('shows Project → Workstream → Job breadcrumbs in the raw work list', () => {
+    expect(rootHtml).toContain('class="work-path"');
+    expect(rootHtml).toContain("row?.workstreamName||row?.workPackageName");
+    expect(rootHtml).toContain("row?.jobId||('GH-'+row.number)");
   });
 
   it('keeps the Owner flow primary while exposing the Work list by default', () => {

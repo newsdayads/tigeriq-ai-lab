@@ -1,29 +1,33 @@
-# TigerIQ LIVE — Project / Work Package / Task / Evidence V1
+# TigerIQ LIVE — Portfolio / Project / Workstream / Job / Evidence V2
 
 ## Authority
 Owner approval: 2026-10-04. Canonical implementation Work Order: #3730.
 
 ## Locked owner-facing hierarchy
-`Project → Work Package (việc lớn) → Task (việc nhỏ) → Evidence`.
+`Portfolio → Project → Workstream (nhánh việc) → Job → Evidence`.
 
-- **Project**: nhóm sản phẩm/hệ thống lớn, không đồng nghĩa GitHub issue.
-- **Work Package**: một kết quả/mốc lớn mà Owner có thể hiểu và theo dõi.
-- **Task**: bước thực thi/review/verify/release nằm trong Work Package.
-- **Evidence**: issue, PR, SHA, checks, logs, artifact; ẩn khỏi màn hình chính, chỉ hiện khi drill-down.
+- **Portfolio**: toàn bộ danh mục TigerIQ.
+- **Project**: sản phẩm/dự án có mục tiêu riêng, không đồng nghĩa GitHub issue.
+- **Workstream**: nhánh công việc bền vững bên trong một Project.
+- **Job**: GitHub Issue/Work Order cụ thể được nhận, thực hiện, review, publish/verify và đóng.
+- **Evidence**: PR, SHA, checks, logs, artifact; chỉ là bằng chứng của Job.
+- **Platform**: nền tảng dùng chung (Core/Router/Workforce/Observability), được nhóm riêng và không giả thành product project.
 
 ## Current canonical projects
-1. TigerIQ AI Lab
-2. TigerIQ Mobile Worker
-3. TigerIQ News — tên canonical; “TigerIQ Media” chỉ là historical alias.
+1. TigerIQ Mobile Worker
+2. TigerIQ News — tên canonical; “TigerIQ Media” chỉ là historical alias.
+3. TigerIQ Live
 4. Paperclip vNext
 5. Revenue Lab
+
+Nhóm dùng chung: **Nền tảng TigerIQ** (`kind=platform`) cho Core / Router / Workforce / Auto-RCA.
 
 Dự án mới không được hard-code vào UI. Issue mới có thể khai báo:
 ```
 PROJECT_ID=<stable-slug>
 PROJECT_NAME=<owner-facing-name>
-WORK_PACKAGE_ID=<stable-slug>
-WORK_PACKAGE_NAME=<owner-facing-name>
+WORKSTREAM_ID=<stable-slug>
+WORKSTREAM_NAME=<owner-facing-name>\nJOB_ID=<stable-job-id>\nASSIGNEE=<NVxx|Owner>\nDEPENDENCIES=<#issue,...>\nNEXT_ACTION=<owner-facing-next-action>
 ```
 Các field explicit có quyền cao hơn fallback legacy classifier.
 
@@ -85,3 +89,14 @@ Superseded/legacy vẫn giữ ở technical/raw detail nhưng không làm bẩn 
 - Raw issue/PR/SHA/evidence vẫn truy cập được.
 - Tests/checks/review đạt trước merge.
 - Chỉ publish production sau verified preview/real-surface gate theo authorization #3730.
+
+
+## Cấu trúc thư mục chuẩn
+- Product project: `projects/<project-id>/project.yaml` + `workstreams/`
+- Shared platform: `platform/<platform-area>/project.yaml`
+- Không tạo thư mục theo issue/version chỉ để phản ánh backlog.
+- `WORK_PACKAGE_*` tiếp tục được đọc như alias tương thích ngược cho `WORKSTREAM_*`.
+
+## Owner-facing work list
+Mỗi Job phải có thể hiển thị tối thiểu:
+`Dự án → Nhánh → JOB → Người nhận → Trạng thái → Bước hiện tại → Bước tiếp theo`.

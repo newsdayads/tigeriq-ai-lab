@@ -1,0 +1,20 @@
+schema: tigeriq.project.v2
+id: tigeriq-mobile-worker
+name: TigerIQ Mobile Worker
+kind: project
+order: 20
+source_roots:
+  - apps/android-worker
+workstreams:
+  - id: app
+    name: Ứng dụng
+    order: 10
+  - id: runtime
+    name: Runtime thiết bị
+    order: 20
+  - id: release
+    name: Phát hành
+    order: 30
+  - id: observability
+    name: Quan sát
+    order: 40

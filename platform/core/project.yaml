@@ -1,0 +1,20 @@
+schema: tigeriq.project.v2
+id: tigeriq-platform
+name: Nền tảng TigerIQ
+kind: platform
+order: 10
+source_roots:
+  - apps/tigeriq-core
+  - apps/openclaw-tigeriq-runtime
+  - packages
+  - api
+workstreams:
+  - id: core-router-workforce
+    name: Core / Điều phối & Nhân sự
+    order: 10
+  - id: observability
+    name: Quan sát hệ thống
+    order: 20
+  - id: auto-rca-observability
+    name: Auto-RCA & Quan sát
+    order: 30
