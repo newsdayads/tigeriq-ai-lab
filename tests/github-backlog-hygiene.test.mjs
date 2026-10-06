@@ -105,12 +105,19 @@ test('deep hygiene findings detect duplicate, terminal executable, stale lease a
     issue(102,body({objective:'terminal',scope:'TERMINAL_SCOPE',extra:'DONE=true\nTIGERIQ_EXECUTABLE=true\nAUTO_QUEUE=INCLUDED'})),
     issue(103,body({objective:'stale',scope:'STALE_SCOPE',extra:'MUTATION_OWNER=NV02\nLEASE_UNTIL=2026-10-06T17:00:00Z'})),
     issue(104,body({objective:'parked',scope:'PARKED_SCOPE',extra:'MUTATION_OWNER=NV02\nCURRENT_STATE=WAIT_DEPENDENCY'})),
+    issue(105,body({objective:'orphan',scope:'ORPHAN_SCOPE',extra:'MUTATION_OWNER=NV02\nACTIVE_LEASE=false'})),
+    issue(106,body({objective:'parent',scope:'PARENT_SCOPE',extra:'ACTIVE_CHILD=#107'})),
+    issue(107,body({objective:'child',scope:'CHILD_SCOPE'}),'[P2] child','closed'),
+    issue(108,body({objective:'closed-terminal',scope:'CLOSED_SCOPE',extra:'TIGERIQ_EXECUTABLE=true'}),'[P2] closed terminal','closed'),
   ];
   const findings=backlogHygieneFindings(rows,now);
   assert.deepEqual(findings.duplicates.map((x)=>[x.issueNumber,x.canonicalIssueNumber]),[[101,100]]);
   assert.deepEqual(findings.terminalExecutable.map((x)=>x.issueNumber),[102]);
   assert.deepEqual(findings.staleLeases.map((x)=>x.issueNumber),[103]);
   assert.deepEqual(findings.parkedHoldingLease.map((x)=>x.issueNumber),[104]);
+  assert.deepEqual(findings.orphanLeases.map((x)=>x.issueNumber),[105]);
+  assert.deepEqual(findings.parentChildDrift.map((x)=>[x.issueNumber,x.childIssueNumber]),[[106,107]]);
+  assert.deepEqual(findings.closedExecutableMarkers.map((x)=>x.issueNumber),[108]);
 });
 
 test('historical DONE=true below current DONE=false does not create terminal finding',()=>{
