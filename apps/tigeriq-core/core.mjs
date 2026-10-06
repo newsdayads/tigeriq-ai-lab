@@ -14,6 +14,7 @@ import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
+import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
@@ -1510,6 +1511,7 @@ async function claimJob() {
     return claimed;
   } catch(e){await c.query('rollback');throw e;} finally{c.release();}
 }async function runJob(j) {
+  let skillRoutingPreflight=null;
   try {
     await hotPathStage(j,'WORKING');
     if(j.capability==='pc_operator'){if(directPcOperatorAction(j))await runDirectPcOperatorJob(j);else await runOpenClawOperatorJob(j);return;}
@@ -1524,19 +1526,47 @@ async function claimJob() {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
+    const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
+    let jobSkillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
+    let skillRegistryError=null;
+    try{
+      jobSkillContext=matchAndLoadSkills(skillObjectiveText);
+    }catch(error){
+      skillRegistryError=String(error?.message||error).slice(0,240);
+      await event('SKILL_ROUTING_REGISTRY_REJECTED',{objectiveId:j.objective_id,jobId:j.id,reason:skillRegistryError});
+    }
+    skillRoutingPreflight=buildSkillRoutingPreflight({
+      jobId:j.id,
+      objectiveText:skillObjectiveText,
+      skillContext:jobSkillContext,
+      requiredCapability:j.capability,
+      reviewerResourceIds,
+      registryError:skillRegistryError,
+    });
+    await event('SKILL_ROUTING_PREFLIGHT',{objectiveId:j.objective_id,...skillRoutingPreflight});
+    if(jobSkillContext.skipped.length){
+      await event('SKILL_CONTEXT_SKIPPED',{objectiveId:j.objective_id,jobId:j.id,skipped:jobSkillContext.skipped.map(x=>({id:x.id,reason:x.reason}))});
+    }
+    const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?['NV10','NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
-    const routed=await invokeRouted(j.prompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    const routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    const skillRoutingChain=finalizeSkillRoutingPreflight(skillRoutingPreflight,{resource:routed.resource,routingDecision:routed.routingDecision,failures:routed.failures});
+    await event('SKILL_ROUTING_CHAIN',{objectiveId:j.objective_id,...skillRoutingChain});
     const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
-    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
     if(hadResourceWait)await event('RESOURCE_WAIT_RELEASED',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai'});
     await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,taskKind:j.kind||'ai',profile:routed.routingProfile});
     await hotPathStage(j,'DONE');
   } catch(error) {
     const message=String(error?.message||error);
     const failures=Array.isArray(error?.failures)?error.failures:[];
+    if(skillRoutingPreflight){
+      const parkedSkillRouting=finalizeSkillRoutingPreflight(skillRoutingPreflight,{failures,unavailableReason:message});
+      await event('SKILL_ROUTING_PARKED',{objectiveId:j.objective_id,...parkedSkillRouting});
+    }
     if(j.capability==='pc_operator'){
       const current=(await pool.query('select attempts,max_attempts from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const attempts=Math.max(0,Number(current.attempts)||0);
