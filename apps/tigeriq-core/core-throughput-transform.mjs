@@ -26,6 +26,10 @@ const CORE_REFRESH_TO=`    if(r.provider==='openclaw')await pool.query("update t
   liveHealthyResourceCount=Math.max(0,Number(liveCapacity)||0);
 }`;
 
+function normalizeSource(value){
+  return String(value??'').replace(/\r\n?/g,'\n');
+}
+
 function replaceOnce(source,from,to,label){
   const first=source.indexOf(from);
   if(first<0)throw new Error('CORE_THROUGHPUT_PATCH_MISSING:'+label);
@@ -39,7 +43,7 @@ export function parallelLimitFromHealthyCount(value){
 }
 
 export function transformCoreSource(value){
-  let source=String(value??'');
+  let source=normalizeSource(value);
   source=replaceOnce(source,CORE_IDLE_FROM,CORE_IDLE_TO,'manager_idle');
   source=replaceOnce(source,CORE_SCHEMA_FROM,CORE_SCHEMA_TO,'manager_schema');
   source=replaceOnce(source,CORE_POOL_FROM,CORE_POOL_TO,'db_pool');
@@ -50,7 +54,7 @@ export function transformCoreSource(value){
 }
 
 export function transformManagerJsonSource(value){
-  let source=String(value??'');
+  let source=normalizeSource(value);
   source=replaceOnce(source,"function managerError(code,cause){const error=new Error(code);error.code=code;error.kind='invalid_response';if(cause)error.cause=cause;return error;}","function managerError(code,cause){const error=new Error(code);error.code=code;error.kind='invalid_response';if(cause)error.cause=cause;return error;}\nconst MAX_MANAGER_JOBS=Math.max(1,Math.min(6,Number(process.env.TIGERIQ_MANAGER_MAX_JOBS||6)));",'manager_json_limit');
   source=replaceOnce(source,"value.jobs.length > 3","value.jobs.length > MAX_MANAGER_JOBS",'manager_json_validate');
   source=replaceOnce(source,"value.jobs.slice(0, 3)","value.jobs.slice(0, MAX_MANAGER_JOBS)",'manager_json_slice');
