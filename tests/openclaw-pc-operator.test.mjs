@@ -14,6 +14,7 @@ import {
   readCoreStatus,
   readCodingIssueStatus,
   coreRestartReplacementAccepted,
+  taskActionSuccessStatus,
 } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 import { PAD_UI_ACTIONS, assertPadUiRequest, parsePadBrokerJson } from '../apps/openclaw-tigeriq-runtime/pad-ui.mjs';
 import {
@@ -280,6 +281,13 @@ describe('OpenClaw PC01 guarded local operator', () => {
   it('limits scheduled-task actions to TigerIQ task names', () => {
     expect(assertTigerIQTaskName('TigerIQ OpenClaw Gateway')).toBe('TigerIQ OpenClaw Gateway');
     expect(() => assertTigerIQTaskName('Microsoft\\Windows\\Defrag\\ScheduledDefrag')).toThrow('TIGERIQ_PC_TASK_NOT_ALLOWED');
+  });
+
+  it('publishes deterministic success status for trusted scheduled-task actions', () => {
+    expect(taskActionSuccessStatus('task_start')).toBe('TASK_START_VERIFIED');
+    expect(taskActionSuccessStatus('task_stop')).toBe('TASK_STOP_VERIFIED');
+    expect(taskActionSuccessStatus('task_restart')).toBe('TASK_RESTART_VERIFIED');
+    expect(() => taskActionSuccessStatus('task_status')).toThrow('TIGERIQ_PC_TASK_STATUS_ACTION_NOT_ALLOWED');
   });
 
   it('trusts task-action data only with literal subprocess success and verified post-action state', () => {
