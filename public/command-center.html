@@ -1202,8 +1202,8 @@ function render(){
     lastVisualState.set(Number(row.number),signature);
     const projectLabel=String(row?.projectName||'Chưa phân dự án').trim();
     const workstreamLabel=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
-    const workPath='<div class="work-path"><b>'+esc(projectLabel)+'</b><span>→</span><b>'+esc(workstreamLabel)+'</b><span>→</span><b>JOB #'+esc(row.number)+'</b></div>';
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div>'+workPath+'<div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
+    const jobLabel=String(row?.jobId||('GH-'+row.number)).trim();const workPath='<div class="work-path"><b>'+esc(projectLabel)+'</b><span>→</span><b>'+esc(workstreamLabel)+'</b><span>→</span><b>JOB '+esc(jobLabel)+'</b></div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'">'+esc(label)+'</span></div>'+workPath+'<div class="work-title">'+esc(title)+'</div>'+progress+summary+nextLine+blockerLine+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
