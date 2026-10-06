@@ -40,7 +40,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 2949, title: '[P3][ANDROID] Mobile Worker v0.21', workKind: 'WORK', status: 'WAITING' },
       { number: 3683, parentNumber: 2949, title: '[P1][ANDROID][LIVE] v0.22 Live Worker', workKind: 'WORK', status: 'WORKING' },
     ]);
-    expect(rows.find((row) => row.number === 3753)?.workPackageId).toBe('live-ui');
+    expect(rows.find((row) => row.number === 3753)?.workPackageId).toBe('owner-ui');
     expect(rows.find((row) => row.number === 3683)?.workPackageId).toBe('mobile-v0-22');
   });
 
