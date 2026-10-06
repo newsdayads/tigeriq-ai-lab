@@ -125,7 +125,7 @@ export function useSkill(id, input = {}) {
     jobId: input?.jobId || `legacy-${legacySequence}`,
     version: input?.version || 'legacy',
     outcome: success ? 'completed' : 'failed',
-    verified: input?.verified ?? true,
+    verified: input?.verified === false ? false : true,
     evidenceRef: input?.evidenceRef || `legacy:${legacySequence}`,
   });
   return { id, success, dedupeKey: result.observation.dedupeKey };
