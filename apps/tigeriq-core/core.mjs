@@ -249,7 +249,11 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
   let requestPrompt=String(prompt??'');
   let groq413RetryUsed=false;
   while(true){
-    const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...(host==='openrouter.ai'?{reasoning:{enabled:false}}:{}), ...managerProviderBodyForHost(host,prompt) };
+    const providerBody=managerProviderBodyForHost(host,prompt);
+    const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...(host==='openrouter.ai'?{reasoning:{enabled:false}}:{}), ...providerBody };
+    if(host==='integrate.api.nvidia.com'){
+      requestBody.chat_template_kwargs={...(providerBody.chat_template_kwargs||{}),force_nonempty_content:true};
+    }
     const responseFormat=managerResponseFormatForHost(host,prompt);
     if(responseFormat){
       requestBody.response_format=responseFormat;
