@@ -945,6 +945,53 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     if(!reviewOk)continue;
     return {repairPrNumber:prNumber,codingObjectiveId:'OWNER_PROXY_GITHUB_PR',evidenceSource:'owner_proxy_cross_reference'};
   }
+  const issueComments=await fetchJson(`${base}/issues/${issueNumber}/comments?per_page=100`,{headers},10000);
+  const durableTexts=[body,...(Array.isArray(issueComments)?issueComments.map(comment=>String(comment?.body||'')):[])];
+  const durablePrNumbers=[];
+  const durableReviewIssueNumbers=[];
+  for(const evidenceText of durableTexts){
+    for(const match of evidenceText.matchAll(/^(?:SOURCE_FIX_PR|PR)=#?(\d+)\b/gm)){
+      const value=Number(match[1]); if(Number.isInteger(value)&&value>0&&!durablePrNumbers.includes(value))durablePrNumbers.push(value);
+    }
+    for(const match of evidenceText.matchAll(/^(?:INDEPENDENT_REVIEW|SOURCE_FIX_REVIEW)=#?(\d+)\|(?:PASS|ĐẠT)\b/gm)){
+      const value=Number(match[1]); if(Number.isInteger(value)&&value>0&&!durableReviewIssueNumbers.includes(value))durableReviewIssueNumbers.push(value);
+    }
+  }
+  for(const prNumber of durablePrNumbers){
+    const pr=await fetchJson(`${base}/pulls/${prNumber}`,{headers},10000);
+    if(!(pr?.merged===true||pr?.merged_at)||String(pr?.base?.ref||'')!=='main')continue;
+    const headSha=apiDoctorSha(pr?.head?.sha);
+    if(!headSha)continue;
+    const files=await fetchJson(`${base}/pulls/${prNumber}/files?per_page=100`,{headers},10000);
+    if(!Array.isArray(files)||!files.length||files.length>=100)continue;
+    const scopeOk=files.every(file=>allowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
+    if(!scopeOk)continue;
+    const prComments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
+    let reviewOk=(Array.isArray(prComments)?prComments:[]).some(comment=>{
+      const reviewBody=String(comment?.body||'');
+      return reviewBody.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&/REVIEW=(?:PASS|ĐẠT)/.test(reviewBody)&&reviewBody.includes(`TARGET_HEAD=${headSha}`);
+    });
+    if(!reviewOk){
+      for(const reviewIssueNumber of durableReviewIssueNumbers){
+        const reviewIssue=await fetchJson(`${base}/issues/${reviewIssueNumber}`,{headers},10000);
+        if(String(reviewIssue?.state||'').toLowerCase()!=='closed'||String(reviewIssue?.state_reason||'').toLowerCase()!=='completed')continue;
+        const reviewBody=String(reviewIssue?.body||'');
+        const targetsPr=reviewBody.includes(`TARGET_PR=#${prNumber}`)||reviewBody.includes(`TARGET_PR=${prNumber}`);
+        const targetsHead=reviewBody.includes(`TARGET_HEAD=${headSha}`);
+        const independentContract=/^REVIEW_INDEPENDENT=true$/m.test(reviewBody)||/^REVIEWER_DIFFERENT_RESOURCE=true$/m.test(reviewBody)||/^INDEPENDENT_EVALUATION=true$/m.test(reviewBody);
+        if(!targetsPr||!targetsHead||!independentContract)continue;
+        const reviewComments=await fetchJson(`${base}/issues/${reviewIssueNumber}/comments?per_page=100`,{headers},10000);
+        reviewOk=(Array.isArray(reviewComments)?reviewComments:[]).some(comment=>{
+          const terminal=String(comment?.body||'');
+          const exactHead=terminal.includes(`TARGET_HEAD=${headSha}`)||terminal.includes(`"targetHead":"${headSha}"`);
+          const passed=/REVIEW=(?:PASS|ĐẠT)/.test(terminal)||/"decision":"(?:PASS|ĐẠT)"/.test(terminal);
+          return exactHead&&passed;
+        });
+        if(reviewOk)break;
+      }
+    }
+    if(reviewOk)return {repairPrNumber:prNumber,codingObjectiveId:'DURABLE_ISSUE_EVIDENCE',evidenceSource:'issue_durable_terminal_evidence'};
+  }
   return null;
 }
 async function apiDoctorRepairLifecycleEvidence(existingHandoff){
@@ -955,6 +1002,22 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const issue=await fetchJson(`${base}/issues/${issueNumber}`,{headers},10000);
   const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state:issue?.state,stateReason:issue?.state_reason});
   if(issueGate.action!=='validate_repair')return {ready:false,reason:issueGate.reason,issueNumber};
+
+  const issueBody=String(issue?.body||'');
+  const terminalNormalWorkRecovery=/^CURRENT_STATE=RECOVERED_BY_REAL_NORMAL_WORK$/m.test(issueBody)
+    &&/^SOURCE_CHANGE_REQUIRED=false$/m.test(issueBody)
+    &&/^RECOVERY_CONTRACT=SATISFIED_BY_LATER_NORMAL_CORE_WORK$/m.test(issueBody)
+    &&/^RECOVERY_EVIDENCE=.+$/m.test(issueBody)
+    &&/^DONE=true$/m.test(issueBody);
+  if(terminalNormalWorkRecovery){
+    const terminalAt=String(issue?.closed_at||'').trim();
+    if(!Number.isFinite(Date.parse(terminalAt)))return {ready:false,reason:'repair_terminal_recovery_time_unverified',issueNumber};
+    return {
+      ready:true,reason:'repair_issue_terminal_normal_work_recovery',issueNumber,repairPrNumber:0,
+      codingObjectiveId:'DURABLE_TERMINAL_NORMAL_WORK',repairEvidenceSource:'issue_terminal_normal_work',
+      repairRevision:null,deployedRevision:null,deployedAt:null,issueClosedAt:terminalAt,successAfterAt:terminalAt,
+    };
+  }
 
   const resultEvent=(await pool.query(
     "select data from tigeriq_events where type='GITHUB_CODING_RESULT_REPORTED' and data->>'issueNumber'=$1 and data->>'status'='completed' order by seq desc limit 1",
@@ -1138,7 +1201,8 @@ async function runApiDoctorScan(){
       if(lifecycle.deployedRevision)row.deployedRevision=lifecycle.deployedRevision;
       const validationEvidence=await apiDoctorPostRepairValidationEvidence(resource.resource_id,handoffCandidate.ts);
       const validationAttempts=validationEvidence.count;
-      if(validationEvidence.firstAt)row.repairTerminalAt=validationEvidence.firstAt;
+      const repairTerminalAt=validationEvidence.firstAt||lifecycle.successAfterAt||null;
+      if(repairTerminalAt)row.repairTerminalAt=repairTerminalAt;
       let successAfter=null;
       if(lifecycle.ready){
         const currentFailureSignature=apiDoctorRepairSignature({
@@ -1150,7 +1214,7 @@ async function runApiDoctorScan(){
         freshRecurrence=apiDoctorFreshRecurrence({
           currentFailureClass:plan.failureClass,
           currentFailureAt:latestFailure?.ts,
-          terminalAt:validationEvidence.firstAt,
+          terminalAt:repairTerminalAt,
           currentSignature:currentFailureSignature,
           priorSignature:handoffCandidate?.data?.signature||'',
         });
@@ -1160,7 +1224,7 @@ async function runApiDoctorScan(){
           row.recurrenceSignature=freshRecurrence.signature;
           handoffPlan={action:'proceed',reason:'fresh_recurrence_after_terminal_repair'};
         }else{
-          const recoveryAfterAt=validationEvidence.firstAt||lifecycle.successAfterAt;
+          const recoveryAfterAt=repairTerminalAt;
           successAfter=(await pool.query(
             "select ts,data from tigeriq_events where resource_id=$1 and type='RESOURCE_SUCCESS' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
             [resource.resource_id,recoveryAfterAt]
