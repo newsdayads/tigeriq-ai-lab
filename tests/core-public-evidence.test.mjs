@@ -233,6 +233,43 @@ describe('Core public evidence for direct PC receipts', () => {
   });
 
 
+  it('exports bounded updater watchdog health fields from a JSON file-read receipt',()=>{
+    const receipt={
+      schema:'TIGERIQ_BOOTSTRAP_WATCHDOG_V2',
+      updatedAt:'2026-10-07T03:30:00.000Z',
+      services:[{
+        key:'updater',
+        task:'TigerIQ Core Runtime Updater',
+        healthy:true,
+        taskRunning:true,
+        portsHealthy:true,
+        heartbeatFresh:true,
+        heartbeatAgeSec:42,
+        failures:0,
+        action:'none',
+        reason:'HEALTHY',
+        stoppedUpdaterPids:[],
+        token:'must-not-publish',
+      }],
+    };
+    const requested=['updatedAt','healthy','taskRunning','heartbeatFresh','heartbeatAgeSec','failures','action','reason'];
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'file_read',target:'pc01-local',data:{content:JSON.stringify(receipt)},
+    }}]}};
+    expect(parsePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS='+requested.join(','))).toEqual(requested);
+    expect(extractPublicEvidence(jobResult,requested)).toEqual({
+      updatedAt:'2026-10-07T03:30:00.000Z',
+      healthy:true,
+      taskRunning:true,
+      heartbeatFresh:true,
+      heartbeatAgeSec:42,
+      failures:0,
+      action:'none',
+      reason:'HEALTHY',
+    });
+    expect(JSON.stringify(extractPublicEvidence(jobResult,requested))).not.toContain('must-not-publish');
+  });
+
   it('exports only requested tcp_probe reachability fields',()=>{
     const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
       ok:true,action:'tcp_probe',target:'pc01-local',
