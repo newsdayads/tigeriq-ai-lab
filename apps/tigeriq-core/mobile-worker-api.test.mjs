@@ -392,6 +392,7 @@ describe('mobile worker api helpers',()=>{
     writeFileSync(path,JSON.stringify({
       versionCode:7,versionName:'0.7.0-core-mobile',sha256:'aa'.repeat(32),
       signerSha256:'11:22',fileName:'TIQ Worker v0.7.apk',channel:'DEV',
+      installMode:'MANAGED_PLAY',managedPackage:'ai.tigeriq.worker',
       apkPath:'D:\\TigerIQ\\Releases\\AndroidWorker\\TIQ Worker v0.7.apk',
       driveUrl:'https://drive.google.com/file/d/test/view',publishedAt:'2026-10-03T00:00:00Z'
     }));
@@ -399,6 +400,8 @@ describe('mobile worker api helpers',()=>{
     expect(manifest.available).toBe(true);
     expect(manifest.versionCode).toBe(7);
     expect(manifest.downloadPath).toBe('/api/mobile/update/apk');
+    expect(manifest.installMode).toBe('MANAGED_PLAY');
+    expect(manifest.managedPackage).toBe('ai.tigeriq.worker');
     expect(manifest.driveUrl).toContain('drive.google.com');
   });
 });
