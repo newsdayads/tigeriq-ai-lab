@@ -412,7 +412,8 @@ export function githubDependencyAdmissionBlocked(body){
 
 export function explicitAutoExecutionExclusion(body=''){
   const text=String(body||'');
-  if(hasExactFlag(text,'TIGERIQ_EXECUTABLE','false'))return 'EXPLICIT_EXECUTION_DISABLED';
+  const executable=bodyValue(text,'TIGERIQ_EXECUTABLE').trim().toLowerCase();
+  if(executable==='false')return 'EXPLICIT_EXECUTION_DISABLED';
   const autoQueue=bodyValue(text,'AUTO_QUEUE').trim().toUpperCase();
   if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return 'AUTO_QUEUE_EXCLUDED';
   return '';

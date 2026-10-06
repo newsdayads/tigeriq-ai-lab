@@ -255,6 +255,20 @@ test('mobile objectives are excluded from the generic Core manager lane',()=>{
   assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
 });
 
+test('safe P1-P5 admission uses the authoritative top TIGERIQ_EXECUTABLE marker',()=>{
+  const body=[
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    SAFE_AUTO_POLICY_BASE,
+    'TIGERIQ_EXECUTABLE=false',
+    'AUTO_QUEUE=EXCLUDED_EXTERNAL_WAIT',
+  ].join('\n');
+  const issue={number:4275,state:'open',title:'[P1][PC01][READONLY] authoritative rearm',body,labels:[],html_url:'https://example/4275'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},{eligible:true,reason:'SAFE_P1_P5_POLICY'});
+  assert.ok(parseExecutableIssue(issue));
+});
+
 test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
   const admission=safeAutoWorkAdmission(issue);
