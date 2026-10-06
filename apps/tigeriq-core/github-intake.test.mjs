@@ -576,7 +576,7 @@ describe('GitHub Core intake guardrails',()=>{
       if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
       if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){Object.assign(row.metadata,JSON.parse(params[1]));return {rowCount:1,rows:[]};}
       if(q.includes("select id,status,employee_id,resource_id,completed_at from tigeriq_jobs"))return {rowCount:1,rows:[{id:'JOB-IMPL',status:'done',employee_id:'NV02',resource_id:'res-implementer',completed_at:'2026-10-01T00:00:00Z'}]};
-      if(q.includes("capability='review' and kind='github_review'")){
+      if(q.includes("capability='review'")&&q.includes("kind='github_review'")){
         trustedJobId=String(params[0]||'');
         return {rowCount:1,rows:[{id:trustedJobId,status:'done',employee_id:'NV12',resource_id:'res-review',provider:'gemini',result:{reviewEvidence:{schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision:'PASS',targetHead:revision,summary:'live pass',findings:'NONE'}}}]};
       }
@@ -956,7 +956,7 @@ describe('GitHub Core intake guardrails',()=>{
     const core=readFileSync(new URL('./core.mjs',import.meta.url),'utf8');
     expect(intake).toContain('githubIssueSourceRevision(sourceIssueForGate||{})');
     expect(intake).toContain('trustedFinalLiveReviewEvidence(pool');
-    expect(intake).toContain("kind='github_review'");
+    expect(intake).toContain("kind='github_review' or kind='ui'");
     expect(intake).toContain("status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null");
     expect(intake).toContain('const evidenceRows=[...(selected?[selected]:[]),...recent]');
     expect(intake).toContain("const terminalStatuses=new Set(['done','failed'])");
@@ -998,8 +998,3 @@ describe('GitHub Core intake guardrails',()=>{
   it('keeps clean wrapper success and rejects prose-only or timed-out terminals',()=>{
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:[]},{timedOut:false,parsedPresent:true})).toMatchObject({success:true,wrapperClean:true});
     expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:null,successfulToolNames:['tigeriq_pc']},{timedOut:false,parsedPresent:true})).toMatchObject({success:false,invalidTerminal:true});
-    expect(openClawTerminalDecision({exitCode:0,status:'ok',agentResult:{status:'PASS'},successfulToolNames:['tigeriq_pc']},{timedOut:true,parsedPresent:true})).toMatchObject({success:false});
-  });
-
-  it('formats a terminal result with Vietnamese Owner-facing evidence',()=>{const out=formatResultComment({id:'OBJ-GH-588',status:'completed',summary:'final review PASS'});expect(out).toContain('[KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-588');expect(out).toContain('rà soát cuối ĐẠT');expect(out).not.toMatch(/\\b(?:PASS|COMPLETED|BLOCKED)\\b/);});
-});

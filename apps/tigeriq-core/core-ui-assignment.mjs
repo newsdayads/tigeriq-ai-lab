@@ -139,6 +139,11 @@ export function selectCoreUiWorker(capability='general'){
   return cap==='review'?'NV03':(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
 }
 
+function explicitUiWorkerRequested(body=''){
+  return ['TARGET_EMPLOYEE','ASSIGNED_EXECUTOR','PRIMARY_EMPLOYEE','PREFERRED_REVIEWER','OWNER_REVIEWER']
+    .some((key)=>String(value(body,key)||'').trim());
+}
+
 export function parseCoreUiIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
@@ -154,10 +159,11 @@ export function parseCoreUiIssue(issue){
   if(classification.route!=='UI'&&!coreReviewOverflow)return null;
   const explicitWorker=String(classification.workerId||'');
   const flexibleReview=classification.capability==='review'&&String(value(body,'CORE_TARGET_STRICT')||'').trim().toLowerCase()==='false';
+  const genericReviewOverflow=classification.capability==='review'&&readOnly===true&&classification.sourcePriority!=='P0'&&!explicitUiWorkerRequested(body);
   const implementers=new Set(['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','CODING_EXECUTOR']
     .map((key)=>String(value(body,key)||'').trim().toUpperCase())
     .filter((workerId)=>WORKERS.includes(workerId)));
-  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
+  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview||genericReviewOverflow)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
   if(!eligibleWorkerIds.length)return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
@@ -230,10 +236,10 @@ async function readIssue(fetchImpl,owner,repo,token,n){return gh(fetchImpl,'http
 async function readComments(fetchImpl,owner,repo,token,n,count){if(Number(count||0)<=0)return[];try{return await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token);}catch{return[];}}
 
 async function row(pool,{jobId,workerId}={}){
-  const params=[];let where="o.status='active' and o.metadata->>'executionSurface'='CORE_UI' and j.kind='ui' and j.status in ('ui_assigned','ui_running')";
+  const params=[];let where="o.status='active' and j.kind='ui' and j.status in ('ui_assigned','ui_running') and (o.metadata->>'executionSurface'='CORE_UI' or j.routing_decision->>'authority'='CORE_UI_FINAL_REVIEW')";
   if(jobId){params.push(jobId);where="j.id=$1 and j.kind='ui'";}
   else if(workerId){params.push(workerId);where+=" and j.employee_id=$1";}
-  const q=await pool.query("select j.id job_id,j.objective_id,j.status,j.employee_id,j.resource_id,j.provider,j.created_at,j.started_at,j.completed_at,j.result,j.routing_decision,o.priority,o.metadata,o.updated_at objective_updated_at from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where "+where+" order by j.created_at limit 1",params);
+  const q=await pool.query("select j.id job_id,j.objective_id,j.status,j.employee_id,j.resource_id,j.provider,j.prompt,j.created_at,j.started_at,j.completed_at,j.result,j.routing_decision,o.priority,o.metadata,o.updated_at objective_updated_at from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where "+where+" order by j.created_at limit 1",params);
   return q.rows[0]||null;
 }
 
@@ -388,11 +394,21 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
 }
 
 
+function parseInternalReviewEvidence(result='',prompt=''){
+  const raw=String(result||'').trim();
+  const expected=String(prompt||'').match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const decision=raw.match(/^REVIEW=(PASS|CHANGES_REQUIRED)$/mi)?.[1]?.toUpperCase()||'';
+  const targetHead=raw.match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
+  const summary=raw.match(/^SUMMARY=(.+)$/mi)?.[1]?.trim().slice(0,600)||'';
+  const findings=raw.match(/^FINDINGS=(.+)$/mi)?.[1]?.trim().slice(0,1800)||'';
+  const valid=raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')&&Boolean(expected)&&Boolean(decision)&&targetHead===expected&&Boolean(summary)&&Boolean(findings);
+  return {valid,reviewEvidence:valid?{schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings}:null,expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
+}
+
 export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,jobId,workerId,terminal,result=''}={}){
   if(!pool)throw new Error('CORE_UI_POOL_REQUIRED');
   if(typeof pool.connect!=='function')throw new Error('CORE_UI_POOL_CONNECT_REQUIRED');
   if(!WORKERS.includes(String(workerId||'')))throw new Error('CORE_UI_WORKER_INVALID');
-  const n=issueNo(jobId);if(!n)throw new Error('CORE_UI_JOB_ID_INVALID');
   const requestedState=String(terminal||'').toUpperCase();
   if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(requestedState))throw new Error('CORE_UI_TERMINAL_INVALID');
   const terminalResult=safeResult(result||requestedState);
@@ -409,6 +425,22 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
       return {ok:true,alreadyTerminal:true,jobId,workerId,terminal:String(item?.result?.terminal||requestedState),evidenceRef:String(item?.result?.evidenceRef||item?.metadata?.issueUrl||''),issueRef:String(item?.metadata?.issueUrl||'')};
     }
 
+    const internalFinalReview=String(item?.routing_decision?.authority||'')==='CORE_UI_FINAL_REVIEW';
+    if(internalFinalReview){
+      const parsed=parseInternalReviewEvidence(terminalResult,item.prompt||'');
+      const pass=requestedState==='DONE'&&parsed.valid;
+      const jobStatus=pass?'done':'failed';
+      const evidenceRef=String(item?.metadata?.issueUrl||'');
+      const payload=pass
+        ? {source:'app_chrome_ui_final_review',terminal:requestedState,evidenceRef,result:terminalResult,reviewEvidence:parsed.reviewEvidence,terminalKey}
+        : {source:'app_chrome_ui_final_review',terminal:requestedState,evidenceRef,result:terminalResult,terminalKey,failure:{kind:requestedState==='DONE'?'invalid_response':requestedState,expectedHead:parsed.expectedHead,targetHead:parsed.targetHead,decision:parsed.decision}};
+      await client.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=$3::jsonb,failure=$4::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[jobId,jobStatus,JSON.stringify(payload),pass?null:JSON.stringify(payload.failure)]);
+      await client.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values($1,$2,$3,$4,$5,'ui',$6)",[pass?'CORE_UI_FINAL_REVIEW_DONE':'CORE_UI_FINAL_REVIEW_FAILED',item.objective_id,jobId,workerId,item.resource_id,JSON.stringify({terminal:requestedState,evidenceRef,reviewEvidence:parsed.reviewEvidence,failure:payload.failure||null})]);
+      await client.query('commit');
+      return {ok:true,jobId,workerId,terminal:requestedState,evidenceRef,issueRef:evidenceRef,reviewEvidence:parsed.reviewEvidence,accepted:pass};
+    }
+
+    const n=issueNo(jobId);if(!n)throw new Error('CORE_UI_JOB_ID_INVALID');
     const issue=await readIssue(fetchImpl,owner,repo,token,n);
     const comments=await gh(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments?per_page=100',token).catch(()=>[]);
     const prior=(Array.isArray(comments)?comments:[]).find((comment)=>String(comment?.body||'').includes(terminalKey));

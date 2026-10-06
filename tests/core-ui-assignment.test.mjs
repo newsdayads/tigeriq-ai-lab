@@ -64,8 +64,8 @@ function fakePool(){
 
 test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(parseCoreUiIssue(issue(200,safe(['CAPABILITY=general']))),null);
-  let x=parseCoreUiIssue(issue(201,safe(['CAPABILITY=review'])));assert.equal(x.workerId,'NV03');
-  x=parseCoreUiIssue(issue(202,safe(['CAPABILITY=research'])));assert.equal(x.workerId,'NV04');
+  let x=parseCoreUiIssue(issue(201,safe(['CAPABILITY=review'])));assert.equal(x.workerId,'NV03');assert.deepEqual(x.eligibleWorkerIds,['NV03','NV04']);
+  x=parseCoreUiIssue(issue(202,safe(['CAPABILITY=research'])));assert.equal(x.workerId,'NV04');assert.deepEqual(x.eligibleWorkerIds,['NV04']);
   x=parseCoreUiIssue(issue(203,safe(['CAPABILITY=deep_research'])));assert.equal(x.workerId,'NV04');
   assert.equal(parseCoreUiIssue(issue(204,safe(['CAPABILITY=review']).replace('PRIORITY=P2','PRIORITY=P0'))),null);
   assert.equal(selectCoreUiWorker('general'),null);
