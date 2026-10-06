@@ -1,31 +1,46 @@
 # Visual Quality Gate
 
-Status: ACTIVE
-Issue: #976 - AI Design Intelligence skills
-Target: ui-verification
+## Identity
+- ID: visual-quality-gate
+- Version: 1.0.0
+- State: ACTIVE
+- Target: ui-verification
+- Provenance: registry.yaml; #976
 
-## Apply when
-Use after UI implementation or when auditing whether a rendered interface matches an approved design and remains usable.
+## Trigger
+Use after UI implementation or when auditing whether a rendered interface matches approved design evidence and remains usable.
 
-## Rules
-- Verify the rendered result, not only source code.
-- Combine applicable evidence: screenshot comparison, geometry/layout checks, clipping/overflow, typography hierarchy, spacing consistency, interaction states, keyboard/accessibility basics, and responsive states when in scope.
-- Reuse existing Playwright and product-specific visual regression mechanisms instead of creating a parallel browser authority.
-- Golden/reference outputs are version-controlled evidence and must never be auto-updated merely because a test failed.
-- A stable pixel hash proves consistency, not design quality. Compare against approved reference/acceptance and inspect semantic usability as well.
-- On mismatch, record concrete deltas and return to implementation; do not label PASS from subjective similarity alone.
-- Keep browser testing isolated from live NV02/NV03/NV04 control sessions unless a separately authorized integration explicitly allows it.
+## Input
+- Rendered UI state.
+- Approved reference/design contract.
+- Applicable viewport, interaction, accessibility, and responsive acceptance.
+
+## Steps
+1. Verify the rendered result, not source code alone.
+2. Combine screenshot/reference comparison with geometry, clipping/overflow, typography, spacing, interaction, accessibility basics, and responsive checks when in scope.
+3. Reuse existing Playwright/product visual-regression mechanisms.
+4. Keep deterministic detector evidence separate from holistic visual judgment.
+5. Record concrete deltas and return mismatches to implementation.
+
+## Tools / Output
+Use existing browser/visual regression tooling and detector definitions in `docs/skills/visual-quality-gate/detectors.json`. Output PASS/FAIL with concrete evidence and deltas.
+
+## Acceptance
+- Golden/reference outputs are never auto-updated merely because a test failed.
+- A stable pixel hash is not treated as proof of design quality.
+- Hard detector findings block only when severity and false-positive guards allow it.
+- Advisory findings never hard-fail by themselves.
+
+## Evidence
+- #976 - AI Design Intelligence skills.
+- docs/skills/visual-quality-gate/detectors.json
+- Existing Playwright/product visual regression outputs.
+
+## Fallback
+If visual evidence is incomplete, return the missing evidence/state rather than a subjective PASS.
+
+## Safety
+Keep browser testing isolated from live NV02/NV03/NV04 control sessions unless separately authorized. This skill does not widen browser permissions, release Production, or change credential/security boundaries.
 
 ## Non-goals
-This skill does not self-approve its own implementation, widen browser permissions, release Production, or change credential/security boundaries.
-
-
-## Deterministic detector delta
-Machine-readable detector definitions live in `docs/skills/visual-quality-gate/detectors.json`.
-
-Rules:
-- Deterministic findings are implementation evidence, not proof of overall design quality.
-- Immediate mechanical findings may block only when the detector severity is `hard` and all false-positive guards are satisfied.
-- Advisory findings never hard-fail a visual gate by themselves.
-- Keep detector evidence separate from holistic visual judgment, then synthesize both before PASS/FAIL.
-- Do not auto-install Impeccable or create a parallel browser/design authority; these rules are adapted into this existing gate.
+It does not self-approve its own implementation, auto-bless baselines, or create a parallel browser/design authority.
