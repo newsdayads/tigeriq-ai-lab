@@ -47,6 +47,14 @@ function restoreOwnerProperNames(value = '', preserved = []) {
 }
 
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
+  [/\brepairs existing PR\b/gi, 'sửa PR hiện có'],
+  [/\busing normal npm resolution\b/gi, 'bằng cơ chế phân giải npm thông thường'],
+  [/\bisolated shadow foundation\b/gi, 'nền chạy song song cô lập'],
+  [/\bsmoke test\b/gi, 'kiểm thử nhanh'],
+  [/\bfresh exact-head CI\/Queue Hygiene\b/gi, 'CI (kiểm tra tích hợp) và kiểm tra vệ sinh hàng đợi trên đầu nhánh chính xác mới'],
+  [/\bonly after\b/gi, 'chỉ sau khi'],
+  [/\bmain readback\b/gi, 'đọc lại nhánh main'],
+  [/\blockfile\b/gi, 'tệp khóa phụ thuộc'],
   [/\bDeep Agents\/LangGraph\b/gi, 'Deep Agents/LangGraph (khung điều phối tác nhân)'],
   [/\bCore NV API\b/gi, 'Core NV API (giao diện AI trung tâm)'],
   [/\bprivate[- ]repo\b/gi, 'kho mã riêng'],
@@ -160,7 +168,7 @@ export function containsBareOwnerPrReference(value = '') {
   return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
 }
 
-const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install)\b/gi;
+const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|repair|repairs|existing|resolution|lockfile|isolated|foundation|smoke\s+test|fresh|queue\s+hygiene|readback)\b/gi;
 const VIETNAMESE_EXPLANATION_RE = /[ăâđêôơưàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
 
 export function containsOwnerFacingEnglishOperationalProse(value = '') {
