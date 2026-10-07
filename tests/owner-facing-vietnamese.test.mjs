@@ -116,7 +116,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(row.title).toContain('Deep Agents/LangGraph (khung điều phối tác nhân)');
     expect(row.title).toContain('điểm lưu trạng thái');
     expect(row.title).toContain('chạy song song');
-    expect(row.nextStep).toContain('Sửa lỗi UPDATER_WATCHDOG_HEALTH');
+    expect(row.nextStep).toContain('sửa lỗi UPDATER_WATCHDOG_HEALTH');
     expect(row.nextStep).toContain('rà soát cuối Core NV API (giao diện AI trung tâm)');
     expect(row.blocker).toContain('thông tin xác thực');
     expect(row.blocker).toContain('kho mã riêng xác thực');
