@@ -7,6 +7,7 @@ const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
 const GITHUB_TOKEN = process.env.TIGERIQ_GITHUB_TOKEN || '';
 const CANARY_ISSUE = Number(process.env.TIGERIQ_PC01_CANARY_ISSUE || '58');
 const ALLOWED_PRIORITIES = new Set(['P0', 'P1', 'P2']);
+const GITHUB_REQUEST_TIMEOUT_MS = 12000;
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -70,7 +71,7 @@ async function gh(path, init = {}, token = '') {
     ...(init.headers || {}),
   };
   if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(`https://api.github.com${path}`, { ...init, headers });
+  const response = await fetch(`https://api.github.com${path}`, { ...init, headers, signal: init.signal || AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS) });
   const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { message: text.slice(0, 500) }; }
