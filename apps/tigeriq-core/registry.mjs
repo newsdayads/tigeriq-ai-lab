@@ -6,7 +6,8 @@ export const HEALTH_STATES = {
 };
 
 export const NV09_EMPLOYEE_ID = 'NV09';
-export const NV09_MODEL = 'qwen3-coder:30b';
+export const NV09_MODEL = 'qwen3.6:27b-coding';
+export const NV09_FALLBACK_MODEL = 'qwen3-coder:30b';
 export const NV09_ENDPOINT = 'http://127.0.0.1:11434';
 
 const registeredModels = new Map();
@@ -17,6 +18,7 @@ export function registerNv09() {
   const config = {
     employee_id: NV09_EMPLOYEE_ID,
     model: NV09_MODEL,
+    fallback_model: NV09_FALLBACK_MODEL,
     endpoint: NV09_ENDPOINT,
     capability: ['coding','review'],
     health: HEALTH_STATES.IDLE_ON_DEMAND
