@@ -41,6 +41,14 @@ describe('company progress calculation', () => {
 });
 
 describe('public authoritative projection', () => {
+
+
+  it('#4437 strips all consecutive leading canonical title prefixes only', () => {
+    const rows = parseCentralPriorities('### 1. P1 #4437 — [P2][COMPANY PROGRESS][REPO AUDIT] Chuẩn hóa [giữ nguyên] title');
+    expect(rows).toEqual([
+      { priority: 'P1', number: 4437, label: 'Chuẩn hóa [giữ nguyên] title' },
+    ]);
+  });
   it('parses ordered P0/P1/P2 entries from CENTRAL without inventing work', () => {
     const rows = parseCentralPriorities('### 1. P0 #423 — Website\n### 2. P1 #401 — Autonomy\n### #368 — done');
     expect(rows).toEqual([
