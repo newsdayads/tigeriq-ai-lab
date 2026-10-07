@@ -56,5 +56,3 @@ describe('LangGraph shadow foundation', () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 });
-
-[executed on device: PC01 (7a1fa39b-88eb-4906-927e-caaf4bc5b5e3)]
