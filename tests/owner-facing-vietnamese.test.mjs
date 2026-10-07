@@ -127,11 +127,11 @@ describe('Owner-facing Vietnamese output gate', () => {
     const output = localizeOwnerFacingText(input);
     expect(output).toContain('sửa PR hiện có #4524');
     expect(output).toContain('cơ chế phân giải npm thông thường');
-    expect(output).toContain('tệp khóa phụ thuộc');
+    expect(output).toContain('thêm tệp khóa phụ thuộc');
     expect(output).toContain('nền chạy song song cô lập');
     expect(output).toContain('kiểm thử nhanh');
     expect(output).toContain('CI (kiểm tra tích hợp) và kiểm tra vệ sinh hàng đợi trên đầu nhánh chính xác mới');
-    expect(output).toContain('rà soát');
+    expect(output).toContain('rà soát độc lập');
     expect(output).toContain('hợp nhất chỉ sau khi ĐẠT');
     expect(output).toContain('đọc lại nhánh main');
     expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
