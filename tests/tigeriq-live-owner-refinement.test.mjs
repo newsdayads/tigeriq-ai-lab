@@ -18,10 +18,12 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain("việc hoàn tất");
   });
 
-  it('shortens technical titles and next action on the card', () => {
+  it('keeps technical prefixes compact but never truncates the next action', () => {
     expect(html).toContain("while(/^\\[[^\\]]+\\]\\s*/.test(title))");
     expect(html).toContain('<b>Bước tới:</b>');
-    expect(html).not.toContain('<b>Tiếp:</b>');
+    expect(html).toContain('return raw;');
+    expect(html).not.toContain("raw.length>72?raw.slice");
+    expect(html).toContain('white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere');
   });
 
   it('centers the detail modal and uses deterministic owner-project handoff with explicit fallback', () => {
@@ -62,6 +64,11 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).not.toContain("if(!opened)location.href=url");
   });
 
+  it('keeps the newest API snapshot instead of regressing to an older browser cache', () => {
+    expect(html).toContain('function snapshotTimestamp(value)');
+    expect(html).toContain('snapshotTimestamp(raw)>=snapshotTimestamp(cached)');
+  });
+
   it('gates runtime focus on fresh data and renders missing API evidence as unavailable', () => {
     expect(html).toContain("const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale)");
     expect(html).toContain('Dữ liệu runtime đã cũ · chưa xác nhận job đang chạy.');
@@ -83,7 +90,7 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('recently-updated');
     expect(html).toContain('progress-indeterminate');
     expect(html).toContain("const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status)");
-    expect(html).toContain('chưa đủ bằng chứng để tính phần trăm');
+    expect(html).toContain('Chưa đủ dữ liệu để tính %');
   });
 
   it('keeps cards compact and moves execution internals into detail-only context', () => {
