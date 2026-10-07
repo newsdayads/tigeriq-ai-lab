@@ -13,6 +13,7 @@ import { enqueueFreshLiveMobileTask, liveMobileCompletionToken, liveMobileTaskPr
 
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
+const OWNER_RESULT_INBOX_ISSUE=4426;
 export const GITHUB_RECONCILE_INTERVAL_MS=30000;
 const DEFAULT_INTERVAL_MS=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||GITHUB_RECONCILE_INTERVAL_MS);
 const DEFAULT_INITIAL_DELAY_MS=15000;
@@ -365,6 +366,30 @@ export function extractPcOperatorInstruction(body){
 const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','coding_issue_status_read','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_current_ci_artifact','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
+const P1_P5_PRIORITIES=new Set(['P1','P2','P3','P4','P5']);
+const REAL_OWNER_GATE_PATTERN=/(?:PAID|FINANCIAL|CREDENTIAL|SECRET|SECURITY|PERMISSION[_ -]?BOUNDARY|DESTRUCTIVE|IRREVERSIBLE|PHYSICAL|LEGAL)/i;
+
+export function p1P5StandingReleaseAuthorized(body=''){
+  const text=String(body||'');
+  const priority=bodyValue(text,'PRIORITY').toUpperCase();
+  if(!P1_P5_PRIORITIES.has(priority)||backlogOwnerControlled(text))return false;
+  if(hasExactFlag(text,'OWNER_ACCEPTANCE_REQUIRED')||hasExactFlag(text,'OWNER_REVIEW_REQUIRED')||hasExactFlag(text,'MANUAL_GATE'))return false;
+  const realGateText=[
+    bodyValue(text,'BLOCKER'),
+    bodyValue(text,'CURRENT_GATE'),
+    bodyValue(text,'HARD_GATE_STATUS'),
+    bodyValue(text,'OWNER_GATE_REASON'),
+  ].filter(Boolean).join(' ');
+  return !REAL_OWNER_GATE_PATTERN.test(realGateText);
+}
+
+function isP1P5StandingReleaseAction(body=''){
+  const text=String(body||'');
+  const raw=text.match(/^PC_OPERATOR_DIRECT_ACTION_JSON=(\{.*\})$/m)?.[1];
+  if(!raw||!p1P5StandingReleaseAuthorized(text))return false;
+  try{return JSON.parse(raw)?.action==='tigeriq_live_3150_production_deploy';}catch{return false;}
+}
+
 export function parsePcOperatorDirectAction(body,ownerDirect=false){
   const text=String(body||'');
   const raw=text.match(/^PC_OPERATOR_DIRECT_ACTION_JSON=(\{.*\})$/m)?.[1];
@@ -377,7 +402,8 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
   const readOnly=PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS.has(action);
   const mutating=PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action);
   if(!readOnly&&!mutating)return {present:true,valid:false,action:null,reason:'ACTION_NOT_ALLOWLISTED'};
-  if(mutating&&!ownerDirect)return {present:true,valid:false,action:null,reason:'OWNER_DIRECT_REQUIRED'};
+  const standingRelease=action==='tigeriq_live_3150_production_deploy'&&p1P5StandingReleaseAuthorized(text);
+  if(mutating&&!ownerDirect&&!standingRelease)return {present:true,valid:false,action:null,reason:'OWNER_DIRECT_REQUIRED'};
   let normalized;
   if(action.startsWith('task_')&&action!=='task_list'){
     const taskName=String(parsed.taskName||'').trim();
@@ -410,11 +436,13 @@ export function parsePcOperatorDirectAction(body,ownerDirect=false){
     normalized={action,workerId};
   }else if(action==='tigeriq_live_3150_production_deploy'){
     const expectedSha=String(parsed.expectedSha||'').trim().toLowerCase();
+    const artifactSha=String(parsed.artifactSha||expectedSha).trim().toLowerCase();
     if(!/^[0-9a-f]{40}$/.test(expectedSha))return {present:true,valid:false,action:null,reason:'EXPECTED_SHA_INVALID'};
-    if(!hasExactFlag(text,'OWNER_RELEASE_AUTHORIZED'))return {present:true,valid:false,action:null,reason:'OWNER_RELEASE_AUTH_REQUIRED'};
+    if(!/^[0-9a-f]{40}$/.test(artifactSha))return {present:true,valid:false,action:null,reason:'ARTIFACT_SHA_INVALID'};
+    if(!hasExactFlag(text,'OWNER_RELEASE_AUTHORIZED')&&!standingRelease)return {present:true,valid:false,action:null,reason:'OWNER_RELEASE_AUTH_REQUIRED'};
     const releaseReason=bodyValue(text,'VERCEL_RELEASE_REASON').trim();
     if(!releaseReason)return {present:true,valid:false,action:null,reason:'RELEASE_REASON_REQUIRED'};
-    normalized={action,expectedSha,releaseClass:'WEB_LIVE',ownerAuthorized:true,releaseReason};
+    normalized={action,expectedSha,artifactSha,releaseClass:'WEB_LIVE',ownerAuthorized:true,releaseReason};
   }else if(action.startsWith('file_')){
     normalized={action,path:String(parsed.path||'')};
   }else{
@@ -450,10 +478,11 @@ export function githubDependencyAdmissionBlocked(body){
 
 export function explicitAutoExecutionExclusion(body=''){
   const text=String(body||'');
+  const standingRelease=isP1P5StandingReleaseAction(text);
   const executable=bodyValue(text,'TIGERIQ_EXECUTABLE').trim().toLowerCase();
-  if(executable==='false')return 'EXPLICIT_EXECUTION_DISABLED';
+  if(executable==='false'&&!standingRelease)return 'EXPLICIT_EXECUTION_DISABLED';
   const autoQueue=bodyValue(text,'AUTO_QUEUE').trim().toUpperCase();
-  if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return 'AUTO_QUEUE_EXCLUDED';
+  if((autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))&&!standingRelease)return 'AUTO_QUEUE_EXCLUDED';
   return '';
 }
 
@@ -491,19 +520,23 @@ export function safeAutoWorkAdmission(issue){
   if(isManualOnlyAppChromeMaintenance(title,body))return {eligible:false,reason:'APP_CHROME_EXCLUDED'};
   if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
-  if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
-  if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state))return {eligible:false,reason:'OWNER_WAIT_STATE'};
+  const standingRelease=isP1P5StandingReleaseAction(body);
+  if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
+  if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
   const classification=classifyWorkOrder(body);
+  const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
+  if(directAction.present&&!directAction.valid)return {eligible:false,reason:directAction.reason||'DIRECT_ACTION_INVALID'};
   if(['HOLD_OWNER','UI'].includes(classification.route))return {eligible:false,reason:'OWNER_OR_UI_ROUTE'};
-  if(classification.route==='OPENCLAW')return {eligible:false,reason:'SPECIALIST_CONTRACT_REQUIRED'};
+  if(classification.route==='OPENCLAW'&&!directAction.action)return {eligible:false,reason:'SPECIALIST_CONTRACT_REQUIRED'};
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
   if(!resourceScope)return {eligible:false,reason:'RESOURCE_SCOPE_REQUIRED'};
   const mutationOwner=bodyValue(body,'MUTATION_OWNER').toUpperCase();
   const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
   if(!ownerReleased)return {eligible:false,reason:'MUTATION_OWNER_CONFLICT'};
-  const safeFlags=['NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
+  const safeFlags=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
   if(safeFlags.some((key)=>!hasExactFlag(body,key)))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  if(!standingRelease&&!hasExactFlag(body,'NO_PRODUCTION_RELEASE'))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
   const requiresCodingHandoff=classification.route==='CODING';
   if(requiresCodingHandoff&&!hasExactFlag(body,'NO_DIRECT_MAIN'))return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
   return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
@@ -1542,7 +1575,16 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       row.summary=summary;
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
-      await commentIssue(fetchImpl,owner,repo,number,formatResultComment(row),token);
+      const resultComment=formatResultComment(row);
+      await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
+      if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
+        const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
+        await githubMutationRetryable(()=>commentIssue(
+          fetchImpl,owner,repo,OWNER_RESULT_INBOX_ISSUE,
+          `✅ [KẾT QUẢ THỰC TẾ] #${number} - ${sourceTitle}\n\n${resultComment}\n\nNguồn: https://github.com/${owner}/${repo}/issues/${number}`,
+          token
+        ));
+      }
       if(row.status==='completed'){
         if(row.metadata?.keepOpenOnStepComplete===true){
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
