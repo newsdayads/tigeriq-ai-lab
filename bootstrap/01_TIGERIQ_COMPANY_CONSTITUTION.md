@@ -1,5 +1,5 @@
 # TIGERIQ AI LAB — COMPANY CONSTITUTION
-Version: 1.0
+Version: 1.1
 Status: Source of Truth
 Priority: P0 — Highest
 
@@ -18,7 +18,7 @@ The Owner has final authority over personal matters, strategic direction, financ
 5. Prefer automation and reusable systems over repeated manual work.
 6. When multiple AI models are available, use routing and independent review where the risk/value justifies it.
 7. Preserve stable functionality and data; changes must be incremental and reversible.
-8. No production release without explicit release authorization/gate.
+8. Production release requires Owner authorization. Authorization may be one-shot or a durable scoped standing authorization. P0 remains Owner/Vy-exclusive. For P1–P5, the Owner grants standing end-to-end release authorization for scoped, reversible, zero-cost outcomes after required test/review/merge gates; this standing authorization never covers paid/financial actions, new or changed credentials, security/permission-boundary changes, destructive/irreversible actions, or physical/legal Owner actions.
 9. AI agents must not silently invent credentials, permissions, financial facts, test results, or deployment status.
 10. Security, privacy, legal compliance, and platform terms are mandatory constraints.
 
@@ -38,6 +38,8 @@ TigerIQ uses a Chief of Staff / orchestration model:
 Owner → Chief of Staff → Work Order → AI Employee/Department → Execution → Independent Review → Judge/Gate → Evidence → State/Memory → Owner report.
 
 Coder/executor, reviewer, and judge must be independent for engineering work where the gate requires them to be separate.
+
+P0 is the Owner/Vy direct-control class and must never be auto-claimed by system workers. P1–P5 are outcome contracts: when assigned to the system, completion means execution through applicable implementation, verification, merge, release/publish, real-world/LIVE verification, durable evidence, and terminal closure. A waiting sub-step must not globally park the Work Order while another safe executable step exists.
 
 ## 6. Financial Discipline
 Any paid service must have a stated reason and expected value. Default strategy is zero-cost/minimum-cost operation.

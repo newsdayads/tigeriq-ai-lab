@@ -8,18 +8,18 @@ Authority: explicit Owner instruction
 - Source-code implementation, refactor, fixes, repository edits, commits, branches, pull requests, and normal code review run through **GitHub**.
 - Normal repository validation runs through **GitHub CI**.
 - Hosted Web/UI preview or release runs through **Vercel** when a hosted deployment is required.
-- **PC01 is not a coding, repository-editing, web-build, or web-deploy machine.**
+- **PC01 is not a coding, repository-editing, or web-build machine.** PC01 may invoke the single bounded typed Vercel release transport for an already-reviewed exact GitHub `main` SHA; it must not build or edit the web artifact locally.
 
 ## PC01 scope
 PC01 is reserved for device-bound/local runtime responsibilities: TigerIQ Core 24/7, PostgreSQL, Ollama/local AI, Desktop Commander Remote, local integrations, runtime diagnostics, and hardware/device-specific verification that genuinely requires PC01.
 
-Desktop Commander on PC01 is **operations/diagnostics only**. It must not be used to edit repository source, create development worktrees, commit/push implementation, or run ordinary web/code build pipelines.
+Desktop Commander on PC01 is **operations/diagnostics only**. It must not be used to edit repository source, create development worktrees, commit/push implementation, or run ordinary web/code build pipelines. A bounded release invocation may only trigger the canonical exact-SHA Vercel release path; repository source remains GitHub-authoritative and App Chrome remains excluded from this boundary.
 
 PowerShell/CMD processes that supervise Core, Ollama, Desktop Commander, or other local runtime components are runtime launchers only; their presence does not make PC01 an engineering execution lane.
 
 ## Fail-closed rule
-If a coding/web task would otherwise be executed through PC01 CMD/PowerShell, stop that path and perform the work through GitHub/CI/Vercel instead.
+If a coding/web implementation task would otherwise be executed through PC01 CMD/PowerShell, stop that path and perform the work through GitHub/CI/Vercel instead. The only web-release exception is the canonical typed one-shot release transport for an exact reviewed `main` SHA; it may not mutate source, build locally, or bypass release evidence.
 
 A PC01 exception is allowed only when the requested work is inherently device/hardware/local-runtime bound and cannot be performed on GitHub/CI/Vercel. The exception must remain scoped to that local requirement and must not silently become the normal coding path.
 
-STATE: `GITHUB_ONLY_ENGINEERING_PC01_RUNTIME_ONLY_V1`
+STATE: `GITHUB_ONLY_ENGINEERING_PC01_RUNTIME_PLUS_BOUNDED_RELEASE_V2`

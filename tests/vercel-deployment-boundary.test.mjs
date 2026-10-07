@@ -7,6 +7,8 @@ const base = {
     orgId: 'team_K8HIG7zmwu0ZjCINX1VhlGiT',
   },
   expectedSha: 'a'.repeat(40),
+  artifactSha: 'a'.repeat(40),
+  artifactIsAncestor: true,
   actualSha: 'a'.repeat(40),
   branch: 'main',
   mainRefSha: 'a'.repeat(40),
@@ -78,6 +80,7 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
         tigeriqReleaseIssue: '4311',
         tigeriqReleaseClass: 'WEB_LIVE',
         tigeriqExactSha: 'a'.repeat(40),
+        tigeriqArtifactSha: 'a'.repeat(40),
       },
     });
     expect(() => deploymentRequestForGitSource(
@@ -86,11 +89,25 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
     )).toThrow('VERCEL_GIT_METADATA_INCOMPLETE');
   });
 
-  it('allows only an explicitly authorized real web release contract', () => {
+  it('allows only an authorized real web release contract', () => {
     expect(validateReleaseContract(base)).toMatchObject({
       target: 'production',
       issue: '3897',
       releaseClass: 'WEB_LIVE',
+      artifactSha: 'a'.repeat(40),
+    });
+  });
+
+  it('allows latest main to deploy when an earlier verified web artifact commit is its ancestor', () => {
+    expect(validateReleaseContract({
+      ...base,
+      artifactSha: 'b'.repeat(40),
+      artifactIsAncestor: true,
+      changedFiles: ['public/work-ui.js'],
+    })).toMatchObject({
+      exactSha: 'a'.repeat(40),
+      artifactSha: 'b'.repeat(40),
+      target: 'production',
     });
   });
 
@@ -99,6 +116,8 @@ describe('Vercel web-hosting-only hard boundary #3897', () => {
     [{ ownerAuthorized: 'false' }, 'VERCEL_OWNER_RELEASE_AUTH_REQUIRED'],
     [{ releaseReason: '' }, 'VERCEL_RELEASE_REASON_REQUIRED'],
     [{ issue: '' }, 'VERCEL_RELEASE_ISSUE_REQUIRED'],
+    [{ artifactIsAncestor: false }, 'VERCEL_ARTIFACT_NOT_ANCESTOR'],
+    [{ artifactSha: 'bad' }, 'VERCEL_ARTIFACT_SHA_INVALID'],
     [{ changedFiles: ['apps/tigeriq-core/router.mjs'] }, 'VERCEL_WEB_ARTIFACT_CHANGE_REQUIRED'],
     [{ uiHtml: '<html>legacy live without shared stylesheet</html>' }, 'VERCEL_UI_MARKER_MISSING'],
   ])('fails closed for non-web or unauthorized deployment: %o', (override, code) => {

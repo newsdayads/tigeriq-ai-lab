@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 3.9
+Version: 4.0
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-05
+Updated: 2026-10-07
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -74,6 +74,15 @@ Chứa trạng thái thay đổi thường xuyên: `docs/CURRENT_STATE.md`, CENT
 9. GHI BẰNG CHỨNG + cập nhật state.
 10. Chỉ kết thúc phạm vi khi `HOÀN TẤT / BỊ CHẶN THẬT / CHỜ BÊN NGOÀI / cần quyền bắt buộc`.
 
+### 5.1. Hợp đồng P0 và P1–P5 — outcome-to-LIVE
+- `P0` là lớp điều khiển trực tiếp của **anh Sơn + Vy (Trợ lý)**. Core/NV/API/Auto Worker không được tự claim, route, sửa hoặc phát hành P0.
+- Khi anh Sơn giao một mục tiêu cho hệ thống ở `P1–P5`, đó là **standing authorization (ủy quyền thường trực trong đúng phạm vi)** để hệ thống làm đầu-cuối: triển khai → kiểm thử → rà soát độc lập → merge qua gate → phát hành/xuất bản nếu cần → xác minh kết quả thật/LIVE → ghi bằng chứng → đóng việc.
+- Với `P1–P5`, bước phát hành Production/LIVE không phải một Owner gate riêng nếu thay đổi nằm đúng scope, reversible, zero-cost và đã qua các gate kỹ thuật bắt buộc.
+- Các gate vẫn bắt buộc hỏi/chờ Owner: chi phí/tài chính; tạo/thay đổi credential/secret; thay đổi security/permission boundary; hành động destructive/irreversible; thao tác vật lý hoặc pháp lý của Owner.
+- `CHỜ` là trạng thái **cấp bước**, không phải khóa toàn thẻ. Nếu một bước bị chặn nhưng còn bước độc lập an toàn có thể làm, worker phải checkpoint bước bị chặn, nhả lease phù hợp và tiếp tục phần còn lại.
+- Khi không còn bước an toàn nào khác, Work Order giữ đúng blocker thật và tự rearm khi dependency/event thay đổi; không bắt anh Sơn giao lại.
+- Việc có bề mặt LIVE/real-world chỉ được coi là hoàn tất sau khi kết quả thật được xác minh. Sau đó ghi một bản tóm tắt vào `#4426 - [RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem`; hộp kết quả chỉ để review sau kết quả, không phải approval gate.
+
 ## 6. Quy tắc chống mất việc khi đổi chat
 - Mọi việc chưa hoàn tất phải có state đủ để NEW CHAT tiếp tục mà không cần mở chat cũ.
 - Trước khi phiên đóng/chuyển chu kỳ, ghi tối thiểu: việc đã làm, kết quả, evidence, trạng thái, bước tiếp theo, blocker/wait/authorization nếu có.
@@ -96,7 +105,7 @@ Khi NEW CHAT trong Project chỉ nhận **một số nguyên `N`**:
 - Takeover chỉ được phép theo dynamic policy hiện hành khi lease stale/expired, không mutation in-flight, không `OWNER_HOLD`, và checkpoint/evidence đủ để resume idempotently.
 - `OWNER_HOLD` do anh Sơn đặt có ưu tiên; không takeover cho tới khi hold được bỏ/hết hạn rõ ràng.
 - Transfer ownership chỉ tại safe checkpoint; không hai worker mutation cùng resource song song.
-- Takeover không được bypass blocker/security/financial/Production/irreversible/physical authorization gate.
+- Takeover không được bypass P0 hoặc các gate Owner thật: paid/financial, credential/secret mới hoặc thay đổi, security/permission boundary, destructive/irreversible, physical/legal action. P1–P5 Production/LIVE release nằm trong standing authorization ở mục 5.1.
 
 ## 9. Auto Worker / Runtime Worker
 - Auto Worker chỉ là engine/runtime, không mặc nhiên là một AI employee identity.
@@ -182,8 +191,8 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Temporary/current runtime state, command registry và employee registry không được nhét vào Loader.
 
 ## 16. Engineering safety
-- Không sửa MAIN/Production trực tiếp khi workflow yêu cầu branch/gate.
-- Không tự thực hiện paid service, mua hàng/subscription, thay đổi credential/security boundary, hành động irreversible hoặc release Production khi chưa có quyền áp dụng.
+- Không sửa MAIN trực tiếp khi workflow yêu cầu branch/gate; mọi thay đổi mã nguồn vẫn đi branch → PR → checks → review → merge.
+- Không tự thực hiện paid service, mua hàng/subscription, thay đổi credential/security boundary hoặc hành động irreversible khi chưa có quyền áp dụng. P1–P5 Production/LIVE release được phép tự thực hiện theo standing authorization tại mục 5.1; P0 không được kế thừa quyền này.
 - Không lộ secret trong source/evidence.
 - Ưu tiên: an toàn → reversible → evidence → automation → low-cost.
 
