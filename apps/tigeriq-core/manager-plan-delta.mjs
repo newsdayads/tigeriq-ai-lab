@@ -70,7 +70,7 @@ export function validatePlanDelta(raw,{expectedObjectiveId='',expectedSourceRevi
   exactKeys(raw,TOP_KEYS,'PLAN_DELTA_UNKNOWN_KEY');
   if(raw.schema!==PLAN_SCHEMA)fail('PLAN_SCHEMA_INVALID');
   const objectiveId=stringValue(raw.objectiveId,'PLAN_OBJECTIVE_ID_INVALID',{max:180,pattern:/^[A-Za-z0-9._:#-]+$/});
-  const sourceRevision=stringValue(raw.sourceRevision,'PLAN_SOURCE_REVISION_INVALID',{max:160,pattern:/^[A-Za-z0-9._:-]+$/});
+  const sourceRevision=stringValue(raw.sourceRevision,'PLAN_SOURCE_REVISION_INVALID',{max:160,pattern:/^[A-Za-z0-9._:@-]+$/});
   if(expectedObjectiveId&&objectiveId!==String(expectedObjectiveId))fail('PLAN_OBJECTIVE_MISMATCH');
   if(expectedSourceRevision&&sourceRevision!==String(expectedSourceRevision))fail('PLAN_STALE_SOURCE_REVISION');
 
