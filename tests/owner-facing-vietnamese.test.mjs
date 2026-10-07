@@ -340,8 +340,24 @@ describe('Owner-facing Vietnamese output gate', () => {
     for (const text of explained) expect(containsOwnerFacingEnglishOperationalProse(text)).toBe(false);
   });
 
+  it('localizes live prose while preserving the TigerIQ Live product name', () => {
+    expect(localizeOwnerFacingText('live chưa xác minh')).toBe('thực tế chưa xác minh');
+    expect(localizeOwnerFacingText('TigerIQ Live đang hoạt động')).toBe('TigerIQ Live đang hoạt động');
+    expect(containsOwnerFacingEnglishOperationalProse('live chưa xác minh')).toBe(true);
+    expect(containsOwnerFacingEnglishOperationalProse('TigerIQ Live đang hoạt động')).toBe(false);
+
+    const row = ownerFacingWorkRow({
+      status: 'WORKING',
+      currentStep: 'live chưa xác minh',
+      detail: 'TigerIQ Live đang hoạt động',
+    });
+    expect(row.currentStep).toBe('thực tế chưa xác minh');
+    expect(row.detail).toBe('TigerIQ Live đang hoạt động');
+    expect(containsOwnerFacingEnglishOperationalProse(JSON.stringify(row))).toBe(false);
+  });
+
   it('localizes the expanded common operational vocabulary', () => {
-    const input = 'runtime health review merge deploy release publish blocker pending active credential security browser reboot workflow evidence prompt production code self-install';
+    const input = 'runtime health review merge deploy release publish blocker pending active credential security browser reboot workflow evidence prompt production code self-install live';
     const output = localizeOwnerFacingText(input);
     expect(output).toContain('môi trường chạy');
     expect(output).toContain('tình trạng');
@@ -361,6 +377,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(output).toContain('môi trường vận hành chính thức');
     expect(output).toContain('mã nguồn');
     expect(output).toContain('tự cài đặt');
+    expect(output).toContain('thực tế');
     expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
   });
 
