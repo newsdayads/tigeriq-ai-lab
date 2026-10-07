@@ -21,6 +21,31 @@ const STATUS_LABELS = Object.freeze({
   PENDING: 'ĐANG CHỜ',
 });
 
+const OWNER_PRESERVED_PROPER_NAMES = Object.freeze([
+  /\bTigerIQ Live\b/gi,
+]);
+
+function protectOwnerProperNames(value = '') {
+  const preserved = [];
+  let text = String(value ?? '');
+  for (const pattern of OWNER_PRESERVED_PROPER_NAMES) {
+    text = text.replace(pattern, (match) => {
+      const token = `@@OWNER_PROPER_${preserved.length}@@`;
+      preserved.push(match);
+      return token;
+    });
+  }
+  return { text, preserved };
+}
+
+function restoreOwnerProperNames(value = '', preserved = []) {
+  let text = String(value ?? '');
+  preserved.forEach((original, index) => {
+    text = text.replace(`@@OWNER_PROPER_${index}@@`, original);
+  });
+  return text;
+}
+
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bfinal review\b/gi, 'rà soát cuối'],
   [/\bdeep cross-check\b/gi, 'kiểm tra chéo chuyên sâu'],
@@ -49,6 +74,7 @@ const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bproduction\b/gi, 'môi trường vận hành chính thức'],
   [/\bcode\b/gi, 'mã nguồn'],
   [/\bself[- ]install\b/gi, 'tự cài đặt'],
+  [/\blive\b/gi, 'thực tế'],
 ]);
 
 const STATUS_REPLACEMENTS = Object.freeze([
@@ -76,10 +102,11 @@ export function ownerStatusLabel(value = '') {
 }
 
 export function localizeOwnerFacingText(value = '') {
-  let text = String(value ?? '');
+  const { text: protectedText, preserved } = protectOwnerProperNames(value);
+  let text = protectedText;
   for (const [pattern, replacement] of OWNER_TERM_REPLACEMENTS) text = text.replace(pattern, replacement);
   for (const [pattern, replacement] of STATUS_REPLACEMENTS) text = text.replace(pattern, replacement);
-  return text;
+  return restoreOwnerProperNames(text, preserved);
 }
 
 export function ownerFacingWorkRow(row) {
@@ -108,7 +135,8 @@ export function containsBareEnglishOwnerStatus(value = '') {
 
 
 function stripOwnerTechnicalLiterals(value = '') {
-  return String(value || '')
+  const { text } = protectOwnerProperNames(value);
+  return text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`\n]+`/g, ' ')
     .replace(/https?:\/\/\S+/gi, ' ');
