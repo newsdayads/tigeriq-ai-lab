@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fetchWorkforceStatus, sanitizeWorkforceSnapshot } from '../api/workforce-status.mjs';
 import {
+  aggregateWorkforceHealth,
   fetchRegistryIssue,
   refreshRegistryWorkforce,
   resetWorkforceRegistryForTests,
@@ -75,6 +76,32 @@ describe('Workforce status ingress', () => {
   });
 });
 
+
+describe('#4447 workforce health evidence', () => {
+  it('does not count no-resource or degraded members as healthy', () => {
+    const workforce = [
+      { employee_id:'NV00', name:'Vy', admin_state:'CHIEF_OF_STAFF / PRIMARY_UI' },
+      { employee_id:'NV01', name:'MacroDroid', admin_state:'OWNER_STOPPED / DO_NOT_ROUTE' },
+      { employee_id:'NV05', name:'Đã ngừng', admin_state:'RETIRED', retired:true },
+      { employee_id:'NV14', name:'Mistral', admin_state:'CREDENTIAL_INSTALLED / RATE_LIMIT_429 / CORE_COOLDOWN_30M' },
+      { employee_id:'NV10', name:'Ollama', admin_state:'ACTIVE_CORE_RESOURCE' },
+      { employee_id:'NV11', name:'Groq', admin_state:'LIVE_PASS / READY_WHEN_CALLED' },
+    ];
+    const resources = [
+      { employee_id:'NV10', status:'ready', ok:true, provider:'ollama', last_active:'2026-10-07T00:00:00Z' },
+      { employee_id:'NV11', status:'degraded', ok:true, provider:'groq' },
+    ];
+
+    const result = aggregateWorkforceHealth(workforce, resources);
+    expect(result).toMatchObject({ total:6, healthy:1, degraded:3, offline:2 });
+    expect(result.members.find(x=>x.employee_id==='NV00')).toMatchObject({ status:'unverified', ok:false });
+    expect(result.members.find(x=>x.employee_id==='NV01')).toMatchObject({ status:'offline', ok:false });
+    expect(result.members.find(x=>x.employee_id==='NV05')).toMatchObject({ status:'offline', ok:false });
+    expect(result.members.find(x=>x.employee_id==='NV14')).toMatchObject({ status:'degraded', ok:false });
+    expect(result.members.find(x=>x.employee_id==='NV10')).toMatchObject({ status:'ready', ok:true, provider:'ollama' });
+    expect(result.members.find(x=>x.employee_id==='NV11')).toMatchObject({ status:'degraded', ok:false, provider:'groq' });
+  });
+});
 
 describe('Core workforce registry transport', () => {
   const registryBody = (version='99') => `REGISTRY_ROOT_VERSION=${version}\n| NV11 | Groq | READY |`;
