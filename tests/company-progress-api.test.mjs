@@ -100,6 +100,23 @@ describe('public authoritative projection', () => {
     ]);
   });
 
+  it('#4445 parses the current three-column NVxx registry schema', () => {
+    const body = [
+      '| mã | tên chuẩn | trạng thái quản trị |',
+      '|---|---|---|',
+      '| `NV00` | Vy (Trợ lý) | `CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE` |',
+      '| `NV02` | ChatGPT Plus | `AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR` |',
+      '| `NV10` | Ollama | `ACTIVE_CORE_RESOURCE / LOCAL_AI / ZERO_TOKEN_LOCAL` |',
+      '| `NV01` | MacroDroid Z Flip | `OWNER_STOPPED / DO_NOT_ROUTE` |',
+    ].join('\n');
+    const rows = parseEmployees(body);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toMatchObject({ command: 0, employeeId: 'NV00', label: 'Vy (Trợ lý)', active: true, state: 'Hoạt động trong phạm vi được phép' });
+    expect(rows[1]).toMatchObject({ command: 2, employeeId: 'NV02', label: 'ChatGPT Plus', active: true, state: 'Dùng thủ công' });
+    expect(rows[2]).toMatchObject({ command: 10, employeeId: 'NV10', label: 'Ollama', active: true, state: 'Hoạt động trong phạm vi được phép' });
+    expect(rows[3]).toMatchObject({ command: 1, employeeId: 'NV01', label: 'MacroDroid Z Flip', active: false, state: 'Tạm dừng' });
+  });
+
   it('parses active and paused employees from the dynamic registry table', () => {
     const body = '| `2` | `NV02` | `autonomous` | `P0` | `queue` | `Khoa (NV02 — Vận hành tự động)` | true |\n| `3` | `NV03` | `specialized` | `P0` | `local` | `Huy (NV03)` | **false — TẠM NGƯNG** |';
     const rows = parseEmployees(body);

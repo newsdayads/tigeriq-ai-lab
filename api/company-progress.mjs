@@ -186,32 +186,41 @@ export function parseEmployees(body = '') {
   for (const line of String(body).split(/\r?\n/)) {
     if (!line.trim().startsWith('|')) continue;
     const cells = line.split('|').slice(1, -1).map(cleanRegistryCell);
-    const command = Number(cells[0]);
-    const employeeMatch = String(cells[1] || '').match(/\b(NV\d+)\b/i);
-    if (!command || !employeeMatch) continue;
+
+    const currentNvMatch = String(cells[0] || '').match(/^(NV(\d+))$/i);
+    const currentNvShape = cells.length === 3 && Boolean(currentNvMatch);
+    const command = currentNvShape ? Number(currentNvMatch[2]) : Number(cells[0]);
+    const employeeMatch = currentNvShape
+      ? currentNvMatch
+      : String(cells[1] || '').match(/\b(NV\d+)\b/i);
+    if ((!currentNvShape && !command) || !employeeMatch) continue;
 
     const legacyShape = cells.length >= 7;
     const transitionalShape = cells.length === 6;
     const currentShape = cells.length === 4;
-    const label = legacyShape ? cells[5] : cells[1];
-    const statusRaw = String(currentShape ? cells[3] : legacyShape ? cells[6] : cells[4] || '').trim();
+    const employeeId = employeeMatch[1].toUpperCase();
+    const label = currentNvShape ? (cells[1] || employeeId) : legacyShape ? cells[5] : cells[1];
+    const statusRaw = String(currentNvShape ? cells[2] : currentShape ? cells[3] : legacyShape ? cells[6] : cells[4] || '').trim();
     const normalizedStatus = statusRaw.toLowerCase();
-    const enabled = currentShape
-      ? Boolean(statusRaw) && !/(?:tạm dừng|chưa kích hoạt|paused|pending)/i.test(statusRaw)
-      : normalizedStatus.startsWith('true');
+    const currentNvUnavailable = /(?:OWNER_STOPPED|DO_NOT_ROUTE|PROVISIONING|WAIT_KEY|CORE_OFFLINE|CORE_BLOCKED|RATE_LIMIT|COOLDOWN)/i.test(statusRaw);
+    const enabled = currentNvShape
+      ? Boolean(statusRaw) && !currentNvUnavailable
+      : currentShape
+        ? Boolean(statusRaw) && !/(?:tạm dừng|chưa kích hoạt|paused|pending)/i.test(statusRaw)
+        : normalizedStatus.startsWith('true');
     const activation = transitionalShape ? String(cells[5] || '').toUpperCase() : null;
     const active = enabled && (!activation || activation === 'ACTIVE');
     let state = active ? 'Sẵn sàng theo danh mục' : 'Tạm ngưng';
-    if (/tạm dừng|paused/i.test(statusRaw)) state = 'Tạm dừng';
-    else if (/chưa kích hoạt|pending/i.test(statusRaw)) state = 'Chưa kích hoạt';
+    if (/tạm dừng|paused|OWNER_STOPPED|DO_NOT_ROUTE/i.test(statusRaw)) state = 'Tạm dừng';
+    else if (/chưa kích hoạt|pending|PROVISIONING|WAIT_KEY/i.test(statusRaw)) state = 'Chưa kích hoạt';
     else if (/nghiên cứu thủ công|available_manual|gọi được/i.test(statusRaw)) state = 'Dùng thủ công';
-    else if (/chờ bằng chứng|verify_pending/i.test(statusRaw)) state = 'Đã cấu hình · chờ xác minh';
-    else if (/hoạt động trong phạm vi được phép/i.test(statusRaw)) state = 'Hoạt động trong phạm vi được phép';
+    else if (/chờ bằng chứng|verify_pending|CORE_BLOCKED/i.test(statusRaw)) state = 'Đã cấu hình · chờ xác minh';
+    else if (/hoạt động trong phạm vi được phép|ACTIVE_CORE_RESOURCE|ACTIVE_MOBILE_WORKER|LIVE_PASS|ONLINE|CHIEF_OF_STAFF/i.test(statusRaw)) state = 'Hoạt động trong phạm vi được phép';
     else if (/đã kích hoạt|enabled/i.test(statusRaw)) state = 'Đã kích hoạt';
     rows.push({
       command,
-      employeeId: employeeMatch[1].toUpperCase(),
-      label: label || employeeMatch[1].toUpperCase(),
+      employeeId,
+      label: label || employeeId,
       active,
       state,
     });
