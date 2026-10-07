@@ -155,57 +155,16 @@ export async function releaseSharedResourceLease(db,{resourceId,leaseToken}={}){
   const client=await db.connect();
   try{
     await client.query('begin');
+    const resourceRow=(await client.query(
+      'select resource_id,employee_id,current_job_id,health_state,work_state from tigeriq_ai_resources where resource_id=$1 for update',
+      [resource],
+    )).rows[0]||null;
     const lease=(await client.query(
       'select * from tigeriq_ai_resource_leases where resource_id=$1 and lease_token=$2 for update',
       [resource,token],
     )).rows[0]||null;
     if(!lease){await client.query('commit');return false;}
-    await client.query(
-      `update tigeriq_ai_resources
-       set current_job_id=null,
-           work_state=case
-             when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND'
-             when health_state='ONLINE' then 'IDLE'
-             when health_state='READY' then 'READY'
-             else health_state end,
-           updated_at=now()
-       where resource_id=$1 and current_job_id=$2`,
-      [resource,lease.work_id],
-    );
-    await client.query(
-      `update tigeriq_resources
-       set current_job_id=null,
-           work_state=case
-             when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND'
-             when health_state='ONLINE' then 'IDLE'
-             when health_state='READY' then 'READY'
-             else health_state end,
-           updated_at=now()
-       where employee_id=$1 and current_job_id=$2`,
-      [lease.employee_id,lease.work_id],
-    );
-    await client.query('delete from tigeriq_ai_resource_leases where resource_id=$1 and lease_token=$2',[resource,token]);
-    await client.query('commit');
-    return true;
-  }catch(error){
-    await client.query('rollback').catch(()=>{});
-    throw error;
-  }finally{client.release();}
-}
-
-export async function recoverExpiredSharedResourceLeases(db){
-  if(!db)return [];
-  const client=await db.connect();
-  const recovered=[];
-  try{
-    await client.query('begin');
-    const rows=(await client.query(
-      `select * from tigeriq_ai_resource_leases
-       where lease_until<=now()
-       order by lease_until
-       for update skip locked`,
-    )).rows||[];
-    for(const lease of rows){
+    if(resourceRow&&String(resourceRow.current_job_id||'')===String(lease.work_id||'')){
       await client.query(
         `update tigeriq_ai_resources
          set current_job_id=null,
@@ -216,7 +175,7 @@ export async function recoverExpiredSharedResourceLeases(db){
                else health_state end,
              updated_at=now()
          where resource_id=$1 and current_job_id=$2`,
-        [lease.resource_id,lease.work_id],
+        [resource,lease.work_id],
       );
       await client.query(
         `update tigeriq_resources
@@ -230,21 +189,78 @@ export async function recoverExpiredSharedResourceLeases(db){
          where employee_id=$1 and current_job_id=$2`,
         [lease.employee_id,lease.work_id],
       );
-      await client.query('delete from tigeriq_ai_resource_leases where resource_id=$1 and lease_token=$2',[lease.resource_id,lease.lease_token]);
-      recovered.push({resourceId:lease.resource_id,employeeId:lease.employee_id,workId:lease.work_id,role:lease.role,lane:lease.lane});
     }
+    await client.query('delete from tigeriq_ai_resource_leases where resource_id=$1 and lease_token=$2',[resource,token]);
     await client.query('commit');
-    return recovered;
+    return true;
   }catch(error){
     await client.query('rollback').catch(()=>{});
     throw error;
   }finally{client.release();}
 }
 
+export async function recoverExpiredSharedResourceLeases(db){
+  if(!db)return [];
+  const candidates=(await db.query(
+    `select resource_id from tigeriq_ai_resource_leases
+     where lease_until<=now()
+     order by lease_until`,
+  )).rows||[];
+  const recovered=[];
+  for(const candidate of candidates){
+    const client=await db.connect();
+    try{
+      await client.query('begin');
+      const resourceRow=(await client.query(
+        'select resource_id,employee_id,current_job_id,health_state,work_state from tigeriq_ai_resources where resource_id=$1 for update',
+        [candidate.resource_id],
+      )).rows[0]||null;
+      const lease=(await client.query(
+        'select * from tigeriq_ai_resource_leases where resource_id=$1 and lease_until<=now() for update',
+        [candidate.resource_id],
+      )).rows[0]||null;
+      if(!lease){await client.query('commit');continue;}
+      if(resourceRow&&String(resourceRow.current_job_id||'')===String(lease.work_id||'')){
+        await client.query(
+          `update tigeriq_ai_resources
+           set current_job_id=null,
+               work_state=case
+                 when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND'
+                 when health_state='ONLINE' then 'IDLE'
+                 when health_state='READY' then 'READY'
+                 else health_state end,
+               updated_at=now()
+           where resource_id=$1 and current_job_id=$2`,
+          [lease.resource_id,lease.work_id],
+        );
+        await client.query(
+          `update tigeriq_resources
+           set current_job_id=null,
+               work_state=case
+                 when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND'
+                 when health_state='ONLINE' then 'IDLE'
+                 when health_state='READY' then 'READY'
+                 else health_state end,
+               updated_at=now()
+           where employee_id=$1 and current_job_id=$2`,
+          [lease.employee_id,lease.work_id],
+        );
+      }
+      await client.query('delete from tigeriq_ai_resource_leases where resource_id=$1 and lease_token=$2',[lease.resource_id,lease.lease_token]);
+      await client.query('commit');
+      recovered.push({resourceId:lease.resource_id,employeeId:lease.employee_id,workId:lease.work_id,role:lease.role,lane:lease.lane});
+    }catch(error){
+      await client.query('rollback').catch(()=>{});
+      throw error;
+    }finally{client.release();}
+  }
+  return recovered;
+}
+
 export async function activeSharedResourceLeases(db){
   if(!db)return [];
   const q=await db.query(
-    `select resource_id,employee_id,lane,work_id,role,lease_token,lease_until,heartbeat_at,metadata
+    `select resource_id,employee_id,lane,work_id,role,lease_until,heartbeat_at,metadata
      from tigeriq_ai_resource_leases
      where lease_until>now()
      order by employee_id,resource_id`,
