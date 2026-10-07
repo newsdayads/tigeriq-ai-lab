@@ -12,6 +12,7 @@ import {
   assertTigerIQLive3150DeployRequest,
   reconcileCancelledCoreUiJob,
   readCoreStatus,
+  readOllamaStatus,
   readCodingIssueStatus,
   coreRestartReplacementAccepted,
   taskActionSuccessStatus,
@@ -83,6 +84,54 @@ describe('typed Coding issue status read', () => {
     const source=await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
     expect(source).toContain("if(![8795,8797,8798].includes(Number(parsed.port)))throw new Error('TIGERIQ_CORE_UI_RECONCILE_PORT_INVALID');");
     expect(source).not.toContain('[8795,8796,8797,8798]');
+  });
+});
+
+describe('typed Ollama status read', () => {
+  const response=(body,status=200)=>({ok:status>=200&&status<300,status,async json(){return body;}});
+
+  it('reads only fixed loopback Ollama endpoints and returns bounded sanitized model telemetry', async () => {
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      calls.push({url:String(url),method:init.method||'GET'});
+      if(String(url).endsWith('/api/version'))return response({version:'0.12.3',secret:'drop'});
+      if(String(url).endsWith('/api/tags'))return response({models:[
+        {name:'qwen3.5:9b',digest:'aaa',size:7000000000,details:{parameter_size:'9.2B',quantization_level:'Q4_K_M'},secret:'drop'},
+        {name:'qwen3-coder:30b',digest:'bbb',size:18556700761,details:{parameter_size:'30.5B',quantization_level:'Q4_K_M'}},
+      ]});
+      if(String(url).endsWith('/api/ps'))return response({models:[
+        {name:'qwen3-coder:30b',digest:'bbb',size:18556700761,size_vram:8100000000,context_length:4096,expires_at:'2026-10-07T10:00:00Z',secret:'drop'},
+      ]});
+      throw new Error('unexpected '+url);
+    };
+    await expect(readOllamaStatus({fetchImpl})).resolves.toEqual({
+      status:'OLLAMA_STATUS_READ',
+      endpoint:'http://127.0.0.1:11434',
+      version:'0.12.3',
+      installedModels:[
+        {name:'qwen3.5:9b',digest:'aaa',size:7000000000,parameterSize:'9.2B',quantizationLevel:'Q4_K_M'},
+        {name:'qwen3-coder:30b',digest:'bbb',size:18556700761,parameterSize:'30.5B',quantizationLevel:'Q4_K_M'},
+      ],
+      runningModels:[
+        {name:'qwen3-coder:30b',digest:'bbb',size:18556700761,sizeVram:8100000000,contextLength:4096,expiresAt:'2026-10-07T10:00:00Z'},
+      ],
+    });
+    expect(calls).toEqual([
+      {url:'http://127.0.0.1:11434/api/version',method:'GET'},
+      {url:'http://127.0.0.1:11434/api/tags',method:'GET'},
+      {url:'http://127.0.0.1:11434/api/ps',method:'GET'},
+    ]);
+  });
+
+  it('does not accept caller-selected endpoint inputs', async () => {
+    const calls=[];
+    const fetchImpl=async(url)=>{
+      calls.push(String(url));
+      if(String(url).endsWith('/api/version'))return response({version:'x'});
+      return response({models:[]});
+    };
+    await readOllamaStatus({fetchImpl,baseUrl:'http://evil'});
+    expect(calls.every(url=>url.startsWith('http://127.0.0.1:11434/'))).toBe(true);
   });
 });
 

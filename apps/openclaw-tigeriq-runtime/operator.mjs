@@ -492,6 +492,45 @@ async function runTaskAction(action, taskName) {
   throw new Error('TIGERIQ_PC_TASK_ACTION_NOT_ALLOWED');
 }
 
+export async function readOllamaStatus({ fetchImpl = fetch } = {}) {
+  const baseUrl = 'http://127.0.0.1:11434';
+  const getJson = async (pathname) => {
+    const res = await fetchImpl(baseUrl + pathname, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res?.ok) throw new Error(`TIGERIQ_OLLAMA_STATUS_HTTP_${Number(res?.status || 0)}:${pathname}`);
+    return await res.json();
+  };
+  const [version, tags, running] = await Promise.all([
+    getJson('/api/version'),
+    getJson('/api/tags'),
+    getJson('/api/ps'),
+  ]);
+  const installedModels = (Array.isArray(tags?.models) ? tags.models : []).slice(0, 64).map((model) => ({
+    name: String(model?.name || model?.model || ''),
+    digest: String(model?.digest || ''),
+    size: Number(model?.size || 0),
+    parameterSize: String(model?.details?.parameter_size || ''),
+    quantizationLevel: String(model?.details?.quantization_level || ''),
+  }));
+  const runningModels = (Array.isArray(running?.models) ? running.models : []).slice(0, 64).map((model) => ({
+    name: String(model?.name || model?.model || ''),
+    digest: String(model?.digest || ''),
+    size: Number(model?.size || 0),
+    sizeVram: Number(model?.size_vram || 0),
+    contextLength: Number(model?.context_length || 0),
+    expiresAt: String(model?.expires_at || ''),
+  }));
+  return {
+    status: 'OLLAMA_STATUS_READ',
+    endpoint: baseUrl,
+    version: String(version?.version || ''),
+    installedModels,
+    runningModels,
+  };
+}
+
 async function tcpProbe(host, port, timeoutMs = 2500) {
   const safeHost = String(host || '127.0.0.1').toLowerCase();
   const safePort = Number(port);
@@ -2119,6 +2158,8 @@ export async function executePcAction(input, options = {}) {
     data = await readCodingIssueStatus(input || {}, { fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'core_status_read') {
     data = await readCoreStatus({ fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
+  } else if (action === 'ollama_status_read') {
+    data = await readOllamaStatus({ fetchImpl: options?.fetchImpl || fetch });
   } else if (action === 'chrome_ui_reconcile_cancelled_job') {
     data = await reconcileCancelledCoreUiJob(input || {}, { fetchImpl: options?.fetchImpl });
   } else if (action === 'tigeriq_live_3150_production_deploy') {
