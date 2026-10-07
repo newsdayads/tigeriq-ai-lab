@@ -5,6 +5,7 @@ import {
   HEALTH_STATES,
   NV09_EMPLOYEE_ID,
   NV09_MODEL,
+  NV09_FALLBACK_MODEL,
   getRegisteredModels,
   nv09ModelAvailability,
   registerNv09,
@@ -16,15 +17,17 @@ test('registers NV09 idempotently as qwen3.6:27b-coding', () => {
   assert.strictEqual(a,b);
   assert.strictEqual(a.employee_id,NV09_EMPLOYEE_ID);
   assert.strictEqual(a.model,NV09_MODEL);
+  assert.strictEqual(a.fallback_model,NV09_FALLBACK_MODEL);
+  assert.strictEqual(NV09_FALLBACK_MODEL,'qwen3-coder:30b');
   assert.strictEqual(a.endpoint,'http://127.0.0.1:11434');
   assert.strictEqual(a.health,HEALTH_STATES.IDLE_ON_DEMAND);
   assert.strictEqual(getRegisteredModels().filter(x=>x.employee_id==='NV09').length,1);
 });
 
 test('availability verifies the exact NV09 model and digest without inference', async()=>{
-  const fake=async()=>({ok:true,status:200,json:async()=>({models:[{name:'qwen3.6:27b-coding',digest:'abc123',size:17769000000}]})});
+  const fake=async()=>({ok:true,status:200,json:async()=>({models:[{name:'qwen3.6:27b-coding',digest:'abc123',size:17769076935}]})});
   const out=await nv09ModelAvailability(fake);
-  assert.deepStrictEqual({ok:out.ok,employeeId:out.employeeId,model:out.model,digest:out.digest,size:out.size},{ok:true,employeeId:'NV09',model:'qwen3.6:27b-coding',digest:'abc123',size:17769000000});
+  assert.deepStrictEqual({ok:out.ok,employeeId:out.employeeId,model:out.model,digest:out.digest,size:out.size},{ok:true,employeeId:'NV09',model:'qwen3.6:27b-coding',digest:'abc123',size:17769076935});
 });
 
 test('bounded inference sends small deterministic Ollama request and returns telemetry', async()=>{
