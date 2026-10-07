@@ -14,8 +14,8 @@ if (-not $Model) {
 }
 
 $baseUri = [uri]$BaseUrl
-if ($baseUri.Scheme -ne 'http' -or @('127.0.0.1','localhost') -notcontains $baseUri.Host) {
-  throw 'OLLAMA_LOOPBACK_ONLY'
+if ($baseUri.Scheme -ne 'http' -or $baseUri.Host -ne '127.0.0.1') {
+  throw 'OLLAMA_LOOPBACK_LITERAL_REQUIRED'
 }
 if ($NumCtx -lt 256 -or $NumCtx -gt 32768) {
   throw 'NumCtx must be between 256 and 32768.'
@@ -111,7 +111,6 @@ $payload = @{
   prompt = $Prompt
   stream = $false
   think = $false
-  keep_alive = '30s'
   options = @{
     temperature = 0
     num_ctx = $NumCtx
