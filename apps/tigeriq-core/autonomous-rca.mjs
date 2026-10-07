@@ -170,9 +170,9 @@ export function buildImprovementWorkOrder(rca={}){
     'APP_CHROME_MUTATION=FORBIDDEN',
     'ONE_RESOURCE_SCOPE_ONE_WRITER=true',
     'SELF_UPGRADE_CANDIDATE=true',
-    'TIGERIQ_EXECUTABLE=false',
-    'AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE',
-    'CURRENT_STATE=READY_SELF_UPGRADE_GATE',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'CURRENT_STATE=READY_AUTONOMOUS_REPAIR',
     `RCA_SIGNATURE=${rca.rcaSignature}`,
     `RCA_FAMILY_KEY=${rca.rcaFamilyKey}`,
     `RCA_CLASS=${rca.class}`,
@@ -185,7 +185,7 @@ export function buildImprovementWorkOrder(rca={}){
     `RISK=${rca.risk}`,
     `PROVENANCE=${rca.provenance.source}|${rca.provenance.contractId}|${rca.provenance.anomalySignature}`,
     'DONE=false',
-    'STATE=PROPOSED_FOR_CONTROLLED_SELF_UPGRADE',
+    'STATE=READY_P1_P5_AUTONOMOUS_REPAIR',
   ].join('\n');
   return{title,body,priority,resourceScope:scope};
 }
