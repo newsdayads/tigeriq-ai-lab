@@ -149,7 +149,7 @@ export function aggregateWorkforceHealth(workforce = [], resources = []) {
   const roster = Array.isArray(workforce) ? workforce : [];
   const activeResources = Array.isArray(resources) ? resources : [];
   const resourceMap = new Map(activeResources.map(r => [r.employee_id, r]));
-  
+
   let healthyCount = 0;
   let degradedCount = 0;
   let offlineCount = 0;
@@ -157,11 +157,28 @@ export function aggregateWorkforceHealth(workforce = [], resources = []) {
   const members = roster.map(member => {
     const id = member.employee_id;
     const res = resourceMap.get(id);
-    const status = res?.status || (member.admin_state?.includes('READY') ? 'ready' : 'idle');
-    const ok = res?.ok !== false && !/offline|error|dead/i.test(status);
+    const adminState = String(member.admin_state || '');
+    const resourceStatus = String(res?.status || '');
+    const explicitOfflineAdmin = /(?:RETIRED|UNASSIGNED|OWNER_STOPPED|DO_NOT_ROUTE|CORE_OFFLINE|WAIT_KEY)/i.test(adminState);
+    const degradedAdmin = /(?:CORE_BLOCKED|RUNTIME_ASSOCIATION_BLOCKED|PROVISIONING|RATE_LIMIT|COOLDOWN)/i.test(adminState);
 
-    if (ok) healthyCount++;
-    else if (res?.status === 'degraded') degradedCount++;
+    let status;
+    let health;
+    if (res) {
+      status = resourceStatus || 'idle';
+      if (/degraded/i.test(status)) health = 'degraded';
+      else if (res.ok === false || /offline|error|dead/i.test(status)) health = 'offline';
+      else health = 'healthy';
+    } else if (explicitOfflineAdmin) {
+      status = 'offline';
+      health = 'offline';
+    } else {
+      status = degradedAdmin ? 'degraded' : 'unverified';
+      health = 'degraded';
+    }
+
+    if (health === 'healthy') healthyCount++;
+    else if (health === 'degraded') degradedCount++;
     else offlineCount++;
 
     return {
@@ -169,7 +186,7 @@ export function aggregateWorkforceHealth(workforce = [], resources = []) {
       name: member.name,
       admin_state: member.admin_state,
       status,
-      ok,
+      ok: health === 'healthy',
       provider: res?.provider || null,
       last_active: res?.last_active || null,
     };
