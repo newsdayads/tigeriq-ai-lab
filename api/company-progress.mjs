@@ -255,22 +255,21 @@ export async function buildCompanyProgress(fetchImpl = fetch) {
   ]);
 
   const declared = parseCentralPriorities(central.body);
-  const priorityIssues = [];
-  for (const row of declared.slice(0, 6)) {
+  const priorityIssues = await Promise.all(declared.slice(0, 6).map(async (row) => {
     try {
       const live = await issue(row.number, owner, repo, fetchImpl);
-      priorityIssues.push({
+      return {
         ...row,
         title: cleanTitle(live.title || row.label),
         status: issueStatus(live),
         open: live.state === 'open',
         updatedAt: live.updated_at || null,
         url: live.html_url || null,
-      });
+      };
     } catch {
-      priorityIssues.push({ ...row, title: row.label, status: 'CHƯA XÁC MINH', open: null, updatedAt: null, url: null });
+      return { ...row, title: row.label, status: 'CHƯA XÁC MINH', open: null, updatedAt: null, url: null };
     }
-  }
+  }));
 
   const active = priorityIssues.find((row) => row.open === true) || null;
   let activeIssue = null;

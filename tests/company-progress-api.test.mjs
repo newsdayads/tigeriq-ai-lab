@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferDeclaredExecutor, inferOwnerAction, parseCentralPriorities, parseEmployees, projectProgress } from '../api/company-progress.mjs';
+import { buildCompanyProgress, inferDeclaredExecutor, inferOwnerAction, parseCentralPriorities, parseEmployees, projectProgress } from '../api/company-progress.mjs';
 
 function pull(title = 'WO-031: Mobile Workforce Board') {
   return { title, body: '', number: 93, head: { sha: 'abc', ref: 'wo031/test' } };
@@ -119,5 +119,44 @@ describe('CENTRAL v16 + Registry v15 compatibility', () => {
     expect(rows[0]).toMatchObject({ command: 1, employeeId: 'NV01', active: true, state: 'Đã kích hoạt' });
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', active: false, state: 'Tạm dừng' });
     expect(rows[2]).toMatchObject({ command: 8, employeeId: 'NV08', active: true, state: 'Dùng thủ công' });
+  });
+});
+
+
+describe('#4433 company progress priority fetch concurrency', () => {
+  it('starts independent issue reads concurrently while preserving CENTRAL order and per-item fallback', async () => {
+    const centralBody = [
+      '### 1. P1 #101 — First',
+      '### 2. P2 #102 — Second',
+      '### 3. P2 #103 — Missing',
+    ].join('\n');
+    let resolveFirst;
+    let secondStarted = false;
+    const delayedFirst = new Promise((resolve) => { resolveFirst = resolve; });
+    const response = (body) => ({ ok: true, status: 200, json: async () => body });
+    const fetchImpl = async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/issues/280')) return response({ body: centralBody, updated_at: '2026-10-07T00:00:00Z' });
+      if (path.endsWith('/issues/335')) return response({ body: '', updated_at: '2026-10-07T00:00:00Z' });
+      if (path.endsWith('/issues/101')) return delayedFirst;
+      if (path.endsWith('/issues/102')) {
+        secondStarted = true;
+        return response({ title: 'Second live', state: 'closed', updated_at: '2026-10-07T00:02:00Z', html_url: 'https://example.test/102' });
+      }
+      if (path.endsWith('/issues/103')) throw new Error('synthetic_unavailable');
+      throw new Error('unexpected_fetch:' + path);
+    };
+
+    const projection = buildCompanyProgress(fetchImpl);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(secondStarted).toBe(true);
+
+    resolveFirst(response({ title: 'First live', state: 'closed', updated_at: '2026-10-07T00:01:00Z', html_url: 'https://example.test/101' }));
+    const result = await projection;
+
+    expect(result.priorityIssues.map((row) => row.number)).toEqual([101, 102, 103]);
+    expect(result.priorityIssues[0]).toMatchObject({ title: 'First live', status: 'HOÀN TẤT', open: false });
+    expect(result.priorityIssues[1]).toMatchObject({ title: 'Second live', status: 'HOÀN TẤT', open: false });
+    expect(result.priorityIssues[2]).toMatchObject({ title: 'Missing', status: 'CHƯA XÁC MINH', open: null });
   });
 });
