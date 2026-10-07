@@ -79,6 +79,16 @@ STATE=DIRECT_CHAT_ICON_GUARD_V1
 - Không được viện lý do chat khác, phiên mới, context ngắn, memory, model habit hoặc tool output để bỏ qua validator.
 STATE=DIRECT_CHAT_PRE_SEND_VALIDATOR_V2
 
+## DIRECT CHAT PRE-SEND VALIDATOR V3 — TIẾNG VIỆT CỨNG
+- V3 bổ sung và ưu tiên cao hơn V2 về ngôn ngữ Owner-facing.
+- Mọi nội dung anh Sơn đọc phải ưu tiên tiếng Việt; không để từ/cụm từ vận hành tiếng Anh đứng trần giữa câu.
+- Nếu bắt buộc giữ tiếng Anh trong phần diễn giải, phải viết ngay theo mẫu `English (nghĩa/chức năng tiếng Việt)`. Không được giải thích tách xa hoặc chỉ giải thích ở lần xuất hiện đầu tiên.
+- Tên Work Order/Issue/PR mới phải có phần mô tả tiếng Việt dễ hiểu; thuật ngữ tiếng Anh bắt buộc trong tiêu đề phải kèm nghĩa tiếng Việt ngay sau.
+- Ngoại lệ chỉ cho literal kỹ thuật nguyên văn trong code/log/URL/path/branch/hash/biến/câu lệnh và tên riêng sản phẩm/model/thương hiệu khi dịch làm sai định danh.
+- Trước khi gửi, nếu phát hiện tiếng Anh vận hành đứng trần thì KHÔNG ĐƯỢC GỬI; phải tự dịch hoặc bổ sung ngoặc tiếng Việt rồi kiểm tra lại.
+- Vi phạm sau khi đã áp dụng = SYSTEM_OUTPUT_DEFECT; phải rearm lỗi canonical thay vì chờ Owner nhắc lại.
+STATE=DIRECT_CHAT_PRE_SEND_VALIDATOR_V3
+
 ## Dynamic Source of Truth — đọc khi task phụ thuộc trạng thái hiện hành
 1. `docs/CURRENT_STATE.md`
 2. CENTRAL: `https://github.com/newsdayads/tigeriq-ai-lab/issues/280`

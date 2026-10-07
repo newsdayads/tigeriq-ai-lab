@@ -292,6 +292,93 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(loader).toContain('KHÔNG ĐƯỢC GỬI');
     expect(workflow).toContain('Cổng kiểm tra trước khi gửi — bắt buộc xuyên mọi chat');
     expect(workflow).toContain('#<số> - <tiêu đề chuẩn>');
+    expect(loader).toContain('DIRECT CHAT PRE-SEND VALIDATOR V3');
+    expect(workflow).toContain('English (nghĩa/chức năng tiếng Việt)');
+  });
+
+  it('requires Vietnamese explanation beside unavoidable English operational terms', () => {
+    const bare = [
+      'runtime đang lỗi',
+      'health chưa ổn',
+      'review tiếp',
+      'merge sau',
+      'deploy lại',
+      'credential còn thiếu',
+      'security cần kiểm tra',
+      'browser bị treo',
+      'reboot máy',
+      'workflow mới',
+      'evidence chưa đủ',
+      'prompt này',
+      'code đang sửa',
+      'canary chưa chạy',
+      'fallback đang dùng',
+      'routing sai',
+      'live chưa xác minh',
+    ];
+    for (const text of bare) expect(containsOwnerFacingEnglishOperationalProse(text)).toBe(true);
+
+    const explained = [
+      'runtime (môi trường chạy) đang lỗi',
+      'health (tình trạng) chưa ổn',
+      'review (rà soát) tiếp',
+      'merge (hợp nhất) sau',
+      'deploy (triển khai) lại',
+      'credential (thông tin xác thực) còn thiếu',
+      'security (bảo mật) cần kiểm tra',
+      'browser (trình duyệt) bị treo',
+      'reboot (khởi động lại) máy',
+      'workflow (quy trình) mới',
+      'evidence (bằng chứng) chưa đủ',
+      'prompt (câu lệnh giao việc) này',
+      'code (mã nguồn) đang sửa',
+      'canary (kiểm thử thực tế) chưa chạy',
+      'fallback (phương án dự phòng) đang dùng',
+      'routing (định tuyến) sai',
+      'live (thực tế) chưa xác minh',
+    ];
+    for (const text of explained) expect(containsOwnerFacingEnglishOperationalProse(text)).toBe(false);
+  });
+
+  it('localizes live prose while preserving the TigerIQ Live product name', () => {
+    expect(localizeOwnerFacingText('live chưa xác minh')).toBe('thực tế chưa xác minh');
+    expect(localizeOwnerFacingText('TigerIQ Live đang hoạt động')).toBe('TigerIQ Live đang hoạt động');
+    expect(containsOwnerFacingEnglishOperationalProse('live chưa xác minh')).toBe(true);
+    expect(containsOwnerFacingEnglishOperationalProse('TigerIQ Live đang hoạt động')).toBe(false);
+
+    const row = ownerFacingWorkRow({
+      status: 'WORKING',
+      currentStep: 'live chưa xác minh',
+      detail: 'TigerIQ Live đang hoạt động',
+    });
+    expect(row.currentStep).toBe('thực tế chưa xác minh');
+    expect(row.detail).toBe('TigerIQ Live đang hoạt động');
+    expect(containsOwnerFacingEnglishOperationalProse(JSON.stringify(row))).toBe(false);
+  });
+
+  it('localizes the expanded common operational vocabulary', () => {
+    const input = 'runtime health review merge deploy release publish blocker pending active credential security browser reboot workflow evidence prompt production code self-install live';
+    const output = localizeOwnerFacingText(input);
+    expect(output).toContain('môi trường chạy');
+    expect(output).toContain('tình trạng');
+    expect(output).toContain('rà soát');
+    expect(output).toContain('hợp nhất');
+    expect(output).toContain('triển khai');
+    expect(output).toContain('phát hành');
+    expect(output).toContain('xuất bản');
+    expect(output).toContain('điểm bị chặn');
+    expect(output).toContain('thông tin xác thực');
+    expect(output).toContain('bảo mật');
+    expect(output).toContain('trình duyệt');
+    expect(output).toContain('khởi động lại');
+    expect(output).toContain('quy trình');
+    expect(output).toContain('bằng chứng');
+    expect(output).toContain('câu lệnh giao việc');
+    expect(output).toContain('môi trường vận hành chính thức');
+    expect(output).toContain('mã nguồn');
+    expect(output).toContain('tự cài đặt');
+    expect(output).toContain('thực tế');
+    expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
   });
 
   it('fails closed on guessed/stale progress and bare machine status', () => {

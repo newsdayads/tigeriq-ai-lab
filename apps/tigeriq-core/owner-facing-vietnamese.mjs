@@ -21,6 +21,31 @@ const STATUS_LABELS = Object.freeze({
   PENDING: 'ĐANG CHỜ',
 });
 
+const OWNER_PRESERVED_PROPER_NAMES = Object.freeze([
+  /\bTigerIQ Live\b/gi,
+]);
+
+function protectOwnerProperNames(value = '') {
+  const preserved = [];
+  let text = String(value ?? '');
+  for (const pattern of OWNER_PRESERVED_PROPER_NAMES) {
+    text = text.replace(pattern, (match) => {
+      const token = `@@OWNER_PROPER_${preserved.length}@@`;
+      preserved.push(match);
+      return token;
+    });
+  }
+  return { text, preserved };
+}
+
+function restoreOwnerProperNames(value = '', preserved = []) {
+  let text = String(value ?? '');
+  preserved.forEach((original, index) => {
+    text = text.replace(`@@OWNER_PROPER_${index}@@`, original);
+  });
+  return text;
+}
+
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bfinal review\b/gi, 'rà soát cuối'],
   [/\bdeep cross-check\b/gi, 'kiểm tra chéo chuyên sâu'],
@@ -28,6 +53,28 @@ const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bcanary\b/gi, 'kiểm thử thực tế'],
   [/\bfallback\b/gi, 'phương án dự phòng'],
   [/\brouting\b/gi, 'định tuyến'],
+  [/\bruntime\b/gi, 'môi trường chạy'],
+  [/\bhealth\b/gi, 'tình trạng'],
+  [/\breview\b/gi, 'rà soát'],
+  [/\bmerge\b/gi, 'hợp nhất'],
+  [/\bdeploy(?:ment)?\b/gi, 'triển khai'],
+  [/\brelease\b/gi, 'phát hành'],
+  [/\bpublish\b/gi, 'xuất bản'],
+  [/\bblocker\b/gi, 'điểm bị chặn'],
+  [/\bpending\b/gi, 'chờ'],
+  [/\bactive\b/gi, 'đang xử lý'],
+  [/\bqueued\b/gi, 'đang chờ'],
+  [/\bcredential(?:s)?\b/gi, 'thông tin xác thực'],
+  [/\bsecurity\b/gi, 'bảo mật'],
+  [/\bbrowser\b/gi, 'trình duyệt'],
+  [/\breboot\b/gi, 'khởi động lại'],
+  [/\bworkflow\b/gi, 'quy trình'],
+  [/\bevidence\b/gi, 'bằng chứng'],
+  [/\bprompt\b/gi, 'câu lệnh giao việc'],
+  [/\bproduction\b/gi, 'môi trường vận hành chính thức'],
+  [/\bcode\b/gi, 'mã nguồn'],
+  [/\bself[- ]install\b/gi, 'tự cài đặt'],
+  [/\blive\b/gi, 'thực tế'],
 ]);
 
 const STATUS_REPLACEMENTS = Object.freeze([
@@ -55,10 +102,11 @@ export function ownerStatusLabel(value = '') {
 }
 
 export function localizeOwnerFacingText(value = '') {
-  let text = String(value ?? '');
+  const { text: protectedText, preserved } = protectOwnerProperNames(value);
+  let text = protectedText;
   for (const [pattern, replacement] of OWNER_TERM_REPLACEMENTS) text = text.replace(pattern, replacement);
   for (const [pattern, replacement] of STATUS_REPLACEMENTS) text = text.replace(pattern, replacement);
-  return text;
+  return restoreOwnerProperNames(text, preserved);
 }
 
 export function ownerFacingWorkRow(row) {
@@ -87,7 +135,8 @@ export function containsBareEnglishOwnerStatus(value = '') {
 
 
 function stripOwnerTechnicalLiterals(value = '') {
-  return String(value || '')
+  const { text } = protectOwnerProperNames(value);
+  return text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`\n]+`/g, ' ')
     .replace(/https?:\/\/\S+/gi, ' ');
@@ -103,9 +152,17 @@ export function containsBareOwnerPrReference(value = '') {
   return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
 }
 
+const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install)\b/gi;
+const VIETNAMESE_EXPLANATION_RE = /[ăâđêôơưàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
+
 export function containsOwnerFacingEnglishOperationalProse(value = '') {
   const text = stripOwnerTechnicalLiterals(value);
-  return /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable)\b/i.test(text);
+  for (const match of text.matchAll(OWNER_ENGLISH_OPERATIONAL_RE)) {
+    const tail = text.slice(Number(match.index || 0) + match[0].length);
+    const explanation = tail.match(/^\s*\(([^)\n]{2,120})\)/);
+    if (!explanation || !VIETNAMESE_EXPLANATION_RE.test(explanation[1])) return true;
+  }
+  return false;
 }
 
 function hasOwnerWorkReference(value = '') {
