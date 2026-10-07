@@ -87,7 +87,7 @@ describe('Task Prompt Compiler V1',()=>{
 
   it('9 parses fenced JSON but preserves deterministic validation',()=>{
     const {packet}=compileTaskPrompt(base);
-    const parsed=parseExecutionResult('\\`\\`\\`json\n'+accepted(packet)+'\n\\`\\`\\`');
+    const parsed=parseExecutionResult('```json\n'+accepted(packet)+'\n```');
     expect(parsed.schema).toBe('EXECUTION_RESULT_V1');
   });
 
