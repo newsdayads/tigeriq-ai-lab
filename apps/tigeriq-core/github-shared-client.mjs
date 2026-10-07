@@ -137,7 +137,9 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
     return body;
   })();
   inflight.set(key,request);
-  try{return await useResult(request)}finally{if(inflight.get(key)===request)inflight.delete(key)}
+  const releaseInflight=()=>{if(inflight.get(key)===request)inflight.delete(key)};
+  void request.then(releaseInflight,releaseInflight);
+  return useResult(request)
 }
 
 export function invalidateGithubCache(match=''){
