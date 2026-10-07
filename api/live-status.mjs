@@ -541,7 +541,7 @@ function statusFromLifecycleState(state = '') {
   if (/REBOOT_NEXT|WAIT|PENDING|HOLD/.test(value)) return 'WAITING';
   if (/REVIEW|VERIFY/.test(value)) return 'REVIEW';
   if (/BLOCKED|ERROR|FAILED/.test(value)) return 'BLOCKED';
-  if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING/.test(value)) return 'WORKING';
+  if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING|CODING_LANE_ACTIVE|(?:^|_)ACTIVE(?:_|$)/.test(value)) return 'WORKING';
   if (/READY|QUEUED/.test(value)) return 'QUEUED';
   return 'OPEN';
 }
@@ -1010,6 +1010,10 @@ function issueDisplayOwner(issue) {
   if (employee) return employee;
   const owner = firstBodyValue(body, ['MUTATION_OWNER', 'ACTIVE_OWNER']);
   if (/^(?:NV\d{2}|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
+  const phase = issueCanonicalState(issue);
+  const activeCodeObject = bodyValue(body, 'ACTIVE_CODEOBJ');
+  if (/^CORE_DYNAMIC_LEASE$/i.test(owner) && activeCodeObject && /(?:CODING_LANE_ACTIVE|(?:^|_)ACTIVE(?:_|$))/.test(phase)) return 'CORE';
+  if (/^VY_DIRECT_GITHUB$/i.test(owner)) return 'VY';
   return null;
 }
 
@@ -1140,8 +1144,11 @@ function actionableStatus(issue, overlays = {}) {
   const issueAt = Date.parse(issue?.updated_at || '') || 0;
   const canonicalBlocked = /BLOCKED/.test(issueCanonicalState(issue));
   const terminalBlocked = hasTerminalBlockedLabel(issue);
+  const canonicalActive = /(?:CODING_LANE_ACTIVE|(?:^|_)ACTIVE(?:_|$))/.test(phase)
+    && Boolean(bodyValue(body, 'ACTIVE_CODEOBJ') || bodyFlag(body, 'TIGERIQ_EXECUTABLE'));
 
   if (terminalBlocked && (canonicalBlocked || issueAt >= Math.max(activeAt, queuedAt, lifecycleAt))) return 'BLOCKED';
+  if (canonicalActive) return 'WORKING';
   if (active?.status && activeAt >= Math.max(queuedAt, lifecycleAt)) return String(active.status).toUpperCase();
   if (queued?.status && queuedAt >= Math.max(activeAt, lifecycleAt)) return String(queued.status).toUpperCase();
   if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
