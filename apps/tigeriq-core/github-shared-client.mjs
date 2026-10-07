@@ -69,6 +69,20 @@ async function awaitWithSignal(promise,signal){
     );
   });
 }
+function boundedAbortSignal(callerSignal,timeoutMs=12000){
+  const controller=new AbortController();
+  const onCallerAbort=()=>controller.abort(callerSignal?.reason);
+  if(callerSignal?.aborted)onCallerAbort();
+  else callerSignal?.addEventListener?.('abort',onCallerAbort,{once:true});
+  const timer=setTimeout(()=>controller.abort(new DOMException('The operation was aborted due to timeout','TimeoutError')),timeoutMs);
+  return {
+    signal:controller.signal,
+    cleanup(){
+      clearTimeout(timer);
+      callerSignal?.removeEventListener?.('abort',onCallerAbort);
+    },
+  };
+}
 
 export async function githubRequestJson(fetchImpl,url,token='',init={}){
   const {freshMs:requestedFreshMs,allowStaleOnRateLimit=true,signal:callerSignal,...fetchInit}=init||{};
@@ -84,12 +98,15 @@ export async function githubRequestJson(fetchImpl,url,token='',init={}){
   if(method!=='GET'){
     if(blockedUntil>Date.now()){stats.backoffHits++;throw backoffError()}
     stats.writes++;stats.network++;
-    const response=await fetchImpl(url,{...fetchInit,method,headers,signal:callerSignal||AbortSignal.timeout(12000)});
-    updateRate(response.headers);
-    const raw=response.status===204?'':await response.text();
-    let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
-    if(!response.ok){applyRateLimitFailure(response,body,raw);throw makeError(response.status,body,raw,response.headers)}
-    return response.status===204?{}:body;
+    const bounded=boundedAbortSignal(callerSignal,12000);
+    try{
+      const response=await fetchImpl(url,{...fetchInit,method,headers,signal:bounded.signal});
+      updateRate(response.headers);
+      const raw=response.status===204?'':await response.text();
+      let body={};if(raw){try{body=JSON.parse(raw)}catch{body={text:raw}}}
+      if(!response.ok){applyRateLimitFailure(response,body,raw);throw makeError(response.status,body,raw,response.headers)}
+      return response.status===204?{}:body;
+    }finally{bounded.cleanup()}
   }
 
   const key=fetchIdentity(fetchImpl)+':'+String(url);
