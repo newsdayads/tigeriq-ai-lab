@@ -647,7 +647,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 .work-row{padding:8px 9px;border-radius:12px;min-height:0}.work-top{gap:5px;flex-wrap:nowrap}.rank{width:18px;height:18px;font-size:9px}.work-id{font-size:11px}.priority{font-size:8px;padding:2px 5px}.work-nv{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px}.state{font-size:8px;padding:3px 6px}
 .work-title{font-size:12.5px;line-height:1.32;margin-top:6px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-height:2.64em}
 .work-path,.work-execution,.work-next,.work-blocker{display:none!important}
-.work-quick{font-size:10px;line-height:1.35;margin-top:5px;color:#9fb3c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.work-quick{font-size:10px;line-height:1.35;margin-top:5px;color:#9fb3c8;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .work-quick.blocked{color:#ff9fa7}.work-quick.next{color:#9ec9f3}
 .progress{margin-top:7px;gap:6px}.progress-track{height:7px}.progress-text{font-size:9px;min-width:29px}
 .progress.indeterminate{color:#7faee0}.progress.indeterminate .progress-fill{display:block!important;width:34%;min-width:34%;background:linear-gradient(90deg,transparent,currentColor,transparent);animation:progress-indeterminate 1.45s ease-in-out infinite}
@@ -760,7 +760,7 @@ function workerFrom(row){
   if(String(row?.workKind||'').toUpperCase()==='GOAL')return 'OWNER';
   if(workStatus(row)==='OWNER_GATE')return row?.technicalComplete?'ĐÃ XONG KỸ THUẬT':'CHỜ ANH SƠN';
   const direct=String(row?.employeeId||row?.targetWorker||'').toUpperCase();
-  if(/^(?:NV\d{2}|CODEX|AUTO)$/.test(direct))return direct;
+  if(/^(?:NV\d{2}|CODEX|AUTO|CORE|VY)$/.test(direct))return direct;
   const match=String(row?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);
   return match?.[1]||'CHƯA GÁN';
 }
@@ -774,7 +774,7 @@ function shortNext(row){
   if(raw){
     if(/#\d+\s*[-=]?>\s*#\d+/.test(raw))return 'Hoàn tất chuỗi phụ thuộc';
     if(workStatus(row)==='OWNER_GATE'&&/(?:anh sơn|owner).*(?:duyệt|review).*(?:live|giao diện)/i.test(raw))return 'Duyệt bản live';
-    return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw;
+    return raw;
   }
   return workStatus(row)==='OWNER_GATE'?'Duyệt quyết định':'Chưa xác định';
 }
@@ -811,10 +811,15 @@ function normalizeRows(value){
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
+function snapshotTimestamp(value){
+  return Date.parse(value?.workProjection?.verifiedAt||value?.generatedAt||'')||0;
+}
 function hydrate(raw){
   const projection=raw?.workProjection||{};
   if(raw?.ok&&projection.mode!=='unavailable'&&!projection.stale){writeLastGood(raw);return raw}
-  const cached=readLastGood();if(!cached)return raw;
+  const cached=readLastGood();
+  if(raw?.ok&&projection.mode!=='unavailable'&&(!cached||snapshotTimestamp(raw)>=snapshotTimestamp(cached)))return raw;
+  if(!cached)return raw;
   return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
 function updateCounts(){
@@ -1751,7 +1756,7 @@ function render(){
     const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :activeWithoutPercent
-        ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ bằng chứng để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">'+esc(status==='REVIEW'?'Đang rà soát':status==='VERIFY'?'Đang xác minh':'Đang xử lý')+'</span></div>'
+        ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
         :'';
     const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
       ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
