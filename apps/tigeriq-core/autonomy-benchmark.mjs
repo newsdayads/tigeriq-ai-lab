@@ -1,4 +1,5 @@
 export const AUTONOMY_BENCHMARK_SCHEMA='TIGERIQ_AUTONOMY_BENCHMARK_V1';
+const EVENT_TYPES=new Set(['state','dispatch','job_completed','owner_nudge','duplicate_dispatch','false_parent_park','review_violation','unsafe_plan_rejected','replan_requested','replan_completed','restart_committed','restart_resumed','gate_escalation']);
 
 function finiteNumber(value,code,{min=0}={}){
   const n=Number(value);
@@ -29,13 +30,16 @@ export function validateAutonomyBenchmarkFixture(raw={}){
   if(raw.schema!==AUTONOMY_BENCHMARK_SCHEMA)throw new Error('BENCHMARK_SCHEMA_INVALID');
   const scenarioId=String(raw.scenarioId||'').trim();
   if(!scenarioId)throw new Error('BENCHMARK_SCENARIO_ID_REQUIRED');
-  const tasksTotal=Math.trunc(finiteNumber(raw.tasksTotal,'BENCHMARK_TASKS_TOTAL_INVALID',{min:1}));
-  const resourcesTotal=Math.trunc(finiteNumber(raw.resourcesTotal,'BENCHMARK_RESOURCES_TOTAL_INVALID',{min:1}));
+  const tasksTotal=finiteNumber(raw.tasksTotal,'BENCHMARK_TASKS_TOTAL_INVALID',{min:1});
+  const resourcesTotal=finiteNumber(raw.resourcesTotal,'BENCHMARK_RESOURCES_TOTAL_INVALID',{min:1});
+  if(!Number.isInteger(tasksTotal))throw new Error('BENCHMARK_TASKS_TOTAL_INVALID');
+  if(!Number.isInteger(resourcesTotal))throw new Error('BENCHMARK_RESOURCES_TOTAL_INVALID');
   if(!Array.isArray(raw.events)||raw.events.length<2)throw new Error('BENCHMARK_EVENTS_REQUIRED');
   const events=raw.events.map((event,index)=>{
     if(!event||typeof event!=='object'||Array.isArray(event))throw new Error(`BENCHMARK_EVENT_INVALID:${index}`);
     const type=String(event.type||'').trim();
     if(!type)throw new Error(`BENCHMARK_EVENT_TYPE_REQUIRED:${index}`);
+    if(!EVENT_TYPES.has(type))throw new Error(`BENCHMARK_EVENT_TYPE_INVALID:${index}`);
     return {...event,type,__ms:eventTime(event,index),__index:index};
   });
   for(let i=1;i<events.length;i++)if(events[i].__ms<events[i-1].__ms)throw new Error(`BENCHMARK_EVENTS_NOT_SORTED:${i}`);
@@ -78,9 +82,10 @@ export function computeAutonomyBenchmark(raw={}){
   for(const event of events){
     integrateUntil(event.__ms);
     if(event.type==='state'){
-      runnableWork=Math.trunc(finiteNumber(event.runnableWork,'BENCHMARK_RUNNABLE_INVALID'));
-      eligibleIdleResources=Math.trunc(finiteNumber(event.eligibleIdleResources,'BENCHMARK_IDLE_RESOURCE_INVALID'));
-      activeResources=Math.trunc(finiteNumber(event.activeResources,'BENCHMARK_ACTIVE_RESOURCE_INVALID'));
+      runnableWork=finiteNumber(event.runnableWork,'BENCHMARK_RUNNABLE_INVALID');
+      eligibleIdleResources=finiteNumber(event.eligibleIdleResources,'BENCHMARK_IDLE_RESOURCE_INVALID');
+      activeResources=finiteNumber(event.activeResources,'BENCHMARK_ACTIVE_RESOURCE_INVALID');
+      if(!Number.isInteger(runnableWork)||!Number.isInteger(eligibleIdleResources)||!Number.isInteger(activeResources))throw new Error('BENCHMARK_STATE_COUNT_INVALID');
       if(activeResources>resourcesTotal||eligibleIdleResources>resourcesTotal)throw new Error('BENCHMARK_RESOURCE_COUNT_EXCEEDS_TOTAL');
       syncIdleWindow(event.__ms);
       continue;
@@ -131,7 +136,7 @@ export function computeAutonomyBenchmark(raw={}){
   integrateUntil(lastMs);
   if(idleWindowStart!==null)idleGaps.push((lastMs-idleWindowStart)/1000);
 
-  const durationHours=Math.max(1,(lastMs-firstMs)/3600000);
+  const durationHours=Math.max(1/3600000,(lastMs-firstMs)/3600000);
   const restartResumeSuccess=restartCommitted.size?restartResumed.size/restartCommitted.size:1;
   const exactGateEscalationPrecision=gateEscalations?exactGateEscalations/gateEscalations:1;
   const resourceUtilizationWhenBacklogExists=backlogWindowMs?backlogResourceMs/(backlogWindowMs*resourcesTotal):0;
