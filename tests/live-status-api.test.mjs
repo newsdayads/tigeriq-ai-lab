@@ -160,6 +160,32 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')))).toBe(null);
   });
 
+  it('does not resurrect stale historical executable flags when the current block disables execution', () => {
+    const row = parseQueueIssue(issue(3904, '[P1][TIGERIQ NEWS] Current credential gate', [
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_REAL_GATE',
+      'CURRENT_STATE=BLOCKED_MISSING_RUNTIME_CREDENTIALS_AND_PRIVATE_REPO_AUTH',
+      'BLOCKER=MISSING_REQUIRED_CREDENTIAL_MATERIAL',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=TIGERIQ_NEWS_AUTONOMOUS_SOAK_V1',
+      'MUTATION_OWNER=NONE',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_DIRECT_MAIN=true',
+      '',
+      '## historical',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'OWNER_POLICY=AUTO',
+      'NO_CODE_CHANGE=true',
+      'NO_PC01_SHELL=true',
+    ].join('\n')));
+    expect(row).toBe(null);
+  });
+
   it('projects active Core Coding Lane state as working with a visible Core owner', () => {
     const row = parseOpenWorkIssue(issue(4521, '[P1][CORE vNext] Nền dependency', [
       'TIGERIQ_EXECUTABLE=true',
