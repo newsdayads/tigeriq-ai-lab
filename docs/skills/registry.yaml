@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-10-06
+updated: 2026-10-07
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
   source_type: chatgpt_attachment
@@ -203,3 +203,12 @@ skills:
     target: skill-system
     triggers: marketing sales research department domain skill pack capability
     summary: Package department-specific reusable skills under the existing Skill Registry, ownership, security and review contracts without expanding Core authority.
+
+
+  - id: core-manager-planner
+    title: Core Manager Planner
+    state: CANDIDATE
+    version: 0.1.0
+    target: core-manager
+    triggers: plan planning planner decomposition dependency critical-path replan PLAN_DELTA manager
+    summary: Propose bounded P1-P5 PLAN_DELTA changes from authoritative work/resource state while deterministic Core governor retains all dispatch, policy, safety and side-effect authority.
