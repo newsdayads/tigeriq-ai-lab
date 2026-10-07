@@ -2710,9 +2710,9 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   const rearmHeader=[
     '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
     `SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`,
-    'CURRENT_STATE=READY_SELF_UPGRADE_GATE',
-    'TIGERIQ_EXECUTABLE=false',
-    'AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE',
+    'CURRENT_STATE=READY_AUTONOMOUS_REPAIR',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
     'SELF_UPGRADE_CANDIDATE=true',
     `RCA_SIGNATURE=${rca.rcaSignature}`,
     familyMarker,
