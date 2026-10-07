@@ -10,7 +10,7 @@ import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
 import {localizeOwnerFacingText} from './owner-facing-vietnamese.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
-const DEFAULT_CODING_URL='http://100.97.23.87:8797';
+export const DEFAULT_CODING_URL='http://127.0.0.1:8797';
 export const GITHUB_CODING_RECONCILE_INTERVAL_MS=300000;
 const DEFAULT_INTERVAL_MS=GITHUB_CODING_RECONCILE_INTERVAL_MS;
 const DEFAULT_CONCURRENCY_CAP=3;
