@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -106,6 +106,12 @@ describe('GitHub coding scope concurrency',()=>{
     expect(codingScopesOverlap(api,{resourceScope:'OTHER',paths:['tests'],ambiguous:false})).toBe(false);
     expect(codingScopesOverlap(api,{...api})).toBe(true);
     expect(codingScopesOverlap(api,{resourceScope:'X',paths:[],ambiguous:true})).toBe(true);
+  });
+});
+
+describe('GitHub coding intake transport',()=>{
+  it('defaults to the canonical loopback-only Coding Lane listener',()=>{
+    expect(DEFAULT_CODING_URL).toBe('http://127.0.0.1:8797');
   });
 });
 
