@@ -127,6 +127,19 @@ export function parseCentralPriorities(body = '') {
   const rows = [];
   const seen = new Set();
   const text = String(body);
+
+  for (const section of text.split(/\n(?=## )/)) {
+    const executable = section.match(/^CURRENT_EXECUTABLE_P1_P5=(NONE|#\d+)\s*$/m);
+    if (!executable) continue;
+    if (executable[1] === 'NONE') return [];
+    const number = Number(executable[1].slice(1));
+    const masterLine = section.split(/\r?\n/).find((line) => line.startsWith('MASTER=#' + number + ' - '));
+    const masterTitle = masterLine ? masterLine.slice(masterLine.indexOf(' - ') + 3) : 'Work Order #' + number;
+    const priority = section.match(/^PRIORITY=(P[0-2])\s*$/m)?.[1]
+      || masterTitle.match(/^\[(P[0-2])\]/)?.[1]
+      || 'P1';
+    return [{ priority, number, label: cleanTitle(masterTitle) }];
+  }
   const legacy = /###\s+\d+\.\s+(P[0-2])\s+#(\d+)\s+—\s+([^\n]+)/g;
   for (const match of text.matchAll(legacy)) {
     const number = Number(match[2]);
