@@ -162,18 +162,23 @@ function isFree(resource) {
 function isLocal(resource) {
   return resource.local===true||String(resource.provider||'').toLowerCase()==='ollama'||String(resource.cost_tier??resource.costTier??'').toUpperCase()==='LOCAL';
 }
+export function isCodexResource(resource={}) {
+  const fields=[resource.provider,resource.model,resource.resource_id,resource.resourceId,resource.runtime_binding,resource.runtimeBinding,resource.employee_id,resource.employeeId];
+  return fields.some(value=>String(value||'').toLowerCase().includes('codex'));
+}
 function cooldownActive(resource, nowMs) {
   if(!resource.cooldown_until&&!resource.cooldownUntil)return false;
   const until=Date.parse(String(resource.cooldown_until??resource.cooldownUntil));
   return Number.isFinite(until)&&until>nowMs;
 }
 
-export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
+export function scoreResource(resource,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false,ownerCodexApproved=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
   const resourceId=String(resource.resource_id??resource.resourceId??createResourceId(resource.provider,resource.model,resource.account_binding??resource.accountBinding??'default',resource.runtime_binding??resource.runtimeBinding??'core'));
   const reasons=[];
   const reviewerExclusions=new Set([reviewerResourceId,...(Array.isArray(reviewerResourceIds)?reviewerResourceIds:[])].filter(Boolean).map(String));
   if(resource.enabled===false)return {eligible:false,resourceId,score:Infinity,reasons:['disabled']};
+  if(isCodexResource(resource)&&ownerCodexApproved!==true)return {eligible:false,resourceId,score:Infinity,reasons:['owner_codex_approval_required']};
   const hasFunctionalEvidence=Boolean(resource.functionalEvidence??resource.functional_evidence);
   const readiness=functionalRoutingReadiness(resource,{nowMs,requireEvidence:Boolean(requireFunctionalEvidence||hasFunctionalEvidence)});
   if(!readiness.ready)return {eligible:false,resourceId,score:Infinity,reasons:[readiness.reason]};
@@ -211,9 +216,9 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
-export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false}={}) {
+export function rankCandidates(resources,{profile='AUTO',capability='general',taskKind='general',reviewerResourceId=null,reviewerResourceIds=[],nowMs=Date.now(),requireFunctionalEvidence=false,ownerCodexApproved=false}={}) {
   const normalizedProfile=normalizeRoutingProfile(profile);
-  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs,requireFunctionalEvidence})}));
+  const evaluated=(Array.isArray(resources)?resources:[]).map(resource=>({resource,...scoreResource(resource,{profile:normalizedProfile,capability,taskKind,reviewerResourceId,reviewerResourceIds,nowMs,requireFunctionalEvidence,ownerCodexApproved})}));
   const eligible=evaluated.filter(x=>x.eligible).sort((a,b)=>a.score-b.score||a.resourceId.localeCompare(b.resourceId));
   const chosen=eligible[0]||null;
   return {
