@@ -1,4 +1,5 @@
 const REPO = 'newsdayads/tigeriq-ai-lab';
+export const SOURCE_REQUEST_TIMEOUT_MS = 12000;
 const BOOTSTRAP_PATHS = [
   'bootstrap/00_TIGERIQ_LOADER.md',
   'bootstrap/01_TIGERIQ_COMPANY_CONSTITUTION.md',
@@ -9,15 +10,19 @@ const BOOTSTRAP_PATHS = [
   'docs/CURRENT_STATE.md',
 ];
 
-async function fetchText(url) {
-  const response = await fetch(url, { headers: { 'user-agent': 'TigerIQ-Source-Bundle/1.0' } });
+export async function fetchText(url, fetchImpl = fetch) {
+  const response = await fetchImpl(url, {
+    headers: { 'user-agent': 'TigerIQ-Source-Bundle/1.0' },
+    signal: AbortSignal.timeout(SOURCE_REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`SOURCE_FETCH_FAILED ${response.status} ${url}`);
   return response.text();
 }
 
-async function fetchIssue(number) {
-  const response = await fetch(`https://api.github.com/repos/${REPO}/issues/${number}`, {
+export async function fetchIssue(number, fetchImpl = fetch) {
+  const response = await fetchImpl(`https://api.github.com/repos/${REPO}/issues/${number}`, {
     headers: { 'accept': 'application/vnd.github+json', 'user-agent': 'TigerIQ-Source-Bundle/1.0' },
+    signal: AbortSignal.timeout(SOURCE_REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`ISSUE_FETCH_FAILED #${number} ${response.status}`);
   const issue = await response.json();
