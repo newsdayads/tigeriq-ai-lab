@@ -37,7 +37,7 @@ test('bounded inference sends small deterministic Ollama request and returns tel
     return {ok:true,status:200,json:async()=>({model:'qwen3.6:27b-coding',response:'NV09_CORE_CANARY_OK',done:true,load_duration:11,eval_duration:22,eval_count:3})};
   };
   const out=await runBoundedInferenceNv09('safe coding canary',{fetchImpl:fake,timeoutMs:2000,numCtx:512,numPredict:12,keepAlive:'5s'});
-  assert.strictEqual(request.url,'http://127.0.0.1:11434/api/generate');
+  assert.strictEqual(request.url,'http://127.0.0.1:11435/api/generate');
   assert.strictEqual(request.body.model,'qwen3.6:27b-coding');
   assert.strictEqual(request.body.stream,false);
   assert.strictEqual(request.body.think,false);
