@@ -42,6 +42,33 @@ describe('company progress calculation', () => {
 
 describe('public authoritative projection', () => {
 
+  it('#4441 parses CURRENT_EXECUTABLE_P1_P5 from the newest authoritative override block', () => {
+    const body = [
+      '## CURRENT OVERRIDE — NV02 FULL REPO AUDIT/FIX/CLEANUP — AUTHORITATIVE',
+      'MASTER=#4409 - [P1][REPO][AUDIT] Rà toàn bộ mã nguồn TigerIQ',
+      'PRIORITY=P1',
+      'CURRENT_EXECUTABLE_P1_P5=#4409',
+      '',
+      '## OLD HISTORY',
+      '### 1. P0 #111 — stale legacy item',
+    ].join('\n');
+    expect(parseCentralPriorities(body)).toEqual([
+      { priority: 'P1', number: 4409, label: 'Rà toàn bộ mã nguồn TigerIQ' },
+    ]);
+  });
+
+  it('#4441 treats authoritative CURRENT_EXECUTABLE_P1_P5=NONE as terminal over stale history', () => {
+    const body = [
+      '## CURRENT OVERRIDE — QUEUE RECONCILIATION — AUTHORITATIVE',
+      'CURRENT_EXECUTABLE_P1_P5=NONE',
+      '',
+      '## OLD HISTORY',
+      '### 1. P0 #111 — stale legacy item',
+    ].join('\n');
+    expect(parseCentralPriorities(body)).toEqual([]);
+  });
+
+
 
   it('#4437 strips all consecutive leading canonical title prefixes only', () => {
     const rows = parseCentralPriorities('### 1. P1 #4437 — [P2][COMPANY PROGRESS][REPO AUDIT] Chuẩn hóa [giữ nguyên] title');
