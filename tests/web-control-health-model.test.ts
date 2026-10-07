@@ -15,6 +15,15 @@ describe('Web Control live health model',()=>{
     expect(truth.detail).not.toContain('2p trước');
   });
 
+  it('#4453 requires fresh telemetry for healthy runtime statuses',()=>{
+    expect(model.resourceHealthTruth({status:'READY',last_seen_at:ago(31)},NOW))
+      .toMatchObject({status:'STALE_ERROR',current:false,historical:true});
+    expect(model.resourceHealthTruth({status:'ONLINE',last_seen_at:null},NOW))
+      .toMatchObject({status:'STALE_ERROR',current:false,historical:true});
+    expect(model.resourceHealthTruth({status:'IDLE',last_seen_at:ago(2)},NOW))
+      .toMatchObject({status:'IDLE',current:true});
+  });
+
   it('expires stale rate limits and preserves only current 429/cooldown as RATE_LIMITED',()=>{
     expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'rate_limit',last_seen_at:ago(120),cooldown_until:ago(60)},NOW).status).toBe('STALE_ERROR');
     expect(model.resourceHealthTruth({status:'RATE_LIMITED',last_error:'rate_limit',last_seen_at:ago(1),last_429_at:ago(120),cooldown_until:ago(60)},NOW).status).toBe('STALE_ERROR');

@@ -22,6 +22,10 @@
     const cooldownAt=Date.parse(String(r?.cooldown_until||r?.cooldownUntil||''));
     const cooling=Number.isFinite(cooldownAt)&&cooldownAt>now;
     if(['BUSY','IDLE','READY','ONLINE'].includes(raw)){
+      if(!fresh){
+        const telemetryAge=Number.isFinite(age)?Math.round(age/60000)+'p trước':'không rõ thời điểm';
+        return {status:'STALE_ERROR',current:false,historical:true,detail:`Telemetry cũ · ${telemetryAge}${error?` · lỗi trước đó: ${error}`:''}`,cooling:false};
+      }
       return {status:raw,current:true,historical:Boolean(error),detail:error?`Lỗi trước đó: ${error} · ${Number.isFinite(errorAge)?Math.round(errorAge/60000)+'p trước':'không rõ thời điểm'}`:'Đang khỏe',cooling:false};
     }
     if(raw==='RATE_LIMITED'){
