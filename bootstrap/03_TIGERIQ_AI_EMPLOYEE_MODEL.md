@@ -1,5 +1,5 @@
 # TIGERIQ — AI EMPLOYEE & DEPARTMENT MODEL
-Version: 1.3
+Version: 1.4
 Status: Source of Truth
 Updated: 2026-09-27
 
@@ -58,6 +58,7 @@ Turns repeatable work into SOPs, automations, schedules, measurable processes, r
 - Agents may propose; they do not exceed delegated authority.
 - Independent review is required for high-impact technical changes.
 - Model routing should prefer low-cost capable models and use stronger/independent models when risk or complexity warrants.
+- Codex is excluded from automatic routing by default. Any Codex/Codex Local/GitHub Codex review use requires an explicit Owner approval that names Codex and the bounded scope. Generic continuation/execution commands and P1–P5 standing authorization do not grant this permission. If no matching approval exists, choose another eligible zero-cost resource or fail closed/wait; do not consume Codex quota as fallback.
 - No AI/NV may treat its own chat summary as proof that system state was updated.
 - Unknown/disabled employee or command mapping phải fail closed; không tự đoán từ chat cũ/memory.
 

@@ -1,5 +1,5 @@
 # TIGERIQ — WORKFLOW
-Version: 4.0
+Version: 4.1
 Status: Source of Truth
 Priority: P0
 Updated: 2026-10-07
@@ -196,6 +196,15 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Không tự thực hiện paid service, mua hàng/subscription, thay đổi credential/security boundary hoặc hành động irreversible khi chưa có quyền áp dụng. P1–P5 Production/LIVE release được phép tự thực hiện theo standing authorization tại mục 5.1; P0 không được kế thừa quyền này.
 - Không lộ secret trong source/evidence.
 - Ưu tiên: an toàn → reversible → evidence → automation → low-cost.
+
+### 16.0.1. Codex quota guard — Owner phê duyệt rõ ràng mới được dùng
+- Codex là tài nguyên có hạn mức cần bảo toàn; mặc định **CẤM dùng** nếu chưa có phê duyệt rõ ràng của anh Sơn cho đúng phạm vi.
+- Áp dụng cho mọi bề mặt: Vy, Core, Coding Lane, yêu cầu rà soát trên GitHub, Codex Local và mọi hành động có backend Codex.
+- Phê duyệt hợp lệ phải **nêu rõ Codex** và phạm vi/hành động được phép. Phê duyệt của việc trước không được tái sử dụng cho việc, PR, phạm vi mã nguồn hoặc thao tác khác nếu anh Sơn không nói rõ.
+- Các lệnh chung như `LÀM`, `TIẾP TỤC`, `02`, `LÀM TIẾP`, `TỰ HOÀN TẤT`, `ÁP DỤNG` **không bao giờ** được suy diễn thành quyền dùng Codex.
+- Ủy quyền thường trực P1–P5 **không bao gồm Codex**.
+- Khi chưa có quyền Codex: phải chọn tài nguyên zero-cost khác đủ năng lực hoặc giữ trạng thái chờ tài nguyên; không được dùng lý do “không có reviewer khác” để tự tiêu hạn mức Codex.
+- Mọi policy cũ cho phép tự route Codex/Codex Local bị vô hiệu trong phần xung đột với guard này.
 
 ## 16.1. PC01 Tool Routing Guard — hard gate xuyên chat
 - Áp dụng cho **mọi chat và NEW CHAT**: `CMD` trong TigerIQ nghĩa là **Remote Desktop Commander / Remote MCP**; `SHELL` nghĩa là **cmd.exe / PowerShell / terminal**. Không được dùng `CMD` để chỉ Windows Command Prompt.
