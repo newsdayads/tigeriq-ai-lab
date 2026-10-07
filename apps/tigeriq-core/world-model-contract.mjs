@@ -24,7 +24,7 @@ function text(value, code, { nullable = false } = {}) {
 function token(value, code, options = {}) {
   const out = text(value, code, options);
   if (out === null) return null;
-  if (!/^[A-Za-z0-9._:/-]{1,180}$/.test(out)) fail(code);
+  if (!/^[A-Za-z0-9._:@/-]{1,180}$/.test(out)) fail(code);
   return out;
 }
 
