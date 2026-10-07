@@ -458,7 +458,7 @@ export function parseOwnerResultComment(comment = {}) {
     const explicitVerification = ownerResultField(block, ['VERIFICATION', 'VERIFY', 'XÁC MINH']);
     const completionState = /Trạng thái\s*:\s*(?:HOÀN TẤT|COMPLETED|DONE)/iu.test(block);
     const verification = localizeOwnerFacingText(cleanText(
-      explicitVerification || (/^(?:PASS|ĐẠT)$/iu.test(resultField) ? resultField : completionState ? 'HOÀN TẤT' : 'ĐÃ XÁC MINH'),
+      explicitVerification || (/^(?:PASS|ĐẠT)$/iu.test(resultField) ? resultField : completionState ? 'HOÀN TẤT' : 'CHƯA XÁC MINH'),
       120,
     ));
 
