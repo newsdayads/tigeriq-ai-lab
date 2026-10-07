@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -513,6 +513,88 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'JOB-1'},now),false);
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:31:00Z'},now),false);
     assert.strictEqual(coreResourceStateEligible({enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE',cooldown_until:'2026-09-24T02:29:00Z'},now),true);
+  });
+
+  await t.test('Coding Manager ranks healthy 4s resource ahead of 60s error-prone resource',()=>{
+    const now=Date.parse('2026-10-07T10:00:00Z');
+    const slow={
+      resource_id:'res:ollama:slow',employee_id:'NV09',provider:'ollama',model:'local',
+      enabled:true,credential_state:'LOCAL',health_state:'ONLINE',work_state:'IDLE',
+      cost_tier:'LOCAL',capabilities:['coding'],last_latency_ms:60000,
+      success_count:2,failure_count:3,quota_state:{known:true,usable:true,remainingRatio:1},
+      functionalEvidence:{lastSuccessAt:'2026-10-07T09:59:00Z',lastFailureAt:'2026-10-07T09:58:00Z',failureStreak:1},
+      taskStats:{coding_manager:{success:2,failure:3,avg_latency_ms:60000,retries:2,failovers:1}},
+    };
+    const fast={
+      resource_id:'res:nvidia:fast',employee_id:'NV20',provider:'nvidia',model:'cloud',
+      enabled:true,credential_state:'READY',health_state:'ONLINE',work_state:'IDLE',
+      cost_tier:'FREE',capabilities:['coding'],last_latency_ms:4000,
+      success_count:10,failure_count:0,quota_state:{known:true,usable:true,remainingRatio:1},
+      functionalEvidence:{lastSuccessAt:'2026-10-07T09:59:30Z',lastFailureAt:null,failureStreak:0},
+      taskStats:{coding_manager:{success:10,failure:0,avg_latency_ms:4000,retries:0,failovers:0}},
+    };
+    const ranked=rankCodingManagerResources([slow,fast],{nowMs:now});
+    assert.strictEqual(ranked.chosen.employeeId,'NV20');
+    const slowScore=ranked.candidates.find(x=>x.employeeId==='NV09')?.score;
+    const fastScore=ranked.candidates.find(x=>x.employeeId==='NV20')?.score;
+    assert.ok(Number(slowScore)>Number(fastScore));
+  });
+
+  await t.test('Coding Manager consumes Core task performance and recent functional evidence',()=>{
+    const now=Date.parse('2026-10-07T10:00:00Z');
+    const health={
+      byEmployee:new Map([['NV09',{
+        resource_id:'res:ollama:nv09',employee_id:'NV09',provider:'ollama',model:'local',
+        health_state:'ONLINE',work_state:'IDLE',credential_state:'LOCAL',capabilities:['coding'],
+        quota_state:{known:true,usable:true,remainingRatio:0.8},last_latency_ms:12000,
+      }]]),
+      performanceByResourceTask:new Map([['res:ollama:nv09:coding',{success:7,failure:1,avg_latency_ms:9000,retries:1,failovers:0}]]),
+      functionalByEmployee:new Map([['NV09',{lastSuccessAt:'2026-10-07T09:59:30Z',lastFailureAt:'2026-10-07T09:55:00Z',failureStreak:0}]]),
+    };
+    const input=codingManagerRankingInput({id:'NV09',provider:'ollama',model:'local'},{nowMs:now,health});
+    assert.strictEqual(input.taskStats.coding_manager.avg_latency_ms,9000);
+    assert.strictEqual(input.functionalEvidence.lastSuccessAt,'2026-10-07T09:59:30Z');
+    assert.ok(input.capabilities.includes('coding'));
+    assert.ok(input.capabilities.includes('general'));
+  });
+
+  await t.test('Coding Manager keeps live Core general/review resources eligible for coding-manager role',()=>{
+    const now=Date.parse('2026-10-07T14:20:00Z');
+    const health={
+      byEmployee:new Map([
+        ['NV20',{
+          resource_id:'res:nvidia:nv20',employee_id:'NV20',provider:'nvidia',model:'cloud',
+          enabled:true,health_state:'ONLINE',work_state:'IDLE',credential_state:'READY',
+          capabilities:['general','reasoning','review'],cost_tier:'FREE',last_latency_ms:1200,
+          success_count:100,failure_count:0,quota_state:{known:false,usable:true}
+        }],
+        ['NV09',{
+          resource_id:'res:ollama:nv09',employee_id:'NV09',provider:'ollama',model:'local',
+          enabled:true,health_state:'ONLINE',work_state:'ON_DEMAND',credential_state:'LOCAL',
+          capabilities:['coding_local'],cost_tier:'LOCAL',last_latency_ms:41000,
+          success_count:16,failure_count:7,quota_state:{known:false,usable:true}
+        }]
+      ]),
+      performanceByResourceTask:new Map(),
+      functionalByEmployee:new Map(),
+    };
+    const nv20=codingManagerRankingInput({id:'NV20',provider:'nvidia',model:'cloud'},{nowMs:now,health});
+    const nv09=codingManagerRankingInput({id:'NV09',provider:'ollama',model:'local'},{nowMs:now,health});
+    assert.ok(nv20.capabilities.includes('coding'));
+    assert.ok(nv20.capabilities.includes('general'));
+    assert.ok(nv09.capabilities.includes('coding'));
+    assert.ok(nv09.capabilities.includes('general'));
+    const ranked=rankCodingManagerResources([nv09,nv20],{nowMs:now});
+    assert.strictEqual(ranked.chosen.employeeId,'NV20');
+  });
+
+  await t.test('Coding Manager selection no longer contains blind round-robin',()=>{
+    const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+    assert.ok(src.includes('rankCodingManagerResources(inputs,{nowMs})'));
+    assert.ok(!src.includes('available[rr%available.length]'));
+    assert.ok(!src.includes('let rr=0'));
+    assert.ok(src.includes("process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'"));
+    assert.ok(!src.includes("process.env.TIGERIQ_CORE_HOST?.trim()||HOST"));
   });
 
   await t.test('production runJob persists implementer before long generation',()=>{

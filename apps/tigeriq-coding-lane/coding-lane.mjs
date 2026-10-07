@@ -6,6 +6,7 @@ import {assertSafeFileChange} from './safety-guard.mjs';
 import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport,parseModelJson} from './ai-json-transport.mjs';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
+import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 
 export class CodingScopeViolationError extends Error {
   constructor(offending) {
@@ -338,7 +339,7 @@ export function resolveCodingRepository(targetRepository='',{sourceRepository=SO
 }
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
-const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||HOST}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
+const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
 const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
 const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
@@ -372,9 +373,8 @@ const resources=[
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
   R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
-let rr=0;
 const busyAiResources=new Set();
-let coreResourceHealth={fetchedAt:0,byEmployee:new Map()};
+let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
 
 export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(!state||typeof state!=='object')return false;
@@ -394,14 +394,81 @@ export function coreResourceStateEligible(state,nowMs=Date.now()){
 export function setCoreResourceHealthSnapshot(snapshot,nowMs=Date.now()){
   const rows=Array.isArray(snapshot?.resources)?snapshot.resources:[];
   const byEmployee=new Map();
+  const byResource=new Map();
   for(const row of rows){
     const id=String(row?.employee_id??row?.employeeId??row?.id??'').trim();
     if(id)byEmployee.set(id,row);
+    const resourceId=String(row?.resource_id??row?.resourceId??'').trim();
+    if(resourceId)byResource.set(resourceId,row);
   }
-  coreResourceHealth={fetchedAt:nowMs,byEmployee};
+  const performanceByResourceTask=new Map();
+  for(const row of Array.isArray(snapshot?.routing?.performanceByTask)?snapshot.routing.performanceByTask:[]){
+    const resourceId=String(row?.resource_id??row?.resourceId??'').trim();
+    const taskKind=String(row?.task_kind??row?.taskKind??'general').trim().toLowerCase()||'general';
+    if(resourceId)performanceByResourceTask.set(`${resourceId}:${taskKind}`,row);
+  }
+  const functionalByEmployee=new Map();
+  for(const event of Array.isArray(snapshot?.events)?snapshot.events:[]){
+    const type=String(event?.type||'').toUpperCase();
+    if(!['RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'].includes(type))continue;
+    const resourceId=String(event?.resource_id??event?.resourceId??'').trim();
+    const mapped=resourceId?byResource.get(resourceId):null;
+    const employeeId=String(event?.employee_id??event?.employeeId??mapped?.employee_id??mapped?.employeeId??'').trim();
+    if(!employeeId)continue;
+    const evidence=functionalByEmployee.get(employeeId)||{lastSuccessAt:null,lastFailureAt:null,failureStreak:0,successSeen:false};
+    const ts=event?.ts??event?.created_at??event?.createdAt??null;
+    if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK'){
+      if(!evidence.lastSuccessAt)evidence.lastSuccessAt=ts;
+      evidence.successSeen=true;
+    }else{
+      if(!evidence.lastFailureAt)evidence.lastFailureAt=ts;
+      if(!evidence.successSeen)evidence.failureStreak++;
+    }
+    functionalByEmployee.set(employeeId,evidence);
+  }
+  for(const evidence of functionalByEmployee.values())delete evidence.successSeen;
+  coreResourceHealth={fetchedAt:nowMs,byEmployee,performanceByResourceTask,functionalByEmployee};
   return byEmployee.size;
 }
 
+export function codingManagerRankingInput(resource,{nowMs=Date.now(),health=coreResourceHealth}={}){
+  const state=health?.byEmployee?.get?.(resource?.id);
+  if(!state)return null;
+  const resourceId=String(state?.resource_id??state?.resourceId??'').trim();
+  const performance=health?.performanceByResourceTask?.get?.(`${resourceId}:coding_manager`)
+    ||health?.performanceByResourceTask?.get?.(`${resourceId}:coding`)
+    ||health?.performanceByResourceTask?.get?.(`${resourceId}:general`)
+    ||null;
+  const evidence=health?.functionalByEmployee?.get?.(resource?.id)||null;
+  const successAt=Date.parse(String(evidence?.lastSuccessAt||''));
+  const failureAt=Date.parse(String(evidence?.lastFailureAt||''));
+  const freshnessMs=15*60*1000;
+  const hasRecentEvidence=(Number.isFinite(successAt)&&nowMs-successAt<=freshnessMs)
+    ||(Number.isFinite(failureAt)&&nowMs-failureAt<=freshnessMs);
+  const capabilities=[...new Set([...(Array.isArray(state?.capabilities)?state.capabilities:[]),'coding','general'])];
+  return {
+    ...state,
+    employee_id:resource.id,
+    resource_id:resourceId||`coding:${resource.id}`,
+    provider:state?.provider||resource?.provider,
+    model:state?.model||resource?.model,
+    cost_tier:state?.cost_tier??state?.costTier??(resource?.provider==='ollama'?'LOCAL':'FREE'),
+    capabilities,
+    taskStats:performance?{coding_manager:performance}:undefined,
+    ...(hasRecentEvidence&&evidence?{functionalEvidence:evidence}:{}),
+  };
+}
+
+export function rankCodingManagerResources(candidates=[],{nowMs=Date.now()}={}){
+  return rankCandidates(candidates,{
+    profile:'CODING',
+    capability:'coding',
+    taskKind:'coding_manager',
+    nowMs,
+    requireFunctionalEvidence:false,
+    ownerCodexApproved:false,
+  });
+}
 async function refreshCoreResourceHealth(){
   const nowMs=Date.now();
   if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
@@ -410,7 +477,7 @@ async function refreshCoreResourceHealth(){
     setCoreResourceHealthSnapshot(snapshot,Date.now());
     return true;
   }catch{
-    coreResourceHealth={fetchedAt:0,byEmployee:new Map()};
+    coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
     return false;
   }
 }
@@ -426,7 +493,15 @@ function selectableResources(exclude=[]){
   return resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
 }
 
-function pickResource(exclude=[]){const available=selectableResources(exclude);if(!available.length)return null;const r=available[rr%available.length];rr++;return r;}
+function pickResource(exclude=[]){
+  const available=selectableResources(exclude);
+  if(!available.length)return null;
+  const nowMs=Date.now();
+  const inputs=available.map(resource=>codingManagerRankingInput(resource,{nowMs})).filter(Boolean);
+  const ranked=rankCodingManagerResources(inputs,{nowMs});
+  const chosenEmployeeId=String(ranked?.chosen?.employeeId||'');
+  return available.find(resource=>resource.id===chosenEmployeeId)||null;
+}
 
 async function fetchJson(url,init={},timeout=90000){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{const res=await fetch(url,{...init,signal:c.signal});const text=await res.text();let body={};try{body=text?JSON.parse(text):{};}catch{body={text};}if(!res.ok){const e=new Error(`HTTP_${res.status}:${String(body?.message||body?.error||text).slice(0,300)}`);e.status=res.status;e.url=String(url||'');e.retryAfter=res.headers.get('retry-after');e.rateLimitRemaining=res.headers.get('x-ratelimit-remaining');e.rateLimitReset=res.headers.get('x-ratelimit-reset');throw e;}return body;}finally{clearTimeout(t)}}
 
