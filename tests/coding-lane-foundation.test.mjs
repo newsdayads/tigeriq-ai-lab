@@ -554,7 +554,38 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const input=codingManagerRankingInput({id:'NV09',provider:'ollama',model:'local'},{nowMs:now,health});
     assert.strictEqual(input.taskStats.coding_manager.avg_latency_ms,9000);
     assert.strictEqual(input.functionalEvidence.lastSuccessAt,'2026-10-07T09:59:30Z');
-    assert.deepStrictEqual(input.capabilities,['coding']);
+    assert.ok(input.capabilities.includes('coding'));
+    assert.ok(input.capabilities.includes('general'));
+  });
+
+  await t.test('Coding Manager keeps live Core general/review resources eligible for coding-manager role',()=>{
+    const now=Date.parse('2026-10-07T14:20:00Z');
+    const health={
+      byEmployee:new Map([
+        ['NV20',{
+          resource_id:'res:nvidia:nv20',employee_id:'NV20',provider:'nvidia',model:'cloud',
+          enabled:true,health_state:'ONLINE',work_state:'IDLE',credential_state:'READY',
+          capabilities:['general','reasoning','review'],cost_tier:'FREE',last_latency_ms:1200,
+          success_count:100,failure_count:0,quota_state:{known:false,usable:true}
+        }],
+        ['NV09',{
+          resource_id:'res:ollama:nv09',employee_id:'NV09',provider:'ollama',model:'local',
+          enabled:true,health_state:'ONLINE',work_state:'ON_DEMAND',credential_state:'LOCAL',
+          capabilities:['coding_local'],cost_tier:'LOCAL',last_latency_ms:41000,
+          success_count:16,failure_count:7,quota_state:{known:false,usable:true}
+        }]
+      ]),
+      performanceByResourceTask:new Map(),
+      functionalByEmployee:new Map(),
+    };
+    const nv20=codingManagerRankingInput({id:'NV20',provider:'nvidia',model:'cloud'},{nowMs:now,health});
+    const nv09=codingManagerRankingInput({id:'NV09',provider:'ollama',model:'local'},{nowMs:now,health});
+    assert.ok(nv20.capabilities.includes('coding'));
+    assert.ok(nv20.capabilities.includes('general'));
+    assert.ok(nv09.capabilities.includes('coding'));
+    assert.ok(nv09.capabilities.includes('general'));
+    const ranked=rankCodingManagerResources([nv09,nv20],{nowMs:now});
+    assert.strictEqual(ranked.chosen.employeeId,'NV20');
   });
 
   await t.test('Coding Manager selection no longer contains blind round-robin',()=>{
