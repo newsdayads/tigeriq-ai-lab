@@ -736,6 +736,8 @@ async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, 
 
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
+  const currentAdmission = safeAutoWorkAdmission(issue);
+  if (['EXPLICIT_EXECUTION_DISABLED', 'AUTO_QUEUE_EXCLUDED'].includes(String(currentAdmission?.reason || ''))) return null;
   const coreSpec = parseExecutableIssue(issue);
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
