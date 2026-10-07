@@ -47,6 +47,15 @@ function restoreOwnerProperNames(value = '', preserved = []) {
 }
 
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
+  [/\bDeep Agents\/LangGraph\b/gi, 'Deep Agents/LangGraph (khung điều phối tác nhân)'],
+  [/\bCore NV API\b/gi, 'Core NV API (giao diện AI trung tâm)'],
+  [/\bprivate[- ]repo\b/gi, 'kho mã riêng'],
+  [/\bcheckpoint\b/gi, 'điểm lưu trạng thái'],
+  [/\bshadow\b/gi, 'chạy song song'],
+  [/\bsoak\b/gi, 'chạy bền'],
+  [/\breadiness\b/gi, 'mức sẵn sàng'],
+  [/\brepair\b/gi, 'sửa lỗi'],
+  [/\bauth\b/gi, 'xác thực'],
   [/\bfinal review\b/gi, 'rà soát cuối'],
   [/\bdeep cross-check\b/gi, 'kiểm tra chéo chuyên sâu'],
   [/\blive acceptance\b/gi, 'nghiệm thu trực tiếp'],
@@ -117,10 +126,9 @@ export function ownerFacingWorkRow(row) {
     ...(statusCode ? { status: ownerStatusLabel(statusCode) } : {}),
   };
   if (typeof localized.displayState === 'string') localized.displayState = ownerStatusLabel(localized.displayState);
-  if (typeof localized.waitReason === 'string') localized.waitReason = localizeOwnerFacingText(localized.waitReason);
-  if (typeof localized.currentStep === 'string') localized.currentStep = localizeOwnerFacingText(localized.currentStep);
-  if (typeof localized.detail === 'string') localized.detail = localizeOwnerFacingText(localized.detail);
-  if (typeof localized.job === 'string') localized.job = localizeOwnerFacingText(localized.job);
+  for (const field of ['title','waitReason','currentStep','latestCompletedStep','nextStep','nextAction','blocker','detail','job']) {
+    if (typeof localized[field] === 'string') localized[field] = localizeOwnerFacingText(localized[field]);
+  }
   if (statusCode) localized.statusIcon = ownerStatusIcon(statusCode);
   const progress = verifiedOwnerProgress(localized.progress);
   if (progress) localized.progressPresentation = progress;
