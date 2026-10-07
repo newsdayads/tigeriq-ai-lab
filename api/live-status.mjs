@@ -415,6 +415,1504 @@ function commentField(body, key) {
   return '';
 }
 
+function ownerResultField(body = '', labels = []) {
+  const wanted = (Array.isArray(labels) ? labels : [labels]).map((value) => String(value || '').trim()).filter(Boolean);
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const normalized = line.replace(/^\s*[-*]\s*/, '').trim();
+    for (const label of wanted) {
+      const escaped = label.replace(/[.*+?^$()|[\]\\{}]/g, '\\function commentField(body, key) {
+  const direct = bodyValue(body, key);
+  if (direct) return direct;
+  const wanted = String(key || '').trim().toUpperCase();
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const parts = line.split('|');
+    if (parts.length < 2) continue;
+    if (String(parts.shift() || '').trim().toUpperCase() !== wanted) continue;
+    return parts.join('|').trim();
+  }
+  return '';
+}
+');
+      const match = normalized.match(new RegExp('^' + escaped + '\\s*(?:=|:|\\|)\\s*(.+)
+export function parseClearedBlockerLifecycleComment(comment = {}) {
+  const body = String(comment?.body || '');
+  const state = (commentField(body, 'CURRENT_STATE') || commentField(body, 'STATE')).trim();
+  const blocker = commentField(body, 'BLOCKER').trim();
+  if (!state || !/^none(?:\b|\s)/i.test(blocker)) return null;
+  return {
+    state: state.toUpperCase(),
+    blocker,
+    blockerCleared: true,
+    step: commentField(body, 'NEXT') || commentField(body, 'ACTION') || null,
+    createdAt: comment?.created_at || comment?.updated_at || null,
+  };
+}
+
+function statusFromLifecycleState(state = '') {
+  const value = String(state || '').toUpperCase();
+  if (!value) return null;
+  if (/REBOOT_NEXT|WAIT|PENDING|HOLD/.test(value)) return 'WAITING';
+  if (/REVIEW|VERIFY/.test(value)) return 'REVIEW';
+  if (/BLOCKED|ERROR|FAILED/.test(value)) return 'BLOCKED';
+  if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING/.test(value)) return 'WORKING';
+  if (/READY|QUEUED/.test(value)) return 'QUEUED';
+  return 'OPEN';
+}
+
+function issuePriority(issue) {
+  const body = String(issue?.body || '');
+  return bodyValue(body, 'PRIORITY').match(/^P[0-5]$/i)?.[0]?.toUpperCase()
+    || String(issue?.title || '').match(/^\[(P[0-5])\]/i)?.[1]?.toUpperCase()
+    || null;
+}
+
+function issueEmployeeId(issue) {
+  const body = String(issue?.body || '');
+  const authority = firstBodyField(body, [
+    'MUTATION_OWNER',
+    'ASSIGNED_EXECUTOR',
+    'EXECUTOR',
+    'TARGET_EMPLOYEE',
+    'PRIMARY_EMPLOYEE',
+    'IMPLEMENTER',
+    'PREFERRED_REVIEWER',
+    'REVIEWER',
+  ]);
+  if (authority) {
+    const id = workerIdFromText(authority.value);
+    if (id) return id;
+    if (['MUTATION_OWNER','ASSIGNED_EXECUTOR','EXECUTOR'].includes(authority.key)) return null;
+  }
+  if (issueIsAppChromeControlPlane(issue)) return null;
+  return workerIdFromText(issue?.title || '');
+}
+
+function issueIsTerminal(issue) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return true;
+  const body = String(issue.body || '');
+  const state = firstBodyValue(body, ['CURRENT_STATE', 'STATE']).toUpperCase();
+  return ['CLOSED', 'DONE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'].includes(state)
+    || /^SUPERSEDED(?:_BY)?=/mi.test(body);
+}
+
+function issueIsTerminalOrExcluded(issue) {
+  if (issueIsTerminal(issue)) return true;
+  const body = String(issue.body || '');
+  const state = bodyValue(body, 'STATE').toUpperCase();
+  return state === 'EXCLUDED' || bodyFlag(body, 'EXCLUDED') || bodyValue(body, 'AUTO_QUEUE').toUpperCase() === 'EXCLUDED';
+}
+
+
+function firstWorkflowRef(body = '', key = '') {
+  const raw = bodyValue(body, key);
+  const match = String(raw || '').match(/#?(\d{1,8})(?!\d)/);
+  return match ? Number(match[1]) : null;
+}
+
+function workflowRefList(body = '', key = '') {
+  const raw = bodyValue(body, key);
+  return [...new Set((String(raw || '').match(/#?\d{1,8}/g) || [])
+    .map((value) => Number(value.replace('#', '')))
+    .filter(Boolean))].slice(0, 16);
+}
+
+export function workflowRelationsForIssue(issue) {
+  const body = String(issue?.body || '');
+  return {
+    parentNumber: firstWorkflowRef(body, 'PARENT'),
+    sourceNumber: firstWorkflowRef(body, 'SOURCE'),
+    targetPrNumber: firstWorkflowRef(body, 'TARGET_PR'),
+    sourcePrNumber: firstWorkflowRef(body, 'SOURCE_PR'),
+    dependsOn: workflowRefList(body, 'DEPENDS_ON'),
+    supersedesNumbers: workflowRefList(body, 'SUPERSEDES'),
+    capability: bodyValue(body, 'CAPABILITY').trim().toLowerCase() || null,
+    reviewOnly: bodyFlag(body, 'REVIEW_ONLY'),
+  };
+}
+
+export function parseRecentCompletedIssue(issue, now = Date.now()) {
+  if (!issue || issue.pull_request || issue.state !== 'closed') return null;
+  if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
+  const body = String(issue.body || '');
+  const acceptance = ownerAcceptancePolicy(body);
+  if (acceptance.required && !acceptance.accepted) return null;
+  const terminalState = bodyValue(body, 'STATE').toUpperCase();
+  if (['CANCELLED', 'CANCELED', 'SUPERSEDED', 'NOT_PLANNED'].includes(terminalState)) return null;
+  if (/^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
+  const completedAt = issue.closed_at || issue.updated_at || null;
+  const completedMs = Date.parse(completedAt || '');
+  if (!Number.isFinite(completedMs) || completedMs > now) return null;
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind !== 'WORK') return null;
+  const priority = issuePriority(issue);
+  const relations = workflowRelationsForIssue(issue);
+  return {
+    number: Number(issue.number),
+    title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: issueEmployeeId(issue),
+    status: 'DONE',
+    workKind: 'WORK',
+    ...relations,
+    progressPercent: 100,
+    progressSource: 'terminal',
+    progressDetail: '5/5 gate',
+    completedAt,
+    updatedAt: completedAt,
+    url: issue.html_url || null,
+  };
+}
+
+async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
+  const now = Date.now();
+  if (recentWorkCache.data && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
+    return recentWorkCache.data;
+  }
+  try {
+    const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 10);
+    const candidates = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
+      .map((issue) => parseRecentCompletedIssue(issue, now))
+      .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
+      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+    const rows = candidates.slice(0, RECENT_WORK_LIMIT);
+    const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
+    const value = {
+      rows,
+      completedCount: rows.length,
+      complete: boundedScopeComplete,
+      stale: false,
+      scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
+    };
+    recentWorkCache = { at: now, data: value };
+    return value;
+  } catch {
+    if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
+    return { rows: [], completedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
+  }
+}
+
+function queueWaitReason(issue) {
+  const body = String(issue?.body || '');
+  const state = bodyValue(body, 'STATE').toUpperCase();
+  if (bodyFlag(body, 'OWNER_HOLD') || state === 'OWNER_HOLD' || state === 'MANUAL_HOLD') return 'OWNER_HOLD';
+  if (state.includes('BLOCKED')) return bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || state;
+  if (/^(?:WAIT|PENDING)/.test(state)) return state;
+  return null;
+}
+
+function queueDependencies(issue) {
+  const raw = bodyValue(issue?.body || '', 'DEPENDS_ON');
+  return [...new Set((raw.match(/#?\d+/g) || []).map((value) => Number(value.replace('#', ''))).filter(Boolean))].slice(0, 16);
+}
+
+
+const COMPLETION_SCOPE_REF_KEYS = /^(?:PARENT|DEPENDS_ON|CHILD(?:_[A-Z0-9]+)?|FINAL_ACCEPTANCE|BLOCKER|CURRENT_BLOCKER|ACTIVE_CHILD)$/i;
+export function completionScopeReferenceNumbers(body = '') {
+  const refs = new Set();
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/i);
+    if (!match || !COMPLETION_SCOPE_REF_KEYS.test(String(match[1] || ''))) continue;
+    for (const token of String(match[2] || '').matchAll(/#(\d{1,8})(?!\d)/g)) refs.add(Number(token[1]));
+  }
+  return [...refs];
+}
+
+async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, fetchImpl = fetch) {
+  const currentOpen = new Set((Array.isArray(openRows) ? openRows : [])
+    .filter((row) => row?.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5')
+    .map((row) => Number(row.number)).filter(Boolean));
+  const sourceIssues = (Array.isArray(openIssues) ? openIssues : []).filter((issue) => currentOpen.has(Number(issue?.number)));
+  const refs = new Set(sourceIssues.flatMap((issue) => completionScopeReferenceNumbers(issue?.body || '')));
+  for (const number of currentOpen) refs.delete(number);
+  if (refs.size > 100) return { rows: [], complete: false, reason: 'scope_reference_limit', referenced: refs.size };
+  const resolved = await Promise.all([...refs].map(async (number) => {
+    const issue = await githubIssue(owner, repo, number, issueMap, fetchImpl);
+    return { number, issue };
+  }));
+  if (resolved.some(({ issue }) => !issue)) {
+    return { rows: [], complete: false, reason: 'scope_reference_unresolved', referenced: refs.size };
+  }
+  const rows = resolved
+    .map(({ issue }) => parseRecentCompletedIssue(issue))
+    .filter((row) => row && !currentOpen.has(Number(row.number)))
+    .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+  return {
+    rows,
+    complete: true,
+    referenced: refs.size,
+    completedItems: rows.length,
+    scope: 'current_open_plus_structural_references',
+  };
+}
+
+export function parseQueueIssue(issue) {
+  if (issueIsTerminalOrExcluded(issue)) return null;
+  const coreSpec = parseExecutableIssue(issue);
+  const codingSpec = parseCodingIssue(issue);
+  if (!coreSpec && !codingSpec) return null;
+  const terminalBlocked = hasTerminalBlockedLabel(issue);
+  const roleClaimed = hasRoleClaimedLabel(issue);
+  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : roleClaimed ? 'External role claim' : queueWaitReason(issue);
+  const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
+  const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
+  return {
+    number: Number(issue.number),
+    title: String(issue.title || ''),
+    priority: effectivePriority,
+    effectivePriority,
+    sourcePriority,
+    ownerControlled: Boolean(codingSpec?.ownerControlled ?? coreSpec?.ownerControlled ?? false),
+    ownerDirect: Boolean(codingSpec?.ownerDirect ?? coreSpec?.ownerDirect ?? bodyFlag(issue?.body || '', 'OWNER_DIRECT')),
+    route: codingSpec ? 'CODING' : (coreSpec?.route || coreSpec?.dispatchLane || null),
+    resourceScope: codingSpec?.scopeLease?.resourceScope || coreSpec?.resourceScope || bodyValue(issue?.body || '', 'RESOURCE_SCOPE') || null,
+    status: terminalBlocked || (holdReason && /BLOCKED/.test(holdReason)) ? 'BLOCKED' : holdReason ? 'WAITING' : 'QUEUED',
+    waitReason: holdReason,
+    dependencies: codingSpec?.dependsOn || queueDependencies(issue),
+    updatedAt: issue.updated_at || null,
+    url: issue.html_url || null,
+  };
+}
+
+function queuePriority(row) {
+  return String(row?.effectivePriority || row?.priority || 'P3').toUpperCase();
+}
+
+export function queueRowEligibleNow(row) {
+  return String(row?.status || '').toUpperCase() === 'QUEUED' && /^P[1-5]$/.test(queuePriority(row));
+}
+
+export function compareQueueRows(a, b) {
+  const aEligible = queueRowEligibleNow(a);
+  const bEligible = queueRowEligibleNow(b);
+  if (aEligible !== bEligible) return aEligible ? -1 : 1;
+  const rank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+  const aPriorityRank = !aEligible && queuePriority(a) === 'P0' ? 6 : (rank[queuePriority(a)] ?? rank.P3);
+  const bPriorityRank = !bEligible && queuePriority(b) === 'P0' ? 6 : (rank[queuePriority(b)] ?? rank.P3);
+  const delta = aPriorityRank - bPriorityRank;
+  if (delta) return delta;
+  if (aEligible && bEligible && Boolean(a?.ownerDirect) !== Boolean(b?.ownerDirect)) return a?.ownerDirect ? -1 : 1;
+  const waitRank = { WAITING: 0, BLOCKED: 1, QUEUED: 2 };
+  const waitDelta = (waitRank[String(a?.status || '').toUpperCase()] ?? 3) - (waitRank[String(b?.status || '').toUpperCase()] ?? 3);
+  if (waitDelta) return waitDelta;
+  return Number(a?.number || 0) - Number(b?.number || 0);
+}
+
+export function rankQueueRows(rows = []) {
+  let dispatchRank = 0;
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const priority = queuePriority(row);
+    const p0Waiting = String(row?.status || '').toUpperCase() === 'QUEUED' && priority === 'P0';
+    const normalized = p0Waiting
+      ? { ...row, status: 'WAITING', waitReason: row.waitReason || 'P0 chờ Owner/assignment' }
+      : row;
+    return normalized;
+  }).sort(compareQueueRows).map((row) => {
+    const eligibleNow = queueRowEligibleNow(row);
+    return {
+      ...row,
+      eligibleNow,
+      dispatchRank: eligibleNow ? ++dispatchRank : null,
+    };
+  });
+}
+
+function runtimeState(state) {
+  if (state === 'working') return 'WORKING';
+  if (state === 'blocked') return 'BLOCKED';
+  if (state === 'waiting') return 'WAITING';
+  return null;
+}
+
+function normalizedRuntimeTitle(value = '') {
+  return String(value || '')
+    .replace(/\s+\[(?:sửa lần|repair|retry)\s+\d+\]\s*$/iu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function projectExternalRoleClaims(base = {}, issues = []) {
+  const claims = new Map();
+  for (const issue of (Array.isArray(issues) ? issues : [])) {
+    if (!issue || issue.pull_request || issue.state !== 'open' || !hasRoleClaimedLabel(issue)) continue;
+    const workerId = roleClaimedWorkerId(issue);
+    if (!/^NV(?:02|03|04)$/.test(String(workerId || ''))) continue;
+    const previous = claims.get(workerId);
+    const currentAt = Date.parse(issue.updated_at || '') || 0;
+    const previousAt = Date.parse(previous?.updated_at || '') || 0;
+    if (!previous || currentAt >= previousAt) claims.set(workerId, issue);
+  }
+  if (!claims.size) return base;
+
+  const workers = (Array.isArray(base?.workers) ? base.workers : []).map((worker) => {
+    const issue = claims.get(String(worker?.employeeId || '').toUpperCase());
+    if (!issue) return worker;
+    return {
+      ...worker,
+      state: 'working',
+      status: 'ĐANG LÀM',
+      job: `#${issue.number} - ${String(issue.title || '')}`,
+      detail: 'Đã có nhân sự ngoài Core nhận việc · nhãn GitHub canonical',
+      currentJobId: `GH-${issue.number}`,
+      updatedAt: issue.updated_at || worker?.updatedAt || null,
+      source: 'GitHub external role claim',
+    };
+  });
+  const summary = {
+    ...(base?.summary || {}),
+    working: workers.filter((w) => w?.state === 'working').length,
+    waiting: workers.filter((w) => w?.state === 'waiting').length,
+    blocked: workers.filter((w) => w?.state === 'blocked').length,
+    idle: workers.filter((w) => w?.state === 'idle').length,
+    unknown: workers.filter((w) => w?.state === 'unknown').length,
+    paused: workers.filter((w) => w?.state === 'paused').length,
+    total: workers.length,
+  };
+  return { ...base, workers, summary };
+}
+
+export function runtimeWorkRows(workers = [], issues = []) {
+  const rows = [];
+  const seen = new Set();
+  const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => issue && !issue.pull_request && issue.state === 'open');
+  for (const worker of workers) {
+    const status = runtimeState(worker?.state);
+    if (!status) continue;
+    let issueNumber = parseIssueNumber(worker?.currentJobId, worker?.job, worker?.detail);
+    if (!issueNumber) {
+      const jobTitle = normalizedRuntimeTitle(worker?.job);
+      if (jobTitle) {
+        const matches = openIssues.filter((issue) => normalizedRuntimeTitle(issue?.title) === jobTitle);
+        if (matches.length === 1) issueNumber = Number(matches[0].number);
+      }
+    }
+    if (!issueNumber) continue;
+    const key = issueNumber + ':' + String(worker?.employeeId || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      issueNumber,
+      employeeId: worker.employeeId || null,
+      runtimeStatus: status,
+      currentStep: cleanText(worker.detail || worker.job || '', 220) || null,
+      updatedAt: worker.heartbeatAt || worker.updatedAt || null,
+      prNumber: Number.isInteger(worker.prNumber) ? worker.prNumber : null,
+      source: 'PC01 live runtime',
+    });
+  }
+  return rows;
+}
+
+function pullMentionsIssue(pull, issueNumber) {
+  const n = String(issueNumber);
+  const text = [pull?.title, pull?.body, pull?.head?.ref].filter(Boolean).join('\n');
+  return new RegExp('(?:#|GH-|issue[-_/ ])' + n + '(?!\\d)', 'i').test(text);
+}
+
+function summarizeChecks(runs, pull) {
+  if (!pull) return null;
+  const branch = pull?.head?.ref;
+  const branchRuns = (Array.isArray(runs) ? runs : []).filter((run) => run?.head_branch === branch);
+  const latest = new Map();
+  for (const run of branchRuns.sort((a, b) => runUpdatedAt(b) - runUpdatedAt(a))) {
+    const key = String(run?.name || run?.workflow_id || run?.id);
+    if (!latest.has(key)) latest.set(key, run);
+  }
+  const batch = [...latest.values()];
+  if (!batch.length) return null;
+  const active = batch.filter((run) => run?.status !== 'completed').length;
+  const failed = batch.filter((run) => run?.status === 'completed' && !['success', 'neutral', 'skipped'].includes(String(run?.conclusion || ''))).length;
+  const passed = batch.filter((run) => run?.status === 'completed' && run?.conclusion === 'success').length;
+  return { state: failed ? 'LỖI' : active ? 'ĐANG CHẠY' : 'ĐẠT', passed, total: batch.length, active, failed };
+}
+
+async function dependencyStates(rows, owner, repo, fetchImpl) {
+  const deps = [...new Set(rows.flatMap((row) => row.dependencies || []))];
+  const results = new Map();
+  const now = Date.now();
+  await Promise.all(deps.map(async (number) => {
+    const cached = dependencyCache.get(number);
+    if (cached && now - cached.at < DEPENDENCY_CACHE_MS) {
+      results.set(number, cached.value);
+      return;
+    }
+    try {
+      const dep = await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl);
+      const value = { state: dep?.state || 'unknown', isPull: Boolean(dep?.pull_request) };
+      dependencyCache.set(number, { at: now, value });
+      results.set(number, value);
+    } catch {
+      const value = cached?.value || { state: 'unknown' };
+      results.set(number, value);
+    }
+  }));
+  return results;
+}
+
+function issueCanonicalState(issue) {
+  const body = String(issue?.body || '');
+  return firstBodyValue(body, ['CURRENT_STATE', 'STATE']).toUpperCase();
+}
+
+async function clearedBlockerLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
+  const candidates = (Array.isArray(issues) ? issues : [])
+    .filter((issue) => hasTerminalBlockedLabel(issue) || /BLOCKED/.test(issueCanonicalState(issue)))
+    .slice(0, 12);
+  const pairs = await Promise.all(candidates.map(async (issue) => {
+    try {
+      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + Number(issue.number) + '/comments?per_page=100', fetchImpl);
+      const rows = Array.isArray(comments) ? comments : [];
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        const parsed = parseClearedBlockerLifecycleComment(rows[i]);
+        if (parsed) return [Number(issue.number), parsed];
+      }
+    } catch {
+      // Keep canonical body/label truth if comment readback is unavailable.
+    }
+    return [Number(issue.number), null];
+  }));
+  return new Map(pairs.filter(([, value]) => value));
+}
+
+function ownerAcceptancePolicy(body = '') {
+  const required = bodyFlag(body, 'OWNER_ACCEPTANCE_REQUIRED')
+    || bodyFlag(body, 'NEW_CAPABILITY_OWNER_ACCEPTANCE_REQUIRED');
+  const accepted = bodyFlag(body, 'OWNER_ACCEPTED')
+    || bodyFlag(body, 'OWNER_ACCEPTANCE_ACCEPTED');
+  return { required, accepted };
+}
+
+function ownerAcceptancePhase(phase = '') {
+  return /(?:OWNER_REVIEW_REQUIRED|WAIT_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|READY_OWNER(?:_ACCEPTANCE|_REVIEW|_APPROVAL)?|WAIT_OWNER_APPROVAL|READY_FOR_OWNER_APPROVAL)/.test(String(phase || '').toUpperCase());
+}
+
+export function optionalBodyNumber(body = '', keys = []) {
+  for (const key of (Array.isArray(keys) ? keys : [keys])) {
+    const raw = bodyValue(body, key);
+    if (/^\d+$/.test(raw)) return Number(raw);
+  }
+  return null;
+}
+
+function ownerGateTechnicalComplete(body = '', phase = '') {
+  const technical = bodyValue(body, 'TECHNICAL_ACCEPTANCE').toUpperCase();
+  if (technical && technical !== 'PASS') return false;
+  const finalAcceptance = bodyValue(body, 'FINAL_ACCEPTANCE_2828').toUpperCase();
+  const realDataAcceptance = bodyValue(body, 'REAL_DATA_LIVE_ACCEPTANCE').toUpperCase();
+  const liveDataApi = bodyValue(body, 'LIVE_DATA_API').toUpperCase();
+  return technical === 'PASS'
+    || /TECHNICAL_PASS/.test(finalAcceptance)
+    || realDataAcceptance === 'PASS'
+    || liveDataApi === 'PASS';
+}
+
+function issueDisplayOwner(issue) {
+  const body = String(issue?.body || '');
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind === 'GOAL') return null;
+
+  if (issueIsAppChromeControlPlane(issue)) {
+    const authority = firstBodyField(body, ['MUTATION_OWNER', 'ASSIGNED_EXECUTOR', 'ACTIVE_OWNER']);
+    const owner = String(authority?.value || '');
+    if (/^(?:NV\d{2}|CODEX)$/i.test(owner)) return owner.toUpperCase();
+    return null;
+  }
+
+  const employee = issueEmployeeId(issue);
+  if (employee) return employee;
+  const owner = firstBodyValue(body, ['MUTATION_OWNER', 'ACTIVE_OWNER']);
+  if (/^(?:NV\d{2}|CODEX|AUTO)$/i.test(owner)) return owner.toUpperCase();
+  return null;
+}
+
+export function classifyOpenIssue(issue) {
+  const title = String(issue?.title || '');
+  const body = String(issue?.body || '');
+  const phase = issueCanonicalState(issue);
+  const acceptance = ownerAcceptancePolicy(body);
+
+  const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
+    || bodyFlag(body, 'CANONICAL_POLICY')
+    || bodyFlag(body, 'REFERENCE_ONLY');
+
+  const phaseOwnerGate = /(?:^|_)(?:BLOCKED_OWNER|WAIT_OWNER|OWNER_APPROVAL_REQUIRED|OWNER_GATE|READY_FOR_OWNER_APPROVAL)(?:_|$)/.test(phase);
+  const legacyOwnerGate = !phase && (
+    bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || bodyFlag(body, 'OWNER_GATE')
+    || bodyFlag(body, 'OWNER_HOLD')
+    || (acceptance.required && !acceptance.accepted)
+  );
+  const ownerGate = phase ? phaseOwnerGate : legacyOwnerGate;
+
+  const objective = /\[OWNER\]/i.test(title) && bodyFlag(body, 'TIGERIQ_EXECUTABLE', 'false') && !ownerGate;
+
+  return {
+    workKind: systemReference ? 'SYSTEM' : objective ? 'GOAL' : 'WORK',
+    ownerGate,
+    ownerApprovalRequired: ownerGate && acceptance.required && !acceptance.accepted,
+    ownerAccepted: acceptance.accepted,
+  };
+}
+
+export function executionEligibilityForIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return 'TERMINAL';
+  const body = String(issue.body || '');
+  const phase = issueCanonicalState(issue);
+  const priority = issuePriority(issue);
+  const classification = classifyOpenIssue(issue);
+
+  if (['CLOSED', 'DONE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'].includes(phase)
+    || /^SUPERSEDED(?:_BY)?=/mi.test(body)) return 'TERMINAL';
+
+  const hardGateState = /(?:OWNER(?:_|$)|PRODUCTION|PAID|FINANCIAL|CREDENTIAL|SECRET|SECURITY|PERMISSION|DESTRUCTIVE|IRREVERSIBLE|PHYSICAL_OWNER)/.test(phase)
+    && /(?:WAIT|BLOCKED|HOLD|GATE|REQUIRED|PENDING)/.test(phase);
+  if (classification.ownerGate
+    || priority === 'P0'
+    || bodyFlag(body, 'OWNER_HOLD')
+    || bodyFlag(body, 'OWNER_GATE')
+    || bodyFlag(body, 'OWNER_APPROVAL_REQUIRED')
+    || bodyFlag(body, 'OWNER_REVIEW_REQUIRED')
+    || bodyFlag(body, 'OWNER_ACCEPTANCE_REQUIRED')
+    || bodyFlag(body, 'MANUAL_GATE')
+    || hardGateState) return 'HARD_GATE';
+
+  const blockedBy = bodyValue(body, 'BLOCKED_BY').trim().toUpperCase();
+  const dependencyStatus = bodyValue(body, 'DEPENDENCY_STATUS').trim().toUpperCase();
+  const dependencyWait = /(?:DEPENDENCY|PARENT_GATE)/.test(phase)
+    && /(?:WAIT|BLOCKED|PENDING|HOLD)/.test(phase);
+  if (dependencyWait
+    || (blockedBy && !['NONE','NO','CLEAR','CLEARED'].includes(blockedBy))
+    || (dependencyStatus && !['PASS','DONE','COMPLETED','SATISFIED','CLEAR','CLEARED'].includes(dependencyStatus))) {
+    return 'PARKED_DEPENDENCY';
+  }
+
+  const waitText = [
+    phase,
+    bodyValue(body, 'WAIT_REASON'),
+    bodyValue(body, 'BLOCKER'),
+    bodyValue(body, 'BLOCKED_REASON'),
+    bodyValue(body, 'REARM_ONLY'),
+    bodyValue(body, 'REARM_REASON'),
+    bodyValue(body, 'AUTO_QUEUE'),
+  ].join(' ').toUpperCase();
+  if (/(?:NO_AI_RESOURCE_AVAILABLE|REVIEW_RESOURCE|REVIEWER|RESOURCE_STATE|PROVIDER|COOLDOWN|RATE_LIMIT|RESOURCE_UNAVAILABLE)/.test(waitText)) {
+    return 'ELIGIBLE_AFTER_RESOURCE';
+  }
+
+  if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
+  if (overlays.queued?.eligibleNow === true) return 'READY';
+
+  const admission = safeAutoWorkAdmission(issue);
+  if (admission.eligible) return 'READY';
+
+  const admissionReason = String(admission.reason || '').toUpperCase();
+  if (admissionReason === 'TERMINAL_BLOCKED') return 'TERMINAL';
+
+  if ([
+    'P0_OR_INVALID_PRIORITY',
+    'OWNER_POLICY_NOT_AUTO',
+    'OWNER_OR_HOLD_GATE',
+    'OWNER_WAIT_STATE',
+    'OWNER_OR_UI_ROUTE',
+    'HARD_GATE_SAFETY_FLAGS_INCOMPLETE',
+    'DIRECT_MAIN_GUARD_REQUIRED',
+    'APP_CHROME_EXCLUDED',
+    'ANDROID_PRODUCT_OWNER_DIRECT',
+  ].includes(admissionReason)) return 'HARD_GATE';
+
+  if ([
+    'DEPENDENCY_BLOCKED',
+    'NON_EXECUTABLE_STATE',
+    'MUTATION_OWNER_CONFLICT',
+    'RESOURCE_SCOPE_REQUIRED',
+    'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',
+    'SPECIALIST_CONTRACT_REQUIRED',
+    'EXPLICIT_EXECUTION_DISABLED',
+    'AUTO_QUEUE_EXCLUDED',
+  ].includes(admissionReason)) return 'PARKED_DEPENDENCY';
+
+  // Unknown policy exclusions fail closed as a hard gate instead of being mislabeled as dependency wait.
+  return 'HARD_GATE';
+}
+
+function actionableStatus(issue, overlays = {}) {
+  const body = String(issue?.body || '');
+  const lifecycle = overlays.lifecycle || null;
+  const phase = String(lifecycle?.state || issueCanonicalState(issue)).toUpperCase();
+  const classification = classifyOpenIssue(issue);
+
+  if (classification.workKind === 'SYSTEM') return 'SYSTEM';
+  if (classification.ownerGate) return 'OWNER_GATE';
+
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  const activeAt = Date.parse(active?.updatedAt || '') || 0;
+  const queuedAt = Date.parse(queued?.updatedAt || '') || 0;
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const canonicalBlocked = /BLOCKED/.test(issueCanonicalState(issue));
+  const terminalBlocked = hasTerminalBlockedLabel(issue);
+
+  if (terminalBlocked && (canonicalBlocked || issueAt >= Math.max(activeAt, queuedAt, lifecycleAt))) return 'BLOCKED';
+  if (active?.status && activeAt >= Math.max(queuedAt, lifecycleAt)) return String(active.status).toUpperCase();
+  if (queued?.status && queuedAt >= Math.max(activeAt, lifecycleAt)) return String(queued.status).toUpperCase();
+  if (lifecycle?.blockerCleared) return statusFromLifecycleState(phase) || 'OPEN';
+  if (active?.status) return String(active.status).toUpperCase();
+  if (queued?.status) return String(queued.status).toUpperCase();
+  if (terminalBlocked) return 'BLOCKED';
+
+  if (classification.workKind === 'GOAL') return 'GOAL';
+  if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
+  if (/BLOCKED/.test(phase)) {
+    return (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON')) ? 'BLOCKED' : 'UNKNOWN';
+  }
+  if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
+  if (/(?:REVIEW|VERIFY)/.test(phase)) return overlays.hasPull ? 'REVIEW' : 'UNKNOWN';
+  if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'UNKNOWN';
+  return 'OPEN';
+}
+
+export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
+  const body = String(issue?.body || '');
+  const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
+  const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
+    || source === 'VERIFIED'
+    || source === 'VERIFIED_CHECKLIST';
+  if (!verified) return { percent: null, source: 'none', detail: null };
+
+  const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
+  if (/^\d{1,3}$/.test(explicitRaw)) {
+    const explicit = Number(explicitRaw);
+    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit_verified', detail: 'PROGRESS_PERCENT · verified' };
+  }
+
+  const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
+  if (boxes.length >= 2) {
+    const done = boxes.filter((match) => /x/i.test(match[1])).length;
+    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist_verified', detail: done + '/' + boxes.length + ' checklist verified' };
+  }
+
+  return { percent: null, source: 'none', detail: null };
+}
+
+export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
+  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5');
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5' && String(row.status || '').toUpperCase() === 'DONE');
+  const explicitCompleted = Number(options.completedCount);
+  const completedItems = Number.isFinite(explicitCompleted) && explicitCompleted >= 0 ? explicitCompleted : done.length;
+  const scopeItems = open.length + completedItems;
+  if (options.complete === false) {
+    return { percent: null, source: 'incomplete_enumeration', scopeItems, completedItems };
+  }
+  return {
+    percent: scopeItems ? Math.round((completedItems / scopeItems) * 100) : null,
+    source: 'terminal_completion',
+    scopeItems,
+    completedItems,
+    remainingItems: open.length,
+    basis: 'current_non_p5_open_plus_recent_' + RECENT_WORK_LIMIT + '_completed',
+  };
+}
+
+export function verifiedPortfolioProgress(rows = [], options = {}) {
+  const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind === 'WORK');
+  const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
+    && Number.isFinite(Number(row.progressPercent)));
+  const scopeItems = scope.length;
+  const verifiedItems = verified.length;
+  const coveragePercent = scopeItems ? Math.round((verifiedItems / scopeItems) * 100) : null;
+  if (options.complete === false) {
+    return {
+      percent: null,
+      source: 'incomplete_enumeration',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
+  if (!scopeItems || verifiedItems !== scopeItems) {
+    return {
+      percent: null,
+      source: 'incomplete_verified_coverage',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
+  const percent = Math.round(verified.reduce((sum, row) => sum + Math.max(0, Math.min(100, Number(row.progressPercent))), 0) / scopeItems);
+  return {
+    percent,
+    source: 'verified_issue_average',
+    scopeItems,
+    verifiedItems,
+    coveragePercent: 100,
+  };
+}
+
+export function parseOpenWorkIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return null;
+  const number = Number(issue.number);
+  if (!number) return null;
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  const body = String(issue.body || '');
+  const lifecycle = overlays.lifecycle || null;
+  const classification = classifyOpenIssue(issue);
+  const canonicalPhase = issueCanonicalState(issue);
+  const phase = String(classification.ownerGate ? canonicalPhase : lifecycle?.state || canonicalPhase).toUpperCase();
+  const status = actionableStatus(issue, overlays);
+  const executionEligibility = executionEligibilityForIssue(issue, overlays);
+
+  const checks = classification.ownerGate ? null : active?.checks || null;
+  const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
+  const progress = classification.workKind === 'SYSTEM'
+    ? { percent: null, source: 'none', detail: null }
+    : progressForIssue(issue, status, checks, hasPull);
+  const priority = issuePriority(issue);
+  const relations = workflowRelationsForIssue(issue);
+  const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
+  const currentStep = classification.ownerGate
+    ? technicalComplete
+      ? 'Đã xong kỹ thuật · chờ anh Sơn duyệt'
+      : bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
+    : active?.currentStep
+      || queued?.waitReason
+      || lifecycle?.step
+      || bodyValue(body, 'CURRENT_STEP')
+      || null;
+  const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
+    || bodyValue(body, 'LATEST_COMPLETED_STEP')
+    || bodyValue(body, 'LAST_DONE')
+    || (technicalComplete ? 'Đã xong kỹ thuật và có bằng chứng canonical' : null)
+    || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
+  const nextStep = bodyValue(body, 'NEXT')
+    || bodyValue(body, 'NEXT_ACTION')
+    || (classification.ownerGate ? 'Duyệt bản live' : null);
+  const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const blockerBodyCurrent = !lifecycle?.blockerCleared || (lifecycleAt > 0 && issueAt > lifecycleAt);
+  const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
+    ? rawBlocker
+    : null;
+  const activeEvidenceUrl = classification.ownerGate
+    ? null
+    : safeEvidenceUrl(active?.evidenceUrl)
+      || safeEvidenceUrl(active?.prUrl)
+      || null;
+  const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
+  const canonicalOwnerEvidenceUrl = technicalComplete ? safeEvidenceUrl(issue.html_url || '') : null;
+  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || canonicalOwnerEvidenceUrl || null;
+  const evidenceAt = activeEvidenceUrl
+    ? safeEvidenceTimestamp(active?.updatedAt)
+    : bodyEvidenceUrl
+      ? safeEvidenceTimestamp(bodyValue(body, 'EVIDENCE_AT') || bodyValue(body, 'EVIDENCE_TIMESTAMP'))
+      : technicalComplete
+        ? safeEvidenceTimestamp(issue.updated_at)
+        : null;
+  const activeWorker = active?.live === true && active?.employeeId ? active.employeeId : null;
+  const activeLease = Boolean(activeWorker && ['WORKING','REVIEW','VERIFY'].includes(status));
+  const heartbeatFresh = active?.live === true ? true : null;
+  const waitReason = queued?.waitReason
+    || (['WAITING','BLOCKED'].includes(status) ? (rawBlocker || bodyValue(body, 'WAIT_REASON') || phase || null) : null);
+  const rearmCondition = firstBodyValue(body, ['REARM_CONDITION','REARM_ONLY','REPEAT_REQUIRES','NEXT_CONDITION']) || null;
+
+  return {
+    number,
+    title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: issueIsAppChromeControlPlane(issue)
+      ? issueDisplayOwner(issue)
+      : classification.ownerGate
+        ? issueDisplayOwner(issue)
+        : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+    status,
+    displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
+    executionEligibility,
+    executionEligibilityReason: executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null),
+    waitReason: waitReason || (executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null)),
+    rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
+    activeLease,
+    activeWorker,
+    heartbeatFresh,
+    workKind: classification.workKind,
+    ...relations,
+    ownerGate: classification.ownerGate,
+    ownerApprovalRequired: classification.ownerApprovalRequired,
+    ownerApprovalPending: classification.ownerGate,
+    ownerAccepted: classification.ownerAccepted,
+    technicalComplete,
+    currentState: phase || null,
+    currentStep,
+    latestCompletedStep,
+    nextStep,
+    nextAction: nextStep,
+    blocker,
+    evidenceUrl,
+    evidenceAt,
+    latestEvidenceAt: evidenceAt,
+    progressPercent: progress.percent,
+    progressSource: progress.source,
+    progressDetail: progress.detail,
+    prNumber: classification.ownerGate ? null : active?.prNumber || null,
+    prUrl: classification.ownerGate ? null : active?.prUrl || null,
+    checks,
+    updatedAt: classification.ownerGate
+      ? issue.updated_at || null
+      : active?.updatedAt || queued?.updatedAt || lifecycle?.createdAt || issue.updated_at || null,
+    url: issue.html_url || null,
+    meta: !priority,
+  };
+}
+
+function githubActiveState(issue) {
+  const body = String(issue?.body || '');
+  const state = bodyValue(body, 'STATE').toUpperCase();
+  const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ASSIGNED_EXECUTOR') || bodyValue(body, 'ACTIVE_OWNER');
+  if (!owner) return null;
+  if (['WORKING', 'RUNNING', 'IN_PROGRESS'].includes(state)) return { status: 'WORKING', owner };
+  if (['REVIEW', 'VERIFY', 'REVIEWING'].includes(state)) return { status: 'REVIEW', owner };
+  if (state.includes('BLOCKED')) return { status: 'BLOCKED', owner };
+  if (state === 'WAITING') return { status: 'WAITING', owner };
+  return null;
+}
+
+async function githubIssue(owner, repo, number, issueMap, fetchImpl) {
+  if (issueMap.has(number)) return issueMap.get(number);
+  try { return await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl); } catch { return null; }
+}
+
+function skillPromotionSnapshot() {
+  try {
+    const state = loadSkillPromotionState();
+    return {
+      state: 'AVAILABLE',
+      summary: state.summary,
+      entries: state.queue.entries.map((entry) => ({
+        skillId: entry.skillId,
+        status: entry.status,
+        blocker: entry.blocker,
+        nextCondition: entry.nextCondition,
+        nextEligibleAt: entry.nextEligibleAt,
+        promotionEligible: entry.promotionEligible,
+      })),
+    };
+  } catch (error) {
+    return {
+      state: 'UNAVAILABLE',
+      summary: { active: 0, validatedWaiting: 0, validatedBlocked: 0, canaryReady: 0, canaryRunning: 0, promotionEligible: 0, tracked: 0 },
+      entries: [],
+      reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+    };
+  }
+}
+
+export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
+  const { owner, repo } = repoParts();
+  let projectionStale = false;
+  let projectionReason = null;
+  let issues;
+  let pulls;
+  let runPayload;
+  let issuesComplete = true;
+  try {
+    const now = Date.now();
+    const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
+    if (cached) {
+      ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+      issuesComplete = issuesComplete === true;
+      if (githubProjectionCache.data?.projectionStale === true) {
+        projectionStale = true;
+        projectionReason = githubProjectionCache.data?.projectionReason || 'GitHub cached projection marked stale';
+      }
+    } else {
+      try {
+        const transportBefore = githubTransportSnapshot();
+        const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
+          ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
+          known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
+          known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
+        ]);
+        issues = issuePages.rows;
+        issuesComplete = issuePages.complete;
+        pulls = openPullPayload;
+        runPayload = workflowPayload;
+        const transportAfter = githubTransportSnapshot();
+        if (projectionTransportStale(transportBefore, transportAfter)) {
+          projectionStale = true;
+          projectionReason = 'GitHub shared cache/backoff served stale data';
+          issuesComplete = false;
+        }
+        githubProjectionCache = {
+          at: now,
+          verifiedAt: new Date().toISOString(),
+          data: { issues, pulls, runPayload, issuesComplete, projectionStale, projectionReason },
+        };
+      } catch (error) {
+        if (!githubProjectionCache.data) throw error;
+        ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+        issuesComplete = issuesComplete !== false;
+        projectionStale = true;
+        projectionReason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      }
+    }
+    const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
+    base = projectExternalRoleClaims(base, openIssues);
+    const openPulls = Array.isArray(pulls) ? pulls : [];
+    const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
+    const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
+    const lifecycleOverrides = await clearedBlockerLifecycleOverrides(openIssues, owner, repo, fetchImpl);
+    const activeRows = [];
+    const activeNumbers = new Set();
+
+    for (const row of runtimeWorkRows(base.workers || [], openIssues)) {
+      const issue = await githubIssue(owner, repo, row.issueNumber, issueMap, fetchImpl);
+      if (!issue || issue.pull_request || issue.state !== 'open') continue;
+      activeNumbers.add(row.issueNumber);
+      const pull = row.prNumber
+        ? openPulls.find((item) => Number(item.number) === row.prNumber)
+        : openPulls.find((item) => pullMentionsIssue(item, row.issueNumber));
+      const checks = summarizeChecks(runs, pull);
+      const liveStatus = checks?.state === 'LỖI' ? 'BLOCKED' : row.runtimeStatus === 'WAITING' && pull ? 'REVIEW' : row.runtimeStatus;
+      activeRows.push({
+        number: row.issueNumber,
+        title: String(issue.title || ''),
+        priority: issuePriority(issue),
+        employeeId: row.employeeId,
+        status: liveStatus,
+        currentStep: row.currentStep,
+        prNumber: pull?.number || row.prNumber || null,
+        prUrl: pull?.html_url || null,
+        checks,
+        evidenceUrl: pull?.html_url || issue.html_url || null,
+        updatedAt: row.updatedAt || issue.updated_at || null,
+        url: issue.html_url || null,
+        live: base.liveConnected === true,
+      });
+    }
+
+    for (const pull of openPulls) {
+      const issueNumber = parseIssueNumber(pull?.body, pull?.title, pull?.head?.ref);
+      if (!issueNumber || activeNumbers.has(issueNumber)) continue;
+      const issue = await githubIssue(owner, repo, issueNumber, issueMap, fetchImpl);
+      if (!issue || issue.pull_request || issue.state !== 'open' || issueIsTerminal(issue)) continue;
+      const checks = summarizeChecks(runs, pull);
+      activeNumbers.add(issueNumber);
+      activeRows.push({
+        number: issueNumber,
+        title: String(issue.title || ''),
+        priority: issuePriority(issue),
+        employeeId: bodyValue(issue.body || '', 'MUTATION_OWNER') || prWorker(pull) || null,
+        status: checks?.state === 'LỖI' ? 'BLOCKED' : 'REVIEW',
+        currentStep: checks?.state === 'LỖI' ? 'Kiểm tra PR đang lỗi'
+          : checks?.state === 'ĐANG CHẠY' ? 'Đang chạy kiểm tra PR'
+            : 'PR đang mở · chờ hoàn tất kiểm tra/rà soát',
+        prNumber: pull.number || null,
+        prUrl: pull.html_url || null,
+        checks,
+        evidenceUrl: pull.html_url || issue.html_url || null,
+        updatedAt: pull.updated_at || issue.updated_at || null,
+        url: issue.html_url || null,
+        live: false,
+      });
+    }
+
+    if (base.liveConnected !== true) {
+      for (const issue of openIssues) {
+        const issueNumber = Number(issue.number);
+        if (!issueNumber || activeNumbers.has(issueNumber) || issueIsTerminal(issue)) continue;
+        const explicit = githubActiveState(issue);
+        if (!explicit) continue;
+        const pull = openPulls.find((item) => pullMentionsIssue(item, issueNumber));
+        if (!pull) continue;
+        const checks = summarizeChecks(runs, pull);
+        const status = checks?.state === 'LỖI' ? 'BLOCKED' : 'REVIEW';
+        activeNumbers.add(issueNumber);
+        activeRows.push({
+          number: issueNumber,
+          title: String(issue.title || ''),
+          priority: issuePriority(issue),
+          employeeId: explicit.owner,
+          status,
+          currentStep: checks?.state === 'LỖI' ? 'Kiểm tra PR đang lỗi'
+            : checks?.state === 'ĐANG CHẠY' ? 'Đang chạy kiểm tra PR'
+              : 'PR đang mở · chờ hoàn tất kiểm tra/rà soát',
+          prNumber: pull?.number || null,
+          prUrl: pull?.html_url || null,
+          checks,
+          evidenceUrl: pull?.html_url || issue.html_url || null,
+          updatedAt: pull?.updated_at || issue.updated_at || null,
+          url: issue.html_url || null,
+          live: false,
+        });
+      }
+    }
+
+    if (!activeRows.length && base.liveConnected !== true) {
+      for (const worker of base.workers || []) {
+        const issueNumber = parseIssueNumber(worker?.job, worker?.source?.url);
+        if (!issueNumber || activeNumbers.has(issueNumber) || !['working', 'waiting', 'blocked'].includes(worker?.state)) continue;
+        const issue = issueMap.get(issueNumber);
+        if (!issue || issue.state !== 'open') continue;
+        const pull = openPulls.find((item) => Number(item.number) === Number(worker?.source?.number) || pullMentionsIssue(item, issueNumber));
+        const checks = summarizeChecks(runs, pull);
+        activeNumbers.add(issueNumber);
+        activeRows.push({
+          number: issueNumber,
+          title: String(issue.title || ''),
+          priority: issuePriority(issue),
+          employeeId: worker.employeeId || null,
+          status: worker.state === 'blocked' || checks?.state === 'LỖI' ? 'BLOCKED' : pull ? 'REVIEW' : worker.state === 'working' ? 'WORKING' : 'WAITING',
+          currentStep: cleanText(worker.detail || worker.job || '', 220) || null,
+          prNumber: pull?.number || null,
+          prUrl: pull?.html_url || null,
+          checks,
+          evidenceUrl: pull?.html_url || issue.html_url || null,
+          updatedAt: worker.updatedAt || issue.updated_at || null,
+          url: issue.html_url || null,
+          live: false,
+        });
+      }
+    }
+
+    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWork = annotatePortfolioRows(recentWorkSnapshot.rows);
+    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
+    const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
+    const resolvedQueue = specs.map((row) => {
+      if (row.status !== 'QUEUED') return row;
+      const waiting = (row.dependencies || []).filter((number) => {
+        const dep = depStates.get(number);
+        return !dep || dep.state !== 'closed' || dep.isPull === true;
+      });
+      if (!waiting.length) return row;
+      const unknown = waiting.filter((number) => depStates.get(number)?.state === 'unknown');
+      return {
+        ...row,
+        status: unknown.length ? 'BLOCKED' : 'WAITING',
+        waitReason: unknown.length
+          ? 'Chưa xác minh dependency ' + unknown.map((n) => '#' + n).join(', ')
+          : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
+      };
+    });
+    const rankedQueue = rankQueueRows(resolvedQueue);
+    const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
+    const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
+
+    const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
+    const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
+    const resultInboxProjection = await ownerResultInboxProjection(openIssues, owner, repo, fetchImpl);
+    const openWork = annotatePortfolioRows(openIssues.map((issue) => parseOpenWorkIssue(issue, {
+      active: activeMap.get(Number(issue.number)) || null,
+      queued: queueMap.get(Number(issue.number)) || null,
+      lifecycle: lifecycleOverrides.get(Number(issue.number)) || null,
+      hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
+    })).filter(Boolean), openIssues).sort((a, b) => {
+      const actionRank = {
+        OWNER_GATE: 0,
+        WORKING: 1,
+        REVIEW: 2,
+        VERIFY: 3,
+        QUEUED: 4,
+        BLOCKED: 5,
+        WAITING: 6,
+        OPEN: 7,
+        GOAL: 8,
+        SYSTEM: 9,
+      };
+      const sa = actionRank[a.status] ?? 8;
+      const sb = actionRank[b.status] ?? 8;
+      if (sa !== sb) return sa - sb;
+      const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+      const pa = priorityRank[a.priority] ?? 9;
+      const pb = priorityRank[b.priority] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
+    });
+    if (resultInboxProjection) {
+      const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
+      if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
+    }
+
+    const actionable = openWork.filter((row) => row.workKind === 'WORK');
+    const openSummary = {
+      open: openWork.length,
+      actionable: actionable.length,
+      owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
+      running: actionable.filter((row) => row.status === 'WORKING').length,
+      review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
+      blocked: actionable.filter((row) => row.status === 'BLOCKED').length,
+      queued: actionable.filter((row) => row.status === 'QUEUED').length,
+      unknown: actionable.filter((row) => row.status === 'UNKNOWN').length,
+      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
+      system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
+      done: recentWork.length,
+    };
+    const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
+    const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
+    const completionProgress = verifiedCompletionProgress(actionable, completionScope.rows, {
+      complete: issuesComplete === true && !projectionStale && completionScope.complete === true,
+    });
+    completionProgress.scope = completionScope.scope || 'current_open_plus_structural_references';
+    completionProgress.referencedItems = completionScope.referenced || 0;
+    const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
+    const stabilityBody = String(stabilityIssue?.body || '');
+    const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
+      const n = Number(String(worker?.employeeId || '').replace(/\D/g, ''));
+      return n >= 11 && n <= 20 && Boolean(String(worker?.provider || '').trim());
+    });
+    const apiRuntimeVerified = base?.liveConnected === true && apiWorkers.length > 0;
+    const healthyProviders = new Set(apiRuntimeVerified
+      ? apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
+        .map((worker) => String(worker?.provider || '').trim()).filter(Boolean)
+      : []);
+    const apiWorkforceSummary = {
+      verified: apiRuntimeVerified,
+      healthyProviders: apiRuntimeVerified ? healthyProviders.size : null,
+      healthyTarget: optionalBodyNumber(stabilityBody, ['REQUIRED_HEALTHY_PROVIDER_COUNT','HEALTHY_PROVIDER_COUNT']) ?? 3,
+      stabilityRounds: optionalBodyNumber(stabilityBody, 'STABILITY_ROUNDS_COUNTED'),
+      stabilityRoundsRequired: optionalBodyNumber(stabilityBody, 'ROUND_COUNT_REQUIRED') ?? 3,
+      realJobs: optionalBodyNumber(stabilityBody, ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED']),
+      realJobsRequired: optionalBodyNumber(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') ?? 15,
+      blocker: cleanText(bodyValue(stabilityBody, 'CURRENT_BLOCKER') || bodyValue(stabilityBody, 'BLOCKED_BY') || (stabilityIssue ? 'Theo dõi #2891' : ''), 120) || null,
+      issueNumber: stabilityIssue ? 2891 : null,
+    };
+
+    return {
+      ...base,
+      skillPromotion: skillPromotionSnapshot(),
+      openWork: openWork.map(ownerFacingWorkRow),
+      openSummary,
+      portfolioProgress,
+      completionProgress,
+      apiWorkforceSummary,
+      projectPortfolio: buildProjectPortfolio(openWork),
+      activeWork: activeRows.sort((a, b) => compareQueueRows(
+        { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
+        { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
+      )).map(ownerFacingWorkRow),
+      nextQueue: nextQueue.map(ownerFacingWorkRow),
+      nextQueueTotal: rankedQueue.length,
+      nextExecutable: nextExecutable ? ownerFacingWorkRow(nextExecutable) : null,
+      recentWork: recentWork.map(ownerFacingWorkRow),
+      workProjection: {
+        mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical parsers',
+        verifiedAt: githubProjectionCache.verifiedAt,
+        stale: projectionStale,
+        reason: projectionReason,
+        queueLimit: QUEUE_LIMIT,
+        nextExecutableIssue: nextExecutable?.number || null,
+        openIssueEnumerationComplete: issuesComplete === true && !projectionStale,
+      },
+    };
+  } catch (error) {
+    return {
+      ...base,
+      skillPromotion: skillPromotionSnapshot(),
+      openWork: [],
+      openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
+      activeWork: [],
+      nextQueue: [],
+      nextQueueTotal: 0,
+      recentWork: [],
+      projectPortfolio: [],
+      workProjection: {
+        mode: 'unavailable',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: 'GitHub unavailable',
+        reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+        queueLimit: QUEUE_LIMIT,
+      },
+    };
+  }
+}
+
+export function sanitizeRuntimePayload(payload) {
+  if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
+  const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
+  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt)).map(ownerFacingWorkRow);
+  const summary = {
+    working: workers.filter((w) => w.state === 'working').length,
+    waiting: workers.filter((w) => w.state === 'waiting').length,
+    blocked: workers.filter((w) => w.state === 'blocked').length,
+    idle: workers.filter((w) => w.state === 'idle').length,
+    unknown: workers.filter((w) => w.state === 'unknown').length,
+    paused: workers.filter((w) => w.state === 'paused').length,
+    total: workers.length,
+  };
+  return {
+    ok: true,
+    liveConnected: true,
+    mode: 'pc01-live',
+    authority: 'PC01 live runtime',
+    generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt.slice(0, 64) : new Date().toISOString(),
+    refreshSeconds: 5,
+    source: {
+      runtime: 'PC01 Core + Coding Lane',
+      core: payload.source?.core === true,
+      coding: payload.source?.coding === true,
+      uiAutopilot: payload.source?.uiAutopilot === true,
+    },
+    summary,
+    workers,
+    activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
+    nextQueue: [],
+    nextQueueTotal: 0,
+    recentWork: [],
+  };
+}
+
+async function resolveRuntimeBridge(fetchImpl = fetch) {
+  const now = Date.now();
+  if (pointerCache.url && now - pointerCache.at < POINTER_CACHE_MS) return pointerCache.url;
+  const { owner, repo } = repoParts();
+  const issue = await gh(`/repos/${owner}/${repo}/issues/${RUNTIME_POINTER_ISSUE}`, fetchImpl);
+  const url = parseRuntimeBridgeUrl(issue.body || '');
+  pointerCache = { at: now, url };
+  return url;
+}
+
+async function fetchRuntimeBridgePayload(base, fetchImpl = fetch) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RUNTIME_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(`${base}/status`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+      redirect: 'error',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`runtime_bridge_http_${response.status}`);
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchPc01Runtime(fetchImpl = fetch) {
+  let base = await resolveRuntimeBridge(fetchImpl);
+  try {
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
+  } catch (error) {
+    const reason = String(error instanceof Error ? error.message : error);
+    if (!/^runtime_bridge_(?:http_|pointer_|payload_|fetch|timeout)/i.test(reason) && !/AbortError/i.test(reason)) throw error;
+    pointerCache = { at: 0, url: null };
+    const refreshedBase = await resolveRuntimeBridge(fetchImpl);
+    if (refreshedBase === base && !/^runtime_bridge_http_530$/i.test(reason)) throw error;
+    base = refreshedBase;
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
+  }
+}
+
+export async function fetchPc01Live(fetchImpl = fetch) {
+  const now = Date.now();
+  let runtime = runtimeCache.value && now - runtimeCache.at < CACHE_MS ? runtimeCache.value : null;
+  if (!runtime) {
+    runtime = await fetchPc01Runtime(fetchImpl);
+    runtimeCache = { at: now, value: runtime };
+  }
+  return buildWorkSections(runtime, fetchImpl);
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+  const now = Date.now();
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  const workforceOnly = req.query?.scope === 'workforce' || requestUrl.searchParams.get('scope') === 'workforce';
+
+  if (workforceOnly) {
+    if (runtimeCache.value && now - runtimeCache.at < CACHE_MS) return json(res, 200, runtimeCache.value);
+    try {
+      const value = await fetchPc01Runtime();
+      runtimeCache = { at: now, value };
+      return json(res, 200, value);
+    } catch (error) {
+      const reason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      if (runtimeCache.value && now - runtimeCache.at < STALE_RESPONSE_MS) {
+        return json(res, 200, {
+          ...runtimeCache.value,
+          liveConnected: false,
+          mode: 'stale-cache',
+          authority: 'Dữ liệu runtime xác minh gần nhất',
+          staleAll: true,
+          staleAt: runtimeCache.value.generatedAt || null,
+          liveReason: reason,
+        });
+      }
+      return json(res, 200, {
+        ok: false,
+        liveConnected: false,
+        mode: 'unavailable',
+        authority: 'Không có nguồn runtime',
+        generatedAt: new Date().toISOString(),
+        reason,
+        summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
+        workers: [],
+      });
+    }
+  }
+
+  if (cache.value && now - cache.at < CACHE_MS) return json(res, 200, cache.value);
+
+  let liveError = null;
+  try {
+    const value = await fetchPc01Live();
+    cache = { at: now, value };
+    return json(res, 200, value);
+  } catch (error) {
+    liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
+  }
+
+  try {
+    const value = await buildLiveStatus();
+    value.liveConnected = false;
+    value.mode = 'github-fallback';
+    value.authority = 'GitHub/Registry dự phòng';
+    value.refreshSeconds = 5;
+    value.liveReason = liveError;
+    value.staleAll = false;
+    cache = { at: now, value };
+    return json(res, 200, value);
+  } catch (error) {
+    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
+      const value = {
+        ...cache.value,
+        liveConnected: false,
+        mode: 'stale-cache',
+        authority: 'Dữ liệu xác minh gần nhất',
+        staleAll: true,
+        staleAt: cache.value.generatedAt || null,
+        liveReason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      };
+      return json(res, 200, value);
+    }
+    return json(res, 200, {
+      ok: false,
+      liveConnected: false,
+      mode: 'unavailable',
+      authority: 'Không có nguồn live',
+      generatedAt: new Date().toISOString(),
+      reason: localizeOwnerFacingText(liveError || String(error instanceof Error ? error.message : error).slice(0, 120)),
+      summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
+      workers: [],
+      activeWork: [],
+      nextQueue: [],
+      nextQueueTotal: 0,
+      recentWork: [],
+      projectPortfolio: [],
+      workProjection: {
+        mode: 'unavailable',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: 'Không có nguồn xác minh',
+      },
+    });
+  }
+}
+, 'i'));
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return '';
+}
+
+function firstHttpsUrl(value = '') {
+  const match = String(value || '').match(/https:\/\/[^\s)>\]}]+/i);
+  return match ? safeEvidenceUrl(match[0].replace(/[.,;]+$/, '')) : null;
+}
+
+export function parseOwnerResultComment(comment = {}) {
+  const body = String(comment?.body || '');
+  const marker = /✅\s*\[KẾT QUẢ THỰC TẾ\]\s*/giu;
+  const matches = [...body.matchAll(marker)];
+  if (!matches.length) return [];
+  const rows = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = Number(match.index || 0) + match[0].length;
+    const end = index + 1 < matches.length ? Number(matches[index + 1].index || body.length) : body.length;
+    const block = body.slice(start, end).trim();
+    const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const header = lines[0] || '';
+    const identity = header.match(/^#(\d+)\s*-\s*(.+)$/u);
+    if (!identity) continue;
+
+    const resultField = ownerResultField(block, ['RESULT']);
+    const narrativeLine = lines.find((line) => /✅\s*\[KẾT QUẢ\]/iu.test(line)) || '';
+    const narrative = narrativeLine.replace(/^.*?✅\s*\[KẾT QUẢ\]\s*/iu, '').trim();
+    const result = localizeOwnerFacingText(cleanText(resultField || narrative || 'Đã hoàn tất', 420));
+
+    const explicitVerification = ownerResultField(block, ['VERIFICATION', 'VERIFY', 'XÁC MINH']);
+    const completionState = /Trạng thái\s*:\s*(?:HOÀN TẤT|COMPLETED|DONE)/iu.test(block);
+    const verification = localizeOwnerFacingText(cleanText(
+      explicitVerification || (/^(?:PASS|ĐẠT)$/iu.test(resultField) ? resultField : completionState ? 'HOÀN TẤT' : 'ĐÃ XÁC MINH'),
+      120,
+    ));
+
+    const liveLocation = cleanText(ownerResultField(block, ['LIVE URL/location', 'LIVE URL', 'LIVE_URL', 'LIVE_LOCATION', 'LOCATION']), 320) || null;
+    const evidence = cleanText(ownerResultField(block, ['Evidence', 'Bằng chứng']), 420) || null;
+    const source = cleanText(ownerResultField(block, ['Nguồn', 'SOURCE']), 420) || null;
+    const completedRaw = ownerResultField(block, ['Completed at', 'COMPLETED_AT', 'COMPLETED']);
+    const completedAt = safeEvidenceTimestamp(completedRaw)
+      || safeEvidenceTimestamp(comment?.created_at)
+      || safeEvidenceTimestamp(comment?.updated_at)
+      || null;
+
+    rows.push({
+      workOrderNumber: Number(identity[1]),
+      workOrder: '#' + identity[1] + ' - ' + cleanText(identity[2], 220),
+      title: cleanText(identity[2], 220),
+      result,
+      verification,
+      liveLocation,
+      liveUrl: firstHttpsUrl(liveLocation),
+      evidence,
+      evidenceUrl: firstHttpsUrl(evidence),
+      workOrderUrl: firstHttpsUrl(source),
+      completedAt,
+      commentId: Number(comment?.id) || null,
+      sourceCommentUrl: safeEvidenceUrl(comment?.html_url || ''),
+    });
+  }
+  return rows;
+}
+
+export function projectOwnerResultInbox(issue = {}, comments = []) {
+  const rows = (Array.isArray(comments) ? comments : [])
+    .flatMap((comment) => parseOwnerResultComment(comment))
+    .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0) || Number(b.commentId || 0) - Number(a.commentId || 0));
+  return {
+    ownerResultInbox: bodyFlag(issue?.body || '', 'RESULT_INBOX'),
+    ownerResultsStatus: 'ready',
+    ownerResultCount: rows.length,
+    ownerResults: rows,
+  };
+}
+
+async function ownerResultInboxProjection(openIssues, owner, repo, fetchImpl = fetch) {
+  const issue = (Array.isArray(openIssues) ? openIssues : []).find((item) => bodyFlag(item?.body || '', 'RESULT_INBOX'));
+  if (!issue) return null;
+  const issueNumber = Number(issue.number);
+  try {
+    const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + issueNumber + '/comments?per_page=100', fetchImpl);
+    return { issueNumber, ...projectOwnerResultInbox(issue, comments) };
+  } catch (error) {
+    return {
+      issueNumber,
+      ownerResultInbox: true,
+      ownerResultsStatus: 'unavailable',
+      ownerResultCount: null,
+      ownerResults: [],
+      ownerResultsError: cleanText(String(error instanceof Error ? error.message : error), 120),
+    };
+  }
+}
+
 export function parseClearedBlockerLifecycleComment(comment = {}) {
   const body = String(comment?.body || '');
   const state = (commentField(body, 'CURRENT_STATE') || commentField(body, 'STATE')).trim();
