@@ -27,3 +27,52 @@ describe('#4431 GitHub shared inflight dedupe',()=>{
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('#4439 GitHub shared write abort bounds',()=>{
+  it('propagates caller abort through the bounded write signal',async()=>{
+    let networkSignal;
+    const fetchImpl=vi.fn((_url,init)=>new Promise((_resolve,reject)=>{
+      networkSignal=init.signal;
+      init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true});
+    }));
+    const caller=new AbortController();
+    const request=githubRequestJson(fetchImpl,'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/4439','',{
+      method:'POST',
+      signal:caller.signal,
+      body:'{}',
+    });
+    await Promise.resolve();
+    expect(networkSignal).toBeTruthy();
+    expect(networkSignal).not.toBe(caller.signal);
+    caller.abort(new Error('CALLER_ABORTED_WRITE'));
+    await expect(request).rejects.toThrow('CALLER_ABORTED_WRITE');
+  });
+
+  it('retains the 12s hard timeout even when the caller provides a signal',async()=>{
+    vi.useFakeTimers();
+    try{
+      let networkSignal;
+      const fetchImpl=vi.fn((_url,init)=>new Promise((_resolve,reject)=>{
+        networkSignal=init.signal;
+        init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true});
+      }));
+      const caller=new AbortController();
+      const request=githubRequestJson(fetchImpl,'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/4439','',{
+        method:'PATCH',
+        signal:caller.signal,
+        body:'{}',
+      });
+      await Promise.resolve();
+      expect(networkSignal).toBeTruthy();
+      expect(networkSignal.aborted).toBe(false);
+      const rejected=expect(request).rejects.toMatchObject({name:'TimeoutError'});
+      await vi.advanceTimersByTimeAsync(12000);
+      await rejected;
+      expect(networkSignal.aborted).toBe(true);
+      expect(caller.signal.aborted).toBe(false);
+    }finally{
+      vi.useRealTimers();
+    }
+  });
+});
