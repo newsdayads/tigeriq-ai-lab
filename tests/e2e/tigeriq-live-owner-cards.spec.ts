@@ -46,26 +46,26 @@ test('LIVE shows the work list immediately and keeps project surfaces out of lay
   await expect(page.locator('#workListHeading')).toHaveText('DANH SÁCH CÔNG VIỆC');
 });
 
-test('work cards retain project, workstream, job and assignee context',async({page})=>{
+test('work cards stay compact while project, workstream and job remain available in detail',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});await openLive(page);
   const card=page.locator('.work-row').filter({hasText:'#111'}).first();
-  await expect(card).toContainText('Alpha');
-  await expect(card).toContainText('Xây dựng');
-  await expect(card).toContainText('JOB ALPHA-111');
   await expect(card).toContainText('NV03');
+  await expect(card).not.toContainText('Alpha');
+  await expect(card).not.toContainText('Xây dựng');
+  await expect(card).not.toContainText('JOB ALPHA-111');
   await card.click();
   await expect(page.locator('#workDrawer')).toHaveClass(/open/);
   await expect(page.locator('#drawerProject')).toContainText('Alpha');
   await expect(page.locator('#drawerWorkstream')).toContainText('Xây dựng');
+  await expect(page.locator('#drawerJob')).toContainText('ALPHA-111');
 });
 
-test('navigation separates Work and Projects on desktop and mobile',async({page})=>{
+test('LIVE removes redundant Work/Projects navigation on desktop and mobile',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});await openLive(page);
-  await expect(page.locator('.v2-global-nav')).toContainText('Công việc');
-  await expect(page.locator('.v2-global-nav')).toContainText('Dự án');
-  await expect(page.locator('.v2-global-nav a[href="/projects"]')).toHaveCount(1);
+  await expect(page.locator('.v2-global-nav')).toHaveCount(0);
+  await expect(page.locator('.health-utility')).toHaveCount(0);
   await page.setViewportSize({width:390,height:844});
-  await expect(page.locator('.v2-mobile-nav a[href="/projects"]')).toBeVisible();
+  await expect(page.locator('.v2-mobile-nav')).toHaveCount(0);
 });
 
 test('Projects page derives projects and workstreams from live data',async({page})=>{

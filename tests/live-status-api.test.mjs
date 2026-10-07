@@ -745,6 +745,9 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(progressForIssue(issue(3102, '[P1] Lifecycle guess forbidden', 'CURRENT_STATE=WAIT_INDEPENDENT_REVIEW'), 'REVIEW')).toMatchObject({ percent: null, source: 'none' });
     expect(progressForIssue(issue(3103, '[P1] Verified checklist', 'PROGRESS_VERIFIED=true\n- [x] A\n- [x] B\n- [ ] C\n- [ ] D'), 'OPEN')).toMatchObject({ percent: 50, source: 'checklist_verified' });
     expect(progressForIssue(issue(3104, '[P1] Verified explicit', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=73'), 'OPEN')).toMatchObject({ percent: 73, source: 'explicit_verified' });
+    expect(progressForIssue(issue(3105, '[P1] Review must not look done', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=100'), 'REVIEW')).toMatchObject({ percent: null, source: 'non_terminal_100_rejected' });
+    expect(progressForIssue(issue(3106, '[P1] Verify must not look done', 'PROGRESS_VERIFIED=true\n- [x] A\n- [x] B'), 'VERIFY')).toMatchObject({ percent: null, source: 'non_terminal_100_rejected' });
+    expect(progressForIssue(issue(3107, '[P1] Terminal can be complete', 'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=100'), 'DONE')).toMatchObject({ percent: 100, source: 'explicit_verified' });
   });
 
 
