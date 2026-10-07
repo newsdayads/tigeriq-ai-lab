@@ -6,5 +6,5 @@
     "sourceMap": true,
     "noEmit": false
   },
-  "exclude": ["tests/**", "**/*.test.ts"]
+  "exclude": ["tests/**", "**/*.test.ts", "apps/chrome-controller/src/server.ts"]
 }
