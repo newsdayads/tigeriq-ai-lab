@@ -8,7 +8,7 @@ export const HEALTH_STATES = {
 export const NV09_EMPLOYEE_ID = 'NV09';
 export const NV09_MODEL = 'qwen3.6:27b-coding';
 export const NV09_FALLBACK_MODEL = 'qwen3-coder:30b';
-export const NV09_ENDPOINT = 'http://127.0.0.1:11434';
+export const NV09_ENDPOINT = 'http://127.0.0.1:11435';
 
 const registeredModels = new Map();
 

@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {
+process.env.NODE_ENV='test';
+const {
   configuredCodingResourceIds,
   invokeOllamaChat,
   normalizeLocalOllamaBaseUrl,
   selectCodingWorker,
-} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+}=await import('../apps/tigeriq-coding-lane/coding-lane.mjs');
 
 test('NV09 is registered as a Coding Lane resource without cloud credentials',()=>{
   assert.ok(configuredCodingResourceIds().includes('NV09'));
@@ -16,6 +17,17 @@ test('NV09 Ollama transport is loopback-only',()=>{
   assert.strictEqual(normalizeLocalOllamaBaseUrl('http://localhost:11434'),'http://localhost:11434');
   assert.throws(()=>normalizeLocalOllamaBaseUrl('https://example.com'),/OLLAMA_LOOPBACK_ONLY/);
   assert.throws(()=>normalizeLocalOllamaBaseUrl('http://100.97.23.87:11434'),/OLLAMA_LOOPBACK_ONLY/);
+});
+
+test('NV09 defaults to dedicated GPU Ollama endpoint 11435',async()=>{
+  let seen=null;
+  const fetchImpl=async(url,init)=>{
+    seen={url,init};
+    return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'OK'}}]})};
+  };
+  const out=await invokeOllamaChat('qwen3.6:27b-coding','Return OK',{fetchImpl,timeoutMs:15000,maxTokens:8});
+  assert.strictEqual(out,'OK');
+  assert.strictEqual(seen.url,'http://127.0.0.1:11435/v1/chat/completions');
 });
 
 test('NV09 Ollama transport is bounded and sends no credential header',async()=>{
