@@ -158,4 +158,16 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain("mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE'");
   });
 
+
+  it('#4413 bounds GitHub work-order projection fetch',()=>{
+    const start=core.indexOf('async function githubWorkOrders()');
+    const end=core.indexOf('let apiHealthProjectionCache',start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const segment=core.slice(start,end);
+    expect(segment).toContain('await fetchJson(u,');
+    expect(segment).toContain('},5000)');
+    expect(segment).not.toContain('await fetch(u,');
+  });
+
 });
