@@ -28,7 +28,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';\nimport { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
@@ -2513,6 +2513,13 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       return res.end(JSON.stringify(result));
     }
     if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end(dashboard());}
+    if(req.method==='POST'&&url.pathname==='/api/vnext-shadow/evaluate'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:false,error:'unauthorized'}));}
+      const b=await readBody(req);
+      const result=evaluateCoreVNextShadowCycle({...b,env:process.env,pool});
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true,...result}));
+    }
     if(req.method==='POST'&&url.pathname==='/api/nv-inference'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:false,error:'unauthorized'}));}
       try{
