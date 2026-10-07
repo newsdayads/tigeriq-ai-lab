@@ -117,6 +117,21 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(parseOwnerResultComment({ body: 'không phải result comment' })).toEqual([]);
   });
 
+  it('#4464 fails closed when a result block has no verification evidence', () => {
+    const [row] = parseOwnerResultComment({
+      id: 202,
+      created_at: '2026-10-07T04:00:00Z',
+      body: [
+        '✅ [KẾT QUẢ THỰC TẾ] #4466 - Result without verification evidence',
+        'Ghi chú: chưa có trường verification hoặc trạng thái hoàn tất',
+      ].join('\n'),
+    });
+    expect(row).toMatchObject({
+      workOrderNumber: 4466,
+      verification: 'CHƯA XÁC MINH',
+    });
+  });
+
   it('extracts GitHub issue identity from Core/Coding job ids without guessing unrelated numbers', () => {
     expect(parseIssueNumber('JOB-GH-1714-PC')).toBe(1714);
     expect(parseIssueNumber('MGR-OBJ-GH-1812')).toBe(1812);
