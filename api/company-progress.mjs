@@ -116,7 +116,7 @@ export function projectProgress({ pull, runs = [] }) {
 }
 
 function cleanTitle(value = '') {
-  return String(value).replace(/^\[[^\]]+\]\s*/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
+  return String(value).replace(/^(?:\[[^\]]+\]\s*)+/, '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
 function firstLine(value = '') {
