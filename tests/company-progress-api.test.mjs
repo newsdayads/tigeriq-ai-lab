@@ -123,6 +123,22 @@ describe('public authoritative projection', () => {
     expect(rows[1]).toMatchObject({ command: 3, employeeId: 'NV03', label: 'NV03 / Huy', active: false });
   });
 
+  it('#4443 reads TARGET_EMPLOYEE from the same CURRENT_EXECUTABLE override block', () => {
+    const body = [
+      '## CURRENT OVERRIDE — AUTHORITATIVE',
+      'MASTER=#4409 - [P1][REPO][AUDIT] Rà toàn bộ mã nguồn TigerIQ',
+      'TARGET_EMPLOYEE=NV02',
+      'CURRENT_EXECUTABLE_P1_P5=#4409',
+      '',
+      '## OLD HISTORY',
+      'TARGET_EMPLOYEE=NV99',
+      'CURRENT_EXECUTABLE_P1_P5=#1234',
+    ].join('\n');
+    expect(inferDeclaredExecutor(body, 4409)).toBe('NV02');
+    expect(inferDeclaredExecutor(body, 1234)).toBe('NV99');
+    expect(inferDeclaredExecutor(body, 9999)).toBe(null);
+  });
+
   it('uses only an explicitly declared executor for current work ownership', () => {
     const body = '1. **#556 — Source Truth + HOT STATE**: highest P0. Actual executor now = `Vy / Chief of Staff`, `mode=foreground_direct`.\n2. **#478 — Zero-touch**: next safe P0.';
     expect(inferDeclaredExecutor(body, 556)).toBe('Vy / Chief of Staff');
