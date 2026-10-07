@@ -28,7 +28,7 @@ test('NV09 Ollama transport is bounded and sends no credential header',async()=>
       text:async()=>JSON.stringify({choices:[{message:{content:'NV09_CORE_DIRECT_OK'}}]}),
     };
   };
-  const out=await invokeOllamaChat('qwen3-coder:30b','Return exactly NV09_CORE_DIRECT_OK',{
+  const out=await invokeOllamaChat('qwen3.5:9b','Return exactly NV09_CORE_DIRECT_OK',{
     fetchImpl,
     baseUrl:'http://127.0.0.1:11434',
     timeoutMs:15000,
@@ -38,7 +38,7 @@ test('NV09 Ollama transport is bounded and sends no credential header',async()=>
   assert.strictEqual(seen.url,'http://127.0.0.1:11434/v1/chat/completions');
   assert.deepStrictEqual(seen.init.headers,{'content-type':'application/json'});
   const body=JSON.parse(seen.init.body);
-  assert.strictEqual(body.model,'qwen3-coder:30b');
+  assert.strictEqual(body.model,'qwen3.5:9b');
   assert.strictEqual(body.max_tokens,64);
   assert.strictEqual(body.stream,false);
   assert.deepStrictEqual(body.messages,[{role:'user',content:'Return exactly NV09_CORE_DIRECT_OK'}]);
