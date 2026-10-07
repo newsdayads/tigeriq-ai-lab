@@ -34,6 +34,16 @@ describe('Web Control workforce projection',()=>{
     expect(result[0].identity_migrated).toBe(true);
   });
 
+  it('#4451 preserves NV00 as numeric zero in workforce sorting',()=>{
+    const match=workforceJs.match(/const employeeNumber = id => ([^;]+);/);
+    expect(match?.[1]).toBeTruthy();
+    const employeeNumber=new Function('id',`return (${match?.[1]});`) as (id:string)=>number;
+    expect(employeeNumber('NV00')).toBe(0);
+    expect(employeeNumber('NV01')).toBe(1);
+    expect(employeeNumber('NV102')).toBe(102);
+    expect(employeeNumber('invalid')).toBe(999);
+  });
+
   it('renders all workforce slots even when no runtime/API resource exists',()=>{
     expect(workforceJs).not.toContain('Array.from({length:20}');
     expect(workforceJs).toContain('Array.from({length:21}');

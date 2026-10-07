@@ -14,7 +14,7 @@
   const fallbackSlots = () => Array.from({length:21},(_,i)=>`NV${String(i).padStart(2,'0')}`);
   const STATUS_ORDER = window.TigerIqHealthModel?.STATUS_ORDER || {BUSY:0,READY:1,IDLE:1,ONLINE:1,MANUAL:2,NO_API:2,RATE_LIMITED:3,AUTH_ERROR:4,CONFIG_ERROR:4,CONTRACT_ERROR:4,ERROR:4,WAIT_KEY:5,STALE_ERROR:6,OFFLINE:7,DISABLED:8,PAUSED:8,RETIRED:8,UNASSIGNED:9};
   const HEALTH_FRESH_MS=30*60*1000;
-  const employeeNumber = id => Number(String(id||'').replace(/\D/g,'')) || 999;
+  const employeeNumber = id => Number(String(id||'').match(/\d+/)?.[0] ?? 999);
   const ageMs=(value,now=Date.now())=>{const ts=Date.parse(String(value||''));return Number.isFinite(ts)?Math.max(0,now-ts):Infinity;};
   const quotaText=r=>{
     const summary=window.TigerIqHealthModel?.quotaSummary?.(r);
