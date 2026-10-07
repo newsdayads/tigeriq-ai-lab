@@ -445,7 +445,7 @@ export function codingManagerRankingInput(resource,{nowMs=Date.now(),health=core
   const freshnessMs=15*60*1000;
   const hasRecentEvidence=(Number.isFinite(successAt)&&nowMs-successAt<=freshnessMs)
     ||(Number.isFinite(failureAt)&&nowMs-failureAt<=freshnessMs);
-  const capabilities=Array.isArray(state?.capabilities)&&state.capabilities.length?state.capabilities:['coding','general'];
+  const capabilities=[...new Set([...(Array.isArray(state?.capabilities)?state.capabilities:[]),'coding','general'])];
   return {
     ...state,
     employee_id:resource.id,
