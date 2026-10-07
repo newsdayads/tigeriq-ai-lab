@@ -29,7 +29,7 @@ test('benchmark computes required #4457 metrics',()=>{
   assert.equal(out.metrics.exact_gate_escalation_precision,1);
   assert.ok(out.metrics.resource_utilization_when_backlog_exists>0);
   assert.ok(out.metrics.resource_utilization_when_backlog_exists<=1);
-  assert.ok(out.metrics.jobs_completed_per_hour>0);
+  assert.equal(out.metrics.jobs_completed_per_hour,90);
 });
 
 test('target evaluator enforces the hard safety/autonomy gates',()=>{
@@ -53,4 +53,8 @@ test('invalid fixture fails closed',()=>{
   const unsorted=structuredClone(fixture);
   unsorted.events[1].at='2026-10-07T11:59:59.000Z';
   assert.throws(()=>validateAutonomyBenchmarkFixture(unsorted),/BENCHMARK_EVENTS_NOT_SORTED/);
+  const unknown=structuredClone(fixture);
+  unknown.events[1].type='mystery';
+  assert.throws(()=>validateAutonomyBenchmarkFixture(unknown),/BENCHMARK_EVENT_TYPE_INVALID/);
+  assert.throws(()=>validateAutonomyBenchmarkFixture({...fixture,tasksTotal:20.5}),/BENCHMARK_TASKS_TOTAL_INVALID/);
 });
