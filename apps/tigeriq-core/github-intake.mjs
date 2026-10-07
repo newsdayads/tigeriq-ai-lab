@@ -258,6 +258,70 @@ export async function githubTerminalDependencyGate(fetchImpl,owner,repo,token,so
   return {allow:true,reason:'dependencies_terminal_accepted',...spec,states};
 }
 
+
+function replaceBodyValue(body,key,value){
+  const text=String(body||'');
+  const escaped=String(key).replace(/[.*+?^$()|[\]\\]/g,'\\$&');
+  const re=new RegExp('^'+escaped+'=[^\\r\\n]*$','m');
+  return re.test(text)?text.replace(re,key+'='+value):(text.replace(/\s*$/,'')+'\n'+key+'='+value+'\n');
+}
+
+export function declaredBlockedBySpec(body='',currentNumber=0){
+  const raw=bodyValue(body,'BLOCKED_BY').trim();
+  if(!raw||['NONE','NO','CLEAR','CLEARED'].includes(raw.toUpperCase()))return {required:false,dependencies:[],raw};
+  const tokens=raw.split(/[|,\s]+/).map(x=>x.trim()).filter(Boolean);
+  const dependencies=[]; const seen=new Set([Number(currentNumber)]);
+  for(const token of tokens){
+    const match=token.match(/^#(\d{1,6})$/);
+    if(!match)return {required:true,valid:false,dependencies:[],raw,reason:'blocked_by_reference_invalid'};
+    const n=Number(match[1]);
+    if(!n||seen.has(n))continue;
+    seen.add(n);dependencies.push(n);
+  }
+  return dependencies.length
+    ? {required:true,valid:true,dependencies,raw}
+    : {required:true,valid:false,dependencies:[],raw,reason:'blocked_by_reference_missing'};
+}
+
+export async function reconcileSatisfiedDeclaredBlockers({fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',issues=[]}={}){
+  const rows=Array.isArray(issues)?issues:[];
+  if(!token||!rows.length)return {issues:rows,changed:0,changedIssueNumbers:[]};
+  const index=indexOpenGithubIssues(rows);
+  const out=[]; const changedIssueNumbers=[];
+  for(const issue of rows){
+    const spec=declaredBlockedBySpec(issue?.body||'',issue?.number);
+    if(!spec.required||!spec.valid){out.push(issue);continue;}
+    let allAccepted=true;
+    for(const dependency of spec.dependencies){
+      try{
+        const dep=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,dependency,index);
+        const state=String(dep?.state||'unknown').toLowerCase();
+        const stateReason=String(dep?.state_reason||'').toLowerCase();
+        if(!(state==='closed'&&stateReason==='completed')){allAccepted=false;break;}
+      }catch(error){
+        if(githubRateLimitCooldownMs(error)>0)throw error;
+        allAccepted=false;break;
+      }
+    }
+    if(!allAccepted){out.push(issue);continue;}
+    let nextBody=replaceBodyValue(issue.body||'','BLOCKED_BY','NONE');
+    nextBody=replaceBodyValue(nextBody,'DEPENDENCY_STATUS','SATISFIED');
+    const refs=spec.dependencies.map(n=>'#'+n).join('|');
+    nextBody=replaceBodyValue(nextBody,'DEPENDENCY_RECONCILED_FROM',refs);
+    const candidate={...issue,body:nextBody};
+    const admission=safeAutoWorkAdmission(candidate);
+    if(!admission.eligible){out.push(issue);continue;}
+    const updated=await ghJson(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+Number(issue.number),token,{
+      method:'PATCH',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({body:nextBody}),
+    });
+    out.push({...issue,...updated,body:nextBody});
+    changedIssueNumbers.push(Number(issue.number));
+  }
+  return {issues:out,changed:changedIssueNumbers.length,changedIssueNumbers};
+}
+
 export function objectiveCompletionGate(metadata={}){
   const sourceRevision=String(metadata?.sourceRevision||'').trim();
   if(metadata?.dependencyGateRequired===true&&metadata?.dependencyGatePass!==true)return {allow:false,reason:'dependency_pending'};
@@ -1016,7 +1080,8 @@ async function insertGithubObjectiveIfScopeFree(pool,{id,objective,priority,meta
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
-  const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:fetchedRows});
+  const dependencyReconciled=await reconcileSatisfiedDeclaredBlockers({fetchImpl,owner,repo,token,issues:fetchedRows});
+  const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:dependencyReconciled.issues});
   const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(rows.map(parseExecutableIssue).filter(Boolean)));
   const openIssueIndex=indexOpenGithubIssues(rows);
   const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];

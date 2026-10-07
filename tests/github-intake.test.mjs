@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -163,6 +163,70 @@ NO_DIRECT_MAIN=true
 RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
+
+test('declared BLOCKED_BY references are strict and deterministic',()=>{
+  assert.deepStrictEqual(declaredBlockedBySpec('BLOCKED_BY=#4462',4463),{required:true,valid:true,dependencies:[4462],raw:'#4462'});
+  assert.deepStrictEqual(declaredBlockedBySpec('BLOCKED_BY=NONE',4463),{required:false,dependencies:[],raw:'NONE'});
+  assert.equal(declaredBlockedBySpec('BLOCKED_BY=free-text',4463).valid,false);
+});
+
+test('phase continuity rearms an existing safe successor exactly once after blocker closes completed',async()=>{
+  const successorBody=[
+    SAFE_AUTO_POLICY_BASE,
+    'OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'BLOCKED_BY=#4462',
+    'DEPENDENCY_STATUS=WAIT',
+  ].join('\n');
+  const successor={number:4463,state:'open',title:'[P1][CORE vNext][D] Implement next stage',body:successorBody,labels:[],html_url:'https://example/4463'};
+  const blocker={number:4462,state:'closed',state_reason:'completed',title:'continuity bridge',body:'DONE=true'};
+  let patches=0;
+  const fetchImpl=async(url,init={})=>{
+    if(url.endsWith('/issues/4462'))return response(blocker);
+    if(url.endsWith('/issues/4463')&&init.method==='PATCH'){
+      patches++;
+      const payload=JSON.parse(init.body);
+      assert.match(payload.body,/^BLOCKED_BY=NONE$/m);
+      assert.match(payload.body,/^DEPENDENCY_STATUS=SATISFIED$/m);
+      assert.match(payload.body,/^DEPENDENCY_RECONCILED_FROM=#4462$/m);
+      return response({...successor,body:payload.body});
+    }
+    return response({});
+  };
+  const first=await reconcileSatisfiedDeclaredBlockers({fetchImpl,token:'fake',issues:[successor]});
+  assert.equal(first.changed,1);
+  assert.deepStrictEqual(first.changedIssueNumbers,[4463]);
+  assert.equal(safeAutoWorkAdmission(first.issues[0]).eligible,true);
+  const second=await reconcileSatisfiedDeclaredBlockers({fetchImpl,token:'fake',issues:first.issues});
+  assert.equal(second.changed,0);
+  assert.equal(patches,1);
+});
+
+test('phase continuity fails closed while blocker is open or not accepted',async()=>{
+  const body=[
+    SAFE_AUTO_POLICY_BASE,
+    'OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE','BLOCKED_BY=#700','DEPENDENCY_STATUS=WAIT'
+  ].join('\n');
+  const successor={number:701,state:'open',title:'safe successor',body,labels:[]};
+  for(const blocker of [
+    {number:700,state:'open',state_reason:null},
+    {number:700,state:'closed',state_reason:'not_planned'},
+  ]){
+    let patches=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/700'))return response(blocker);
+      if(init.method==='PATCH')patches++;
+      return response({});
+    };
+    const out=await reconcileSatisfiedDeclaredBlockers({fetchImpl,token:'fake',issues:[successor]});
+    assert.equal(out.changed,0);
+    assert.equal(patches,0);
+    assert.equal(out.issues[0].body,body);
+  }
+});
 
 test('safe P1-P5 admission ignores owner-facing DISPLAY_STATE when execution state is ready',()=>{
   const body=[
