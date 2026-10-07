@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   compareQueueRows,
@@ -1037,6 +1038,18 @@ describe('TigerIQ Live Work Order projection', () => {
       [{ workKind: 'WORK', status: 'DONE' }],
       { complete: false, completedCount: 25 },
     )).toMatchObject({ percent: null, source: 'incomplete_enumeration', completedItems: 25 });
+  });
+
+
+  it('#4416 keeps live-status GitHub projection on its 5s caller bound',()=>{
+    const source=readFileSync(new URL('../api/live-status.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function gh(');
+    const end=source.indexOf('export function projectionTransportStale',start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const segment=source.slice(start,end);
+    expect(segment).toContain('signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)');
+    expect(source).toContain('const FETCH_TIMEOUT_MS = 5000;');
   });
 
 
