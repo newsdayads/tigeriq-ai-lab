@@ -37,6 +37,7 @@ README reading order is navigational only; it does not override decision precede
 - Golden expected outputs are version-controlled and cannot be auto-edited after a failing run.
 - Preserve stable functionality and data.
 - Prefer free/low-cost capable models/services before paid options.
+- Codex is a quota-protected Owner-gated resource: default DENY. Do not request Codex review, route work to Codex, hand off to Codex Local, or invoke any Codex-backed action unless the Owner explicitly names Codex and authorizes the exact bounded scope. Generic commands such as `LÀM`, `TIẾP TỤC`, `02`, `LÀM TIẾP`, `TỰ HOÀN TẤT`, or `ÁP DỤNG` never imply Codex approval. P1–P5 standing authorization does not include Codex. Without matching approval, use another eligible zero-cost resource or wait; lack of an alternate reviewer is not permission to consume Codex quota.
 - Never commit secrets or restricted/private Owner context.
 - `04_TIGERIQ_OWNER_PROFILE_v1.md` must not be added to this general repository.
 - An off-MAIN CI/reviewer/judge PASS means only the scoped off-MAIN gate passed. It does not mean merged, released, live, or Production.
