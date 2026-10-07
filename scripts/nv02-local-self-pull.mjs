@@ -24,9 +24,11 @@ const CONTROLLER = process.env.TIGERIQ_CHROME_CONTROLLER_URL || 'http://127.0.0.
 const WORKER = 'NV02';
 const POLL_MS = 15_000;
 const TIMEOUT_MS = 30 * 60 * 1000;
+const GITHUB_CLI_TIMEOUT_MS = 60_000;
+const CONTROLLER_REQUEST_TIMEOUT_MS = 30_000;
 
 function gh(args) {
-  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }));
+  return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: GITHUB_CLI_TIMEOUT_MS }));
 }
 function issueComments(number) {
   const pages = gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`, '--paginate', '--slurp']);
@@ -83,6 +85,7 @@ async function controllerDispatch(issue, lease) {
   assertLeaseOwnership(issue, lease);
   const response = await fetch(`${CONTROLLER}/api/workers/NV02/dispatch`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
+    signal: AbortSignal.timeout(CONTROLLER_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({ text: buildNv02LocalSelfPullPrompt(issue, lease), navigate: false,
       job: { issueRef: issue.html_url, title: `#${issue.number} - ${issue.title}`, source: 'NV02_LOCAL_SELF_PULL' } }),
   });
@@ -101,7 +104,7 @@ function hasTerminalEvidence(issue) {
 }
 
 async function setIdle() {
-  const response = await fetch(`${CONTROLLER}/api/utility/workers/NV02/idle`, { method: 'POST' });
+  const response = await fetch(`${CONTROLLER}/api/utility/workers/NV02/idle`, { method: 'POST', signal: AbortSignal.timeout(CONTROLLER_REQUEST_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`NV02_IDLE_HTTP_${response.status}:${await response.text()}`);
   return response.json();
 }
