@@ -415,6 +415,112 @@ function commentField(body, key) {
   return '';
 }
 
+function ownerResultField(body = '', labels = []) {
+  const wanted = (Array.isArray(labels) ? labels : [labels]).map((value) => String(value || '').trim()).filter(Boolean);
+  const specials = '\\.^$*+?()[]{}|';
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const normalized = line.replace(/^\s*[-*]\s*/, '').trim();
+    for (const label of wanted) {
+      const escaped = [...label].map((char) => specials.includes(char) ? '\\' + char : char).join('');
+      const match = normalized.match(new RegExp('^' + escaped + '\\s*(?:=|:|\\|)\\s*(.+)$', 'i'));
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return '';
+}
+
+function firstHttpsUrl(value = '') {
+  const match = String(value || '').match(/https:\/\/[^\s)>\]}]+/i);
+  return match ? safeEvidenceUrl(match[0].replace(/[.,;]+$/, '')) : null;
+}
+
+export function parseOwnerResultComment(comment = {}) {
+  const body = String(comment?.body || '');
+  const marker = /✅\s*\[KẾT QUẢ THỰC TẾ\]\s*/giu;
+  const matches = [...body.matchAll(marker)];
+  if (!matches.length) return [];
+  const rows = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = Number(match.index || 0) + match[0].length;
+    const end = index + 1 < matches.length ? Number(matches[index + 1].index || body.length) : body.length;
+    const block = body.slice(start, end).trim();
+    const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const header = lines[0] || '';
+    const identity = header.match(/^#(\d+)\s*-\s*(.+)$/u);
+    if (!identity) continue;
+
+    const resultField = ownerResultField(block, ['RESULT']);
+    const narrativeLine = lines.find((line) => /✅\s*\[KẾT QUẢ\]/iu.test(line)) || '';
+    const narrative = narrativeLine.replace(/^.*?✅\s*\[KẾT QUẢ\]\s*/iu, '').trim();
+    const result = localizeOwnerFacingText(cleanText(resultField || narrative || 'Đã hoàn tất', 420));
+
+    const explicitVerification = ownerResultField(block, ['VERIFICATION', 'VERIFY', 'XÁC MINH']);
+    const completionState = /Trạng thái\s*:\s*(?:HOÀN TẤT|COMPLETED|DONE)/iu.test(block);
+    const verification = localizeOwnerFacingText(cleanText(
+      explicitVerification || (/^(?:PASS|ĐẠT)$/iu.test(resultField) ? resultField : completionState ? 'HOÀN TẤT' : 'CHƯA XÁC MINH'),
+      120,
+    ));
+
+    const liveLocation = cleanText(ownerResultField(block, ['LIVE URL/location', 'LIVE URL', 'LIVE_URL', 'LIVE_LOCATION', 'LOCATION']), 320) || null;
+    const evidence = cleanText(ownerResultField(block, ['Evidence', 'Bằng chứng']), 420) || null;
+    const source = cleanText(ownerResultField(block, ['Nguồn', 'SOURCE']), 420) || null;
+    const completedRaw = ownerResultField(block, ['Completed at', 'COMPLETED_AT', 'COMPLETED']);
+    const completedAt = safeEvidenceTimestamp(completedRaw)
+      || safeEvidenceTimestamp(comment?.created_at)
+      || safeEvidenceTimestamp(comment?.updated_at)
+      || null;
+
+    rows.push({
+      workOrderNumber: Number(identity[1]),
+      workOrder: '#' + identity[1] + ' - ' + cleanText(identity[2], 220),
+      title: cleanText(identity[2], 220),
+      result,
+      verification,
+      liveLocation,
+      liveUrl: firstHttpsUrl(liveLocation),
+      evidence,
+      evidenceUrl: firstHttpsUrl(evidence),
+      workOrderUrl: firstHttpsUrl(source),
+      completedAt,
+      commentId: Number(comment?.id) || null,
+      sourceCommentUrl: safeEvidenceUrl(comment?.html_url || ''),
+    });
+  }
+  return rows;
+}
+
+export function projectOwnerResultInbox(issue = {}, comments = []) {
+  const rows = (Array.isArray(comments) ? comments : [])
+    .flatMap((comment) => parseOwnerResultComment(comment))
+    .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0) || Number(b.commentId || 0) - Number(a.commentId || 0));
+  return {
+    ownerResultInbox: bodyFlag(issue?.body || '', 'RESULT_INBOX'),
+    ownerResultsStatus: 'ready',
+    ownerResultCount: rows.length,
+    ownerResults: rows,
+  };
+}
+
+async function ownerResultInboxProjection(openIssues, owner, repo, fetchImpl = fetch) {
+  const issue = (Array.isArray(openIssues) ? openIssues : []).find((item) => bodyFlag(item?.body || '', 'RESULT_INBOX'));
+  if (!issue) return null;
+  const issueNumber = Number(issue.number);
+  try {
+    const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + issueNumber + '/comments?per_page=100', fetchImpl);
+    return { issueNumber, ...projectOwnerResultInbox(issue, comments) };
+  } catch (error) {
+    return {
+      issueNumber,
+      ownerResultInbox: true,
+      ownerResultsStatus: 'unavailable',
+      ownerResultCount: null,
+      ownerResults: [],
+      ownerResultsError: cleanText(String(error instanceof Error ? error.message : error), 120),
+    };
+  }
+}
+
 export function parseClearedBlockerLifecycleComment(comment = {}) {
   const body = String(comment?.body || '');
   const state = (commentField(body, 'CURRENT_STATE') || commentField(body, 'STATE')).trim();
@@ -1485,6 +1591,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 
     const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
     const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
+    const resultInboxProjection = await ownerResultInboxProjection(openIssues, owner, repo, fetchImpl);
     const openWork = annotatePortfolioRows(openIssues.map((issue) => parseOpenWorkIssue(issue, {
       active: activeMap.get(Number(issue.number)) || null,
       queued: queueMap.get(Number(issue.number)) || null,
@@ -1512,6 +1619,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       if (pa !== pb) return pa - pb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
+    if (resultInboxProjection) {
+      const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
+      if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
+    }
 
     const actionable = openWork.filter((row) => row.workKind === 'WORK');
     const openSummary = {

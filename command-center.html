@@ -624,6 +624,19 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   .filters{top:0}
 }
 </style>
+<style>
+.owner-result-list{display:grid;gap:8px}
+.owner-result-card{border:1px solid #2a4f6d;background:#0a1928;border-radius:11px;padding:10px}
+.owner-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.owner-result-work{font-size:10px;font-weight:900;color:#dceeff;line-height:1.35;text-decoration:none}
+.owner-result-work:hover{text-decoration:underline}
+.owner-result-verification{border:1px solid #2f6e55;background:#0d2d24;color:#9af0bc;border-radius:999px;padding:3px 6px;font-size:7.5px;font-weight:900;white-space:nowrap}
+.owner-result-text{margin-top:7px;color:#e6eef6;font-size:10px;line-height:1.45;font-weight:700}
+.owner-result-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;color:#8098ad;font-size:8px}
+.owner-result-meta a{color:#8fc8ff;text-decoration:none}
+.owner-result-meta a:hover{text-decoration:underline}
+.owner-result-empty{border:1px dashed #2b4b65;border-radius:10px;padding:13px;color:#8da4b9;font-size:9.5px}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -674,9 +687,10 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <aside id="workDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
   <div class="drawer-head"><div class="drawer-head-main"><div id="drawerKicker" class="drawer-kicker">Work Order</div><div id="drawerTitle" class="drawer-title">Chi tiết công việc</div></div><button id="drawerClose" class="drawer-close" type="button" aria-label="Đóng">×</button></div>
   <div class="drawer-body">
-    <section class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
-    <section class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
-    <section class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
+    <section id="drawerOwnerResults" class="drawer-section" hidden><h3>Kết quả hoàn tất</h3><div id="drawerOwnerResultsList" class="owner-result-list"></div></section>
+    <section id="drawerProgressSection" class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
+    <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
+    <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
@@ -1609,9 +1623,41 @@ function effectiveBlocker(row){
   if(workStatus(row)==='BLOCKED')return String(row?.waitReason||'Chưa có lý do blocker xác minh');
   return '';
 }
+function safeOwnerResultHref(value){
+  try{const url=new URL(String(value||''),location.origin);return url.protocol==='https:'?url.toString():''}catch{return ''}
+}
+function ownerResultTime(value){
+  if(!value)return 'Chưa xác minh';
+  const time=new Date(value);return Number.isFinite(time.getTime())?time.toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
+}
+function renderOwnerResultInbox(row){
+  const isInbox=row?.ownerResultInbox===true;
+  $('drawerOwnerResults').hidden=!isInbox;
+  $('drawerProgressSection').hidden=isInbox;
+  $('drawerStatusSection').hidden=isInbox;
+  $('drawerEvidenceSection').hidden=isInbox;
+  if(!isInbox){$('drawerOwnerResultsList').innerHTML='';return}
+  const list=$('drawerOwnerResultsList');
+  if(String(row?.ownerResultsStatus||'ready')==='unavailable'){
+    list.innerHTML='<div class="owner-result-empty">Chưa tải được kết quả hoàn tất</div>';return;
+  }
+  const results=Array.isArray(row?.ownerResults)?row.ownerResults:[];
+  if(!results.length){list.innerHTML='<div class="owner-result-empty">Chưa có kết quả hoàn tất</div>';return}
+  list.innerHTML=results.map(item=>{
+    const workHref=safeOwnerResultHref(item?.workOrderUrl||item?.sourceCommentUrl);
+    const workText=esc(item?.workOrder||('#'+(item?.workOrderNumber||'—')+' - '+(item?.title||'Kết quả')));
+    const work=workHref?'<a class="owner-result-work" href="'+esc(workHref)+'" target="_blank" rel="noopener">'+workText+'</a>':'<span class="owner-result-work">'+workText+'</span>';
+    const liveHref=safeOwnerResultHref(item?.liveUrl);
+    const evidenceHref=safeOwnerResultHref(item?.evidenceUrl);
+    const live=item?.liveLocation?(liveHref?'<a href="'+esc(liveHref)+'" target="_blank" rel="noopener">LIVE ↗</a>':'<span>LIVE: '+esc(item.liveLocation)+'</span>'):'';
+    const evidence=item?.evidence?(evidenceHref?'<a href="'+esc(evidenceHref)+'" target="_blank" rel="noopener">Bằng chứng ↗</a>':'<span>Bằng chứng: '+esc(item.evidence)+'</span>'):'';
+    return '<article class="owner-result-card"><div class="owner-result-head">'+work+'<span class="owner-result-verification">'+esc(item?.verification||'ĐÃ XÁC MINH')+'</span></div><div class="owner-result-text">'+esc(item?.result||'Đã hoàn tất')+'</div><div class="owner-result-meta"><span>'+esc(ownerResultTime(item?.completedAt))+'</span>'+live+evidence+'</div></article>';
+  }).join('');
+}
 function populateDrawer(row){
   drawerRow=row;
-  $('drawerKicker').textContent='#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row);
+  const isResultInbox=row?.ownerResultInbox===true;
+  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('drawerProgress').innerHTML=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
@@ -1625,6 +1671,7 @@ function populateDrawer(row){
   $('drawerWorker').textContent=row?.assignee||workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||(row?.technicalComplete?'Đã có bằng chứng canonical':'Chưa có bằng chứng');
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
+  renderOwnerResultInbox(row);
   const url=row.url||row.evidenceUrl||'';
   $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;else $('drawerGithub').removeAttribute('href');
 }
