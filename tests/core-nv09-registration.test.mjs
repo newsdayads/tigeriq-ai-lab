@@ -5,37 +5,40 @@ import {
   HEALTH_STATES,
   NV09_EMPLOYEE_ID,
   NV09_MODEL,
+  NV09_FALLBACK_MODEL,
   getRegisteredModels,
   nv09ModelAvailability,
   registerNv09,
   runBoundedInferenceNv09
 } from '../apps/tigeriq-core/registry.mjs';
 
-test('registers NV09 idempotently as qwen3-coder:30b', () => {
+test('registers NV09 idempotently as qwen3.6:27b-coding', () => {
   const a=registerNv09(),b=registerNv09();
   assert.strictEqual(a,b);
   assert.strictEqual(a.employee_id,NV09_EMPLOYEE_ID);
   assert.strictEqual(a.model,NV09_MODEL);
+  assert.strictEqual(a.fallback_model,NV09_FALLBACK_MODEL);
+  assert.strictEqual(NV09_FALLBACK_MODEL,'qwen3-coder:30b');
   assert.strictEqual(a.endpoint,'http://127.0.0.1:11434');
   assert.strictEqual(a.health,HEALTH_STATES.IDLE_ON_DEMAND);
   assert.strictEqual(getRegisteredModels().filter(x=>x.employee_id==='NV09').length,1);
 });
 
 test('availability verifies the exact NV09 model and digest without inference', async()=>{
-  const fake=async()=>({ok:true,status:200,json:async()=>({models:[{name:'qwen3-coder:30b',digest:'abc123',size:18556700761}]})});
+  const fake=async()=>({ok:true,status:200,json:async()=>({models:[{name:'qwen3.6:27b-coding',digest:'abc123',size:17769076935}]})});
   const out=await nv09ModelAvailability(fake);
-  assert.deepStrictEqual({ok:out.ok,employeeId:out.employeeId,model:out.model,digest:out.digest,size:out.size},{ok:true,employeeId:'NV09',model:'qwen3-coder:30b',digest:'abc123',size:18556700761});
+  assert.deepStrictEqual({ok:out.ok,employeeId:out.employeeId,model:out.model,digest:out.digest,size:out.size},{ok:true,employeeId:'NV09',model:'qwen3.6:27b-coding',digest:'abc123',size:17769076935});
 });
 
 test('bounded inference sends small deterministic Ollama request and returns telemetry', async()=>{
   let request;
   const fake=async(url,init)=>{
     request={url,init,body:JSON.parse(init.body)};
-    return {ok:true,status:200,json:async()=>({model:'qwen3-coder:30b',response:'NV09_CORE_CANARY_OK',done:true,load_duration:11,eval_duration:22,eval_count:3})};
+    return {ok:true,status:200,json:async()=>({model:'qwen3.6:27b-coding',response:'NV09_CORE_CANARY_OK',done:true,load_duration:11,eval_duration:22,eval_count:3})};
   };
   const out=await runBoundedInferenceNv09('safe coding canary',{fetchImpl:fake,timeoutMs:2000,numCtx:512,numPredict:12,keepAlive:'5s'});
   assert.strictEqual(request.url,'http://127.0.0.1:11434/api/generate');
-  assert.strictEqual(request.body.model,'qwen3-coder:30b');
+  assert.strictEqual(request.body.model,'qwen3.6:27b-coding');
   assert.strictEqual(request.body.stream,false);
   assert.strictEqual(request.body.think,false);
   assert.strictEqual(request.body.options.num_ctx,512);
@@ -70,7 +73,7 @@ test('bounded inference settles Ollama before releasing timeout ownership', asyn
     error=>error?.kind==='timeout'&&error?.settled===true
   );
   assert.strictEqual(calls.length,2);
-  assert.strictEqual(calls[1].body.model,'qwen3-coder:30b');
+  assert.strictEqual(calls[1].body.model,'qwen3.6:27b-coding');
   assert.strictEqual(calls[1].body.keep_alive,0);
   assert.strictEqual(getRegisteredModels().find(x=>x.employee_id==='NV09').health,HEALTH_STATES.IDLE_ON_DEMAND);
 });
