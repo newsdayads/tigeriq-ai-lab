@@ -357,7 +357,7 @@ const GEMINI_BACKOFF_BASE_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_BAC
 const GEMINI_MAX_ATTEMPTS=Math.max(1,Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS||4));
 const geminiRateController=createGeminiRateController({minIntervalMs:GEMINI_MIN_INTERVAL_MS,backoffBaseMs:GEMINI_BACKOFF_BASE_MS,maxAttempts:GEMINI_MAX_ATTEMPTS});
 const OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_OLLAMA_URL||'http://127.0.0.1:11434');
-const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(180000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||120000)));
+const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(300000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||240000)));
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[

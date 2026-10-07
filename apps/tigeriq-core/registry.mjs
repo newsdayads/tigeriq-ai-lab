@@ -88,8 +88,8 @@ async function settleNv09AfterAbort(entry,{fetchImpl=fetch,timeoutMs=10000}={}){
 
 export async function runBoundedInferenceNv09(prompt, options = {}) {
   const opts = typeof options === 'number' ? { timeoutMs: options } : (options || {});
-  const timeoutMs = Math.max(1000, Number(opts.timeoutMs || 120000));
-  const keepAlive = String(opts.keepAlive || '30s');
+  const timeoutMs = Math.max(1000, Number(opts.timeoutMs || 240000));
+  const keepAlive = String(opts.keepAlive || '10m');
   const numCtx = Math.max(256, Math.min(4096, Number(opts.numCtx || 1024)));
   const numPredict = Math.max(1, Math.min(256, Number(opts.numPredict || 96)));
   const fetchImpl = opts.fetchImpl || fetch;
