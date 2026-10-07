@@ -235,8 +235,8 @@ async function issue(number, owner, repo, fetchImpl) {
 
 async function comments(number, owner, repo, fetchImpl) {
   try {
-    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8`, fetchImpl);
-    return (Array.isArray(rows) ? rows : []).slice(-6).reverse().map((row) => ({
+    const rows = await gh(`/repos/${owner}/${repo}/issues/${number}/comments?per_page=8&sort=created&direction=desc`, fetchImpl);
+    return (Array.isArray(rows) ? rows : []).slice(0, 6).map((row) => ({
       name: firstLine(row.body).replace(/^#+\s*/, '').slice(0, 160) || `Cập nhật #${number}`,
       status: 'ĐÃ GHI NHẬN',
       at: row.created_at || row.updated_at || null,
