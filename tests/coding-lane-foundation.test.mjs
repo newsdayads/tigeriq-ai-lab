@@ -593,6 +593,8 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.ok(src.includes('rankCodingManagerResources(inputs,{nowMs})'));
     assert.ok(!src.includes('available[rr%available.length]'));
     assert.ok(!src.includes('let rr=0'));
+    assert.ok(src.includes("process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'"));
+    assert.ok(!src.includes("process.env.TIGERIQ_CORE_HOST?.trim()||HOST"));
   });
 
   await t.test('production runJob persists implementer before long generation',()=>{
