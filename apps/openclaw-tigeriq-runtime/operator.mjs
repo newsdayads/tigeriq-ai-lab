@@ -1335,20 +1335,22 @@ async function grantAndroidWorkerV020SignerReadAcl() {
 
 export function assertTigerIQLive3150DeployRequest(input = {}) {
   const expectedSha = String(input?.expectedSha || '').trim().toLowerCase();
+  const artifactSha = String(input?.artifactSha || expectedSha).trim().toLowerCase();
   const releaseIssue = String(input?.releaseIssue || '').trim();
   const releaseClass = String(input?.releaseClass || '').trim().toUpperCase();
   const ownerAuthorized = input?.ownerAuthorized === true;
   const releaseReason = String(input?.releaseReason || '').trim();
   if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('TIGERIQ_VERCEL_EXPECTED_SHA_INVALID');
+  if (!/^[0-9a-f]{40}$/.test(artifactSha)) throw new Error('TIGERIQ_VERCEL_ARTIFACT_SHA_INVALID');
   if (!/^\d+$/.test(releaseIssue)) throw new Error('TIGERIQ_VERCEL_RELEASE_ISSUE_INVALID');
   if (releaseClass !== 'WEB_LIVE') throw new Error('TIGERIQ_VERCEL_RELEASE_CLASS_INVALID');
   if (!ownerAuthorized) throw new Error('TIGERIQ_VERCEL_OWNER_AUTH_REQUIRED');
   if (!releaseReason) throw new Error('TIGERIQ_VERCEL_RELEASE_REASON_REQUIRED');
-  return { expectedSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason };
+  return { expectedSha, artifactSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason };
 }
 
 async function deployTigerIQLive3150(input = {}) {
-  const { expectedSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason } = assertTigerIQLive3150DeployRequest(input);
+  const { expectedSha, artifactSha, releaseIssue, releaseClass, ownerAuthorized, releaseReason } = assertTigerIQLive3150DeployRequest(input);
   const repoRoot = 'D:\\TigerIQ\\Runtime\\CoreSource';
   const script = 'D:\\TigerIQ\\Runtime\\CoreSource\\scripts\\pc-worker\\vercel-tigeriq-live-3150-deploy.mjs';
   await realPathInsideRoots(script);
@@ -1357,6 +1359,7 @@ async function deployTigerIQLive3150(input = {}) {
     [
       script,
       '--sha', expectedSha,
+      '--artifact-sha', artifactSha,
       '--issue', releaseIssue,
       '--release-class', releaseClass,
       '--owner-authorized', ownerAuthorized ? 'true' : 'false',
@@ -1391,6 +1394,7 @@ async function deployTigerIQLive3150(input = {}) {
       || receipt.releaseClass !== 'WEB_LIVE'
       || receipt.target !== 'production'
       || receipt.exactSha !== expectedSha
+      || receipt.artifactSha !== artifactSha
       || receipt.maxAttempts !== 1
       || receipt.secretsPrinted !== false
       || !/^https:\/\/[^\s]+\.vercel\.app$/i.test(String(receipt.deploymentUrl || ''))) {
@@ -1405,6 +1409,7 @@ async function deployTigerIQLive3150(input = {}) {
     branch: receipt.branch,
     target: receipt.target,
     exactSha: receipt.exactSha,
+    artifactSha: receipt.artifactSha,
     issue: receipt.issue,
     maxAttempts: 1,
     secretsPrinted: false,
