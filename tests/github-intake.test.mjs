@@ -670,6 +670,12 @@ test('coding_issue_status_read direct action requires bounded numeric issue',()=
   assert.strictEqual(bad.valid,false);
 });
 
+test('ollama_status_read direct action is read-only and strips caller-selected transport inputs',()=>{
+  const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"ollama_status_read","url":"http://evil","host":"evil","path":"C:/evil"}',false);
+  assert.strictEqual(parsed.valid,true);
+  assert.deepStrictEqual(parsed.action,{action:'ollama_status_read'});
+});
+
 test('core_status_read direct action is read-only and strips caller-selected transport inputs',()=>{
   const parsed=parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read","url":"http://evil","host":"evil","path":"C:/evil"}',false);
   assert.strictEqual(parsed.valid,true);
