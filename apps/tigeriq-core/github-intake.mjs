@@ -1128,6 +1128,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       targetWorker:spec.targetWorker||null,sourceRevision:spec.sourceRevision,sourceUpdatedAt:spec.updatedAt,rearmedFromObjectiveId:prior?.id||null,
       dispatchReason:`PRIORITY_${spec.priority}`,executionSurface:spec.dispatchLane==='MOBILE_WORKER'?'MOBILE_WORKER':(spec.capability==='pc_operator'?(spec.pcOperatorDirectAction?'PC_OPERATOR_DIRECT_LOCAL':'CORE_OPENCLAW_BOUNDED'):(spec.requiresCodingHandoff?'CORE_REASONING_COORDINATION':'READ_ONLY')),publicEvidenceKeys:spec.publicEvidenceKeys||[],publicEvidenceDiagnostic:spec.publicEvidenceDiagnostic===true,
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
+      p1P5StandingReleaseAuthorized:Boolean(spec.pcOperatorDirectAction?.action==='tigeriq_live_3150_production_deploy'&&p1P5StandingReleaseAuthorized(spec.body)),
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
       liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
       finalReviewRequired:spec.finalReviewRequired===true,
