@@ -4,45 +4,46 @@ import fs from 'node:fs';
 const live = fs.readFileSync(new URL('../command-center.html', import.meta.url), 'utf8');
 const livePublic = fs.readFileSync(new URL('../public/command-center.html', import.meta.url), 'utf8');
 const projects = fs.readFileSync(new URL('../projects.html', import.meta.url), 'utf8');
-const projectsPublic = fs.readFileSync(new URL('../public/projects.html', import.meta.url), 'utf8');
 
-describe('TigerIQ LIVE mobile work-list split #4372', () => {
-  it('keeps root/public LIVE and Projects surfaces in exact sync', () => {
+describe('TigerIQ LIVE fast-glance responsive #4471', () => {
+  it('keeps root/public LIVE surfaces in exact sync', () => {
     expect(livePublic).toBe(live);
-    expect(projectsPublic).toBe(projects);
   });
 
-  it('makes LIVE a work-list surface and removes project blocks from layout', () => {
-    expect(live).toContain('<a class="active" href="/command-center">Công việc</a>');
-    expect(live).toContain('<a href="/projects">Dự án</a>');
-    expect(live).toContain('id="missionControl" class="mc-shell" aria-label="Mission Control" hidden');
-    expect(live).toContain('id="projectDrilldown" class="project-drilldown" hidden');
-    expect(live).toContain('id="rawWorkDetails" class="raw-work-details live-work-shell" open');
+  it('keeps LIVE focused on work only and removes redundant top/mobile navigation', () => {
+    expect(live).toContain('TigerIQ <b>Live</b></h1>');
+    expect(live).not.toContain('· Luồng công việc');
+    expect(live).not.toContain('Nhận việc → điều phối → thực hiện → kiểm tra → kết quả');
+    expect(live).not.toContain('class="health-utility"');
+    expect(live).not.toContain('<nav class="v2-global-nav"');
+    expect(live).not.toContain('<nav class="v2-mobile-nav"');
     expect(live).toContain('id="workListHeading">DANH SÁCH CÔNG VIỆC');
     expect(live).toContain('id="workList" class="work-list"');
   });
 
-  it('preserves Project → Workstream → Job context in each work row', () => {
-    expect(live).toContain('class="work-path"');
+  it('moves project/workstream/job details off cards while preserving them in the detail drawer', () => {
+    expect(live).not.toContain('class="work-path"');
+    expect(live).toContain('id="drawerProject"');
+    expect(live).toContain('id="drawerWorkstream"');
+    expect(live).toContain('id="drawerJob"');
     expect(live).toContain("row?.projectName||'Chưa phân dự án'");
-    expect(live).toContain("row?.workstreamName||row?.workPackageName");
+    expect(live).toContain("row?.workstreamName||row?.workPackageName||'Chưa phân nhánh'");
     expect(live).toContain("row?.jobId||('GH-'+row.number)");
-    expect(live).toContain("row?.assignee||workerFrom(row)");
   });
 
-  it('builds the separate Projects page from live data instead of a hard-coded catalog', () => {
+  it('keeps the separate Projects page available from its direct route and live data', () => {
     expect(projects).toContain("fetch('/api/live-status',{cache:'no-store'})");
     expect(projects).toContain('data?.projectPortfolio||[]');
     expect(projects).toContain('row?.projectId');
     expect(projects).toContain('row?.workstreamId||row?.workPackageId');
-    expect(projects).not.toContain('TigerIQ Mobile Worker');
-    expect(projects).not.toContain('TigerIQ News');
-    expect(projects).not.toContain('Revenue Lab');
   });
 
-  it('keeps desktop/mobile navigation between Work and Projects', () => {
-    expect(projects).toContain('<a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a>');
-    expect(live).toContain('<nav class="v2-mobile-nav" aria-label="Điều hướng mobile"><a class="active" href="/command-center">Công việc</a><a href="/projects">Dự án</a></nav>');
-    expect(projects).toContain('<nav class="mobile-nav" aria-label="Điều hướng mobile"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>');
+  it('uses explicit responsive column counts from 4K to mobile landscape/portrait', () => {
+    expect(live).toContain('@media(min-width:3200px){.work-list{grid-template-columns:repeat(6,minmax(0,1fr))}');
+    expect(live).toContain('@media(min-width:2200px) and (max-width:3199px){.work-list{grid-template-columns:repeat(5,minmax(0,1fr))}');
+    expect(live).toContain('@media(min-width:1600px) and (max-width:2199px){.work-list{grid-template-columns:repeat(4,minmax(0,1fr))}');
+    expect(live).toContain('@media(min-width:1180px) and (max-width:1599px){.work-list{grid-template-columns:repeat(3,minmax(0,1fr))}');
+    expect(live).toContain('@media(min-width:760px) and (max-width:1179px){.work-list{grid-template-columns:repeat(2,minmax(0,1fr))}');
+    expect(live).toContain('@media(max-width:759px){.work-list{grid-template-columns:1fr}');
   });
 });

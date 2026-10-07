@@ -77,20 +77,41 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('Job thật');
   });
 
-  it('keeps reduced-motion and truth-based working animation', () => {
+  it('keeps reduced-motion and truthful working/indeterminate animation', () => {
     expect(html).toContain('@media(prefers-reduced-motion:reduce)');
     expect(html).toContain('.work-row.status-working');
     expect(html).toContain('recently-updated');
+    expect(html).toContain('progress-indeterminate');
+    expect(html).toContain("const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status)");
+    expect(html).toContain('chưa đủ bằng chứng để tính phần trăm');
   });
 
-  it('shows display state separately from execution eligibility on work cards', () => {
+  it('keeps cards compact and moves execution internals into detail-only context', () => {
     expect(html).toContain('executionLabelMap');
     expect(html).toContain('SẴN SÀNG CHẠY');
     expect(html).toContain('TỰ CHẠY KHI CÓ TÀI NGUYÊN');
-    expect(html).toContain('<b>AI giữ:</b>');
-    expect(html).toContain('<b>Quyền chạy:</b>');
-    expect(html).toContain('<b>Lý do chờ:</b>');
-    expect(html).toContain('<b>Bước tới:</b>');
+    expect(html).not.toContain('<b>AI giữ:</b>');
+    expect(html).not.toContain('<b>Quyền chạy:</b>');
+    expect(html).not.toContain('<b>Lý do chờ:</b>');
+    expect(html).toContain('class="work-quick ');
+    expect(html).toContain('-webkit-line-clamp:2');
+  });
+
+  it('keeps review/verify visibly non-terminal and reserves 100 percent for completed work', () => {
+    expect(html).toContain("REVIEW:'ĐANG RÀ SOÁT'");
+    expect(html).toContain("VERIFY:'ĐANG XÁC MINH'");
+    expect(html).toContain("REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.'");
+    expect(html).toContain("VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.'");
+    expect(html).toContain("const terminal100=status==='DONE'&&source==='terminal'&&pct===100");
+    expect(html).toContain("pct>=0&&pct<100");
+  });
+
+  it('removes redundant Live header chrome and health shortcut', () => {
+    expect(html).toContain('TigerIQ <b>Live</b></h1>');
+    expect(html).not.toContain('· Luồng công việc');
+    expect(html).not.toContain('Nhận việc → điều phối → thực hiện → kiểm tra → kết quả');
+    expect(html).not.toContain('aria-label="API Health"');
+    expect(html).not.toContain('v2-global-nav" aria-label="Điều hướng TigerIQ Live"');
   });
 
   it('#4464 renders Owner result inbox cards and preserves an explicit empty state', () => {

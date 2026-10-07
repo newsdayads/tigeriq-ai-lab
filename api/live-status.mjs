@@ -1162,22 +1162,34 @@ function actionableStatus(issue, overlays = {}) {
 
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
+  const normalizedStatus = String(status || 'OPEN').toUpperCase();
   const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
   const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
     || source === 'VERIFIED'
     || source === 'VERIFIED_CHECKLIST';
   if (!verified) return { percent: null, source: 'none', detail: null };
 
+  const acceptVerifiedPercent = (percent, progressSource, detail) => {
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+    if (percent === 100 && normalizedStatus !== 'DONE') {
+      return { percent: null, source: 'non_terminal_100_rejected', detail: '100% chỉ dành cho công việc đã hoàn tất' };
+    }
+    return { percent, source: progressSource, detail };
+  };
+
   const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
   if (/^\d{1,3}$/.test(explicitRaw)) {
     const explicit = Number(explicitRaw);
-    if (explicit >= 0 && explicit <= 100) return { percent: explicit, source: 'explicit_verified', detail: 'PROGRESS_PERCENT · verified' };
+    const accepted = acceptVerifiedPercent(explicit, 'explicit_verified', 'PROGRESS_PERCENT · verified');
+    if (accepted) return accepted;
   }
 
   const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
   if (boxes.length >= 2) {
     const done = boxes.filter((match) => /x/i.test(match[1])).length;
-    return { percent: Math.round((done / boxes.length) * 100), source: 'checklist_verified', detail: done + '/' + boxes.length + ' checklist verified' };
+    const percent = Math.round((done / boxes.length) * 100);
+    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', done + '/' + boxes.length + ' checklist verified');
+    if (accepted) return accepted;
   }
 
   return { percent: null, source: 'none', detail: null };
