@@ -7,6 +7,7 @@ import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,inst
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
+import {SHARED_RESOURCE_LEASE_HEARTBEAT_MS,acquireSharedResourceLease,ensureSharedResourceLeaseTable,heartbeatSharedResourceLease,releaseSharedResourceLease} from '../tigeriq-core/shared-resource-lease.mjs';
 
 export class CodingScopeViolationError extends Error {
   constructor(offending) {
@@ -603,7 +604,44 @@ export function parseCompactEditJson(text){
   return parseJsonObject(text);
 }
 
-export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],resourcePool=null,invokeFn=invoke,shrinkPrompt=shrinkAiPrompt,maxResources=null,validateData=null,parseData=parseJsonObject,sleepFn=sleep,randomFn=Math.random,backoffBaseMs=1000}={}){
+async function acquireCodingLaneInferenceLease(resource,context={}){
+  if(!pool||!context?.workId)return null;
+  return acquireSharedResourceLease(pool,{
+    employeeId:resource?.id,
+    resourceId:resource?.resourceId,
+    workId:String(context.workId),
+    role:String(context.role||'inference'),
+    lane:'coding_lane',
+    metadata:{provider:resource?.provider||null,model:resource?.model||null},
+  });
+}
+
+async function heartbeatCodingLaneInferenceLease(lease){
+  if(!pool||!lease?.resource_id||!lease?.lease_token)return false;
+  return heartbeatSharedResourceLease(pool,{resourceId:lease.resource_id,leaseToken:lease.lease_token});
+}
+
+async function releaseCodingLaneInferenceLease(lease){
+  if(!pool||!lease?.resource_id||!lease?.lease_token)return false;
+  return releaseSharedResourceLease(pool,{resourceId:lease.resource_id,leaseToken:lease.lease_token});
+}
+
+export async function invokeJsonWithFailover(initialResource,prompt,{
+  exclude=[],
+  resourcePool=null,
+  invokeFn=invoke,
+  shrinkPrompt=shrinkAiPrompt,
+  maxResources=null,
+  validateData=null,
+  parseData=parseJsonObject,
+  sleepFn=sleep,
+  randomFn=Math.random,
+  backoffBaseMs=1000,
+  leaseContext=null,
+  acquireLeaseFn=acquireCodingLaneInferenceLease,
+  heartbeatLeaseFn=heartbeatCodingLaneInferenceLease,
+  releaseLeaseFn=releaseCodingLaneInferenceLease,
+}={}){
   const poolResources=Array.isArray(resourcePool)?resourcePool:selectableResources([]);
   const eligible=poolResources.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
   const initial=eligible.find(r=>r.id===initialResource?.id)||eligible[0];
@@ -612,11 +650,22 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
   const unique=[];const ids=new Set();
   const resourceLimit=maxResources===null?poolResources.length:Math.max(1,Math.min(poolResources.length,Number(maxResources)||1));
   for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id)||busyAiResources.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=resourceLimit)break;}
-  const failureLedger=[];let attempts=0;
+  const failureLedger=[];let attempts=0,leaseBusy=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
     for(let same=0;same<2;same++){
       if(busyAiResources.has(resource.id))break;
+      let sharedLease=null,heartbeatTimer=null;
+      if(leaseContext?.workId){
+        sharedLease=await acquireLeaseFn(resource,leaseContext);
+        if(!sharedLease){leaseBusy++;break;}
+        heartbeatTimer=setInterval(()=>{
+          Promise.resolve(heartbeatLeaseFn(sharedLease)).catch(error=>{
+            console.warn(JSON.stringify({event:'CODING_SHARED_LEASE_HEARTBEAT_FAILED',employeeId:resource.id,workId:leaseContext.workId,error:String(error?.message||error).slice(0,240)}));
+          });
+        },SHARED_RESOURCE_LEASE_HEARTBEAT_MS);
+        heartbeatTimer.unref?.();
+      }
       attempts++;
       busyAiResources.add(resource.id);
       try{
@@ -637,15 +686,23 @@ export async function invokeJsonWithFailover(initialResource,prompt,{exclude=[],
         if(same===0)continue;
         break;
       }finally{
+        if(heartbeatTimer)clearInterval(heartbeatTimer);
+        if(sharedLease){
+          try{await releaseLeaseFn(sharedLease)}
+          catch(error){console.warn(JSON.stringify({event:'CODING_SHARED_LEASE_RELEASE_FAILED',employeeId:resource.id,workId:leaseContext?.workId||null,error:String(error?.message||error).slice(0,240)}))}
+        }
         busyAiResources.delete(resource.id);
       }
     }
   }
   const tried=[...new Set(failureLedger.map(x=>x.resourceId))];
+  if(!failureLedger.length&&leaseBusy>0){
+    const error=new Error('AI_RESOURCES_BUSY');error.code='AI_RESOURCES_BUSY';error.detail={attempts,tried,leaseBusy,failureLedger};throw error;
+  }
   const resourceOnly=failureLedger.length>0&&failureLedger.every(x=>['rate_limit','timeout','provider_unavailable'].includes(x.class));
   const hasOutputFailure=failureLedger.some(x=>['output_contract','invalid_response'].includes(x.class));
   const code=resourceOnly?'AI_RESOURCES_UNAVAILABLE':hasOutputFailure?'OUTPUT_CONTRACT_EXHAUSTED':'AI_RETRY_BUDGET_EXHAUSTED';
-  const error=new Error(code);error.code=code;error.detail={attempts,tried,failureLedger};throw error;
+  const error=new Error(code);error.code=code;error.detail={attempts,tried,leaseBusy,failureLedger};throw error;
 }
 
 async function ghRepo(repository,path,init={}){
@@ -888,7 +945,7 @@ alter table tigeriq_coding_jobs add column if not exists stale_recovery_count in
 alter table tigeriq_coding_jobs add column if not exists live_github_context jsonb;
 alter table tigeriq_coding_jobs add column if not exists live_github_context_fingerprint text;
 create index if not exists tigeriq_coding_jobs_status_idx on tigeriq_coding_jobs(status,created_at);
-`)}
+`);await ensureSharedResourceLeaseTable(pool)}
 
 export function managerBlockKind(summary=''){
   const text=String(summary||'').trim().toUpperCase();
@@ -937,7 +994,7 @@ async function managerTick(){
       validateManagerJobTitle(d,o.objective);
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
-    const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision});manager=invoked.resource;const d=invoked.data;
+    const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision,leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'}});manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let resumeBranch=null,resumePr=null,resumeHead=null;
@@ -1352,12 +1409,12 @@ export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
   return true;
 }
-async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[]){
+async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],leaseContext=null){
   assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
   const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
-  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt});
+  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
 export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCount=0){
@@ -1378,7 +1435,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
   for(const batch of batches){
     const scopedJob={...j,paths:batch.paths};
     const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext);
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer'});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
@@ -1415,7 +1472,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude);
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer'});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
@@ -1424,7 +1481,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
-async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude]});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
+async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
   await refreshCoreResourceHealth();
