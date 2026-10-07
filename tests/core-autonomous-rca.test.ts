@@ -70,7 +70,9 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.priority).toBe('P1');
     expect(wo.body).toContain('RESOURCE_SCOPE=AUTO_RCA_ROUTING_');
     expect(wo.body).toContain('SELF_UPGRADE_CANDIDATE=true');
-    expect(wo.body).toContain('AUTO_QUEUE=EXCLUDED_UNTIL_SELF_UPGRADE_GATE');
+    expect(wo.body).toContain('TIGERIQ_EXECUTABLE=true');
+    expect(wo.body).toContain('AUTO_QUEUE=INCLUDED');
+    expect(wo.body).toContain('CURRENT_STATE=READY_AUTONOMOUS_REPAIR');
     expect(wo.body).toContain('NO_DIRECT_MAIN=true');
     expect(wo.body).toContain('APP_CHROME_MUTATION=FORBIDDEN');
     expect(wo.body).toContain('EVIDENCE_HASH=');
@@ -93,6 +95,9 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(source).toContain("data#>>'{provenance,contractId}'=$3");
     expect(source).toContain('githubAutonomousRcaIssueLifecycle');
     expect(source).toContain('AUTONOMOUS_RCA_CANONICAL_REARMED');
+    expect(source).toContain("'CURRENT_STATE=READY_AUTONOMOUS_REPAIR'");
+    expect(source).toContain("'TIGERIQ_EXECUTABLE=true'");
+    expect(source).toContain("'AUTO_QUEUE=INCLUDED'");
     expect(source).toContain("stateReason==='completed'");
     expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
     expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");
