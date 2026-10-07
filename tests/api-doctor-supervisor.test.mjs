@@ -516,7 +516,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain(".filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}))");
     expect(core).toContain("!apiDoctorResourceEligibleForCapability({employeeId:row.employee_id,healthState:row.health_state,capability})||!functionalRoutingReadiness(freshResource,{requireEvidence:true}).ready");
     expect(core).toContain('async function runApiDoctorScan()');
-    expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || HOST;");
+    expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || '127.0.0.1';");
     expect(core).toContain("think:false");
     expect(core).toContain('num_predict:160');
     expect(core).toContain("API_DOCTOR_REPAIR_HANDOFF");
