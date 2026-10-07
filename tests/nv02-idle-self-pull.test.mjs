@@ -30,4 +30,16 @@ describe('NV02 idle self-pull continuity', () => {
     const dispatchFn = runner.slice(runner.indexOf('async function controllerDispatch'), runner.indexOf('function terminal'));
     expect(dispatchFn).toContain('assertLeaseOwnership(issue, lease);');
   });
+  it('bounds external I/O so command 02 cannot hang indefinitely', () => {
+    const runner = readFileSync('scripts/nv02-local-self-pull.mjs', 'utf8');
+    expect(runner).toContain('const GITHUB_CLI_TIMEOUT_MS = 60_000;');
+    expect(runner).toContain('const CONTROLLER_REQUEST_TIMEOUT_MS = 30_000;');
+    expect(runner).toContain('timeout: GITHUB_CLI_TIMEOUT_MS');
+    const dispatchFn = runner.slice(runner.indexOf('async function controllerDispatch'), runner.indexOf('function terminal'));
+    expect(dispatchFn).toContain('signal: AbortSignal.timeout(CONTROLLER_REQUEST_TIMEOUT_MS)');
+    const idleFn = runner.slice(runner.indexOf('async function setIdle'), runner.indexOf("console.log(JSON.stringify({ event: 'NV02_COMMAND_02'"));
+    expect(idleFn).toContain('signal: AbortSignal.timeout(CONTROLLER_REQUEST_TIMEOUT_MS)');
+  });
+
+
 });
