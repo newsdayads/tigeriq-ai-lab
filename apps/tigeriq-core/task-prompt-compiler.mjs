@@ -105,6 +105,7 @@ export function compileTaskPrompt(input = {}) {
     `OBJECTIVE_ID: ${packet.objective_id}`,
     `SOURCE_REVISION: ${packet.source_revision}`,
     `PROMPT_REVISION: ${packet.prompt_revision}`,
+    `PACKET_JSON: ${JSON.stringify(packet)}`,
     `CAPABILITY: ${packet.capability}`,
     `SKILLS: ${packet.skill_ids.length ? packet.skill_ids.join(', ') : 'none'}`,
     '',
@@ -136,6 +137,20 @@ export function compileTaskPrompt(input = {}) {
 
 function stripFence(raw) {
   return String(raw || '').trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/, '').trim();
+}
+
+export function executionPacketFromPrompt(prompt) {
+  const match = String(prompt || '').match(/^PACKET_JSON:\s*(\{.*\})$/m);
+  if (!match) throw Object.assign(new Error('EXECUTION_PACKET_PROMPT_MISSING'), { kind:'invalid_response' });
+  let packet;
+  try { packet = JSON.parse(match[1]); }
+  catch (error) {
+    const wrapped = new Error('EXECUTION_PACKET_PROMPT_INVALID');
+    wrapped.kind = 'invalid_response';
+    wrapped.cause = error;
+    throw wrapped;
+  }
+  return validateExecutionPacket(packet);
 }
 
 export function parseExecutionResult(raw) {
