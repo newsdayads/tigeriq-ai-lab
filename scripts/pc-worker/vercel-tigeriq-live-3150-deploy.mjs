@@ -27,11 +27,14 @@ export function normalizeGitRemote(remote) {
   return value.replace(/\.git\/?$/, '').replace(/\/$/, '');
 }
 
-export function validateReleaseContract({ projectLink, expectedSha, actualSha, branch, mainRefSha, remote, config, issue, uiHtml, releaseClass, ownerAuthorized, releaseReason, changedFiles }) {
+export function validateReleaseContract({ projectLink, expectedSha, artifactSha, artifactIsAncestor, actualSha, branch, mainRefSha, remote, config, issue, uiHtml, releaseClass, ownerAuthorized, releaseReason, changedFiles }) {
   if (!projectLink || projectLink.projectId !== EXPECTED_PROJECT_ID || projectLink.orgId !== EXPECTED_TEAM_ID) {
     throw new Error('VERCEL_PROJECT_SCOPE_MISMATCH');
   }
   const exactSha = validateExactSha(expectedSha, actualSha);
+  const webArtifactSha = clean(artifactSha || exactSha).toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(webArtifactSha)) throw new Error('VERCEL_ARTIFACT_SHA_INVALID');
+  if (artifactIsAncestor !== true) throw new Error('VERCEL_ARTIFACT_NOT_ANCESTOR');
   const currentBranch = clean(branch);
   const normalizedMainRefSha = clean(mainRefSha).toLowerCase();
   const exactRemoteMainSource = normalizedMainRefSha === exactSha;
@@ -59,6 +62,7 @@ export function validateReleaseContract({ projectLink, expectedSha, actualSha, b
     sourceMode: currentBranch === EXPECTED_BRANCH ? 'main-branch' : 'exact-remote-main-source',
     target: 'production',
     exactSha,
+    artifactSha: webArtifactSha,
     issue: clean(issue),
     releaseClass: 'WEB_LIVE',
     releaseReason: clean(releaseReason),
@@ -151,6 +155,7 @@ export function deploymentRequestForGitSource(plan, gitInfo = {}) {
       tigeriqReleaseIssue: clean(plan?.issue),
       tigeriqReleaseClass: 'WEB_LIVE',
       tigeriqExactSha: exactSha,
+      tigeriqArtifactSha: clean(plan?.artifactSha || exactSha).toLowerCase(),
     },
   };
 }
@@ -258,9 +263,10 @@ function deploy(root, plan) {
 }
 
 function parseArgs(argv) {
-  const out = { sha: '', issue: '', releaseClass: '', ownerAuthorized: '', releaseReason: '' };
+  const out = { sha: '', artifactSha: '', issue: '', releaseClass: '', ownerAuthorized: '', releaseReason: '' };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--sha') out.sha = argv[++i] || '';
+    else if (argv[i] === '--artifact-sha') out.artifactSha = argv[++i] || '';
     else if (argv[i] === '--issue') out.issue = argv[++i] || '';
     else if (argv[i] === '--release-class') out.releaseClass = argv[++i] || '';
     else if (argv[i] === '--owner-authorized') out.ownerAuthorized = argv[++i] || '';
@@ -273,6 +279,7 @@ function parseArgs(argv) {
 export function runOneShotDeploy({
   root = process.cwd(),
   expectedSha,
+  artifactSha,
   issue,
   releaseClass = process.env.TIGERIQ_VERCEL_RELEASE_CLASS,
   ownerAuthorized = process.env.TIGERIQ_OWNER_RELEASE_AUTHORIZED,
@@ -287,7 +294,14 @@ export function runOneShotDeploy({
   const remote = git(root, ['remote', 'get-url', 'origin']);
   const dirty = git(root, ['status', '--porcelain']);
   if (dirty) throw new Error('GIT_WORKTREE_NOT_CLEAN');
-  const changedFiles = git(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'])
+  const normalizedArtifactSha = clean(artifactSha || expectedSha || actualSha).toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(normalizedArtifactSha)) throw new Error('VERCEL_ARTIFACT_SHA_INVALID');
+  let artifactIsAncestor = false;
+  try {
+    git(root, ['merge-base', '--is-ancestor', normalizedArtifactSha, actualSha]);
+    artifactIsAncestor = true;
+  } catch {}
+  const changedFiles = git(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', normalizedArtifactSha])
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
@@ -297,6 +311,8 @@ export function runOneShotDeploy({
     const plan = validateReleaseContract({
       projectLink: linkState.link,
       expectedSha,
+      artifactSha: normalizedArtifactSha,
+      artifactIsAncestor,
       actualSha,
       branch,
       mainRefSha,
@@ -320,6 +336,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const result = runOneShotDeploy({
     expectedSha: args.sha,
+    artifactSha: args.artifactSha || args.sha,
     issue: args.issue,
     releaseClass: args.releaseClass || process.env.TIGERIQ_VERCEL_RELEASE_CLASS,
     ownerAuthorized: args.ownerAuthorized || process.env.TIGERIQ_OWNER_RELEASE_AUTHORIZED,
