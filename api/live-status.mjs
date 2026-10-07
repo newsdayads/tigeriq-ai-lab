@@ -63,7 +63,7 @@ function repoParts() {
 
 async function gh(path, fetchImpl = fetch) {
   const token = String(process.env.TIGERIQ_GITHUB_TOKEN || '').trim();
-  return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000)});
+  return githubRequestJson(fetchImpl,`https://api.github.com${path}`,token,{freshMs:Math.min(GITHUB_PROJECTION_CACHE_MS,60*1000),signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)});
 }
 export function projectionTransportStale(before = {}, after = {}) {
   return Number(after.staleHits || 0) > Number(before.staleHits || 0)
