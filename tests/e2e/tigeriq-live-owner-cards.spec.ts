@@ -17,7 +17,7 @@ const snapshot = {
   ],
   openWork:[
     {number:111,title:'[P1] Xây giao diện công việc',status:'ĐANG XỬ LÝ',workKind:'WORK',priority:'P1',employeeId:'NV03',assignee:'NV03',currentStep:'Dựng thẻ công việc',nextStep:'Kiểm tra mobile',progressPercent:70,progressSource:'explicit_verified',projectId:'alpha',projectName:'Alpha',workstreamId:'build',workstreamName:'Xây dựng',jobId:'ALPHA-111'},
-    {number:112,title:'[P1][REVIEW] Rà soát giao diện',status:'RÀ SOÁT',workKind:'WORK',priority:'P1',employeeId:'NV12',projectId:'alpha',projectName:'Alpha',workstreamId:'build',workstreamName:'Xây dựng',jobId:'ALPHA-112'},
+    {number:112,title:'[P1][REVIEW] Rà soát giao diện',status:'RÀ SOÁT',workKind:'WORK',priority:'P1',employeeId:'NV12',nextStep:'Kiểm tra toàn bộ dữ liệu hiện hành trên mobile dọc và mobile ngang trước khi đóng công việc',projectId:'alpha',projectName:'Alpha',workstreamId:'build',workstreamName:'Xây dựng',jobId:'ALPHA-112'},
     {number:500,title:'[P1] Phát hành Beta',status:'ĐANG XỬ LÝ',workKind:'WORK',priority:'P1',employeeId:'NV06',projectId:'beta',projectName:'Beta',workstreamId:'release',workstreamName:'Phát hành',jobId:'BETA-500'},
     {number:501,title:'[P1] Beta bị chặn',status:'BỊ CHẶN',workKind:'WORK',priority:'P1',employeeId:'NV06',blocker:'Thiếu bằng chứng',projectId:'beta',projectName:'Beta',workstreamId:'release',workstreamName:'Phát hành',jobId:'BETA-501'}
   ],
@@ -58,6 +58,15 @@ test('work cards stay compact while project, workstream and job remain available
   await expect(page.locator('#drawerProject')).toContainText('Alpha');
   await expect(page.locator('#drawerWorkstream')).toContainText('Xây dựng');
   await expect(page.locator('#drawerJob')).toContainText('ALPHA-111');
+});
+
+test('work cards show evidence progress or an explicit non-quantified indicator and keep next action readable',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await openLive(page);
+  const verified=page.locator('.work-row').filter({hasText:'#111'}).first();
+  await expect(verified.locator('.progress-text')).toHaveText('70%');
+  const review=page.locator('.work-row').filter({hasText:'#112'}).first();
+  await expect(review.locator('.progress-text')).toHaveText('Chưa đủ dữ liệu để tính %');
+  await expect(review.locator('.work-quick')).toContainText('Kiểm tra toàn bộ dữ liệu hiện hành trên mobile dọc và mobile ngang trước khi đóng công việc');
 });
 
 test('LIVE removes redundant Work/Projects navigation on desktop and mobile',async({page})=>{

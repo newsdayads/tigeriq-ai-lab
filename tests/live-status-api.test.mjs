@@ -160,6 +160,31 @@ describe('TigerIQ Live Work Order projection', () => {
     ].join('\n')))).toBe(null);
   });
 
+  it('projects active Core Coding Lane state as working with a visible Core owner', () => {
+    const row = parseOpenWorkIssue(issue(4521, '[P1][CORE vNext] Nền dependency', [
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=TIGERIQ_CORE_VNEXT_LANGGRAPH_DEPENDENCY_FOUNDATION_V1',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'CURRENT_STATE=CODING_LANE_ACTIVE',
+      'ACTIVE_CODEOBJ=CODEOBJ-test-4521',
+      'NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n')));
+    expect(row).toMatchObject({
+      number: 4521,
+      status: 'WORKING',
+      employeeId: 'CORE',
+      currentState: 'CODING_LANE_ACTIVE',
+    });
+  });
+
   it('projects canonical terminal-blocked labels as blocked even when the issue is not queue-admitted', () => {
     const row = parseOpenWorkIssue(issue(2006, '[P1] Label blocked only', [
       'TIGERIQ_EXECUTABLE=false',
