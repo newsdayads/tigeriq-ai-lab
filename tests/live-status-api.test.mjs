@@ -14,6 +14,8 @@ import {
   executionEligibilityForIssue,
   workflowRelationsForIssue,
   parseClearedBlockerLifecycleComment,
+  parseOwnerResultComment,
+  projectOwnerResultInbox,
   progressForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
@@ -48,6 +50,73 @@ function coreQueueFlags() {
 }
 
 describe('TigerIQ Live Work Order projection', () => {
+
+  it('#4464 parses >=2 Owner result comments for #4426 newest-first and ignores admin comments', () => {
+    const inbox = issue(4426, '[RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem', [
+      'RESULT_INBOX=true',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_RESULT_INBOX',
+    ].join('\n'));
+    const comments = [
+      {
+        id: 101,
+        created_at: '2026-10-07T01:00:00Z',
+        html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/4426#issuecomment-101',
+        body: [
+          '✅ [KẾT QUẢ THỰC TẾ] #4409 - Full repository audit',
+          'RESULT=PASS',
+          'LIVE URL/location=https://tigeriq.example.test/result/4409',
+          'Verification=PASS',
+          'Evidence=https://github.com/newsdayads/tigeriq-ai-lab/issues/4409',
+          'Completed at=2026-10-07T01:00:00Z',
+        ].join('\n'),
+      },
+      {
+        id: 102,
+        created_at: '2026-10-07T02:00:00Z',
+        html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/4426#issuecomment-102',
+        body: [
+          '✅ [KẾT QUẢ THỰC TẾ] #4458 - Audit framework',
+          '✅ [KẾT QUẢ] TigerIQ Core đã hoàn tất OBJ-GH-4458.',
+          'Bằng chứng: Core objective OBJ-GH-4458 · Trạng thái: HOÀN TẤT.',
+          'Nguồn: https://github.com/newsdayads/tigeriq-ai-lab/issues/4458',
+        ].join('\n'),
+      },
+      {
+        id: 103,
+        created_at: '2026-10-07T03:00:00Z',
+        body: 'ADMIN=checkpoint only',
+      },
+    ];
+    const projected = projectOwnerResultInbox(inbox, comments);
+    expect(projected).toMatchObject({ ownerResultInbox: true, ownerResultsStatus: 'ready', ownerResultCount: 2 });
+    expect(projected.ownerResults.map((row) => row.workOrderNumber)).toEqual([4458, 4409]);
+    expect(projected.ownerResults[0]).toMatchObject({
+      workOrder: '#4458 - Audit framework',
+      verification: 'HOÀN TẤT',
+      workOrderUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/4458',
+    });
+    expect(projected.ownerResults[1]).toMatchObject({
+      result: 'ĐẠT',
+      verification: 'ĐẠT',
+      liveUrl: 'https://tigeriq.example.test/result/4409',
+      evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/4409',
+    });
+  });
+
+  it('#4464 keeps a valid empty Owner result inbox explicit', () => {
+    const inbox = issue(4426, '[RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem', 'RESULT_INBOX=true');
+    expect(projectOwnerResultInbox(inbox, [
+      { id: 201, created_at: '2026-10-07T01:00:00Z', body: 'ADMIN=checkpoint only' },
+    ])).toMatchObject({
+      ownerResultInbox: true,
+      ownerResultsStatus: 'ready',
+      ownerResultCount: 0,
+      ownerResults: [],
+    });
+    expect(parseOwnerResultComment({ body: 'không phải result comment' })).toEqual([]);
+  });
+
   it('extracts GitHub issue identity from Core/Coding job ids without guessing unrelated numbers', () => {
     expect(parseIssueNumber('JOB-GH-1714-PC')).toBe(1714);
     expect(parseIssueNumber('MGR-OBJ-GH-1812')).toBe(1812);
