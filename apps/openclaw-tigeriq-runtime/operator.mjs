@@ -2175,7 +2175,7 @@ export async function executePcAction(input, options = {}) {
       sourceWriteBlocked: true,
       sensitivePathsBlocked: true,
       productionMutationBlocked: action !== 'tigeriq_live_3150_production_deploy',
-      productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ Live #3185 exact one-shot' : 'none',
+      productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ LIVE exact-SHA one-shot under validated release authority' : 'none',
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
       paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
