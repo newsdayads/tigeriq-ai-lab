@@ -105,6 +105,23 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(JSON.stringify(row)).not.toMatch(/\b(?:PASS|DONE|COMPLETED|WORKING|RUNNING|READY|QUEUED|WAITING|WAIT_RESOURCE|BLOCKED|FAILED|ERROR|EXTERNAL_WAIT|OWNER_APPROVAL_REQUIRED)\b/);
   });
 
+  it('localizes Live title, next action, blocker and mixed operational terms', () => {
+    const row = ownerFacingWorkRow({
+      number: 4521,
+      title: '[P1][CORE vNext] Pin Deep Agents/LangGraph + Postgres checkpoint nền shadow',
+      status: 'WORKING',
+      nextStep: 'Repair UPDATER_WATCHDOG_HEALTH rồi final review Core NV API',
+      blocker: 'Credential material/private-repo auth missing',
+    });
+    expect(row.title).toContain('Deep Agents/LangGraph (khung điều phối tác nhân)');
+    expect(row.title).toContain('điểm lưu trạng thái');
+    expect(row.title).toContain('chạy song song');
+    expect(row.nextStep).toContain('Sửa lỗi UPDATER_WATCHDOG_HEALTH');
+    expect(row.nextStep).toContain('rà soát cuối Core NV API (giao diện AI trung tâm)');
+    expect(row.blocker).toContain('thông tin xác thực');
+    expect(row.blocker).toContain('kho mã riêng xác thực');
+  });
+
   it('localizes OWNER_GATE rows before Live/API serialization', () => {
     const row = ownerFacingWorkRow({
       number: 2828,
