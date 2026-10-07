@@ -6,6 +6,7 @@
 - State: CANDIDATE
 - Target: core-manager
 - Provenance: #4457; #4462; #4463; #4503
+- Runtime eligibility: INACTIVE until validated registry promotion
 
 ## Trigger
 Use when TigerIQ Core needs to determine whether a bounded P1-P5 task or objective satisfies its declared acceptance criteria using authoritative evidence before terminal completion, release, or further replanning.
