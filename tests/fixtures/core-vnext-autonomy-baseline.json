@@ -1,0 +1,27 @@
+{
+  "schema": "TIGERIQ_AUTONOMY_BENCHMARK_V1",
+  "scenarioId": "mixed-backlog-20-task-3-resource",
+  "tasksTotal": 20,
+  "resourcesTotal": 3,
+  "events": [
+    {"at":"2026-10-07T12:00:00.000Z","type":"state","runnableWork":8,"eligibleIdleResources":3,"activeResources":0},
+    {"at":"2026-10-07T12:00:12.000Z","type":"dispatch"},
+    {"at":"2026-10-07T12:00:12.000Z","type":"state","runnableWork":7,"eligibleIdleResources":2,"activeResources":1},
+    {"at":"2026-10-07T12:00:16.000Z","type":"dispatch"},
+    {"at":"2026-10-07T12:00:16.000Z","type":"state","runnableWork":6,"eligibleIdleResources":1,"activeResources":2},
+    {"at":"2026-10-07T12:00:20.000Z","type":"dispatch"},
+    {"at":"2026-10-07T12:00:20.000Z","type":"state","runnableWork":5,"eligibleIdleResources":0,"activeResources":3},
+    {"at":"2026-10-07T12:00:30.000Z","type":"job_completed"},
+    {"at":"2026-10-07T12:00:30.000Z","type":"state","runnableWork":5,"eligibleIdleResources":1,"activeResources":2},
+    {"at":"2026-10-07T12:00:30.000Z","type":"replan_requested","key":"task-terminal-1"},
+    {"at":"2026-10-07T12:00:34.000Z","type":"replan_completed","key":"task-terminal-1"},
+    {"at":"2026-10-07T12:00:44.000Z","type":"dispatch"},
+    {"at":"2026-10-07T12:00:44.000Z","type":"state","runnableWork":4,"eligibleIdleResources":0,"activeResources":3},
+    {"at":"2026-10-07T12:00:50.000Z","type":"unsafe_plan_rejected"},
+    {"at":"2026-10-07T12:00:52.000Z","type":"gate_escalation","realGate":true},
+    {"at":"2026-10-07T12:01:00.000Z","type":"restart_committed","key":"after-plan"},
+    {"at":"2026-10-07T12:01:08.000Z","type":"restart_resumed","key":"after-plan"},
+    {"at":"2026-10-07T12:01:20.000Z","type":"job_completed"},
+    {"at":"2026-10-07T12:01:20.000Z","type":"state","runnableWork":0,"eligibleIdleResources":3,"activeResources":0}
+  ]
+}
