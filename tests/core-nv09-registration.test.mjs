@@ -19,7 +19,7 @@ test('registers NV09 idempotently as qwen3.6:27b-coding', () => {
   assert.strictEqual(a.model,NV09_MODEL);
   assert.strictEqual(a.fallback_model,NV09_FALLBACK_MODEL);
   assert.strictEqual(NV09_FALLBACK_MODEL,'qwen3-coder:30b');
-  assert.strictEqual(a.endpoint,'http://127.0.0.1:11434');
+  assert.strictEqual(a.endpoint,'http://127.0.0.1:11435');
   assert.strictEqual(a.health,HEALTH_STATES.IDLE_ON_DEMAND);
   assert.strictEqual(getRegisteredModels().filter(x=>x.employee_id==='NV09').length,1);
 });
