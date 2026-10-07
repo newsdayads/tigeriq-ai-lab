@@ -92,4 +92,17 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('<b>Lý do chờ:</b>');
     expect(html).toContain('<b>Bước tới:</b>');
   });
+
+  it('#4464 renders Owner result inbox cards and preserves an explicit empty state', () => {
+    expect(html).toContain('id="drawerOwnerResults"');
+    expect(html).toContain('renderOwnerResultInbox(row)');
+    expect(html).toContain('ownerResultInbox===true');
+    expect(html).toContain('Chưa có kết quả hoàn tất');
+    expect(html).toContain('Chưa tải được kết quả hoàn tất');
+    expect(html).toContain('owner-result-card');
+    expect(html).toContain('id="drawerProgressSection"');
+    expect(html).toContain('id="drawerStatusSection"');
+    expect(html).toContain('id="drawerEvidenceSection"');
+    expect(html).toContain('Mở GitHub ↗');
+  });
 });
