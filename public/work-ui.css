@@ -337,7 +337,7 @@
 @media(min-width:1800px){
   .api-health .app{max-width:none;width:100%;padding-left:16px;padding-right:16px}
   .api-health .layout{grid-template-columns:minmax(0,4fr) minmax(300px,.78fr)}
-  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .workers{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
   .api-health .worker.employee-card{padding:8px}
   .api-health .work-row{min-height:160px;padding:10px}
@@ -363,7 +363,7 @@
 @media(min-width:1450px){
   .api-health .app{max-width:none;width:100%;padding-left:14px;padding-right:14px}
   .api-health .layout{grid-template-columns:minmax(0,4.25fr) minmax(270px,.78fr);gap:10px}
-  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .workers{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
   .api-health .panel-h{padding:12px 14px}
   .api-health .workers{padding:8px;gap:8px}
@@ -665,12 +665,12 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 }
 @media(min-width:1800px){
   .api-health .layout{grid-template-columns:minmax(0,1fr) minmax(290px,330px)!important}
-  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .workers{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 }
 @media(min-width:1450px) and (max-width:1799px){
   .api-health .layout{grid-template-columns:minmax(0,1fr) minmax(270px,300px)!important}
-  .api-health .workers{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  .api-health .workers{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   .api-health .wo-list,.api-health .work-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 }
 @media(min-width:1200px) and (max-width:1449px){
