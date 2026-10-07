@@ -41,6 +41,7 @@ import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
+import {activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases} from './shared-resource-lease.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -585,8 +586,8 @@ async function refreshResources() {
 async function recoverAfterCoreRestart() {
   try {
     await pool.query("UPDATE tigeriq_jobs SET status='failed', failure=jsonb_build_object('message','RESTART_RECONCILIATION_FAIL_CLOSED'), lease_until=null, completed_at=coalesce(completed_at,now()) WHERE status IN ('dispatching', 'running') AND capability<>'pc_operator'");
-    await pool.query("update tigeriq_ai_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
-    await pool.query("update tigeriq_resources r set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running'))");
+    await pool.query("update tigeriq_ai_resources r set current_job_id=null,work_state=case when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND' when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running')) and not exists(select 1 from tigeriq_ai_resource_leases l where l.resource_id=r.resource_id and l.work_id=r.current_job_id and l.lease_until>now())");
+    await pool.query("update tigeriq_resources r set current_job_id=null,work_state=case when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND' when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where current_job_id is not null and not exists(select 1 from tigeriq_jobs j where j.id=r.current_job_id and j.status in ('dispatching','running')) and not exists(select 1 from tigeriq_ai_resource_leases l where l.employee_id=r.employee_id and l.work_id=r.current_job_id and l.lease_until>now())");
     await pool.query("update tigeriq_jobs j set status='done',result=coalesce(result,'{}'::jsonb)||jsonb_build_object('skipped','legacy_nv10_unavailable_reclassified'),failure=null,lease_until=null,completed_at=coalesce(completed_at,now()) where j.kind='api_doctor' and j.status='failed' and j.employee_id is null and j.resource_id is null and j.provider is null and exists(select 1 from tigeriq_events e where e.job_id=j.id and e.type='API_DOCTOR_ANALYSIS_SKIPPED' and e.data->>'reason'='nv10_unavailable')");
     const openclawJobs=(await pool.query("select j.id,j.objective_id,j.employee_id,j.resource_id,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id where j.status in ('dispatching','running') and j.capability='pc_operator'")).rows;
     for(const j of openclawJobs){
@@ -622,6 +623,8 @@ async function reconcileExhaustedQueuedJobs(){
   return q.rowCount||0;
 }
 async function recoverStale() {
+  const recoveredSharedLeases=await recoverExpiredSharedResourceLeases(pool);
+  for(const lease of recoveredSharedLeases)await event('SHARED_RESOURCE_LEASE_RECOVERED',{...lease,reason:'ttl_expired'});
   await reconcileExhaustedQueuedJobs();
   const staleDoctor=await pool.query("select id,employee_id,resource_id from tigeriq_jobs where status='running' and kind='api_doctor' and started_at < now()-interval '2 minutes' and (lease_until is null or lease_until < now())");
   for(const j of staleDoctor.rows){
@@ -2243,23 +2246,70 @@ async function publicJobEvidence(jobId){
 }
 
 async function liveStatusSnapshot(){
-  const resources=(await pool.query("select employee_id,resource_id,provider,health_state,work_state,current_job_id,last_seen_at,cooldown_until,enabled from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id")).rows.map(r=>({
-    employee_id:r.employee_id,
-    resource_id:r.resource_id,
-    provider:r.provider,
-    status:publicStatus(r),
-    current_job_id:r.current_job_id,
-    last_seen_at:r.last_seen_at,
-    cooldown_until:r.cooldown_until,
-  }));
+  const sharedLeases=await activeSharedResourceLeases(pool);
+  const leaseByResource=indexSharedResourceLeases(sharedLeases);
+  const resources=(await pool.query("select employee_id,resource_id,provider,health_state,work_state,current_job_id,last_seen_at,cooldown_until,enabled from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id")).rows.map(row=>{
+    const lease=leaseByResource.get(String(row.resource_id||''))||null;
+    const r=lease?{...row,current_job_id:lease.work_id,work_state:'BUSY'}:row;
+    return {
+      employee_id:r.employee_id,
+      resource_id:r.resource_id,
+      provider:r.provider,
+      status:publicStatus(r),
+      current_job_id:r.current_job_id,
+      last_seen_at:r.last_seen_at,
+      cooldown_until:r.cooldown_until,
+      shared_lease_lane:lease?.lane||null,
+      shared_lease_role:lease?.role||null,
+      shared_lease_work_id:lease?.work_id||null,
+      shared_lease_until:lease?.lease_until||null,
+      live_job:lease?`${lease.role} · ${lease.work_id}`:null,
+    };
+  });
   const jobs=(await pool.query("select id,title,status,employee_id,resource_id,provider,started_at,completed_at from tigeriq_jobs where status in ('running','queued') order by created_at desc limit 40")).rows;
-  return {ok:true,core:{pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources,jobs};
+  return {ok:true,core:{pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},resources,jobs,sharedLeases};
 }
 
 async function snapshot(){
   const {workforce,workforceMeta}=await refreshRegistryWorkforce();
-  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows;const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows,failureMap=new Map(failures.map(x=>[x.resource_id,x]));const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows,statMap=new Map(callStats.map(x=>[x.resource_id,x]));const rr=normalizeRuntimeResources(base,workforce).map(x=>{const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};return{...x,quota_state:normalizeQuota(x.quota_state||{}),status:publicStatus(x),last_error:f?.data?.kind||f?.data?.message||null,last_error_at:f?.ts||null,calls_success_24h:Number(st.ok||0),calls_failure_24h:Number(st.fail||0)}});const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
+  const sharedLeases=await activeSharedResourceLeases(pool);
+  const leaseByResource=indexSharedResourceLeases(sharedLeases);
+  const base=(await pool.query('select * from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id')).rows.map(row=>{
+    const lease=leaseByResource.get(String(row.resource_id||''))||null;
+    return lease?{...row,current_job_id:lease.work_id,work_state:'BUSY',shared_lease_lane:lease.lane,shared_lease_role:lease.role,shared_lease_work_id:lease.work_id,shared_lease_until:lease.lease_until}:row;
+  });
+  const failures=(await pool.query(`select distinct on(resource_id) resource_id,ts,type,data from tigeriq_events where resource_id is not null and type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by resource_id,seq desc`)).rows;
+  const failureMap=new Map(failures.map(x=>[x.resource_id,x]));
+  const callStats=(await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as ok,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as fail from tigeriq_events where resource_id is not null and ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') group by resource_id`)).rows;
+  const statMap=new Map(callStats.map(x=>[x.resource_id,x]));
+  const rr=normalizeRuntimeResources(base,workforce).map(x=>{
+    const f=failureMap.get(x.resource_id),st=statMap.get(x.resource_id)||{ok:0,fail:0};
+    const lease=leaseByResource.get(String(x.resource_id||''))||null;
+    return {
+      ...x,
+      ...(lease?{current_job_id:lease.work_id,work_state:'BUSY'}:{}),
+      quota_state:normalizeQuota(x.quota_state||{}),
+      status:lease?'BUSY':publicStatus(x),
+      last_error:f?.data?.kind||f?.data?.message||null,
+      last_error_at:f?.ts||null,
+      calls_success_24h:Number(st.ok||0),
+      calls_failure_24h:Number(st.fail||0),
+      shared_lease_lane:lease?.lane||null,
+      shared_lease_role:lease?.role||null,
+      shared_lease_work_id:lease?.work_id||null,
+      shared_lease_until:lease?.lease_until||null,
+      live_job:lease?`${lease.role} · ${lease.work_id}`:null,
+    };
+  });
+  const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;
+  const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;
+  const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;
+  const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;
+  const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;
+  const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,sharedLeases,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
+
 let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}function issueBucket(issue){const body=String(issue.body||''),state=issueField(body,'CURRENT_STATE').toUpperCase(),labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());if(issue.state==='closed')return'HOÀN THÀNH';if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state)))return'CHỜ ANH SƠN';if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK')))return'BLOCKED';if(/REVIEW|RÀ SOÁT/.test(state))return'RÀ SOÁT';if(/WORKING|IMPLEMENTING|EXECUTING|ACTIVE/.test(state))return'ĐANG LÀM';if(labels.some(x=>x.includes('SYSTEM'))||/\[SYSTEM\]/i.test(issue.title||''))return'HỆ THỐNG';return'CẦN XỬ LÝ'}function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}async function githubWorkOrders(){const now=Date.now();if(now-workOrdersCache.at<30000)return workOrdersCache.value;if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}try{const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>({number:x.number,title:String(x.title||''),priority:issuePriority(x),state:x.state,bucket:issueBucket(x),owner:issueOwner(x),updated_at:x.updated_at,html_url:x.html_url}));const value={ok:true,updatedAt:nowIso(),items};workOrdersCache={at:now,value};return value}catch(error){const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};workOrdersCache={at:now,value};return value}}
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
@@ -2958,6 +3008,8 @@ async function loop(){
   }
 }
 await initDb();
+await ensureSharedResourceLeaseTable(pool);
+await recoverExpiredSharedResourceLeases(pool);
 await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
 await refreshResources();
