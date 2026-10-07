@@ -221,7 +221,14 @@ export function parseEmployees(body = '') {
 
 export function inferDeclaredExecutor(body = '', issueNumber = null) {
   if (!issueNumber) return null;
-  const line = String(body).split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
+  const text = String(body);
+  for (const section of text.split(/\n(?=## )/)) {
+    const executable = section.match(/^CURRENT_EXECUTABLE_P1_P5=#(\d+)\s*$/m);
+    if (!executable || Number(executable[1]) !== Number(issueNumber)) continue;
+    const target = section.match(/^TARGET_EMPLOYEE=([^\s]+)\s*$/m)?.[1]?.trim();
+    if (target) return target;
+  }
+  const line = text.split(/\r?\n/).find((row) => new RegExp(`^\\s*\\d+\\.\\s+\\*\\*#${issueNumber}\\b`).test(row));
   if (!line) return null;
   const match = line.match(/(?:Actual executor now|executor|owner)\s*=\s*`([^`]+)`/i);
   return match?.[1]?.trim() || null;
