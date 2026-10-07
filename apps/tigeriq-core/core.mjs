@@ -14,6 +14,7 @@ import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
+import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -1698,13 +1699,29 @@ async function runJob(j) {
     const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?['NV10','NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
-    const routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    let executionGate=null;
+    if(String(j.kind||'').startsWith('compiled_')){
+      const packet=executionPacketFromPrompt(j.prompt);
+      executionGate=executionResultGate(routed.text,packet);
+      if(!executionGate.pass){
+        await event('EXECUTION_ACCEPTANCE_RETRY',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision});
+        const retryPrompt=strictExecutionRetryPrompt(routedPrompt,executionGate);
+        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+        executionGate=executionResultGate(routed.text,packet);
+      }
+      if(!executionGate.pass){
+        const gateError=Object.assign(new Error(executionGate.code),{kind:'invalid_response',executionGate});
+        throw gateError;
+      }
+      await event('EXECUTION_ACCEPTANCE_PASS',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision,evidenceIds:executionGate.evidenceIds});
+    }
     const skillRoutingChain=finalizeSkillRoutingPreflight(skillRoutingPreflight,{resource:routed.resource,routingDecision:routed.routingDecision,failures:routed.failures});
     await event('SKILL_ROUTING_CHAIN',{objectiveId:j.objective_id,...skillRoutingChain});
     const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
-    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,executionGate,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
     await emitSkillEffectivenessObservations({
       job:j,
       skillContext:jobSkillContext,
@@ -2162,7 +2179,7 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator"}]}. Maximum 3 jobs. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. Maximum 3 jobs. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   try {
     const routed=await callManagerDecision(prompt,o.id);
@@ -2183,13 +2200,24 @@ async function managerTick() {
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
-      const evidencePrompt=[
+      const evidenceGoal=[
         `Execute campaign phase ${currentPhase+1}/${phases.length}: ${phase.title}.`,
         `Task: ${phase.prompt}`,
-        phase.acceptance?`Acceptance: ${phase.acceptance}`:'',
-        'Return concise concrete evidence/results for this phase. Do not claim repository mutation; coding/source changes are GitHub-only.'
-      ].filter(Boolean).join('\n');
-      const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6) on conflict(id) do nothing',[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),evidencePrompt.slice(0,12000),'reasoning',currentPhase]);
+      ].join('\n');
+      const compiledEvidence=compileTaskPrompt({
+        taskId:id,
+        objectiveId:o.id,
+        sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
+        capability:'reasoning',
+        skillIds:skillContext.evidence.map(x=>x.id),
+        goal:evidenceGoal,
+        contextRefs:[`objective:${o.id}`,`campaign-phase:${currentPhase+1}`],
+        allowedScope:['read/analyze only the authorized campaign phase context','no repository mutation'],
+        steps:[evidenceGoal],
+        acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
+        evidenceRequired:['Concrete observations, identifiers, tests, sources, or artifacts that prove the acceptance criterion.'],
+      });
+      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_campaign',$6) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase]);
       if(inserted.rowCount===0){
         const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and phase_index=$3',[id,o.id,currentPhase])).rows[0];
         if(existing?.status==='failed'&&Number(existing.attempts)<Number(existing.max_attempts)){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1",[id]);await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});return;}
@@ -2237,8 +2265,21 @@ async function managerTick() {
       if(!spec?.title||!spec?.prompt) continue;
       const capability=['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general';
       const title=String(spec.title).slice(0,200);
-      const promptText=String(spec.prompt).slice(0,12000);
+      const rawPrompt=String(spec.prompt).slice(0,12000);
       const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
+      const promptText=capability==='pc_operator'?rawPrompt:compileTaskPrompt({
+        taskId:id,
+        objectiveId:o.id,
+        sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
+        capability,
+        skillIds:skillContext.evidence.map(x=>x.id),
+        goal:rawPrompt,
+        contextRefs:[`objective:${o.id}`,`phase:${currentPhase}`],
+        allowedScope:Array.isArray(spec.scope)?spec.scope:(spec.scope?[String(spec.scope)]:['Only the resource/domain explicitly described by this task.']),
+        steps:[rawPrompt],
+        acceptance:Array.isArray(spec.acceptance)&&spec.acceptance.length?spec.acceptance:(spec.acceptance?[String(spec.acceptance)]:[`Complete task "${title}" with an observable, evidence-backed result.`]),
+        evidenceRequired:Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']),
+      }).prompt.slice(0,12000);
       if(capability==='pc_operator'){
         const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,title,promptText,capability,currentPhase]);
         if(inserted.rowCount===0){
@@ -2257,7 +2298,7 @@ async function managerTick() {
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
         }
-        await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index) values($1,$2,$3,$4,$5,$6)',[id,o.id,title,promptText,capability,currentPhase]);
+        await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_ai',$6)",[id,o.id,title,promptText,capability,currentPhase]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
