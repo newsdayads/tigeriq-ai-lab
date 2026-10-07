@@ -14,6 +14,16 @@ describe('runtime source isolation',()=>{
     }
   });
 
+  it('keeps Coding Lane control traffic on loopback consistently',()=>{
+    const launcher=readFileSync('scripts/tigeriq-core/run-coding-lane.ps1','utf8');
+    const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
+    const updater=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(launcher).toContain("$env:TIGERIQ_CODING_HOST='127.0.0.1'");
+    expect(launcher).not.toContain('tailscale ip -4');
+    expect(core).toContain("const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || '127.0.0.1';");
+    expect(updater).toContain("'http://127.0.0.1:8797/health'");
+  });
+
   it('ensures deterministic node_modules installation prior to runtime restart',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain('Ensure-NodeModules');
