@@ -160,3 +160,35 @@ describe('#4433 company progress priority fetch concurrency', () => {
     expect(result.priorityIssues[2]).toMatchObject({ title: 'Missing', status: 'CHƯA XÁC MINH', open: null });
   });
 });
+
+
+describe('#4435 company progress latest activity', () => {
+  it('requests issue comments newest-first and exposes the latest six in that order', async () => {
+    const centralBody = '### 1. P1 #101 — Active';
+    let commentsRequest = '';
+    const response = (body) => ({ ok: true, status: 200, json: async () => body });
+    const newest = Array.from({ length: 8 }, (_, index) => ({
+      body: `update-${8 - index}`,
+      created_at: `2026-10-07T00:0${8 - index}:00Z`,
+      html_url: `https://example.test/c/${8 - index}`,
+    }));
+    const fetchImpl = async (url) => {
+      const parsed = new URL(String(url));
+      const path = parsed.pathname;
+      if (path.endsWith('/issues/280')) return response({ body: centralBody, updated_at: '2026-10-07T00:00:00Z' });
+      if (path.endsWith('/issues/335')) return response({ body: '', updated_at: '2026-10-07T00:00:00Z' });
+      if (path.endsWith('/issues/101/comments')) {
+        commentsRequest = parsed.search;
+        return response(newest);
+      }
+      if (path.endsWith('/issues/101')) return response({ title: 'Active live', state: 'open', body: '', updated_at: '2026-10-07T00:01:00Z', html_url: 'https://example.test/101' });
+      throw new Error('unexpected_fetch:' + parsed.pathname + parsed.search);
+    };
+
+    const result = await buildCompanyProgress(fetchImpl);
+    expect(commentsRequest).toContain('per_page=8');
+    expect(commentsRequest).toContain('sort=created');
+    expect(commentsRequest).toContain('direction=desc');
+    expect(result.activity.map((row) => row.name)).toEqual(['update-8', 'update-7', 'update-6', 'update-5', 'update-4', 'update-3']);
+  });
+});
