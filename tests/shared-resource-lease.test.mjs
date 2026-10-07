@@ -27,8 +27,16 @@ function fakeLeaseDb({employeeId='NV09',resourceId='res:ollama:nv09',healthState
     if(q==='select * from tigeriq_ai_resources where resource_id=$1'){
       return {rows:state.ai.resource_id===args[0]?[{...state.ai}]:[],rowCount:state.ai.resource_id===args[0]?1:0};
     }
+    if(q.includes('select resource_id,employee_id,current_job_id,health_state,work_state from tigeriq_ai_resources')&&q.includes('where resource_id=$1 for update')){
+      const ok=state.ai.resource_id===args[0];
+      return {rows:ok?[{...state.ai}]:[],rowCount:ok?1:0};
+    }
     if(q.includes('select * from tigeriq_ai_resource_leases')&&q.includes('where resource_id=$1 and lease_token=$2')){
       const ok=state.lease&&state.lease.resource_id===args[0]&&state.lease.lease_token===args[1];
+      return {rows:ok?[{...state.lease}]:[],rowCount:ok?1:0};
+    }
+    if(q.includes('select * from tigeriq_ai_resource_leases')&&q.includes('where resource_id=$1 and lease_until<=now() for update')){
+      const ok=state.lease&&state.lease.resource_id===args[0]&&new Date(state.lease.lease_until).getTime()<=Date.now();
       return {rows:ok?[{...state.lease}]:[],rowCount:ok?1:0};
     }
     if(q.includes('select * from tigeriq_ai_resource_leases')&&q.includes('where resource_id=$1 for update')){
@@ -70,13 +78,15 @@ function fakeLeaseDb({employeeId='NV09',resourceId='res:ollama:nv09',healthState
       if(state.lease&&state.lease.resource_id===args[0]&&state.lease.lease_token===args[1])state.lease=null;
       return {rows:[],rowCount:1};
     }
-    if(q.includes('select * from tigeriq_ai_resource_leases')&&q.includes('where lease_until<=now()')){
+    if(q.startsWith('select resource_id from tigeriq_ai_resource_leases')&&q.includes('where lease_until<=now()')){
       const expired=state.lease&&new Date(state.lease.lease_until).getTime()<=Date.now();
-      return {rows:expired?[{...state.lease}]:[],rowCount:expired?1:0};
+      return {rows:expired?[{resource_id:state.lease.resource_id}]:[],rowCount:expired?1:0};
     }
-    if(q.startsWith('select resource_id,employee_id,lane,work_id,role,lease_token,lease_until,heartbeat_at,metadata')){
+    if(q.startsWith('select resource_id,employee_id,lane,work_id,role,lease_until,heartbeat_at,metadata')){
       const active=state.lease&&new Date(state.lease.lease_until).getTime()>Date.now();
-      return {rows:active?[{...state.lease}]:[],rowCount:active?1:0};
+      if(!active)return {rows:[],rowCount:0};
+      const {lease_token,...publicLease}=state.lease;
+      return {rows:[publicLease],rowCount:1};
     }
     throw new Error('UNHANDLED_FAKE_SQL:'+q);
   };
@@ -154,4 +164,8 @@ test('source integration covers manager implementer reviewer, Core status and re
   assert.ok(core.includes('shared_lease_role'));
   assert.ok(core.includes('shared_lease_work_id'));
   assert.ok(core.includes('tigeriq_ai_resource_leases l where l.resource_id=r.resource_id'));
+  const leaseSource=readFileSync(new URL('../apps/tigeriq-core/shared-resource-lease.mjs',import.meta.url),'utf8');
+  assert.ok(leaseSource.includes("where resource_id=$1 for update"));
+  assert.ok(leaseSource.includes("where resource_id=$1 and lease_until<=now() for update"));
+  assert.ok(!leaseSource.includes('select resource_id,employee_id,lane,work_id,role,lease_token,lease_until,heartbeat_at,metadata'));
 });
