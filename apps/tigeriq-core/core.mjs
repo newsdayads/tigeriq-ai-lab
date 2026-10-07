@@ -41,6 +41,7 @@ import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
+import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
@@ -811,7 +812,7 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -2268,6 +2269,34 @@ async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of r
 async function readBody(req){const raw=await readRawBody(req,65536);return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
 const mobileWorkerApi=createMobileWorkerApi({pool,event,coreAuthToken:TOKEN});
+async function runNvInferenceRequest(input={}){
+  const request=normalizeNvInferenceRequest(input);
+  const jobId=`NVAPI-${randomUUID()}`;
+  await pool.query(
+    "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,started_at) values($1,null,$2,$3,$4,'nv_inference','running',$5,now())",
+    [jobId,`Core NV inference: ${request.taskKind}`,request.prompt,request.capability,request.maxAttempts],
+  );
+  try{
+    const routed=await invokeRouted(request.prompt,request.capability,jobId,request.maxAttempts,{
+      taskKind:request.taskKind,
+      excludedResourceIds:request.excludeResourceIds,
+      excludedProviders:request.excludeProviders,
+    });
+    const result=publicNvInferenceResult(routed);
+    await pool.query(
+      "update tigeriq_jobs set status='done',result=$2,employee_id=$3,resource_id=$4,provider=$5,lease_until=null,completed_at=now() where id=$1",
+      [jobId,JSON.stringify({ok:true,employeeId:result.employeeId,resourceId:result.resourceId,provider:result.provider,model:result.model,latencyMs:result.latencyMs,failures:result.failures}),result.employeeId,result.resourceId,result.provider],
+    );
+    await event('NV_INFERENCE_COMPLETED',{jobId,employeeId:result.employeeId,resourceId:result.resourceId,provider:result.provider,taskKind:request.taskKind,latencyMs:result.latencyMs});
+    return {jobId,...result};
+  }catch(error){
+    const failure={kind:String(error?.kind||'outage').slice(0,80),message:String(error?.message||error).slice(0,240)};
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[jobId,JSON.stringify(failure)]).catch(()=>{});
+    await event('NV_INFERENCE_FAILED',{jobId,taskKind:request.taskKind,kind:failure.kind,message:failure.message}).catch(()=>{});
+    error.nvInferenceJobId=jobId;
+    throw error;
+  }
+}
 function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
@@ -2356,6 +2385,20 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       return res.end(JSON.stringify(result));
     }
     if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end(dashboard());}
+    if(req.method==='POST'&&url.pathname==='/api/nv-inference'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:false,error:'unauthorized'}));}
+      try{
+        const b=await readBody(req);
+        const result=await runNvInferenceRequest(b);
+        res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify(result));
+      }catch(error){
+        const code=String(error?.message||error);
+        const status=error?.statusCode===400||code.startsWith('NV_INFERENCE_')?400:code==='NO_AI_RESOURCE_AVAILABLE'?503:502;
+        res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:false,error:code,jobId:error?.nvInferenceJobId||null}));
+      }
+    }
     if(req.method==='POST'&&url.pathname==='/api/resources/probe'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); const result=await probeResource(String(b.resourceId||b.employeeId||''));
