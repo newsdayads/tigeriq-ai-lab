@@ -361,7 +361,7 @@ const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(180000,Number(process.env.TIGERI
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
-  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3-coder:30b',()=>true),
+  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3.5:9b',()=>true),
   R('NV11','groq',process.env.TIGERIQ_GROQ_MODEL||'openai/gpt-oss-120b',()=>process.env.GROQ_API_KEY&&process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED==='true'),
   R('NV12','gemini',process.env.TIGERIQ_GEMINI_MODEL||'gemini-3.5-flash-lite',()=>process.env.GEMINI_API_KEY&&process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED==='true'),
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
