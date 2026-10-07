@@ -48,6 +48,8 @@ function restoreOwnerProperNames(value = '', preserved = []) {
 
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\brepairs existing PR\b/gi, 'sửa PR hiện có'],
+  [/\badds lockfile\b/gi, 'thêm tệp khóa phụ thuộc'],
+  [/\bindependent review\b/gi, 'rà soát độc lập'],
   [/\busing normal npm resolution\b/gi, 'bằng cơ chế phân giải npm thông thường'],
   [/\bisolated shadow foundation\b/gi, 'nền chạy song song cô lập'],
   [/\bsmoke test\b/gi, 'kiểm thử nhanh'],
@@ -168,7 +170,7 @@ export function containsBareOwnerPrReference(value = '') {
   return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
 }
 
-const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|repair|repairs|existing|resolution|lockfile|isolated|foundation|smoke\s+test|fresh|queue\s+hygiene|readback)\b/gi;
+const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|repair|repairs|existing|resolution|lockfile|isolated|foundation|smoke\s+test|fresh|queue\s+hygiene|readback|adds|independent)\b/gi;
 const VIETNAMESE_EXPLANATION_RE = /[ăâđêôơưàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
 
 export function containsOwnerFacingEnglishOperationalProse(value = '') {
