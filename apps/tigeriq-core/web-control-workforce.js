@@ -11,7 +11,7 @@
     RETIRED:'ĐÃ NGỪNG', UNASSIGNED:'CHƯA CẤP'
   };
   const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const slots = () => Array.from({length:20},(_,i)=>`NV${String(i+1).padStart(2,'0')}`);
+  const fallbackSlots = () => Array.from({length:21},(_,i)=>`NV${String(i).padStart(2,'0')}`);
   const STATUS_ORDER = window.TigerIqHealthModel?.STATUS_ORDER || {BUSY:0,READY:1,IDLE:1,ONLINE:1,MANUAL:2,NO_API:2,RATE_LIMITED:3,AUTH_ERROR:4,CONFIG_ERROR:4,CONTRACT_ERROR:4,ERROR:4,WAIT_KEY:5,STALE_ERROR:6,OFFLINE:7,DISABLED:8,PAUSED:8,RETIRED:8,UNASSIGNED:9};
   const HEALTH_FRESH_MS=30*60*1000;
   const employeeNumber = id => Number(String(id||'').replace(/\D/g,'')) || 999;
@@ -85,7 +85,10 @@
     const roster=Array.isArray(d?.workforce) ? d.workforce : [];
     const rosterMap=new Map(roster.map(x=>[x.employee_id,x]));
     const runtimeMap=new Map((d?.resources||[]).map(x=>[x.employee_id,x]));
-    return slots().map(id=>{
+    const ids=roster.length
+      ? [...new Set(roster.map(x=>String(x?.employee_id||'')).filter(Boolean))]
+      : fallbackSlots();
+    return ids.map(id=>{
       const person=rosterMap.get(id)||{employee_id:id,name:'Chưa cấp',admin_state:'UNASSIGNED',assigned:false,retired:false};
       const runtime=runtimeMap.get(id)||null;
       const truth=runtime?runtimeTruth(runtime):null;

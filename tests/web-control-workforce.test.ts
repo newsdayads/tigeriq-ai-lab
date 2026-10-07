@@ -10,15 +10,16 @@ const server=readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'),'u
 
 describe('Web Control workforce projection',()=>{
   it('completes Registry identity into NV00 through NV20 without inventing missing employees',()=>{
-    const body=`REGISTRY_ROOT_VERSION=49\n| mã | tên chuẩn | trạng thái quản trị |\n|---|---|---|\n| \`NV00\` | Vy (Trợ lý) | \`CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE\` |\n| \`NV01\` | Minh | \`MANUAL_ONLY / READY\` |\n| \`NV02\` | ChatGPT Plus | \`AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR\` |\n| \`NV03\` | ChatGPT Go | \`AVAILABLE_MANUAL / SECOND_REVIEW\` |\n| \`NV04\` | Gemini Pro | \`AVAILABLE_MANUAL / DEEP_RESEARCH\` |\n| \`NV06\` | OpenClaw | \`PAUSED\` |\n| \`NV10\` | Ollama | \`ACTIVE_CORE_RESOURCE / ONLINE_IDLE / LOCAL_AI\` |\n| \`NV11\` | Groq | \`LIVE_PASS / CORE_RESOURCE\` |\n| \`NV20\` | NVIDIA NIM | \`WAIT_KEY / CORE_OFFLINE\` |\n\`5\`,\`7\`,\`8\` RETIRED.`;
+    const body=`REGISTRY_ROOT_VERSION=49\n| mã | tên chuẩn | trạng thái quản trị |\n|---|---|---|\n| \`NV00\` | Vy (Trợ lý) | \`CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE\` |\n| \`NV01\` | Minh | \`MANUAL_ONLY / READY\` |\n| \`NV02\` | ChatGPT Plus | \`AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR\` |\n| \`NV03\` | ChatGPT Go | \`AVAILABLE_MANUAL / SECOND_REVIEW\` |\n| \`NV04\` | Gemini Pro | \`AVAILABLE_MANUAL / DEEP_RESEARCH\` |\n| \`NV06\` | OpenClaw | \`PAUSED\` |\n| \`NV10\` | Ollama | \`ACTIVE_CORE_RESOURCE / ONLINE_IDLE / LOCAL_AI\` |\n| \`NV11\` | Groq | \`LIVE_PASS / CORE_RESOURCE\` |\n| \`NV20\` | NVIDIA NIM | \`WAIT_KEY / CORE_OFFLINE\` |\n| \`NV102\` | TigerIQ Mobile Worker · S10 5G | \`ACTIVE_MOBILE_WORKER / CORE_ONLINE\` |\n\`5\`,\`7\`,\`8\` RETIRED.`;
     const parsed=parseRegistryBody(body);
     expect(parsed.version).toBe('49');
-    expect(parsed.workforce).toHaveLength(21);
-    expect(parsed.workforce.map((x:any)=>x.employee_id)).toEqual(Array.from({length:21},(_,i)=>`NV${String(i).padStart(2,'0')}`));
+    expect(parsed.workforce).toHaveLength(22);
+    expect(parsed.workforce.map((x:any)=>x.employee_id)).toEqual([...Array.from({length:21},(_,i)=>`NV${String(i).padStart(2,'0')}`),'NV102']);
     expect(parsed.workforce.find((x:any)=>x.employee_id==='NV00')?.name).toBe('Vy (Trợ lý)');
     expect(parsed.workforce.find((x:any)=>x.employee_id==='NV01')?.name).toBe('Minh');
     expect(parsed.workforce.find((x:any)=>x.employee_id==='NV05')?.admin_state).toBe('RETIRED');
     expect(parsed.workforce.find((x:any)=>x.employee_id==='NV09')?.admin_state).toBe('UNASSIGNED');
+    expect(parsed.workforce.find((x:any)=>x.employee_id==='NV102')?.name).toBe('TigerIQ Mobile Worker · S10 5G');
   });
 
   it('projects stale Core NV02 Ollama identity onto canonical NV10 without contaminating ChatGPT Plus',()=>{
@@ -34,7 +35,9 @@ describe('Web Control workforce projection',()=>{
   });
 
   it('renders all workforce slots even when no runtime/API resource exists',()=>{
-    expect(workforceJs).toContain('Array.from({length:20}');
+    expect(workforceJs).not.toContain('Array.from({length:20}');
+    expect(workforceJs).toContain('Array.from({length:21}');
+    expect(workforceJs).toContain("roster.map(x=>String(x?.employee_id||''))");
     expect(workforceJs).toContain("MANUAL:'THEO NHU CẦU'");
     expect(workforceJs).toContain("PAUSED:'TẠM DỪNG'");
     expect(workforceJs).toContain("NO_API:'KHÔNG CÓ API'");
