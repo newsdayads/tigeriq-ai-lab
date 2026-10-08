@@ -11,6 +11,19 @@ const WORKERS=['NV03','NV04'];
 const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
 export const CORE_UI_ASSIGNMENT_STALE_MS=Math.max(30000,Number(process.env.TIGERIQ_CORE_UI_ASSIGNMENT_STALE_MS||90000));
 
+// Read permissions only from the current canonical section. Previous
+// Markdown snapshots must never authorize an excluded UI assignment.
+function currentCoreUiHeader(body=''){
+  const text=String(body||'');
+  const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const boundary=first?.index===0
+    ?(headings[1]?.index??text.length)
+    :(first?.index??text.length);
+  const divider=text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return text.slice(0,Math.min(boundary,divider?.index??text.length));
+}
 function value(body,key){return bodyValue(body,key);}
 function yes(body,key){return exactBodyFlag(body,key,'true');}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
@@ -146,8 +159,14 @@ function explicitUiWorkerRequested(body=''){
 
 export function parseCoreUiIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
-  const body=String(issue.body||'');
+  const body=currentCoreUiHeader(issue.body);
   if(!yes(body,'TIGERIQ_EXECUTABLE')||value(body,'OWNER_POLICY')!=='AUTO')return null;
+  const queue=value(body,'AUTO_QUEUE').toUpperCase();
+  const state=value(body,'CURRENT_STATE').toUpperCase();
+  if(queue==='EXCLUDED'||queue.startsWith('EXCLUDED_'))return null;
+  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED|WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state))return null;
+  if(['OWNER_HOLD','OWNER_CONTROLLED','OWNER_GATE','OWNER_APPROVAL_REQUIRED','MANUAL_GATE'].some(key=>yes(body,key)))return null;
+  if(value(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
   const targetRepository=resolveCoreUiTargetRepository(body);
   if(!targetRepository.valid)return null;
   if(REQUIRED.some(k=>!yes(body,k)))return null;
@@ -247,9 +266,18 @@ async function row(pool,{jobId,workerId}={}){
 
 async function reconcile({pool,fetchImpl,owner,repo,token,item,observedAt}){
   if(!item)return null;const n=Number(item.metadata?.issueNumber||issueNo(item.job_id));if(!n)return item;
-  let issue;try{issue=await readIssue(fetchImpl,owner,repo,token,n);}catch{return item;}
-  if(issue.state!=='closed')return {...item,issue};
-  const done=issue.state_reason==='completed'||!issue.state_reason,status=done?'done':'cancelled';
+  // Failure to refresh the source must not expose an unverified assignment
+  // as executable. Keep the persisted job unchanged for a subsequent retry.
+  let issue;try{issue=await readIssue(fetchImpl,owner,repo,token,n);}
+  catch{throw new Error('CORE_UI_CURRENT_SOURCE_UNVERIFIED');}
+  const githubUi=String(item.metadata?.source||'')==='github_ui'
+    ||String(item.routing_decision?.authority||'')==='CORE';
+  const spec=githubUi&&issue.state==='open'?parseCoreUiIssue(issue):null;
+  const revised=spec&&String(item.metadata?.sourceRevision||'');
+  const sourceChanged=Boolean(revised)&&revised!==spec.sourceRevision;
+  if(issue.state==='open'&&(!githubUi||(spec&&!sourceChanged)))return {...item,issue};
+  const done=issue.state==='closed'&&(issue.state_reason==='completed'||!issue.state_reason);
+  const status=done?'done':'cancelled';
   await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[item.job_id,status,JSON.stringify({source:'github',issueRef:issue.html_url,verifiedAt:observedAt})]);
   await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,done?'completed':'blocked',done?'Core-assigned UI Work Order completed with GitHub evidence':'Core-assigned UI Work Order cancelled/superseded']);
   return {...item,status,completed_at:issue.closed_at||issue.updated_at,issue};
