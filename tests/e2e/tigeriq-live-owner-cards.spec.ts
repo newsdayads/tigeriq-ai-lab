@@ -74,35 +74,68 @@ test('P0 hierarchy displays actual project, branch and parent issue without manu
   await expect(missing.locator('.work-parent')).toHaveCount(0);
 });
 
-test('P0 filters by project, status and priority independently and keeps ready distinct from waiting',async({page})=>{
+test('P0 removes the Owner dropdown strip but keeps status filters and all P0–P5 visible',async({page})=>{
   const rows=[
     {...snapshot.openWork[0],status:'ĐANG CHỜ',executionEligibility:'READY',number:111,priority:'P1',projectId:'alpha'},
     {...snapshot.openWork[1],status:'ĐANG CHỜ',executionEligibility:'PARKED_DEPENDENCY',number:112,priority:'P2',projectId:'alpha'},
-    {...snapshot.openWork[2],status:'ĐANG LÀM',executionEligibility:'READY',number:500,priority:'P1',projectId:'beta'},
-    {...snapshot.openWork[3],status:'BỊ CHẶN',executionEligibility:'HARD_GATE',number:501,priority:'P0',projectId:'beta'}
+    {...snapshot.openWork[2],status:'ĐANG LÀM',number:500,priority:'P5',projectId:'beta'},
+    {...snapshot.openWork[3],status:'BỊ CHẶN',number:501,priority:'P0',projectId:'beta'}
   ];
   await routeTiger(page,{...snapshot,openWork:rows,activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
-  const project=page.locator('#workProjectFilter'),status=page.locator('#workStatusFilter'),priority=page.locator('#workPriorityFilter');
-  await project.selectOption('alpha');
-  await expect(page.locator('.work-row')).toHaveCount(2);
-  await priority.selectOption('P1');
-  await expect(page.locator('.work-row')).toHaveCount(1);
+  await expect(page.locator('.owner-filter-toolbar')).toHaveCount(0);
+  await expect(page.locator('#workProjectFilter, #workStatusFilter, #workPriorityFilter, #bcctSort, #bcctRefresh')).toHaveCount(0);
+  await expect(page.locator('.work-row')).toHaveCount(4);
+  await expect(page.locator('.work-row[data-work-number="500"]')).toBeVisible();
+  await page.locator('.filter[data-filter="ready"]').click();
   await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
-  await status.selectOption('ready');
   await expect(page.locator('.work-row')).toHaveCount(1);
-  await status.selectOption('waiting');
-  await expect(page.locator('.work-row')).toHaveCount(0);
-  await priority.selectOption('P2');
+  await page.locator('.filter[data-filter="waiting"]').click();
   await expect(page.locator('.work-row[data-work-number="112"]')).toBeVisible();
-  await project.selectOption('beta');
-  await expect(page.locator('.work-row')).toHaveCount(0);
-  await status.selectOption('action');
-  await priority.selectOption('P0');
-  await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
   await page.locator('.filter[data-filter="blocked"]').click();
-  await expect(status).toHaveValue('blocked');
   await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
+});
+
+test('P0 LIVE cards show only employees with a fresh PC01 heartbeat and assigned running JOB',async({page})=>{
+  const at=new Date().toISOString();
+  const workers=[
+    {employeeId:'NV20',label:'NVIDIA NIM',state:'working',currentJobId:'JOB-200',job:'Kiểm tra thay đổi LIVE',provider:'NVIDIA NIM',heartbeatAt:at,updatedAt:at},
+    {employeeId:'NV10',label:'Ollama',state:'working',currentJobId:'JOB-100',job:'Rà soát bản phát hành',provider:'Ollama',heartbeatAt:at,updatedAt:at},
+    {employeeId:'NV09',label:'Qwen3-Coder Local',state:'idle',currentJobId:null,job:'Chờ việc',heartbeatAt:at}
+  ];
+  await page.setViewportSize({width:1440,height:900});
+  await routeTiger(page,{...snapshot,generatedAt:at,workers});
+  await page.goto('https://tigeriq.test/command-center');
+  await expect(page.locator('.live-worker-card')).toHaveCount(2);
+  await expect(page.locator('.live-worker-card[data-live-employee="NV20"]')).toContainText('NVIDIA NIM');
+  await expect(page.locator('.live-worker-card[data-live-employee="NV10"]')).toContainText('Rà soát bản phát hành');
+  await expect(page.locator('.live-worker-card[data-live-employee="NV09"]')).toHaveCount(0);
+  const positions=await page.evaluate(()=>({
+    workers:document.querySelector('#liveWorkers')!.getBoundingClientRect().top,
+    jobs:document.querySelector('#workListHeading')!.getBoundingClientRect().top
+  }));
+  expect(positions.workers).toBeLessThan(positions.jobs);
+  await page.setViewportSize({width:390,height:844});
+  const metrics=await page.evaluate(()=>({viewport:window.innerWidth,scroll:document.documentElement.scrollWidth}));
+  expect(metrics.scroll).toBeLessThanOrEqual(metrics.viewport+1);
+});
+
+test('P0 LIVE never marks employees as running from stale or incomplete telemetry',async({page})=>{
+  const now=new Date().toISOString();
+  const base={employeeId:'NV20',label:'NVIDIA NIM',state:'working',currentJobId:'JOB-200',job:'Kiểm tra',heartbeatAt:now};
+  const cases=[
+    {generatedAt:now,liveConnected:false,workers:[base]},
+    {generatedAt:'2026-01-01T00:00:00.000Z',liveConnected:true,workers:[base]},
+    {generatedAt:now,liveConnected:true,workers:[{...base,currentJobId:null}]},
+    {generatedAt:now,liveConnected:true,workers:[{...base,heartbeatAt:'2026-01-01T00:00:00.000Z'}]}
+  ];
+  for(const data of cases){
+    await routeTiger(page,{...snapshot,...data});
+    await page.goto('https://tigeriq.test/command-center');
+    await expect(page.locator('.live-worker-card')).toHaveCount(0);
+    await expect(page.locator('#liveWorkers')).toContainText('0 NHÂN VIÊN');
+    await page.unroute('https://tigeriq.test/**');
+  }
 });
 
 test('work cards show evidence progress or an explicit non-quantified indicator and keep next action readable',async({page})=>{
