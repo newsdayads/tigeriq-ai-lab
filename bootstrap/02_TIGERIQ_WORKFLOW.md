@@ -116,32 +116,34 @@ Khi NEW CHAT trong Project chỉ nhận **một số nguyên `N`**:
 - Nếu gặp bước cần quyền/thao tác vật lý thật, ghi vào deferred Owner action; không ngắt anh Sơn bằng chuỗi thao tác thủ công rời rạc nếu còn phương án tự động an toàn khác.
 - Không báo “đang chạy nền” nếu runtime thực tế không có cơ chế đó.
 
-## 10. Báo cáo `bc / báo cáo / tiến độ` + `bcct`
-### Báo cáo nhanh
-`bc`, `BC`, `báo cáo`, `tiến độ` bắt buộc đúng 6 phần, ngắn và **GIỮ ICON**:
-1. 📊 Tổng tiến độ — thanh + %.
-2. 🚦 Hạng mục chính — thanh + % + trạng thái.
-3. 🔴 P0 BỊ CHẶN — chỉ blocker quan trọng nhất.
-4. 🔄 Đang xử lý — ưu tiên hiện tại.
-5. 👥 Nhân sự AI — đang làm/rà soát/chờ/rảnh; gộp khi phù hợp.
-6. 🎯 Mốc kế tiếp — một outcome cụ thể.
+## 10. Giao tiếp và báo cáo trực quan V4 — Owner phê duyệt 08/10/2026
+Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, không thay đổi quyền truy cập hoặc vòng đời công việc. Tài liệu chi tiết: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md`; nguồn động: Issue #504.
 
-### Báo cáo chi tiết
-`bcct`, `BCCT`, `bc chi tiết`, `báo cáo chi tiết` = dashboard kỹ thuật chi tiết:
-- Giữ icon/visual progress.
-- Mở rộng AI employees/resources, Work Order/GitHub, evidence kỹ thuật, failures/blockers, history/delta và execution progress.
-- Không hiển thị bare `#xxx`; dùng `#<số> - <tiêu đề chuẩn>`.
+### Trình bày thống nhất trong mọi phản hồi
+- Mặc định 1–3 dòng khi câu hỏi đơn giản. Theo thứ tự **Kết quả → Điểm bị chặn thật (nếu có) → Bước tiếp theo**.
+- Khi nền tảng có thành phần giao diện tương tác: **ưu tiên icon vector cùng phong cách, thẻ màu, nhãn trạng thái, thanh tiến độ, biểu đồ thực**, không trộn emoji và dấu đầu dòng cổ điển trong cùng thẻ. Bản chữ dự phòng được dùng khi không hỗ trợ thành phần tương tác.
+- Bộ 8 emoji canonical `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` vẫn hợp lệ cho thông báo chữ thuần và các thông báo từ hệ thống; **không bắt buộc đặt emoji làm tiền tố của mọi mục** khi đã có icon vector/thẻ trạng thái. Các emoji cũ `📊 🚦 🔴 🔄 👥 🎯 🧾` không còn là tiêu đề bắt buộc.
+- Ánh xạ màu nhất quán: xanh lá=hoàn tất có bằng chứng; xanh dương=đang xử lý có bằng chứng; vàng=chờ; đỏ=lỗi/bị chặn thật; tím=đang rà soát/xác minh; xám=không xác minh. Luôn có chữ, không dùng màu đơn độc.
+- Không tự bịa tỉ lệ: % chỉ từ checklist/tử số-mẫu số có kiểm chứng; không hiển thị 100% trước DONE; trạng thái dịch vụ/PC01 khác tiến độ hoàn tất công việc.
 
-### Shortcut hiển thị
-Khi hiển thị lệnh/shortcut, luôn có:
-- 📊 `bc` — Báo cáo nhanh.
-- 🧾 `bcct` — Báo cáo chi tiết.
+### Báo cáo `bc / báo cáo / tiến độ` — 6 phần bắt buộc
+1. **Tổng tiến độ** — thẻ số liệu và % chỉ khi có nguồn kiểm chứng.
+2. **Hạng mục chính** — thẻ công việc, nhãn trạng thái, có thể mở chi tiết.
+3. **P0 bị chặn/cần chú ý** — đúng chứng cứ thực tế.
+4. **Đang xử lý** — chỉ gán đang chạy nếu nguồn trực tiếp xác nhận; hồ sơ GitHub mở không đủ.
+5. **Nhân sự AI** — trạng thái có chứng cứ hoặc ghi chưa xác minh.
+6. **Mốc kế tiếp** — hành động và điều kiện nghiệm thu.
 
-Quy tắc:
-- % phải có evidence; nếu chỉ quản trị thì ghi `ước lượng quản trị`.
-- Không trả dashboard chữ thuần bỏ icon.
-- Không show SHA/PR/log dài trong `bc` trừ khi đó là blocker hoặc anh Sơn hỏi; `bcct` được phép mở rộng bằng chứng kỹ thuật.
-- Nhân sự chỉ hiển thị active khi có runtime/evidence thật.
+### Báo cáo `bcct / báo cáo chi tiết`
+- Giữ 6 phần trên và mở rộng chi tiết kỹ thuật: tài nguyên, bằng chứng, lỗi, thay đổi, mã công việc và PR đầy đủ tên chuẩn.
+- Thêm **RDC 5 tài khoản**: chỉ đọc `who_am_i` và `list_devices` trên cả năm kết nối; hiển thị thanh % lượt gọi còn lại do nhà cung cấp trả, PC01 trực tuyến/ngoại tuyến, tài khoản ưu tiên. Không suy ra số lượt tuyệt đối từ %.
+- `bcct` chỉ cấp quyền kiểm tra RDC để làm báo cáo, **không cấp quyền điều khiển PC01 qua RDC**. Không kiểm tra RDC nền hoặc khi người dùng không yêu cầu.
+- Nếu thiếu dữ liệu hoặc giao diện không có biểu đồ, hiển thị bảng chữ ngắn, ghi rõ phần chưa xác minh.
+
+### Kiểm tra trước khi trả lời
+- Tiếng Việt; 8 emoji status được giữ đúng nghĩa nếu có; không dùng icon hỗn hợp cũ/mới.
+- Thống nhất kiểu thẻ, màu và độ rộng trên di động; không chèn số liệu demo vào báo cáo thực.
+- Tài liệu GitHub chỉ ràng buộc các phiên nạp nguồn; **không thể tự thay đổi giao diện gốc ChatGPT hoặc tự cập nhật toàn bộ chat đang mở**.
 
 ## 11. Câu lệnh giao việc / bàn giao sang AI khác
 Khi anh Sơn yêu cầu `prompt`, `đưa prompt`, `qua Work`, `giao NV` hoặc tương đương:
