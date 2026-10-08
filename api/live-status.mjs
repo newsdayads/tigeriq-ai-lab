@@ -1246,6 +1246,17 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
     return { percent, source: progressSource, detail };
   };
 
+  // Checklist đã xác minh là cơ sở chính; tránh % khai báo khác với số bước thực tế.
+  const checklist = checklistForIssue(issue);
+  if (checklist.total >= 2 && checklist.verified) {
+    const completePercent = Math.round((checklist.done / checklist.total) * 100);
+    const percent = checklist.done < checklist.total ? Math.min(99, completePercent) : completePercent;
+    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', checklist.done + '/' + checklist.total + ' bước xác minh');
+    if (accepted) return accepted;
+    // Nếu mọi checkbox được tích nhưng việc chưa DONE, không lấy % khai báo để thay thế.
+    if (checklist.done === checklist.total) return { percent: null, source: 'non_terminal_100_rejected', detail: 'Chờ xác minh điều kiện DONE' };
+  }
+
   const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
   if (/^\d{1,3}$/.test(explicitRaw)) {
     const explicit = Number(explicitRaw);
@@ -1253,12 +1264,6 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
     if (accepted) return accepted;
   }
 
-  const checklist = checklistForIssue(issue);
-  if (checklist.total >= 2 && checklist.verified) {
-    const percent = Math.round((checklist.done / checklist.total) * 100);
-    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', checklist.done + '/' + checklist.total + ' bước xác minh');
-    if (accepted) return accepted;
-  }
 
   return { percent: null, source: 'none', detail: null };
 }
