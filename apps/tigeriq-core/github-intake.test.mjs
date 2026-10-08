@@ -85,6 +85,10 @@ describe('GitHub Core intake guardrails',()=>{
       'NO_DESTRUCTIVE=true',
       'NO_PRODUCTION_RELEASE=true',
       'NO_DIRECT_MAIN=true',
+      'NO_RDC=true',
+      'NO_CODEX=true',
+      'NO_PC01_SHELL=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
     ].join('\n');
     const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
     expect(androidProductAutoExecutionExclusion(issue)).toBe('');
@@ -123,6 +127,19 @@ describe('GitHub Core intake guardrails',()=>{
     expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('PRIORITY=P2','PRIORITY=P0')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
     expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('OWNER_APPROVED_ANDROID_AUTO_P2=true','OWNER_APPROVED_ANDROID_AUTO_P2=false')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
     expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('RESOURCE_SCOPE=ANDROID_NV102_S10_5G_24X7_ACCEPTANCE','RESOURCE_SCOPE=ANDROID_OTHER')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    for(const unsafe of [
+      ['NO_RDC=true','NO_RDC=false'],
+      ['NO_CODEX=true','NO_CODEX=false'],
+      ['NO_PC01_SHELL=true','NO_PC01_SHELL=false'],
+      ['APP_CHROME_MUTATION=FORBIDDEN','APP_CHROME_MUTATION=ALLOWED'],
+    ]){
+      const denied={...issue,body:body.replace(unsafe[0],unsafe[1])};
+      expect(androidProductAutoExecutionExclusion(denied)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+      expect(safeAutoWorkAdmission(denied)).toMatchObject({
+        eligible:false,reason:'ANDROID_PRODUCT_OWNER_DIRECT',
+      });
+      expect(parseExecutableIssue(denied)).toBe(null);
+    }
   });
 
   it('parses multi-phase keep-open lifecycle marker',()=>{
