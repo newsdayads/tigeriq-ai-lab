@@ -555,18 +555,18 @@ export function androidProductAutoExecutionExclusion(issue){
   const title=String(issue?.title||'');
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE').trim().toUpperCase();
   // Owner explicitly moved canonical #2949 to P2. Keep the Android P0 fence for EVERY other scope.
-  const ownerApprovedNv102P2=Number(issue?.number)===2949
+  // Read the FIRST (current) anchored flags only. A historical true must not\n  // undo a current false for an authorization or tool-boundary lock.\n  const ownerApprovedNv102P2=Number(issue?.number)===2949
     && /^\[P2\]\[ANDROID\]\[NV102\]/i.test(title)
     && bodyValue(body,'PRIORITY')==='P2'
-    && hasExactFlag(body,'OWNER_APPROVED_ANDROID_AUTO_P2')
+    && bodyValue(body,'OWNER_APPROVED_ANDROID_AUTO_P2').toLowerCase()==='true'
     && bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
     && bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
     && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE'
     // The one-issue Owner exception is valid only while its tool and local
     // execution prohibitions remain explicit. No general Android unlock.
-    && hasExactFlag(body,'NO_RDC')
-    && hasExactFlag(body,'NO_CODEX')
-    && hasExactFlag(body,'NO_PC01_SHELL')
+    && bodyValue(body,'NO_RDC').toLowerCase()==='true'
+    && bodyValue(body,'NO_CODEX').toLowerCase()==='true'
+    && bodyValue(body,'NO_PC01_SHELL').toLowerCase()==='true'
     && bodyValue(body,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
