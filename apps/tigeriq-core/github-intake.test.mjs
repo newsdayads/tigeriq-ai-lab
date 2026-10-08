@@ -147,6 +147,46 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('never borrows mutation scope or routing authorization from historical issue sections',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=CURRENT_CORE_SCOPE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const separator of ['## HISTORICAL', '--- HISTORICAL ONLY ---']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const archivedScope={...base,body:prefix+active.replace('RESOURCE_SCOPE=CURRENT_CORE_SCOPE','')
+          +'\n'+separator+'\nRESOURCE_SCOPE=OLD_SCOPE'};
+        expect(safeAutoWorkAdmission(archivedScope)).toMatchObject({
+          eligible:false,reason:'HISTORICAL_ONLY_RESOURCE_SCOPE',
+        });
+        expect(parseExecutableIssue(archivedScope)).toBeNull();
+
+        const historicalRoute={...base,body:prefix+active.replace('CAPABILITY=reasoning','')
+          +'\n'+separator+'\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06'
+          +'\nPC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read"}'};
+        expect(safeAutoWorkAdmission(historicalRoute)).toMatchObject({
+          eligible:true,reason:'SAFE_P1_P5_POLICY',classification:{route:'CORE_REASONING'},
+        });
+        expect(parseExecutableIssue(historicalRoute)).toMatchObject({
+          dispatchLane:'CORE_REASONING',resourceScope:'CURRENT_CORE_SCOPE',
+          pcOperatorDirectAction:null,
+        });
+
+        const explicitCurrent={...base,body:prefix+active
+          +'\n'+separator+'\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06'
+          +'\nPC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read"}'};
+        expect(parseExecutableIssue(explicitCurrent)).toMatchObject({
+          dispatchLane:'CORE_REASONING',resourceScope:'CURRENT_CORE_SCOPE',
+          pcOperatorDirectAction:null,
+        });
+      }
+    }
+  });
+
   it('requires each legacy compatibility flag in the current execution section',()=>{
     const keys=['TIGERIQ_EXECUTABLE','OWNER_POLICY','NO_CODE_CHANGE','NO_PC01_SHELL'];
     for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
