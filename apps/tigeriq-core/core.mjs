@@ -2252,7 +2252,7 @@ async function managerTick() {
           // Active for evidence reconciliation, but not runnable by AI Manager
           // until GitHub intake sees accepted proof or a new source revision.
           await pool.query(
-            "update tigeriq_objectives set summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1",
+            "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1",
             [o.id,summary,JSON.stringify(wait.revision)],
           );
           await event('OBJECTIVE_COMPLETION_WAITING_EVIDENCE',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:wait.revision,reason:wait.reason});
