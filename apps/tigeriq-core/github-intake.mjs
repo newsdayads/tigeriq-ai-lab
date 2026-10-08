@@ -1647,7 +1647,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
         await githubMutationRetryable(()=>commentIssue(
           fetchImpl,owner,repo,OWNER_RESULT_INBOX_ISSUE,
-          `✅ [KẾT QUẢ THỰC TẾ] #${number} - ${sourceTitle}\n\n${resultComment}\n\nNguồn: https://github.com/${owner}/${repo}/issues/${number}`,
+          `[KẾT QUẢ THỰC TẾ] #${number} - ${sourceTitle}\n\n${resultComment}\n\nNguồn: https://github.com/${owner}/${repo}/issues/${number}`,
           token
         ));
       }
