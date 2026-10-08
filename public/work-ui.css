@@ -1183,3 +1183,26 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
  .api-health .work-panel .health-live-work-card .progress.indeterminate .progress-fill{animation:none!important;transform:none!important}
  .api-health .work-panel .health-live-work-card:hover{transform:none!important}
 }
+
+
+/* TIGERIQ_HEALTH_WORKLIST_COMPACT_P0: avoid empty vertical space in LIVE-parity Health cards. */
+.api-health .work-panel .wo-list.work-list{
+  grid-auto-rows:max-content!important;
+  align-items:start!important;
+  row-gap:10px!important;
+}
+.api-health .work-panel .work-row.health-live-work-card{
+  align-self:start!important;
+  height:auto!important;
+}
+.api-health .work-panel .health-live-work-card .work-main{
+  min-height:0!important;
+  height:auto!important;
+}
+.api-health .work-panel .health-live-work-card .work-title{
+  min-height:0!important;
+}
+.api-health .work-panel .health-live-work-card .work-progress-bottom{
+  margin-top:8px!important;
+  padding-top:0!important;
+}
