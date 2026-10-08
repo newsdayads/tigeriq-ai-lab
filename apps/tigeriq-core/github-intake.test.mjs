@@ -868,7 +868,7 @@ describe('GitHub Core intake guardrails',()=>{
 
   it('treats an assigned API worker as non-strict for safe P1-P5 Core auto-work',()=>{
     const body=[
-      'PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
       'RESOURCE_SCOPE=DYNAMIC_SAFE_SCOPE','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
       'AUTO_QUEUE=INCLUDED','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
       'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true'
