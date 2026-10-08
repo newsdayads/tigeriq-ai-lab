@@ -2884,7 +2884,14 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   if(!current)throw new Error('RCA_CANONICAL_ISSUE_UNAVAILABLE');
   const familyMarker=`RCA_FAMILY_KEY=${rca.rcaFamilyKey}`;
   const priorBody=String(current.body||'');
-  const alreadyRearmed=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')&&priorBody.includes(familyMarker);
+  // Only the leading occurrence of the *current* family/evidence pair is idempotent.
+  // A subsequent closed-completed recurrence with fresh evidence must retain
+  // its previous header as history, but surface the new evidence at the top.
+  const priorHeader=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')
+    ? priorBody.slice(0,priorBody.indexOf('\n\n')>=0?priorBody.indexOf('\n\n'):priorBody.length)
+    : '';
+  const priorHeaderFields=new Set(priorHeader.split('\n'));
+  const alreadyRearmed=priorHeaderFields.has(familyMarker)&&priorHeaderFields.has(`EVIDENCE_HASH=${rca.evidenceHash}`);
   const rearmHeader=[
     '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
     `SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`,
