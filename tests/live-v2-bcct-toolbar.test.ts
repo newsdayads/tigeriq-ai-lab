@@ -2,20 +2,29 @@ import { readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
 const root=readFileSync('command-center.html','utf8');
 const mirrored=readFileSync('public/command-center.html','utf8');
-test('LIVE V2 public/root content is mirrored',()=>expect(mirrored).toBe(root));
-test('BCCT priority filter and refresh controls are wired',()=>{
- expect(root).toContain('id="bcctSort"');
- expect(root).toContain('id="workProjectFilter"');
- expect(root).toContain('id="workStatusFilter"');
- expect(root).toContain('id="workPriorityFilter"');
- expect(root).toContain('value="priority"');
- expect(root).toContain('value="ready"');
- expect(root).toContain("$('bcctSort').addEventListener('change',render)");
- expect(root).toContain("$('bcctRefresh').addEventListener('click',load)");
+
+test('LIVE P0 root/public HTML remain identical',()=>{
+  expect(mirrored).toBe(root);
 });
-test('BCCT toolbar does not impersonate Core dispatch',()=>{
- const toolbar=root.match(/<div class="bcct-toolbar(?: owner-filter-toolbar)?">[\s\S]*?<\/div>/)?.[0]??'';
- expect(toolbar).toContain('không tự giao việc');
- expect(toolbar).not.toMatch(/LÀM NGAY|dispatch|GIAO NHÂN SỰ/);
- expect(root).toContain("fetch('/api/live-status',{cache:'no-store'})");
+test('Owner-approved LIVE removes only dropdown toolbar, preserves status navigation',()=>{
+  for(const id of ['bcctSort','workProjectFilter','workStatusFilter','workPriorityFilter','bcctRefresh']){
+    expect(root).not.toContain('id="'+id+'"');
+  }
+  expect(root).not.toContain('class="bcct-toolbar owner-filter-toolbar"');
+  expect(root).toContain('data-filter="running"');
+  expect(root).toContain('data-filter="done"');
+  expect(root).toContain('data-filter="system"');
+  expect(root).toContain('id="workList"');
+});
+test('LIVE employee cards appear before jobs and follow verified PC01 snapshot',()=>{
+  expect(root).toContain('id="liveWorkers"');
+  expect(root.indexOf('id="liveWorkers"')).toBeLessThan(root.indexOf('id="workListHeading"'));
+  expect(root).toContain('function renderLiveWorkers()');
+  expect(root).toContain('renderLiveWorkers();');
+  expect(root).toContain('snapshot?.workers');
+  expect(root).toContain("snapshot?.liveConnected===true");
+  expect(root).toContain("worker?.currentJobId");
+  expect(root).toContain("worker?.heartbeatAt");
+  expect(root).toContain("fetch('/api/live-status',{cache:'no-store'})");
+  expect(root).not.toContain("document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===currentFilter))");
 });
