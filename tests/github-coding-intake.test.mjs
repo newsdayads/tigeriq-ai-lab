@@ -646,6 +646,37 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:1},{codingObjectiveId:r,retryAttempt:1}],[],r).retryCount).toBe(2);
   });
 
+  it('never re-arms an invalid retry journal even when the source revision changed',async()=>{
+    const n=863,id='obj-863-corrupt';
+    const current=issue(SAFE,{number:n});
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,priorObjectiveId:'obj-863-root',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,priorObjectiveId:'obj-863-root',retryAttempt:1}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:'old-revision'}},
+    );
+    let posted=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/api/objectives')&&init.method==='POST'){posted++;return response({id:'should-not-create'});}
+      if(url.includes('/issues/863')&&!url.includes('/comments')&&!url.includes('/labels'))return response(current);
+      if(url.includes('/comments'))return response([]);
+      if(url.includes('/labels'))return response([]);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    const final=pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL');
+    expect(final).toHaveLength(2);
+    expect(final.at(-1)?.data).toMatchObject({issueNumber:n,codingObjectiveId:id,reason:'RETRY_HISTORY_INVALID',terminalReason:'DUPLICATE_RETRY_EVENT'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(0);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(2);
+    expect(posted).toBe(0);
+  });
+
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
     const pool=fakePool();
     pool.events.push(
