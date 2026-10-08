@@ -52,3 +52,23 @@ STATE=BCCT_FINAL_V5_CANONICAL_SPEC
 - Derive tasks, completion states and account quotas from freshly checked sources, never screenshot constants.
 - This source policy cannot override ChatGPT native rendering or force preexisting sessions to adopt it.
 STATE=OWNER_FINAL_SCREENSHOT_LOCK
+
+## OWNER-APPROVED BCCT ACTIONS V6 — 2026-10-08
+OWNER_DIRECT=true
+SCOPE=BCCT_ACTION_SURFACE|P1_P5_SAFE_CONTINUATION
+STATE=APPROVED_SPEC_PENDING_IMPLEMENTATION_AND_ACCEPTANCE
+
+### Điều khiển bắt buộc
+- Giữ nguyên bố cục V5; bổ sung một nút ở đầu danh sách: **TỰ XẾP ƯU TIÊN & XỬ LÝ**. Nút phải kích hoạt một thao tác thực sự lên Core qua backend được ủy quyền; không được chỉ thay nhãn hoặc gửi một tin nhắn giả thành công.
+- Danh sách có sắp xếp **ƯU TIÊN** theo P0–P5, tính thực thi hiện hành, lợi ích, phụ thuộc; P0 hiển thị để Owner quyết định nhưng tuyệt đối không tự giao/claim. Không sửa PRIORITY gốc trên GitHub khi người dùng chỉ sắp xếp giao diện. Mỗi lần xếp hiển thị tiêu chí và thời điểm nguồn dữ liệu.
+- Từng công việc có: **LÀM NGAY**, **GIAO NHÂN SỰ**, **GỠ ĐIỂM CHẶN**, **KIỂM TRA & CHỐT**, **LỊCH SỬ**, ngoài **HỒ SƠ** và **KIỂM TRA** của V5. Chỉ xuất nút thao tác nếu backend thực sự hỗ trợ. Nếu nền tảng ChatGPT không hỗ trợ mutation/connector tương ứng, đổi thành hành động kiểm tra/điều hướng có ghi rõ, tuyệt đối không hiển thị nút thực thi giả.
+- **LÀM NGAY**: làm mới trạng thái Core/GitHub, kiểm tra EXECUTABLE + resource scope + lease + hard gate; nếu hợp lệ chỉ tiếp tục bước an toàn của work order đã tồn tại. Không tạo Work Order mới, không tự sửa P0/OWNER_HOLD, không giành lease của writer đang hoạt động. Sau dispatch, đọc lại receipt/trace mới được hiện ĐANG CHẠY.
+- **TỰ XẾP ƯU TIÊN & XỬ LÝ**: thuật toán chọn công việc P1–P5 có bước độc lập thực thi được, kiểm tra chuỗi phụ thuộc, ưu tiên việc có thể xử lý ngay trước việc chờ, tránh vòng lặp; gửi một lượt dispatch được chống trùng cho Core hiện hữu; không thêm scheduler, queue hoặc control-plane song song.
+- **GIAO NHÂN SỰ**: chỉ lựa chọn trong registry hiện hành theo capability/health/one-writer, không dùng Codex khi thiếu duyệt rõ tên/phạm vi. **GỠ ĐIỂM CHẶN** chỉ đưa ra chẩn đoán và hành động an toàn; cổng credential/permission/Production/financial/destructive/physical bắt buộc duyệt riêng.
+- **KIỂM TRA & CHỐT**: đọc bằng chứng nghiệm thu, chỉ kết thúc khi đủ checklist, phản hồi công khai receipt; **LỊCH SỬ** hiển thị event có nguồn và timestamp, không suy diễn. Mọi hành động có idempotency key, quyền, trạng thái bận, phản hồi lỗi minh bạch và nút đọc lại trạng thái.
+
+### Cổng nghiệm thu trước khi tuyên bố hoạt động
+1. Kiểm thử thật: sắp xếp không sửa priority GitHub; lọc chờ không phát dispatch; P0/OWNER_HOLD không bị claim; lease hợp lệ không bị chiếm; action bị chặn không phát job; thao tác lặp không tạo job trùng.
+2. Kiểm thử nút LÀM NGAY và TỰ XẾP ƯU TIÊN & XỬ LÝ: trace Core + idempotency + readback phản ánh trạng thái thật. Kiểm thử màn hình iPhone và desktop cho các nút, bộ lọc, mở rộng.
+3. Rà soát độc lập, CI, kiểm tra an toàn đạt; branch → PR → merge, phát hành web/runtime theo đúng cổng riêng. GitHub main merge KHÔNG đồng nghĩa Production đã phát hành.
+4. Ghi riêng trạng thái UI_CHATGPT_NATIVE=NOT_ENFORCEABLE_FROM_REPO. Không khẳng định đã khóa mọi phiên AI chỉ bằng thay đổi GitHub. Không đụng App Chrome LOCAL-only; RDC chỉ dùng đọc hạn mức theo yêu cầu; không dùng Codex mặc định.
