@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {classifyWork,sortWork,canRequestExecution,PRIORITY_STATES} from '../public/bcct-work-priority.mjs';
+const ready={number:2,priority:'P1',status:'READY',workKind:'WORK',tigeriqExecutable:true,autoQueueIncluded:true};
+test('stale snapshots never grant readiness',()=>assert.equal(classifyWork(ready,false),PRIORITY_STATES.WAIT));
+test('P0 remains owner-only',()=>assert.equal(classifyWork({...ready,priority:'P0'},true),PRIORITY_STATES.OWNER));
+test('OWNER_HOLD never becomes executable',()=>assert.equal(canRequestExecution({...ready,ownerHold:true},{sourceFresh:true}),false));
+test('active lease prevents execution',()=>assert.equal(canRequestExecution({...ready,mutationOwnerActive:true},{sourceFresh:true}),false));
+test('blocked dependency prevents execution',()=>assert.equal(canRequestExecution({...ready,dependencyBlocked:true},{sourceFresh:true}),false));
+test('missing queue eligibility prevents execution',()=>assert.equal(canRequestExecution({...ready,autoQueueIncluded:false},{sourceFresh:true}),false));
+test('ready P1 is selected before waiting P2',()=>assert.equal(sortWork([{...ready,number:1,priority:'P2',status:'WAITING'},ready],{sourceFresh:true})[0].number,2));
+test('sorting does not mutate source',()=>{const rows=[{...ready,number:9},{...ready,number:1}];sortWork(rows,{sourceFresh:true});assert.equal(rows[0].number,9)});
