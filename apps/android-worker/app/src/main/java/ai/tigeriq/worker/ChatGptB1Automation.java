@@ -88,12 +88,16 @@ public final class ChatGptB1Automation {
             return;
         }
 
+        // Commit the at-most-once send claim to disk before the irreversible
+        // accessibility click. On crash/restart we can safely time out, not resend.
+        if (!ChatGptB1RunStore.markSentExactlyOnce(service)) {
+            ChatGptB1RunStore.fail(service, "SEND_CLAIM_PERSIST_FAILED");
+            return;
+        }
         boolean clicked = send.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         if (!clicked) {
             ChatGptB1RunStore.fail(service, "SEND_CLICK_FAILED");
-            return;
         }
-        ChatGptB1RunStore.markSentExactlyOnce(service);
     }
 
     public static AccessibilityNodeInfo findExactProjectControl(
