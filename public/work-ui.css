@@ -899,3 +899,78 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
     transition:none!important;
   }
 }
+
+
+/* P0 Owner 2026-10-08 — LIVE visual parity scoped ONLY to API Health.
+   Keep existing runtime state, verified progress width, filters and refresh untouched. */
+.api-health{
+  --tiq-health-working:#10B981;
+  --tiq-health-review:#3B82F6;
+  --tiq-health-verify:#14B8A6;
+  --tiq-health-waiting:#F59E0B;
+  --tiq-health-blocked:#F43F5E;
+  --tiq-health-done:#06B6D4;
+  --tiq-health-neutral:#64748B;
+}
+.api-health .panel{
+  border-color:#24445f;
+  border-radius:13px;
+  background:linear-gradient(180deg,#10243a,#0b1829);
+  box-shadow:0 8px 24px rgba(0,0,0,.16);
+}
+.api-health .panel:hover{border-color:#315a82;box-shadow:0 13px 28px rgba(0,0,0,.28)}
+.api-health .work-row{
+  --tiq-health-accent:var(--tiq-health-neutral);
+  border-color:var(--tiq-health-accent)!important;
+  background:linear-gradient(180deg,#11263d,#0b1829);
+  box-shadow:0 8px 24px rgba(0,0,0,.16);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+}
+.api-health .work-row.status-working{--tiq-health-accent:var(--tiq-health-working)}
+.api-health .work-row.status-review{--tiq-health-accent:var(--tiq-health-review)}
+.api-health .work-row.status-verify{--tiq-health-accent:var(--tiq-health-verify)}
+.api-health .work-row.status-waiting,.api-health .work-row.status-queued{--tiq-health-accent:var(--tiq-health-waiting)}
+.api-health .work-row.status-blocked,.api-health .work-row.status-owner_gate{--tiq-health-accent:var(--tiq-health-blocked)}
+.api-health .work-row.status-done{--tiq-health-accent:var(--tiq-health-done)}
+.api-health .work-row .work-id,.api-health .work-row .state{color:var(--tiq-health-accent)}
+.api-health .work-row .work-main{min-width:0}
+.api-health .work-row:focus-visible{outline:2px solid #e2e8f0;outline-offset:3px}
+.api-health .worker.employee-card{
+  background:linear-gradient(180deg,#11263d,#0b1829);
+  border:1px solid #315a82;
+  border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.14);
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.api-health .worker.employee-card.state-working{border-color:var(--tiq-health-working)}
+.api-health .worker.employee-card.state-waiting{border-color:var(--tiq-health-waiting)}
+.api-health .worker.employee-card.state-attention{border-color:var(--tiq-health-blocked)}
+.api-health .worker.employee-card.state-unknown{border-color:var(--tiq-health-neutral)}
+.api-health .worker.employee-card:hover,.api-health .worker.employee-card:focus-visible{
+  transform:translateY(-2px);
+  box-shadow:0 13px 28px rgba(0,0,0,.3);
+}
+.api-health .worker.employee-card:focus-visible{outline:2px solid #e2e8f0;outline-offset:2px}
+.api-health .worker.employee-card.state-working .employee-live-dot{
+  background:var(--tiq-health-working);
+  box-shadow:0 0 9px rgba(16,185,129,.25);
+  animation:tiq-api-live-dot 2.8s ease-in-out infinite;
+}
+.api-health .worker.employee-card.changed{animation:tiq-api-card-change .8s ease-out}
+@keyframes tiq-api-live-dot{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.65;transform:scale(.84)}
+}
+@keyframes tiq-api-card-change{
+  0%{box-shadow:0 0 0 1px rgba(88,166,255,.48),0 0 18px rgba(88,166,255,.18)}
+  100%{box-shadow:0 8px 24px rgba(0,0,0,.14)}
+}
+@media(prefers-reduced-motion:reduce){
+  .api-health .worker.employee-card,.api-health .work-row,.api-health .panel{
+    transition:none!important;transform:none!important;
+  }
+  .api-health .worker.employee-card.changed,
+  .api-health .worker.employee-card.state-working .employee-live-dot{
+    animation:none!important;
+  }
+}

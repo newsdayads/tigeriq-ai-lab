@@ -170,4 +170,20 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(segment).not.toContain('await fetch(u,');
   });
 
+
+  it('P0 LIVE visual parity is scoped to API Health without modifying runtime logic',()=>{
+    expect(shared).toContain('P0 Owner 2026-10-08 — LIVE visual parity scoped ONLY to API Health');
+    expect(shared).toContain('.api-health .worker.employee-card.state-working{border-color:var(--tiq-health-working)}');
+    expect(shared).toContain('.api-health .worker.employee-card.state-unknown{border-color:var(--tiq-health-neutral)}');
+    expect(shared).toContain('.api-health .work-row.status-review{--tiq-health-accent:var(--tiq-health-review)}');
+    expect(shared).toContain('.api-health .work-row.status-verify{--tiq-health-accent:var(--tiq-health-verify)}');
+    expect(shared).toContain('.api-health .worker.employee-card.changed{animation:tiq-api-card-change .8s ease-out}');
+    expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(shared).toContain('animation:none!important;');
+    expect(dashboard).toContain('setInterval(load,5000)');
+    expect(dashboard).toContain('setInterval(loadLiveStatus,1000)');
+    expect(dashboard).toContain('function renderWorkers()');
+    expect(live).not.toContain('tiq-api-card-change');
+  });
+
 });
