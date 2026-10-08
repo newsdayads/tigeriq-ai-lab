@@ -1254,6 +1254,870 @@ export function executionPlanForIssue(issue, currentNext = '') {
   return { steps, source: steps.length ? 'GITHUB_CURRENT_NEXT' : null };
 }
 
+// Only independent GitHub readbacks count as completed milestones.
+export function githubMilestoneSpec(issue) {
+  const body=String(issue?.body||''),h=body.match(/^#{1,3}\s+[^\n]+/m);
+  if(!h||h.index>300)return null;
+  const rest=body.slice(h.index+h[0].length),next=rest.search(/^#{1,3}\s+\S/m),block=next<0?rest.slice(0,6000):rest.slice(0,next);
+  const field=(keys)=>{for(const k of keys){const m=block.match(new RegExp('^'+k+'=(.+)
+  const body = String(issue?.body || '');
+  const normalizedStatus = String(status || 'OPEN').toUpperCase();
+  const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
+  const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
+    || source === 'VERIFIED'
+    || source === 'VERIFIED_CHECKLIST';
+  if (!verified) return { percent: null, source: 'none', detail: null };
+
+  const acceptVerifiedPercent = (percent, progressSource, detail) => {
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+    if (percent === 100 && normalizedStatus !== 'DONE') {
+      return { percent: null, source: 'non_terminal_100_rejected', detail: '100% chỉ dành cho công việc đã hoàn tất' };
+    }
+    return { percent, source: progressSource, detail };
+  };
+
+  // Checklist đã xác minh là cơ sở chính; tránh % khai báo khác với số bước thực tế.
+  const checklist = checklistForIssue(issue);
+  if (checklist.total >= 2 && checklist.verified) {
+    const completePercent = Math.round((checklist.done / checklist.total) * 100);
+    const percent = checklist.done < checklist.total ? Math.min(99, completePercent) : completePercent;
+    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', checklist.done + '/' + checklist.total + ' bước xác minh');
+    if (accepted) return accepted;
+    // Nếu mọi checkbox được tích nhưng việc chưa DONE, không lấy % khai báo để thay thế.
+    if (checklist.done === checklist.total) return { percent: null, source: 'non_terminal_100_rejected', detail: 'Chờ xác minh điều kiện DONE' };
+  }
+
+  const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
+  if (/^\d{1,3}$/.test(explicitRaw)) {
+    const explicit = Number(explicitRaw);
+    const accepted = acceptVerifiedPercent(explicit, 'explicit_verified', 'PROGRESS_PERCENT · verified');
+    if (accepted) return accepted;
+  }
+
+
+  return { percent: null, source: 'none', detail: null };
+}
+
+export function verifiedCompletionProgress(openRows = [], completedRows = [], options = {}) {
+  const open = (Array.isArray(openRows) ? openRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5');
+  const done = (Array.isArray(completedRows) ? completedRows : []).filter((row) => row && row.workKind === 'WORK' && String(row.priority || row.effectivePriority || '').toUpperCase() !== 'P5' && String(row.status || '').toUpperCase() === 'DONE');
+  const explicitCompleted = Number(options.completedCount);
+  const completedItems = Number.isFinite(explicitCompleted) && explicitCompleted >= 0 ? explicitCompleted : done.length;
+  const scopeItems = open.length + completedItems;
+  if (options.complete === false) {
+    return { percent: null, source: 'incomplete_enumeration', scopeItems, completedItems };
+  }
+  return {
+    percent: scopeItems ? Math.round((completedItems / scopeItems) * 100) : null,
+    source: 'terminal_completion',
+    scopeItems,
+    completedItems,
+    remainingItems: open.length,
+    basis: 'current_non_p5_open_plus_recent_' + RECENT_WORK_LIMIT + '_completed',
+  };
+}
+
+export function verifiedPortfolioProgress(rows = [], options = {}) {
+  const scope = (Array.isArray(rows) ? rows : []).filter((row) => row && row.workKind === 'WORK');
+  const verified = scope.filter((row) => ['explicit_verified','checklist_verified'].includes(String(row.progressSource || ''))
+    && Number.isFinite(Number(row.progressPercent)));
+  const scopeItems = scope.length;
+  const verifiedItems = verified.length;
+  const coveragePercent = scopeItems ? Math.round((verifiedItems / scopeItems) * 100) : null;
+  if (options.complete === false) {
+    return {
+      percent: null,
+      source: 'incomplete_enumeration',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
+  if (!scopeItems || verifiedItems !== scopeItems) {
+    return {
+      percent: null,
+      source: 'incomplete_verified_coverage',
+      scopeItems,
+      verifiedItems,
+      coveragePercent,
+    };
+  }
+  const percent = Math.round(verified.reduce((sum, row) => sum + Math.max(0, Math.min(100, Number(row.progressPercent))), 0) / scopeItems);
+  return {
+    percent,
+    source: 'verified_issue_average',
+    scopeItems,
+    verifiedItems,
+    coveragePercent: 100,
+  };
+}
+
+export function parseOpenWorkIssue(issue, overlays = {}) {
+  if (!issue || issue.pull_request || issue.state !== 'open') return null;
+  const number = Number(issue.number);
+  if (!number) return null;
+  const active = overlays.active || null;
+  const queued = overlays.queued || null;
+  const body = String(issue.body || '');
+  const lifecycle = overlays.lifecycle || null;
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const lifecycleCurrent = Boolean(lifecycle && lifecycleAt && (!issueAt || lifecycleAt + 60_000 >= issueAt));
+  const currentLifecycle = lifecycleCurrent ? lifecycle : null;
+  const effectiveOverlays = currentLifecycle === lifecycle ? overlays : { ...overlays, lifecycle: null };
+  const classification = classifyOpenIssue(issue);
+  const canonicalPhase = issueCanonicalState(issue);
+  const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
+  const status = actionableStatus(issue, effectiveOverlays);
+  const admission = safeAutoWorkAdmission(issue);
+  const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
+  const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
+  const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
+  const lifecycleRunnable = lifecycleHasNoBlocker && ['WORKING','REVIEW','QUEUED'].includes(String(lifecycleDisplayStatus || '').toUpperCase());
+  const lifecycleAdmission = lifecycleRunnable
+    ? safeAutoWorkAdmission({
+        ...issue,
+        body: [
+          'CURRENT_STATE=' + String(currentLifecycle?.state || ''),
+          'TIGERIQ_EXECUTABLE=true',
+          'AUTO_QUEUE=INCLUDED',
+          body,
+        ].join('\n'),
+      })
+    : null;
+  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
+    ? 'READY'
+    : rawExecutionEligibility;
+
+  const checks = classification.ownerGate ? null : active?.checks || null;
+  const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
+  const originalChecklist = classification.workKind === 'WORK' ? checklistForIssue(issue) : { steps: [], done: 0, total: 0, remaining: 0, verified: false };
+  const githubChecklist = originalChecklist.total < 2 ? overlays.githubMilestones || null : null;
+  const checklist = githubChecklist || originalChecklist;
+  const progress = classification.workKind === 'SYSTEM'
+    ? { percent: null, source: 'none', detail: null }
+    : githubChecklist && githubChecklist.verified
+      ? { percent:Math.min(status === 'DONE' ? 100 : 99,Math.round(githubChecklist.done / githubChecklist.total * 100)),
+          source:'github_gates_verified',detail:githubChecklist.done+'/'+githubChecklist.total+' cổng GitHub xác minh' }
+      : progressForIssue(issue, status, checks, hasPull);
+  const priority = issuePriority(issue);
+  const relations = workflowRelationsForIssue(issue);
+  const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
+  const currentStep = classification.ownerGate
+    ? technicalComplete
+      ? 'Đã xong kỹ thuật · chờ anh Sơn duyệt'
+      : bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
+    : active?.currentStep
+      || queued?.waitReason
+      || currentLifecycle?.step
+      || currentLifecycle?.nextStep
+      || bodyValue(body, 'CURRENT_STEP')
+      || null;
+  const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
+    || bodyValue(body, 'LATEST_COMPLETED_STEP')
+    || bodyValue(body, 'LAST_DONE')
+    || (technicalComplete ? 'Đã xong kỹ thuật và có bằng chứng canonical' : null)
+    || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
+  const nextStep = currentLifecycle?.nextStep
+    || bodyValue(body, 'NEXT')
+    || bodyValue(body, 'NEXT_ACTION')
+    || (classification.ownerGate ? 'Duyệt bản live' : null);
+  const executionPlan = classification.workKind === 'WORK' && checklist.total < 2
+    ? executionPlanForIssue(issue, nextStep || '')
+    : { steps: [], source: null };
+  const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
+  const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
+  const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
+    ? rawBlocker
+    : null;
+  const activeEvidenceUrl = classification.ownerGate
+    ? null
+    : safeEvidenceUrl(active?.evidenceUrl)
+      || safeEvidenceUrl(active?.prUrl)
+      || null;
+  const bodyEvidenceUrl = safeEvidenceUrl(bodyValue(body, 'EVIDENCE_URL'));
+  const canonicalOwnerEvidenceUrl = technicalComplete ? safeEvidenceUrl(issue.html_url || '') : null;
+  const evidenceUrl = activeEvidenceUrl || bodyEvidenceUrl || canonicalOwnerEvidenceUrl || null;
+  const evidenceAt = activeEvidenceUrl
+    ? safeEvidenceTimestamp(active?.updatedAt)
+    : bodyEvidenceUrl
+      ? safeEvidenceTimestamp(bodyValue(body, 'EVIDENCE_AT') || bodyValue(body, 'EVIDENCE_TIMESTAMP'))
+      : technicalComplete
+        ? safeEvidenceTimestamp(issue.updated_at)
+        : null;
+  const activeWorker = active?.live === true && active?.employeeId ? active.employeeId : null;
+  const activeLease = Boolean(activeWorker && ['WORKING','REVIEW','VERIFY'].includes(status));
+  const heartbeatFresh = active?.live === true ? true : null;
+  const waitReason = queued?.waitReason
+    || (['WAITING','BLOCKED'].includes(status) ? (rawBlocker || bodyValue(body, 'WAIT_REASON') || phase || null) : null);
+  const rearmCondition = firstBodyValue(body, ['REARM_CONDITION','REARM_ONLY','REPEAT_REQUIRES','NEXT_CONDITION']) || null;
+
+  return {
+    number,
+    title: String(issue.title || ''),
+    priority,
+    effectivePriority: priority,
+    sourcePriority: priority,
+    employeeId: issueIsAppChromeControlPlane(issue)
+      ? issueDisplayOwner(issue)
+      : classification.ownerGate
+        ? issueDisplayOwner(issue)
+        : active?.employeeId || queued?.targetWorker || issueDisplayOwner(issue),
+    status,
+    displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
+    executionEligibility,
+    executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
+    waitReason: waitReason || (executionEligibility === 'READY' ? null : (admission.reason || null)),
+    rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
+    activeLease,
+    activeWorker,
+    heartbeatFresh,
+    workKind: classification.workKind,
+    ...relations,
+    ownerGate: classification.ownerGate,
+    ownerApprovalRequired: classification.ownerApprovalRequired,
+    ownerApprovalPending: classification.ownerGate,
+    ownerAccepted: classification.ownerAccepted,
+    technicalComplete,
+    currentState: phase || null,
+    currentStep,
+    latestCompletedStep,
+    nextStep,
+    nextAction: nextStep,
+    blocker,
+    evidenceUrl,
+    evidenceAt,
+    latestEvidenceAt: evidenceAt,
+    progressPercent: progress.percent,
+    progressSource: progress.source,
+    progressDetail: progress.detail,
+    progressSteps: checklist.steps,
+    progressDone: checklist.done,
+    progressTotal: checklist.total,
+    progressRemaining: checklist.remaining,
+    progressChecklistVerified: checklist.verified,
+    executionSteps: executionPlan.steps,
+    executionPlanSource: executionPlan.source,
+    prNumber: classification.ownerGate ? null : active?.prNumber || null,
+    prUrl: classification.ownerGate ? null : active?.prUrl || null,
+    checks,
+    updatedAt: classification.ownerGate
+      ? issue.updated_at || null
+      : active?.updatedAt || queued?.updatedAt || currentLifecycle?.createdAt || issue.updated_at || null,
+    url: issue.html_url || null,
+    meta: !priority,
+  };
+}
+
+function githubActiveState(issue) {
+  const body = String(issue?.body || '');
+  const state = bodyValue(body, 'STATE').toUpperCase();
+  const owner = bodyValue(body, 'MUTATION_OWNER') || bodyValue(body, 'ASSIGNED_EXECUTOR') || bodyValue(body, 'ACTIVE_OWNER');
+  if (!owner) return null;
+  if (['WORKING', 'RUNNING', 'IN_PROGRESS'].includes(state)) return { status: 'WORKING', owner };
+  if (['REVIEW', 'VERIFY', 'REVIEWING'].includes(state)) return { status: 'REVIEW', owner };
+  if (state.includes('BLOCKED')) return { status: 'BLOCKED', owner };
+  if (state === 'WAITING') return { status: 'WAITING', owner };
+  return null;
+}
+
+async function githubIssue(owner, repo, number, issueMap, fetchImpl) {
+  if (issueMap.has(number)) return issueMap.get(number);
+  try { return await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl); } catch { return null; }
+}
+
+function skillPromotionSnapshot() {
+  try {
+    const state = loadSkillPromotionState();
+    return {
+      state: 'AVAILABLE',
+      summary: state.summary,
+      entries: state.queue.entries.map((entry) => ({
+        skillId: entry.skillId,
+        status: entry.status,
+        blocker: entry.blocker,
+        nextCondition: entry.nextCondition,
+        nextEligibleAt: entry.nextEligibleAt,
+        promotionEligible: entry.promotionEligible,
+      })),
+    };
+  } catch (error) {
+    return {
+      state: 'UNAVAILABLE',
+      summary: { active: 0, validatedWaiting: 0, validatedBlocked: 0, canaryReady: 0, canaryRunning: 0, promotionEligible: 0, tracked: 0 },
+      entries: [],
+      reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+    };
+  }
+}
+
+export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
+  const { owner, repo } = repoParts();
+  let projectionStale = false;
+  let projectionReason = null;
+  let issues;
+  let pulls;
+  let runPayload;
+  let issuesComplete = true;
+  try {
+    const now = Date.now();
+    const cached = githubProjectionCache.data && now - githubProjectionCache.at < GITHUB_PROJECTION_CACHE_MS;
+    if (cached) {
+      ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+      issuesComplete = issuesComplete === true;
+      if (githubProjectionCache.data?.projectionStale === true) {
+        projectionStale = true;
+        projectionReason = githubProjectionCache.data?.projectionReason || 'GitHub cached projection marked stale';
+      }
+    } else {
+      try {
+        const transportBefore = githubTransportSnapshot();
+        const [issuePages, openPullPayload, workflowPayload] = await Promise.all([
+          ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=open&per_page=100&sort=updated&direction=desc', fetchImpl),
+          known.pulls ? Promise.resolve(known.pulls) : gh('/repos/' + owner + '/' + repo + '/pulls?state=open&sort=updated&direction=desc&per_page=100', fetchImpl),
+          known.runs ? Promise.resolve({ workflow_runs: known.runs }) : gh('/repos/' + owner + '/' + repo + '/actions/runs?per_page=100', fetchImpl),
+        ]);
+        issues = issuePages.rows;
+        issuesComplete = issuePages.complete;
+        pulls = openPullPayload;
+        runPayload = workflowPayload;
+        const transportAfter = githubTransportSnapshot();
+        if (projectionTransportStale(transportBefore, transportAfter)) {
+          projectionStale = true;
+          projectionReason = 'GitHub shared cache/backoff served stale data';
+          issuesComplete = false;
+        }
+        githubProjectionCache = {
+          at: now,
+          verifiedAt: new Date().toISOString(),
+          data: { issues, pulls, runPayload, issuesComplete, projectionStale, projectionReason },
+        };
+      } catch (error) {
+        if (!githubProjectionCache.data) throw error;
+        ({ issues, pulls, runPayload, issuesComplete } = githubProjectionCache.data);
+        issuesComplete = issuesComplete !== false;
+        projectionStale = true;
+        projectionReason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      }
+    }
+    const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
+    base = projectExternalRoleClaims(base, openIssues);
+    const openPulls = Array.isArray(pulls) ? pulls : [];
+    const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
+    const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
+    const lifecycleOverrides = await latestStructuredLifecycleOverrides(openIssues, owner, repo, fetchImpl);
+    const activeRows = [];
+    const activeNumbers = new Set();
+
+    for (const row of runtimeWorkRows(base.workers || [], openIssues)) {
+      const issue = await githubIssue(owner, repo, row.issueNumber, issueMap, fetchImpl);
+      if (!issue || issue.pull_request || issue.state !== 'open') continue;
+      activeNumbers.add(row.issueNumber);
+      const pull = row.prNumber
+        ? openPulls.find((item) => Number(item.number) === row.prNumber)
+        : openPulls.find((item) => pullMentionsIssue(item, row.issueNumber));
+      const checks = summarizeChecks(runs, pull);
+      const liveStatus = checks?.state === 'LỖI' ? 'BLOCKED' : row.runtimeStatus === 'WAITING' && pull ? 'REVIEW' : row.runtimeStatus;
+      activeRows.push({
+        number: row.issueNumber,
+        title: String(issue.title || ''),
+        priority: issuePriority(issue),
+        employeeId: row.employeeId,
+        status: liveStatus,
+        currentStep: row.currentStep,
+        prNumber: pull?.number || row.prNumber || null,
+        prUrl: pull?.html_url || null,
+        checks,
+        evidenceUrl: pull?.html_url || issue.html_url || null,
+        updatedAt: row.updatedAt || issue.updated_at || null,
+        url: issue.html_url || null,
+        live: base.liveConnected === true,
+      });
+    }
+
+    for (const pull of openPulls) {
+      const issueNumber = parseIssueNumber(pull?.body, pull?.title, pull?.head?.ref);
+      if (!issueNumber || activeNumbers.has(issueNumber)) continue;
+      const issue = await githubIssue(owner, repo, issueNumber, issueMap, fetchImpl);
+      if (!issue || issue.pull_request || issue.state !== 'open' || issueIsTerminal(issue)) continue;
+      const checks = summarizeChecks(runs, pull);
+      activeNumbers.add(issueNumber);
+      activeRows.push({
+        number: issueNumber,
+        title: String(issue.title || ''),
+        priority: issuePriority(issue),
+        employeeId: bodyValue(issue.body || '', 'MUTATION_OWNER') || prWorker(pull) || null,
+        status: checks?.state === 'LỖI' ? 'BLOCKED' : 'REVIEW',
+        currentStep: checks?.state === 'LỖI' ? 'Kiểm tra PR đang lỗi'
+          : checks?.state === 'ĐANG CHẠY' ? 'Đang chạy kiểm tra PR'
+            : 'PR đang mở · chờ hoàn tất kiểm tra/rà soát',
+        prNumber: pull.number || null,
+        prUrl: pull.html_url || null,
+        checks,
+        evidenceUrl: pull.html_url || issue.html_url || null,
+        updatedAt: pull.updated_at || issue.updated_at || null,
+        url: issue.html_url || null,
+        live: false,
+      });
+    }
+
+    if (base.liveConnected !== true) {
+      for (const issue of openIssues) {
+        const issueNumber = Number(issue.number);
+        if (!issueNumber || activeNumbers.has(issueNumber) || issueIsTerminal(issue)) continue;
+        const explicit = githubActiveState(issue);
+        if (!explicit) continue;
+        const pull = openPulls.find((item) => pullMentionsIssue(item, issueNumber));
+        if (!pull) continue;
+        const checks = summarizeChecks(runs, pull);
+        const status = checks?.state === 'LỖI' ? 'BLOCKED' : 'REVIEW';
+        activeNumbers.add(issueNumber);
+        activeRows.push({
+          number: issueNumber,
+          title: String(issue.title || ''),
+          priority: issuePriority(issue),
+          employeeId: explicit.owner,
+          status,
+          currentStep: checks?.state === 'LỖI' ? 'Kiểm tra PR đang lỗi'
+            : checks?.state === 'ĐANG CHẠY' ? 'Đang chạy kiểm tra PR'
+              : 'PR đang mở · chờ hoàn tất kiểm tra/rà soát',
+          prNumber: pull?.number || null,
+          prUrl: pull?.html_url || null,
+          checks,
+          evidenceUrl: pull?.html_url || issue.html_url || null,
+          updatedAt: pull?.updated_at || issue.updated_at || null,
+          url: issue.html_url || null,
+          live: false,
+        });
+      }
+    }
+
+    if (!activeRows.length && base.liveConnected !== true) {
+      for (const worker of base.workers || []) {
+        const issueNumber = parseIssueNumber(worker?.job, worker?.source?.url);
+        if (!issueNumber || activeNumbers.has(issueNumber) || !['working', 'waiting', 'blocked'].includes(worker?.state)) continue;
+        const issue = issueMap.get(issueNumber);
+        if (!issue || issue.state !== 'open') continue;
+        const pull = openPulls.find((item) => Number(item.number) === Number(worker?.source?.number) || pullMentionsIssue(item, issueNumber));
+        const checks = summarizeChecks(runs, pull);
+        activeNumbers.add(issueNumber);
+        activeRows.push({
+          number: issueNumber,
+          title: String(issue.title || ''),
+          priority: issuePriority(issue),
+          employeeId: worker.employeeId || null,
+          status: worker.state === 'blocked' || checks?.state === 'LỖI' ? 'BLOCKED' : pull ? 'REVIEW' : worker.state === 'working' ? 'WORKING' : 'WAITING',
+          currentStep: cleanText(worker.detail || worker.job || '', 220) || null,
+          prNumber: pull?.number || null,
+          prUrl: pull?.html_url || null,
+          checks,
+          evidenceUrl: pull?.html_url || issue.html_url || null,
+          updatedAt: worker.updatedAt || issue.updated_at || null,
+          url: issue.html_url || null,
+          live: false,
+        });
+      }
+    }
+
+    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWork = annotatePortfolioRows(recentWorkSnapshot.rows);
+    const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
+    const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
+    const resolvedQueue = specs.map((row) => {
+      if (row.status !== 'QUEUED') return row;
+      const waiting = (row.dependencies || []).filter((number) => {
+        const dep = depStates.get(number);
+        return !dep || dep.state !== 'closed' || dep.isPull === true;
+      });
+      if (!waiting.length) return row;
+      const unknown = waiting.filter((number) => depStates.get(number)?.state === 'unknown');
+      return {
+        ...row,
+        status: unknown.length ? 'BLOCKED' : 'WAITING',
+        waitReason: unknown.length
+          ? 'Chưa xác minh dependency ' + unknown.map((n) => '#' + n).join(', ')
+          : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
+      };
+    });
+    const rankedQueue = rankQueueRows(resolvedQueue);
+    const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
+    const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
+
+    const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
+    const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
+    const [resultInboxProjection, githubMilestones] = await Promise.all([
+      ownerResultInboxProjection(openIssues, owner, repo, fetchImpl),
+      githubMilestonesForIssues(openIssues, owner, repo, fetchImpl),
+    ]);
+    const openWork = annotatePortfolioRows(openIssues.map((issue) => parseOpenWorkIssue(issue, {
+      githubMilestones: githubMilestones.get(Number(issue.number)) || null,
+      active: activeMap.get(Number(issue.number)) || null,
+      queued: queueMap.get(Number(issue.number)) || null,
+      lifecycle: lifecycleOverrides.get(Number(issue.number)) || null,
+      hasPull: openPulls.some((pull) => pullMentionsIssue(pull, Number(issue.number))),
+    })).filter(Boolean), openIssues).sort((a, b) => {
+      const actionRank = {
+        OWNER_GATE: 0,
+        WORKING: 1,
+        REVIEW: 2,
+        VERIFY: 3,
+        QUEUED: 4,
+        BLOCKED: 5,
+        WAITING: 6,
+        OPEN: 7,
+        GOAL: 8,
+        SYSTEM: 9,
+      };
+      const sa = actionRank[a.status] ?? 8;
+      const sb = actionRank[b.status] ?? 8;
+      if (sa !== sb) return sa - sb;
+      const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+      const pa = priorityRank[a.priority] ?? 9;
+      const pb = priorityRank[b.priority] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
+    });
+    if (resultInboxProjection) {
+      const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
+      if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
+    }
+
+    const actionable = openWork.filter((row) => row.workKind === 'WORK');
+    const openSummary = {
+      open: openWork.length,
+      actionable: actionable.length,
+      owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
+      running: actionable.filter((row) => row.status === 'WORKING').length,
+      review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
+      blocked: actionable.filter((row) => row.status === 'BLOCKED').length,
+      queued: actionable.filter((row) => row.status === 'QUEUED').length,
+      unknown: actionable.filter((row) => row.status === 'UNKNOWN').length,
+      waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
+      system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
+      done: recentWork.length,
+    };
+    const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
+    const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
+    const completionProgress = verifiedCompletionProgress(actionable, completionScope.rows, {
+      complete: issuesComplete === true && !projectionStale && completionScope.complete === true,
+    });
+    completionProgress.scope = completionScope.scope || 'current_open_plus_structural_references';
+    completionProgress.referencedItems = completionScope.referenced || 0;
+    const stabilityIssue = openIssues.find((issue) => Number(issue?.number) === 2891) || null;
+    const stabilityBody = String(stabilityIssue?.body || '');
+    const apiWorkers = (Array.isArray(base?.workers) ? base.workers : []).filter((worker) => {
+      const n = Number(String(worker?.employeeId || '').replace(/\D/g, ''));
+      return n >= 11 && n <= 20 && Boolean(String(worker?.provider || '').trim());
+    });
+    const apiRuntimeVerified = base?.liveConnected === true && apiWorkers.length > 0;
+    const healthyProviders = new Set(apiRuntimeVerified
+      ? apiWorkers.filter((worker) => ['working','idle'].includes(String(worker?.state || '').toLowerCase()))
+        .map((worker) => String(worker?.provider || '').trim()).filter(Boolean)
+      : []);
+    const apiWorkforceSummary = {
+      verified: apiRuntimeVerified,
+      healthyProviders: apiRuntimeVerified ? healthyProviders.size : null,
+      healthyTarget: optionalBodyNumber(stabilityBody, ['REQUIRED_HEALTHY_PROVIDER_COUNT','HEALTHY_PROVIDER_COUNT']) ?? 3,
+      stabilityRounds: optionalBodyNumber(stabilityBody, 'STABILITY_ROUNDS_COUNTED'),
+      stabilityRoundsRequired: optionalBodyNumber(stabilityBody, 'ROUND_COUNT_REQUIRED') ?? 3,
+      realJobs: optionalBodyNumber(stabilityBody, ['REAL_JOBS_COMPLETED','REAL_JOBS_COUNTED']),
+      realJobsRequired: optionalBodyNumber(stabilityBody, 'TOTAL_REAL_JOBS_REQUIRED') ?? 15,
+      blocker: cleanText(bodyValue(stabilityBody, 'CURRENT_BLOCKER') || bodyValue(stabilityBody, 'BLOCKED_BY') || (stabilityIssue ? 'Theo dõi #2891' : ''), 120) || null,
+      issueNumber: stabilityIssue ? 2891 : null,
+    };
+
+    return {
+      ...base,
+      skillPromotion: skillPromotionSnapshot(),
+      openWork: openWork.map(ownerFacingWorkRow),
+      openSummary,
+      portfolioProgress,
+      completionProgress,
+      apiWorkforceSummary,
+      projectPortfolio: buildProjectPortfolio(openWork),
+      activeWork: activeRows.sort((a, b) => compareQueueRows(
+        { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
+        { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
+      )).map(ownerFacingWorkRow),
+      nextQueue: nextQueue.map(ownerFacingWorkRow),
+      nextQueueTotal: rankedQueue.length,
+      nextExecutable: nextExecutable ? ownerFacingWorkRow(nextExecutable) : null,
+      recentWork: recentWork.map(ownerFacingWorkRow),
+      workProjection: {
+        mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: projectionStale ? 'GitHub snapshot xác minh gần nhất' : 'PC01 runtime when available + GitHub canonical parsers',
+        verifiedAt: githubProjectionCache.verifiedAt,
+        stale: projectionStale,
+        reason: projectionReason,
+        queueLimit: QUEUE_LIMIT,
+        nextExecutableIssue: nextExecutable?.number || null,
+        openIssueEnumerationComplete: issuesComplete === true && !projectionStale,
+      },
+    };
+  } catch (error) {
+    return {
+      ...base,
+      skillPromotion: skillPromotionSnapshot(),
+      openWork: [],
+      openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
+      activeWork: [],
+      nextQueue: [],
+      nextQueueTotal: 0,
+      recentWork: [],
+      projectPortfolio: [],
+      workProjection: {
+        mode: 'unavailable',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: 'GitHub unavailable',
+        reason: String(error instanceof Error ? error.message : error).slice(0, 120),
+        queueLimit: QUEUE_LIMIT,
+      },
+    };
+  }
+}
+
+export function sanitizeRuntimePayload(payload) {
+  if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
+  const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
+  const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt)).map(ownerFacingWorkRow);
+  const summary = {
+    working: workers.filter((w) => w.state === 'working').length,
+    waiting: workers.filter((w) => w.state === 'waiting').length,
+    blocked: workers.filter((w) => w.state === 'blocked').length,
+    idle: workers.filter((w) => w.state === 'idle').length,
+    unknown: workers.filter((w) => w.state === 'unknown').length,
+    paused: workers.filter((w) => w.state === 'paused').length,
+    total: workers.length,
+  };
+  return {
+    ok: true,
+    liveConnected: true,
+    mode: 'pc01-live',
+    authority: 'PC01 live runtime',
+    generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt.slice(0, 64) : new Date().toISOString(),
+    refreshSeconds: 5,
+    source: {
+      runtime: 'PC01 Core + Coding Lane',
+      core: payload.source?.core === true,
+      coding: payload.source?.coding === true,
+      uiAutopilot: payload.source?.uiAutopilot === true,
+    },
+    summary,
+    workers,
+    activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
+    nextQueue: [],
+    nextQueueTotal: 0,
+    recentWork: [],
+  };
+}
+
+async function resolveRuntimeBridge(fetchImpl = fetch) {
+  const now = Date.now();
+  if (pointerCache.url && now - pointerCache.at < POINTER_CACHE_MS) return pointerCache.url;
+  const { owner, repo } = repoParts();
+  const issue = await gh(`/repos/${owner}/${repo}/issues/${RUNTIME_POINTER_ISSUE}`, fetchImpl);
+  const url = parseRuntimeBridgeUrl(issue.body || '');
+  pointerCache = { at: now, url };
+  return url;
+}
+
+async function fetchRuntimeBridgePayload(base, fetchImpl = fetch) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RUNTIME_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(`${base}/status`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+      redirect: 'error',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`runtime_bridge_http_${response.status}`);
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchPc01Runtime(fetchImpl = fetch) {
+  let base = await resolveRuntimeBridge(fetchImpl);
+  try {
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
+  } catch (error) {
+    const reason = String(error instanceof Error ? error.message : error);
+    if (!/^runtime_bridge_(?:http_|pointer_|payload_|fetch|timeout)/i.test(reason) && !/AbortError/i.test(reason)) throw error;
+    pointerCache = { at: 0, url: null };
+    const refreshedBase = await resolveRuntimeBridge(fetchImpl);
+    if (refreshedBase === base && !/^runtime_bridge_http_530$/i.test(reason)) throw error;
+    base = refreshedBase;
+    return sanitizeRuntimePayload(await fetchRuntimeBridgePayload(base, fetchImpl));
+  }
+}
+
+export async function fetchPc01Live(fetchImpl = fetch) {
+  const now = Date.now();
+  let runtime = runtimeCache.value && now - runtimeCache.at < CACHE_MS ? runtimeCache.value : null;
+  if (!runtime) {
+    runtime = await fetchPc01Runtime(fetchImpl);
+    runtimeCache = { at: now, value: runtime };
+  }
+  return buildWorkSections(runtime, fetchImpl);
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+  const now = Date.now();
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  const workforceOnly = req.query?.scope === 'workforce' || requestUrl.searchParams.get('scope') === 'workforce';
+
+  if (workforceOnly) {
+    if (runtimeCache.value && now - runtimeCache.at < CACHE_MS) return json(res, 200, runtimeCache.value);
+    try {
+      const value = await fetchPc01Runtime();
+      runtimeCache = { at: now, value };
+      return json(res, 200, value);
+    } catch (error) {
+      const reason = String(error instanceof Error ? error.message : error).slice(0, 120);
+      if (runtimeCache.value && now - runtimeCache.at < STALE_RESPONSE_MS) {
+        return json(res, 200, {
+          ...runtimeCache.value,
+          liveConnected: false,
+          mode: 'stale-cache',
+          authority: 'Dữ liệu runtime xác minh gần nhất',
+          staleAll: true,
+          staleAt: runtimeCache.value.generatedAt || null,
+          liveReason: reason,
+        });
+      }
+      return json(res, 200, {
+        ok: false,
+        liveConnected: false,
+        mode: 'unavailable',
+        authority: 'Không có nguồn runtime',
+        generatedAt: new Date().toISOString(),
+        reason,
+        summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
+        workers: [],
+      });
+    }
+  }
+
+  if (cache.value && now - cache.at < CACHE_MS) return json(res, 200, cache.value);
+
+  let liveError = null;
+  try {
+    const value = await fetchPc01Live();
+    cache = { at: now, value };
+    return json(res, 200, value);
+  } catch (error) {
+    liveError = String(error instanceof Error ? error.message : error).slice(0, 120);
+  }
+
+  try {
+    const value = await buildLiveStatus();
+    value.liveConnected = false;
+    value.mode = 'github-fallback';
+    value.authority = 'GitHub/Registry dự phòng';
+    value.refreshSeconds = 5;
+    value.liveReason = liveError;
+    value.staleAll = false;
+    cache = { at: now, value };
+    return json(res, 200, value);
+  } catch (error) {
+    if (cache.value && now - cache.at < STALE_RESPONSE_MS) {
+      const value = {
+        ...cache.value,
+        liveConnected: false,
+        mode: 'stale-cache',
+        authority: 'Dữ liệu xác minh gần nhất',
+        staleAll: true,
+        staleAt: cache.value.generatedAt || null,
+        liveReason: liveError || String(error instanceof Error ? error.message : error).slice(0, 120),
+      };
+      return json(res, 200, value);
+    }
+    return json(res, 200, {
+      ok: false,
+      liveConnected: false,
+      mode: 'unavailable',
+      authority: 'Không có nguồn live',
+      generatedAt: new Date().toISOString(),
+      reason: localizeOwnerFacingText(liveError || String(error instanceof Error ? error.message : error).slice(0, 120)),
+      summary: { working: 0, waiting: 0, blocked: 0, idle: 0, unknown: 0, paused: 0, total: 0 },
+      workers: [],
+      activeWork: [],
+      nextQueue: [],
+      nextQueueTotal: 0,
+      recentWork: [],
+      projectPortfolio: [],
+      workProjection: {
+        mode: 'unavailable',
+        queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
+        source: 'Không có nguồn xác minh',
+      },
+    });
+  }
+}
+,'mi'));if(m)return m[1].trim();}return '';};
+  const ref=field(['PR_IN_PROGRESS','PR','TARGET_PR','SOURCE_PR','PR_URL','TARGET_PR_NUMBER']);
+  const prNumber=Number(ref.match(/(?:pull\/|#|^)(\d{2,8})\b/i)?.[1]||0);
+  const head=field(['TARGET_EXACT_HEAD','CURRENT_EXACT_HEAD','TARGET_HEAD','PR_HEAD','SOURCE_COMMIT','EXACT_HEAD']);
+  if(!prNumber||!/^[0-9a-f]{40}$/i.test(head))return null;
+  const runId=(keys)=>{const v=field(keys);return /^PASS(?:\||$)/i.test(v)?Number(v.match(/\bRUN_(\d{6,})\b/i)?.[1]||0)||null:null;};
+  return {prNumber,head:head.toLowerCase(),ciRunId:runId(['EXACT_HEAD_CI','CI_HEAD','SOURCE_CI','CI']),queueRunId:runId(['EXACT_HEAD_QUEUE_HYGIENE','QUEUE_HYGIENE','SOURCE_QUEUE_HYGIENE']),block};
+}
+export function githubMilestoneChecklist(issue,spec,proof={}){
+  if(!spec||!proof.pr||Number(proof.pr.number)!==spec.prNumber||String(proof.pr.head?.sha||'').toLowerCase()!==spec.head)return null;
+  const base='https://github.com/'+REPO,prUrl=base+'/pull/'+spec.prNumber;
+  const runOk=(run,id,ci)=>Boolean(id&&Number(run?.id)===id&&run?.status==='completed'&&run?.conclusion==='success'
+    &&String(run?.head_sha||'').toLowerCase()===spec.head
+    &&(ci?/^CI(?:\s|$)|CI Verify/i.test(String(run?.name||'')):/queue hygiene/i.test(String(run?.name||''))));
+  const ci=runOk(proof.ciRun,spec.ciRunId,true),queue=runOk(proof.queueRun,spec.queueRunId,false);
+  const author=String(proof.pr.user?.login||'').toLowerCase(),latest=new Map();
+  for(const r of (Array.isArray(proof.reviews)?proof.reviews:[])){
+    const user=String(r?.user?.login||'').toLowerCase(),at=Date.parse(r?.submitted_at||'')||0;
+    if(!user||user===author||String(r?.commit_id||'').toLowerCase()!==spec.head)continue;
+    if(!latest.has(user)||at>=latest.get(user).at)latest.set(user,{state:r.state,at,url:r.html_url});
+  }
+  const review=[...latest.values()].find(x=>x.state==='APPROVED');
+  const merged=proof.pr.merged===true&&Boolean(proof.pr.merge_commit_sha);
+  const doneIssue=issue?.state==='closed'&&/^true$/i.test(spec.block.match(/^DONE=(.+)$/mi)?.[1]?.trim()||'');
+  const steps=[
+    {title:'PR #'+spec.prNumber+' đúng HEAD',done:true,evidenceUrl:proof.pr.html_url||prUrl},
+    {title:'CI PASS đúng HEAD',done:ci,evidenceUrl:ci?base+'/actions/runs/'+spec.ciRunId:null},
+    {title:'Queue Hygiene PASS đúng HEAD',done:queue,evidenceUrl:queue?base+'/actions/runs/'+spec.queueRunId:null},
+    {title:'Reviewer độc lập APPROVED',done:Boolean(review),evidenceUrl:review?.url||null},
+    {title:'PR đã hợp nhất',done:merged,evidenceUrl:merged?prUrl:null},
+    {title:'Work Order đã đóng và DONE=true',done:doneIssue,evidenceUrl:doneIssue?base+'/issues/'+issue.number:null},
+  ];
+  const done=steps.filter(x=>x.done).length;
+  return {steps,done,total:steps.length,remaining:steps.length-done,verified:true,source:'GITHUB_VERIFIED_GATES'};
+}
+const githubMilestoneCache=new Map();
+export async function githubMilestonesForIssues(issues,owner,repo,fetchImpl=fetch){
+  const candidates=(Array.isArray(issues)?issues:[]).map(issue=>({issue,spec:githubMilestoneSpec(issue)})).filter(x=>x.spec);
+  const result=new Map(),root='/repos/'+owner+'/'+repo;
+  await Promise.all(candidates.map(async({issue,spec})=>{
+    const n=Number(issue.number),now=Date.now(),key=[issue.updated_at,spec.prNumber,spec.head,spec.ciRunId,spec.queueRunId].join('|');
+    const cached=githubMilestoneCache.get(n);
+    if(cached?.key===key&&now-cached.at<60000){if(cached.value)result.set(n,cached.value);return;}
+    let value=null;
+    try{
+      const [pr,ciRun,queueRun,reviews]=await Promise.all([
+        gh(root+'/pulls/'+spec.prNumber,fetchImpl),
+        spec.ciRunId?gh(root+'/actions/runs/'+spec.ciRunId,fetchImpl):Promise.resolve(null),
+        spec.queueRunId?gh(root+'/actions/runs/'+spec.queueRunId,fetchImpl):Promise.resolve(null),
+        gh(root+'/pulls/'+spec.prNumber+'/reviews?per_page=100',fetchImpl),
+      ]);
+      value=githubMilestoneChecklist(issue,spec,{pr,ciRun,queueRun,reviews});
+    }catch{/* Fail closed on unavailable GitHub evidence. */}
+    githubMilestoneCache.set(n,{at:now,key,value});
+    if(value)result.set(n,value);
+  }));
+  return result;
+}
+
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
   const normalizedStatus = String(status || 'OPEN').toUpperCase();
