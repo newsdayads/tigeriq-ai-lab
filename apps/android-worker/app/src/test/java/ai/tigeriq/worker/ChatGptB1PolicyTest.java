@@ -147,6 +147,37 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void projectGateEvidenceIsFreshEnumOnlyAndNeverRawUiText() {
+        assertEquals("CONTEXT_WAIT", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "CONTEXT_WAIT", 1_100L, 1_000L
+        ));
+        assertEquals("STABLE_PROJECT_CONTEXT", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "STABLE_PROJECT_CONTEXT", 1_000L, 1_000L
+        ));
+        // Modes from a previous task must never describe the current lease.
+        assertEquals("UNAVAILABLE", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "CONTEXT_WAIT", 999L, 1_000L
+        ));
+        assertEquals("UNAVAILABLE", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "CONTEXT_WAIT", 0L, 1_000L
+        ));
+        assertEquals("UNAVAILABLE", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "CONTEXT_WAIT", 1_001L, 0L
+        ));
+        // A diagnostic string must not become an arbitrary transport for
+        // sensitive Accessibility labels, user text or credentials.
+        assertEquals("UNAVAILABLE", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            "CONTEXT_WAIT: message body", 1_001L, 1_000L
+        ));
+        assertEquals("UNAVAILABLE", ChatGptB1Policy.safeProjectGateModeForEvidence(
+            null, 1_001L, 1_000L
+        ));
+        assertTrue(ChatGptB1Policy.projectClickObservedInRun(1_100L, 1_000L));
+        assertFalse(ChatGptB1Policy.projectClickObservedInRun(999L, 1_000L));
+        assertFalse(ChatGptB1Policy.projectClickObservedInRun(1_100L, 0L));
+    }
+
+    @Test
     public void invisibleProjectTitleCannotProveLiveProjectContext() {
         assertTrue(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
             true, true, false
