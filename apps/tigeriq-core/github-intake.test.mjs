@@ -140,6 +140,27 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue(multiPhase)).toMatchObject({keepOpenOnStepComplete:true});
   });
 
+  it('never admits superseded or not-planned open issues, even with a safe historical READY header',()=>{
+    const safeFlags=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'CAPABILITY=reasoning','RESOURCE_SCOPE=SUPERSEDED_ISSUE_GUARD',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const state of ['SUPERSEDED','SUPERSEDED_BY_NEW_WORK','NOT_PLANNED']){
+      const issue={...base,body:safeFlags+'\nCURRENT_STATE='+state};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const supersededBy={...base,body:safeFlags+'\nCURRENT_STATE=READY_FOR_SYSTEM_EXECUTION\nSUPERSEDED_BY=#9000'};
+    expect(safeAutoWorkAdmission(supersededBy)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+    expect(parseExecutableIssue(supersededBy)).toBeNull();
+    const eligible={...base,body:safeFlags+'\nCURRENT_STATE=READY_FOR_SYSTEM_EXECUTION'};
+    expect(safeAutoWorkAdmission(eligible)).toMatchObject({eligible:true});
+    expect(parseExecutableIssue(eligible)).toMatchObject({number:588});
+  });
+
   it('does not retry a terminal-blocked legacy Work Order but retains safe legacy compatibility',()=>{
     const terminal={...base,labels:[{name:'tigeriq:terminal-blocked'}]};
     expect(safeAutoWorkAdmission(terminal).reason).toBe('TERMINAL_BLOCKED');
