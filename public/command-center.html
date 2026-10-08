@@ -869,6 +869,7 @@ html,body,body{background:#071321!important}
 .live-worker-top,.live-worker-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .live-worker-id{color:#d5b4ff;font-size:11px;font-weight:900}
 .live-worker-state,.live-worker-footer{color:#64e6af;font-size:9px;font-weight:800}
+.live-worker-state::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#46d48f;margin-right:5px;vertical-align:middle}
 .live-worker-name{font-size:12px;font-weight:900;color:#f2f7fd;margin:8px 0 5px;overflow-wrap:anywhere}
 .live-worker-job{font-size:10px;line-height:1.4;color:#b8ccdc;overflow-wrap:anywhere;min-height:28px}
 .live-worker-footer{margin-top:8px;padding-top:7px;border-top:1px solid #244258;flex-wrap:wrap}
@@ -1877,7 +1878,7 @@ function renderLiveWorkers(){
     &&Number.isFinite(at)&&Math.abs(Date.now()-at)<=90000;
   const workers=snapshotFresh?(Array.isArray(snapshot?.workers)?snapshot.workers:[]).filter(worker=>{
     const heartbeat=Date.parse(worker?.heartbeatAt||'');
-    return /^NV\\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
+    return /^NV\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
       &&String(worker?.state||'').toLowerCase()==='working'
       &&Boolean(String(worker?.currentJobId||'').trim())
       &&Number.isFinite(heartbeat)&&Math.abs(Date.now()-heartbeat)<=60000;
@@ -1889,7 +1890,7 @@ function renderLiveWorkers(){
       const jobId=esc(worker.currentJobId);
       const provider=esc([worker.provider,worker.model].filter(Boolean).join(' · ')||'Đang thực thi');
       const freshTime=esc(ownerAgeText(worker.heartbeatAt||worker.updatedAt));
-      return '<article class="live-worker-card" data-live-employee="'+id+'"><div class="live-worker-top"><b class="live-worker-id">'+id+'</b><span class="live-worker-state">● ĐANG LÀM</span></div>'
+      return '<article class="live-worker-card" data-live-employee="'+id+'"><div class="live-worker-top"><b class="live-worker-id">'+id+'</b><span class="live-worker-state">ĐANG LÀM</span></div>'
         +'<div class="live-worker-name">'+name+'</div><div class="live-worker-job">'+job+'</div>'
         +'<div class="live-worker-footer"><span>'+provider+'</span><span title="'+jobId+'">Cập nhật '+freshTime+'</span></div></article>';
     }).join('')+'</div>'
