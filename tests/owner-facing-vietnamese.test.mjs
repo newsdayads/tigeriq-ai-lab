@@ -140,6 +140,14 @@ describe('Owner-facing Vietnamese output gate', () => {
   it('localizes the current production Live operational prose and machine wait reasons', () => {
     const productionFixtures = [
       {
+        input: 'Owner creates/links private Actor outside chat from https://github.com/newsdayads/tigeriq-ai-lab#main:apps/revenue-lab/apify-website-audit; inject scoped APIFY_TOKEN + APIFY_ACTOR_ID outside chat; run APIFY_PREFLIGHT_EXECUTE=OWNER_APPROVED_PRIVATE_PREFLIGHT first; if PASS run exactly one APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST; capture finalized computeUnits + usageTotalUsd after 10s settle/refetch; stop before public/paid/KYC.',
+        required: ['anh Sơn tạo/liên kết Actor (tác vụ Apify) riêng ngoài chat từ', 'nạp APIFY_TOKEN + APIFY_ACTOR_ID theo phạm vi ngoài chat', 'chạy APIFY_PREFLIGHT_EXECUTE=OWNER_APPROVED_PRIVATE_PREFLIGHT trước', 'nếu ĐẠT thì chạy đúng một APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST', 'ghi nhận computeUnits + usageTotalUsd cuối cùng sau 10 giây ổn định/đọc lại', 'dừng trước public/paid/KYC'],
+      },
+      {
+        input: '#4488 PASS -> guarded merge PR #4461 -> media adapter/runtime/publish/live acceptance.',
+        required: ['#4488 ĐẠT', 'hợp nhất có khóa bảo vệ PR #4461', 'bộ chuyển đổi media/môi trường chạy/xuất bản/nghiệm thu trực tiếp'],
+      },
+      {
         input: 'thông tin xác thực material/kho mã riêng xác thực must become available; then sync exact main, set nonsecret runtime config, restart News runtime, run soak/quality gates, publish, verify live.',
         required: ['phải sẵn sàng', 'sau đó', 'đồng bộ chính xác nhánh main', 'cấu hình môi trường chạy không bí mật', 'khởi động lại môi trường News', 'chạy kiểm tra bền và cổng chất lượng', 'xuất bản', 'xác minh thực tế'],
       },
@@ -176,7 +184,7 @@ describe('Owner-facing Vietnamese output gate', () => {
         required: ['tiền kiểm hệ thống', 'tiền kiểm riêng', 'chỉ yêu cầu anh Sơn nạp bí mật nếu cần', 'một kiểm thử E2E (đầu-cuối) riêng', 'đo chi phí', 'GIỮ/LẶP CẢI TIẾN/DỪNG'],
       },
     ];
-    const forbidden = /\b(?:must|then|sync|set|nonsecret|config|restart|run|quality|verify|wait|Owner|Diagnose|actual|browser|request|create|admin|sandbox|behavior|benchmark|healthy|authenticated|session|Resume|Track|through|implement|test|merge|close|preflight|inject|scoped|private|artifact|sign|acceptance|measure|cost|approved|bounded)\b/i;
+    const forbidden = /\b(?:must|then|sync|set|nonsecret|config|restart|run|quality|verify|wait|Owner|Diagnose|actual|browser|request|create|creates|links|outside|admin|sandbox|behavior|benchmark|healthy|authenticated|session|Resume|Track|through|implement|test|merge|guarded|close|preflight|inject|scoped|private|artifact|sign|acceptance|measure|cost|approved|bounded|capture|finalized|settle|refetch|stop|exactly)\b/i;
     for (const fixture of productionFixtures) {
       const output = localizeOwnerFacingText(fixture.input);
       for (const expected of fixture.required) expect(output).toContain(expected);
