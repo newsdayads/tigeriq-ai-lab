@@ -41,15 +41,31 @@ function activeCooldown(x){const t=new Date(x?.cooldown_until||x?.quota_state?.c
 function eventLabel(t){return ({RESOURCE_PROBE_FAIL:'Kiểm tra API thất bại',RESOURCE_PROBE_OK:'API hoạt động trở lại',RESOURCE_FAILURE:'API xử lý lỗi',RESOURCE_SUCCESS:'API xử lý thành công',JOB_DONE:'Công việc hoàn tất',JOB_FAILED:'Công việc thất bại',JOB_CREATED:'Đã tạo công việc',MANAGER_ERROR:'AI Manager gặp lỗi',OBJECTIVE_CREATED:'Đã tạo mục tiêu',OBJECTIVE_COMPLETE:'Mục tiêu hoàn tất',OBJECTIVE_BLOCKED:'Mục tiêu bị chặn'}[t]||String(t||'SỰ KIỆN').replaceAll('_',' '))}
 function eventRow(e){let cls='READY',ico='i',tag=e._kind==='corejob'?'CORE':'SYSTEM';if(e._kind==='corejob'){const s=String(e.status||'').toLowerCase();if(s==='failed'){cls='ERROR';ico='!'}else if(s==='done'){cls='IDLE';ico='✓'}else if(s==='running'){cls='BUSY';ico='↻';tag='CORE LIVE'}else{cls='READY';ico='•'}return `<div class="event"><div class="ico ${cls}">${ico}</div><div><b>${esc(e.title||'Core job')}</b><small>${esc(e.employee_id||e.provider||'TigerIQ Core')} • ${ago(e.ts)}</small></div><span class="tag ${cls}">${tag}</span></div>`}if(/FAIL|ERROR/.test(e.type)){cls='ERROR';ico='!'}else if(/DONE|SUCCESS|PROBE_OK|COMPLETE/.test(e.type)){cls='IDLE';ico='✓'}else if(/RATE|BLOCK/.test(JSON.stringify(e))){cls='RATE_LIMITED';ico='!'}const detail=e.data?.kind?` • ${esc(e.data.kind)}`:'';return `<div class="event"><div class="ico ${cls}">${ico}</div><div><b>${esc(eventLabel(e.type))}</b><small>${esc(e.employee_id||e.job_id||'TigerIQ Core')} • ${ago(e.ts)}${detail}</small></div><span class="tag ${cls}">${tag}</span></div>`}
 let lastActivitySignature='';function renderActivity(ev,js){const core=(js||[]).slice(0,20).map(j=>({_kind:'corejob',title:j.title,status:j.status,employee_id:j.employee_id,provider:j.provider,ts:j.completed_at||j.started_at||j.created_at}));const sys=(ev||[]).slice(0,40).map(e=>({...e,_kind:'event'}));const rows=[...core,...sys].filter(x=>x.ts).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,16),signature=rows[0]?[rows[0]._kind,rows[0].title||rows[0].type||'',rows[0].status||'',rows[0].ts].join('|'):'';events.innerHTML=rows.map(eventRow).join('')||'<div class="empty">Chưa có hoạt động.</div>';if(rows[0])lastEventAt=new Date(rows[0].ts).getTime();lastEventRate=rows.filter(x=>Date.now()-new Date(x.ts).getTime()<=60000).length;activityMeta.textContent=rows[0]?`● ${lastEventRate} event/phút · event cuối ${ago(rows[0].ts)}`:'Không có hoạt động mới';if(signature&&lastActivitySignature&&signature!==lastActivitySignature){const first=events.querySelector('.event');if(first){first.classList.add('recent-activity');setTimeout(()=>first.classList.remove('recent-activity'),800)}}lastActivitySignature=signature}
-let workProjection=null,workFilter='action',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/work-projection',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
-const WO_STATUS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'CHỜ XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
-function woStatus(x){const raw=String(x?.status||'WAITING').trim().toUpperCase();const map={'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING','BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN','CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE'};return map[raw]||raw}
+let workProjection=null,workFilter='action',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
+const WO_STATUS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+function woStatus(x){const raw=String(x?.status||'WAITING').trim().toUpperCase();const map={'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING','BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN','CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE','ĐANG RÀ SOÁT':'REVIEW','ĐANG XÁC MINH':'VERIFY','CHỜ':'WAITING','TẠM DỪNG':'PAUSED','ĐANG LÀM':'WORKING'};return map[raw]||raw}
 function woWorker(x){if(String(x?.workKind||'').toUpperCase()==='GOAL')return'OWNER';if(woStatus(x)==='OWNER_GATE')return x?.technicalComplete?'ĐÃ XONG KỸ THUẬT':'CHỜ ANH SƠN';const direct=String(x?.employeeId||x?.targetWorker||'').toUpperCase();if(/^(?:NV\d{2}|CODEX|AUTO)$/.test(direct))return direct;const match=String(x?.title||'').toUpperCase().match(/(?:^|[^A-Z0-9])(NV\d{2})(?=$|[^A-Z0-9])/);return match?.[1]||'CHƯA GÁN'}
 function woTitle(v){let t=String(v||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();while(/^\[[^\]]+\]\s*/.test(t))t=t.replace(/^\[[^\]]+\]\s*/,'');return t||String(v||'Chưa có tên việc')}
 function woNext(x){const raw=String(x?.nextStep||'').trim();if(raw){if(/#\d+\s*[-=]?>\s*#\d+/.test(raw))return'Hoàn tất chuỗi phụ thuộc';return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw}return woStatus(x)==='OWNER_GATE'?'Duyệt quyết định':'Chưa xác định'}
 function woBlocker(x){if(x?.blocker)return String(x.blocker);if(woStatus(x)==='BLOCKED')return String(x?.waitReason||'Chưa có lý do blocker xác minh');return''}
 function woProgress(x,s){const pct=Number(x?.progressPercent),source=String(x?.progressSource||'');if(['explicit_verified','checklist_verified','terminal'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<=100)return{pct:Math.round(pct),label:Math.round(pct)+'%',kind:'verified'};const total=Number(x?.checks?.total),passed=Number(x?.checks?.passed);if(Number.isFinite(total)&&total>0&&Number.isFinite(passed)&&passed>=0)return{pct:Math.max(0,Math.min(100,Math.round(passed*100/total))),label:Math.max(0,Math.min(100,Math.round(passed*100/total)))+'%',kind:'checks'};return{pct:null,label:String(WO_STATUS[s]||s),kind:'stage'}}
-function workRows(){const open=Array.isArray(workProjection?.openWork)?workProjection.openWork:[],recent=Array.isArray(workProjection?.recentWork)?workProjection.recentWork:[];if(workFilter==='done')return recent.map(x=>({...x,status:'DONE'}));if(workFilter==='owner')return open.filter(x=>woStatus(x)==='OWNER_GATE');if(workFilter==='running')return open.filter(x=>woStatus(x)==='WORKING');if(workFilter==='review')return open.filter(x=>['REVIEW','VERIFY'].includes(woStatus(x)));if(workFilter==='waiting')return open.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN','OPEN'].includes(woStatus(x)));if(workFilter==='system')return open.filter(x=>x?.workKind==='SYSTEM'||woStatus(x)==='SYSTEM');return open.filter(x=>x?.workKind!=='SYSTEM'&&woStatus(x)!=='SYSTEM')}
+function workRows(){
+ const open=Array.isArray(workProjection?.openWork)?workProjection.openWork:[],recent=Array.isArray(workProjection?.recentWork)?workProjection.recentWork:[];
+ const normal=(x)=>woStatus(x),isWork=(x)=>x?.workKind==='WORK'&&normal(x)!=='SYSTEM';
+ switch(workFilter){
+  case'done':return recent.map(x=>({...x,status:'DONE'}));
+  case'owner':return open.filter(x=>normal(x)==='OWNER_GATE');
+  case'running':return open.filter(x=>normal(x)==='WORKING');
+  case'review':return open.filter(x=>normal(x)==='REVIEW');
+  case'verify':return open.filter(x=>normal(x)==='VERIFY');
+  case'ready':return open.filter(x=>isWork(x)&&['QUEUED','WAITING','OPEN'].includes(normal(x))&&(normal(x)==='QUEUED'||x.executionEligibility==='READY'));
+  case'waiting':return open.filter(x=>normal(x)==='WAITING'&&x.executionEligibility!=='READY');
+  case'blocked':return open.filter(x=>normal(x)==='BLOCKED');
+  case'paused':return open.filter(x=>normal(x)==='PAUSED');
+  case'system':return open.filter(x=>x?.workKind==='SYSTEM'||normal(x)==='SYSTEM');
+  default:return open.filter(isWork);
+ }
+}
 let workDetailRows=[],workDetailRow=null,workDetailReturnFocus=null;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 function workDetailProgressMarkup(row){const s=woStatus(row),p=woProgress(row,s);return p.pct===null?`<div class="progress stage stage-${esc(s.toLowerCase())}"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">${esc(p.label)}</span></div>`:`<div class="progress ${p.kind==='checks'?'checks':''}"><div class="progress-track"><div class="progress-fill" style="width:${p.pct}%"></div></div><span class="progress-text">${esc(p.label)}</span></div>`}
@@ -58,7 +74,90 @@ function openWorkDetail(row,trigger){workDetailReturnFocus=trigger||document.act
 function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
 function workDetailPrompt(row){return 'LÀM — NO YAPPING.\nXử lý Work Order #'+row.number+' — '+woTitle(row.title)+'\nTrạng thái: '+(WO_STATUS[woStatus(row)]||woStatus(row))+'\nĐang: '+(row.currentStep||row.currentState||'Chưa xác minh')+'\nBước tới: '+woNext(row)}
 async function openWorkDetailChat(url){if(!workDetailRow)return;const prompt=workDetailPrompt(workDetailRow);try{await navigator.clipboard.writeText(prompt)}catch{}window.open(url,'_blank','noopener')}
-function renderWork(){const s=workProjection?.openSummary||{},defs=[['action','CẦN XỬ LÝ',s.actionable],['owner','CHỜ ANH SƠN',s.owner],['running','ĐANG LÀM',s.running],['review','RÀ SOÁT',s.review],['waiting','CHỜ/BLOCKED',s.waiting],['system','HỆ THỐNG',s.system],['done','HOÀN TẤT',s.done]];woFilters.innerHTML=defs.map(([k,l,n])=>`<button class="wo-filter ${k} ${workFilter===k?'on':''}" data-wo="${k}">${l} <b>${Number(n||0)}</b></button>`).join('');woFilters.querySelectorAll('[data-wo]').forEach(b=>b.onclick=()=>{workFilter=b.dataset.wo;renderWork()});const rows=workRows();workDetailRows=rows;workList.innerHTML=rows.map((x,i)=>{const s=woStatus(x),stateKey=s.toLowerCase(),p=x.effectivePriority||x.priority||'META',priorityKey=String(p).toLowerCase(),prog=woProgress(x,s),progress=prog.pct===null?`<div class="progress stage stage-${esc(stateKey)}"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">${esc(prog.label)}</span></div>`:`<div class="progress ${prog.kind==='checks'?'checks':''}"><div class="progress-track"><div class="progress-fill" style="width:${prog.pct}%"></div></div><span class="progress-text">${esc(prog.label)}</span></div>`,summary=String(x?.technicalComplete&&s==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(x?.currentStep||x?.currentState||'Chưa có trạng thái xác minh')).trim(),next=woNext(x),blocker=woBlocker(x),blockerLine=blocker?`<div class="work-blocker"><b>Blocker:</b> ${esc(blocker)}</div>`:'';return `<article class="work-row status-${esc(stateKey)} priority-${esc(priorityKey)}" data-work-number="${esc(x.number)}" tabindex="0" role="button" aria-label="Mở chi tiết #${esc(x.number)} ${esc(woTitle(x.title))}"><div class="work-main"><div class="work-top"><span class="rank">${String(i+1).padStart(2,'0')}</span><span class="work-id">#${esc(x.number)}</span><span class="priority ${esc(priorityKey)}">${esc(p)}</span><span class="work-nv">${esc(woWorker(x))}</span><span class="state ${esc(stateKey)}">${esc(WO_STATUS[s]||s)}</span></div><div class="work-title">${esc(woTitle(x.title))}</div>${progress}<div class="work-summary"><b>Đang:</b> ${esc(summary)}</div><div class="work-next"><b>Bước tới:</b> ${esc(next)}</div>${blockerLine}</div></article>`}).join('')||'<div class="empty">Không có Work Order trong nhóm này.</div>';workList.querySelectorAll('[data-work-number]').forEach(el=>{const row=rows.find(x=>String(x.number)===el.dataset.workNumber);if(!row)return;el.onclick=()=>openWorkDetail(row,el);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openWorkDetail(row,el)}}})}
+/* Health inherits LIVE work-card semantic layout while keeping local detail modal. */
+const healthWorkVisualState=new Map();
+const HEALTH_WO_STATUS_COLORS={OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'};
+function healthWorkIcon(status){
+ const paths={WORKING:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',DONE:'<path d="M20 6 9 17l-5-5"/>',OWNER_GATE:'<circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/>',WAITING:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',QUEUED:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',BLOCKED:'<path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',REVIEW:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',VERIFY:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m9 13 2 2 4-4"/>',OPEN:'<circle cx="12" cy="12" r="9"/>',UNKNOWN:'<circle cx="12" cy="12" r="9"/><path d="M12 17h.01"/>',GOAL:'<circle cx="12" cy="12" r="9"/>'};
+ return '<svg class="health-live-status-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(paths[status]||paths.OPEN)+'</svg>';
+}
+function healthWorkProof(row,status){
+ const source=String(row?.progressSource||'');
+ const pct=Number(row?.progressPercent),verifiedSource=workProjection?.verifiedGateSource===true;
+ const validPercent=row?.progressPercent!==null&&row?.progressPercent!==undefined
+   &&Number.isFinite(pct)&&pct>=0&&pct<=100&&
+   ((verifiedSource&&['explicit_verified','checklist_verified','github_gates_verified'].includes(source)&&pct<100)
+     ||(status==='DONE'&&source==='terminal'&&pct===100));
+ const count=Number(row?.progressTotal),passed=Number(row?.progressDone);
+ const countsOK=verifiedSource&&row?.progressChecklistVerified===true
+   &&Number.isSafeInteger(count)&&count>1&&Number.isSafeInteger(passed)&&passed>=0&&passed<=count;
+ const planned=Array.isArray(row?.executionSteps)?row.executionSteps.length:0;
+ let gates='';
+ if(countsOK){const noun=source==='github_gates_verified'?'cổng GitHub':'bước';
+   gates='<div class="work-step-summary"><span>'+passed+'/'+count+' '+noun+' đã xác minh</span><span class="step-remaining">Còn '+(count-passed)+' '+noun+'</span></div>';
+ }else if(Number.isSafeInteger(count)&&count>1)gates='<div class="work-step-summary unverified">Có '+count+' bước theo GitHub · chưa xác minh</div>';
+ else if(planned)gates='<div class="work-step-summary unverified">Có '+planned+' bước theo GitHub · chưa xác minh</div>';
+ const active=['WORKING','REVIEW','VERIFY'].includes(status);
+ const progress=validPercent
+   ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
+   :active?'<div class="progress indeterminate" title="Chưa đủ bằng chứng để tính %"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>':'';
+ return gates||progress?'<div class="work-progress-bottom">'+gates+progress+'</div>':'';
+}
+function healthWorkQuick(row,status){
+ const blocker=woBlocker(row).trim();
+ const next=String(row?.nextStep||'').trim();
+ const now=String(row?.currentStep||row?.currentState||'').trim();
+ const useNext=next&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(next);
+ const useNow=now&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(now);
+ const text=blocker?'Bị chặn: '+blocker:useNext?next:useNow?'Hiện tại: '+now:'';
+ const kind=blocker?'blocked':useNext?'next':'current';
+ const icon=kind==='next'?'<svg class="next-step-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#58B7FF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>':'';
+ return text?'<div class="work-quick '+kind+'">'+icon+'<span>'+esc(text)+'</span></div>':'';
+}
+function renderWork(){
+ const open=Array.isArray(workProjection?.openWork)?workProjection.openWork:[];
+ const relevant=open.filter(x=>x?.workKind==='WORK'&&woStatus(x)!=='SYSTEM');
+ const status=x=>woStatus(x);
+ const stat={
+  action:relevant.length,
+  owner:relevant.filter(x=>status(x)==='OWNER_GATE').length,
+  running:relevant.filter(x=>status(x)==='WORKING').length,
+  review:relevant.filter(x=>status(x)==='REVIEW').length,
+  verify:relevant.filter(x=>status(x)==='VERIFY').length,
+  ready:relevant.filter(x=>['QUEUED','WAITING','OPEN'].includes(status(x))&&(status(x)==='QUEUED'||x.executionEligibility==='READY')).length,
+  waiting:relevant.filter(x=>status(x)==='WAITING'&&x.executionEligibility!=='READY').length,
+  blocked:relevant.filter(x=>status(x)==='BLOCKED').length,
+  paused:relevant.filter(x=>status(x)==='PAUSED').length,
+  system:open.filter(x=>x?.workKind==='SYSTEM'||status(x)==='SYSTEM').length,
+  done:Number(workProjection?.openSummary?.done||0)
+ };
+ const defs=[['action','CẦN XỬ LÝ'],['owner','CHỜ ANH SƠN'],['running','ĐANG LÀM'],['review','RÀ SOÁT'],['verify','XÁC MINH'],['ready','SẴN SÀNG'],['waiting','ĐANG CHỜ'],['blocked','BỊ CHẶN'],['paused','TẠM DỪNG'],['system','HỆ THỐNG'],['done','HOÀN TẤT']];
+ woFilters.innerHTML=defs.map(([k,label])=>'<button class="wo-filter '+k+' '+(workFilter===k?'on':'')+'" data-wo="'+k+'">'+label+' <b>'+Number(stat[k]||0)+'</b></button>').join('');
+ woFilters.querySelectorAll('[data-wo]').forEach(b=>b.onclick=()=>{workFilter=b.dataset.wo;renderWork()});
+ const rows=workRows();
+ workDetailRows=rows;
+ workList.innerHTML=rows.map((x,i)=>{
+  const s=woStatus(x),kind=s.toLowerCase(),p=String(x.effectivePriority||x.priority||'META').toUpperCase(),priorityKey=/^P[0-5]$/.test(p)?p.toLowerCase():'meta';
+  const project=String(x.projectName||'Chưa phân dự án'),stream=String(x.workstreamName||x.workPackageName||'Chưa phân nhánh');
+  const hierarchy='<div class="work-hierarchy" title="'+esc(project+' → '+stream)+'">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>';
+  const parent=Number(x.parentNumber),parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
+  const proof=healthWorkProof(x,s);
+  const quick=healthWorkQuick(x,s);
+  const signature=[s,p,x.currentStep,x.nextStep,x.blocker,x.progressPercent,x.progressDone,x.progressTotal,x.progressSource].join('|');
+  const last=healthWorkVisualState.get(Number(x.number));
+  healthWorkVisualState.set(Number(x.number),signature);
+  const flash=last&&last!==signature?' recently-updated':'';
+  return '<article class="work-row health-live-work-card status-'+esc(kind)+' priority-'+priorityKey+flash+'" style="--status-color:'+(HEALTH_WO_STATUS_COLORS[s]||'#64748B')+'" data-work-number="'+esc(x.number)+'" tabindex="0" role="button" aria-label="Mở chi tiết #'+esc(x.number)+' '+esc(woTitle(x.title))+'">'
+     +'<span class="work-id">#'+esc(x.number)+'</span><span class="priority '+priorityKey+'">'+esc(p)+'</span>'
+     +'<div class="work-main"><div class="work-top"><span class="rank">'+String(i+1).padStart(2,'0')+'</span><span class="work-nv">'+esc(woWorker(x))+'</span><span class="state '+esc(kind)+'">'+healthWorkIcon(s)+esc(WO_STATUS[s]||s)+'</span></div>'
+     +hierarchy+parentLine+'<div class="work-title">'+esc(woTitle(x.title))+'</div>'+quick+proof+'</div></article>';
+ }).join('')||'<div class="empty">Không có công việc trong nhóm này.</div>';
+ workList.querySelectorAll('[data-work-number]').forEach(el=>{
+   const row=rows.find(x=>String(x.number)===el.dataset.workNumber);if(!row)return;
+   el.onclick=()=>openWorkDetail(row,el);
+   el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openWorkDetail(row,el)}};
+ });
+}
 workDetailClose.onclick=closeWorkDetail;workDetailCloseBottom.onclick=closeWorkDetail;workDetailBackdrop.addEventListener('click',e=>{if(e.target===workDetailBackdrop)closeWorkDetail()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&workDetailBackdrop.classList.contains('open'))closeWorkDetail()});workDetailAskVy.onclick=()=>openWorkDetailChat(TIGERIQ_OWNER_CHATGPT_PROJECT_URL);workDetailFallback.onclick=()=>openWorkDetailChat('https://chatgpt.com/');
 navWork.onclick=()=>workPanel.scrollIntoView({behavior:'smooth',block:'start'});navHealth.onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
 function refreshLiveUi(){const age=lastCoreSuccessAt?Math.floor((Date.now()-lastCoreSuccessAt)/1000):999,busy=allResources.filter(x=>visibleResource(x)&&simpleState(x).group==='working').length,openWo=Number(workProjection?.openSummary?.open||0);let mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE';topLive.classList.toggle('offline',mode==='OFFLINE');topLive.classList.toggle('degraded',mode==='DEGRADED');topLive.querySelector('b').textContent=mode;topLiveMeta.textContent=mode==='LIVE'?`Core ${age}s · ${busy} AI · ${openWo} việc`:mode==='DEGRADED'?`Core ${age}s · dữ liệu chậm`:`Core >10s · mất heartbeat`;const visible=allResources.filter(visibleResource),count=g=>visible.filter(x=>simpleState(x).group===g).length;workforceMeta.textContent=`● ${busy} đang làm · ${count('ready')} rảnh · ${count('ondemand')} on-demand · ${count('waiting')} chờ · ${count('unknown')} chưa xác minh · ${count('attention')} lỗi`;const s=workProjection?.openSummary||{};workMeta.textContent=`● ${Number(s.open||0)} mở · ${Number(s.review||0)} review · ${Number(s.waiting||0)} chờ`;if(lastEventAt&&activityMeta)activityMeta.textContent=`● ${lastEventRate} event/phút · event cuối ${ago(lastEventAt)}`;}
