@@ -322,6 +322,7 @@ public final class ChatGptB1Automation {
         String wanted = normalize(label);
         if (wanted.isEmpty()) return false;
         for (AccessibilityNodeInfo node : nodes(root)) {
+            if (!node.isVisibleToUser()) continue;
             if (wanted.equals(normalize(text(node.getText())))
                 || wanted.equals(normalize(text(node.getContentDescription())))
                 || wanted.equals(normalize(text(node.getHintText())))) {
@@ -339,7 +340,9 @@ public final class ChatGptB1Automation {
         String wanted = normalize(label);
         if (root == null || wanted.isEmpty()) return false;
         for (AccessibilityNodeInfo node : nodes(root)) {
-            if (!nodeHasExactLabel(node, wanted)) continue;
+            // Hidden semantic labels can linger in an off-screen navigation
+            // subtree and cannot prove which Project currently owns the chat.
+            if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
             AccessibilityNodeInfo current = node;
             boolean clickableAncestor = false;
             for (int depth = 0; current != null && depth <= maxParents; depth++) {
@@ -349,7 +352,9 @@ public final class ChatGptB1Automation {
                 }
                 current = current.getParent();
             }
-            if (!clickableAncestor) return true;
+            if (ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
+                true, node.isVisibleToUser(), clickableAncestor
+            )) return true;
         }
         return false;
     }
