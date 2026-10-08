@@ -754,6 +754,10 @@ async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, 
 
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
+  // Queue discovery is never permission to bypass current canonical execution guards.
+  // #3904/#2788 have historic eligible-looking data but are explicitly disabled now.
+  const admission = safeAutoWorkAdmission(issue);
+  if (!admission.eligible && ['EXPLICIT_EXECUTION_DISABLED','AUTO_QUEUE_EXCLUDED'].includes(String(admission.reason||''))) return null;
   const coreSpec = parseExecutableIssue(issue);
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
@@ -1695,6 +1699,17 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       if (pa !== pb) return pa - pb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
+    // Join genuine Core DB UI receipts without overriding GitHub lifecycle phase.
+    // ui_assigned means awaiting worker pickup, NOT work in progress.
+    const uiAssignmentsByIssue=new Map((Array.isArray(base.coreUiAssignments)?base.coreUiAssignments:[])
+      .map((row)=>[Number(row.issueNumber),row]));
+    for(const row of openWork){
+      const receipt=uiAssignmentsByIssue.get(Number(row.number));
+      row.coreAssignment=receipt?{
+        jobId:receipt.jobId,employeeId:receipt.employeeId,status:receipt.status,
+        startedAt:receipt.startedAt,completedAt:receipt.completedAt,
+      }:null;
+    }
     if (resultInboxProjection) {
       const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
       if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
@@ -1799,6 +1814,18 @@ export function sanitizeRuntimePayload(payload) {
   if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
   const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
   const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt)).map(ownerFacingWorkRow);
+  const coreUiAssignments=(Array.isArray(payload.coreUiAssignments)?payload.coreUiAssignments:[])
+    .slice(0,40)
+    .filter((row)=>Number.isSafeInteger(row?.issueNumber)&&row.issueNumber>0
+      && /^GH-\\d+-R[A-Za-z0-9]+$/.test(String(row?.jobId||''))
+      && ['NV03','NV04'].includes(String(row?.employeeId||''))
+      && ['ui_assigned','ui_running','done','failed'].includes(String(row?.status||'')))
+    .map((row)=>({
+      issueNumber:row.issueNumber,jobId:String(row.jobId).slice(0,130),
+      employeeId:row.employeeId,status:row.status,
+      startedAt:typeof row.startedAt==='string'?row.startedAt.slice(0,64):null,
+      completedAt:typeof row.completedAt==='string'?row.completedAt.slice(0,64):null,
+    }));
   const summary = {
     working: workers.filter((w) => w.state === 'working').length,
     waiting: workers.filter((w) => w.state === 'waiting').length,
@@ -1824,6 +1851,7 @@ export function sanitizeRuntimePayload(payload) {
     summary,
     workers,
     activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
+    coreUiAssignments,
     nextQueue: [],
     nextQueueTotal: 0,
     recentWork: [],
