@@ -134,9 +134,13 @@ public final class ForegroundWorkerService extends Service {
                 if (sameTaskRun && run.terminal()) {
                     if (!task.resultReported) {
                         JSONObject result = new JSONObject();
-                        result.put("status", "COMPLETE".equals(run.state) ? "completed" : "failed");
+                        boolean accepted = ChatGptB1Policy.canAcceptCoreTaskCompletion(
+                            run.state, run.projectBound, run.projectMode,
+                            run.sendCount, run.duplicateSendCount
+                        );
+                        result.put("status", accepted ? "completed" : "failed");
                         JSONObject output = new JSONObject();
-                        if ("COMPLETE".equals(run.state)) output.put("validatedToken", task.expectedToken);
+                        if (accepted) output.put("validatedToken", task.expectedToken);
                         output.put("responseText", run.responseText == null ? "" : run.responseText);
                         output.put("runState", run.state);
                         // Expose verified Project binding in Core results for live acceptance.
@@ -146,7 +150,10 @@ public final class ForegroundWorkerService extends Service {
                         output.put("sendCount", run.sendCount);
                         output.put("duplicateSendCount", run.duplicateSendCount);
                         output.put("recoveryCount", run.recoveryCount);
-                        output.put("lastError", run.lastError);
+                        output.put("lastError",
+                            "COMPLETE".equals(run.state) && !accepted
+                                ? "PROJECT_ACCEPTANCE_EVIDENCE_MISMATCH"
+                                : run.lastError);
                         result.put("output", output);
                         try {
                             client.submitResult(task.taskId, task.leaseId, task.leaseId, result);
