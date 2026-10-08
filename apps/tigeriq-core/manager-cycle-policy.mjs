@@ -26,3 +26,27 @@ export function managerCycleGuard({managerCycles=0,progressed=false,maxCycles=MA
     blocked:effectiveCycles>=boundedMaxCycles,
   };
 }
+
+/**
+ * GitHub acceptance/review gates are evidence-driven, not model-driven.
+ * Park the manager only where GitHub intake can watch for accepted evidence
+ * or a new source revision. Other objectives keep a bounded retry budget.
+ */
+export function managerAcceptancePausePlan({source='',sourceRevision='',gate={}}={}){
+  const revision=String(sourceRevision||'').trim();
+  const reason=String(gate?.reason||'');
+  const park=source==='github'&&Boolean(revision)&&gate?.allow===false
+    &&['live_acceptance_pending','final_review_pending','dependency_pending'].includes(reason);
+  return {park,revision:park?revision:null,reason};
+}
+
+export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false}={}){
+  const pending=String(awaitingRevision||'').trim();
+  const current=String(sourceRevision||'').trim();
+  const gateSatisfied=acceptanceAllowed===true;
+  const revisionChanged=Boolean(pending&&current&&current!==pending);
+  return {
+    wake:Boolean(pending&&(gateSatisfied||revisionChanged)),
+    reason:gateSatisfied?'acceptance_satisfied':revisionChanged?'source_revision_changed':'awaiting_evidence',
+  };
+}
