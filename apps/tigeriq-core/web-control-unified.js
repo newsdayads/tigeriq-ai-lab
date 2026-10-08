@@ -240,20 +240,20 @@
         stage: meta.stage || obj.status || 'active',
         timestamps: meta.timestamps || { updated: new Date().toISOString() },
         blocker: meta.blocker || '',
-        nextAction: meta.nextAction || 'Continue work'
+        nextAction: meta.nextAction || 'Tiếp tục công việc'
       };
       return `<div class="coding-lane-item" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;margin-bottom:8px;font-size:13px;color:#e2e8f0;">
         <div style="display:flex;justify-content:between;align-items:center;font-weight:600;margin-bottom:6px;">
-          <span>🚀 ${safe(work.issueOrPr)}</span>
+          <span>${safe(work.issueOrPr)}</span>
           <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.2);color:#93c5fd;">${safe(work.stage)}</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;color:#94a3b8;font-size:12px;">
-          <div>👤 Implementer: <b style="color:#f8fafc;">${safe(work.implementer || 'None')}</b></div>
-          <div>👁️ Reviewer: <b style="color:#f8fafc;">${safe(work.reviewer || 'None')}</b></div>
-          <div>⏱️ Updated: <b style="color:#f8fafc;">${safe(new Date(work.timestamps?.updated || Date.now()).toLocaleTimeString())}</b></div>
-          <div>🎯 Next: <b style="color:#38bdf8;">${safe(work.nextAction || 'None')}</b></div>
+          <div>Người thực hiện: <b style="color:#f8fafc;">${safe(work.implementer || 'Chưa có')}</b></div>
+          <div>Người rà soát: <b style="color:#f8fafc;">${safe(work.reviewer || 'Chưa có')}</b></div>
+          <div>Cập nhật: <b style="color:#f8fafc;">${safe(new Date(work.timestamps?.updated || Date.now()).toLocaleTimeString())}</b></div>
+          <div>Bước tiếp: <b style="color:#38bdf8;">${safe(work.nextAction || 'Chưa có')}</b></div>
         </div>
-        ${work.blocker ? `<div style="margin-top:6px;color:#fca5a5;font-size:11px;">⚠️ Blocker: ${safe(work.blocker)}</div>` : ''}
+        ${work.blocker ? `<div style="margin-top:6px;color:#fca5a5;font-size:11px;">Điểm bị chặn: ${safe(work.blocker)}</div>` : ''}
       </div>`;
     }).join('');
     if (container && !document.getElementById('codingLaneWorkItems')) {
