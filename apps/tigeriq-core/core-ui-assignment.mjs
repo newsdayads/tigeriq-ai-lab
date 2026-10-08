@@ -25,7 +25,8 @@ function currentCoreUiHeader(body=''){
   return text.slice(0,Math.min(boundary,divider?.index??text.length));
 }
 function value(body,key){return bodyValue(body,key);}
-function yes(body,key){return exactBodyFlag(body,key,'true');}
+// First current value is authoritative: a later true cannot undo a denial.
+function yes(body,key){return value(body,key)==='true';}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
 function safeResult(v){return String(v||'').replace(/\0/g,'').trim().slice(0,4000);}
 const VI_TERMINAL_TO_CODE=new Map([
