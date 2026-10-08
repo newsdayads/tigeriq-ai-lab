@@ -86,6 +86,23 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('rejects terminal CURRENT_STATE values even when GitHub issue is still open and no terminal label exists',()=>{
+    const safeFlags=[
+      'RESOURCE_SCOPE=TERMINAL_ADMISSION_REGRESSION',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+    ].join('\\n');
+    for(const state of ['DONE_VERIFIED','COMPLETED','FAILED_RETRY_EXHAUSTED','TERMINAL_BLOCKED']){
+      const issue={...base,body:base.body+'\\nCURRENT_STATE='+state+'\\n'+safeFlags+'\\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const multiPhase={...base,body:base.body+'\\nCURRENT_STATE=READY_NEXT_PHASE\\n'+safeFlags+'\\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+    expect(safeAutoWorkAdmission(multiPhase).eligible).toBe(true);
+    expect(parseExecutableIssue(multiPhase)).toMatchObject({keepOpenOnStepComplete:true});
+  });
+
   it('does not retry a terminal-blocked legacy Work Order but retains safe legacy compatibility',()=>{
     const terminal={...base,labels:[{name:'tigeriq:terminal-blocked'}]};
     expect(safeAutoWorkAdmission(terminal).reason).toBe('TERMINAL_BLOCKED');
