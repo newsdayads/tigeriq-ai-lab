@@ -57,3 +57,13 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 4. `LÀM` — phản hồi trạng thái gọn, chi tiết khi cần; không có % phỏng đoán.
 5. Dữ liệu lỗi/cũ: hiện chưa xác minh.
 6. Các giao diện không hỗ trợ biểu đồ tương tác: dùng bản chữ hoặc bảng dễ đọc.
+
+## Cổng đồng nhất icon xuyên bề mặt — bổ sung 2026-10-08
+- Quy tắc bắt buộc trên **mọi thông điệp Owner-facing**: chat thường, BC/BCCT, NV02/NV03/NV04, nhân sự API, Core, báo cáo TigerIQ Live, trạng thái/tin nhắn tự động. Nội dung phát ra phải qua cùng bộ kiểm tra ở nơi có quyền kiểm soát mã kết xuất; không lấy việc đã xuất bản quy định trên GitHub làm bằng chứng UI chạy thật.
+- Mặc định **không dùng emoji làm ký hiệu đầu dòng/tiêu đề/trạng thái**. Ở bề mặt hỗ trợ icon vector: dùng icon vector nhất quán. Ở bề mặt chỉ hỗ trợ chữ: dùng tiêu đề/trạng thái chữ thuần, không chèn ✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️ để làm tiền tố. Emoji được giữ nguyên khi là dữ liệu trích dẫn nguyên văn, tuyệt đối không tự chỉnh nội dung người dùng.
+- Không được viết "đã áp dụng toàn hệ thống" chỉ dựa vào tài liệu, một đoạn chat, ảnh chụp, hoặc kiểm tra CI. Trạng thái từng bề mặt = CHƯA KIỂM THỬ / ĐẠT / KHÔNG ĐẠT / KHÔNG THỂ CƯỠNG CHẾ, kèm bằng chứng thời gian thực tế.
+- Bề mặt thuộc quyền sở hữu mã nguồn TigerIQ phải có kiểm thử tự động trước khi phát hành: (1) đầu mục không có emoji cũ, (2) phương án vector hoặc chữ thuần, (3) trạng thái không bị nhầm READY với RUNNING, (4) không % tưởng tượng, (5) BCCT có đủ bộ lọc/nút mở hồ sơ/nút kiểm tra có tác dụng thật khi giao diện hỗ trợ tương tác, (6) khi không hỗ trợ thì fallback chữ có đường dẫn thật, không giả nút bấm.
+- Các phiên ChatGPT đang mở, giao diện gốc ChatGPT và sản phẩm AI bên thứ ba: GitHub/PR không thể tự ép áp dụng hoặc chỉnh bộ hiển thị. Chỉ ghi ĐẠT khi đã kiểm tra trực tiếp câu trả lời mới trong đúng phiên/tài khoản; nếu không kiểm thử được thì KHÔNG THỂ XÁC MINH, không đánh tráo thành ĐẠT.
+- Không tự động điều khiển App Chrome, dùng RDC, Codex, sửa quyền, phát hành Production hay thay đổi cấu hình máy để ép áp dụng chính sách này. Mọi việc cần quyền mới phải theo cổng Owner và quyền sở hữu một người ghi tại mỗi phạm vi.
+- Điều kiện đóng mục tiêu "đồng nhất toàn bộ": lập danh sách bề mặt thực tế; mã nguồn + kiểm thử + rà soát + xác minh sau phát hành cho bề mặt TigerIQ; xác minh chat mới và chat đang mở cho từng tài khoản truy cập được; các phần nền tảng không cưỡng chế được phải nêu giới hạn rõ ràng và không đánh dấu hoàn tất toàn bộ.
+STATE=OWNER_ICON_V4_CROSS_SURFACE_ACCEPTANCE_GATE
