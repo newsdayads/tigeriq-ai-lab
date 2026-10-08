@@ -49,12 +49,23 @@ function restoreOwnerProperNames(value = '', preserved = []) {
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bDeep Agents\/LangGraph\b/gi, 'Deep Agents/LangGraph (khung điều phối tác nhân)'],
   [/\bCore NV API\b/gi, 'Core NV API (giao diện AI trung tâm)'],
+  [/\bnormal npm resolution\b/gi, 'phân giải npm thông thường'],
+  [/\bfresh exact-head\b/gi, 'kiểm tra đúng đầu nhánh mới'],
+  [/\bexact-head\b/gi, 'đúng đầu nhánh'],
+  [/\bQueue Hygiene\b/gi, 'Queue Hygiene (kiểm tra vệ sinh hàng đợi)'],
+  [/\bsmoke test\b/gi, 'kiểm thử nhanh'],
+  [/\bmain readback\b/gi, 'đọc lại main'],
+  [/\bexisting PR\b/gi, 'PR hiện có'],
+  [/\bonly after\b/gi, 'chỉ sau khi'],
+  [/\blockfile\b/gi, 'tệp khóa phụ thuộc'],
+  [/\bisolated\b/gi, 'cô lập'],
+  [/\bfoundation\b/gi, 'nền tảng'],
   [/\bprivate[- ]repo\b/gi, 'kho mã riêng'],
   [/\bcheckpoint\b/gi, 'điểm lưu trạng thái'],
   [/\bshadow\b/gi, 'chạy song song'],
   [/\bsoak\b/gi, 'chạy bền'],
   [/\breadiness\b/gi, 'mức sẵn sàng'],
-  [/\brepair\b/gi, 'sửa lỗi'],
+  [/\brepairs?\b/gi, 'sửa lỗi'],
   [/\bauth\b/gi, 'xác thực'],
   [/\bfinal review\b/gi, 'rà soát cuối'],
   [/\bdeep cross-check\b/gi, 'kiểm tra chéo chuyên sâu'],
@@ -160,7 +171,7 @@ export function containsBareOwnerPrReference(value = '') {
   return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
 }
 
-const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install)\b/gi;
+const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|lockfile|isolated|foundation|readback|resolution|repairs?|fresh)\b|\bsmoke\s+test\b|\bonly\s+after\b/gi;
 const VIETNAMESE_EXPLANATION_RE = /[ăâđêôơưàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
 
 export function containsOwnerFacingEnglishOperationalProse(value = '') {

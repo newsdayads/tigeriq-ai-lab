@@ -39,6 +39,7 @@ const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
 const RECENT_WORK_LIMIT = 50;
 const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
+const LIFECYCLE_COMMENT_CACHE_MS = 60 * 1000;
 const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
@@ -46,6 +47,7 @@ let runtimeCache = { at: 0, value: null };
 let githubProjectionCache = { at: 0, verifiedAt: null, data: null };
 let recentWorkCache = { at: 0, data: null };
 const dependencyCache = new Map();
+const lifecycleCommentCache = new Map();
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -521,17 +523,33 @@ async function ownerResultInboxProjection(openIssues, owner, repo, fetchImpl = f
   }
 }
 
-export function parseClearedBlockerLifecycleComment(comment = {}) {
+export function parseStructuredLifecycleComment(comment = {}) {
   const body = String(comment?.body || '');
   const state = (commentField(body, 'CURRENT_STATE') || commentField(body, 'STATE')).trim();
-  const blocker = commentField(body, 'BLOCKER').trim();
-  if (!state || !/^none(?:\b|\s)/i.test(blocker)) return null;
+  const step = (commentField(body, 'CURRENT_STEP') || commentField(body, 'ACTION')).trim();
+  const nextStep = (commentField(body, 'NEXT') || commentField(body, 'NEXT_ACTION')).trim();
+  const blocker = (commentField(body, 'BLOCKER') || commentField(body, 'BLOCKED_REASON')).trim();
+  const mutationOwner = commentField(body, 'MUTATION_OWNER').trim();
+  const doneRaw = commentField(body, 'DONE').trim().toLowerCase();
+  if (!state && !step && !nextStep && !blocker && !doneRaw) return null;
   return {
-    state: state.toUpperCase(),
-    blocker,
-    blockerCleared: true,
-    step: commentField(body, 'NEXT') || commentField(body, 'ACTION') || null,
+    state: state ? state.toUpperCase() : null,
+    blocker: blocker || null,
+    blockerCleared: Boolean(blocker && /^none(?:\b|\s|$)/i.test(blocker)),
+    step: step || null,
+    nextStep: nextStep || null,
+    mutationOwner: mutationOwner || null,
+    done: ['true','1','yes'].includes(doneRaw),
     createdAt: comment?.created_at || comment?.updated_at || null,
+  };
+}
+
+export function parseClearedBlockerLifecycleComment(comment = {}) {
+  const parsed = parseStructuredLifecycleComment(comment);
+  if (!parsed?.state || !parsed.blockerCleared) return null;
+  return {
+    ...parsed,
+    step: parsed.nextStep || parsed.step || null,
   };
 }
 
@@ -942,22 +960,38 @@ function issueCanonicalState(issue) {
   return firstBodyValue(body, ['CURRENT_STATE', 'STATE']).toUpperCase();
 }
 
-async function clearedBlockerLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
+async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
   const candidates = (Array.isArray(issues) ? issues : [])
-    .filter((issue) => hasTerminalBlockedLabel(issue) || /BLOCKED/.test(issueCanonicalState(issue)))
-    .slice(0, 12);
+    .filter((issue) => issue && !issue.pull_request && issue.state === 'open' && /^P[1-5]$/.test(String(issuePriority(issue) || '')))
+    .sort((a, b) => Date.parse(b?.updated_at || 0) - Date.parse(a?.updated_at || 0))
+    .slice(0, Math.max(QUEUE_LIMIT, 24));
   const pairs = await Promise.all(candidates.map(async (issue) => {
+    const number = Number(issue.number);
+    const now = Date.now();
+    const cached = lifecycleCommentCache.get(number);
+    if (cached && cached.issueUpdatedAt === issue?.updated_at && now - cached.at < LIFECYCLE_COMMENT_CACHE_MS) {
+      return [number, cached.value];
+    }
+    let value = null;
     try {
-      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + Number(issue.number) + '/comments?per_page=100', fetchImpl);
+      const commentsCount = Math.max(0, Number(issue?.comments || 0));
+      const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
+      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
       const rows = Array.isArray(comments) ? comments : [];
+      const issueAt = Date.parse(issue?.updated_at || '') || 0;
       for (let i = rows.length - 1; i >= 0; i -= 1) {
-        const parsed = parseClearedBlockerLifecycleComment(rows[i]);
-        if (parsed) return [Number(issue.number), parsed];
+        const parsed = parseStructuredLifecycleComment(rows[i]);
+        if (!parsed) continue;
+        const commentAt = Date.parse(parsed.createdAt || '') || 0;
+        if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
+        value = parsed;
+        break;
       }
     } catch {
-      // Keep canonical body/label truth if comment readback is unavailable.
+      // Keep canonical body truth if comment readback is unavailable.
     }
-    return [Number(issue.number), null];
+    lifecycleCommentCache.set(number, { at: now, issueUpdatedAt: issue?.updated_at || null, value });
+    return [number, value];
   }));
   return new Map(pairs.filter(([, value]) => value));
 }
@@ -1264,11 +1298,34 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const queued = overlays.queued || null;
   const body = String(issue.body || '');
   const lifecycle = overlays.lifecycle || null;
+  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
+  const issueAt = Date.parse(issue?.updated_at || '') || 0;
+  const lifecycleCurrent = Boolean(lifecycle && lifecycleAt && (!issueAt || lifecycleAt + 60_000 >= issueAt));
+  const currentLifecycle = lifecycleCurrent ? lifecycle : null;
+  const effectiveOverlays = currentLifecycle === lifecycle ? overlays : { ...overlays, lifecycle: null };
   const classification = classifyOpenIssue(issue);
   const canonicalPhase = issueCanonicalState(issue);
-  const phase = String(classification.ownerGate ? canonicalPhase : lifecycle?.state || canonicalPhase).toUpperCase();
-  const status = actionableStatus(issue, overlays);
-  const executionEligibility = executionEligibilityForIssue(issue, overlays);
+  const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
+  const status = actionableStatus(issue, effectiveOverlays);
+  const admission = safeAutoWorkAdmission(issue);
+  const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
+  const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
+  const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
+  const lifecycleRunnable = lifecycleHasNoBlocker && ['WORKING','REVIEW','QUEUED'].includes(String(lifecycleDisplayStatus || '').toUpperCase());
+  const lifecycleAdmission = lifecycleRunnable
+    ? safeAutoWorkAdmission({
+        ...issue,
+        body: [
+          'CURRENT_STATE=' + String(currentLifecycle?.state || ''),
+          'TIGERIQ_EXECUTABLE=true',
+          'AUTO_QUEUE=INCLUDED',
+          body,
+        ].join('\n'),
+      })
+    : null;
+  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
+    ? 'READY'
+    : rawExecutionEligibility;
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
@@ -1284,7 +1341,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
       : bodyValue(body, 'CURRENT_STEP') || 'Chờ anh Sơn duyệt'
     : active?.currentStep
       || queued?.waitReason
-      || lifecycle?.step
+      || currentLifecycle?.step
+      || currentLifecycle?.nextStep
       || bodyValue(body, 'CURRENT_STEP')
       || null;
   const latestCompletedStep = bodyValue(body, 'LAST_COMPLETED_STEP')
@@ -1292,13 +1350,12 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'LAST_DONE')
     || (technicalComplete ? 'Đã xong kỹ thuật và có bằng chứng canonical' : null)
     || (checks?.state === 'ĐẠT' ? 'Kiểm tra PR đã đạt' : null);
-  const nextStep = bodyValue(body, 'NEXT')
+  const nextStep = currentLifecycle?.nextStep
+    || bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
-  const rawBlocker = bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
-  const lifecycleAt = Date.parse(lifecycle?.createdAt || '') || 0;
-  const issueAt = Date.parse(issue?.updated_at || '') || 0;
-  const blockerBodyCurrent = !lifecycle?.blockerCleared || (lifecycleAt > 0 && issueAt > lifecycleAt);
+  const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
+  const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
   const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
     : null;
@@ -1338,8 +1395,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
-    executionEligibilityReason: executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null),
-    waitReason: waitReason || (executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null)),
+    executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
+    waitReason: waitReason || (executionEligibility === 'READY' ? null : (admission.reason || null)),
     rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
     activeLease,
     activeWorker,
@@ -1368,7 +1425,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     checks,
     updatedAt: classification.ownerGate
       ? issue.updated_at || null
-      : active?.updatedAt || queued?.updatedAt || lifecycle?.createdAt || issue.updated_at || null,
+      : active?.updatedAt || queued?.updatedAt || currentLifecycle?.createdAt || issue.updated_at || null,
     url: issue.html_url || null,
     meta: !priority,
   };
@@ -1470,7 +1527,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
-    const lifecycleOverrides = await clearedBlockerLifecycleOverrides(openIssues, owner, repo, fetchImpl);
+    const lifecycleOverrides = await latestStructuredLifecycleOverrides(openIssues, owner, repo, fetchImpl);
     const activeRows = [];
     const activeNumbers = new Set();
 
