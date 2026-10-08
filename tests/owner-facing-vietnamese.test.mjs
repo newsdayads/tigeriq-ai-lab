@@ -153,7 +153,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       },
       {
         input: 'When existing private-repo auth becomes available without new/changed credentials, fast-forward-only sync to d419c15; then set only nonsecret MEDIA_AUTO_PUBLISH=true + approved HTTPS CONTENT_COVER_PUBLIC_BASE_URL, restart News runtime, bounded acceptance, live verify.',
-        required: ['Khi', 'kho mã riêng xác thực', 'mà không tạo hoặc thay đổi thông tin xác thực', 'chỉ đồng bộ tiến tới', 'sau đó chỉ thiết lập giá trị không bí mật', 'đã duyệt HTTPS', 'khởi động lại môi trường News', 'có giới hạn nghiệm thu', 'thực tế xác minh'],
+        required: ['Khi', 'kho mã riêng xác thực', 'mà không tạo hoặc thay đổi thông tin xác thực', 'chỉ đồng bộ tiến tới', 'sau đó chỉ thiết lập giá trị không bí mật', 'đã duyệt HTTPS', 'khởi động lại môi trường News', 'có giới hạn nghiệm thu', 'xác minh thực tế'],
       },
       {
         input: 'Resume only when a non-materializing lifecycle integration harness exists or Owner changes the no-new-work constraint; do not repeat the same synthetic preflight.',
