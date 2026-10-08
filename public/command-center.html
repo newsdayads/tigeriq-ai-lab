@@ -1832,39 +1832,47 @@ function renderApiWorkforce(){
 function verifiedStepSummary(row){
   const total=Number(row?.progressTotal||0),done=Number(row?.progressDone||0);
   const verified= row?.progressChecklistVerified===true && !(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  if(!Number.isSafeInteger(total)||total<2||!Number.isSafeInteger(done)||done<0||done>total)return '';
+  if(!Number.isSafeInteger(total)||total<2||!Number.isSafeInteger(done)||done<0||done>total){
+    const planned=Array.isArray(row?.executionSteps)?row.executionSteps.length:0;
+    return planned>0?'<div class="work-step-summary unverified">Có '+planned+' bước theo GitHub · chưa xác minh</div>':'';
+  }
   if(!verified)return '<div class="work-step-summary unverified">Có '+total+' bước trong GitHub · chưa xác minh</div>';
   const left=total-done;
   return '<div class="work-step-summary"><span>'+done+'/'+total+' bước đã xác minh</span><span class="step-remaining">Còn '+left+' bước</span></div>';
 }
 function drawerChecklistMarkup(row){
-  const entries=Array.isArray(row?.progressSteps)?row.progressSteps:[];
+  const checklist=Array.isArray(row?.progressSteps)?row.progressSteps:[];
+  const plan=Array.isArray(row?.executionSteps)?row.executionSteps:[];
+  const fromPlan=checklist.length<2;
+  const entries=fromPlan?plan:checklist;
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-  const verified= row?.progressChecklistVerified===true && fresh && entries.length>=2;
+  const verified= !fromPlan && row?.progressChecklistVerified===true && fresh;
   const canShow=String(row?.workKind||'WORK').toUpperCase()==='WORK';
   $('drawerChecklistSection').hidden=!canShow;
-  if(entries.length<2){
-    $('drawerChecklistMeta').textContent='Chưa có dữ liệu';
+  if(entries.length===0){
+    $('drawerChecklistMeta').textContent='Chưa ghi bước thực hiện';
     $('drawerChecklistList').innerHTML='';
-    $('drawerChecklistHint').textContent='GitHub chưa có checklist ít nhất 2 bước. Chưa thể tính số bước và %; không tự tạo bước.';
+    $('drawerChecklistHint').textContent='GitHub chưa cung cấp bước thực hiện có cấu trúc. Cần bổ sung vào Work Order; không tự tạo bước hoặc tính % giả.';
     return;
   }
   $('drawerChecklistMeta').textContent=verified
     ?row.progressDone+'/'+row.progressTotal+' bước · còn '+row.progressRemaining+' bước'
-    :entries.length+' bước · chưa xác minh';
+    :entries.length+(fromPlan?' bước theo GitHub · chưa xác minh':' bước · chưa xác minh');
   const checked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   const unchecked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
   $('drawerChecklistList').innerHTML=entries.map((step,i)=>{
-    const done=step?.done===true;
+    const done=!fromPlan && step?.done===true;
     const href=safeOwnerResultHref(step?.evidenceUrl);
     const link=href?' <a href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Nguồn đính kèm ↗</a>':'';
-    const stepStatus=verified?(done?'Đã xác minh':'Chưa hoàn tất'):(done?'Đã đánh dấu · chưa xác minh':'Chưa hoàn tất · chưa xác minh');
+    const stepStatus=fromPlan?'Kế hoạch GitHub · chưa có bằng chứng hoàn tất':verified?(done?'Đã xác minh':'Chưa hoàn tất'):(done?'Đã đánh dấu · chưa xác minh':'Chưa hoàn tất · chưa xác minh');
     return '<div class="drawer-checklist-step'+(done?' done':'')+(verified?' verified':'')+'">'+(done?checked:unchecked)
       +'<div class="drawer-checklist-copy"><strong>'+String(i+1).padStart(2,'0')+'. '+esc(step?.title||'Bước chưa đặt tên')+'</strong><small>'+esc(stepStatus)+link+'</small></div></div>';
   }).join('');
   $('drawerChecklistHint').textContent=verified
     ?(workStatus(row)==='DONE'?'Công việc đã đóng và có checklist xác minh.':'100% chỉ được công nhận khi công việc hoàn tất và có đủ bằng chứng.')
-    :'Các ô đánh dấu từ GitHub chưa có xác nhận tiến độ; không tự tính phần trăm.';
+    :fromPlan
+      ?'Các bước được trích từ hành động tiếp theo trong Work Order GitHub, chưa được xác minh hoàn tất; không tính %.'
+      :'Các ô đánh dấu từ GitHub chưa có xác nhận tiến độ; không tự tính phần trăm.';
 }
 function drawerProgressMarkup(row){
   const {pct,verified}=verifiedProgress(row);
