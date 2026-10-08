@@ -29,14 +29,14 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('overflow-y:auto!important');
     expect(shared).toContain('.api-health .wo-list,.api-health .work-list{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))');
     expect(dashboard).toContain('id="workList" class="wo-list work-list"');
-    expect(dashboard).toContain('class="work-row status-');
+    expect(dashboard).toContain('class="work-row health-live-work-card status-');
     expect(dashboard).toContain('class="work-top"');
     expect(dashboard).toContain('class="work-title"');
-    expect(dashboard).toContain('class="work-facts"');
+    expect(dashboard).toContain('class="work-hierarchy"');
     expect(dashboard).not.toContain('.wo-card{');
     expect(dashboard).not.toContain('class="wo-card');
-    expect(dashboard).toContain('class="progress unverified"');
-    expect(dashboard).toContain('class="work-next"');
+    expect(dashboard).toContain('function healthWorkProof(row,status)');
+    expect(dashboard).toContain('function healthWorkQuick(row,status)');
     expect(dashboard).not.toContain('<div class="work-facts"><div><b>Vừa xong:</b>');
     expect(dashboard).toContain("while(/^\\[[^\\]]+\\]\\s*/.test(t))");
     expect(dashboard).toContain("'RÀ SOÁT':'REVIEW'");
@@ -52,7 +52,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('/* #3918 three-card work grid */');
     expect(shared).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
     expect(dashboard).toContain('function woProgress(x,s)');
-    expect(dashboard).not.toContain('Chưa xác minh</span>');
+    expect(dashboard).toContain('Chưa đủ dữ liệu để tính %');
     expect(dashboard).toContain("kind:'checks'");
     expect(dashboard).toContain("kind:'stage'");
   });
@@ -127,7 +127,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('grid-auto-rows:minmax(var(--employee-row-h),auto)!important');
     expect(shared).toContain('height:auto!important;min-height:var(--employee-row-h)!important');
     expect(shared).toContain('.api-health .employee-task{display:block;white-space:normal;overflow:visible');
-    expect(shared).not.toContain('-webkit-line-clamp:2');
+    expect(shared).toContain('.api-health .employee-task{display:block;white-space:normal;overflow:visible');
     expect(shared).toContain('/* #3918 final visual audit cleanup */');
     expect(shared).toContain('/* #3918 final viewport-fit + responsive rail */');
     expect(shared).toContain('overflow-x:hidden!important');
@@ -183,6 +183,35 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('setInterval(load,5000)');
     expect(dashboard).toContain('setInterval(loadLiveStatus,1000)');
     expect(dashboard).toContain("fetch('/api/live-status',{cache:'no-store'})");
+  });
+
+
+  it('P0 Health renders the LIVE work-list structure, eleven filters and verified GitHub gates',()=>{
+    expect(dashboard).toContain("fetch('/api/health-live-work',{cache:'no-store'})");
+    expect(core).toContain("url.pathname==='/api/health-live-work'");
+    expect(core).toContain('async function apiHealthLiveWorkProjection()');
+    expect(core).toContain("source:'LIVE_VERIFIED_GATES'");
+    expect(core).toContain("source:'PC01_FALLBACK'");
+    expect(core).toContain("const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},7000)");
+    for(const token of ["['review','RÀ SOÁT']","['verify','XÁC MINH']","['ready','SẴN SÀNG']","['waiting','ĐANG CHỜ']","['blocked','BỊ CHẶN']","['paused','TẠM DỪNG']"]){
+      expect(dashboard).toContain(token);
+    }
+    expect(dashboard).toContain('workProjection?.verifiedGateSource===true');
+    expect(dashboard).toContain("source==='github_gates_verified'");
+    expect(dashboard).toContain("row?.progressChecklistVerified===true");
+    expect(dashboard).toContain('class="work-step-summary"');
+    expect(dashboard).toContain('class="work-progress-bottom"');
+    expect(dashboard).toContain('class="work-id"');
+    expect(dashboard).toContain('class="work-hierarchy"');
+    expect(dashboard).toContain('function healthWorkQuick(row,status)');
+    expect(dashboard).toContain('function healthWorkIcon(status)');
+    expect(dashboard).toContain('function openWorkDetail(row,trigger)');
+    expect(shared).toContain('TIGERIQ_HEALTH_WORKLIST_LIVE_PARITY_P0');
+    expect(shared).toContain('grid-template-columns:repeat(5,minmax(0,1fr))!important');
+    expect(shared).toContain('.api-health .work-panel .health-live-work-card>.work-id');
+    expect(shared).toContain('.api-health .work-panel .health-live-work-card .work-main');
+    expect(shared).toContain('.api-health .work-panel .health-live-work-card .work-progress-bottom');
+    expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
 });
