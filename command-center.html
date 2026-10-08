@@ -858,6 +858,26 @@ html,body,body{background:#071321!important}
  .work-row.progress-running .progress.indeterminate .progress-fill{animation:none!important;transform:none!important}
 }
 </style>
+
+<style id="tigeriq-live-workers-approved-p0">
+.live-workers-panel{margin:0 0 13px}
+.live-workers-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.live-workers-head h2{font-size:12px;font-weight:900;color:#eef7ff;letter-spacing:.03em;margin:0}
+.live-workers-head span{font-size:10px;color:#64e6af;font-weight:800}
+.live-workers-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.live-worker-card{border:1px solid #286a9b;background:linear-gradient(180deg,#10263a,#091b2b);border-radius:12px;min-width:0;padding:10px;overflow:hidden}
+.live-worker-top,.live-worker-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.live-worker-id{color:#d5b4ff;font-size:11px;font-weight:900}
+.live-worker-state,.live-worker-footer{color:#64e6af;font-size:9px;font-weight:800}
+.live-worker-name{font-size:12px;font-weight:900;color:#f2f7fd;margin:8px 0 5px;overflow-wrap:anywhere}
+.live-worker-job{font-size:10px;line-height:1.4;color:#b8ccdc;overflow-wrap:anywhere;min-height:28px}
+.live-worker-footer{margin-top:8px;padding-top:7px;border-top:1px solid #244258;flex-wrap:wrap}
+.live-worker-empty{border:1px solid #29445d;background:#0b1e30;border-radius:10px;padding:11px;color:#9ab2c6;font-size:10px}
+@media(min-width:2100px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(min-width:1600px) and (max-width:2099px){.live-workers-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:760px) and (max-width:1099px){.live-workers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:759px){.live-workers-grid{grid-template-columns:1fr}.live-worker-card{padding:9px}}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -882,6 +902,7 @@ html,body,body{background:#071321!important}
 <div class="raw-work-inner">
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này" hidden></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce" hidden></section>
+<section id="liveWorkers" class="live-workers-panel" aria-label="Nhân viên đang làm" aria-live="polite"></section>
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
@@ -897,14 +918,7 @@ html,body,body{background:#071321!important}
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div class="bcct-toolbar owner-filter-toolbar">
-<label for="workProjectFilter">DỰ ÁN<select id="workProjectFilter" aria-label="Lọc theo dự án"><option value="all">Tất cả dự án</option></select></label>
-<label for="workStatusFilter">TRẠNG THÁI<select id="workStatusFilter" aria-label="Lọc theo trạng thái">
-<option value="action">Tất cả việc mở</option><option value="owner">Chờ anh Sơn</option><option value="ready">Sẵn sàng</option><option value="running">Đang làm</option><option value="review">Rà soát</option><option value="verify">Xác minh</option><option value="waiting">Đang chờ</option><option value="blocked">Bị chặn</option><option value="paused">Tạm dừng</option><option value="open">Chưa làm</option><option value="system">Hệ thống</option><option value="done">Hoàn tất</option>
-</select></label>
-<label for="workPriorityFilter">ƯU TIÊN<select id="workPriorityFilter" aria-label="Lọc theo ưu tiên"><option value="all">Tất cả P0–P5</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option><option value="P4">P4</option><option value="P5">P5</option></select></label>
-<label for="bcctSort">SẮP XẾP<select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select></label>
-<button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Bộ lọc chỉ thay đổi hiển thị · không tự giao việc</span></div><div id="workList" class="work-list"></div>
+  <div id="workList" class="work-list"></div>
 </section>
 </div>
 </details>
@@ -934,8 +948,6 @@ const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
 let currentFilter='action';
-let currentProjectFilter='all';
-let currentPriorityFilter='all';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
@@ -1031,9 +1043,8 @@ function normalizeRows(value){
   else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
   else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
   else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&(workPriority(x)!=='P5'||currentPriorityFilter==='P5'));
-  return rows.filter(x=>(currentProjectFilter==='all'||String(x?.projectId||'')===currentProjectFilter)
-    &&(currentPriorityFilter==='all'||workPriority(x)===currentPriorityFilter));
+  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
+  return rows;
 }
 
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
@@ -1859,6 +1870,31 @@ function renderNowRunning(){
   });
 }
 
+function renderLiveWorkers(){
+  const panel=$('liveWorkers');
+  const at=Date.parse(snapshot?.generatedAt||'');
+  const snapshotFresh=snapshot?.liveConnected===true&&!snapshot?.staleAll&&!snapshot?.workProjection?.stale
+    &&Number.isFinite(at)&&Math.abs(Date.now()-at)<=90000;
+  const workers=snapshotFresh?(Array.isArray(snapshot?.workers)?snapshot.workers:[]).filter(worker=>{
+    const heartbeat=Date.parse(worker?.heartbeatAt||'');
+    return /^NV\\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
+      &&String(worker?.state||'').toLowerCase()==='working'
+      &&Boolean(String(worker?.currentJobId||'').trim())
+      &&Number.isFinite(heartbeat)&&Math.abs(Date.now()-heartbeat)<=60000;
+  }):[];
+  panel.innerHTML='<header class="live-workers-head"><h2>NHÂN VIÊN ĐANG LÀM</h2><span>'+workers.length+' NHÂN VIÊN</span></header>'
+    +(workers.length?'<div class="live-workers-grid">'+workers.map(worker=>{
+      const id=esc(worker.employeeId),name=esc(worker.label||worker.employeeId);
+      const job=esc(worker.job||worker.currentJobId||'Chưa có mô tả công việc');
+      const jobId=esc(worker.currentJobId);
+      const provider=esc([worker.provider,worker.model].filter(Boolean).join(' · ')||'Đang thực thi');
+      const freshTime=esc(ownerAgeText(worker.heartbeatAt||worker.updatedAt));
+      return '<article class="live-worker-card" data-live-employee="'+id+'"><div class="live-worker-top"><b class="live-worker-id">'+id+'</b><span class="live-worker-state">● ĐANG LÀM</span></div>'
+        +'<div class="live-worker-name">'+name+'</div><div class="live-worker-job">'+job+'</div>'
+        +'<div class="live-worker-footer"><span>'+provider+'</span><span title="'+jobId+'">Cập nhật '+freshTime+'</span></div></article>';
+    }).join('')+'</div>'
+      :'<div class="live-worker-empty">'+(snapshotFresh?'Hiện chưa có nhân viên nào được xác nhận đang thực thi công việc.':'Chưa xác minh được nhân viên đang làm — nguồn PC01 đang gián đoạn hoặc dữ liệu đã cũ.')+'</div>');
+}
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
   const el=$('apiWorkforce');
@@ -2019,21 +2055,9 @@ function refreshOpenDrawer(){
   const fresh=rows.find(row=>Number(row?.number)===Number(drawerRow.number));
   if(fresh)populateDrawer(fresh);else closeDrawer();
 }
-function syncWorkProjectOptions(){
-  const select=$('workProjectFilter'),projects=new Map();
-  for(const p of snapshot?.projectPortfolio||[])if(p?.id)projects.set(String(p.id),String(p.name||p.id));
-  for(const row of [...(snapshot?.openWork||[]),...(snapshot?.recentWork||[])])
-    if(row?.projectId&&!projects.has(String(row.projectId)))projects.set(String(row.projectId),String(row.projectName||row.projectId));
-  const opts=[['all','Tất cả dự án'],...projects.entries()],key=JSON.stringify(opts);
-  if(select.dataset.optionsKey===key)return;
-  select.dataset.optionsKey=key;select.replaceChildren();
-  for(const [id,label] of opts){const o=document.createElement('option');o.value=id;o.textContent=label;select.appendChild(o);}
-  if(currentProjectFilter!=='all'&&!projects.has(currentProjectFilter))currentProjectFilter='all';
-  select.value=currentProjectFilter;
-}
 function render(){
   if(!snapshot)return;
-  syncWorkProjectOptions();
+  renderLiveWorkers();
   renderOwnerSummary();
   renderMissionControl();
   renderJobJourney();
@@ -2041,9 +2065,6 @@ function render(){
   renderApiWorkforce();
   updateCounts();
   const rows=normalizeRows(snapshot);
-  const bcctMode=$('bcctSort')?.value||'default';
-  if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
-  if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
   $('workMeta').textContent=rows.length+' mục';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
@@ -2128,11 +2149,8 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
-$('bcctSort').addEventListener('change',render);
-$('bcctRefresh').addEventListener('click',load);
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
-  $('workStatusFilter').value=currentFilter;
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
@@ -2152,17 +2170,6 @@ $('drawerAskVy').addEventListener('click',()=>{
   const prompt=buildVyHandoffPrompt(drawerRow);
   openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL+'?prompt='+encodeURIComponent(prompt),prompt);
 });
-for(const [id,kind] of [['workProjectFilter','project'],['workPriorityFilter','priority'],['workStatusFilter','status']]){
-  $(id).addEventListener('change',()=>{
-    if(kind==='project')currentProjectFilter=$(id).value;
-    if(kind==='priority')currentPriorityFilter=$(id).value;
-    if(kind==='status'){
-      currentFilter=$(id).value;
-      document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===currentFilter));
-    }
-    render();
-  });
-}
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
   const drawer=$('workDrawer');if(!drawer.classList.contains('open'))return;
