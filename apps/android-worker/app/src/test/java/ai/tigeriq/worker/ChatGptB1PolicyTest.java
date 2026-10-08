@@ -104,6 +104,30 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void projectClickAloneCannotBypassStableTitleAndComposerGate() {
+        assertTrue(ChatGptB1Policy.canBindStableProjectContext(
+            true, true, true, 3, 1200L
+        ));
+        // A Project link in a clickable menu (even after an auto-click)
+        // does not prove that the user is inside the Project conversation.
+        assertFalse(ChatGptB1Policy.canBindStableProjectContext(
+            true, false, true, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContext(
+            true, true, false, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContext(
+            false, true, true, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContext(
+            true, true, true, 2, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContext(
+            true, true, true, 3, 1199L
+        ));
+    }
+
+    @Test
     public void coreResultAcceptanceRequiresProjectProofAndExactlyOneSend() {
         assertTrue(ChatGptB1Policy.canAcceptCoreTaskCompletion(
             "COMPLETE", true, "PROJECT", 1, 0
