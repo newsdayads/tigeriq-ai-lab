@@ -387,6 +387,31 @@ test('GitHub NEXT steps appear even with no verified checklist; no fabricated pe
   await expect(page.locator('.drawer-checklist-step.verified')).toHaveCount(0);
 });
 
+test('P0 GitHub verified gates render real percentage with evidence links, never infer DONE',async({page})=>{
+  const row={...snapshot.openWork[0],number:987,progressPercent:50,progressSource:'github_gates_verified',
+    progressDetail:'3/6 cổng GitHub xác minh',progressChecklistVerified:true,
+    progressDone:3,progressTotal:6,progressRemaining:3,
+    progressSteps:[
+      {title:'PR đúng HEAD',done:true,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/pull/11'},
+      {title:'CI PASS',done:true,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/123'},
+      {title:'Queue Hygiene PASS',done:true,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/456'},
+      {title:'Rà soát độc lập',done:false,evidenceUrl:null},
+      {title:'Merge',done:false,evidenceUrl:null},
+      {title:'DONE',done:false,evidenceUrl:null}
+    ]};
+  await routeTiger(page,{...snapshot,openWork:[row],activeWork:[],nextQueue:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const card=page.locator('.work-row[data-work-number="987"]');
+  await expect(card.locator('.progress-text')).toHaveText('50%');
+  await expect(card.locator('.work-step-summary')).toContainText('3/6 cổng GitHub đã xác minh');
+  await card.click();
+  await expect(page.locator('#drawerChecklistSection h3')).toHaveText('CỔNG TIẾN ĐỘ GITHUB');
+  await expect(page.locator('#drawerChecklistMeta')).toContainText('3/6 cổng GitHub');
+  await expect(page.locator('.drawer-checklist-step.verified.done')).toHaveCount(3);
+  await expect(page.locator('.drawer-checklist-copy a')).toHaveCount(3);
+  await expect(page.locator('#drawerChecklistHint')).toContainText('100% chỉ khi công việc DONE');
+});
+
 test('LIVE compact owner grid shows five to six cards per row on desktop with readable mobile fallback',async({page})=>{
   const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
     [1664,950,5],[2560,1440,6],[1280,900,4],[390,844,1]
