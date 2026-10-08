@@ -1817,7 +1817,7 @@ export function sanitizeRuntimePayload(payload) {
   const coreUiAssignments=(Array.isArray(payload.coreUiAssignments)?payload.coreUiAssignments:[])
     .slice(0,40)
     .filter((row)=>Number.isSafeInteger(row?.issueNumber)&&row.issueNumber>0
-      && /^GH-\\d+-R[A-Za-z0-9]+$/.test(String(row?.jobId||''))
+      && /^GH-\d+-R[A-Za-z0-9]+$/.test(String(row?.jobId||''))
       && ['NV03','NV04'].includes(String(row?.employeeId||''))
       && ['ui_assigned','ui_running','done','failed'].includes(String(row?.status||'')))
     .map((row)=>({
