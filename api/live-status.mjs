@@ -1686,6 +1686,17 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         GOAL: 8,
         SYSTEM: 9,
       };
+      // Owner platform-first order: fix Core admission, verify routing, then prepare Cline.
+      // This is display order only; it never grants execution eligibility.
+      const foundationRank = (row) => {
+        const fixed = { 4576: 0, 4565: 1, 4532: 2 };
+        if (Object.prototype.hasOwnProperty.call(fixed, Number(row.number))) return fixed[Number(row.number)];
+        const title = String(row.title || row.displayTitle || '').toUpperCase();
+        return /TIGERIQ|CORE|NỀN TẢNG|ĐIỀU PHỐI/.test(title) ? 3 : 4;
+      };
+      const fa = foundationRank(a);
+      const fb = foundationRank(b);
+      if (fa !== fb) return fa - fb;
       const sa = actionRank[a.status] ?? 8;
       const sb = actionRank[b.status] ?? 8;
       if (sa !== sb) return sa - sb;
