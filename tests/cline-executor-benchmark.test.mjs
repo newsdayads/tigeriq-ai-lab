@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { seedLane, scoreLane } from '../benchmarks/cline-executor-eval/harness.mjs';
@@ -17,6 +17,7 @@ test('benchmark harness seeds identical deterministic fixtures and baseline fail
       await readFile(path.join(b.fixtures[i].root, 'TASK.md'), 'utf8'),
     );
   }
+  await assert.rejects(access(path.join(a.fixtures[0].root, '.tigeriq-benchmark-baseline.json')));
   const score = await scoreLane({ root, lane: 'a' });
   assert.equal(score.total, 3);
   assert.equal(score.completed, 0);
@@ -37,4 +38,30 @@ test('scorer rejects test tampering even when a fixture test process exits succe
   assert.equal(row.testsPass, true);
   assert.equal(row.testsMutated, true);
   assert.equal(row.completed, false);
+});
+
+
+test('immutable manifest prevents forged baseline and TASK tampering from creating a false pass', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'tigeriq-cline-bench-'));
+  const seeded = await seedLane({ root, lane: 'forged' });
+  const first = seeded.fixtures[0].root;
+  await writeFile(
+    path.join(first, 'src/parse-count.mjs'),
+    "export function parseCount(value) { const text = String(value ?? ''); return /^(?:0|[1-9]\\d*)$/.test(text) ? Number(text) : null; }\n",
+    'utf8',
+  );
+  await writeFile(path.join(first, 'TASK.md'), 'tampered task\n', 'utf8');
+  await writeFile(
+    path.join(first, '.tigeriq-benchmark-baseline.json'),
+    JSON.stringify({ fixtureId: 'strict-count-parser', files: {} }) + '\n',
+    'utf8',
+  );
+
+  const score = await scoreLane({ root, lane: 'forged' });
+  const row = score.fixtures.find((item) => item.fixtureId === 'strict-count-parser');
+  assert.equal(row.testsPass, true);
+  assert.equal(row.taskMutated, true);
+  assert.deepEqual(row.unexpectedFiles, ['.tigeriq-benchmark-baseline.json']);
+  assert.equal(row.completed, false);
+  assert.equal(score.qualityPass, false);
 });
