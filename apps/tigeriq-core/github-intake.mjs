@@ -627,6 +627,9 @@ export function safeAutoWorkAdmission(issue){
   const androidProductExclusion=androidProductAutoExecutionExclusion(issue);
   if(androidProductExclusion)return {eligible:false,reason:androidProductExclusion};
   const currentSafetyBody=currentAutoExecutionHeader(body);
+  // Explicit current authorization is mandatory: an archived true grant,
+  // or a missing current flag, never authorizes a safe-looking work order.
+  if(bodyValue(currentSafetyBody,'TIGERIQ_EXECUTABLE').toLowerCase()!=='true')return {eligible:false,reason:'EXECUTION_FLAG_REQUIRED'};
   const priority=bodyValue(currentSafetyBody,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
   const ownerPolicy=bodyValue(currentSafetyBody,'OWNER_POLICY').toUpperCase();
@@ -1475,7 +1478,7 @@ export function activeGithubObjectiveSourceExclusion(issue){
   if(reason==='NON_EXECUTABLE_STATE')return trulyTerminal?reason:'';
   if([
     'EXPLICIT_SAFETY_FLAG_DISABLED','TERMINAL_BLOCKED','P0_OR_INVALID_PRIORITY',
-    'OWNER_OR_HOLD_GATE','OWNER_POLICY_NOT_AUTO','APP_CHROME_EXCLUDED',
+    'OWNER_OR_HOLD_GATE','OWNER_POLICY_NOT_AUTO','EXECUTION_FLAG_REQUIRED','APP_CHROME_EXCLUDED',
     'ANDROID_PRODUCT_OWNER_DIRECT',
   ].includes(reason))return reason;
   return '';
