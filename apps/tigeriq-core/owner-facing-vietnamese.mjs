@@ -46,6 +46,59 @@ function restoreOwnerProperNames(value = '', preserved = []) {
   return text;
 }
 
+const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
+  [/\bEXPLICIT_EXECUTION_DISABLED\b/g, 'Tạm dừng thực thi theo nguồn chuẩn'],
+  [/\bAUTO_QUEUE_EXCLUDED\b/g, 'Không thuộc hàng đợi tự động'],
+  [/\bHARD_GATE_SAFETY_FLAGS_INCOMPLETE\b/g, 'Thiếu điều kiện an toàn bắt buộc'],
+  [/\bOWNER_OR_HOLD_GATE\b/g, 'Chờ anh Sơn hoặc điều kiện giữ'],
+  [/\bP0_OR_INVALID_PRIORITY\b/g, 'P0 hoặc mức ưu tiên không hợp lệ'],
+  [/\bDEPENDENCY_BLOCKED\b/g, 'Đang chờ phụ thuộc'],
+  [/\bMUTATION_OWNER_CONFLICT\b/g, 'Xung đột quyền ghi'],
+  [/\bNO_ELIGIBLE_RESOURCE\b/g, 'Chưa có tài nguyên phù hợp'],
+  [/\bcredential material\b/gi, 'thông tin xác thực'],
+  [/\bmust become available\b/gi, 'phải sẵn sàng'],
+  [/\bWhen existing\b/gi, 'Khi'],
+  [/\bwithout new\/changed\b/gi, 'mà không tạo hoặc thay đổi'],
+  [/\bfast-forward-only sync\b/gi, 'chỉ đồng bộ tiến tới'],
+  [/\bsync exact main\b/gi, 'đồng bộ chính xác nhánh main'],
+  [/\bthen set only nonsecret\b/gi, 'sau đó chỉ thiết lập giá trị không bí mật'],
+  [/\bset nonsecret\b/gi, 'thiết lập cấu hình không bí mật'],
+  [/\brestart News runtime\b/gi, 'khởi động lại môi trường News'],
+  [/\brun soak\/quality gates\b/gi, 'chạy kiểm tra bền và cổng chất lượng'],
+  [/\bDo not wait for Owner\b/gi, 'Không chờ anh Sơn'],
+  [/\bDiagnose actual browser request\b/gi, 'Chẩn đoán yêu cầu trình duyệt thực tế'],
+  [/\bcreate admin\b/gi, 'tạo quản trị viên'],
+  [/\brun full sandbox E2E\b/gi, 'chạy E2E sandbox đầy đủ'],
+  [/\bverify restart\/duplicate behavior\b/gi, 'xác minh hành vi khởi động lại và chống trùng'],
+  [/\bbenchmark\b/gi, 'đánh giá chuẩn'],
+  [/\bPaperclip runtime is healthy, but authenticated deployment has no usable admin session because first-admin credentials have not yet been set by Owner in browser\.?/gi,
+    'Môi trường Paperclip đang ổn, nhưng bản triển khai có xác thực chưa có phiên quản trị dùng được vì anh Sơn chưa thiết lập thông tin xác thực quản trị đầu tiên trong trình duyệt'],
+  [/\bResume only when\b/gi, 'Chỉ tiếp tục khi'],
+  [/\ba non-materializing lifecycle integration harness exists\b/gi, 'có bộ kiểm thử tích hợp vòng đời không phát sinh tác vụ'],
+  [/\bOwner changes the no-new-work constraint\b/gi, 'anh Sơn thay đổi ràng buộc không tạo việc mới'],
+  [/\bdo not repeat the same synthetic preflight\b/gi, 'không lặp lại cùng tiền kiểm mô phỏng'],
+  [/\bTrack\b/gi, 'Theo dõi'],
+  [/\bimplement>test>independent review>merge>PC01 runtime>publish>live verify\b/gi,
+    'triển khai>kiểm thử>rà soát độc lập>hợp nhất>môi trường PC01>xuất bản>xác minh thực tế'],
+  [/\breconcile\b/gi, 'đối soát'],
+  [/\bverified acceptance\b/gi, 'nghiệm thu đã xác minh'],
+  [/\bprivate Actor\b/gi, 'Actor riêng'],
+  [/\binject scoped\b/gi, 'nạp theo phạm vi'],
+  [/\bpreflight\b/gi, 'tiền kiểm'],
+  [/\bcurrent CI artifact\b/gi, 'gói CI hiện hành'],
+  [/\bruntime apply\b/gi, 'áp dụng môi trường chạy'],
+  [/\bsign current CI artifact\b/gi, 'ký gói CI hiện hành'],
+  [/\bpublish manifest\b/gi, 'xuất bản manifest'],
+  [/\bS10 acceptance\b/gi, 'nghiệm thu S10'],
+  [/\bsystem precheck\b/gi, 'tiền kiểm hệ thống'],
+  [/\brequest Owner secret injection only if required\b/gi, 'chỉ yêu cầu anh Sơn nạp bí mật nếu cần'],
+  [/\bone private E2E\b/gi, 'một E2E riêng'],
+  [/\bmeasure cost\b/gi, 'đo chi phí'],
+  [/\bKEEP\/ITERATE\/KILL\b/gi, 'GIỮ/LẶP CẢI TIẾN/DỪNG'],
+  [/\bquality gates\b/gi, 'cổng chất lượng'],
+  [/\bverify live\b/gi, 'xác minh thực tế'],
+]);
+
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
   [/\bDeep Agents\/LangGraph\b/gi, 'Deep Agents/LangGraph (khung điều phối tác nhân)'],
   [/\bCore NV API\b/gi, 'Core NV API (giao diện AI trung tâm)'],
@@ -124,6 +177,7 @@ export function ownerStatusLabel(value = '') {
 export function localizeOwnerFacingText(value = '') {
   const { text: protectedText, preserved } = protectOwnerProperNames(value);
   let text = protectedText;
+  for (const [pattern, replacement] of OWNER_PHRASE_REPLACEMENTS) text = text.replace(pattern, replacement);
   for (const [pattern, replacement] of OWNER_TERM_REPLACEMENTS) text = text.replace(pattern, replacement);
   for (const [pattern, replacement] of STATUS_REPLACEMENTS) text = text.replace(pattern, replacement);
   return restoreOwnerProperNames(text, preserved);
@@ -171,7 +225,7 @@ export function containsBareOwnerPrReference(value = '') {
   return /\bPR\s+#\d+\b(?!\s*-\s*\S)/i.test(text);
 }
 
-const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|lockfile|isolated|foundation|readback|resolution|repairs?|fresh)\b|\bsmoke\s+test\b|\bonly\s+after\b/gi;
+const OWNER_ENGLISH_OPERATIONAL_RE = /\b(?:review|merge|runtime|deploy|deployment|blocker|pending|active|queued|ready|failed|pass|done|exact-head|save_not_durable|health|release|publish|credential|credentials|security|browser|reboot|workflow|evidence|prompt|production|code|canary|fallback|routing|live|self[- ]install|lockfile|isolated|foundation|readback|resolution|repairs?|fresh|sync|nonsecret|config|restart|quality|gate|diagnose|request|admin|benchmark|authenticated|session|preflight|inject|scoped|acceptance|artifact|manifest|reconcile)\b|\bsmoke\s+test\b|\bonly\s+after\b|\bmust\s+become\s+available\b|\bdo\s+not\s+wait\b/gi;
 const VIETNAMESE_EXPLANATION_RE = /[ăâđêôơưàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
 
 export function containsOwnerFacingEnglishOperationalProse(value = '') {
