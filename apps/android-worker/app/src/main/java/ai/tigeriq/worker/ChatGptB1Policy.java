@@ -54,6 +54,21 @@ public final class ChatGptB1Policy {
                 && composerReady);
     }
 
+    /**
+     * Matching a token elsewhere in ChatGPT is not a Core task receipt.
+     * Revalidate the live pinned-Project title before accepting the response.
+     * Keep the independent manual B1 acceptance path unchanged.
+     */
+    public static boolean canAcceptResponseInLiveProjectContext(
+        String taskId, String projectMode, boolean projectBound,
+        boolean liveProjectTitle
+    ) {
+        return (taskId == null || taskId.isEmpty())
+            || (projectBound
+                && "PROJECT".equals(projectMode)
+                && liveProjectTitle);
+    }
+
     /** A Core-leased task pinned to the TigerIQ Project must never fall back to standalone chat. */
     public static boolean canUseStandaloneFallbackForTask(String taskId) {
         return taskId == null || taskId.isEmpty();
