@@ -278,3 +278,46 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
   await expect(page.locator('.work-row')).toHaveCount(1);
   await expect(page.locator('.work-row[data-work-number="909"]')).toBeVisible();
 });
+
+test('V2.4 checklist shows verified counts on the card and auditable steps in the detail drawer',async({page})=>{
+  const row={...snapshot.openWork[0],
+    progressPercent:50,progressSource:'checklist_verified',progressDetail:'2/4 bước xác minh',
+    progressChecklistVerified:true,progressDone:2,progressTotal:4,progressRemaining:2,
+    progressSteps:[
+      {title:'Phân tích',done:true,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/111'},
+      {title:'Thiết kế',done:true,evidenceUrl:null},
+      {title:'Kiểm thử',done:false,evidenceUrl:null},
+      {title:'Xác minh',done:false,evidenceUrl:null}
+    ]
+  };
+  await page.setViewportSize({width:390,height:844});
+  await routeTiger(page,{...snapshot,openWork:[row],activeWork:[],nextQueue:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const card=page.locator('.work-row[data-work-number="111"]');
+  await expect(card.locator('.progress-text')).toHaveText('50%');
+  await expect(card.locator('.work-step-summary')).toContainText('2/4 bước đã xác minh');
+  await expect(card.locator('.work-step-summary')).toContainText('Còn 2 bước');
+  await card.click();
+  const checklist=page.locator('#drawerChecklistSection');
+  await expect(checklist).toBeVisible();
+  await expect(page.locator('#drawerChecklistMeta')).toContainText('2/4 bước · còn 2 bước');
+  await expect(page.locator('.drawer-checklist-step')).toHaveCount(4);
+  await expect(page.locator('.drawer-checklist-step.verified.done')).toHaveCount(2);
+  await expect(page.locator('.drawer-checklist-copy a').first()).toHaveAttribute('href','https://github.com/newsdayads/tigeriq-ai-lab/issues/111');
+  await expect(page.locator('#drawerChecklistHint')).toContainText('100%');
+});
+
+test('V2.4 unchecked validation never fabricates a percentage, even when steps are marked',async({page})=>{
+  const row={...snapshot.openWork[0],status:'WAITING',progressPercent:null,progressSource:'none',
+    progressChecklistVerified:false,progressDone:1,progressTotal:2,progressRemaining:1,
+    progressSteps:[{title:'Khảo sát',done:true,evidenceUrl:null},{title:'Triển khai',done:false,evidenceUrl:null}]};
+  await routeTiger(page,{...snapshot,openWork:[row],activeWork:[],nextQueue:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const card=page.locator('.work-row[data-work-number="111"]');
+  await expect(card.locator('.progress-text')).toHaveCount(0);
+  await expect(card.locator('.work-step-summary')).toContainText('chưa xác minh');
+  await card.click();
+  await expect(page.locator('#drawerChecklistSection')).toBeVisible();
+  await expect(page.locator('#drawerChecklistHint')).toContainText('chưa có xác nhận');
+  await expect(page.locator('.drawer-checklist-step')).toHaveCount(2);
+});
