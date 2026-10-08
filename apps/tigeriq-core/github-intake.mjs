@@ -561,7 +561,13 @@ export function androidProductAutoExecutionExclusion(issue){
     && hasExactFlag(body,'OWNER_APPROVED_ANDROID_AUTO_P2')
     && bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
     && bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
-    && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE';
+    && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE'
+    // The one-issue Owner exception is valid only while its tool and local
+    // execution prohibitions remain explicit. No general Android unlock.
+    && hasExactFlag(body,'NO_RDC')
+    && hasExactFlag(body,'NO_CODEX')
+    && hasExactFlag(body,'NO_PC01_SHELL')
+    && bodyValue(body,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
   if(!/\[MOBILE-WORKER\]/i.test(title))return '';
