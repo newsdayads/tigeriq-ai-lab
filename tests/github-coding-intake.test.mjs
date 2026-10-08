@@ -179,6 +179,30 @@ describe('GitHub coding intake guard',()=>{
     expect(calls).toContain('result');
   });
 
+  it('never accepts mandatory flags or owner permissions found only in historical sections',()=>{
+    for(const key of [
+      'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
+    ]){
+      const trueValue=key==='OWNER_POLICY'?'AUTO':'true';
+      const removed=SAFE.replace(key+'='+trueValue,'');
+      expect(parseCodingIssue(issue(removed+'\n## HISTORICAL CONTRACT\n'+key+'='+trueValue))).toBeNull();
+    }
+    expect(parseCodingIssue(issue('## HISTORICAL CONTRACT\n'+SAFE))).toBeNull();
+  });
+
+  it('uses only the current header for Coding owner gates, scope, route and dependencies',()=>{
+    const current=SAFE+'\nOWNER_HOLD=false\nRESOURCE_SCOPE=CURRENT_SAFE_SCOPE\nALLOW_PATH_PREFIX=apps/tigeriq-core';
+    const historical='\n## HISTORICAL CONTRACT\nOWNER_HOLD=true\nOWNER_CONTROLLED=true\nOWNER_DIRECT=true\nRESOURCE_SCOPE=HISTORIC_SCOPE\nALLOW_PATH_PREFIX=apps/historical-unsafe\nDEPENDS_ON=#9999\nTARGET_EMPLOYEE=NV03\nTARGET_REPOSITORY=newsdayads/tigeriq-media';
+    const parsed=parseCodingIssue(issue(current+historical));
+    expect(parsed).toMatchObject({
+      ownerControlled:false,ownerDirect:false,dependsOn:[],
+      scopeLease:{resourceScope:'CURRENT_SAFE_SCOPE',paths:['apps/tigeriq-core']},
+      routing:{targetEmployee:null,targetRepository:null},
+    });
+    expect(parseCodingIssue(issue(current.replace('OWNER_HOLD=false','OWNER_HOLD=true')+historical))).toBeNull();
+  });
   it('ignores pull requests and closed issues',()=>{
     expect(parseCodingIssue(issue(SAFE,{pull_request:{}}))).toBeNull();
     expect(parseCodingIssue(issue(SAFE,{state:'closed'}))).toBeNull();
