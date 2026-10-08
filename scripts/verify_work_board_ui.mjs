@@ -133,4 +133,30 @@ const githubFallback = liveApi.indexOf("const value = await buildLiveStatus();",
 const staleFallback = liveApi.indexOf("if (cache.value && now - cache.at < STALE_RESPONSE_MS)", githubFallback);
 assert.ok(liveCatch >= 0 && githubFallback > liveCatch && staleFallback > githubFallback, 'fresh GitHub fallback must run before stale response cache');
 
+// Feature gate: never infer step completion or percentages from an unverified issue.
+const { checklistForIssue, progressForIssue, parseOpenWorkIssue } = await import('../api/live-status.mjs');
+const verifiedStepBody='PROGRESS_VERIFIED=true\n- [x] Phân tích yêu cầu\n- [x] Thiết kế phương án\n- [ ] Kiểm thử\n- [ ] Xác minh thực tế';
+const verifiedStepIssue={number:987654,title:'[P1] Kiểm thử tiến độ',body:verifiedStepBody,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/987654'};
+const list=checklistForIssue(verifiedStepIssue);
+assert.deepEqual({done:list.done,total:list.total,remaining:list.remaining,verified:list.verified},{done:2,total:4,remaining:2,verified:true});
+assert.equal(list.steps[0].title,'Phân tích yêu cầu');
+assert.equal(list.steps[2].done,false);
+assert.deepEqual(progressForIssue(verifiedStepIssue,'WORKING'),{percent:50,source:'checklist_verified',detail:'2/4 bước xác minh'});
+const row=parseOpenWorkIssue(verifiedStepIssue);
+assert.equal(row.progressDone,2);assert.equal(row.progressTotal,4);assert.equal(row.progressRemaining,2);
+assert.equal(row.progressSteps.length,4);
+const unverifiedIssue={...verifiedStepIssue,body:verifiedStepBody.replace('PROGRESS_VERIFIED=true','')};
+assert.equal(checklistForIssue(unverifiedIssue).verified,false);
+assert.equal(progressForIssue(unverifiedIssue,'WORKING').percent,null);
+const allCheckedIssue={...verifiedStepIssue,body:'PROGRESS_VERIFIED=true\n- [x] Bước 1\n- [x] Bước 2'};
+assert.equal(progressForIssue(allCheckedIssue,'REVIEW').percent,null,'No 100% without DONE');
+assert.equal(progressForIssue(allCheckedIssue,'DONE').percent,100);
+const mixedBodyIssue={...verifiedStepIssue,body:'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=75\n- [x] A\n- [ ] B\n- [ ] C\n- [ ] D'};
+assert.equal(progressForIssue(mixedBodyIssue,'WORKING').percent,25,'Checklist is the primary basis over freehand percent');
+const fences={...verifiedStepIssue,body:'PROGRESS_VERIFIED=true\n\`\`\`md\n- [x] not a step\n\`\`\`\n- [x] real A\n- [ ] real B'};
+assert.equal(checklistForIssue(fences).total,2);
+for (const x of ['id="drawerChecklistSection"','function verifiedStepSummary(row)','function drawerChecklistMarkup(row)','progressSteps','progressRemaining','Có ','Còn ','class="drawer-checklist-step']) assert.ok(publicView.includes(x),'Checklist UI missing '+x);
+assert.match(publicView,/tigeriq-live-verified-checklist-v24/);
+console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
+
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
