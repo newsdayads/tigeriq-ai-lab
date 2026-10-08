@@ -43,10 +43,10 @@ export function managerAcceptancePausePlan({source='',sourceRevision='',gate={}}
 export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false}={}){
   const pending=String(awaitingRevision||'').trim();
   const current=String(sourceRevision||'').trim();
-  const gateSatisfied=acceptanceAllowed===true;
+  const gateSatisfied=acceptanceAllowed===true&&Boolean(current);
   const revisionChanged=Boolean(pending&&current&&current!==pending);
   return {
-    wake:Boolean(pending&&(gateSatisfied||revisionChanged)),
+    wake:Boolean(pending&&current&&(gateSatisfied||revisionChanged)),
     reason:gateSatisfied?'acceptance_satisfied':revisionChanged?'source_revision_changed':'awaiting_evidence',
   };
 }
