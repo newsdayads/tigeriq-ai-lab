@@ -170,4 +170,19 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(segment).not.toContain('await fetch(u,');
   });
 
+
+  it('P0 Health v3 reuses LIVE glow/contrast with scoped selectors, no runtime changes',()=>{
+    expect(shared).toContain('TIGERIQ_HEALTH_LIVE_PARITY_V3');
+    expect(shared).toContain('.api-health .topbar{');
+    expect(shared).toContain('.api-health .workforce-panel .panel-h{');
+    expect(shared).toContain('.api-health .worker.employee-card::before{');
+    expect(shared).toContain('.api-health .work-row::before{');
+    expect(shared).toContain('.api-health .worker.employee-card.state-working{--health-card-accent:var(--health-card-working)');
+    expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(shared).toContain('animation:none!important');
+    expect(dashboard).toContain('setInterval(load,5000)');
+    expect(dashboard).toContain('setInterval(loadLiveStatus,1000)');
+    expect(dashboard).toContain("fetch('/api/live-status',{cache:'no-store'})");
+  });
+
 });
