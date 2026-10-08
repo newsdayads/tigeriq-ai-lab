@@ -187,6 +187,46 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('keeps priority, owner policy, writer lease and release grants inside the current contract',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=CURRENT_CORE_SCOPE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const separator of ['## HISTORICAL', '--- HISTORICAL ONLY ---']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const current=prefix+active;
+        const archived=[
+          ['PRIORITY=P2','P0_OR_INVALID_PRIORITY'],
+          ['OWNER_POLICY=AUTO','HISTORICAL_ONLY_OWNER_POLICY'],
+          ['MUTATION_OWNER=CORE_DYNAMIC_LEASE','HISTORICAL_ONLY_MUTATION_OWNER'],
+        ];
+        for(const [grant,reason] of archived){
+          const historicalOnly={...base,body:current.replace(grant,'')+'\n'+separator+'\n'+grant};
+          expect(safeAutoWorkAdmission(historicalOnly)).toMatchObject({eligible:false,reason});
+          expect(parseExecutableIssue(historicalOnly)).toBeNull();
+        }
+        const historicalOwner={...base,body:current+'\n'+separator+'\nOWNER_DIRECT=true\nCORE_TARGET_STRICT=true'};
+        expect(safeAutoWorkAdmission(historicalOwner)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+        expect(parseExecutableIssue(historicalOwner)).toMatchObject({
+          admissionMode:'SAFE_P1_P5_POLICY',ownerDirect:false,
+          dispatchLane:'CORE_REASONING',targetWorker:null,
+        });
+        const currentOwner={...base,body:current+'\nOWNER_DIRECT=true\n'+separator+'\nOWNER_DIRECT=false'};
+        expect(parseExecutableIssue(currentOwner)).toMatchObject({ownerDirect:true});
+
+        const release='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"'+('a'.repeat(40))+'"}';
+        const disabled={...base,body:current.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')
+          +'\n'+separator+'\n'+release};
+        expect(safeAutoWorkAdmission(disabled)).toMatchObject({eligible:false,reason:'EXPLICIT_EXECUTION_DISABLED'});
+        expect(parseExecutableIssue(disabled)).toBeNull();
+      }
+    }
+  });
+
   it('requires each legacy compatibility flag in the current execution section',()=>{
     const keys=['TIGERIQ_EXECUTABLE','OWNER_POLICY','NO_CODE_CHANGE','NO_PC01_SHELL'];
     for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
