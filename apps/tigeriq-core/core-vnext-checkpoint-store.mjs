@@ -23,6 +23,11 @@ function normalizedTransition(input) {
   const priority = token(input.priority, 'VNEXT_PRIORITY_INVALID');
   if (!/^P[1-5]$/.test(priority)) fail('VNEXT_P0_OR_INVALID_PRIORITY_DENIED');
   if (input.owner_gate !== null && input.owner_gate !== undefined) fail('VNEXT_OWNER_GATE_DENIED');
+  // Reject Owner/permission holds before any durable state is written. The caller
+  // must also independently gate every task_id before invoking this adapter.
+  if (input.owner_hold === true || input.hard_gate === true) fail('VNEXT_OWNER_OR_HARD_HOLD_DENIED');
+  if ((input.owner_hold !== undefined && input.owner_hold !== false) ||
+      (input.hard_gate !== undefined && input.hard_gate !== false)) fail('VNEXT_HOLD_FLAG_INVALID');
   if (!Number.isSafeInteger(input.sequence) || input.sequence < 0 || input.sequence > 999_999_999) fail('VNEXT_SEQUENCE_INVALID');
   const phase = token(input.phase, 'VNEXT_PHASE_INVALID');
   const planRevision = token(input.plan_revision, 'VNEXT_PLAN_REVISION_INVALID');
@@ -45,12 +50,34 @@ function configuration(objectiveId, checkpointId) {
   if (checkpointId) configurable.checkpoint_id = checkpointId;
   return { configurable };
 }
-function checkpointOf(tuple) {
-  const state = tuple?.checkpoint?.channel_values?.vnext_state;
+function checkpointOf(tuple, expectedObjectiveId) {
   if (!tuple) return null;
-  if (!state || typeof state !== 'object' || typeof state.digest !== 'string' ||
-      !Number.isSafeInteger(state.sequence)) fail('VNEXT_STORED_CHECKPOINT_INVALID');
-  return state;
+  const state = tuple.checkpoint?.channel_values?.vnext_state;
+  if (!state || typeof state !== 'object' || Array.isArray(state) ||
+      typeof state.digest !== 'string' || !/^[a-f0-9]{64}$/.test(state.digest))
+    fail('VNEXT_STORED_CHECKPOINT_INVALID');
+
+  // Never trust a persisted digest without re-normalizing the actual payload.
+  // Exact stored keys prevent unsupported hold flags/fields being silently ignored.
+  let row;
+  try { row = normalizedTransition(state); }
+  catch { fail('VNEXT_STORED_CHECKPOINT_INVALID'); }
+  const allowedKeys = new Set([...Object.keys(row), 'digest']);
+  if (Object.keys(state).length !== allowedKeys.size ||
+      Object.keys(state).some(key => !allowedKeys.has(key)))
+    fail('VNEXT_STORED_CHECKPOINT_INVALID');
+  if (digest(row) !== state.digest) fail('VNEXT_STORED_CHECKPOINT_DIGEST_MISMATCH');
+  if (expectedObjectiveId && row.objective_id !== expectedObjectiveId) fail('VNEXT_THREAD_MISMATCH');
+
+  const checkpointId = 'cp-' + String(row.sequence).padStart(10, '0') + '-' + state.digest.slice(0, 20);
+  const config = tuple.config?.configurable;
+  if (tuple.checkpoint.v !== 4 || tuple.checkpoint.id !== checkpointId ||
+      tuple.checkpoint.channel_versions?.vnext_state !== row.sequence + 1 ||
+      config?.checkpoint_id !== checkpointId ||
+      config?.checkpoint_ns !== CORE_VNEXT_CHECKPOINT_NAMESPACE ||
+      config?.thread_id !== stableObjectiveThreadId(row.objective_id))
+    fail('VNEXT_STORED_CHECKPOINT_INVALID');
+  return Object.freeze({ ...row, digest: state.digest });
 }
 
 // Caller must hold the verified existing one-writer lease. This is NOT an autonomous lease provider.
@@ -63,8 +90,7 @@ export function createCoreVNextCheckpointStore({
   async function read(objectiveId) {
     if (!enabled || !schemaReady) fail('VNEXT_CHECKPOINT_DISABLED_OR_SCHEMA_NOT_READY');
     const tuple = await checkpointer.getTuple(configuration(token(objectiveId, 'VNEXT_OBJECTIVE_ID_INVALID')));
-    const state = checkpointOf(tuple);
-    return state ? Object.freeze({ ...state }) : null;
+    return checkpointOf(tuple, objectiveId);
   }
 
   async function save(input, { nowMs = Date.now() } = {}) {
@@ -79,7 +105,7 @@ export function createCoreVNextCheckpointStore({
     const checkpointId = 'cp-' + String(row.sequence).padStart(10, '0') + '-' + stateDigest.slice(0, 20);
     const root = configuration(row.objective_id);
     const latestTuple = await checkpointer.getTuple(root);
-    const latest = checkpointOf(latestTuple);
+    const latest = checkpointOf(latestTuple, row.objective_id);
     if (latest) {
       if (latest.objective_id !== row.objective_id) fail('VNEXT_THREAD_MISMATCH');
       if (latest.sequence === row.sequence) {
@@ -105,7 +131,7 @@ export function createCoreVNextCheckpointStore({
       transition_id: row.transition_id, event_id: row.event_id,
     }, { vnext_state: version });
     const verified = await checkpointer.getTuple(configuration(row.objective_id, checkpointId));
-    if (checkpointOf(verified)?.digest !== stateDigest) fail('VNEXT_WRITE_READBACK_MISMATCH');
+    if (checkpointOf(verified, row.objective_id)?.digest !== stateDigest) fail('VNEXT_WRITE_READBACK_MISMATCH');
     return Object.freeze({ written: true, replay: false, checkpoint_id: checkpointId, state: payload });
   }
 
