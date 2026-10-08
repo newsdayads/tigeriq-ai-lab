@@ -193,7 +193,9 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(core).toContain("source:'LIVE_VERIFIED_GATES'");
     expect(core).toContain("source:'PC01_FALLBACK'");
     expect(core).toContain("const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},14000)");
-    expect(core).toContain('const pending=refreshApiHealthLiveWork()');
+    expect(core).toContain('const pending=Promise.resolve().then(refreshApiHealthLiveWork)');
+    expect(core).toContain('void pending.then(finish,finish)');
+    expect(core).toContain('Date.parse(upstream.generatedAt)<previousTime');
     expect(core).toContain('healthLiveResultFresh(healthLiveWorkCache.result)');
     expect(core).toContain('verifiedGateSource:false');
     expect(core).toContain('source:\'PC01_FALLBACK\'');
