@@ -948,7 +948,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect((intake.match(/objectiveCompletionGate\(row\.metadata\)/g)||[]).length).toBeGreaterThanOrEqual(2);
     expect(intake).toContain("update tigeriq_objectives set status='active'");
     expect(core).toContain('objectiveCompletionGate(o.metadata||{})');
-    expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
+    expect(core).toContain('OBJECTIVE_COMPLETION_WAITING_EVIDENCE');
   });
 
   it('wires fail-closed live gate hardening and preserves manager retry budget',()=>{
@@ -965,8 +965,10 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain('liveAcceptanceCommentCount:(spec.liveAcceptanceRequired===true||spec.finalReviewRequired===true)?-1:spec.commentCount');
     expect(core).toContain("employee_id=any($1::text[])");
     expect(core).toContain('finalReviewImplementerEmployeeIds');
-    expect(core).toContain("set manager_cycles=0,summary=$2");
-    expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
+    expect(core).toContain("manager_cycles=manager_cycles+1,summary=$2");
+    expect(core).toContain("next_check_at='infinity'::timestamptz");
+    expect(core).not.toContain("set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute'");
+    expect(core).toContain('OBJECTIVE_COMPLETION_WAITING_EVIDENCE');
   });
 
   it('wires public evidence metadata and both bounded pc_operator reconciliation paths',()=>{
