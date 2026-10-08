@@ -688,7 +688,9 @@ export function parseExecutableIssue(issue){
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
     liveAcceptanceRequired:hasExactFlag(body,'LIVE_ACCEPTANCE_REQUIRED'),
     finalReviewRequired:hasExactFlag(body,'FINAL_REVIEW_REQUIRED')||hasExactFlag(body,'FINAL_LIVE_REVIEW_REQUIRED'),
-    admissionMode:legacyExecutable?'LEGACY_EXECUTION_FLAGS':'SAFE_P1_P5_POLICY',
+    // Classify by the CURRENT policy decision, not by the mere presence of
+    // still-supported legacy flags in an otherwise fully safe contract.
+    admissionMode:policyAdmission.eligible?'SAFE_P1_P5_POLICY':'LEGACY_EXECUTION_FLAGS',
     requiresCodingHandoff,
   };
 }
