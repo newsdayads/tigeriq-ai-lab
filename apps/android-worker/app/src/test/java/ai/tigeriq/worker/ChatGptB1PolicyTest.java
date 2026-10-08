@@ -104,6 +104,36 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void leasedCoreTaskRevalidatesLiveProjectBeforeComposerMutation() {
+        assertTrue(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", "PROJECT", true, true, true
+        ));
+        // Persisted projectBound does not protect against a user changing chats.
+        assertFalse(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", "PROJECT", true, false, true
+        ));
+        assertFalse(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", "PROJECT", true, true, false
+        ));
+        assertFalse(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", "PROJECT", false, true, true
+        ));
+        assertFalse(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", "STANDALONE_FALLBACK", true, true, true
+        ));
+        assertFalse(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "MT-123", null, true, true, true
+        ));
+        // Preserve the explicitly separate manual B1 fallback contract.
+        assertTrue(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            "", "STANDALONE_FALLBACK", true, false, true
+        ));
+        assertTrue(ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            null, null, false, false, false
+        ));
+    }
+
+    @Test
     public void sendAttemptRequiresInputReadyAndUnclaimedCycle() {
         assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 1, 0));
         assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 2, 1));
