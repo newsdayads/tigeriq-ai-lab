@@ -104,6 +104,37 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreResultAcceptanceRequiresProjectProofAndExactlyOneSend() {
+        assertTrue(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "PROJECT", 1, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", false, "PROJECT", 1, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "STANDALONE_FALLBACK", 1, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "WAITING_PROJECT", 1, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, null, 1, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "PROJECT", 0, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "PROJECT", 2, 0
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "COMPLETE", true, "PROJECT", 1, 1
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreTaskCompletion(
+            "ERROR", true, "PROJECT", 1, 0
+        ));
+    }
+
+    @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
         assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));
