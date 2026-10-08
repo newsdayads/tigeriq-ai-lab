@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
@@ -1530,6 +1531,28 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       }
     }
     const completionGate=objectiveCompletionGate(row.metadata);
+    const wake=managerAcceptanceWakePlan({
+      awaitingRevision:row.metadata?.managerAwaitingAcceptanceRevision,
+      sourceRevision:row.metadata?.sourceRevision,
+      acceptanceAllowed:completionGate.allow,
+    });
+    if(row.status==='active'&&wake.wake){
+      const summary=wake.reason==='source_revision_changed'
+        ? 'GitHub source revision changed; reassessing the updated Work Order'
+        : 'Durable acceptance/review gate satisfied; resume bounded manager evaluation';
+      const resumed=await pool.query(
+        "update tigeriq_objectives set next_check_at=now(),summary=$2,metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision',updated_at=now() where id=$1 and status='active'",
+        [row.id,summary],
+      );
+      if(resumed.rowCount===1){
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.summary=summary;
+        await pool.query(
+          "insert into tigeriq_events(type,objective_id,data) values('OBJECTIVE_COMPLETION_EVIDENCE_RESUMED',$1,$2::jsonb)",
+          [row.id,JSON.stringify({issueNumber:number,reason:wake.reason,sourceRevision:row.metadata?.sourceRevision||null})],
+        );
+      }
+    }
     if(row.status==='completed'&&!completionGate.allow){
       const summary='completion rejected: durable LIVE_ACCEPTANCE_PASS for current source revision is missing';
       await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
