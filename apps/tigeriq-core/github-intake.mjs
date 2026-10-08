@@ -554,6 +554,15 @@ export function androidProductAutoExecutionExclusion(issue){
   const body=String(issue?.body||'');
   const title=String(issue?.title||'');
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE').trim().toUpperCase();
+  // Owner explicitly moved canonical #2949 to P2. Keep the Android P0 fence for EVERY other scope.
+  const ownerApprovedNv102P2=Number(issue?.number)===2949
+    && /^\[P2\]\[ANDROID\]\[NV102\]/i.test(title)
+    && bodyValue(body,'PRIORITY')==='P2'
+    && exactBodyFlag(body,'OWNER_APPROVED_ANDROID_AUTO_P2')
+    && bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
+    && bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
+    && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE';
+  if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
   if(!/\[MOBILE-WORKER\]/i.test(title))return '';
   if(/^NV\d+_REAL_WORK_/i.test(resourceScope))return '';
