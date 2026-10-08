@@ -47,6 +47,15 @@ function restoreOwnerProperNames(value = '', preserved = []) {
 }
 
 const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
+  [/\bfast-forward-only sync to\b/gi, 'chỉ đồng bộ tiến tới'],
+  [/\bOwner creates\/links private Actor outside chat from\b/gi, 'anh Sơn tạo/liên kết Actor (tác vụ Apify) riêng ngoài chat từ'],
+  [/\binject scoped APIFY_TOKEN \+ APIFY_ACTOR_ID outside chat\b/gi, 'nạp APIFY_TOKEN + APIFY_ACTOR_ID theo phạm vi ngoài chat'],
+  [/\brun APIFY_PREFLIGHT_EXECUTE=OWNER_APPROVED_PRIVATE_PREFLIGHT first\b/gi, 'chạy APIFY_PREFLIGHT_EXECUTE=OWNER_APPROVED_PRIVATE_PREFLIGHT trước'],
+  [/\bif PASS run exactly one APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST\b/gi, 'nếu ĐẠT thì chạy đúng một APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST'],
+  [/\bcapture finalized computeUnits \+ usageTotalUsd after 10s settle\/refetch\b/gi, 'ghi nhận computeUnits + usageTotalUsd cuối cùng sau 10 giây ổn định/đọc lại'],
+  [/\bstop before public\/paid\/KYC\b/gi, 'dừng trước public/paid/KYC'],
+  [/\bguarded merge\b/gi, 'hợp nhất có khóa bảo vệ'],
+  [/\bmedia adapter\b/gi, 'bộ chuyển đổi media'],
   [/\bEXPLICIT_EXECUTION_DISABLED\b/g, 'Tạm dừng thực thi theo nguồn chuẩn'],
   [/\bAUTO_QUEUE_EXCLUDED\b/g, 'Không thuộc hàng đợi tự động'],
   [/\bHARD_GATE_SAFETY_FLAGS_INCOMPLETE\b/g, 'Thiếu điều kiện an toàn bắt buộc'],
