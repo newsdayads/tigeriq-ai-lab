@@ -122,6 +122,21 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(row.blocker).toContain('kho mã riêng xác thực');
   });
 
+  it('localizes the exact current #4521 next-step phrases that previously leaked into Live', () => {
+    const input = 'repairs existing PR|normal npm resolution|lockfile|isolated|foundation|smoke test|fresh exact-head CI/Queue Hygiene|only after|main readback';
+    const output = localizeOwnerFacingText(input);
+    expect(output).toContain('sửa lỗi PR hiện có');
+    expect(output).toContain('phân giải npm thông thường');
+    expect(output).toContain('tệp khóa phụ thuộc');
+    expect(output).toContain('cô lập');
+    expect(output).toContain('nền tảng');
+    expect(output).toContain('kiểm thử nhanh');
+    expect(output).toContain('kiểm tra đúng đầu nhánh mới CI/Queue Hygiene (kiểm tra vệ sinh hàng đợi)');
+    expect(output).toContain('chỉ sau khi');
+    expect(output).toContain('đọc lại main');
+    expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
+  });
+
   it('localizes OWNER_GATE rows before Live/API serialization', () => {
     const row = ownerFacingWorkRow({
       number: 2828,
