@@ -136,6 +136,7 @@ body.drawer-open{overflow:hidden}
 @media(max-width:700px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
 @media(max-width:420px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}.summary-tile{min-height:64px}}
 
+.bcct-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0;color:var(--muted);font-size:11px}.bcct-toolbar select,.bcct-toolbar button{border:1px solid #426080;border-radius:8px;background:#132a45;color:#f2f7fd;padding:7px;cursor:pointer}.bcct-toolbar select:focus-visible,.bcct-toolbar button:focus-visible{outline:2px solid #8cbbec}.bcct-toolbar span{font-size:10px}@media(max-width:700px){.bcct-toolbar span{flex-basis:100%}}
 </style>
 
 <style>
@@ -698,7 +699,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div id="workList" class="work-list"></div>
+  <div class="bcct-toolbar"><label for="bcctSort">ƯU TIÊN</label><select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select><button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Chỉ sắp xếp và kiểm tra; không tự giao việc</span></div><div id="workList" class="work-list"></div>
 </section>
 </div>
 </details>
@@ -1738,6 +1739,9 @@ function render(){
   renderApiWorkforce();
   updateCounts();
   const rows=normalizeRows(snapshot);
+  const bcctMode=$('bcctSort')?.value||'default';
+  if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
+  if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
   $('workMeta').textContent=rows.length+' việc';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
@@ -1810,6 +1814,8 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
+$('bcctSort').addEventListener('change',render);
+$('bcctRefresh').addEventListener('click',load);
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
