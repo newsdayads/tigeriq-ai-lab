@@ -54,6 +54,13 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 4. `bootstrap/05_TIGERIQ_BASELINE_DECISIONS.md`
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
 
+## OWNER BCCT FINAL V5 — HARD ROUTE MỌI CHAT TIGERIQ
+- Khi Owner nhập `bcct` hoặc `báo cáo chi tiết`, BẮT BUỘC đọc `docs/OWNER_BCCT_FINAL_V5.md` trên GitHub `main` (hoặc phiên bản mới hơn khi đã phát hành) và Issue #504, rồi xuất BCCT có giao diện tương tác nếu môi trường hỗ trợ. Không tự dùng mẫu Markdown cũ.
+- STRICT ORDER: `TIGERIQ / BCCT` → RDC thanh mỏng ở đầu (5 tài khoản, click để bung, % thật) → 1 dòng chỉ số → danh sách công việc có lọc → click xem tiến trình/điểm chặn/bằng chứng + nút hồ sơ/kiểm tra → mục đã hoàn tất thu gọn → P0/Nhân sự AI/Mốc kế tiếp.
+- Tiêu đề, nhãn, nút IN HOA; nội dung tiếng Việt; icon vector đồng nhất; không sử dụng các thẻ số liệu lớn; giữ 6 nhóm nội dung và các nút dự án.
+- Không khẳng định ép mọi chat qua GitHub. Nếu không có thành phần giao diện tương tác thì xuất bản chữ dự phòng đúng thứ tự; ghi rõ hạn chế.
+STATE=OWNER_BCCT_FINAL_V5_HARD_ROUTE
+
 ## OWNER CHAT V3 — PRE-SEND AND NEW-CHAT CONTRACT
 - Owner-approved specification: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` on GitHub `main`; dynamic policy: issue `#504`.
 - On EVERY new TigerIQ chat: load canonical Bootstrap and current `#504` before the first owner-facing report; apply V3 presentation immediately. Existing live chats must refresh this authority before reporting when possible, but cannot be remotely rewritten.
