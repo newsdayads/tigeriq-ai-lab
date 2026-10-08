@@ -63,6 +63,22 @@ public final class ChatGptB1Policy {
             && duplicateSendCount == 0;
     }
 
+    /**
+     * A Project-label click is only navigation evidence, never proof of a ready
+     * Project conversation. Require a stable Project title outside clickable
+     * navigation and a real composer before accepting the Project binding.
+     */
+    public static boolean canBindStableProjectContext(
+        boolean exactProjectVisible, boolean projectTitleContext,
+        boolean composerReady, int stableSamples, long stableMs
+    ) {
+        return exactProjectVisible
+            && projectTitleContext
+            && composerReady
+            && stableSamples >= 3
+            && stableMs >= 1200L;
+    }
+
     public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
         return !projectBindElapsedAnchorInvalid(startedElapsedMs, nowElapsedMs)
             && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
