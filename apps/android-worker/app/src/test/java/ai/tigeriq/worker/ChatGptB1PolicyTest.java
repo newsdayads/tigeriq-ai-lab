@@ -104,6 +104,19 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void sendAttemptRequiresInputReadyAndUnclaimedCycle() {
+        assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 1, 0));
+        assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 2, 1));
+        // The claim is durable before ACTION_CLICK; retries and stale states must be refused.
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 1, 1));
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt("WAITING_AI", 1, 1));
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt("REQUESTED", 1, 0));
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt("VERIFYING_CONTEXT", 1, 0));
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 0, 0));
+        assertFalse(ChatGptB1Policy.canClaimSendAttempt(null, 1, 0));
+    }
+
+    @Test
     public void projectClickAloneCannotBypassStableTitleAndComposerGate() {
         assertTrue(ChatGptB1Policy.canBindStableProjectContext(
             true, true, true, 3, 1200L
