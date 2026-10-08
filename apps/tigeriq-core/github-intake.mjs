@@ -606,7 +606,9 @@ export function safeAutoWorkAdmission(issue){
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
   const standingRelease=isP1P5StandingReleaseAction(body);
   // A still-open GitHub issue with terminal CURRENT_STATE must not be re-dispatched.
-  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED)(?:_|$)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
+  // SUPERSEDED_BY is terminal even if historical READY_* markers remain first.
+  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||bodyValue(body,'SUPERSEDED_BY').trim())return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
