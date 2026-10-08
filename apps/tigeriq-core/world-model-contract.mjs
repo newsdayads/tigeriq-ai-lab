@@ -61,6 +61,12 @@ function integer(value, code, { min = -Infinity, max = Infinity } = {}) {
   return out;
 }
 
+function booleanFlag(value, code) {
+  if (value == null) return false;
+  if (typeof value !== 'boolean') fail(code);
+  return value;
+}
+
 function stableHash(parts) {
   return createHash('sha256')
     .update(parts.map(part => String(part ?? '').trim()).join('\u001f'))
@@ -113,6 +119,10 @@ export function normalizeTask(input = {}) {
     acceptance: Object.freeze(stringList(row.acceptance ?? [], 'WORLD_MODEL_TASK_ACCEPTANCE_INVALID')),
     evidence_required: Object.freeze(stringList(row.evidence_required ?? [], 'WORLD_MODEL_TASK_EVIDENCE_INVALID')),
     blocked_reason: text(row.blocked_reason, 'WORLD_MODEL_TASK_BLOCKED_REASON_INVALID', { nullable: true }),
+    // Preserve owner and hard-gate holds across world-model normalization.
+    // Non-boolean flags fail closed instead of silently becoming dispatchable.
+    owner_hold: booleanFlag(row.owner_hold, 'WORLD_MODEL_TASK_OWNER_HOLD_INVALID'),
+    hard_gate: booleanFlag(row.hard_gate, 'WORLD_MODEL_TASK_HARD_GATE_INVALID'),
     retry_policy: normalizeRetryPolicy(row.retry_policy),
     estimated_effort_class: token(row.estimated_effort_class, 'WORLD_MODEL_TASK_EFFORT_INVALID'),
     concurrency_group: token(row.concurrency_group, 'WORLD_MODEL_TASK_CONCURRENCY_GROUP_INVALID', { nullable: true }),

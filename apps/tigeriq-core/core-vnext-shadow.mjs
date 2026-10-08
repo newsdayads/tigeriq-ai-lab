@@ -68,7 +68,12 @@ export function evaluateCoreVNextShadowCycle({
     : null;
 
   const eventDecision = reconcileSchedulerEvent(event);
-  const schedule = eventDecision.reconcile
+  // Shadow proposals must respect the authoritative objective-level hold.
+  // P0 remains Owner/Vy-only even if an upstream task is incorrectly marked P1.
+  const objectiveHeld = normalizedObjective.owner_gate !== null || normalizedObjective.priority === 'P0';
+  const schedule = objectiveHeld
+    ? Object.freeze({ dispatches: freezeArray([]), idle: true, reason: 'objective_owner_gate' })
+    : eventDecision.reconcile
     ? workStealPlan({
         tasks: normalizedTasks,
         resources: normalizedResources,
