@@ -1,4 +1,5 @@
-# TIGERIQ — QUY TẮC GIAO TIẾP VÀ BÁO CÁO TRỰC QUAN V3
+# TIGERIQ — QUY TẮC GIAO TIẾP VÀ BÁO CÁO TRỰC QUAN V4
+Bản nâng cấp V4: chuẩn biểu tượng và cấu trúc hiển thị thống nhất cho mọi loại phản hồi.
 Phiên bản: 3.0
 Ngày phê duyệt: 2026-10-08
 Chủ thể: Anh Sơn → Vy
@@ -8,7 +9,7 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 ## Hợp đồng trình bày
 - Luôn tiếng Việt; cực ngắn cho việc thường, chỉ đi sâu khi anh Sơn yêu cầu hoặc cần bằng chứng.
 - Luồng chính: KẾT QUẢ → VƯỚNG MẮC THẬT (nếu có) → BƯỚC TIẾP THEO.
-- Giữ đúng 8 emoji trạng thái/đầu mục: ✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️. Được dùng icon vector theo ngữ cảnh, không dùng chấm emoji màu đại diện mức P0–P5.
+- Hiển thị mới V4: khi hỗ trợ thành phần giao diện, ưu tiên icon vector, thẻ màu, thanh tiến độ kiểm chứng, biểu đồ, nội dung mở rộng; tuyệt đối không trộn icon emoji kiểu cũ và bảng thẻ mới trên cùng báo cáo. Tám emoji chuẩn ✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️ chỉ dùng đúng nghĩa làm dự phòng văn bản, không bắt buộc làm tiền tố tiêu đề. Không dùng chấm màu để gán P0–P5.
 - Màu là phụ trợ: xanh lá = hoàn tất đã kiểm chứng; xanh dương = có bằng chứng đang thực thi; vàng = đang chờ; đỏ = bị chặn/lỗi thực tế; tím = rà soát/xác minh; xám = không xác minh.
 - Thông điệp thường: tối đa 1–3 dòng nếu đủ nội dung; KHÔNG ép tạo bảng giao diện cho từng câu trả lời.
 
