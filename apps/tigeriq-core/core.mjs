@@ -2426,9 +2426,10 @@ async function apiHealthLiveWorkProjection(){
   const now=Date.now();
   if(!healthLiveWorkCache.pending&&now-healthLiveWorkCache.lastAttempt>=8000){
     healthLiveWorkCache.lastAttempt=now;
-    const pending=refreshApiHealthLiveWork();
+    const pending=Promise.resolve().then(refreshApiHealthLiveWork);
     healthLiveWorkCache.pending=pending;
-    void pending.finally(()=>{if(healthLiveWorkCache.pending===pending)healthLiveWorkCache.pending=null});
+    const finish=()=>{if(healthLiveWorkCache.pending===pending)healthLiveWorkCache.pending=null};
+    void pending.then(finish,finish);
   }
   if(healthLiveResultFresh(healthLiveWorkCache.result)&&now-healthLiveWorkCache.at<=45000)
     return {...healthLiveWorkCache.result,cached:true};
