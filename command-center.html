@@ -731,6 +731,32 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 .filter[data-filter="waiting"].active{border-color:#F59E0B;background:#3A2B14;color:#FFE2A1}
 @media(max-width:759px){.work-list{gap:13px}.work-row .work-main{padding:12px 11px}.work-row .work-title{font-size:14px}.work-row .work-id,.work-row .priority{font-size:16px!important;height:27px}.work-row .work-main{margin-top:27px;height:calc(100% - 27px)}}
 </style>
+
+<style id="tigeriq-live-owner-polish-v22">
+/* Owner V2.2 — backgrounds, clear icons, next-step vector, three equal actions */
+html,body,body{background:#071321!important}
+.raw-work-details,.raw-work-details[open],.live-work-shell,.raw-work-inner{background:#071321!important;box-shadow:none!important}
+.work-row .work-main{background:#10243A!important}
+.drawer,.drawer-body,.drawer-actions{background:#071321!important}
+.drawer-head,.drawer-section{background:#10243A!important}
+.drawer{background-image:none!important}
+.drawer-head{background-image:none!important}
+.work-row .work-id{color:#FFFFFF!important;text-shadow:0 1px 2px rgba(0,0,0,.55)!important}
+.work-row .state,.work-row.status-owner_gate .state,.work-row.status-review .state,.work-row.status-verify .state,.work-row.status-blocked .state,.work-row.status-done .state{border:none!important;background:transparent!important;box-shadow:none!important;color:var(--status-color,#94A3B8)!important;padding:4px 2px!important;border-radius:0!important}
+.work-row .state svg,.live-status-icon{background:transparent!important;box-shadow:none!important;border:none!important;border-radius:0!important;stroke:currentColor;flex-shrink:0}
+.work-row .work-quick.next{display:flex;align-items:flex-start;gap:7px}
+.work-row .work-quick.next .next-step-icon{width:17px;height:17px;flex:none;stroke:#58B7FF;stroke-width:2.2;margin-top:1px;background:none;border:0;box-shadow:none}
+.work-row .work-quick.next span{flex:1;min-width:0}
+.drawer-actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.drawer-actions .drawer-btn{grid-column:auto!important;min-width:0;width:100%;padding:9px 10px!important;min-height:48px!important;font-size:13px!important;font-weight:800!important;line-height:1.2!important;text-align:center}
+.drawer-actions #drawerAskVy{background:#123D79!important;border-color:#3679B9!important;color:#FFFFFF!important}
+.drawer-actions #drawerGithub{background:#176C64!important;border-color:#279587!important;color:#FFFFFF!important}
+.drawer-actions #drawerCloseBottom,.drawer-actions #drawerCloseBottom.primary{background:#DC2626!important;border-color:#F87171!important;color:#FFFFFF!important}
+.drawer-close{color:#FCA5A5!important;border-color:#B91C1C!important;background:transparent!important}
+.drawer-actions .drawer-btn:hover{filter:brightness(1.12)}
+@media(max-width:430px){.drawer-actions{gap:6px!important}.drawer-actions .drawer-btn{font-size:11px!important;padding:8px 4px!important;min-height:46px!important}}
+@media(prefers-reduced-motion:reduce){.drawer-actions .drawer-btn{transition:none!important}}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -1840,9 +1866,10 @@ function render(){
     const executionText=executionLabel(row),activeHolderText=activeHolder(row),waitReasonText=executionWaitReason(row);
     const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
     const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
-    const quickKind=blockerText?'blocked':usefulSummary?'current':usefulNext?'next':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?('Bước tới: '+usefulNext):usefulSummary?('Hiện tại: '+usefulSummary):'';
-    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+esc(quickText)+'</div>':'';
+    const quickKind=blockerText?'blocked':usefulNext?'next':usefulSummary?'current':'';
+    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext:usefulSummary?('Hiện tại: '+usefulSummary):'';
+    const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
+    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
     const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText;
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
