@@ -555,9 +555,14 @@ export function explicitAutoExecutionExclusion(body=''){
 function currentAutoExecutionHeader(body){
   const text=String(body||'');
   const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S/gm)];
-  const end=headings[0]?.index===0
+  const headingBoundary=headings[0]?.index===0
     ?(headings[1]?.index??text.length)
     :(headings[0]?.index??text.length);
+  // Real work orders also archive superseded contracts after a Markdown
+  // horizontal divider (sometimes annotated "--- HISTORICAL ONLY ---").
+  // Such sections cannot restore missing current authorization flags.
+  const divider=text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  const end=Math.min(headingBoundary,divider?.index??text.length);
   return text.slice(0,end);
 }
 
