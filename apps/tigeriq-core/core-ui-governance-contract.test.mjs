@@ -56,6 +56,9 @@ test('NV03/NV04 are eligible for narrow independent roles and do not self-pull',
 
 test('Core UI lane cannot select NV02, auto-claim P0, or cross App Chrome scope',()=>{
   assert.equal(parseCoreUiIssue(reviewIssue({extra:'ASSIGNED_EXECUTOR=NV02'})),null);
+  const unsafe=reviewIssue({extra:'AUTONOMOUS_CODE=true\\nASSIGNED_EXECUTOR=NV03'});
+  unsafe.body=unsafe.body.replace('NO_CODE_CHANGE=true','NO_CODE_CHANGE=false');
+  assert.equal(parseCoreUiIssue(unsafe),null,'NV03/NV04 cannot use AUTONOMOUS_CODE to bypass the read-only gate');
   assert.equal(parseCoreUiIssue(reviewIssue({priority:'P0'})),null);
   assert.equal(parseCoreUiIssue(reviewIssue({scope:'APP_CHROME_GOVERNANCE_TEST'})),null);
   assert.equal(CORE_ROUTED_UI_WORKERS.includes('NV02'),false);
