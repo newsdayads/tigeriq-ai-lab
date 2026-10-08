@@ -1307,7 +1307,15 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const canonicalPhase = issueCanonicalState(issue);
   const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
   const status = actionableStatus(issue, effectiveOverlays);
-  const executionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
+  const admission = safeAutoWorkAdmission(issue);
+  const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
+  const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
+  const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
+  const staleBodyAdmissionReason = ['NON_EXECUTABLE_STATE','EXPLICIT_EXECUTION_DISABLED','AUTO_QUEUE_EXCLUDED'].includes(String(admission.reason || '').toUpperCase());
+  const lifecycleRunnable = lifecycleHasNoBlocker && ['WORKING','REVIEW','QUEUED'].includes(String(lifecycleDisplayStatus || '').toUpperCase());
+  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleRunnable && staleBodyAdmissionReason
+    ? 'READY'
+    : rawExecutionEligibility;
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
@@ -1377,8 +1385,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
-    executionEligibilityReason: executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null),
-    waitReason: waitReason || (executionEligibility === 'READY' ? null : (safeAutoWorkAdmission(issue).reason || null)),
+    executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
+    waitReason: waitReason || (executionEligibility === 'READY' ? null : (admission.reason || null)),
     rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
     activeLease,
     activeWorker,
