@@ -28,7 +28,20 @@ assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
 assert.match(publicView, /CẦN XỬ LÝ/);
 assert.match(publicView, /CHỜ ANH SƠN/);
-assert.match(publicView, /CHỜ\/BLOCKED/);
+// Owner V2.3: waiting and blocked are separate, truthful filter buckets.
+for (const bucket of ['waiting','blocked','review','verify','paused']) {
+  assert.match(publicView, new RegExp('data-filter="'+bucket+'"'));
+}
+assert.doesNotMatch(publicView, /CHỜ \/ BỊ CHẶN <b/);
+for (const [status,color] of Object.entries({
+  OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',
+  VERIFY:'#14B8A6',WAITING:'#F59E0B',BLOCKED:'#F43F5E',
+  DONE:'#06B6D4',PAUSED:'#64748B'
+})) {
+  assert.ok(publicView.includes(status+":'"+color+"'"), 'missing semantic status color '+status);
+}
+assert.match(publicView, /el\.style\.setProperty\('--status-color',STATUS_COLORS\[status\]/);
+assert.match(publicView, /style\.setProperty\('--detail-color',STATUS_COLORS\[workStatus\(row\)\]/);
 assert.match(publicView, /data-filter="owner"/);
 assert.match(publicView, /data-filter="review"/);
 assert.match(publicView, /data-filter="system"/);
