@@ -709,6 +709,35 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
+  it('never dispatches an archived-only PC ASSIGNED_ACTION while preserving the active #4456 layout',()=>{
+    const current=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1',
+      'CAPABILITY=pc_operator','ASSIGNED_EXECUTOR=NV06','OWNER_DIRECT=true',
+      'RESOURCE_SCOPE=ACTIVE_PC_OPERATOR_ONLY',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true'
+    ].join('\n');
+    const liveAction='## ASSIGNED_ACTION\ntigeriq_pc task_status taskName="TigerIQ Core Runtime Updater"\n\n## ACCEPTANCE\nPASS';
+    for(const prefix of ['', '## OWNER CURRENT EXECUTION\n']){
+      const issue={...base,body:prefix+current};
+      const archived={...issue,body:issue.body+'\n\n## HISTORICAL CONTRACT\n'+liveAction};
+      expect(parseExecutableIssue(archived)).toBeNull();
+      const archivedAfterDivider={...issue,body:issue.body+'\n\n--- HISTORICAL ONLY ---\n'+liveAction};
+      expect(parseExecutableIssue(archivedAfterDivider)).toBeNull();
+      // Real Owner work orders such as #4456 place the current instruction
+      // immediately after the active titled contract, not in its header.
+      const active={...issue,body:issue.body+'\n\n'+liveAction+'\n\n## HISTORICAL CONTRACT\n'+liveAction};
+      expect(parseExecutableIssue(active)).toMatchObject({
+        dispatchLane:'PC_OPERATOR',resourceScope:'ACTIVE_PC_OPERATOR_ONLY',
+        targetWorker:'NV06',pcOperatorDirectAction:null,
+      });
+      const intervening={...issue,body:issue.body+'\n\n## CHANGELOG\nignore\n\n'+liveAction};
+      expect(parseExecutableIssue(intervening)).toBeNull();
+    }
+  });
+
   it('fails closed on an invalid direct-action marker and preserves OpenClaw path when marker is absent',()=>{
     const basePc=[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator','OWNER_DIRECT=true',
