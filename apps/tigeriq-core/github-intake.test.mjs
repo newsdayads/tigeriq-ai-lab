@@ -113,6 +113,25 @@ describe('GitHub Core intake guardrails',()=>{
       number:2949,priority:'P2',requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',
     });
     expect(parseExecutableIssue({...canonicalHistory,number:3900})).toBe(null);
+    // A current explicit false cannot be overridden by historical true
+    // anywhere later in a long canonical Work Order document.
+    for(const key of ['OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL']){
+      const currentDenied=body.replace(key+'=true',key+'=false');
+      const historyOverride=currentDenied+['','--- HISTORICAL ONLY ---',key+'=true'].join('\n');
+      const conflicting={...issue,body:historyOverride};
+      expect(androidProductAutoExecutionExclusion(conflicting)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+      expect(safeAutoWorkAdmission(conflicting)).toMatchObject({
+        eligible:false,reason:'ANDROID_PRODUCT_OWNER_DIRECT',
+      });
+      expect(parseExecutableIssue(conflicting)).toBe(null);
+    }
+    const historicalAppChrome={
+      ...issue,
+      body:body.replace('APP_CHROME_MUTATION=FORBIDDEN','APP_CHROME_MUTATION=ALLOWED')
+        +'\nAPP_CHROME_MUTATION=FORBIDDEN',
+    };
+    expect(androidProductAutoExecutionExclusion(historicalAppChrome)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+
     // Core's acceptance is a reasoning handoff, not proof that Coding Lane
     // directly accepted the physical master. Never invent credentials/browser
     // flags simply to force direct intake for a device workflow.
