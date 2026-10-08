@@ -550,29 +550,41 @@ export function explicitAutoExecutionExclusion(body=''){
   return '';
 }
 
+// Only the active contract can grant legacy intake or Android owner-scoped
+// execution. A later Markdown section may contain superseded permissions.
+function currentAutoExecutionHeader(body){
+  const text=String(body||'');
+  const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S/gm)];
+  const end=headings[0]?.index===0
+    ?(headings[1]?.index??text.length)
+    :(headings[0]?.index??text.length);
+  return text.slice(0,end);
+}
+
 export function androidProductAutoExecutionExclusion(issue){
   const body=String(issue?.body||'');
+  const currentBody=currentAutoExecutionHeader(body);
   const title=String(issue?.title||'');
-  const resourceScope=bodyValue(body,'RESOURCE_SCOPE').trim().toUpperCase();
+  const resourceScope=bodyValue(currentBody,'RESOURCE_SCOPE').trim().toUpperCase();
   // Owner explicitly moved canonical #2949 to P2. Keep the Android P0 fence for EVERY other scope.
   // Read the FIRST (current) anchored flags only. A historical true must not
   // undo a current false for an authorization or tool-boundary lock.
   const ownerApprovedNv102P2=Number(issue?.number)===2949
     && /^\[P2\]\[ANDROID\]\[NV102\]/i.test(title)
-    && bodyValue(body,'PRIORITY')==='P2'
-    && bodyValue(body,'OWNER_APPROVED_ANDROID_AUTO_P2').toLowerCase()==='true'
-    && bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
-    && bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
+    && bodyValue(currentBody,'PRIORITY')==='P2'
+    && bodyValue(currentBody,'OWNER_APPROVED_ANDROID_AUTO_P2').toLowerCase()==='true'
+    && bodyValue(currentBody,'OWNER_POLICY').toUpperCase()==='AUTO'
+    && bodyValue(currentBody,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
     && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE'
     // The one-issue Owner exception is valid only while its tool and local
     // execution prohibitions remain explicit. No general Android unlock.
-    && bodyValue(body,'NO_RDC').toLowerCase()==='true'
-    && bodyValue(body,'NO_CODEX').toLowerCase()==='true'
-    && bodyValue(body,'NO_PC01_SHELL').toLowerCase()==='true'
+    && bodyValue(currentBody,'NO_RDC').toLowerCase()==='true'
+    && bodyValue(currentBody,'NO_CODEX').toLowerCase()==='true'
+    && bodyValue(currentBody,'NO_PC01_SHELL').toLowerCase()==='true'
     && ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
         'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
-    ].every((key)=>bodyValue(body,key).toLowerCase()==='true')
-    && bodyValue(body,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
+    ].every((key)=>bodyValue(currentBody,key).toLowerCase()==='true')
+    && bodyValue(currentBody,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
   if(!/\[MOBILE-WORKER\]/i.test(title))return '';
@@ -612,14 +624,8 @@ export function safeAutoWorkAdmission(issue){
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
-  // When a current override starts with a Markdown title, its first section
-  // is the contract; otherwise the pre-heading header is authoritative.
-  // Never borrow missing current safeguards from subsequent history sections.
-  const safetyHeadings=[...body.matchAll(/^ {0,3}#{1,6}[ \t]+\S/gm)];
-  const safetyHistoryBoundary=safetyHeadings[0]?.index===0
-    ?(safetyHeadings[1]?.index??body.length)
-    :(safetyHeadings[0]?.index??body.length);
-  const currentSafetyBody=body.slice(0,safetyHistoryBoundary);
+  // The same current-section boundary governs every affirmative safety check.
+  const currentSafetyBody=currentAutoExecutionHeader(body);
   const currentSafetyValue=(key)=>bodyValue(currentSafetyBody,key).toLowerCase();
   // The first current contract value is authoritative: old true flags cannot override a present denial.
   const deniedSafetyKeys=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_DIRECT_MAIN'];
@@ -657,14 +663,15 @@ export function safeAutoWorkAdmission(issue){
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
+  const currentBody=currentAutoExecutionHeader(body);
   const title=String(issue.title||'');
   if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,title))return null;
   if(androidProductAutoExecutionExclusion(issue))return null;
-  const legacyExecutable=bodyValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'
-    &&bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
-    &&bodyValue(body,'NO_CODE_CHANGE').toLowerCase()==='true'
-    &&bodyValue(body,'NO_PC01_SHELL').toLowerCase()==='true';
+  const legacyExecutable=bodyValue(currentBody,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'
+    &&bodyValue(currentBody,'OWNER_POLICY').toUpperCase()==='AUTO'
+    &&bodyValue(currentBody,'NO_CODE_CHANGE').toLowerCase()==='true'
+    &&bodyValue(currentBody,'NO_PC01_SHELL').toLowerCase()==='true';
   const policyAdmission=safeAutoWorkAdmission(issue);
   // Legacy Core compatibility is never authority to override an explicit denial
   // (disabled/excluded, blocked, terminal, Owner/P0, or a conflicting writer).
