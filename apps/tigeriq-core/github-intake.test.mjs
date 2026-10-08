@@ -65,6 +65,42 @@ describe('GitHub Core intake guardrails',()=>{
 
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
+  it('honors current safety and legacy-contract denials ahead of superseded true flags',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'RESOURCE_SCOPE=CURRENT_SAFETY_CONTRACT','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ];
+    for(const key of [
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
+      const current=active.map((line)=>line===key+'=true'?key+'=false':line).join('\n');
+      const issue={...base,body:current+'\n\n## HISTORICAL, SUPERSEDED\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'EXPLICIT_SAFETY_FLAG_DISABLED'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const malformed={...base,body:active.join('\n').replace('NO_PAID_COST=true','NO_PAID_COST=PENDING')+'\nNO_PAID_COST=true'};
+    expect(safeAutoWorkAdmission(malformed).reason).toBe('EXPLICIT_SAFETY_FLAG_DISABLED');
+    expect(parseExecutableIssue(malformed)).toBeNull();
+
+    const safe={...base,body:active.join('\n')};
+    expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true});
+    expect(parseExecutableIssue(safe)).toMatchObject({number:588});
+
+    // A historical true may not construct the legacy gap exception when
+    // the current header explicitly forbids a no-code/no-shell contract.
+    for(const key of ['NO_CODE_CHANGE','NO_PC01_SHELL']){
+      const issue={...base,body:base.body.replace(key+'=true',key+'=false')+'\n## HISTORICAL\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(issue).reason).toBe('RESOURCE_SCOPE_REQUIRED');
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+  });
+
   it('never revives a disabled/excluded historical Work Order through legacy true flags',()=>{
     const history=[
       '## Historical execution (superseded)',
