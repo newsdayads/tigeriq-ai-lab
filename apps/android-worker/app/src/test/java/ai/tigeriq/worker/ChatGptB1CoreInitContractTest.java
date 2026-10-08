@@ -13,8 +13,8 @@ import static org.junit.Assert.assertTrue;
 public final class ChatGptB1CoreInitContractTest {
     @Test
     public void coreIdentityIsStagedTogetherAndDurablyCommittedOnce() throws Exception {
-        String source = Files.readString(
-            Paths.get("src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"),
+        String source = new String(
+            Files.readAllBytes(Paths.get("src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java")),
             StandardCharsets.UTF_8
         );
         int start = source.indexOf("public static synchronized Snapshot startTask(");
@@ -33,8 +33,8 @@ public final class ChatGptB1CoreInitContractTest {
 
     @Test
     public void commonRunEditorClearsOldRunWithoutPublishingIt() throws Exception {
-        String source = Files.readString(
-            Paths.get("src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"),
+        String source = new String(
+            Files.readAllBytes(Paths.get("src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java")),
             StandardCharsets.UTF_8
         );
         int start = source.indexOf("private static SharedPreferences.Editor newRunEditor(");
