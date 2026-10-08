@@ -45,12 +45,15 @@ public final class ChatGptB1RunStore {
 
     private ChatGptB1RunStore() {}
 
-    public static synchronized Snapshot start(Context context, int requestedCycles) {
+    private static SharedPreferences.Editor newRunEditor(
+        Context context, int requestedCycles, String runId
+    ) {
         int target = Math.max(1, Math.min(10, requestedCycles));
-        String runId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
         long nowElapsed = SystemClock.elapsedRealtime();
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
+        // One editor clears the previous run and stages the entire next identity.
+        // Core-specific keys are added before the ONE durable commit below.
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
             .putString(K_RUN_ID, runId)
             .putString(K_STATE, "WAITING_PROJECT")
             .putInt(K_TARGET, target)
@@ -72,8 +75,12 @@ public final class ChatGptB1RunStore {
             .putInt(K_REPORTED_SEQ, 0)
             .putBoolean(K_PROJECT_BOUND, false)
             .putLong(K_PROJECT_BOUND_AT, 0L)
-            .putString(K_PROJECT_MODE, "WAITING_PROJECT")
-            .apply();
+            .putString(K_PROJECT_MODE, "WAITING_PROJECT");
+    }
+
+    public static synchronized Snapshot start(Context context, int requestedCycles) {
+        // Manual B1 retains its existing asynchronous initialization contract.
+        newRunEditor(context, requestedCycles, UUID.randomUUID().toString()).apply();
         return read(context);
     }
 
@@ -82,13 +89,15 @@ public final class ChatGptB1RunStore {
         if (taskId == null || taskId.trim().isEmpty()) throw new IllegalArgumentException("taskId is required");
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
         if (expectedToken == null || expectedToken.trim().isEmpty()) throw new IllegalArgumentException("expectedToken is required");
-        start(context, 1);
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(K_RUN_ID, runId.trim())
+        // Never publish a temporary manual/anonymous run between two applies.
+        // If killed during initiation, either the old state or the fully bound
+        // Core run survives; a partial Core task must not enter manual fallback.
+        boolean durable = newRunEditor(context, 1, runId.trim())
             .putString(K_TASK_ID, taskId.trim())
             .putString(K_CUSTOM_PROMPT, prompt.trim())
             .putString(K_CUSTOM_EXPECTED_TOKEN, expectedToken.trim())
-            .apply();
+            .commit();
+        if (!durable) throw new IllegalStateException("CORE_TASK_START_PERSIST_FAILED");
         return read(context);
     }
 
