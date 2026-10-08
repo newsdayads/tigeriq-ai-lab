@@ -37,18 +37,11 @@ export async function seedLane({ root, lane, force = false } = {}) {
   for (const fixture of manifest.fixtures) {
     const fixtureRoot = path.join(laneRoot, fixture.id);
     await mkdir(fixtureRoot, { recursive: true });
-    const baseline = { fixtureId: fixture.id, files: {} };
     for (const [rel, content] of Object.entries(fixture.files)) {
       const target = path.join(fixtureRoot, rel);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, content, 'utf8');
-      baseline.files[rel] = { sha256: sha256(content), content };
     }
-    await writeFile(
-      path.join(fixtureRoot, '.tigeriq-benchmark-baseline.json'),
-      JSON.stringify(baseline, null, 2) + '\n',
-      'utf8',
-    );
     await writeFile(path.join(fixtureRoot, 'TASK.md'), fixture.prompt + '\n', 'utf8');
     seeded.push({ id: fixture.id, root: fixtureRoot, prompt: fixture.prompt });
   }
@@ -65,24 +58,34 @@ function changedLineCount(before, after) {
 }
 
 export async function scoreFixture(fixtureRoot) {
-  const baseline = JSON.parse(await readFile(path.join(fixtureRoot, '.tigeriq-benchmark-baseline.json'), 'utf8'));
-  const allFiles = (await walkFiles(fixtureRoot))
-    .filter((rel) => !['.tigeriq-benchmark-baseline.json', 'TASK.md'].includes(rel));
-  const baselinePaths = new Set(Object.keys(baseline.files));
-  const unexpectedFiles = allFiles.filter((rel) => !baselinePaths.has(rel));
+  const manifest = await readManifest();
+  const fixtureId = path.basename(path.resolve(fixtureRoot));
+  const fixture = manifest.fixtures.find((item) => item.id === fixtureId);
+  if (!fixture) throw new Error('unknown_fixture:' + fixtureId);
+
+  const expectedFiles = fixture.files;
+  const expectedPaths = new Set(Object.keys(expectedFiles));
+  const allowedPaths = new Set([...expectedPaths, 'TASK.md']);
+  const allFiles = await walkFiles(fixtureRoot);
+  const unexpectedFiles = allFiles.filter((rel) => !allowedPaths.has(rel));
   let filesChanged = 0;
   let linesChanged = 0;
   let testsMutated = false;
 
-  for (const [rel, original] of Object.entries(baseline.files)) {
+  for (const [rel, originalContent] of Object.entries(expectedFiles)) {
     let current = '';
     try { current = await readFile(path.join(fixtureRoot, rel), 'utf8'); } catch {}
-    if (sha256(current) !== original.sha256) {
+    if (sha256(current) !== sha256(originalContent)) {
       filesChanged += 1;
-      linesChanged += changedLineCount(original.content, current);
+      linesChanged += changedLineCount(originalContent, current);
       if (rel.startsWith('tests/')) testsMutated = true;
     }
   }
+
+  const expectedTask = fixture.prompt + '\n';
+  let currentTask = '';
+  try { currentTask = await readFile(path.join(fixtureRoot, 'TASK.md'), 'utf8'); } catch {}
+  const taskMutated = sha256(currentTask) !== sha256(expectedTask);
 
   const testRun = spawnSync(process.execPath, ['--test', 'tests'], {
     cwd: fixtureRoot,
@@ -91,11 +94,12 @@ export async function scoreFixture(fixtureRoot) {
   });
   const testsPass = testRun.status === 0;
   return {
-    fixtureId: baseline.fixtureId,
-    completed: testsPass && !testsMutated && unexpectedFiles.length === 0,
+    fixtureId,
+    completed: testsPass && !testsMutated && !taskMutated && unexpectedFiles.length === 0,
     testsPass,
     testExitCode: testRun.status,
     testsMutated,
+    taskMutated,
     unexpectedFiles,
     filesChanged,
     linesChanged,
@@ -119,7 +123,7 @@ export async function scoreLane({ root, lane } = {}) {
     completed,
     total: fixtures.length,
     completionRate: fixtures.length ? completed / fixtures.length : 0,
-    qualityPass: fixtures.every((item) => !item.testsMutated && item.unexpectedFiles.length === 0),
+    qualityPass: fixtures.every((item) => !item.testsMutated && !item.taskMutated && item.unexpectedFiles.length === 0),
     fixtures,
   };
 }
