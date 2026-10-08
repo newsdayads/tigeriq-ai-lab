@@ -85,9 +85,9 @@ const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
   [/\bprivate Actor\b/gi, 'Actor riêng'],
   [/\binject scoped\b/gi, 'nạp theo phạm vi'],
   [/\bpreflight\b/gi, 'tiền kiểm'],
+  [/\bsign current CI artifact\b/gi, 'ký gói CI hiện hành'],
   [/\bcurrent CI artifact\b/gi, 'gói CI hiện hành'],
   [/\bruntime apply\b/gi, 'áp dụng môi trường chạy'],
-  [/\bsign current CI artifact\b/gi, 'ký gói CI hiện hành'],
   [/\bpublish manifest\b/gi, 'xuất bản manifest'],
   [/\bS10 acceptance\b/gi, 'nghiệm thu S10'],
   [/\bsystem precheck\b/gi, 'tiền kiểm hệ thống'],
@@ -97,6 +97,16 @@ const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
   [/\bKEEP\/ITERATE\/KILL\b/gi, 'GIỮ/LẶP CẢI TIẾN/DỪNG'],
   [/\bquality gates\b/gi, 'cổng chất lượng'],
   [/\bverify live\b/gi, 'xác minh thực tế'],
+  [/\bprivate preflight\b/gi, 'tiền kiểm riêng'],
+  [/\bprivate E2E\b/gi, 'E2E riêng'],
+  [/\bPIN_PASS_AND_MERGE\b/g, 'PIN ĐẠT VÀ HỢP NHẤT'],
+  [/\bOwner\b/g, 'anh Sơn'],
+  [/\bthen\b/gi, 'sau đó'],
+  [/\bthrough\b/gi, 'qua'],
+  [/\bclose\b/gi, 'đóng'],
+  [/\bbecomes available\b/gi, 'sẵn sàng'],
+  [/\bbounded\b/gi, 'có giới hạn'],
+  [/\bconfig\b/gi, 'cấu hình'],
 ]);
 
 const OWNER_TERM_REPLACEMENTS = Object.freeze([
