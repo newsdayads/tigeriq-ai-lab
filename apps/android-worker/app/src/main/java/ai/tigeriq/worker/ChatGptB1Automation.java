@@ -19,6 +19,11 @@ public final class ChatGptB1Automation {
         ChatGptB1RunStore.Snapshot s = ChatGptB1RunStore.read(service);
         if (!s.active()) return;
         if (!s.projectBound) return;
+        // A persisted standalone fallback must not send a leased Core task into the wrong chat.
+        if (!ChatGptB1Policy.canExecuteCoreTaskInProjectContext(s.taskId, s.projectMode)) {
+            ChatGptB1RunStore.fail(service, "REQUIRED_PROJECT_CONTEXT_MISMATCH");
+            return;
+        }
 
         long now = System.currentTimeMillis();
         if (now < s.nextActionAt) return;
