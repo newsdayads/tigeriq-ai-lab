@@ -558,7 +558,7 @@ export function androidProductAutoExecutionExclusion(issue){
   const ownerApprovedNv102P2=Number(issue?.number)===2949
     && /^\[P2\]\[ANDROID\]\[NV102\]/i.test(title)
     && bodyValue(body,'PRIORITY')==='P2'
-    && exactBodyFlag(body,'OWNER_APPROVED_ANDROID_AUTO_P2')
+    && hasExactFlag(body,'OWNER_APPROVED_ANDROID_AUTO_P2')
     && bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
     && bodyValue(body,'AUTO_QUEUE').toUpperCase()==='INCLUDED'
     && resourceScope==='ANDROID_NV102_S10_5G_24X7_ACCEPTANCE';
