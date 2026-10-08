@@ -605,6 +605,8 @@ export function safeAutoWorkAdmission(issue){
   if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
   const standingRelease=isP1P5StandingReleaseAction(body);
+  // A still-open GitHub issue with terminal CURRENT_STATE must not be re-dispatched.
+  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED)(?:_|$)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
@@ -638,7 +640,15 @@ export function parseExecutableIssue(issue){
     &&hasExactFlag(body,'NO_CODE_CHANGE')
     &&hasExactFlag(body,'NO_PC01_SHELL');
   const policyAdmission=safeAutoWorkAdmission(issue);
-  if(!legacyExecutable&&!policyAdmission.eligible)return null;
+  // Legacy Core compatibility is never authority to override an explicit denial
+  // (disabled/excluded, blocked, terminal, Owner/P0, or a conflicting writer).
+  // Only historical contract-shape gaps may keep the legacy route.
+  const legacyContractGap=new Set([
+    'RESOURCE_SCOPE_REQUIRED',
+    'HARD_GATE_SAFETY_FLAGS_INCOMPLETE',
+    'SPECIALIST_CONTRACT_REQUIRED',
+  ]);
+  if(!policyAdmission.eligible&&!(legacyExecutable&&legacyContractGap.has(policyAdmission.reason)))return null;
   if(isManualOnlyAppChromeMaintenance(issue.title,body))return null;
   const classification=policyAdmission.classification||classifyWorkOrder(body);
   if(['HOLD_OWNER','UI'].includes(classification.route))return null;
