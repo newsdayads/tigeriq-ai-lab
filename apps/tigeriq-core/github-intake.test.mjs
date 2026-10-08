@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,androidProductAutoExecutionExclusion,safeAutoWorkAdmission,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -65,6 +65,53 @@ describe('GitHub Core intake guardrails',()=>{
 
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
+  it('never revives a disabled/excluded historical Work Order through legacy true flags',()=>{
+    const history=[
+      '## Historical execution (superseded)',
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    ].join('\n');
+    for(const [current,reason] of [
+      [['TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED','CURRENT_STATE=BLOCKED_REVIEW'], 'EXPLICIT_EXECUTION_DISABLED'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=EXCLUDED_TERMINAL','CURRENT_STATE=READY'], 'AUTO_QUEUE_EXCLUDED'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','CURRENT_STATE=BLOCKED_INDEPENDENT_REVIEW'], 'NON_EXECUTABLE_STATE'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','CURRENT_STATE=READY','OWNER_HOLD=true'], 'OWNER_OR_HOLD_GATE'],
+    ]){
+      const issue={...base,body:[
+        ...current,'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=LEGACY_FAIL_CLOSED',
+        'OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+        history,
+      ].join('\n')};
+      expect(safeAutoWorkAdmission(issue).reason).toBe(reason);
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+  });
+
+  it('rejects terminal CURRENT_STATE values even when GitHub issue is still open and no terminal label exists',()=>{
+    const safeFlags=[
+      'RESOURCE_SCOPE=TERMINAL_ADMISSION_REGRESSION',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+    ].join('\n');
+    for(const state of ['DONE_VERIFIED','COMPLETED','FAILED','FAILED_RETRY_EXHAUSTED','FAILED_REVIEW','TERMINAL_BLOCKED','CANCELLED','CANCELED','CLOSED']){
+      const issue={...base,body:base.body+'\nCURRENT_STATE='+state+'\n'+safeFlags+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const multiPhase={...base,body:base.body+'\nCURRENT_STATE=READY_NEXT_PHASE\n'+safeFlags+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+    expect(safeAutoWorkAdmission(multiPhase).eligible).toBe(true);
+    expect(parseExecutableIssue(multiPhase)).toMatchObject({keepOpenOnStepComplete:true});
+  });
+
+  it('does not retry a terminal-blocked legacy Work Order but retains safe legacy compatibility',()=>{
+    const terminal={...base,labels:[{name:'tigeriq:terminal-blocked'}]};
+    expect(safeAutoWorkAdmission(terminal).reason).toBe('TERMINAL_BLOCKED');
+    expect(parseExecutableIssue(terminal)).toBeNull();
+    expect(safeAutoWorkAdmission(base).reason).toBe('RESOURCE_SCOPE_REQUIRED');
+    expect(parseExecutableIssue(base)).toMatchObject({admissionMode:'LEGACY_EXECUTION_FLAGS'});
+  });
+
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
   it('allows ONLY Owner-reclassified #2949 to enter P2 Android system queue',()=>{
     const body=[
