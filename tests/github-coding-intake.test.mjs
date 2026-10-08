@@ -155,7 +155,7 @@ describe('GitHub coding intake guard',()=>{
       current.replace('NO_BROWSER_AUTH=true',''),
       current+'\nAUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED',
       current+'\nOWNER_HOLD=true',
-      current+'\nCURRENT_STATE=FAILED_RETRY_EXHAUSTED',
+      current.replace('CURRENT_STATE=READY','CURRENT_STATE=FAILED_RETRY_EXHAUSTED'),
       current.replace('PRIORITY=P1','PRIORITY=P0'),
     ];
     for(const body of denied){
