@@ -541,12 +541,13 @@ export function githubDependencyAdmissionBlocked(body){
 }
 
 export function explicitAutoExecutionExclusion(body=''){
-  const text=String(body||'');
-  // A superseded release action cannot excuse today's disabled work.
-  const standingRelease=isP1P5StandingReleaseAction(currentAutoExecutionHeader(text));
-  const executable=bodyValue(text,'TIGERIQ_EXECUTABLE').trim().toLowerCase();
+  // Authoritative execution denials belong to the current contract, not to
+  // historical Markdown snapshots archived below its heading/divider.
+  const current=currentAutoExecutionHeader(body);
+  const standingRelease=isP1P5StandingReleaseAction(current);
+  const executable=bodyValue(current,'TIGERIQ_EXECUTABLE').trim().toLowerCase();
   if(executable==='false'&&!standingRelease)return 'EXPLICIT_EXECUTION_DISABLED';
-  const autoQueue=bodyValue(text,'AUTO_QUEUE').trim().toUpperCase();
+  const autoQueue=bodyValue(current,'AUTO_QUEUE').trim().toUpperCase();
   if((autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))&&!standingRelease)return 'AUTO_QUEUE_EXCLUDED';
   return '';
 }
