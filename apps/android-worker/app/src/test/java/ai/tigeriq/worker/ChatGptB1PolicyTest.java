@@ -91,6 +91,19 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreTaskNeverFallsBackOrSendsOutsideVerifiedProject() {
+        assertTrue(ChatGptB1Policy.canUseStandaloneFallbackForTask(""));
+        assertTrue(ChatGptB1Policy.canUseStandaloneFallbackForTask(null));
+        assertFalse(ChatGptB1Policy.canUseStandaloneFallbackForTask("MT-123"));
+
+        assertTrue(ChatGptB1Policy.canExecuteCoreTaskInProjectContext("MT-123", "PROJECT"));
+        assertFalse(ChatGptB1Policy.canExecuteCoreTaskInProjectContext("MT-123", "STANDALONE_FALLBACK"));
+        assertFalse(ChatGptB1Policy.canExecuteCoreTaskInProjectContext("MT-123", "WAITING_PROJECT"));
+        assertFalse(ChatGptB1Policy.canExecuteCoreTaskInProjectContext("MT-123", null));
+        assertTrue(ChatGptB1Policy.canExecuteCoreTaskInProjectContext("", "STANDALONE_FALLBACK"));
+    }
+
+    @Test
     public void enforcesFillAndInterCyclePacing() {
         long now = 1_000_000L;
         assertEquals(now + 5000L, ChatGptB1Policy.nextActionAfterFill(now));
