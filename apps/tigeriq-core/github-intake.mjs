@@ -555,7 +555,9 @@ export function androidProductAutoExecutionExclusion(issue){
   const title=String(issue?.title||'');
   const resourceScope=bodyValue(body,'RESOURCE_SCOPE').trim().toUpperCase();
   // Owner explicitly moved canonical #2949 to P2. Keep the Android P0 fence for EVERY other scope.
-  // Read the FIRST (current) anchored flags only. A historical true must not\n  // undo a current false for an authorization or tool-boundary lock.\n  const ownerApprovedNv102P2=Number(issue?.number)===2949
+  // Read the FIRST (current) anchored flags only. A historical true must not
+  // undo a current false for an authorization or tool-boundary lock.
+  const ownerApprovedNv102P2=Number(issue?.number)===2949
     && /^\[P2\]\[ANDROID\]\[NV102\]/i.test(title)
     && bodyValue(body,'PRIORITY')==='P2'
     && bodyValue(body,'OWNER_APPROVED_ANDROID_AUTO_P2').toLowerCase()==='true'
