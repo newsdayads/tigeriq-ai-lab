@@ -154,7 +154,7 @@ export function parseCoreUiIssue(issue){
   const readOnly=yes(body,'NO_CODE_CHANGE');
   // NV03/NV04 are bounded review/research UI workers, never autonomous source mutators.
   // An explicit worker ID plus AUTONOMOUS_CODE must not bypass NO_CODE_CHANGE.
-  if(!readOnly)return null;
+  if(!readOnly||yes(body,'AUTONOMOUS_CODE'))return null;
   const autonomousCode=false;
   const classification=classifyWorkOrder(body);
   const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review';
