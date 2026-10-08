@@ -567,6 +567,20 @@ function currentAutoExecutionHeader(body){
   return text.slice(0,end);
 }
 
+// Historic Markdown snapshots are not authority to supply an executable PC
+// instruction. The active contract may keep its instruction inline or in the
+// immediately following ## ASSIGNED_ACTION section (e.g. #4456), but never
+// skip intervening headings/dividers to find an archived one.
+function currentPcOperatorInstruction(body){
+  const text=String(body||'');
+  const current=currentAutoExecutionHeader(text);
+  const inline=extractPcOperatorInstruction(current);
+  if(inline)return inline;
+  const tail=text.slice(current.length);
+  const assigned=tail.match(/^\\s*#{1,6}[ \\t]+ASSIGNED_ACTION[ \\t]*\\r?\\n([\\s\\S]*?)(?=\\r?\\n(?:#{1,6}[ \\t]+)?ACCEPTANCE[ \\t]*(?:\\r?\\n|$))/i);
+  return String(assigned?.[1]||'').trim();
+}
+
 export function androidProductAutoExecutionExclusion(issue){
   const body=String(issue?.body||'');
   const currentBody=currentAutoExecutionHeader(body);
@@ -702,7 +716,7 @@ export function parseExecutableIssue(issue){
   const requiresCodingHandoff=classification.route==='CODING'&&policyAdmission.eligible;
   const capability=classification.route==='OPENCLAW'?'pc_operator':requiresCodingHandoff?'reasoning':classification.capability;
   const resourceScope=bodyValue(currentBody,'RESOURCE_SCOPE');
-  if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
+  if(classification.route==='OPENCLAW'&&(!resourceScope||!currentPcOperatorInstruction(body)))return null;
   const sourceRevision=githubIssueSourceRevision(issue);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
   const directAction=parsePcOperatorDirectAction(currentBody,backlogOwnerDirect(currentBody));
