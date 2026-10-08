@@ -56,6 +56,10 @@ describe('Core vNext durable checkpoint adapter (isolated, not connected to live
     for (const [row, code] of [
       [{ ...transition, priority: 'P0' }, 'VNEXT_P0_OR_INVALID_PRIORITY_DENIED'],
       [{ ...transition, owner_gate: 'OWNER_HOLD' }, 'VNEXT_OWNER_GATE_DENIED'],
+      [{ ...transition, owner_hold: true }, 'VNEXT_OWNER_OR_HARD_HOLD_DENIED'],
+      [{ ...transition, hard_gate: true }, 'VNEXT_OWNER_OR_HARD_HOLD_DENIED'],
+      [{ ...transition, owner_hold: 'false' }, 'VNEXT_HOLD_FLAG_INVALID'],
+      [{ ...transition, hard_gate: null }, 'VNEXT_HOLD_FLAG_INVALID'],
       [{ ...transition, live_dispatch: true }, 'VNEXT_EFFECT_DENIED'],
       [{ ...transition, production_release: true }, 'VNEXT_EFFECT_DENIED'],
       [{ ...transition, sequence: 1 }, 'VNEXT_FIRST_SEQUENCE_MUST_BE_ZERO'],
@@ -104,6 +108,51 @@ describe('Core vNext durable checkpoint adapter (isolated, not connected to live
     await expect(store(db).save(transition)).rejects.toThrow('CRASH_BEFORE_COMMIT');
     expect(db.writes).toBe(0);
     expect((await store(db).save(transition)).written).toBe(true);
+    expect(db.writes).toBe(1);
+  });
+
+  it('fails closed on tampered persisted fields, without replay or extra writes', async () => {
+    const db = saver();
+    const obj = store(db);
+    const saved = await obj.save(transition);
+    const persisted = db.entries.get(saved.checkpoint_id);
+    const original = structuredClone(persisted.checkpoint.channel_values.vnext_state);
+    for (const field of ['phase', 'task_ids', 'plan_revision']) {
+      persisted.checkpoint.channel_values.vnext_state = {
+        ...original, [field]: field === 'task_ids' ? ['TAMPERED'] : 'tampered',
+      };
+      await expect(obj.read(transition.objective_id))
+        .rejects.toThrow('VNEXT_STORED_CHECKPOINT_DIGEST_MISMATCH');
+      await expect(obj.save(transition))
+        .rejects.toThrow('VNEXT_STORED_CHECKPOINT_DIGEST_MISMATCH');
+    }
+    persisted.checkpoint.channel_values.vnext_state = { ...original, hard_gate: true };
+    await expect(obj.read(transition.objective_id))
+      .rejects.toThrow('VNEXT_STORED_CHECKPOINT_INVALID');
+    persisted.checkpoint.channel_values.vnext_state = structuredClone(original);
+    expect((await obj.save(transition)).replay).toBe(true);
+    expect(db.writes).toBe(1);
+  });
+
+  it('rejects wrong-objective and wrong-checkpoint identity on read', async () => {
+    const db = saver();
+    const obj = store(db);
+    const saved = await obj.save(transition);
+    const persisted = db.entries.get(saved.checkpoint_id);
+    const otherObjectiveStore = store({
+      getTuple: async () => structuredClone(persisted),
+      put: db.put.bind(db),
+    });
+    await expect(otherObjectiveStore.read('OBJ-GH-OTHER'))
+      .rejects.toThrow('VNEXT_THREAD_MISMATCH');
+
+    persisted.checkpoint.channel_values.vnext_state.objective_id = 'OBJ-GH-OTHER';
+    await expect(obj.read(transition.objective_id))
+      .rejects.toThrow('VNEXT_STORED_CHECKPOINT_DIGEST_MISMATCH');
+    persisted.checkpoint.channel_values.vnext_state.objective_id = transition.objective_id;
+    persisted.checkpoint.id = 'cp-corrupt';
+    await expect(obj.read(transition.objective_id))
+      .rejects.toThrow('VNEXT_STORED_CHECKPOINT_INVALID');
     expect(db.writes).toBe(1);
   });
 
