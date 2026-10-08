@@ -169,7 +169,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       },
       {
         input: 'PIN_PASS_AND_MERGE -> runtime apply -> sign current CI artifact -> publish manifest -> S10 acceptance',
-        required: ['PIN ĐẠT VÀ HỢP NHẤT', 'áp dụng môi trường chạy', 'ký gói CI hiện hành', 'xuất bản tệp mô tả (manifest)', 'nghiệm thu S10'],
+        required: ['PIN ĐẠT VÀ HỢP NHẤT', 'áp dụng môi trường chạy', 'ký gói CI hiện hành', 'xuất bản manifest (tệp mô tả)', 'nghiệm thu S10'],
       },
       {
         input: 'system precheck -> private preflight -> request Owner secret injection only if required -> one private E2E -> measure cost -> KEEP/ITERATE/KILL',
