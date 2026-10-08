@@ -14,6 +14,7 @@ import {
   executionEligibilityForIssue,
   workflowRelationsForIssue,
   parseClearedBlockerLifecycleComment,
+  parseStructuredLifecycleComment,
   parseOwnerResultComment,
   projectOwnerResultInbox,
   progressForIssue,
@@ -531,6 +532,79 @@ describe('TigerIQ Live Work Order projection', () => {
       checks: null,
       nextStep: 'Owner login NV03 visible Chrome once; then one bounded verification only',
     });
+  });
+
+  it('lets the newest structured lifecycle comment supersede stale body state and next-step text', () => {
+    const lifecycle = parseStructuredLifecycleComment({
+      body: [
+        'CURRENT_STATE=CODING_LANE_ACTIVE',
+        'NEXT=repairs existing PR with normal npm resolution and lockfile',
+        'BLOCKER=NONE',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'DONE=false',
+      ].join('\n'),
+      created_at: '2026-10-08T00:15:00Z',
+    });
+    expect(lifecycle).toMatchObject({
+      state: 'CODING_LANE_ACTIVE',
+      nextStep: 'repairs existing PR with normal npm resolution and lockfile',
+      blocker: 'NONE',
+      blockerCleared: true,
+      mutationOwner: 'CORE_DYNAMIC_LEASE',
+      done: false,
+    });
+
+    const row = parseOpenWorkIssue(issue(4521, '[P1][CORE vNext] Nền dependency', [
+      'CURRENT_STATE=WAITING_CI',
+      'NEXT=stale body next',
+      'BLOCKER=old blocker',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=TIGERIQ_CORE_VNEXT_LANGGRAPH_DEPENDENCY_FOUNDATION_V1',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n'), { updated_at: '2026-10-08T00:15:00Z' }), { lifecycle });
+
+    expect(row).toMatchObject({
+      status: 'WORKING',
+      currentState: 'CODING_LANE_ACTIVE',
+      nextStep: 'repairs existing PR with normal npm resolution and lockfile',
+      blocker: null,
+      updatedAt: '2026-10-08T00:15:00Z',
+    });
+  });
+
+  it('ignores an older structured lifecycle comment after a materially newer body update', () => {
+    const lifecycle = parseStructuredLifecycleComment({
+      body: 'CURRENT_STATE=CODING_LANE_ACTIVE\nNEXT=old comment next',
+      created_at: '2026-10-08T00:00:00Z',
+    });
+    const row = parseOpenWorkIssue(issue(4521, '[P1][CORE vNext] Nền dependency', [
+      'CURRENT_STATE=READY_FOR_IMPLEMENTATION',
+      'NEXT=new body next',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=TIGERIQ_CORE_VNEXT_LANGGRAPH_DEPENDENCY_FOUNDATION_V1',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n'), { updated_at: '2026-10-08T00:02:30Z' }), { lifecycle });
+
+    expect(row.currentState).toBe('READY_FOR_IMPLEMENTATION');
+    expect(row.nextStep).toBe('new body next');
   });
 
   it('lets a newer blocker-cleared lifecycle checkpoint supersede a stale blocked body for display truth', () => {
