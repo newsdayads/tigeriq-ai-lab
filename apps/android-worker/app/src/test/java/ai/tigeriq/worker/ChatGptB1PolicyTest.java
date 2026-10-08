@@ -147,6 +147,24 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void invisibleProjectTitleCannotProveLiveProjectContext() {
+        assertTrue(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
+            true, true, false
+        ));
+        // A hidden semantic Project node is not proof of the current chat.
+        assertFalse(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
+            true, false, false
+        ));
+        // Visible Project labels inside navigation drawers are also rejected.
+        assertFalse(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
+            true, true, true
+        ));
+        assertFalse(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
+            false, true, false
+        ));
+    }
+
+    @Test
     public void projectClickAloneCannotBypassStableTitleAndComposerGate() {
         assertTrue(ChatGptB1Policy.canBindStableProjectContext(
             true, true, true, 3, 1200L
