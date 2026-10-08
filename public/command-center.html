@@ -1065,7 +1065,7 @@ function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
   const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  const visibleActionable=actionable.filter(x=>workPriority(x)!=='P5');
+  const visibleActionable=actionable;
   $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
@@ -1874,7 +1874,7 @@ function renderNowRunning(){
 function renderLiveWorkers(){
   const panel=$('liveWorkers');
   const at=Date.parse(snapshot?.generatedAt||'');
-  const snapshotFresh=snapshot?.liveConnected===true&&!snapshot?.staleAll&&!snapshot?.workProjection?.stale
+  const snapshotFresh=snapshot?.liveConnected===true&&!snapshot?.staleAll
     &&Number.isFinite(at)&&Math.abs(Date.now()-at)<=90000;
   const workers=snapshotFresh?(Array.isArray(snapshot?.workers)?snapshot.workers:[]).filter(worker=>{
     const heartbeat=Date.parse(worker?.heartbeatAt||'');
