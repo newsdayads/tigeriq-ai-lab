@@ -166,14 +166,14 @@ async function gh(fetchImpl,owner,repo,path,token,init={}){const opts=String(ini
 export function ownerCodingComment(value=''){
   let text=localizeOwnerFacingText(String(value||''));
   const markers=[
-    [/^\[DEPENDENCY_WAIT\]/,'⏳ [ĐANG CHỜ PHỤ THUỘC]'],
-    [/^\[(?:REOPEN_REARMED|CLAIM_RECOVERED|CLAIM)\]/,'⚙️ [TIẾP NHẬN]'],
-    [/^\[PROGRESS\]/,'⚙️ [TIẾN ĐỘ]'],
-    [/^\[STALE_RESULT_REJECTED\]/,'⚠️ [TỪ CHỐI KẾT QUẢ CŨ]'],
-    [/^\[(?:STALE_RESULT_REARMED|RECOVERY_REARMED|RETRY_DISPATCHED)\]/,'⚙️ [KÍCH HOẠT LẠI]'],
-    [/^\[RESULT\]/,'✅ [KẾT QUẢ]'],
-    [/^\[BLOCKED_FINAL\]/,'⚠️ [BỊ CHẶN]'],
-    [/^\[RETRY_SCHEDULED\]/,'⏳ [LÊN LỊCH THỬ LẠI]'],
+    [/^\[DEPENDENCY_WAIT\]/,'[ĐANG CHỜ PHỤ THUỘC]'],
+    [/^\[(?:REOPEN_REARMED|CLAIM_RECOVERED|CLAIM)\]/,'[TIẾP NHẬN]'],
+    [/^\[PROGRESS\]/,'[TIẾN ĐỘ]'],
+    [/^\[STALE_RESULT_REJECTED\]/,'[TỪ CHỐI KẾT QUẢ CŨ]'],
+    [/^\[(?:STALE_RESULT_REARMED|RECOVERY_REARMED|RETRY_DISPATCHED)\]/,'[KÍCH HOẠT LẠI]'],
+    [/^\[RESULT\]/,'[KẾT QUẢ]'],
+    [/^\[BLOCKED_FINAL\]/,'[BỊ CHẶN]'],
+    [/^\[RETRY_SCHEDULED\]/,'[LÊN LỊCH THỬ LẠI]'],
   ];
   for(const [pattern,label] of markers){if(pattern.test(text)){text=text.replace(pattern,label);break}}
   return text;

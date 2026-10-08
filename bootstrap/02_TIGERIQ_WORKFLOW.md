@@ -131,7 +131,7 @@ Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, kh�
 ### Trình bày thống nhất trong mọi phản hồi
 - Mặc định 1–3 dòng khi câu hỏi đơn giản. Theo thứ tự **Kết quả → Điểm bị chặn thật (nếu có) → Bước tiếp theo**.
 - Khi nền tảng có thành phần giao diện tương tác: **ưu tiên icon vector cùng phong cách, thẻ màu, nhãn trạng thái, thanh tiến độ, biểu đồ thực**, không trộn emoji và dấu đầu dòng cổ điển trong cùng thẻ. Bản chữ dự phòng được dùng khi không hỗ trợ thành phần tương tác.
-- Bộ 8 emoji canonical `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` vẫn hợp lệ cho thông báo chữ thuần và các thông báo từ hệ thống; **không bắt buộc đặt emoji làm tiền tố của mọi mục** khi đã có icon vector/thẻ trạng thái. Các emoji cũ `📊 🚦 🔴 🔄 👥 🎯 🧾` không còn là tiêu đề bắt buộc.
+- **CẤM tạo emoji trạng thái/đầu mục/tiêu đề**, kể cả văn bản dự phòng; không còn ngoại lệ 8 emoji lịch sử. Có hỗ trợ thật thì dùng icon vector; không có thì dùng chữ trạng thái tiếng Việt. Giữ nguyên emoji thuộc dữ liệu người dùng/trích dẫn. Không ép giao diện gốc ChatGPT từ GitHub.
 - Ánh xạ màu nhất quán: xanh lá=hoàn tất có bằng chứng; xanh dương=đang xử lý có bằng chứng; vàng=chờ; đỏ=lỗi/bị chặn thật; tím=đang rà soát/xác minh; xám=không xác minh. Luôn có chữ, không dùng màu đơn độc.
 - Không tự bịa tỉ lệ: % chỉ từ checklist/tử số-mẫu số có kiểm chứng; không hiển thị 100% trước DONE; trạng thái dịch vụ/PC01 khác tiến độ hoàn tất công việc.
 
@@ -159,7 +159,7 @@ STATE=OWNER_BCCT_V5_WORKFLOW_ROUTED
 - Nếu thiếu dữ liệu hoặc giao diện không có biểu đồ, hiển thị bảng chữ ngắn, ghi rõ phần chưa xác minh.
 
 ### Kiểm tra trước khi trả lời
-- Tiếng Việt; 8 emoji status được giữ đúng nghĩa nếu có; không dùng icon hỗn hợp cũ/mới.
+- Tiếng Việt; không sinh emoji trạng thái; icon vector chỉ khi giao diện thật hỗ trợ, trường hợp khác hiển thị chữ thuần. Kiểm tra kết quả mới trên đúng bề mặt trước khi nhận hoàn tất.
 - Thống nhất kiểu thẻ, màu và độ rộng trên di động; không chèn số liệu demo vào báo cáo thực.
 - Tài liệu GitHub chỉ ràng buộc các phiên nạp nguồn; **không thể tự thay đổi giao diện gốc ChatGPT hoặc tự cập nhật toàn bộ chat đang mở**.
 

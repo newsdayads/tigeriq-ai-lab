@@ -64,7 +64,7 @@ STATE=OWNER_BCCT_FINAL_V5_HARD_ROUTE
 ## OWNER CHAT V3 — PRE-SEND AND NEW-CHAT CONTRACT
 - Owner-approved specification: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` on GitHub `main`; dynamic policy: issue `#504`.
 - On EVERY new TigerIQ chat: load canonical Bootstrap and current `#504` before the first owner-facing report; apply V3 presentation immediately. Existing live chats must refresh this authority before reporting when possible, but cannot be remotely rewritten.
-- Before EACH owner-facing answer: keep Vietnamese and KẾT QUẢ → VƯỚNG THẬT (nếu có) → BƯỚC TIẾP THEO; normal answers stay concise. Prefer ONE consistent visual style: vector icons, semantic color cards and verified progress when supported; never mix legacy headline emojis, ordinary bullets and modern cards on the same report. The eight canonical status emojis `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` remain allowed only as meaningful text-fallback status signs, not mandatory headings. See Workflow section 10 (V4) and policy #504.
+- Before EACH owner-facing answer: keep Vietnamese and KẾT QUẢ → VƯỚNG THẬT (nếu có) → BƯỚC TIẾP THEO; normal answers stay concise. Prefer ONE consistent visual style: vector icons, semantic color cards and verified progress when supported; never mix legacy headline emojis, ordinary bullets and modern cards on the same report. Generated status emojis are forbidden even in plain-text fallback; render vector icons only where the host actually supports them, otherwise use Vietnamese status words without icon prefixes. Original user quotations are preserved unchanged. See Workflow section 10 (V4) and policy #504.
 - For `bc`: exactly six sections. For `bcct`: the same six sections PLUS an RDC 5-account read-only quota and device-status panel. `bcct` authorizes only reading RDC `who_am_i` and `list_devices` for those five connected accounts, NOT PC01 commands.
 - Do not invent progress or health: show percent only with a verified numerator/denominator; distinguish acceptance progress from runtime health; never equate GitHub assignment with a live worker.
 - If richer UI is unsupported, use compact plain text. Never claim this repository can update the ChatGPT native interface, existing conversations automatically, or accounts that have not loaded canonical sources.
@@ -77,13 +77,13 @@ STATE=OWNER_CHAT_V3_CANONICAL_LOADER
 - Không được dựa vào memory/model habit để thay #504. Nếu #504 không đọc được trong task TigerIQ thì fail closed theo SOURCE_UNAVAILABLE.
 STATE=OWNER_INTERACTION_HARD_LOAD_V1
 
-## DIRECT CHAT PRE-SEND ICON GUARD V1 — bắt buộc
-- Bộ icon Owner-facing được phép dùng làm trạng thái/đầu mục chỉ gồm: `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️`.
-- Trước khi gửi mọi phản hồi cho anh Sơn, phải quét bản nháp cuối. Nếu có icon/emoji ngoài bộ trên dùng để biểu diễn trạng thái/đầu mục, phải thay bằng icon canonical tương ứng hoặc bỏ đi.
-- Các icon màu tự phát như `🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫` bị cấm trong Owner-facing status/list; priority P0–P5 hiển thị bằng chữ, không dùng chấm màu.
-- Mapping cố định: `✅=HOÀN TẤT`, `⚙️=ĐANG XỬ LÝ`, `⏳=ĐANG CHỜ`, `⚠️=LỖI/CẦN CHÚ Ý`, `🔒=CẦN OWNER`, `💡=GỢI Ý`, `📌=ĐIỂM CHÍNH`, `➡️=BƯỚC TIẾP THEO`.
-- Guard này áp dụng cho direct chat và NEW CHAT ngay cả khi nội dung đã đúng tiếng Việt; không được dựa vào model habit/memory.
-STATE=DIRECT_CHAT_ICON_GUARD_V1
+## DIRECT CHAT PRE-SEND ICON GUARD V5 — TRẠNG THÁI CHỮ THUẦN HOẶC VECTOR
+- ICON_MODE=VECTOR_OR_TEXT_NO_EMOJI; chuẩn ưu tiên mới nhất của Owner thay thế mọi ví dụ V1/V4 cho phép dùng emoji trạng thái.
+- Không sinh emoji làm tiền tố đầu mục, trạng thái hoặc tiêu đề, kể cả bản chữ dự phòng. Khi thành phần giao diện thật sự hỗ trợ, dùng icon vector cùng phong cách; khi không hỗ trợ, chỉ dùng chữ tiếng Việt.
+- Cấm tự sinh emoji trạng thái kể cả 8 ký hiệu lịch sử. Emoji xuất hiện trong dữ liệu người dùng/trích dẫn nguyên văn phải được giữ nguyên, không tự sửa.
+- Trước mọi phản hồi Owner phải rà đầu ra dự kiến; ở bề mặt mã nguồn TigerIQ kiểm tra bắt buộc và chặn phát hành bản lỗi. Không khẳng định GitHub có thể can thiệp câu trả lời cũ hoặc trình hiển thị gốc của ChatGPT.
+- Ma trận nghiệm thu xuyên bề mặt và nguồn quy định: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md`; việc khắc phục `#4569`.
+STATE=DIRECT_CHAT_ICON_GUARD_V5_NO_EMOJI
 
 ## DIRECT CHAT PRE-SEND VALIDATOR V2 — FAIL CLOSED XUYÊN MỌI CHAT
 - Áp dụng cho MỌI phản hồi hiển thị trực tiếp cho anh Sơn, gồm chat hiện tại, NEW CHAT, chat khác trong Project, báo cáo, lưu/checkpoint, bàn giao và phản hồi sau tool.

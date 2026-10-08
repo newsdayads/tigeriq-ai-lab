@@ -4,7 +4,7 @@
   window.__tigerIqUnifiedWebControlV2 = true;
 
   const STATUS = {IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'NGOẠI TUYẾN',ERROR:'LỖI',AUTH_ERROR:'LỖI AUTH',CONFIG_ERROR:'LỖI CẤU HÌNH',CONTRACT_ERROR:'LỖI RESPONSE',STALE_ERROR:'LỖI CŨ',DISABLED:'TẮT',ONLINE:'ONLINE'};
-  const PROVIDER_MARK = {ollama:'🦙',groq:'⚡',gemini:'✦',openrouter:'⬡',mistral:'M',cloudflare:'☁',huggingface:'🤗',vercel:'▲',watsonx:'◉',cohere:'C',nvidia:'N'};
+  const PROVIDER_MARK = {ollama:'OL',groq:'GR',gemini:'GM',openrouter:'OR',mistral:'MI',cloudflare:'CF',huggingface:'HF',vercel:'VC',watsonx:'WX',cohere:'CO',nvidia:'NV'};
   const PROVIDER_COLOR = {ollama:'#fff',groq:'#ff5533',gemini:'#8e75b2',openrouter:'#dbeafe',mistral:'#fa520f',cloudflare:'#f38020',huggingface:'#ffd21e',vercel:'#fff',watsonx:'#4da3ff',cohere:'#7bdcb5',nvidia:'#76b900'};
   const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = value => value ? new Date(value).toLocaleTimeString('vi-VN',{hour12:false}) : '—';
@@ -94,12 +94,12 @@
     const main=document.createElement('div'); main.className='tq-u-main';
     const side=document.createElement('aside'); side.className='tq-u-side';
     const activity=document.createElement('section'); activity.className='tq-u-panel';
-    activity.innerHTML='<div class="tq-u-ph"><div><h2>⚡ Đang chạy / Vừa hoàn tất</h2><small>Hoạt động thật của campaign và NV API từ TigerIQ Core</small></div><span id="tqUActivityState" class="tq-u-sync">—</span></div><div id="tqUActivityBody" class="body"></div>';
+    activity.innerHTML='<div class="tq-u-ph"><div><h2>Đang chạy / Vừa hoàn tất</h2><small>Hoạt động thật của campaign và NV API từ TigerIQ Core</small></div><span id="tqUActivityState" class="tq-u-sync">—</span></div><div id="tqUActivityBody" class="body"></div>';
     const recent=document.createElement('section'); recent.className='tq-u-panel';
     recent.innerHTML='<div class="tq-u-ph"><div><h2>▤ Hoạt động Core gần nhất</h2><small>Job kỹ thuật nội bộ Core · hiển thị Work Order khi biết</small></div><span id="tqUJobCount" class="tq-u-sync">—</span></div><div class="table-wrap"><table class="tq-u-jobs"><thead><tr><th>Thời gian</th><th>NV</th><th>Loại / Hoạt động</th><th>Work Order</th><th>Kết quả</th><th>Thời lượng</th></tr></thead><tbody id="tqURecentJobs"></tbody></table></div>';
     const perf=document.createElement('section'); perf.className='tq-u-panel';
     perf.innerHTML='<div class="tq-u-ph"><div><h2>⌁ Hiệu suất API 24 giờ</h2><small>Success rate · số lỗi · độ trễ theo từng NV/provider; không bịa quota/usage</small></div><span id="tqUChartCount" class="tq-u-sync">—</span></div><div class="body"><div id="tqUChart" class="tq-u-chart"><div class="tq-u-chart-empty">Đang tải telemetry…</div></div><div id="tqULegend" class="tq-u-legend"></div></div>';
-    const eventTitle=events.querySelector('h2'); if(eventTitle)eventTitle.textContent='⚠ Cảnh báo hiện tại';
+    const eventTitle=events.querySelector('h2'); if(eventTitle)eventTitle.textContent='Cảnh báo hiện tại';
     const eventSub=events.querySelector('small'); if(eventSub)eventSub.textContent='Chỉ điều kiện hiện hành cần hành động; không tính lỗi lịch sử';
     const recentActivity=document.createElement('section'); recentActivity.className='tq-u-panel';
     recentActivity.innerHTML='<div class="tq-u-ph"><div><h2>◷ Hoạt động gần đây</h2><small>Lịch sử runtime/event, gồm cả sự kiện đã phục hồi</small></div><span class="tq-u-sync">HISTORY</span></div><div class="events" id="tqURecentActivity"></div>';
@@ -240,20 +240,20 @@
         stage: meta.stage || obj.status || 'active',
         timestamps: meta.timestamps || { updated: new Date().toISOString() },
         blocker: meta.blocker || '',
-        nextAction: meta.nextAction || 'Continue work'
+        nextAction: meta.nextAction || 'Tiếp tục công việc'
       };
       return `<div class="coding-lane-item" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;margin-bottom:8px;font-size:13px;color:#e2e8f0;">
         <div style="display:flex;justify-content:between;align-items:center;font-weight:600;margin-bottom:6px;">
-          <span>🚀 ${safe(work.issueOrPr)}</span>
+          <span>${safe(work.issueOrPr)}</span>
           <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.2);color:#93c5fd;">${safe(work.stage)}</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;color:#94a3b8;font-size:12px;">
-          <div>👤 Implementer: <b style="color:#f8fafc;">${safe(work.implementer || 'None')}</b></div>
-          <div>👁️ Reviewer: <b style="color:#f8fafc;">${safe(work.reviewer || 'None')}</b></div>
-          <div>⏱️ Updated: <b style="color:#f8fafc;">${safe(new Date(work.timestamps?.updated || Date.now()).toLocaleTimeString())}</b></div>
-          <div>🎯 Next: <b style="color:#38bdf8;">${safe(work.nextAction || 'None')}</b></div>
+          <div>Người thực hiện: <b style="color:#f8fafc;">${safe(work.implementer || 'Chưa có')}</b></div>
+          <div>Người rà soát: <b style="color:#f8fafc;">${safe(work.reviewer || 'Chưa có')}</b></div>
+          <div>Cập nhật: <b style="color:#f8fafc;">${safe(new Date(work.timestamps?.updated || Date.now()).toLocaleTimeString())}</b></div>
+          <div>Bước tiếp: <b style="color:#38bdf8;">${safe(work.nextAction || 'Chưa có')}</b></div>
         </div>
-        ${work.blocker ? `<div style="margin-top:6px;color:#fca5a5;font-size:11px;">⚠️ Blocker: ${safe(work.blocker)}</div>` : ''}
+        ${work.blocker ? `<div style="margin-top:6px;color:#fca5a5;font-size:11px;">Điểm bị chặn: ${safe(work.blocker)}</div>` : ''}
       </div>`;
     }).join('');
     if (container && !document.getElementById('codingLaneWorkItems')) {
