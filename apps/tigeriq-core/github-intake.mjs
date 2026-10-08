@@ -620,6 +620,13 @@ export function safeAutoWorkAdmission(issue){
   });
   const currentRelease=bodyValue(body,'NO_PRODUCTION_RELEASE').toLowerCase();
   if(currentSafetyDenied||(!standingRelease&&currentRelease!==''&&currentRelease!=='true'))return {eligible:false,reason:'EXPLICIT_SAFETY_FLAG_DISABLED'};
+  // Old issue history is never a source of affirmative execution safeguards.
+  // Keep the reason distinct from incomplete legacy contracts: otherwise the
+  // legacy compatibility route could re-admit an explicitly stale grant.
+  const historyOnlySafety=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+    'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'].some(key=>
+    !bodyValue(body,key)&&hasExactFlag(body,key));
+  if(historyOnlySafety)return {eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'};
   const classification=classifyWorkOrder(body);
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
   if(directAction.present&&!directAction.valid)return {eligible:false,reason:directAction.reason||'DIRECT_ACTION_INVALID'};
@@ -631,10 +638,10 @@ export function safeAutoWorkAdmission(issue){
   const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
   if(!ownerReleased)return {eligible:false,reason:'MUTATION_OWNER_CONFLICT'};
   const safeFlags=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
-  if(safeFlags.some((key)=>!hasExactFlag(body,key)))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
-  if(!standingRelease&&!hasExactFlag(body,'NO_PRODUCTION_RELEASE'))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  if(safeFlags.some((key)=>bodyValue(body,key).toLowerCase()!=='true'))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  if(!standingRelease&&bodyValue(body,'NO_PRODUCTION_RELEASE').toLowerCase()!=='true')return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
   const requiresCodingHandoff=classification.route==='CODING';
-  if(requiresCodingHandoff&&!hasExactFlag(body,'NO_DIRECT_MAIN'))return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
+  if(requiresCodingHandoff&&bodyValue(body,'NO_DIRECT_MAIN').toLowerCase()!=='true')return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
   return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
 }
 
