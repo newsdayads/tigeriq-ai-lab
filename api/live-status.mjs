@@ -438,7 +438,7 @@ function firstHttpsUrl(value = '') {
 
 export function parseOwnerResultComment(comment = {}) {
   const body = String(comment?.body || '');
-  const marker = /✅\s*\[KẾT QUẢ THỰC TẾ\]\s*/giu;
+  const marker = /(?:✅\s*)?\[KẾT QUẢ THỰC TẾ\]\s*/giu;
   const matches = [...body.matchAll(marker)];
   if (!matches.length) return [];
   const rows = [];
@@ -453,8 +453,8 @@ export function parseOwnerResultComment(comment = {}) {
     if (!identity) continue;
 
     const resultField = ownerResultField(block, ['RESULT']);
-    const narrativeLine = lines.find((line) => /✅\s*\[KẾT QUẢ\]/iu.test(line)) || '';
-    const narrative = narrativeLine.replace(/^.*?✅\s*\[KẾT QUẢ\]\s*/iu, '').trim();
+    const narrativeLine = lines.find((line) => /(?:✅\s*)?\[KẾT QUẢ\]/iu.test(line)) || '';
+    const narrative = narrativeLine.replace(/^.*?(?:✅\s*)?\[KẾT QUẢ\]\s*/iu, '').trim();
     const result = localizeOwnerFacingText(cleanText(resultField || narrative || 'Đã hoàn tất', 420));
 
     const explicitVerification = ownerResultField(block, ['VERIFICATION', 'VERIFY', 'XÁC MINH']);
