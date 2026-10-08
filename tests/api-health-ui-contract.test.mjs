@@ -29,7 +29,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('overflow-y:auto!important');
     expect(shared).toContain('.api-health .wo-list,.api-health .work-list{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))');
     expect(dashboard).toContain('id="workList" class="wo-list work-list"');
-    expect(dashboard).toContain('class="work-row status-');
+    expect(dashboard).toContain('class="work-row health-live-work-card status-');
     expect(dashboard).toContain('class="work-top"');
     expect(dashboard).toContain('class="work-title"');
     expect(dashboard).toContain('class="work-hierarchy"');
