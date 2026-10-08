@@ -80,6 +80,17 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Accessibility may expose an exact Project title even when its node is
+     * hidden/off-screen. Never use an invisible or clickable-navigation title
+     * as live context proof for a Core task.
+     */
+    public static boolean isVisibleNonNavigationProjectTitle(
+        boolean exactLabel, boolean visibleToUser, boolean clickableAncestor
+    ) {
+        return exactLabel && visibleToUser && !clickableAncestor;
+    }
+
+    /**
      * A Project-label click is only navigation evidence, never proof of a ready
      * Project conversation. Require a stable Project title outside clickable
      * navigation and a real composer before accepting the Project binding.
