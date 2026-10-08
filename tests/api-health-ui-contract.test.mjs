@@ -186,4 +186,15 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(live).not.toContain('tiq-api-card-change');
   });
 
+  it('P0 visible Health parity has recognizable cards but changes no Core contract',()=>{
+    expect(shared).toContain('P0 API Health VISUAL READBACK R2');
+    expect(shared).toContain('.api-health .worker.employee-card.state-working{');
+    expect(shared).toContain('border-left:4px solid #579ccc!important');
+    expect(shared).toContain('border-left:4px solid var(--tiq-health-accent,#64748B)!important');
+    expect(shared).toContain('.api-health .panel-h h2{');
+    expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(dashboard).toContain('setInterval(load,5000)');
+    expect(dashboard).toContain('setInterval(loadLiveStatus,1000)');
+  });
+
 });
