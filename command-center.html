@@ -839,6 +839,24 @@ html,body,body{background:#071321!important}
 .work-row .work-parent{font-size:9px;color:#B5C2D6;line-height:1.4;margin-top:2px}
 .work-row .work-title{margin-top:5px!important}
 @media(max-width:599px){.owner-filter-toolbar label{flex:1 1 calc(50% - 8px)}.work-row .work-hierarchy{font-size:11px}.work-row .work-parent{font-size:10px}}
+
+/* Owner-approved P0: preserve existing STATUS_COLORS; meter matches badge, status and border. */
+.work-row .work-main{display:flex!important;flex-direction:column!important}
+.work-row .work-progress-bottom{margin-top:auto;padding-top:9px;min-width:0}
+.work-row .work-progress-bottom .work-step-summary{margin-top:0;margin-bottom:5px}
+.work-row .work-progress-bottom .progress{margin-top:0;color:var(--status-color,#64748B)!important}
+.work-row .work-progress-bottom .progress-fill{background:var(--status-color,#64748B)!important;box-shadow:0 0 9px color-mix(in srgb,var(--status-color,#64748B) 26%,transparent)}
+.work-row .work-progress-bottom .progress-text{color:var(--status-color,#64748B)!important}
+.work-row .work-progress-bottom .progress.indeterminate .progress-fill{background:linear-gradient(90deg,transparent,var(--status-color,#64748B),transparent)!important}
+.work-row:not(.progress-running) .progress-fill::after{content:none!important;animation:none!important}
+.work-row:not(.progress-running) .progress.indeterminate .progress-fill{display:none!important;animation:none!important}
+.work-row.progress-running .progress-fill{box-shadow:0 0 11px color-mix(in srgb,var(--status-color,#64748B) 44%,transparent)}
+.work-row.progress-running .progress-fill::after{content:"";position:absolute;inset:0;width:38%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.48),transparent);animation:progress-shimmer 2.3s ease-in-out infinite}
+.work-row.progress-running .progress.indeterminate .progress-fill{display:block!important;animation:progress-indeterminate 1.45s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){
+ .work-row.progress-running .progress-fill::after{content:none!important;animation:none!important}
+ .work-row.progress-running .progress.indeterminate .progress-fill{animation:none!important;transform:none!important}
+}
 </style>
 </head>
 <body>
@@ -2042,6 +2060,9 @@ function render(){
     const rank=String(index+1).padStart(2,'0');
     const {pct,verified:progressVerified}=verifiedProgress(row);
     const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status);
+    const liveRunning=status==='WORKING'&&row?.activeLease===true&&row?.heartbeatFresh===true
+      &&snapshot?.liveConnected===true&&!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+    if(liveRunning)el.classList.add('progress-running');
     const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :activeWithoutPercent
@@ -2063,14 +2084,15 @@ function render(){
     const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
     const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
     const quickKind=blockerText?'blocked':usefulNext?'next':usefulSummary?'current':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext:usefulSummary?('Hiện tại: '+usefulSummary):'';
+    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):usefulSummary?('Hiện tại: '+usefulSummary):'';
     const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
     const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
+    const progressBottom=progress||stepSummary?'<div class="work-progress-bottom">'+stepSummary+progress+'</div>':'';
     const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText+'|'+(row?.progressDone??'-')+'/'+(row?.progressTotal??'-')+'/'+Boolean(row?.progressChecklistVerified);
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+progress+stepSummary+quickLine+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+quickLine+progressBottom+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
