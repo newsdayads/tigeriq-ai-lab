@@ -134,6 +134,33 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreTokenFromOtherChatCannotCompleteProjectTask() {
+        assertTrue(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "MT-123", "PROJECT", true, true
+        ));
+        // The token exists, but the person navigated away from the Project.
+        assertFalse(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "MT-123", "PROJECT", true, false
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "MT-123", "PROJECT", false, true
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "MT-123", "STANDALONE_FALLBACK", true, true
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "MT-123", null, true, true
+        ));
+        // Only Core-leased tasks are pinned to the verified Project.
+        assertTrue(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            "", "STANDALONE_FALLBACK", true, false
+        ));
+        assertTrue(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+            null, null, false, false
+        ));
+    }
+
+    @Test
     public void sendAttemptRequiresInputReadyAndUnclaimedCycle() {
         assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 1, 0));
         assertTrue(ChatGptB1Policy.canClaimSendAttempt("INPUT_READY", 2, 1));
