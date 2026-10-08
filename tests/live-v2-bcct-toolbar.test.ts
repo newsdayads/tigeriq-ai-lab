@@ -30,8 +30,9 @@ test('LIVE employee cards appear before jobs and follow verified PC01 snapshot',
   expect(root).toContain("setInterval(()=>{if(!document.hidden)load()},10000)");
   expect(root).toContain("grid.insertBefore(card,grid.children[index]||null)");
   expect(root).toContain("worker.currentJobId");
-  expect(root).toMatch(/@media\(max-width:1099px\)\{\.live-workers-grid\{grid-template-columns:repeat\(2,/);
-  expect(root).toMatch(/@media\(max-width:599px\)\{\.live-workers-grid\{grid-template-columns:minmax\(0,1fr\)/);
+  expect(root).toContain('grid-template-columns:repeat(7,minmax(0,1fr))');
+  expect(root).toContain('@media(max-width:1099px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr))');
+  expect(root).toContain('@media(max-width:599px){.live-workers-grid{grid-template-columns:repeat(3,minmax(0,1fr))');
   expect(root).toContain("fetch('/api/live-status',{cache:'no-store'})");
   expect(root).not.toContain("document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===currentFilter))");
 });
