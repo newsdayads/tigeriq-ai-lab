@@ -542,7 +542,8 @@ export function githubDependencyAdmissionBlocked(body){
 
 export function explicitAutoExecutionExclusion(body=''){
   const text=String(body||'');
-  const standingRelease=isP1P5StandingReleaseAction(text);
+  // A superseded release action cannot excuse today's disabled work.
+  const standingRelease=isP1P5StandingReleaseAction(currentAutoExecutionHeader(text));
   const executable=bodyValue(text,'TIGERIQ_EXECUTABLE').trim().toLowerCase();
   if(executable==='false'&&!standingRelease)return 'EXPLICIT_EXECUTION_DISABLED';
   const autoQueue=bodyValue(text,'AUTO_QUEUE').trim().toUpperCase();
@@ -610,9 +611,11 @@ export function safeAutoWorkAdmission(issue){
   if(publicEvidenceRequest.unsupported.length)return {eligible:false,reason:'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',unsupportedPublicEvidenceKeys:publicEvidenceRequest.unsupported};
   const androidProductExclusion=androidProductAutoExecutionExclusion(issue);
   if(androidProductExclusion)return {eligible:false,reason:androidProductExclusion};
-  const priority=bodyValue(body,'PRIORITY').toUpperCase();
+  const currentSafetyBody=currentAutoExecutionHeader(body);
+  const priority=bodyValue(currentSafetyBody,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
-  const ownerPolicy=bodyValue(body,'OWNER_POLICY').toUpperCase();
+  const ownerPolicy=bodyValue(currentSafetyBody,'OWNER_POLICY').toUpperCase();
+  if(!ownerPolicy&&bodyValue(body,'OWNER_POLICY'))return {eligible:false,reason:'HISTORICAL_ONLY_OWNER_POLICY'};
   if(ownerPolicy&&!['AUTO','AUTO_AFTER_GATE'].includes(ownerPolicy))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
   if(backlogOwnerControlled(body)
     ||hasExactFlag(body,'OWNER_ACCEPTANCE_REQUIRED')
@@ -621,7 +624,7 @@ export function safeAutoWorkAdmission(issue){
   if(isManualOnlyAppChromeMaintenance(title,body))return {eligible:false,reason:'APP_CHROME_EXCLUDED'};
   if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
   const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
-  const standingRelease=isP1P5StandingReleaseAction(body);
+  const standingRelease=isP1P5StandingReleaseAction(currentSafetyBody);
   // A still-open GitHub issue with terminal CURRENT_STATE must not be re-dispatched.
   // SUPERSEDED_BY is terminal even if historical READY_* markers remain first.
   if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
@@ -630,7 +633,6 @@ export function safeAutoWorkAdmission(issue){
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
   // The same current-section boundary governs every affirmative safety check.
-  const currentSafetyBody=currentAutoExecutionHeader(body);
   const currentSafetyValue=(key)=>bodyValue(currentSafetyBody,key).toLowerCase();
   // The first current contract value is authoritative: old true flags cannot override a present denial.
   const deniedSafetyKeys=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_DIRECT_MAIN'];
@@ -658,7 +660,9 @@ export function safeAutoWorkAdmission(issue){
   const resourceScope=bodyValue(currentSafetyBody,'RESOURCE_SCOPE');
   if(!resourceScope&&bodyValue(body,'RESOURCE_SCOPE'))return {eligible:false,reason:'HISTORICAL_ONLY_RESOURCE_SCOPE'};
   if(!resourceScope)return {eligible:false,reason:'RESOURCE_SCOPE_REQUIRED'};
-  const mutationOwner=bodyValue(body,'MUTATION_OWNER').toUpperCase();
+  // A past release/lease is not the current writer authority.
+  const mutationOwner=bodyValue(currentSafetyBody,'MUTATION_OWNER').toUpperCase();
+  if(!mutationOwner&&bodyValue(body,'MUTATION_OWNER'))return {eligible:false,reason:'HISTORICAL_ONLY_MUTATION_OWNER'};
   const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
   if(!ownerReleased)return {eligible:false,reason:'MUTATION_OWNER_CONFLICT'};
   const safeFlags=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
@@ -708,13 +712,13 @@ export function parseExecutableIssue(issue){
   if(directAction.action?.action==='tigeriq_live_3150_production_deploy'){
     directAction.action.releaseIssue=String(Number(issue.number));
   }
-  const strictCoreTarget=hasExactFlag(body,'CORE_TARGET_STRICT');
+  const strictCoreTarget=hasExactFlag(currentBody,'CORE_TARGET_STRICT');
   const dynamicCoreLane=policyAdmission.eligible&&['CORE_REASONING','CORE_REVIEW'].includes(dispatchLane)&&!strictCoreTarget;
   return {
     number:Number(issue.number),title,body,priority:classification.priority,sourcePriority:classification.sourcePriority,
     legacyP0Autonomous:classification.legacyP0Autonomous,ownerControlled:classification.ownerControlled,
     capability,requestedCapability:classification.capability,dispatchLane,resourceScope,preferredWorker:classification.preferredEmployee||'',requestedWorker:classification.workerId||null,targetWorker:requiresCodingHandoff?null:(dynamicCoreLane?null:(classification.workerId||null)),
-    url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(body),sourceRevision,updatedAt:String(issue.updated_at||''),createdAt:String(issue.created_at||''),readyAt:bodyValue(body,'READY_AT')||String(issue.created_at||issue.updated_at||''),executable:true,dependencySatisfied:true,capabilityMatch:true,
+    url:String(issue.html_url||''),ownerDirect:backlogOwnerDirect(currentBody),sourceRevision,updatedAt:String(issue.updated_at||''),createdAt:String(issue.created_at||''),readyAt:bodyValue(currentBody,'READY_AT')||String(issue.created_at||issue.updated_at||''),executable:true,dependencySatisfied:true,capabilityMatch:true,
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
