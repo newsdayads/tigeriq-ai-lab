@@ -187,24 +187,30 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
-    public static boolean markSentExactlyOnce(Context context) {
+    /**
+     * Claim one send durably BEFORE ACTION_CLICK. If persistence fails, the
+     * automation must not click; if the app crashes after this claim, it may
+     * time out but it cannot retry a potentially sent message.
+     */
+    public static synchronized boolean markSentExactlyOnce(Context context) {
         Snapshot s = read(context);
-        if (s.sentCycle == s.cycle) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putInt(K_DUPLICATE_COUNT, s.duplicateSendCount + 1)
-                .apply();
+        if (!ChatGptB1Policy.canClaimSendAttempt(s.state, s.cycle, s.sentCycle)) {
+            if (s.sentCycle == s.cycle && s.cycle > 0) {
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putInt(K_DUPLICATE_COUNT, s.duplicateSendCount + 1)
+                    .apply();
+            }
             return false;
         }
         long now = System.currentTimeMillis();
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(K_STATE, "WAITING_AI")
             .putInt(K_SENT_CYCLE, s.cycle)
             .putInt(K_SEND_COUNT, s.sendCount + 1)
             .putLong(K_SENT_AT, now)
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
-            .apply();
-        return true;
+            .commit();
     }
 
     public static void markBusySeen(Context context) {
