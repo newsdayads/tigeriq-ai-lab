@@ -236,3 +236,45 @@ test('V2.2 dark surfaces and vector status stay readable without badge backgroun
   expect(colors.stateBorder).toBe('0px');
   expect(colors.hasVector).toBe(true);
 });
+
+
+test('V2.3 filters keep distinct review verification waiting blocked and paused statuses',async({page})=>{
+  const rows=[
+    {number:901,status:'CHỜ ANH SƠN',filter:'owner',color:'#A78BFA'},
+    {number:902,status:'ĐANG LÀM',filter:'running',color:'#10B981'},
+    {number:903,status:'ĐANG RÀ SOÁT',filter:'review',color:'#3B82F6'},
+    {number:904,status:'ĐANG XÁC MINH',filter:'verify',color:'#14B8A6'},
+    {number:905,status:'ĐANG CHỜ',filter:'waiting',color:'#F59E0B'},
+    {number:906,status:'BỊ CHẶN',filter:'blocked',color:'#F43F5E'},
+    {number:907,status:'TẠM DỪNG',filter:'paused',color:'#64748B'},
+    {number:908,status:'SYSTEM',filter:'system',color:'#64748B'}
+  ];
+  const openWork=rows.map(item=>({...snapshot.openWork[0],number:item.number,
+    title:'[P1] Phân loại '+item.filter,status:item.status,
+    workKind:item.filter==='system'?'SYSTEM':'WORK',progressSource:''}));
+  const recentWork=[{...snapshot.openWork[0],number:909,
+    title:'[P1] Công việc đã hoàn tất',status:'HOÀN TẤT',workKind:'WORK',progressSource:'terminal',progressPercent:100}];
+  await routeTiger(page,{...snapshot,openWork,recentWork,activeWork:[],
+    nextQueue:[],openSummary:{}});
+  await page.goto('https://tigeriq.test/command-center');
+  for(const item of rows){
+    await page.locator('.filter[data-filter="'+item.filter+'"]').click();
+    const filtered=page.locator('.work-row');
+    await expect(filtered).toHaveCount(1);
+    const card=page.locator('.work-row[data-work-number="'+item.number+'"]');
+    await expect(card).toBeVisible();
+    const actual=await card.evaluate(element=>
+      getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
+    expect(actual).toBe(item.color);
+    await card.click();
+    const drawer=page.locator('#workDrawer');
+    await expect(drawer).toHaveClass(/open/);
+    const detailColor=await drawer.evaluate(element=>
+      getComputedStyle(element).getPropertyValue('--detail-color').trim().toUpperCase());
+    expect(detailColor).toBe(item.color);
+    await page.locator('#drawerCloseBottom').click();
+  }
+  await page.locator('.filter[data-filter="done"]').click();
+  await expect(page.locator('.work-row')).toHaveCount(1);
+  await expect(page.locator('.work-row[data-work-number="909"]')).toBeVisible();
+});
