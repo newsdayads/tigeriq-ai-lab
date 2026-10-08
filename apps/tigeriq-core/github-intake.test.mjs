@@ -227,6 +227,34 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('ignores historical execution denials that are absent from the active contract',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','RESOURCE_SCOPE=ACTIVE_HEADER_ARCHIVE_REGRESSION',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    // AUTO_QUEUE is absent in the current section. An obsolete EXCLUDED in
+    // historical notes must never reject an otherwise valid current contract.
+    // Preserve hard denial when the CURRENT section itself says EXCLUDED.
+    for(const separator of ['## HISTORICAL CONTRACT','--- HISTORICAL ONLY ---']){
+      const current={...base,body:active+'\n'+separator+'\nAUTO_QUEUE=EXCLUDED_OLD'};
+      expect(safeAutoWorkAdmission(current)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+      expect(parseExecutableIssue(current)).toMatchObject({admissionMode:'SAFE_P1_P5_POLICY'});
+      expect(activeGithubObjectiveSourceExclusion(current)).toBe('');
+      const forbidden={...base,body:active+'\nAUTO_QUEUE=EXCLUDED_CURRENT\n'+separator+'\nAUTO_QUEUE=INCLUDED'};
+      expect(safeAutoWorkAdmission(forbidden)).toMatchObject({eligible:false,reason:'AUTO_QUEUE_EXCLUDED'});
+      expect(parseExecutableIssue(forbidden)).toBeNull();
+    }
+    // A missing current executable flag must not be authorized by stale true
+    // markers; the legacy route still needs all four current flags.
+    const missing={...base,body:active.replace('TIGERIQ_EXECUTABLE=true','')+'\n## HISTORICAL\nTIGERIQ_EXECUTABLE=true'};
+    expect(parseExecutableIssue(missing)).toBeNull();
+  });
+
   it('requires each legacy compatibility flag in the current execution section',()=>{
     const keys=['TIGERIQ_EXECUTABLE','OWNER_POLICY','NO_CODE_CHANGE','NO_PC01_SHELL'];
     for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
