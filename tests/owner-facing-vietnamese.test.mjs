@@ -137,6 +137,64 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
   });
 
+  it('localizes the current production Live operational prose and machine wait reasons', () => {
+    const productionFixtures = [
+      {
+        input: 'thông tin xác thực material/kho mã riêng xác thực must become available; then sync exact main, set nonsecret runtime config, restart News runtime, run soak/quality gates, publish, verify live.',
+        required: ['phải sẵn sàng', 'sau đó', 'đồng bộ chính xác nhánh main', 'cấu hình môi trường chạy không bí mật', 'khởi động lại môi trường News', 'chạy kiểm tra bền và cổng chất lượng', 'xuất bản', 'xác minh thực tế'],
+      },
+      {
+        input: 'Do not wait for Owner. Diagnose actual browser request, sửa lỗi, create admin, run full sandbox E2E, verify restart/duplicate behavior, benchmark, xuất bản bằng chứng.',
+        required: ['Không chờ anh Sơn', 'Chẩn đoán yêu cầu trình duyệt thực tế', 'tạo quản trị viên', 'E2E (đầu-cuối)', 'chống trùng', 'đánh giá chuẩn'],
+      },
+      {
+        input: 'Paperclip runtime is healthy, but authenticated deployment has no usable admin session because first-admin credentials have not yet been set by Owner in browser.',
+        required: ['Môi trường Paperclip đang ổn', 'bản triển khai có xác thực', 'phiên quản trị', 'anh Sơn', 'trình duyệt'],
+      },
+      {
+        input: 'When existing private-repo auth becomes available without new/changed credentials, fast-forward-only sync to d419c15; then set only nonsecret MEDIA_AUTO_PUBLISH=true + approved HTTPS CONTENT_COVER_PUBLIC_BASE_URL, restart News runtime, bounded acceptance, live verify.',
+        required: ['Khi', 'kho mã riêng xác thực', 'mà không tạo hoặc thay đổi thông tin xác thực', 'chỉ đồng bộ tiến tới', 'sau đó chỉ thiết lập giá trị không bí mật', 'đã duyệt HTTPS', 'khởi động lại môi trường News', 'có giới hạn nghiệm thu', 'thực tế xác minh'],
+      },
+      {
+        input: 'Resume only when a non-materializing lifecycle integration harness exists or Owner changes the no-new-work constraint; do not repeat the same synthetic preflight.',
+        required: ['Chỉ tiếp tục khi', 'bộ kiểm thử tích hợp vòng đời không phát sinh tác vụ', 'hoặc anh Sơn thay đổi ràng buộc không tạo việc mới', 'không lặp lại cùng tiền kiểm mô phỏng'],
+      },
+      {
+        input: 'Track #4456 through implement>test>independent review>merge>PC01 runtime>publish>live verify; reconcile #3904 and close #3899 only after verified acceptance.',
+        required: ['Theo dõi #4456', 'triển khai>kiểm thử>rà soát độc lập>hợp nhất>môi trường PC01>xuất bản>xác minh thực tế', 'đối soát #3904 và đóng #3899', 'chỉ sau khi nghiệm thu đã xác minh'],
+      },
+      {
+        input: 'Owner tạo/link private Actor và inject scoped APIFY_TOKEN + APIFY_ACTOR_ID ngoài chat; chạy preflight trước, PASS mới chạy đúng 1 private E2E.',
+        required: ['anh Sơn tạo/liên kết Actor (tác vụ Apify) riêng', 'nạp theo phạm vi', 'tiền kiểm', 'ĐẠT', 'kiểm thử E2E (đầu-cuối) riêng'],
+      },
+      {
+        input: 'PIN_PASS_AND_MERGE -> runtime apply -> sign current CI artifact -> publish manifest -> S10 acceptance',
+        required: ['PIN ĐẠT VÀ HỢP NHẤT', 'áp dụng môi trường chạy', 'ký gói CI hiện hành', 'xuất bản tệp mô tả (manifest)', 'nghiệm thu S10'],
+      },
+      {
+        input: 'system precheck -> private preflight -> request Owner secret injection only if required -> one private E2E -> measure cost -> KEEP/ITERATE/KILL',
+        required: ['tiền kiểm hệ thống', 'tiền kiểm riêng', 'chỉ yêu cầu anh Sơn nạp bí mật nếu cần', 'một kiểm thử E2E (đầu-cuối) riêng', 'đo chi phí', 'GIỮ/LẶP CẢI TIẾN/DỪNG'],
+      },
+    ];
+    const forbidden = /\b(?:must|then|sync|set|nonsecret|config|restart|run|quality|verify|wait|Owner|Diagnose|actual|browser|request|create|admin|sandbox|behavior|benchmark|healthy|authenticated|session|Resume|Track|through|implement|test|merge|close|preflight|inject|scoped|private|artifact|sign|acceptance|measure|cost|approved|bounded)\b/i;
+    for (const fixture of productionFixtures) {
+      const output = localizeOwnerFacingText(fixture.input);
+      for (const expected of fixture.required) expect(output).toContain(expected);
+      expect(output).not.toMatch(forbidden);
+      expect(containsOwnerFacingEnglishOperationalProse(output)).toBe(false);
+    }
+
+    const row = ownerFacingWorkRow({
+      status: 'WAITING',
+      executionEligibility: 'PARKED_DEPENDENCY',
+      executionEligibilityReason: 'EXPLICIT_EXECUTION_DISABLED',
+      waitReason: 'EXPLICIT_EXECUTION_DISABLED',
+    });
+    expect(row.executionEligibility).toBe('PARKED_DEPENDENCY');
+    expect(row.executionEligibilityReason).toBe('EXPLICIT_EXECUTION_DISABLED');
+    expect(row.waitReason).toBe('Tạm dừng thực thi theo nguồn chuẩn');
+  });
+
   it('localizes OWNER_GATE rows before Live/API serialization', () => {
     const row = ownerFacingWorkRow({
       number: 2828,
