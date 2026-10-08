@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -575,6 +575,75 @@ describe('GitHub coding continuity supervisor',()=>{
     const markers=pool.events.filter(e=>e.type==='GITHUB_CODING_PROGRESS_REPORTED'&&e.data.codingObjectiveId==='obj-811-b');
     expect(markers).toHaveLength(1);
     expect(markers[0].data).toMatchObject({issueNumber:811,codingObjectiveId:'obj-811-b',jobId:'job-b',prNumber:2133});
+  });
+
+  it('does not inherit a prior retry budget or stale retry keys after a recovery rearm',async()=>{
+    const n=862;
+    const oldRoot='obj-862-old';
+    const oldR1='obj-862-old-r1';
+    const oldR2='obj-862-old-r2';
+    const recovered='obj-862-recovered';
+    const current=issue(SAFE,{number:n});
+    const sourceRevision=codingSourceTruthRevision(current,[]);
+    const pool=fakePool();
+    const oldRetries=[
+      {issueNumber:n,codingObjectiveId:oldR1,priorObjectiveId:oldRoot,retryAttempt:1,retryKey:'GITHUB-ISSUE-862-RETRY-1'},
+      {issueNumber:n,codingObjectiveId:oldR2,priorObjectiveId:oldR1,retryAttempt:2,retryKey:'GITHUB-ISSUE-862-RETRY-2'},
+    ];
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:oldR2}},
+      ...oldRetries.map(data=>({type:'GITHUB_CODING_RETRY_DISPATCHED',data})),
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:n,codingObjectiveId:oldR2,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision}},
+      {type:'GITHUB_CODING_RECOVERY_REARMED',data:{issueNumber:n,priorObjectiveId:oldR2,codingObjectiveId:recovered,mainSha:'new-main',sourceRevision}},
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:recovered,sourceRevision}},
+    );
+    const rearmData=pool.events.find(x=>x.type==='GITHUB_CODING_RECOVERY_REARMED').data;
+    expect(codingRetryEpochState(oldRetries,[rearmData],recovered)).toMatchObject({
+      retryCount:0,epochRootId:recovered,recovered:true,
+    });
+    expect(codingRetryEpochState(oldRetries,[rearmData],oldR2)).toMatchObject({
+      retryCount:2,recovered:false,
+    });
+    let active={id:recovered,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'};
+    const historical={id:oldR1,status:'blocked',objective:'Old retry RETRY_KEY=GITHUB-ISSUE-862-RETRY-1'};
+    const createdKeys=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[active,historical],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/api/objectives')&&init.method==='POST'){
+        const payload=JSON.parse(init.body);
+        const retryKey=payload.objective.match(/^RETRY_KEY=(.+)$/m)?.[1];
+        createdKeys.push(retryKey);
+        active={id:`obj-862-new-r${createdKeys.length}`,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED',objective:payload.objective};
+        return response({id:active.id});
+      }
+      if(url.includes('/issues/862')&&!url.includes('/comments'))return response(current);
+      if(url.includes('/comments'))return response([]);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(1);
+    expect(createdKeys[0]).toMatch(/^GITHUB-ISSUE-862-RECOVERY-[a-f0-9]{12}-RETRY-1$/);
+    expect(active.id).toBe('obj-862-new-r1');
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL'&&x.data.codingObjectiveId===recovered)).toHaveLength(0);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(2);
+    expect(createdKeys[1]).toBe(createdKeys[0].replace(/-RETRY-1$/,'-RETRY-2'));
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RETRY_DISPATCHED'&&x.data.retryKey?.includes('-RECOVERY-'))).toHaveLength(2);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(2);
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL'&&x.data.codingObjectiveId==='obj-862-new-r2')).toHaveLength(1);
+    expect(codingRetryEpochState([
+      ...oldRetries,
+      ...pool.events.filter(x=>x.type==='GITHUB_CODING_RETRY_DISPATCHED').map(x=>x.data).filter(x=>x.retryKey?.includes('-RECOVERY-')),
+    ],[rearmData],'obj-862-new-r2')).toMatchObject({retryCount:2,epochRootId:recovered,recovered:true});
+  });
+
+  it('fails closed for malformed current-objective retry attempts and cycles',()=>{
+    const r='r-current';
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:0}],[],r).retryCount).toBe(2);
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:1,priorObjectiveId:r}],[],r).retryCount).toBe(2);
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:1},{codingObjectiveId:r,retryAttempt:1}],[],r).retryCount).toBe(2);
   });
 
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
