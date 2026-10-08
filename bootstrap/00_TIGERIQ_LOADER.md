@@ -54,6 +54,15 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 4. `bootstrap/05_TIGERIQ_BASELINE_DECISIONS.md`
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
 
+## OWNER CHAT V3 — PRE-SEND AND NEW-CHAT CONTRACT
+- Owner-approved specification: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` on GitHub `main`; dynamic policy: issue `#504`.
+- On EVERY new TigerIQ chat: load canonical Bootstrap and current `#504` before the first owner-facing report; apply V3 presentation immediately. Existing live chats must refresh this authority before reporting when possible, but cannot be remotely rewritten.
+- Before EACH owner-facing answer: keep Vietnamese and RESULT → BLOCKER (when real) → NEXT; normal answers stay concise. Use only canonical status emojis `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️`; richer vector icons/semantic colors are allowed when the client renders them.
+- For `bc`: exactly six sections. For `bcct`: the same six sections PLUS an RDC 5-account read-only quota and device-status panel. `bcct` authorizes only reading RDC `who_am_i` and `list_devices` for those five connected accounts, NOT PC01 commands.
+- Do not invent progress or health: show percent only with a verified numerator/denominator; distinguish acceptance progress from runtime health; never equate GitHub assignment with a live worker.
+- If richer UI is unsupported, use compact plain text. Never claim this repository can update the ChatGPT native interface, existing conversations automatically, or accounts that have not loaded canonical sources.
+STATE=OWNER_CHAT_V3_CANONICAL_LOADER
+
 ## OWNER INTERACTION HARD-LOAD V1 — bắt buộc mọi phiên
 - Trước phản hồi Owner đầu tiên của mọi NEW CHAT, sau Bootstrap canonical phải đọc Interaction Policy #504 từ GitHub hiện hành.
 - Quy tắc này áp dụng cả chat thường lẫn chat công việc; không phụ thuộc task có cần trạng thái runtime hay không.
