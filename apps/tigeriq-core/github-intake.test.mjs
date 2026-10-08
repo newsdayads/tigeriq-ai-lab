@@ -118,6 +118,13 @@ describe('GitHub Core intake guardrails',()=>{
     const safe={...base,body:active};
     expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
     expect(parseExecutableIssue(safe)).toMatchObject({number:588,admissionMode:'SAFE_P1_P5_POLICY'});
+    // Existing Owner overrides often begin with a Markdown heading. Its first
+    // section is current policy, and later headings are historical only.
+    const titled={...base,body:'## CURRENT OWNER OVERRIDE\n'+active+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=false'};
+    expect(safeAutoWorkAdmission(titled)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    const titledStale={...base,body:'## CURRENT OWNER OVERRIDE\n'+active.replace('NO_PAID_COST=true','')+'\n## HISTORICAL CONTRACT\nNO_PAID_COST=true'};
+    expect(safeAutoWorkAdmission(titledStale)).toMatchObject({eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'});
+    expect(parseExecutableIssue(titledStale)).toBeNull();
     for(const key of ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
       'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN']){
       const missing=active.replace(key+'=true','');
