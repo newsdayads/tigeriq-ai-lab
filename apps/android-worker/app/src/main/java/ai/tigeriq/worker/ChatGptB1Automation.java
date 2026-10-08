@@ -32,6 +32,17 @@ public final class ChatGptB1Automation {
             String expectedToken = ChatGptB1RunStore.expectedToken(s);
             String responseText = responseTextContaining(root, expectedToken, ChatGptB1RunStore.prompt(s));
             if (!responseText.isEmpty()) {
+                // Another ChatGPT conversation can display the same token after
+                // navigation. Never credit it to a Core-lease Project run.
+                boolean liveProjectTitle = treeContainsExactLabelOutsideClickableNavigation(
+                    root, ChatGptB1Policy.REQUIRED_PROJECT, 3
+                );
+                if (!ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
+                    s.taskId, s.projectMode, s.projectBound, liveProjectTitle
+                )) {
+                    ChatGptB1RunStore.fail(service, "PROJECT_CONTEXT_LOST_BEFORE_RESPONSE_ACCEPTANCE");
+                    return;
+                }
                 ChatGptB1RunStore.completeCurrentCycle(service, responseText);
                 return;
             }
