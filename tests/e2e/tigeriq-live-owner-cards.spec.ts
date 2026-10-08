@@ -321,3 +321,23 @@ test('V2.4 unchecked validation never fabricates a percentage, even when steps a
   await expect(page.locator('#drawerChecklistHint')).toContainText('chưa có xác nhận');
   await expect(page.locator('.drawer-checklist-step')).toHaveCount(2);
 });
+
+test('LIVE compact owner grid shows five to six cards per row on desktop with readable mobile fallback',async({page})=>{
+  const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
+    [1664,950,5],[2560,1440,6],[1280,900,4],[390,844,1]
+  ];
+  for(const [width,height,columns] of samples){
+    await page.setViewportSize({width,height});
+    await openLive(page);
+    const actual=await page.locator('#workList').evaluate((el)=>{
+      const computed=getComputedStyle(el);
+      return {columns:computed.gridTemplateColumns.split(' ').filter(Boolean).length,scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth};
+    });
+    expect(actual.columns).toBe(columns);
+    expect(actual.scrollWidth).toBeLessThanOrEqual(actual.viewport+1);
+    const card=page.locator('.work-row').first();
+    await expect(card.locator('.work-id')).toBeVisible();
+    await expect(card.locator('.priority')).toBeVisible();
+    await expect(card.locator('.work-title')).toBeVisible();
+  }
+});
