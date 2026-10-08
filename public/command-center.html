@@ -1819,8 +1819,14 @@ function drawerChecklistMarkup(row){
   const entries=Array.isArray(row?.progressSteps)?row.progressSteps:[];
   const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   const verified= row?.progressChecklistVerified===true && fresh && entries.length>=2;
-  $('drawerChecklistSection').hidden=entries.length<2;
-  if(entries.length<2){$('drawerChecklistList').innerHTML='';return;}
+  const canShow=String(row?.workKind||'WORK').toUpperCase()==='WORK';
+  $('drawerChecklistSection').hidden=!canShow;
+  if(entries.length<2){
+    $('drawerChecklistMeta').textContent='Chưa có dữ liệu';
+    $('drawerChecklistList').innerHTML='';
+    $('drawerChecklistHint').textContent='GitHub chưa có checklist ít nhất 2 bước. Chưa thể tính số bước và %; không tự tạo bước.';
+    return;
+  }
   $('drawerChecklistMeta').textContent=verified
     ?row.progressDone+'/'+row.progressTotal+' bước · còn '+row.progressRemaining+' bước'
     :entries.length+' bước · chưa xác minh';
