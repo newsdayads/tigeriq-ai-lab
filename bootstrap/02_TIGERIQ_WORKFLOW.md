@@ -134,6 +134,15 @@ Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, kh�
 5. **Nhân sự AI** — trạng thái có chứng cứ hoặc ghi chưa xác minh.
 6. **Mốc kế tiếp** — hành động và điều kiện nghiệm thu.
 
+### BCCT CHUẨN CHỐT V5 — ƯU TIÊN CAO HƠN V4 VỀ BỐ CỤC
+- Dùng `docs/OWNER_BCCT_FINAL_V5.md` làm mẫu BCCT chính xác. Bắt buộc tiêu đề/nhãn/nút IN HOA.
+- RDC thanh mỏng ngay sau Header, mở rộng bằng thao tác; không chiếm diện tích mặc định.
+- Một hàng chỉ số nhỏ, danh sách công việc ưu tiên chiếm diện tích chính; bộ lọc; bấm từng công việc sẽ xem tiến trình/điểm chặn/bằng chứng; giữ nút HỒ SƠ/KIỂM TRA.
+- Mục hoàn tất thu gọn; P0, nhân sự AI, mốc kế tiếp ở cuối. Sáu nhóm BCCT vẫn giữ; không ép mẫu bảng dài hoặc thẻ lớn.
+- Chỉ % đã kiểm chứng, phân biệt công việc đang mở với thực thi thời gian thực; RDC chỉ đọc.
+- Quy định V5 chỉ áp dụng khi phiên thực sự nạp nguồn; không khẳng định can thiệp được trình kết xuất gốc ChatGPT.
+STATE=OWNER_BCCT_V5_WORKFLOW_ROUTED
+
 ### Báo cáo `bcct / báo cáo chi tiết`
 - Giữ 6 phần trên và mở rộng chi tiết kỹ thuật: tài nguyên, bằng chứng, lỗi, thay đổi, mã công việc và PR đầy đủ tên chuẩn.
 - Thêm **RDC 5 tài khoản**: chỉ đọc `who_am_i` và `list_devices` trên cả năm kết nối; hiển thị thanh % lượt gọi còn lại do nhà cung cấp trả, PC01 trực tuyến/ngoại tuyến, tài khoản ưu tiên. Không suy ra số lượt tuyệt đối từ %.
