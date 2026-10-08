@@ -270,12 +270,12 @@ describe('Owner-facing Vietnamese output gate', () => {
     ];
     for (const sourcePath of outboundSourcePaths) {
       const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
-      expect(source, sourcePath).not.toMatch(/[\\p{Extended_Pictographic}]/u);
+      expect(source, sourcePath).not.toMatch(/\p{Extended_Pictographic}/u);
     }
     const liveSource = readFileSync(new URL('../api/live-status.mjs', import.meta.url), 'utf8');
     // Historical emoji may remain in legacy parsing regex, never as new result output.
     expect(liveSource).not.toContain('`✅ [KẾT QUẢ THỰC TẾ]');
-    expect(liveSource).toContain('(?:✅\\s*)?\\[KẾT QUẢ THỰC TẾ\\]');
+    expect(liveSource).toContain(String.raw`(?:✅\s*)?\[KẾT QUẢ THỰC TẾ\]`);
   });
 
   it('uses vector names only as metadata, with emoji-free text fallback', () => {
