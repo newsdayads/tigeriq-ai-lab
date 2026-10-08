@@ -31,4 +31,4 @@ node benchmarks/cline-executor-eval/harness.mjs score --root <temp-root> --lane 
 node benchmarks/cline-executor-eval/harness.mjs score --root <temp-root> --lane current-coding-lane
 ```
 
-A fixture is complete only when its acceptance tests pass, tests were not modified, and no unexpected files were added. The external benchmark runner adds wall-clock, attempts, command failures, model/provider and usage metrics before the final KEEP/CANARY/REJECT decision.
+A fixture is complete only when its acceptance tests pass, tests and TASK.md were not modified, and no unexpected files were added. The scorer derives its baseline only from the repository-owned fixture-manifest.json; it never trusts baseline metadata inside an executor-writable lane. The external benchmark runner adds wall-clock, attempts, command failures, model/provider and usage metrics before the final KEEP/CANARY/REJECT decision.
