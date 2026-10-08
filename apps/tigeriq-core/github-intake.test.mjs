@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -707,6 +707,58 @@ describe('GitHub Core intake guardrails',()=>{
     expect(labelAdds).toBe(1);
     expect(resultComments).toBe(1);
     expect(row.metadata).toMatchObject({githubTerminalLabelSynced:true,githubResultReported:true});
+  });
+
+  it('retires stale active Core objectives after current terminal or safety denial but not transient wait',async()=>{
+    const baseline=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=SYNC_TERMINAL_GUARD','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    ];
+    const current=(...extras)=>baseline.concat(extras).join('\n');
+    const cases=[
+      ['terminal',current('CURRENT_STATE=SUPERSEDED_BY_NEW_WORK'),'NON_EXECUTABLE_STATE'],
+      ['current unsafe',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION','NO_PAID_COST=false','NO_PAID_COST=true'),'EXPLICIT_SAFETY_FLAG_DISABLED'],
+      ['terminal label',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION'),'TERMINAL_BLOCKED'],
+    ];
+    for(const [name,body,expectedReason] of cases){
+      const sourceIssue={number:897,state:'open',title:'[P1] Active Core objective',body,
+        labels:name==='terminal label'?[{name:'tigeriq:terminal-blocked'}]:[]};
+      expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe(expectedReason);
+      const row={id:'OBJ-GH-897',status:'active',summary:'previously running',metadata:{
+        source:'github',issueNumber:897,sourceRevision:'old',
+        githubClaimReported:true,githubResultReported:false,
+      }};
+      let retireCount=0,cleanCount=0;
+      const pool={async query(sql,params=[]){
+        if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+        if(sql.includes('update tigeriq_objectives set status=$2')){
+          retireCount++;
+          row.status=params[1];row.summary=params[2];
+          Object.assign(row.metadata,JSON.parse(params[3]));
+          return {rowCount:1,rows:[]};
+        }
+        if(sql.includes('update tigeriq_jobs j')){cleanCount++;return {rowCount:0,rows:[]};}
+        throw new Error('unexpected_sql_for_retires: '+sql.slice(0,80));
+      }};
+      const fetchImpl=async()=>{throw new Error('unexpected_GitHub_mutation');};
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+      expect(retireCount).toBe(1);
+      expect(cleanCount).toBe(1);
+      expect(row.status).toBe('blocked');
+      expect(row.metadata).toMatchObject({
+        githubSourceExecutionExcluded:true,
+        githubSourceExecutionExclusionReason:expectedReason,
+        githubResultReported:true,
+      });
+    }
+    const safe=current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION');
+    const temporary=current('CURRENT_STATE=WAIT_RESOURCE');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'open',title:'[P1] Core',body:safe})).toBe('');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'open',title:'[P1] Core',body:temporary})).toBe('');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'closed',title:'[P1] Core',body:safe})).toBe('NOT_OPEN_ISSUE');
   });
 
   it('keeps completed multi-phase Core issue open while reporting the step result',async()=>{
