@@ -25,9 +25,10 @@ const snapshot = {
   nextQueue:[],recentWork:[],workers:[{employeeId:'NV03',state:'working',status:'ĐANG LÀM'}]
 };
 
-async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot){
+async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,workforce:()=>Record<string,unknown>=()=>payload){
   await page.route('https://tigeriq.test/**',async(route:Route)=>{
     const url=route.request().url();
+    if(url.includes('/api/live-status?scope=workforce')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(workforce())});return}
     if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)});return}
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
@@ -136,6 +137,85 @@ test('P0 LIVE never marks employees as running from stale or incomplete telemetr
     await expect(page.locator('#liveWorkers')).toContainText('0 NHÂN VIÊN');
     await page.unroute('https://tigeriq.test/**');
   }
+});
+
+
+test('P0 workforce cards use 3 / 2 / 1 columns; show job id directly and no overflow',async({page})=>{
+  const at=new Date().toISOString();
+  const active=Array.from({length:5},(_,i)=>({
+    employeeId:'NV'+String(i+10),label:'Local worker '+(i+10),state:'working',
+    currentJobId:'GH-'+(3000+i),job:'Đang kiểm tra công việc thứ '+(i+1),
+    heartbeatAt:at,updatedAt:at
+  }));
+  await routeTiger(page,{...snapshot,generatedAt:at,workers:active});
+  for(const [width,height,columns] of [[1440,900,3],[840,800,2],[390,844,1]] as const){
+    await page.setViewportSize({width,height});
+    await page.goto('https://tigeriq.test/command-center');
+    await expect(page.locator('.live-worker-card')).toHaveCount(5);
+    await expect(page.locator('.live-worker-card[data-live-employee="NV10"] .live-worker-code')).toHaveText('GH-3000');
+    await expect(page.locator('.live-worker-card[data-live-employee="NV10"] .live-worker-job')).toContainText('Đang kiểm tra');
+    const observed=await page.locator('.live-workers-grid').evaluate(el=>({
+      columns:getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
+      scroll:document.documentElement.scrollWidth,viewport:window.innerWidth
+    }));
+    expect(observed.columns).toBe(columns);
+    expect(observed.scroll).toBeLessThanOrEqual(observed.viewport+1);
+  }
+});
+
+test('P0 5-second workforce refresh does not rebuild unrelated work cards or unchanged employee DOM',async({page})=>{
+  const at=new Date().toISOString();
+  const employee={employeeId:'NV20',label:'NVIDIA NIM',state:'working',currentJobId:'GH-201',job:'JOB đầu tiên',heartbeatAt:at};
+  let workforce={ok:true,liveConnected:true,generatedAt:at,workers:[employee]};
+  let fullCalls=0,workforceCalls=0;
+  await page.route('https://tigeriq.test/**',async(route:Route)=>{
+    const url=route.request().url();
+    if(url.includes('/api/live-status?scope=workforce')){
+      workforceCalls++;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(workforce)});return;
+    }
+    if(url.endsWith('/api/live-status')){
+      fullCalls++;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...snapshot,generatedAt:at})});return;
+    }
+    if(url.endsWith('/command-center')){
+      await route.fulfill({status:200,contentType:'text/html',body:liveHtml});return;
+    }
+    await route.fulfill({status:204,body:''});
+  });
+  await page.goto('https://tigeriq.test/command-center');
+  await expect(page.locator('.live-worker-card')).toHaveCount(1);
+  const before=await page.evaluate(()=>{
+    const card=document.querySelector('.live-worker-card') as HTMLElement;
+    const job=document.querySelector('.work-row[data-work-number="111"]') as HTMLElement;
+    card.dataset.domIdentity='kept';
+    job.dataset.workIdentity='kept';
+    return {active:card.dataset.liveEmployee};
+  });
+  expect(before.active).toBe('NV20');
+  workforce={...workforce,workers:[{...employee,job:'JOB đã đổi',currentJobId:'GH-202'}]};
+  await page.evaluate(()=>loadWorkforce());
+  await expect(page.locator('.live-worker-card .live-worker-code')).toHaveText('GH-202');
+  await expect(page.locator('.live-worker-card')).toHaveAttribute('data-dom-identity','kept');
+  await expect(page.locator('.work-row[data-work-number="111"]')).toHaveAttribute('data-work-identity','kept');
+  expect(fullCalls).toBe(1);
+  expect(workforceCalls).toBeGreaterThanOrEqual(2);
+  workforce={...workforce,workers:[]};
+  await page.evaluate(()=>loadWorkforce());
+  await expect(page.locator('.live-worker-card')).toHaveCount(0);
+});
+
+test('P0 independent PC01 workforce failure clears active cards, without converting jobs into DONE',async({page})=>{
+  const at=new Date().toISOString();
+  let workforce={ok:true,liveConnected:true,generatedAt:at,workers:[
+    {employeeId:'NV10',label:'Ollama',state:'working',job:'Đang rà soát',heartbeatAt:at,currentJobId:'GH-4242'}
+  ]};
+  await routeTiger(page,{...snapshot,generatedAt:at},()=>workforce);
+  await page.goto('https://tigeriq.test/command-center');
+  await expect(page.locator('.live-worker-card')).toHaveCount(1);
+  workforce={ok:true,liveConnected:false,staleAll:true,generatedAt:at,workers:workforce.workers};
+  await page.evaluate(()=>loadWorkforce());
+  await expect(page.locator('.live-worker-card')).toHaveCount(0);
+  await expect(page.locator('#liveWorkers')).toContainText('CHƯA XÁC MINH');
+  await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
 });
 
 test('work cards show evidence progress or an explicit non-quantified indicator and keep next action readable',async({page})=>{
