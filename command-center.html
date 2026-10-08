@@ -788,6 +788,26 @@ html,body,body{background:#071321!important}
 .work-row .progress{color:var(--status-color,#64748B)!important}
 .filter:focus-visible,.work-row:focus-visible{outline:2px solid #E2E8F0;outline-offset:3px}
 </style>
+<style id="tigeriq-live-verified-checklist-v24">
+/* Verified checklist counters derive only from API source with auditable scope */
+.work-step-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:7px;font-size:11px;line-height:1.45;color:#B5D6EB;font-weight:750}
+.work-step-summary .step-remaining{color:#F2C879}
+.work-step-summary.unverified{color:#8CA6BC;font-weight:650}
+.drawer-checklist-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.drawer-checklist-meta{color:#B7D9EC;font-size:12px;line-height:1.45}
+.drawer-checklist-list{display:grid;gap:7px;margin-top:9px}
+.drawer-checklist-step{display:flex;gap:9px;align-items:flex-start;padding:10px 9px;border:1px solid #2A4560;border-radius:9px;background:#0A1D31}
+.drawer-checklist-step .check-icon{height:19px;width:19px;flex:none;margin-top:1px;color:#8DA8BF}
+.drawer-checklist-step.verified.done .check-icon{color:#10B981}
+.drawer-checklist-step.verified.done{border-color:#28664C}
+.drawer-checklist-copy{min-width:0;flex:1}
+.drawer-checklist-copy strong{display:block;font-size:13px;line-height:1.45;overflow-wrap:anywhere;color:#EDF5FE;font-weight:700}
+.drawer-checklist-copy small{display:block;margin-top:3px;color:#96AFC4;font-size:11px;line-height:1.4}
+.drawer-checklist-copy a{color:#7BCBFF;text-decoration:underline;text-underline-offset:2px}
+.drawer-checklist-hint{margin-top:9px;color:#A5BBD0;font-size:11px;line-height:1.5}
+.drawer-checklist-head h3{margin:0!important}
+@media(max-width:430px){.work-step-summary{font-size:10px}.drawer-checklist-step{padding:8px 7px}.drawer-checklist-copy strong{font-size:12px}}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -839,6 +859,11 @@ html,body,body{background:#071321!important}
   <div class="drawer-body">
     <section id="drawerOwnerResults" class="drawer-section" hidden><h3>Kết quả hoàn tất</h3><div id="drawerOwnerResultsList" class="owner-result-list"></div></section>
     <section id="drawerProgressSection" class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
+    <section id="drawerChecklistSection" class="drawer-section" hidden>
+      <div class="drawer-checklist-head"><h3>DANH SÁCH BƯỚC THỰC HIỆN</h3><span id="drawerChecklistMeta" class="drawer-checklist-meta"></span></div>
+      <div id="drawerChecklistList" class="drawer-checklist-list"></div>
+      <div id="drawerChecklistHint" class="drawer-checklist-hint"></div>
+    </section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
@@ -1782,11 +1807,43 @@ function renderApiWorkforce(){
     +'</div>'
     +'<div class="api-summary-blocker"><span>Hiện tại:</span> '+esc(a.blocker||'Đang theo dõi độ ổn định')+'</div>';
 }
+function verifiedStepSummary(row){
+  const total=Number(row?.progressTotal||0),done=Number(row?.progressDone||0);
+  const verified= row?.progressChecklistVerified===true && !(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!Number.isSafeInteger(total)||total<2||!Number.isSafeInteger(done)||done<0||done>total)return '';
+  if(!verified)return '<div class="work-step-summary unverified">Có '+total+' bước trong GitHub · chưa xác minh</div>';
+  const left=total-done;
+  return '<div class="work-step-summary"><span>'+done+'/'+total+' bước đã xác minh</span><span class="step-remaining">Còn '+left+' bước</span></div>';
+}
+function drawerChecklistMarkup(row){
+  const entries=Array.isArray(row?.progressSteps)?row.progressSteps:[];
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  const verified= row?.progressChecklistVerified===true && fresh && entries.length>=2;
+  $('drawerChecklistSection').hidden=entries.length<2;
+  if(entries.length<2){$('drawerChecklistList').innerHTML='';return;}
+  $('drawerChecklistMeta').textContent=verified
+    ?row.progressDone+'/'+row.progressTotal+' bước · còn '+row.progressRemaining+' bước'
+    :entries.length+' bước · chưa xác minh';
+  const checked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const unchecked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
+  $('drawerChecklistList').innerHTML=entries.map((step,i)=>{
+    const done=step?.done===true;
+    const href=safeOwnerResultHref(step?.evidenceUrl);
+    const link=href?' <a href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Nguồn đính kèm ↗</a>':'';
+    const stepStatus=verified?(done?'Đã xác minh':'Chưa hoàn tất'):(done?'Đã đánh dấu · chưa xác minh':'Chưa hoàn tất · chưa xác minh');
+    return '<div class="drawer-checklist-step'+(done?' done':'')+(verified?' verified':'')+'">'+(done?checked:unchecked)
+      +'<div class="drawer-checklist-copy"><strong>'+String(i+1).padStart(2,'0')+'. '+esc(step?.title||'Bước chưa đặt tên')+'</strong><small>'+esc(stepStatus)+link+'</small></div></div>';
+  }).join('');
+  $('drawerChecklistHint').textContent=verified
+    ?(workStatus(row)==='DONE'?'Công việc đã đóng và có checklist xác minh.':'100% chỉ được công nhận khi công việc hoàn tất và có đủ bằng chứng.')
+    :'Các ô đánh dấu từ GitHub chưa có xác nhận tiến độ; không tự tính phần trăm.';
+}
 function drawerProgressMarkup(row){
   const {pct,verified}=verifiedProgress(row);
-  return verified
+  const bar=verified
     ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
     :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
+  return bar+verifiedStepSummary(row);
 }
 function effectiveBlocker(row){
   if(row?.blocker)return String(row.blocker);
@@ -1838,6 +1895,7 @@ function populateDrawer(row){
   $('drawerProgress').innerHTML=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
     :drawerProgressMarkup(row);
+  drawerChecklistMarkup(row);
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
@@ -1904,6 +1962,7 @@ function render(){
       :activeWithoutPercent
         ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
         :'';
+    const stepSummary=verifiedStepSummary(row);
     const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
       ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
       :(row?.currentStep||(row?.workKind==='SYSTEM'?'Chính sách / nguồn chuẩn — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':''))).trim();
@@ -1917,11 +1976,11 @@ function render(){
     const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext:usefulSummary?('Hiện tại: '+usefulSummary):'';
     const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
     const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
-    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText;
+    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText+'|'+(row?.progressDone??'-')+'/'+(row?.progressTotal??'-')+'/'+Boolean(row?.progressChecklistVerified);
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+quickLine+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+stepSummary+quickLine+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
