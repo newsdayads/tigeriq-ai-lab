@@ -90,7 +90,12 @@ describe('GitHub Core intake guardrails',()=>{
 
     const safe={...base,body:active.join('\n')};
     expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true});
-    expect(parseExecutableIssue(safe)).toMatchObject({number:588});
+    const safeSpec=parseExecutableIssue(safe);
+    expect(safeSpec).toMatchObject({number:588,admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING'});
+    expect(sameRevisionFallbackRearmDecision({
+      prior:{status:'blocked',metadata:{coreFallbackReleased:true,admissionMode:safeSpec.admissionMode,dispatchLane:safeSpec.dispatchLane,sourceRevision:safeSpec.sourceRevision}},
+      spec:safeSpec,rearmCount:0,
+    })).toMatchObject({eligible:true,reason:'TRANSIENT_FALLBACK_RELEASED'});
 
     // A historical true may not construct the legacy gap exception when
     // the current header explicitly forbids a no-code/no-shell contract.
