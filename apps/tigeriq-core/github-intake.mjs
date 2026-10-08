@@ -577,7 +577,7 @@ function currentPcOperatorInstruction(body){
   const inline=extractPcOperatorInstruction(current);
   if(inline)return inline;
   const tail=text.slice(current.length);
-  const assigned=tail.match(/^\\s*#{1,6}[ \\t]+ASSIGNED_ACTION[ \\t]*\\r?\\n([\\s\\S]*?)(?=\\r?\\n(?:#{1,6}[ \\t]+)?ACCEPTANCE[ \\t]*(?:\\r?\\n|$))/i);
+  const assigned=tail.match(/^\s*#{1,6}[ \t]+ASSIGNED_ACTION[ \t]*\r?\n([\s\S]*?)(?=\r?\n(?:#{1,6}[ \t]+)?ACCEPTANCE[ \t]*(?:\r?\n|$))/i);
   return String(assigned?.[1]||'').trim();
 }
 
