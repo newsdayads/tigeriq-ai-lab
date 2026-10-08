@@ -93,7 +93,7 @@ describe('GitHub Core intake guardrails',()=>{
       'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
       'NO_PRODUCTION_RELEASE=true',
     ].join('\n');
-    for(const state of ['DONE_VERIFIED','COMPLETED','FAILED_RETRY_EXHAUSTED','TERMINAL_BLOCKED']){
+    for(const state of ['DONE_VERIFIED','COMPLETED','FAILED','FAILED_RETRY_EXHAUSTED','FAILED_REVIEW','TERMINAL_BLOCKED','CANCELLED','CANCELED','CLOSED']){
       const issue={...base,body:base.body+'\nCURRENT_STATE='+state+'\n'+safeFlags+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
       expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
       expect(parseExecutableIssue(issue)).toBeNull();
