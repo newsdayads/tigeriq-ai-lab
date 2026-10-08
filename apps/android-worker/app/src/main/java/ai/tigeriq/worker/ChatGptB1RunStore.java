@@ -304,6 +304,24 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
+    public static String projectGateModeForEvidence(Context context, Snapshot s) {
+        SharedPreferences p = context.getSharedPreferences(
+            AccessibilityBridgeService.PREFS, Context.MODE_PRIVATE
+        );
+        return ChatGptB1Policy.safeProjectGateModeForEvidence(
+            p.getString(AccessibilityBridgeService.KEY_PROJECT_GATE_MODE, ""),
+            p.getLong(AccessibilityBridgeService.KEY_PROJECT_GATE_AT, 0L),
+            s.startedAt
+        );
+    }
+
+    public static boolean projectClickObservedInRun(Context context, Snapshot s) {
+        long clickAt = context.getSharedPreferences(
+            AccessibilityBridgeService.PREFS, Context.MODE_PRIVATE
+        ).getLong(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        return ChatGptB1Policy.projectClickObservedInRun(clickAt, s.startedAt);
+    }
+
     public static JSONObject evidencePayload(Context context) throws Exception {
         Snapshot s = read(context);
         JSONObject payload = new JSONObject();
@@ -325,6 +343,10 @@ public final class ChatGptB1RunStore {
         body.put("projectBound", s.projectBound);
         body.put("projectBoundAt", s.projectBoundAt);
         body.put("projectMode", s.projectMode);
+        // Only enum-like gate state and same-run click presence. Do NOT report
+        // KEY_PROJECT_GATE_DIAG; it may hold raw node lineage or chat text.
+        body.put("projectGateMode", projectGateModeForEvidence(context, s));
+        body.put("projectAutoClickSeen", projectClickObservedInRun(context, s));
         body.put("minFillToSendMs", MIN_FILL_TO_SEND_MS);
         body.put("interCycleCooldownMs", INTER_CYCLE_COOLDOWN_MS);
         body.put("workerVersion", WorkerVersion.NAME);
