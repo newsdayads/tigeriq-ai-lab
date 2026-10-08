@@ -156,6 +156,46 @@ describe('Core vNext durable checkpoint adapter (isolated, not connected to live
     expect(db.writes).toBe(1);
   });
 
+
+  it('serializes divergent concurrent saves across adapter instances of one writer', async () => {
+    for (const separateInstance of [false, true]) {
+      const db = saver();
+      // Capture a stale read BEFORE yielding: both saves race without an
+      // objective-scoped critical section even when one-writer lease is valid.
+      const delayed = {
+        async getTuple(config) {
+          const snapshot = await db.getTuple(config);
+          if (!config.configurable.checkpoint_id)
+            await new Promise(resolve => setImmediate(resolve));
+          return snapshot;
+        },
+        put: (config, checkpoint, metadata, versions) =>
+          db.put(config, checkpoint, metadata, versions),
+      };
+      const first = store(delayed);
+      const second = separateInstance ? store(delayed) : first;
+      const conflicting = { ...transition, transition_id: 'PLAN-0002',
+        event_id: 'EVT-0002', plan_revision: 'rev-2', task_ids: ['TASK-B'] };
+      const results = await Promise.allSettled([first.save(transition), second.save(conflicting)]);
+      expect(results.filter(x => x.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter(x => x.status === 'rejected')).toHaveLength(1);
+      expect(results.find(x => x.status === 'rejected').reason.message)
+        .toBe('VNEXT_CONFLICTING_REPLAY');
+      expect(db.writes).toBe(1);
+      expect(db.entries.size).toBe(1);
+    }
+  });
+
+  it('deduplicates identical in-flight saves, even from separate instances', async () => {
+    const db = saver();
+    const a = store(db);
+    const b = store(db);
+    const results = await Promise.all([a.save(transition), b.save(transition)]);
+    expect(results.map(r => r.written).sort()).toEqual([false, true]);
+    expect(results[1].checkpoint_id).toBe(results[0].checkpoint_id);
+    expect(db.writes).toBe(1);
+  });
+
   it('rechecks writer lease before committing, never calling checkpointer.put on loss', async () => {
     const db = saver();
     let count = 0;
