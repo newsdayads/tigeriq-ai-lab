@@ -40,7 +40,7 @@ for (const token of [
   if (!lifecycleSource.includes(token)) throw new Error('RCA_INTEGRATION_EXPECTED_PATH_MISSING:' + token);
 }
 
-function hermeticLifecycle({ state = 'open', reason = null, hasPrior = true } = {}) {
+function hermeticLifecycle({ state = 'open', reason = null, hasPrior = true, priorRearmHash = null } = {}) {
   const anomaly = {
     signature: 'test-integrity-anomaly',
     contract_id: 'SERVICE_FUNCTIONAL_INTEGRITY',
@@ -60,7 +60,17 @@ function hermeticLifecycle({ state = 'open', reason = null, hasPrior = true } = 
     number: 3278,
     state,
     state_reason: reason,
-    body: 'TIGERIQ_JOB_V1\nRCA_FAMILY_KEY=' + rca.rcaFamilyKey,
+    body: priorRearmHash == null
+      ? 'TIGERIQ_JOB_V1\nRCA_FAMILY_KEY=' + rca.rcaFamilyKey
+      : [
+        '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
+        'RCA_FAMILY_KEY=' + rca.rcaFamilyKey,
+        'EVIDENCE_HASH=' + (priorRearmHash === 'CURRENT' ? rca.evidenceHash : priorRearmHash),
+        'DONE=false',
+        '',
+        'TIGERIQ_JOB_V1',
+        'RCA_FAMILY_KEY=' + rca.rcaFamilyKey,
+      ].join('\n'),
   };
   let patchCount = 0;
   let createAttempts = 0;
@@ -184,6 +194,35 @@ describe('Core RCA GitHub lifecycle, hermetic materialization integration', () =
     expect(h.createAttempts).toBe(0);
     expect(h.httpMethods).toEqual(['GET', 'PATCH', 'GET']);
     expect(h.emitted[1].type).toBe('AUTONOMOUS_RCA_FAMILY_DEDUPED');
+  });
+
+  it('refreshes the leading recurrence evidence on a closed canonical issue without creating another issue', async () => {
+    const h = hermeticLifecycle({ state: 'closed', reason: 'completed', priorRearmHash: 'stale-evidence-hash' });
+    const first = await h.run();
+    expect(first).toMatchObject({ candidates: 1, workOrders: 0, deduped: 1, blocked: 0 });
+    expect(h.issue.number).toBe(3278);
+    expect(h.issue.state).toBe('open');
+    const freshHash = h.emitted[0].payload.evidenceHash;
+    expect(h.issue.body.split('\n\n')[0]).toContain('EVIDENCE_HASH=' + freshHash);
+    expect(h.issue.body).toContain('EVIDENCE_HASH=stale-evidence-hash');
+    expect(h.issue.body.match(/## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE/g)).toHaveLength(2);
+    expect(h.patchCount).toBe(1);
+    expect(h.createAttempts).toBe(0);
+    await h.run();
+    expect(h.patchCount).toBe(1);
+    expect(h.createAttempts).toBe(0);
+    expect(h.httpMethods).toEqual(['GET', 'PATCH', 'GET']);
+  });
+
+  it('preserves an already-current canonical recurrence header while reopening exactly once', async () => {
+    const h = hermeticLifecycle({ state: 'closed', reason: 'completed', priorRearmHash: 'CURRENT' });
+    const first = await h.run();
+    expect(first).toMatchObject({ candidates: 1, workOrders: 0, deduped: 1, blocked: 0 });
+    expect(h.patchCount).toBe(1);
+    expect(h.createAttempts).toBe(0);
+    expect(h.issue.body.match(/## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE/g)).toHaveLength(1);
+    const hash = h.emitted[0].payload.evidenceHash;
+    expect(h.issue.body.split('\n\n')[0]).toContain('EVIDENCE_HASH=' + hash);
   });
 
   it('fails closed if missing history would otherwise materialize a new issue', async () => {
