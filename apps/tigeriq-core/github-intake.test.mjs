@@ -106,6 +106,27 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('blocks safety grants present only in historical issue sections',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'RESOURCE_SCOPE=SAFETY_HISTORY_GUARD','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\\n');
+    const safe={...base,body:active};
+    expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    expect(parseExecutableIssue(safe)).toMatchObject({number:588,admissionMode:'SAFE_P1_P5_POLICY'});
+    for(const key of ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN']){
+      const missing=active.replace(key+'=true','');
+      const stale={...base,body:missing+'\\n## HISTORICAL CONTRACT\\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(stale)).toMatchObject({eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'});
+      expect(parseExecutableIssue(stale)).toBeNull();
+    }
+  });
+
   it('never revives a disabled/excluded historical Work Order through legacy true flags',()=>{
     const history=[
       '## Historical execution (superseded)',
