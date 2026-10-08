@@ -1413,7 +1413,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
   const executionPlan = classification.workKind === 'WORK' && checklist.total < 2
-    ? executionPlanForIssue(issue, nextStep || currentStep || '')
+    ? executionPlanForIssue(issue, nextStep || '')
     : { steps: [], source: null };
   const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
   const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
