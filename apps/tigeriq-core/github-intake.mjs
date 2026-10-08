@@ -618,7 +618,15 @@ export function parseExecutableIssue(issue){
     &&hasExactFlag(body,'NO_CODE_CHANGE')
     &&hasExactFlag(body,'NO_PC01_SHELL');
   const policyAdmission=safeAutoWorkAdmission(issue);
-  if(!legacyExecutable&&!policyAdmission.eligible)return null;
+  // Legacy Core compatibility is never authority to override an explicit denial
+  // (disabled/excluded, blocked, terminal, Owner/P0, or a conflicting writer).
+  // Only historical contract-shape gaps may keep the legacy route.
+  const legacyContractGap=new Set([
+    'RESOURCE_SCOPE_REQUIRED',
+    'HARD_GATE_SAFETY_FLAGS_INCOMPLETE',
+    'SPECIALIST_CONTRACT_REQUIRED',
+  ]);
+  if(!policyAdmission.eligible&&!(legacyExecutable&&legacyContractGap.has(policyAdmission.reason)))return null;
   if(isManualOnlyAppChromeMaintenance(issue.title,body))return null;
   const classification=policyAdmission.classification||classifyWorkOrder(body);
   if(['HOLD_OWNER','UI'].includes(classification.route))return null;
