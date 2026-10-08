@@ -25,10 +25,10 @@ const snapshot = {
   nextQueue:[],recentWork:[],workers:[{employeeId:'NV03',state:'working',status:'ĐANG LÀM'}]
 };
 
-async function routeTiger(page:Page){
+async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot){
   await page.route('https://tigeriq.test/**',async(route:Route)=>{
     const url=route.request().url();
-    if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(snapshot)});return}
+    if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)});return}
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
     await route.fulfill({status:204,body:''});
@@ -92,4 +92,103 @@ test('mobile LIVE has no document overflow and work list remains first usable co
   const metrics=await page.evaluate(()=>({viewport:window.innerWidth,scroll:document.documentElement.scrollWidth,top:(document.querySelector('#workListHeading') as HTMLElement).getBoundingClientRect().top}));
   expect(metrics.scroll).toBeLessThanOrEqual(metrics.viewport+1);
   expect(metrics.top).toBeLessThan(520);
+});
+
+
+test('V2.1 issue and priority badges remain inside the card bounds on mobile and 4K',async({page})=>{
+  for(const [width,height] of [[390,844],[3840,2160]]){
+    await page.setViewportSize({width,height});await openLive(page);
+    const card=page.locator('.work-row[data-work-number="111"]');
+    const issue=card.locator('.work-id');
+    const priority=card.locator('.priority');
+    await expect(issue).toHaveText('#111');
+    await expect(priority).toHaveText('P1');
+    await expect(issue).toBeVisible();
+    await expect(priority).toBeVisible();
+    const p=await card.evaluate((element)=>{
+      const row=element.getBoundingClientRect();
+      const main=element.querySelector('.work-main')!.getBoundingClientRect();
+      const id=element.querySelector('.work-id')!.getBoundingClientRect();
+      const rank=element.querySelector('.priority')!.getBoundingClientRect();
+      return {rowTop:row.top,rowLeft:row.left,rowRight:row.right,mainTop:main.top,
+        idTop:id.top,idBottom:id.bottom,idLeft:id.left,
+        priorityTop:rank.top,priorityBottom:rank.bottom,priorityRight:rank.right};
+    });
+    expect(p.idTop).toBeGreaterThanOrEqual(p.rowTop-1);
+    expect(p.priorityTop).toBeGreaterThanOrEqual(p.rowTop-1);
+    expect(p.idBottom).toBeLessThanOrEqual(p.mainTop+1);
+    expect(p.priorityBottom).toBeLessThanOrEqual(p.mainTop+1);
+    expect(p.idLeft).toBeGreaterThanOrEqual(p.rowLeft-1);
+    expect(p.priorityRight).toBeLessThanOrEqual(p.rowRight+1);
+  }
+});
+
+test('V2.1 semantic colors cover all eight statuses with dedicated system and completed filters',async({page})=>{
+  const specs=[
+    {number:801,status:'WORKING',color:'#10B981'},
+    {number:802,status:'OWNER_GATE',color:'#A78BFA'},
+    {number:803,status:'WAITING',color:'#F59E0B'},
+    {number:804,status:'BLOCKED',color:'#F43F5E'},
+    {number:805,status:'REVIEW',color:'#3B82F6'},
+    {number:806,status:'VERIFY',color:'#14B8A6'},
+    {number:807,status:'SYSTEM',color:'#64748B'},
+    {number:808,status:'DONE',color:'#06B6D4'}
+  ];
+  const records=specs.map(item=>({...snapshot.openWork[0],number:item.number,title:'[P1] Thử màu '+item.status,
+    status:item.status,workKind:item.status==='SYSTEM'?'SYSTEM':'WORK',progressSource:''}));
+  const payload={...snapshot,openWork:records.filter(row=>row.status!=='DONE'),
+    recentWork:records.filter(row=>row.status==='DONE'),activeWork:[]};
+  await routeTiger(page,payload);
+  await page.goto('https://tigeriq.test/command-center');
+  for(const spec of specs){
+    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="system"]').click();
+    else if(spec.status==='DONE')await page.locator('.filter[data-filter="done"]').click();
+    const row=page.locator('.work-row[data-work-number="'+spec.number+'"]');
+    await expect(row).toBeVisible();
+    await expect(row).toHaveClass(new RegExp('status-'+spec.status.toLowerCase()));
+    const color=await row.evaluate(element=>getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
+    expect(color).toBe(spec.color);
+    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="action"]').click();
+  }
+});
+
+test('drawer GitHub link and both close methods remain functional',async({page})=>{
+  const url='https://github.com/newsdayads/tigeriq-ai-lab/issues/111';
+  const payload={...snapshot,openWork:[{...snapshot.openWork[0],url}]};
+  await routeTiger(page,payload);
+  await page.goto('https://tigeriq.test/command-center');
+  const row=page.locator('.work-row[data-work-number="111"]');
+  await row.click();
+  await expect(page.locator('#workDrawer')).toHaveClass(/open/);
+  await expect(page.locator('#drawerGithub')).toHaveAttribute('href',url);
+  await expect(page.locator('#drawerGithub')).toHaveAttribute('target','_blank');
+  await expect(page.locator('#drawerAskVy')).toBeVisible();
+  await page.locator('#drawerCloseBottom').click();
+  await expect(page.locator('#workDrawer')).not.toHaveClass(/open/);
+  await row.click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#workDrawer')).not.toHaveClass(/open/);
+  await expect(row).toBeFocused();
+});
+
+test('Vy handoff opens a new ChatGPT project tab with encoded issue context, without real ChatGPT access',async({page})=>{
+  const payload={...snapshot,openWork:[{...snapshot.openWork[0]}]};
+  await routeTiger(page,payload);
+  await page.context().route('https://chatgpt.com/**',async route=>{
+    await route.fulfill({status:200,contentType:'text/html',body:'<html><title>Isolated handoff test</title></html>'});
+  });
+  await page.goto('https://tigeriq.test/command-center');
+  await page.locator('.work-row[data-work-number="111"]').click();
+  const nextPage=page.context().waitForEvent('page');
+  await page.locator('#drawerAskVy').click();
+  const popup=await nextPage;
+  await popup.waitForLoadState('domcontentloaded');
+  const link=new URL(popup.url());
+  expect(link.origin).toBe('https://chatgpt.com');
+  expect(link.pathname).toContain('/project');
+  const handoff=link.searchParams.get('prompt')||'';
+  expect(handoff).toContain('#111');
+  expect(handoff).toContain('Xây giao diện công việc');
+  await popup.close();
+  // This tests outgoing URL construction only; acceptance by ChatGPT is NOT proven.
 });
