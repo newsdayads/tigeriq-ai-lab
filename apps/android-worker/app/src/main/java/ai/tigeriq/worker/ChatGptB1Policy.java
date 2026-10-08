@@ -38,6 +38,16 @@ public final class ChatGptB1Policy {
             && nowElapsedMs - startedElapsedMs < PROJECT_BIND_TIMEOUT_MS;
     }
 
+    /** A Core-leased task pinned to the TigerIQ Project must never fall back to standalone chat. */
+    public static boolean canUseStandaloneFallbackForTask(String taskId) {
+        return taskId == null || taskId.isEmpty();
+    }
+
+    /** Reject success or message sending from a Core task outside its verified Project. */
+    public static boolean canExecuteCoreTaskInProjectContext(String taskId, String projectMode) {
+        return (taskId == null || taskId.isEmpty()) || "PROJECT".equals(projectMode);
+    }
+
     public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
         return !projectBindElapsedAnchorInvalid(startedElapsedMs, nowElapsedMs)
             && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
