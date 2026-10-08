@@ -258,6 +258,26 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(source).toContain("$_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs'");
   });
 
+
+  it('guards generated Owner-facing sources against legacy emoji returning', () => {
+    const outboundSourcePaths = [
+      '../apps/tigeriq-core/owner-facing-vietnamese.mjs',
+      '../apps/tigeriq-core/github-coding-intake.mjs',
+      '../apps/tigeriq-core/github-intake.mjs',
+      '../apps/tigeriq-core/work-handoff.mjs',
+      '../apps/tigeriq-core/web-control-server.mjs',
+      '../apps/tigeriq-core/web-control-unified.js',
+    ];
+    for (const sourcePath of outboundSourcePaths) {
+      const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
+      expect(source, sourcePath).not.toMatch(/[\\p{Extended_Pictographic}]/u);
+    }
+    const liveSource = readFileSync(new URL('../api/live-status.mjs', import.meta.url), 'utf8');
+    // Historical emoji may remain in legacy parsing regex, never as new result output.
+    expect(liveSource).not.toContain('`✅ [KẾT QUẢ THỰC TẾ]');
+    expect(liveSource).toContain('(?:✅\\s*)?\\[KẾT QUẢ THỰC TẾ\\]');
+  });
+
   it('uses vector names only as metadata, with emoji-free text fallback', () => {
     const source = ownerFacingPresentation({ status: 'DONE', result: 'Hoàn tất' });
     expect(source.icon).toBe('');
