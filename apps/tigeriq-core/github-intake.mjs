@@ -647,12 +647,16 @@ export function safeAutoWorkAdmission(issue){
     'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'].some(key=>
     !currentSafetyValue(key)&&hasExactFlag(body,key));
   if(historyOnlySafety)return {eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'};
-  const classification=classifyWorkOrder(body);
-  const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
+  const classification=classifyWorkOrder(currentSafetyBody);
+  const directAction=parsePcOperatorDirectAction(currentSafetyBody,backlogOwnerDirect(currentSafetyBody));
   if(directAction.present&&!directAction.valid)return {eligible:false,reason:directAction.reason||'DIRECT_ACTION_INVALID'};
   if(['HOLD_OWNER','UI'].includes(classification.route))return {eligible:false,reason:'OWNER_OR_UI_ROUTE'};
   if(classification.route==='OPENCLAW'&&!directAction.action)return {eligible:false,reason:'SPECIALIST_CONTRACT_REQUIRED'};
-  const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
+  // Never borrow a mutation-scope lease from an archived GitHub contract.
+  // Keep this denial distinct from the backwards-compatible missing-scope
+  // contract: historical-only scope is not eligible for legacy fallback.
+  const resourceScope=bodyValue(currentSafetyBody,'RESOURCE_SCOPE');
+  if(!resourceScope&&bodyValue(body,'RESOURCE_SCOPE'))return {eligible:false,reason:'HISTORICAL_ONLY_RESOURCE_SCOPE'};
   if(!resourceScope)return {eligible:false,reason:'RESOURCE_SCOPE_REQUIRED'};
   const mutationOwner=bodyValue(body,'MUTATION_OWNER').toUpperCase();
   const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
@@ -688,16 +692,16 @@ export function parseExecutableIssue(issue){
   ]);
   if(!policyAdmission.eligible&&!(legacyExecutable&&legacyContractGap.has(policyAdmission.reason)))return null;
   if(isManualOnlyAppChromeMaintenance(issue.title,body))return null;
-  const classification=policyAdmission.classification||classifyWorkOrder(body);
+  const classification=policyAdmission.classification||classifyWorkOrder(currentBody);
   if(['HOLD_OWNER','UI'].includes(classification.route))return null;
   if(classification.route==='CODING'&&!policyAdmission.eligible)return null;
   const requiresCodingHandoff=classification.route==='CODING'&&policyAdmission.eligible;
   const capability=classification.route==='OPENCLAW'?'pc_operator':requiresCodingHandoff?'reasoning':classification.capability;
-  const resourceScope=bodyValue(body,'RESOURCE_SCOPE');
+  const resourceScope=bodyValue(currentBody,'RESOURCE_SCOPE');
   if(classification.route==='OPENCLAW'&&(!resourceScope||!extractPcOperatorInstruction(body)))return null;
   const sourceRevision=githubIssueSourceRevision(issue);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
-  const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
+  const directAction=parsePcOperatorDirectAction(currentBody,backlogOwnerDirect(currentBody));
   if(directAction.present&&!directAction.valid)return null;
   const publicEvidenceRequest=validatePublicEvidenceKeys(body);
   if(publicEvidenceRequest.unsupported.length)return null;
