@@ -147,6 +147,9 @@ public final class ForegroundWorkerService extends Service {
                         // A completed response token alone does not prove Project context.
                         output.put("projectMode", run.projectMode);
                         output.put("projectBound", run.projectBound);
+                        // Bounded status only; never relay raw Accessibility labels.
+                        output.put("projectGateMode", ChatGptB1RunStore.projectGateModeForEvidence(this, run));
+                        output.put("projectAutoClickSeen", ChatGptB1RunStore.projectClickObservedInRun(this, run));
                         output.put("sendCount", run.sendCount);
                         output.put("duplicateSendCount", run.duplicateSendCount);
                         output.put("recoveryCount", run.recoveryCount);
