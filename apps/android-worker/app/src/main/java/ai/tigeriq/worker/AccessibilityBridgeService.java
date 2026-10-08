@@ -40,8 +40,6 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
     private static final int MAX_B1_RECOVERIES = 2;
-    private static final int PROJECT_STABLE_MIN_SAMPLES = 3;
-    private static final long PROJECT_STABLE_MIN_MS = 1200L;
     private static final long INACTIVE_TICK_MS = 2000L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
@@ -194,7 +192,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; lineage=" + compactDiag(ChatGptB1Automation.describeNodeLineage(source, 5))
         );
 
-        if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
+        // A click proves only the navigation attempt. It must NEVER set
+        // projectBound=true before the stable Project-title + composer gate passes.
     }
 
     private void driveProjectNavigationIfNeeded(AccessibilityNodeInfo root) {
@@ -261,7 +260,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         long autoProjectClickAt = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
         boolean autoNavigationProof = autoProjectClickAt >= run.startedAt && autoProjectClickAt > 0L;
-        boolean contextProof = projectTitleContext || autoNavigationProof;
+        // An automatic/menu click may leave an unrelated chat or drawer visible.
+        // It is diagnostic evidence, not sufficient proof of Project context.
+        boolean contextProof = projectTitleContext;
 
         if (!exactProject || !composerReady || !contextProof) {
             if (projectContextSamples > 0 || exactProject) {
@@ -290,7 +291,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; stableMs=" + stableMs
         );
 
-        if (projectContextSamples >= PROJECT_STABLE_MIN_SAMPLES && stableMs >= PROJECT_STABLE_MIN_MS) {
+        if (ChatGptB1Policy.canBindStableProjectContext(
+            exactProject, projectTitleContext, composerReady,
+            projectContextSamples, stableMs
+        )) {
             writeProjectDiag(
                 "STABLE_PROJECT_CONTEXT",
                 "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
