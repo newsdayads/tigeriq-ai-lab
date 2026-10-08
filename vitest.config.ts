@@ -27,6 +27,7 @@ export default defineConfig({
       'tests/autonomy-supervisor.test.mjs',
       'tests/routing-fault-recovery.test.mjs',
       'tests/continuous-capability-verify.test.mjs',
+      'tests/core-ui-live-assignment-truth.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
     ],
     environment: 'node'
