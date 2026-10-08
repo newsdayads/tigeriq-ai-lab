@@ -192,3 +192,47 @@ test('Vy handoff opens a new ChatGPT project tab with encoded issue context, wit
   await popup.close();
   // This tests outgoing URL construction only; acceptance by ChatGPT is NOT proven.
 });
+
+
+test('V2.2 next-step arrow and equal action buttons remain usable on mobile and desktop',async({page})=>{
+  const link='https://github.com/newsdayads/tigeriq-ai-lab/issues/111';
+  const fixture={...snapshot,openWork:[{...snapshot.openWork[0],url:link}]};
+  await routeTiger(page,fixture);
+  for(const [width,height] of [[390,844],[1440,900]]){
+    await page.setViewportSize({width,height});
+    await page.goto('https://tigeriq.test/command-center');
+    const card=page.locator('.work-row[data-work-number="111"]');
+    const action=card.locator('.work-quick.next');
+    await expect(action).toContainText('Kiểm tra mobile');
+    await expect(action.locator('svg.next-step-icon')).toBeVisible();
+    await expect(action.locator('svg.next-step-icon')).toHaveAttribute('role','img');
+    await card.click();
+    const controls=[page.locator('#drawerAskVy'),page.locator('#drawerGithub'),page.locator('#drawerCloseBottom')];
+    for(const control of controls)await expect(control).toBeVisible();
+    const sizes=await Promise.all(controls.map(control=>control.boundingBox()));
+    expect(sizes.every(Boolean)).toBe(true);
+    const [vy,github,close]=sizes as {x:number,y:number,width:number,height:number}[];
+    expect(vy.x).toBeLessThan(github.x);
+    expect(github.x).toBeLessThan(close.x);
+    expect(Math.abs(vy.width-github.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(github.width-close.width)).toBeLessThanOrEqual(2);
+    await page.locator('#drawerCloseBottom').click();
+  }
+});
+
+test('V2.2 dark surfaces and vector status stay readable without badge background',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await openLive(page);
+  const card=page.locator('.work-row[data-work-number="111"]');
+  const colors=await card.evaluate(row=>{
+    const surface=row.querySelector('.work-main')!;
+    const state=row.querySelector('.state')!;
+    const style=getComputedStyle(state);
+    return {surface:getComputedStyle(surface).backgroundColor,stateBackground:style.backgroundColor,
+      stateBorder:style.borderTopWidth,hasVector:!!state.querySelector('svg.live-status-icon')};
+  });
+  expect(colors.surface).toBe('rgb(16, 36, 58)');
+  expect(colors.stateBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(colors.stateBorder).toBe('0px');
+  expect(colors.hasVector).toBe(true);
+});
