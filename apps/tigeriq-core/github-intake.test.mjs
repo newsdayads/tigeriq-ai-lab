@@ -125,6 +125,19 @@ describe('GitHub Core intake guardrails',()=>{
     const titledStale={...base,body:'## CURRENT OWNER OVERRIDE\n'+active.replace('NO_PAID_COST=true','')+'\n## HISTORICAL CONTRACT\nNO_PAID_COST=true'};
     expect(safeAutoWorkAdmission(titledStale)).toMatchObject({eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'});
     expect(parseExecutableIssue(titledStale)).toBeNull();
+    // The canonical #2949 body has a horizontal divider before historical
+    // overrides. The divider alone must end the current authorization section.
+    for(const divider of ['---', '--- HISTORICAL ONLY ---', '***']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const body=prefix+active.replace('NO_SECURITY_BOUNDARY_CHANGE=true','')
+          +'\n'+divider+'\nNO_SECURITY_BOUNDARY_CHANGE=true';
+        const denied={...base,body};
+        expect(safeAutoWorkAdmission(denied)).toMatchObject({
+          eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT',
+        });
+        expect(parseExecutableIssue(denied)).toBeNull();
+      }
+    }
     for(const key of ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
       'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN']){
       const missing=active.replace(key+'=true','');
