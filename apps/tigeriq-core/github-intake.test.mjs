@@ -84,7 +84,7 @@ describe('GitHub Core intake guardrails',()=>{
       'NO_DESTRUCTIVE=true',
       'NO_PRODUCTION_RELEASE=true',
       'NO_DIRECT_MAIN=true',
-    ].join('\\n');
+    ].join('\n');
     const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
     expect(androidProductAutoExecutionExclusion(issue)).toBe('');
     expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
