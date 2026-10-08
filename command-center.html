@@ -1919,6 +1919,7 @@ function effectiveBlocker(row){
   return '';
 }
 function safeOwnerResultHref(value){
+  if(!String(value||'').trim())return '';
   try{const url=new URL(String(value||''),location.origin);return url.protocol==='https:'?url.toString():''}catch{return ''}
 }
 function ownerResultTime(value){
