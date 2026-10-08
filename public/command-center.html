@@ -829,6 +829,16 @@ html,body,body{background:#071321!important}
 @media(min-width:1450px){.work-list{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(min-width:2100px){.work-list{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:599px){.work-list{grid-template-columns:1fr}.work-row .work-main{min-height:145px}.work-row .work-title{font-size:13px!important}}
+/* Owner P0: visible hierarchy and independent scoped filters */
+.owner-filter-toolbar{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:10px 0}
+.owner-filter-toolbar label{display:flex;flex-direction:column;align-items:stretch;gap:4px;font-size:10px;color:#A8C2D6;font-weight:800;min-width:120px;flex:1 1 145px}
+.owner-filter-toolbar label select{width:100%;min-width:0;font-size:12px;min-height:35px}
+.owner-filter-toolbar button{min-height:35px}.owner-filter-toolbar span{flex:1 0 100%;font-weight:500}
+.work-row .work-hierarchy{font-size:10px;font-weight:700;color:#97C8E2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:7px;line-height:1.4}
+.work-row .work-hierarchy span{color:#CBD5E1;margin:0 3px}
+.work-row .work-parent{font-size:9px;color:#B5C2D6;line-height:1.4;margin-top:2px}
+.work-row .work-title{margin-top:5px!important}
+@media(max-width:599px){.owner-filter-toolbar label{flex:1 1 calc(50% - 8px)}.work-row .work-hierarchy{font-size:11px}.work-row .work-parent{font-size:10px}}
 </style>
 </head>
 <body>
@@ -862,13 +872,21 @@ html,body,body{background:#071321!important}
     <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
     <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
     <button class="filter" data-filter="verify">XÁC MINH <b id="verifyCount">0</b></button>
+    <button class="filter" data-filter="ready">SẴN SÀNG <b id="readyCount">0</b></button>
     <button class="filter" data-filter="waiting">ĐANG CHỜ <b id="waitingCount">0</b></button>
     <button class="filter" data-filter="blocked">BỊ CHẶN <b id="blockedCount">0</b></button>
     <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div class="bcct-toolbar"><label for="bcctSort">ƯU TIÊN</label><select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select><button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Chỉ sắp xếp và kiểm tra; không tự giao việc</span></div><div id="workList" class="work-list"></div>
+  <div class="bcct-toolbar owner-filter-toolbar">
+<label for="workProjectFilter">DỰ ÁN<select id="workProjectFilter" aria-label="Lọc theo dự án"><option value="all">Tất cả dự án</option></select></label>
+<label for="workStatusFilter">TRẠNG THÁI<select id="workStatusFilter" aria-label="Lọc theo trạng thái">
+<option value="action">Tất cả việc mở</option><option value="owner">Chờ anh Sơn</option><option value="ready">Sẵn sàng</option><option value="running">Đang làm</option><option value="review">Rà soát</option><option value="verify">Xác minh</option><option value="waiting">Đang chờ</option><option value="blocked">Bị chặn</option><option value="paused">Tạm dừng</option><option value="open">Chưa làm</option><option value="system">Hệ thống</option><option value="done">Hoàn tất</option>
+</select></label>
+<label for="workPriorityFilter">ƯU TIÊN<select id="workPriorityFilter" aria-label="Lọc theo ưu tiên"><option value="all">Tất cả P0–P5</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option><option value="P4">P4</option><option value="P5">P5</option></select></label>
+<label for="bcctSort">SẮP XẾP<select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select></label>
+<button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Bộ lọc chỉ thay đổi hiển thị · không tự giao việc</span></div><div id="workList" class="work-list"></div>
 </section>
 </div>
 </details>
@@ -898,6 +916,8 @@ const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
 let currentFilter='action';
+let currentProjectFilter='all';
+let currentPriorityFilter='all';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
@@ -977,21 +997,27 @@ function executionWaitReason(row){
 function normalizeRows(value){
   const fallbackOpen=()=>{
     const map=new Map();
-    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])]) if(Number(row?.number)) map.set(Number(row.number),row);
+    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])])if(Number(row?.number))map.set(Number(row.number),row);
     return [...map.values()];
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
-  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
-  if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
-  if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
-  if(currentFilter==='review') return openRows.filter(x=>workStatus(x)==='REVIEW');
-  if(currentFilter==='verify') return openRows.filter(x=>workStatus(x)==='VERIFY');
-  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING'].includes(workStatus(x)));
-  if(currentFilter==='blocked') return openRows.filter(x=>workStatus(x)==='BLOCKED');
-  if(currentFilter==='paused') return openRows.filter(x=>workStatus(x)==='PAUSED');
-  if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
+  let rows=[];
+  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
+  else if(currentFilter==='owner')rows=openRows.filter(x=>workStatus(x)==='OWNER_GATE');
+  else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
+  else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
+  else if(currentFilter==='verify')rows=openRows.filter(x=>workStatus(x)==='VERIFY');
+  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
+  else if(currentFilter==='waiting')rows=openRows.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY');
+  else if(currentFilter==='blocked')rows=openRows.filter(x=>workStatus(x)==='BLOCKED');
+  else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
+  else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
+  else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
+  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
+  return rows.filter(x=>(currentProjectFilter==='all'||String(x?.projectId||'')===currentProjectFilter)
+    &&(currentPriorityFilter==='all'||workPriority(x)===currentPriorityFilter));
 }
+
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
 function snapshotTimestamp(value){
@@ -1015,7 +1041,8 @@ function updateCounts(){
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
   $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
   $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
-  $('waitingCount').textContent=actionable.filter(x=>['QUEUED','WAITING'].includes(workStatus(x))).length;
+  $('readyCount').textContent=actionable.filter(x=>workStatus(x)==='QUEUED'||x.executionEligibility==='READY').length;
+  $('waitingCount').textContent=actionable.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY').length;
   $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
   $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
@@ -1968,8 +1995,21 @@ function refreshOpenDrawer(){
   const fresh=rows.find(row=>Number(row?.number)===Number(drawerRow.number));
   if(fresh)populateDrawer(fresh);else closeDrawer();
 }
+function syncWorkProjectOptions(){
+  const select=$('workProjectFilter'),projects=new Map();
+  for(const p of snapshot?.projectPortfolio||[])if(p?.id)projects.set(String(p.id),String(p.name||p.id));
+  for(const row of [...(snapshot?.openWork||[]),...(snapshot?.recentWork||[])])
+    if(row?.projectId&&!projects.has(String(row.projectId)))projects.set(String(row.projectId),String(row.projectName||row.projectId));
+  const opts=[['all','Tất cả dự án'],...projects.entries()],key=JSON.stringify(opts);
+  if(select.dataset.optionsKey===key)return;
+  select.dataset.optionsKey=key;select.replaceChildren();
+  for(const [id,label] of opts){const o=document.createElement('option');o.value=id;o.textContent=label;select.appendChild(o);}
+  if(currentProjectFilter!=='all'&&!projects.has(currentProjectFilter))currentProjectFilter='all';
+  select.value=currentProjectFilter;
+}
 function render(){
   if(!snapshot)return;
+  syncWorkProjectOptions();
   renderOwnerSummary();
   renderMissionControl();
   renderJobJourney();
@@ -1980,7 +2020,7 @@ function render(){
   const bcctMode=$('bcctSort')?.value||'default';
   if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
-  $('workMeta').textContent=rows.length+' việc';
+  $('workMeta').textContent=rows.length+' mục';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
   if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
@@ -2002,6 +2042,11 @@ function render(){
         ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
         :'';
     const stepSummary=verifiedStepSummary(row);
+    const project=String(row?.projectName||'Chưa phân dự án').trim();
+    const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
+    const parent=Number(row?.parentNumber);
+    const parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
+    const hierarchy='<div class="work-hierarchy" title="'+esc(project+' → '+stream)+'">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine;
     const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
       ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
       :(row?.currentStep||(row?.workKind==='SYSTEM'?'Chính sách / nguồn chuẩn — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':''))).trim();
@@ -2019,7 +2064,7 @@ function render(){
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+stepSummary+quickLine+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+progress+stepSummary+quickLine+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
@@ -2059,6 +2104,7 @@ $('bcctSort').addEventListener('change',render);
 $('bcctRefresh').addEventListener('click',load);
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
+  $('workStatusFilter').value=currentFilter;
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
@@ -2078,6 +2124,17 @@ $('drawerAskVy').addEventListener('click',()=>{
   const prompt=buildVyHandoffPrompt(drawerRow);
   openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL+'?prompt='+encodeURIComponent(prompt),prompt);
 });
+for(const [id,kind] of [['workProjectFilter','project'],['workPriorityFilter','priority'],['workStatusFilter','status']]){
+  $(id).addEventListener('change',()=>{
+    if(kind==='project')currentProjectFilter=$(id).value;
+    if(kind==='priority')currentPriorityFilter=$(id).value;
+    if(kind==='status'){
+      currentFilter=$(id).value;
+      document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===currentFilter));
+    }
+    render();
+  });
+}
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
   const drawer=$('workDrawer');if(!drawer.classList.contains('open'))return;
