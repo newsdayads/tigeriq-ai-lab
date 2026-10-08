@@ -1699,17 +1699,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       if (pa !== pb) return pa - pb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
-    // Join genuine Core DB UI receipts without overriding GitHub lifecycle phase.
-    // ui_assigned means awaiting worker pickup, NOT work in progress.
-    const uiAssignmentsByIssue=new Map((Array.isArray(base.coreUiAssignments)?base.coreUiAssignments:[])
-      .map((row)=>[Number(row.issueNumber),row]));
-    for(const row of openWork){
-      const receipt=uiAssignmentsByIssue.get(Number(row.number));
-      row.coreAssignment=receipt?{
-        jobId:receipt.jobId,employeeId:receipt.employeeId,status:receipt.status,
-        startedAt:receipt.startedAt,completedAt:receipt.completedAt,
-      }:null;
-    }
+    attachCoreUiAssignmentReceipts(openWork,base.coreUiAssignments);
     if (resultInboxProjection) {
       const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
       if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
@@ -1808,6 +1798,20 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       },
     };
   }
+}
+
+// Preserve GitHub work phase. An assigned UI job is not a running worker.
+export function attachCoreUiAssignmentReceipts(openWork=[],receipts=[]){
+  const byIssue=new Map((Array.isArray(receipts)?receipts:[])
+    .map((receipt)=>[Number(receipt.issueNumber),receipt]));
+  for(const row of (Array.isArray(openWork)?openWork:[])){
+    const receipt=byIssue.get(Number(row.number));
+    row.coreAssignment=receipt?{
+      jobId:receipt.jobId,employeeId:receipt.employeeId,status:receipt.status,
+      startedAt:receipt.startedAt||null,completedAt:receipt.completedAt||null,
+    }:null;
+  }
+  return openWork;
 }
 
 export function sanitizeRuntimePayload(payload) {
