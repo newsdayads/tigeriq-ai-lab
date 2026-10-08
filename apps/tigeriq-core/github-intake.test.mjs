@@ -134,6 +134,20 @@ describe('GitHub Core intake guardrails',()=>{
     }
   });
 
+  it('requires each legacy compatibility flag in the current execution section',()=>{
+    const keys=['TIGERIQ_EXECUTABLE','OWNER_POLICY','NO_CODE_CHANGE','NO_PC01_SHELL'];
+    for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+      const current=prefix+base.body;
+      expect(parseExecutableIssue({...base,body:current})).toMatchObject({admissionMode:'LEGACY_EXECUTION_FLAGS'});
+      for(const key of keys){
+        const value=key==='OWNER_POLICY'?'AUTO':'true';
+        const missing=current.replace(key+'='+value,'');
+        const stale={...base,body:missing+'\n## HISTORICAL CONTRACT\n'+key+'='+value};
+        expect(parseExecutableIssue(stale)).toBeNull();
+      }
+    }
+  });
+
   it('never revives a disabled/excluded historical Work Order through legacy true flags',()=>{
     const history=[
       '## Historical execution (superseded)',
@@ -230,6 +244,27 @@ describe('GitHub Core intake guardrails',()=>{
     const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
     expect(androidProductAutoExecutionExclusion(issue)).toBe('');
     expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    // The first titled Owner override is current. Later grant flags cannot
+    // rescue missing scope-specific authorization or Android tool denials.
+    const titledCurrent={...issue,body:'## OWNER OVERRIDE\n'+body+'\n## HISTORICAL\nNO_RDC=false'};
+    expect(androidProductAutoExecutionExclusion(titledCurrent)).toBe('');
+    for(const key of [
+      'OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL',
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
+      for(const currentPrefix of ['', '## OWNER OVERRIDE\n']){
+        const stale={...issue,body:currentPrefix+body.replace(key+'=true','')
+          +'\n## HISTORICAL\n'+key+'=true'};
+        expect(androidProductAutoExecutionExclusion(stale)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+        expect(parseExecutableIssue(stale)).toBeNull();
+      }
+    }
+    for(const currentPrefix of ['', '## OWNER OVERRIDE\n']){
+      const stale={...issue,body:currentPrefix+body.replace('APP_CHROME_MUTATION=FORBIDDEN','')
+        +'\n## HISTORICAL\nAPP_CHROME_MUTATION=FORBIDDEN'};
+      expect(androidProductAutoExecutionExclusion(stale)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    }
     expect(parseExecutableIssue(issue)).toMatchObject({
       number:2949,priority:'P2',route:'CODING',
       requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',capability:'reasoning',
