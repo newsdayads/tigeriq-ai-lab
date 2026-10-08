@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
-import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
+import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -1262,7 +1262,7 @@ describe('terminal lifecycle label regression in CI discovery',()=>{
     expect(TERMINAL_BLOCKED_LABEL).toBe('tigeriq:terminal-blocked');
     expect(hasTerminalBlockedLabel({labels:['x','tigeriq:terminal-blocked']})).toBe(true);
     expect(hasTerminalBlockedLabel({labels:[{name:'TIGERIQ:TERMINAL-BLOCKED'}]})).toBe(true);
-    const row=parseQueueIssue({
+    const blockedIssue={
       number:2011,
       title:'[P1][CORE] Terminal blocked',
       body:['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','AUTO_QUEUE=INCLUDED','PRIORITY=P1'].join('\n'),
@@ -1270,9 +1270,13 @@ describe('terminal lifecycle label regression in CI discovery',()=>{
       html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2011',
       updated_at:'2026-09-27T00:00:00Z',
       labels:[{name:'tigeriq:terminal-blocked'}],
+    };
+    // No executable queue row, but retain the truthful BLOCKED Open Work card.
+    expect(parseQueueIssue(blockedIssue)).toBeNull();
+    expect(rankQueueRows([parseQueueIssue(blockedIssue)].filter(Boolean))).toEqual([]);
+    expect(parseOpenWorkIssue(blockedIssue)).toMatchObject({
+      status:'BLOCKED',executionEligibility:'TERMINAL',executionEligibilityReason:'TERMINAL_BLOCKED',
     });
-    expect(row).toMatchObject({status:'BLOCKED',waitReason:'TigerIQ terminal BLOCKED'});
-    expect(rankQueueRows([row])[0]).toMatchObject({eligibleNow:false,dispatchRank:null});
   });
 
   it('adds an existing terminal label without repository-label mutation',async()=>{
