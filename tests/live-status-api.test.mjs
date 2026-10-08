@@ -163,8 +163,8 @@ describe('TigerIQ Live Work Order projection', () => {
 
   it('projects active Core Coding Lane state as working with a visible Core owner', () => {
     const row = parseOpenWorkIssue(issue(4521, '[P1][CORE vNext] Nền dependency', [
-      'TIGERIQ_EXECUTABLE=true',
-      'AUTO_QUEUE=INCLUDED',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_WAIT_REVIEW',
       'PRIORITY=P1',
       'RESOURCE_SCOPE=TIGERIQ_CORE_VNEXT_LANGGRAPH_DEPENDENCY_FOUNDATION_V1',
       'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
@@ -577,8 +577,45 @@ describe('TigerIQ Live Work Order projection', () => {
       currentState: 'CODING_LANE_ACTIVE',
       nextStep: 'repairs existing PR with normal npm resolution and lockfile',
       blocker: null,
+      executionEligibility: 'READY',
+      executionEligibilityReason: null,
+      waitReason: null,
       updatedAt: '2026-10-08T00:15:00Z',
     });
+  });
+
+  it('does not let a fresh lifecycle display override erase a real dependency gate', () => {
+    const lifecycle = parseStructuredLifecycleComment({
+      body: [
+        'CURRENT_STATE=CODING_LANE_ACTIVE',
+        'NEXT=continue only when dependency is satisfied',
+        'BLOCKER=NONE',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      ].join('\n'),
+      created_at: '2026-10-08T00:20:00Z',
+    });
+    const row = parseOpenWorkIssue(issue(4600, '[P1][CORE] Dependency safety fixture', [
+      'CURRENT_STATE=WAIT_DEPENDENCY',
+      'BLOCKED_BY=#4599',
+      'TIGERIQ_EXECUTABLE=true',
+      'AUTO_QUEUE=INCLUDED',
+      'OWNER_POLICY=AUTO',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=DEPENDENCY_SAFETY_FIXTURE',
+      'MUTATION_OWNER=NONE',
+      'NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n'), { updated_at: '2026-10-08T00:20:00Z' }), { lifecycle });
+
+    expect(row.status).toBe('WORKING');
+    expect(row.currentState).toBe('CODING_LANE_ACTIVE');
+    expect(row.executionEligibility).toBe('PARKED_DEPENDENCY');
+    expect(row.executionEligibilityReason).toBe('DEPENDENCY_BLOCKED');
   });
 
   it('ignores an older structured lifecycle comment after a materially newer body update', () => {
