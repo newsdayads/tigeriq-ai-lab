@@ -279,13 +279,14 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
 
 
-## 20. Ranh giới Core ↔ NV02/NV03/NV04
-- `NV02`, `NV03`, `NV04` là các UI/subscription worker nằm **ngoài quyền phân việc của Core**.
-- Core KHÔNG được assign, dispatch, route, claim hộ, revoke, reassign, heartbeat-gate, tạo `READY_UNASSIGNED` như một quyền điều khiển, hoặc chọn backlog cho ba worker này.
-- Ba worker này KHÔNG dùng Core role-fallback để tự scan/self-pull GitHub backlog; Owner-authorized NV02 local self-pull is a separate bounded lane.
-- Core tiếp tục tự động điều phối P1–P5 cho các resource chuyên dụng thuộc Core: API workers/Coding Lane, `NV06/OpenClaw`, và các resource khác đúng capability/health.
-- App Chrome là continuity transport cục bộ riêng cho `NV02/NV03/NV04`; không được dùng Core assignment hoặc GitHub backlog scan làm điều kiện gửi continue.
-- P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.
+## 20. Ranh giới Core ↔ NV02/NV03/NV04 — phân quyền tách biệt
+- **NV02 (ChatGPT Plus)** là UI/subscription worker **ngoài quyền giao việc của Core**. Core KHÔNG được assign, dispatch, route, claim hộ, thu hồi, chuyển việc, heartbeat-gate hoặc tạo `READY_UNASSIGNED` để điều khiển NV02. NV02 chỉ tự nhận việc P1–P5 qua luồng local self-pull đã được Owner ủy quyền riêng; không được tự nhận P0.
+- **NV03 (ChatGPT Go)** là nhân sự rà soát độc lập/QA. **NV04 (Gemini Pro)** là nhân sự nghiên cứu chuyên sâu/đối chiếu, có thể rà soát độc lập khi phù hợp. Hai nhân sự này được Core **giao trực tiếp Work Order P1–P5 đúng năng lực** thông qua cơ chế CORE_UI typed assignment đã kiểm tra, mỗi người tối đa một công việc đang thực hiện; không tự quét/chọn/claim GitHub backlog và không sửa mã trong nhiệm vụ review-only.
+- Core ưu tiên NV03 cho rà soát độc lập, NV04 cho nghiên cứu/second opinion hoặc rà soát thay thế khi phù hợp. Người rà soát phải độc lập với người thực thi, đúng phiên bản mã được kiểm tra, có bằng chứng và kết quả rõ ràng; thiếu tài nguyên phù hợp chỉ chặn đúng bước rà soát, không dừng toàn bộ hàng đợi.
+- Quyền Core giao NV03/NV04 **không mở rộng sang NV02, không cấp quyền sửa App Chrome**, không cho NV03/NV04 tự ý thay đổi mã nguồn hoặc điều hành P0. Mọi hỗ trợ rà soát P0 chỉ theo giao việc có phạm vi rõ của anh Sơn/Vy; Core không tự nhận/giao/đóng P0.
+- Core tiếp tục điều phối các tài nguyên API, Coding Lane, `NV06/OpenClaw`, và tài nguyên chuyên dụng khác theo năng lực/trạng thái; giữ một người thực thi ghi trên mỗi RESOURCE_SCOPE, chống giao trùng, chuyển việc có kiểm soát và ghi bằng chứng khi hoàn tất.
+- App Chrome chỉ duy trì giao diện/tiếp tục phiên cục bộ cho `NV02/NV03/NV04`; **không là bên giao việc**, không quét GitHub, không tự chọn công việc, không thay đổi source/runtime theo lệnh Core. CORE_UI assignment là luồng Core có định danh Work Order/lease rõ ràng, không phải quyền điều khiển App Chrome.
+- P0 chỉ anh Sơn/Vy điều hành; các giới hạn chi phí, thông tin xác thực, bảo mật, hành động không thể hoàn tác và Codex giữ nguyên.
 
 
 ## 20.1. App Chrome LOCAL-only — ranh giới cứng

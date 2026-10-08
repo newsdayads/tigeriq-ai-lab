@@ -67,8 +67,9 @@ Turns repeatable work into SOPs, automations, schedules, measurable processes, r
 - Unknown/disabled employee or command mapping phải fail closed; không tự đoán từ chat cũ/memory.
 
 
-## UI/subscription workers outside Core routing
-- Theo Dynamic Registry hiện hành, `NV02/NV03/NV04` là UI/subscription workers và không thuộc Core assignment plane.
-- Core không được giao/chuyển/thu hồi việc, tạo role-fallback, hoặc điều khiển trạng thái làm việc của các worker này; NV02 local self-pull remains an Owner-authorized separate lane.
-- Core-managed autonomy áp dụng cho specialist/API resources, Coding Lane, NV06/OpenClaw và các resource tương thích capability khác.
-- App Chrome chỉ duy trì continuity/UI local theo Owner policy; không biến thành dispatcher và không dùng Core/GitHub backlog để phân việc cho `NV02/NV03/NV04`.
+## UI/subscription workers — ranh giới giao việc rõ ràng
+- **NV02 = ChatGPT Plus**: độc lập với Core assignment; chỉ local self-pull P1–P5 khi được Owner ủy quyền trong phạm vi riêng. Core không giao, chuyển, thu hồi, hoặc tạo fallback cho NV02.
+- **NV03 = ChatGPT Go**: người rà soát độc lập/QA chính. **NV04 = Gemini Pro**: nghiên cứu chuyên sâu, phân tích/second opinion và rà soát độc lập khi đúng năng lực. Core chỉ giao nhiệm vụ P1–P5 phù hợp cho NV03/NV04 qua luồng CORE_UI typed assignment, một current work/resource scope mỗi người, evidence/terminal bắt buộc; không tự quét hoặc tự nhận GitHub backlog.
+- NV03/NV04 trong nhiệm vụ review-only không sửa source, không tự phê duyệt mã của mình; reviewer phải khác implementer. Không tự điều phối P0; hỗ trợ P0 chỉ theo giao việc trực tiếp có giới hạn của Owner/Vy, không tạo quyền Core tự động xử lý P0.
+- Core-managed autonomy vẫn áp dụng cho specialist/API resources, Coding Lane, NV06/OpenClaw và các nguồn đủ năng lực. Không được biến thiếu NV03/NV04 thành khóa toàn bộ công việc khi vẫn có bước an toàn khác.
+- App Chrome là LOCAL-only UI continuity cho cả ba worker; không chọn backlog, không giao việc và Core không được sửa/chạy lại App Chrome. Giao việc NV03/NV04 là chức năng riêng của Core typed assignment/ledger, không trao quyền điều hành App Chrome.

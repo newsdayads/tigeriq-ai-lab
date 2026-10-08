@@ -152,8 +152,10 @@ export function parseCoreUiIssue(issue){
   if(!targetRepository.valid)return null;
   if(REQUIRED.some(k=>!yes(body,k)))return null;
   const readOnly=yes(body,'NO_CODE_CHANGE');
-  const autonomousCode=yes(body,'AUTONOMOUS_CODE');
-  if(!readOnly&&!autonomousCode)return null;
+  // NV03/NV04 are bounded review/research UI workers, never autonomous source mutators.
+  // An explicit worker ID plus AUTONOMOUS_CODE must not bypass NO_CODE_CHANGE.
+  if(!readOnly||yes(body,'AUTONOMOUS_CODE'))return null;
+  const autonomousCode=false;
   const classification=classifyWorkOrder(body);
   const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review';
   if(classification.route!=='UI'&&!coreReviewOverflow)return null;
