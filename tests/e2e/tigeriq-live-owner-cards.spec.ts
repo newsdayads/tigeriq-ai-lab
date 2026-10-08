@@ -50,14 +50,59 @@ test('work cards stay compact while project, workstream and job remain available
   await page.setViewportSize({width:1440,height:1000});await openLive(page);
   const card=page.locator('.work-row').filter({hasText:'#111'}).first();
   await expect(card).toContainText('NV03');
-  await expect(card).not.toContainText('Alpha');
-  await expect(card).not.toContainText('Xây dựng');
+  await expect(card.locator('.work-hierarchy')).toContainText('Alpha');
+  await expect(card.locator('.work-hierarchy')).toContainText('Xây dựng');
   await expect(card).not.toContainText('JOB ALPHA-111');
   await card.click();
   await expect(page.locator('#workDrawer')).toHaveClass(/open/);
   await expect(page.locator('#drawerProject')).toContainText('Alpha');
   await expect(page.locator('#drawerWorkstream')).toContainText('Xây dựng');
   await expect(page.locator('#drawerJob')).toContainText('ALPHA-111');
+});
+
+test('P0 hierarchy displays actual project, branch and parent issue without manufacturing links',async({page})=>{
+  const parentRow={...snapshot.openWork[0],parentNumber:78};
+  const rows=[parentRow,{...snapshot.openWork[2],projectId:null,projectName:null,workstreamId:null,workstreamName:null}];
+  await routeTiger(page,{...snapshot,openWork:rows,activeWork:[],nextQueue:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const card=page.locator('.work-row[data-work-number="111"]');
+  await expect(card.locator('.work-hierarchy')).toContainText('Alpha');
+  await expect(card.locator('.work-hierarchy')).toContainText('Xây dựng');
+  await expect(card.locator('.work-parent')).toContainText('#78');
+  const missing=page.locator('.work-row[data-work-number="500"]');
+  await expect(missing.locator('.work-hierarchy')).toContainText('Chưa phân dự án');
+  await expect(missing.locator('.work-parent')).toHaveCount(0);
+});
+
+test('P0 filters by project, status and priority independently and keeps ready distinct from waiting',async({page})=>{
+  const rows=[
+    {...snapshot.openWork[0],status:'ĐANG CHỜ',executionEligibility:'READY',number:111,priority:'P1',projectId:'alpha'},
+    {...snapshot.openWork[1],status:'ĐANG CHỜ',executionEligibility:'PARKED_DEPENDENCY',number:112,priority:'P2',projectId:'alpha'},
+    {...snapshot.openWork[2],status:'ĐANG LÀM',executionEligibility:'READY',number:500,priority:'P1',projectId:'beta'},
+    {...snapshot.openWork[3],status:'BỊ CHẶN',executionEligibility:'HARD_GATE',number:501,priority:'P0',projectId:'beta'}
+  ];
+  await routeTiger(page,{...snapshot,openWork:rows,activeWork:[],nextQueue:[],openSummary:{}});
+  await page.goto('https://tigeriq.test/command-center');
+  const project=page.locator('#workProjectFilter'),status=page.locator('#workStatusFilter'),priority=page.locator('#workPriorityFilter');
+  await project.selectOption('alpha');
+  await expect(page.locator('.work-row')).toHaveCount(2);
+  await priority.selectOption('P1');
+  await expect(page.locator('.work-row')).toHaveCount(1);
+  await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
+  await status.selectOption('ready');
+  await expect(page.locator('.work-row')).toHaveCount(1);
+  await status.selectOption('waiting');
+  await expect(page.locator('.work-row')).toHaveCount(0);
+  await priority.selectOption('P2');
+  await expect(page.locator('.work-row[data-work-number="112"]')).toBeVisible();
+  await project.selectOption('beta');
+  await expect(page.locator('.work-row')).toHaveCount(0);
+  await status.selectOption('action');
+  await priority.selectOption('P0');
+  await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
+  await page.locator('.filter[data-filter="blocked"]').click();
+  await expect(status).toHaveValue('blocked');
+  await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
 });
 
 test('work cards show evidence progress or an explicit non-quantified indicator and keep next action readable',async({page})=>{
