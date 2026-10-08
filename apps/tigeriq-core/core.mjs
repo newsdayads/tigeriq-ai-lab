@@ -28,7 +28,8 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';\nimport { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
+import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
@@ -1582,7 +1583,7 @@ async function claimJob() {
   try { await c.query('begin');
     const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
-        and j.attempts<j.max_attempts and o.status='active'
+        and j.attempts<j.max_attempts and o.status='active' and o.priority<>'P0'
       order by case when j.status='waiting_resource' then 0 else 1 end,
         case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,j.created_at
       for update skip locked limit 1`);
@@ -2567,7 +2568,12 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
     if(req.method==='POST'&&url.pathname==='/api/objectives'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const b=await readBody(req); if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required');}
-      const phases=normalizeCampaignPhases(b.phases); const id=`OBJ-${randomUUID()}`; const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';
+      // P0 is Owner/Vy direct-only; this general autonomous objective API must not create it.
+      if(String(b.priority||'').trim().toUpperCase()==='P0'){
+        res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:false,error:'P0_OWNER_VY_DIRECT_ONLY'}));
+      }
+      const phases=normalizeCampaignPhases(b.phases); const id=`OBJ-${randomUUID()}`; const priority=['P1','P2'].includes(b.priority)?b.priority:'P1';
       const metadata={source:b.source||'api',...(phases.length?{campaign:{phases,currentPhase:0,checkpoints:[]}}:{})};
       await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4)',[id,String(b.objective).slice(0,12000),priority,JSON.stringify(metadata)]);
       await event(phases.length?'CAMPAIGN_CREATED':'OBJECTIVE_CREATED',{objectiveId:id,phaseIndex:0,phaseCount:phases.length||1});
