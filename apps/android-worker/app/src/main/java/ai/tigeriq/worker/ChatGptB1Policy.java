@@ -48,6 +48,21 @@ public final class ChatGptB1Policy {
         return (taskId == null || taskId.isEmpty()) || "PROJECT".equals(projectMode);
     }
 
+    /**
+     * A Core task is accepted only when the persisted result proves Project context
+     * and exactly one send. A response token alone is not sufficient evidence.
+     */
+    public static boolean canAcceptCoreTaskCompletion(
+        String runState, boolean projectBound, String projectMode,
+        int sendCount, int duplicateSendCount
+    ) {
+        return "COMPLETE".equals(runState)
+            && projectBound
+            && "PROJECT".equals(projectMode)
+            && sendCount == 1
+            && duplicateSendCount == 0;
+    }
+
     public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
         return !projectBindElapsedAnchorInvalid(startedElapsedMs, nowElapsedMs)
             && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
