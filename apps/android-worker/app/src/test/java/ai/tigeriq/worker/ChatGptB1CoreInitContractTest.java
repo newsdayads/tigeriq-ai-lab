@@ -52,4 +52,43 @@ public final class ChatGptB1CoreInitContractTest {
             "newRunEditor(context, requestedCycles, UUID.randomUUID().toString()).apply()"
         ));
     }
+
+    @Test
+    public void mobileLeaseBindingAndAcknowledgementPersistBeforeResuming() throws Exception {
+        String source = new String(
+            Files.readAllBytes(Paths.get("src/main/java/ai/tigeriq/worker/MobileTaskStore.java")),
+            StandardCharsets.UTF_8
+        );
+        String[] starts = {
+            "public static Snapshot bind(",
+            "public static Snapshot rebindLease(",
+            "public static void markResultReported("
+        };
+        String[] ends = {
+            "public static Snapshot rebindLease(",
+            "public static void markResultReported(",
+            "public static void clear("
+        };
+        String[] failureMarkers = {
+            "CORE_TASK_BIND_PERSIST_FAILED",
+            "CORE_TASK_REBIND_PERSIST_FAILED",
+            "CORE_TASK_REPORT_ACK_PERSIST_FAILED"
+        };
+        for (int i = 0; i < starts.length; i++) {
+            int begin = source.indexOf(starts[i]);
+            int end = source.indexOf(ends[i], begin);
+            assertTrue("missing durable lease boundary " + i, begin >= 0 && end > begin);
+            String section = source.substring(begin, end);
+            assertTrue("missing synchronous persistence " + i, section.contains(".commit()"));
+            assertTrue("missing failed-write guard " + i, section.contains(failureMarkers[i]));
+            assertFalse("async write can lose lease on restart " + i, section.contains(".apply()"));
+        }
+        String bind = source.substring(
+            source.indexOf(starts[0]), source.indexOf(starts[1])
+        );
+        assertTrue(bind.contains(".putString(K_TASK_ID,taskId)"));
+        assertTrue(bind.contains(".putString(K_LEASE_ID,leaseId)"));
+        assertTrue(bind.contains(".putString(K_RUN_ID,runId)"));
+        assertTrue(bind.contains(".putBoolean(K_RESULT_REPORTED,false)"));
+    }
 }
