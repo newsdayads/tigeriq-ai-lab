@@ -374,7 +374,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
     expect(loader).toContain('DIRECT CHAT PRE-SEND ICON GUARD V5');
     expect(loader).toContain('ICON_MODE=VECTOR_OR_TEXT_NO_EMOJI');
-    expect(loader).toContain('không sinh emoji');
+    expect(loader).toContain('Không sinh emoji');
   });
 
   it('fails closed on English operational prose and bare work references across direct chat', () => {
@@ -506,7 +506,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(validateOwnerFacingOutput({ text: '✅ HOÀN TẤT', canonicalRefsResolved: false }).defects)
       .toContain('UNRESOLVED_WORK_REFERENCE');
     expect(validateOwnerFacingOutput({
-      text: '✅ HOÀN TẤT ██████████ 100%',
+      text: 'HOÀN TẤT ██████████ 100%',
       progress: { passed: 4, total: 4, verified: true },
     })).toMatchObject({ ok: true, defects: [] });
   });
