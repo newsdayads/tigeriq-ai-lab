@@ -720,7 +720,7 @@ describe('GitHub Core intake guardrails',()=>{
     const current=(...extras)=>baseline.concat(extras).join('\n');
     const cases=[
       ['terminal',current('CURRENT_STATE=SUPERSEDED_BY_NEW_WORK'),'NON_EXECUTABLE_STATE'],
-      ['current unsafe',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION','NO_PAID_COST=false','NO_PAID_COST=true'),'EXPLICIT_SAFETY_FLAG_DISABLED'],
+      ['current unsafe',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION').replace('NO_PAID_COST=true','NO_PAID_COST=false')+'\nNO_PAID_COST=true','EXPLICIT_SAFETY_FLAG_DISABLED'],
       ['terminal label',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION'),'TERMINAL_BLOCKED'],
     ];
     for(const [name,body,expectedReason] of cases){
