@@ -131,6 +131,54 @@ describe('GitHub coding intake guard',()=>{
   it('accepts a complete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE))?.number).toBe(777);});
   it('rejects an incomplete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE.replace('## DEPENDENCIES','## DEPENDENCIES_MISSING')))).toBeNull();});
   it('fails closed when a required guard is missing',()=>{expect(parseCodingIssue(issue(SAFE.replace('NO_DIRECT_MAIN=true','')))).toBeNull();});
+  it('honors current coding contract flags over historical grants and denies terminal owner holds',()=>{
+    for(const key of [
+      'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
+    ]){
+      const value=key==='OWNER_POLICY'?'MANUAL':'false';
+      const trueValue=key==='OWNER_POLICY'?'AUTO':'true';
+      const current=SAFE.replace(`${key}=${trueValue}`,`${key}=${value}`);
+      expect(parseCodingIssue(issue(`${current}\n## HISTORICAL SUPERSEDED\n${key}=${trueValue}`))).toBeNull();
+    }
+    for(const extra of [
+      'AUTO_QUEUE=EXCLUDED','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED',
+      'CURRENT_STATE=DONE_VERIFIED','CURRENT_STATE=FAILED_RETRY_EXHAUSTED',
+      'CURRENT_STATE=NOT_PLANNED','CURRENT_STATE=SUPERSEDED',
+      'STATE=SUPERSEDED','SUPERSEDED_BY=#9999',
+      'OWNER_HOLD=true','OWNER_CONTROLLED=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=false',
+    ]){
+      expect(parseCodingIssue(issue(`${SAFE}\n${extra}\n## HISTORICAL\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\nOWNER_HOLD=false\nNO_SECURITY_BOUNDARY_CHANGE=true`))).toBeNull();
+    }
+    expect(parseCodingIssue(issue(`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL SUPERSEDED\nTIGERIQ_EXECUTABLE=false\nNO_PAID_COST=false\nAUTO_QUEUE=EXCLUDED_HISTORIC\nCURRENT_STATE=FAILED_OLD`))).toMatchObject({number:777});
+  });
+
+  it('reconciles a completed coding objective with current true despite historical false flags',async()=>{
+    const n=865,id='obj-865',body=`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_OLD`;
+    const current=issue(body,{number:n});
+    const revision=codingSourceTruthRevision(current,[]);
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,sourceRevision:revision}});
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      const method=String(init.method||'GET');
+      if(url.includes('/api/status'))return response({objectives:[{id,status:'completed',summary:'Source patch complete'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-865'}});
+      if(url.endsWith('/issues/865')&&method==='GET')return response(current);
+      if(url.endsWith('/issues/865')&&method==='PATCH'){calls.push('close');return response({state:'closed'});}
+      if(url.includes('/issues/865/comments')&&method==='POST'){calls.push('result');return response({});}
+      if(url.includes('/issues/865/comments'))return response([]);
+      if(url.includes('/issues/865/labels/')&&method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(calls).toContain('close');
+    expect(calls).toContain('result');
+  });
+
   it('ignores pull requests and closed issues',()=>{
     expect(parseCodingIssue(issue(SAFE,{pull_request:{}}))).toBeNull();
     expect(parseCodingIssue(issue(SAFE,{state:'closed'}))).toBeNull();
