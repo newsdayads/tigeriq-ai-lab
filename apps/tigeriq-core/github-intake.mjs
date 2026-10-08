@@ -612,20 +612,25 @@ export function safeAutoWorkAdmission(issue){
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
+  // The current authorization contract ends at the first Markdown heading.
+  // Missing current flags must not be supplied by appended historical records.
+  const safetyHistoryBoundary=body.search(/^ {0,3}#{1,6}[ \t]+\S/m);
+  const currentSafetyBody=safetyHistoryBoundary>=0?body.slice(0,safetyHistoryBoundary):body;
+  const currentSafetyValue=(key)=>bodyValue(currentSafetyBody,key).toLowerCase();
   // The first current contract value is authoritative: old true flags cannot override a present denial.
   const deniedSafetyKeys=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_DIRECT_MAIN'];
   const currentSafetyDenied=deniedSafetyKeys.some((key)=>{
-    const value=bodyValue(body,key).toLowerCase();
+    const value=currentSafetyValue(key);
     return value!==''&&value!=='true';
   });
-  const currentRelease=bodyValue(body,'NO_PRODUCTION_RELEASE').toLowerCase();
+  const currentRelease=currentSafetyValue('NO_PRODUCTION_RELEASE');
   if(currentSafetyDenied||(!standingRelease&&currentRelease!==''&&currentRelease!=='true'))return {eligible:false,reason:'EXPLICIT_SAFETY_FLAG_DISABLED'};
   // Old issue history is never a source of affirmative execution safeguards.
   // Keep the reason distinct from incomplete legacy contracts: otherwise the
   // legacy compatibility route could re-admit an explicitly stale grant.
   const historyOnlySafety=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
     'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'].some(key=>
-    !bodyValue(body,key)&&hasExactFlag(body,key));
+    !currentSafetyValue(key)&&hasExactFlag(body,key));
   if(historyOnlySafety)return {eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'};
   const classification=classifyWorkOrder(body);
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
@@ -638,10 +643,10 @@ export function safeAutoWorkAdmission(issue){
   const ownerReleased=SAFE_AUTO_RELEASED_OWNERS.has(mutationOwner)||/_WHEN_CLAIMED$/.test(mutationOwner);
   if(!ownerReleased)return {eligible:false,reason:'MUTATION_OWNER_CONFLICT'};
   const safeFlags=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
-  if(safeFlags.some((key)=>bodyValue(body,key).toLowerCase()!=='true'))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
-  if(!standingRelease&&bodyValue(body,'NO_PRODUCTION_RELEASE').toLowerCase()!=='true')return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  if(safeFlags.some((key)=>currentSafetyValue(key)!=='true'))return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
+  if(!standingRelease&&currentSafetyValue('NO_PRODUCTION_RELEASE')!=='true')return {eligible:false,reason:'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'};
   const requiresCodingHandoff=classification.route==='CODING';
-  if(requiresCodingHandoff&&bodyValue(body,'NO_DIRECT_MAIN').toLowerCase()!=='true')return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
+  if(requiresCodingHandoff&&currentSafetyValue('NO_DIRECT_MAIN')!=='true')return {eligible:false,reason:'DIRECT_MAIN_GUARD_REQUIRED'};
   return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
 }
 
