@@ -134,7 +134,7 @@ const staleFallback = liveApi.indexOf("if (cache.value && now - cache.at < STALE
 assert.ok(liveCatch >= 0 && githubFallback > liveCatch && staleFallback > githubFallback, 'fresh GitHub fallback must run before stale response cache');
 
 // Feature gate: never infer step completion or percentages from an unverified issue.
-const { checklistForIssue, progressForIssue, parseOpenWorkIssue } = await import('../api/live-status.mjs');
+const { checklistForIssue, executionPlanForIssue, progressForIssue, parseOpenWorkIssue } = await import('../api/live-status.mjs');
 const verifiedStepBody='PROGRESS_VERIFIED=true\n- [x] Phân tích yêu cầu\n- [x] Thiết kế phương án\n- [ ] Kiểm thử\n- [ ] Xác minh thực tế';
 const verifiedStepIssue={number:987654,title:'[P1] Kiểm thử tiến độ',body:verifiedStepBody,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/987654'};
 const list=checklistForIssue(verifiedStepIssue);
@@ -155,6 +155,17 @@ const mixedBodyIssue={...verifiedStepIssue,body:'PROGRESS_SOURCE=VERIFIED\nPROGR
 assert.equal(progressForIssue(mixedBodyIssue,'WORKING').percent,25,'Checklist is the primary basis over freehand percent');
 const fences={...verifiedStepIssue,body:'PROGRESS_VERIFIED=true\n\`\`\`md\n- [x] not a step\n\`\`\`\n- [x] real A\n- [ ] real B'};
 assert.equal(checklistForIssue(fences).total,2);
+// Source-grounded NEXT remains visible without creating imaginary completed checklist steps.
+const planOnlyIssue={...verifiedStepIssue,body:'## CURRENT — AUTHORITATIVE\nCURRENT_STATE=READY_INDEPENDENT_REVIEW\nNEXT=Review exact HEAD of PR; after PASS guarded merge; do not close or mark DONE\nDONE=false\n## Historical\nNEXT=ignore older step'};
+const plan=executionPlanForIssue(planOnlyIssue);
+assert.equal(plan.source,'GITHUB_CURRENT_NEXT');
+assert.deepEqual(plan.steps.map((step)=>step.title),['Review exact HEAD of PR','after PASS guarded merge']);
+const planRow=parseOpenWorkIssue(planOnlyIssue);
+assert.equal(planRow.executionSteps.length,2);
+assert.equal(planRow.progressSteps.length,0);
+assert.equal(planRow.progressPercent,null);
+assert.equal(planRow.progressChecklistVerified,false);
+assert.equal(executionPlanForIssue({...planOnlyIssue,body:'CURRENT_STATE=WAIT_OWNER'}).steps.length,0,'Do not invent steps when GitHub lacks NEXT');
 for (const x of ['id="drawerChecklistSection"','function verifiedStepSummary(row)','function drawerChecklistMarkup(row)','progressSteps','progressRemaining','Có ','Còn ','class="drawer-checklist-step']) assert.ok(publicView.includes(x),'Checklist UI missing '+x);
 assert.match(publicView,/tigeriq-live-verified-checklist-v24/);
 console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
