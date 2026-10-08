@@ -1874,27 +1874,51 @@ function renderNowRunning(){
 function renderLiveWorkers(){
   const panel=$('liveWorkers');
   const at=Date.parse(snapshot?.generatedAt||'');
+  const snapshotAge=Date.now()-at;
   const snapshotFresh=snapshot?.liveConnected===true&&!snapshot?.staleAll
-    &&Number.isFinite(at)&&Math.abs(Date.now()-at)<=90000;
+    &&Number.isFinite(at)&&snapshotAge>=0&&snapshotAge<=90000;
   const workers=snapshotFresh?(Array.isArray(snapshot?.workers)?snapshot.workers:[]).filter(worker=>{
     const heartbeat=Date.parse(worker?.heartbeatAt||'');
+    const heartbeatAge=Date.now()-heartbeat;
     return /^NV\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
       &&String(worker?.state||'').toLowerCase()==='working'
       &&Boolean(String(worker?.currentJobId||'').trim())
-      &&Number.isFinite(heartbeat)&&Math.abs(Date.now()-heartbeat)<=60000;
+      &&Number.isFinite(heartbeat)&&heartbeatAge>=0&&heartbeatAge<=60000;
   }):[];
-  panel.innerHTML='<header class="live-workers-head"><h2>NHÂN VIÊN ĐANG LÀM</h2><span>'+workers.length+' NHÂN VIÊN</span></header>'
-    +(workers.length?'<div class="live-workers-grid">'+workers.map(worker=>{
-      const id=esc(worker.employeeId),name=esc(worker.label||worker.employeeId);
-      const job=esc(worker.job||worker.currentJobId||'Chưa có mô tả công việc');
-      const jobId=esc(worker.currentJobId);
-      const provider=esc([worker.provider,worker.model].filter(Boolean).join(' · ')||'Đang thực thi');
-      const freshTime=esc(ownerAgeText(worker.heartbeatAt||worker.updatedAt));
-      return '<article class="live-worker-card" data-live-employee="'+id+'"><div class="live-worker-top"><b class="live-worker-id">'+id+'</b><span class="live-worker-state">ĐANG LÀM</span></div>'
-        +'<div class="live-worker-name">'+name+'</div><div class="live-worker-job">'+job+'</div>'
-        +'<div class="live-worker-footer"><span>'+provider+'</span><span title="'+jobId+'">Cập nhật '+freshTime+'</span></div></article>';
-    }).join('')+'</div>'
-      :'<div class="live-worker-empty">'+(snapshotFresh?'Hiện chưa có nhân viên nào được xác nhận đang thực thi công việc.':'Chưa xác minh được nhân viên đang làm — nguồn PC01 đang gián đoạn hoặc dữ liệu đã cũ.')+'</div>');
+  const add=(parent,tag,cls,value)=>{
+    const el=document.createElement(tag);
+    el.className=cls;
+    el.textContent=String(value??'');
+    parent.append(el);
+    return el;
+  };
+  const header=document.createElement('header');header.className='live-workers-head';
+  add(header,'h2','', 'NHÂN VIÊN ĐANG LÀM');
+  add(header,'span','',workers.length+' NHÂN VIÊN');
+  panel.replaceChildren(header);
+  if(!workers.length){
+    add(panel,'div','live-worker-empty',snapshotFresh
+      ?'Hiện chưa có nhân viên nào được xác nhận đang thực thi công việc.'
+      :'Chưa xác minh được nhân viên đang làm — nguồn PC01 đang gián đoạn hoặc dữ liệu đã cũ.');
+    return;
+  }
+  const grid=document.createElement('div');grid.className='live-workers-grid';
+  for(const worker of workers){
+    const card=document.createElement('article');card.className='live-worker-card';
+    card.dataset.liveEmployee=String(worker.employeeId||'').toUpperCase();
+    const top=document.createElement('div');top.className='live-worker-top';
+    add(top,'b','live-worker-id',worker.employeeId);
+    add(top,'span','live-worker-state','ĐANG LÀM');
+    card.append(top);
+    add(card,'div','live-worker-name',worker.label||worker.employeeId);
+    add(card,'div','live-worker-job',worker.job||worker.currentJobId||'Chưa có mô tả công việc');
+    const footer=document.createElement('div');footer.className='live-worker-footer';
+    add(footer,'span','', [worker.provider,worker.model].filter(Boolean).join(' · ')||'Đang thực thi');
+    const age=add(footer,'span','', 'Cập nhật '+ownerAgeText(worker.heartbeatAt||worker.updatedAt));
+    age.title=String(worker.currentJobId||'');
+    card.append(footer);grid.append(card);
+  }
+  panel.append(grid);
 }
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
