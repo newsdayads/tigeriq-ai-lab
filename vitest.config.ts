@@ -27,6 +27,9 @@ export default defineConfig({
       'tests/autonomy-supervisor.test.mjs',
       'tests/routing-fault-recovery.test.mjs',
       'tests/continuous-capability-verify.test.mjs',
+      'tests/core-vnext-shadow.test.mjs',
+      'tests/world-model-contract.test.mjs',
+      'tests/core-vnext-checkpoint-store.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
     ],
     environment: 'node'
