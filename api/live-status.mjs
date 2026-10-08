@@ -1229,6 +1229,31 @@ export function checklistForIssue(issue) {
   };
 }
 
+// Actionable, source-grounded plan only. Never equate an action plan with verified progress.
+export function executionPlanForIssue(issue, currentNext = '') {
+  const body = String(issue?.body || '');
+  const lines = body.split(/\r?\n/);
+  const firstHeading = lines.findIndex((line) => /^#{1,3}\s+\S/.test(line));
+  const from = firstHeading < 0 ? 0 : firstHeading + 1;
+  const nextHeading = lines.findIndex((line, index) => index >= from && /^#{1,3}\s+\S/.test(line));
+  const activeBlock = lines.slice(from, nextHeading < 0 ? from + 250 : nextHeading).join('\n');
+  const action = String(currentNext || firstBodyValue(activeBlock, ['NEXT', 'NEXT_ACTION', 'CURRENT_STEP']) || '').trim();
+  if (!action) return { steps: [], source: null };
+  const seen = new Set();
+  const parts = action.split(/\s*;\s*|\s+(?:->|→)\s+/).map((part) => part.trim())
+    .filter((part) => part.length > 5 && !/^(?:no\b|never\b|do not\b|until\b|không\b|cấm\b)/i.test(part))
+    .slice(0, 8);
+  const steps = [];
+  for (const part of parts) {
+    const title = part.slice(0, 300);
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    steps.push({ title, done: false, evidenceUrl: null });
+  }
+  return { steps, source: steps.length ? 'GITHUB_CURRENT_NEXT' : null };
+}
+
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
   const normalizedStatus = String(status || 'OPEN').toUpperCase();
@@ -1387,6 +1412,9 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
+  const executionPlan = classification.workKind === 'WORK' && checklist.total < 2
+    ? executionPlanForIssue(issue, nextStep || currentStep || '')
+    : { steps: [], source: null };
   const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
   const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
   const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
@@ -1458,6 +1486,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     progressTotal: checklist.total,
     progressRemaining: checklist.remaining,
     progressChecklistVerified: checklist.verified,
+    executionSteps: executionPlan.steps,
+    executionPlanSource: executionPlan.source,
     prNumber: classification.ownerGate ? null : active?.prNumber || null,
     prUrl: classification.ownerGate ? null : active?.prUrl || null,
     checks,
