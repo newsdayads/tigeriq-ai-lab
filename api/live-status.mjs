@@ -39,6 +39,7 @@ const DEPENDENCY_CACHE_MS = 60 * 1000;
 const QUEUE_LIMIT = 20;
 const RECENT_WORK_LIMIT = 50;
 const RECENT_WORK_CACHE_MS = 5 * 60 * 1000;
+const LIFECYCLE_COMMENT_CACHE_MS = 60 * 1000;
 const WORKING_HEARTBEAT_MAX_MS = 60 * 1000;
 let pointerCache = { at: 0, url: null };
 let cache = { at: 0, value: null };
@@ -46,6 +47,7 @@ let runtimeCache = { at: 0, value: null };
 let githubProjectionCache = { at: 0, verifiedAt: null, data: null };
 let recentWorkCache = { at: 0, data: null };
 const dependencyCache = new Map();
+const lifecycleCommentCache = new Map();
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -964,21 +966,32 @@ async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl
     .sort((a, b) => Date.parse(b?.updated_at || 0) - Date.parse(a?.updated_at || 0))
     .slice(0, Math.max(QUEUE_LIMIT, 24));
   const pairs = await Promise.all(candidates.map(async (issue) => {
+    const number = Number(issue.number);
+    const now = Date.now();
+    const cached = lifecycleCommentCache.get(number);
+    if (cached && cached.issueUpdatedAt === issue?.updated_at && now - cached.at < LIFECYCLE_COMMENT_CACHE_MS) {
+      return [number, cached.value];
+    }
+    let value = null;
     try {
-      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + Number(issue.number) + '/comments?per_page=100', fetchImpl);
+      const commentsCount = Math.max(0, Number(issue?.comments || 0));
+      const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
+      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
       const rows = Array.isArray(comments) ? comments : [];
       const issueAt = Date.parse(issue?.updated_at || '') || 0;
       for (let i = rows.length - 1; i >= 0; i -= 1) {
         const parsed = parseStructuredLifecycleComment(rows[i]);
         if (!parsed) continue;
         const commentAt = Date.parse(parsed.createdAt || '') || 0;
-        if (issueAt && commentAt && commentAt + 60_000 < issueAt) return [Number(issue.number), null];
-        return [Number(issue.number), parsed];
+        if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
+        value = parsed;
+        break;
       }
     } catch {
       // Keep canonical body truth if comment readback is unavailable.
     }
-    return [Number(issue.number), null];
+    lifecycleCommentCache.set(number, { at: now, issueUpdatedAt: issue?.updated_at || null, value });
+    return [number, value];
   }));
   return new Map(pairs.filter(([, value]) => value));
 }
