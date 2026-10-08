@@ -1323,7 +1323,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
-  const rawBlocker = currentLifecycle?.blocker ?? bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '';
+  const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
   const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
   const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
