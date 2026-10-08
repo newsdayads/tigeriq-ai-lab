@@ -1007,13 +1007,13 @@ function normalizeRows(value){
   else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
   else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
   else if(currentFilter==='verify')rows=openRows.filter(x=>workStatus(x)==='VERIFY');
-  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
+  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
   else if(currentFilter==='waiting')rows=openRows.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY');
   else if(currentFilter==='blocked')rows=openRows.filter(x=>workStatus(x)==='BLOCKED');
   else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
   else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
   else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
+  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&(workPriority(x)!=='P5'||currentPriorityFilter==='P5'));
   return rows.filter(x=>(currentProjectFilter==='all'||String(x?.projectId||'')===currentProjectFilter)
     &&(currentPriorityFilter==='all'||workPriority(x)===currentPriorityFilter));
 }
@@ -1041,7 +1041,7 @@ function updateCounts(){
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
   $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
   $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
-  $('readyCount').textContent=actionable.filter(x=>workStatus(x)==='QUEUED'||x.executionEligibility==='READY').length;
+  $('readyCount').textContent=actionable.filter(x=>['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY')).length;
   $('waitingCount').textContent=actionable.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY').length;
   $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
   $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
