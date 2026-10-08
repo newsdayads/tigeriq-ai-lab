@@ -252,7 +252,9 @@ describe('GitHub Core intake guardrails',()=>{
     // A missing current executable flag must not be authorized by stale true
     // markers; the legacy route still needs all four current flags.
     const missing={...base,body:active.replace('TIGERIQ_EXECUTABLE=true','')+'\n## HISTORICAL\nTIGERIQ_EXECUTABLE=true'};
+    expect(safeAutoWorkAdmission(missing)).toMatchObject({eligible:false,reason:'EXECUTION_FLAG_REQUIRED'});
     expect(parseExecutableIssue(missing)).toBeNull();
+    expect(activeGithubObjectiveSourceExclusion(missing)).toBe('EXECUTION_FLAG_REQUIRED');
   });
 
   it('requires each legacy compatibility flag in the current execution section',()=>{
