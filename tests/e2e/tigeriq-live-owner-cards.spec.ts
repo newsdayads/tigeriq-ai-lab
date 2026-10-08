@@ -130,11 +130,11 @@ test('P0 LIVE never marks employees as running from stale or incomplete telemetr
     {generatedAt:now,liveConnected:true,workers:[{...base,currentJobId:null}]},
     {generatedAt:now,liveConnected:true,workers:[{...base,heartbeatAt:'2026-01-01T00:00:00.000Z'}]}
   ];
-  for(const data of cases){
+  for(const [index,data] of cases.entries()){
     await routeTiger(page,{...snapshot,...data});
     await page.goto('https://tigeriq.test/command-center');
     await expect(page.locator('.live-worker-card')).toHaveCount(0);
-    await expect(page.locator('#liveWorkers')).toContainText('0 NHÂN VIÊN');
+    await expect(page.locator('#liveWorkers')).toContainText(index<2?'CHƯA XÁC MINH':'0 NHÂN VIÊN');
     await page.unroute('https://tigeriq.test/**');
   }
 });
