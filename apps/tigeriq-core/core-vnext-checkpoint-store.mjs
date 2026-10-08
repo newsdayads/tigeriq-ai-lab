@@ -80,6 +80,25 @@ function checkpointOf(tuple, expectedObjectiveId) {
   return Object.freeze({ ...row, digest: state.digest });
 }
 
+// One writer lease alone does not serialize two in-flight saves by the SAME writer.
+// Serialize per objective across adapter instances in this Node process, including
+// the latest-checkpoint read and durable put. This is NOT cross-process or DB CAS;
+// real Postgres activation still requires separately verified durable fencing.
+const objectiveWriteTails = new Map();
+async function withLocalObjectiveWriteLock(objectiveId, action) {
+  const previous = objectiveWriteTails.get(objectiveId);
+  let release;
+  const tail = new Promise(resolve => { release = resolve; });
+  objectiveWriteTails.set(objectiveId, tail);
+  if (previous) await previous;
+  try {
+    return await action();
+  } finally {
+    if (objectiveWriteTails.get(objectiveId) === tail) objectiveWriteTails.delete(objectiveId);
+    release();
+  }
+}
+
 // Caller must hold the verified existing one-writer lease. This is NOT an autonomous lease provider.
 export function createCoreVNextCheckpointStore({
   checkpointer, enabled = false, schemaReady = false, verifyWriterLease = async () => false,
@@ -97,6 +116,7 @@ export function createCoreVNextCheckpointStore({
     if (!enabled || !schemaReady) fail('VNEXT_CHECKPOINT_DISABLED_OR_SCHEMA_NOT_READY');
     const row = normalizedTransition(input);
     if (!Number.isFinite(nowMs)) fail('VNEXT_TIMESTAMP_INVALID');
+    return withLocalObjectiveWriteLock(row.objective_id, async () => {
     const permitted = async () => (await verifyWriterLease({
       objective_id: row.objective_id, resource_scope: 'TIGERIQ_CORE_VNEXT_CHECKPOINT_V1',
     })) === true;
@@ -133,6 +153,7 @@ export function createCoreVNextCheckpointStore({
     const verified = await checkpointer.getTuple(configuration(row.objective_id, checkpointId));
     if (checkpointOf(verified, row.objective_id)?.digest !== stateDigest) fail('VNEXT_WRITE_READBACK_MISMATCH');
     return Object.freeze({ written: true, replay: false, checkpoint_id: checkpointId, state: payload });
+    });
   }
 
   return Object.freeze({ read, save });
