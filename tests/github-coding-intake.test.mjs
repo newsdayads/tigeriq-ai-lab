@@ -193,12 +193,12 @@ describe('GitHub coding intake guard',()=>{
   });
 
   it('uses only the current header for Coding owner gates, scope, route and dependencies',()=>{
-    const current=SAFE+'\nOWNER_HOLD=false\nRESOURCE_SCOPE=CURRENT_SAFE_SCOPE\nALLOW_PATH_PREFIX=apps/tigeriq-core';
+    const current=SAFE+'\nOWNER_HOLD=false\nRESOURCE_SCOPE=CURRENT_SAFE_SCOPE\nALLOW_PATH_PREFIX=docs/evidence/current-safe.md';
     const historical='\n## HISTORICAL CONTRACT\nOWNER_HOLD=true\nOWNER_CONTROLLED=true\nOWNER_DIRECT=true\nRESOURCE_SCOPE=HISTORIC_SCOPE\nALLOW_PATH_PREFIX=apps/historical-unsafe\nDEPENDS_ON=#9999\nTARGET_EMPLOYEE=NV03\nTARGET_REPOSITORY=newsdayads/tigeriq-media';
     const parsed=parseCodingIssue(issue(current+historical));
     expect(parsed).toMatchObject({
       ownerControlled:false,ownerDirect:false,dependsOn:[],
-      scopeLease:{resourceScope:'CURRENT_SAFE_SCOPE',paths:['apps/tigeriq-core']},
+      scopeLease:{resourceScope:'CURRENT_SAFE_SCOPE',paths:['docs/evidence/current-safe.md']},
       routing:{targetEmployee:null,targetRepository:null},
     });
     expect(parseCodingIssue(issue(current.replace('OWNER_HOLD=false','OWNER_HOLD=true')+historical))).toBeNull();
