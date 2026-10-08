@@ -610,6 +610,14 @@ export function safeAutoWorkAdmission(issue){
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
+  // The first current contract value is authoritative: old true flags cannot override a present denial.
+  const deniedSafetyKeys=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_DIRECT_MAIN'];
+  const currentSafetyDenied=deniedSafetyKeys.some((key)=>{
+    const value=bodyValue(body,key).toLowerCase();
+    return value!==''&&value!=='true';
+  });
+  const currentRelease=bodyValue(body,'NO_PRODUCTION_RELEASE').toLowerCase();
+  if(currentSafetyDenied||(!standingRelease&&currentRelease!==''&&currentRelease!=='true'))return {eligible:false,reason:'EXPLICIT_SAFETY_FLAG_DISABLED'};
   const classification=classifyWorkOrder(body);
   const directAction=parsePcOperatorDirectAction(body,backlogOwnerDirect(body));
   if(directAction.present&&!directAction.valid)return {eligible:false,reason:directAction.reason||'DIRECT_ACTION_INVALID'};
@@ -635,10 +643,10 @@ export function parseExecutableIssue(issue){
   if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
   if(isOwnerOnlyP0(body,title))return null;
   if(androidProductAutoExecutionExclusion(issue))return null;
-  const legacyExecutable=hasExactFlag(body,'TIGERIQ_EXECUTABLE')
-    &&hasExactFlag(body,'OWNER_POLICY','AUTO')
-    &&hasExactFlag(body,'NO_CODE_CHANGE')
-    &&hasExactFlag(body,'NO_PC01_SHELL');
+  const legacyExecutable=bodyValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'
+    &&bodyValue(body,'OWNER_POLICY').toUpperCase()==='AUTO'
+    &&bodyValue(body,'NO_CODE_CHANGE').toLowerCase()==='true'
+    &&bodyValue(body,'NO_PC01_SHELL').toLowerCase()==='true';
   const policyAdmission=safeAutoWorkAdmission(issue);
   // Legacy Core compatibility is never authority to override an explicit denial
   // (disabled/excluded, blocked, terminal, Owner/P0, or a conflicting writer).
