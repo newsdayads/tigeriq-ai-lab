@@ -322,6 +322,26 @@ test('V2.4 unchecked validation never fabricates a percentage, even when steps a
   await expect(page.locator('.drawer-checklist-step')).toHaveCount(2);
 });
 
+test('GitHub NEXT steps appear even with no verified checklist; no fabricated percentage',async({page})=>{
+  const row={...snapshot.openWork[0],progressPercent:null,progressSource:'none',
+    progressChecklistVerified:false,progressDone:0,progressTotal:0,progressRemaining:0,progressSteps:[],
+    executionPlanSource:'GITHUB_CURRENT_NEXT',executionSteps:[
+      {title:'Rà soát độc lập đúng HEAD',done:false,evidenceUrl:null},
+      {title:'Kiểm chứng thực tế sau khi hợp nhất',done:false,evidenceUrl:null}
+    ]};
+  await routeTiger(page,{...snapshot,openWork:[row],activeWork:[],nextQueue:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const card=page.locator('.work-row[data-work-number="111"]');
+  await expect(card.locator('.work-step-summary')).toContainText('2 bước theo GitHub');
+  await expect(card.locator('.progress-text')).toHaveCount(0);
+  await card.click();
+  await expect(page.locator('#drawerChecklistMeta')).toContainText('2 bước theo GitHub');
+  await expect(page.locator('.drawer-checklist-step')).toHaveCount(2);
+  await expect(page.locator('.drawer-checklist-copy').first()).toContainText('Rà soát độc lập đúng HEAD');
+  await expect(page.locator('#drawerChecklistHint')).toContainText('không tính %');
+  await expect(page.locator('.drawer-checklist-step.verified')).toHaveCount(0);
+});
+
 test('LIVE compact owner grid shows five to six cards per row on desktop with readable mobile fallback',async({page})=>{
   const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
     [1664,950,5],[2560,1440,6],[1280,900,4],[390,844,1]
