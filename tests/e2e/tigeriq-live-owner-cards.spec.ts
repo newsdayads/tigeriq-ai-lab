@@ -412,6 +412,71 @@ test('P0 GitHub verified gates render real percentage with evidence links, never
   await expect(page.locator('#drawerChecklistHint')).toContainText('100% chỉ khi công việc DONE');
 });
 
+test('P0 progress fixed at BOTTOM and exact semantic status color on all verified cards',async({page})=>{
+  const colors=[
+    ['OWNER_GATE','#A78BFA'],['WORKING','#10B981'],['REVIEW','#3B82F6'],
+    ['VERIFY','#14B8A6'],['QUEUED','#F59E0B'],['WAITING','#F59E0B'],
+    ['BLOCKED','#F43F5E'],['PAUSED','#64748B'],['DONE','#06B6D4']
+  ] as const;
+  const rows=colors.filter(x=>x[0]!=='DONE').map(([status],i)=>({
+    ...snapshot.openWork[0],number:710+i,status,priority:'P1',workKind:'WORK',
+    progressPercent:50,progressSource:'github_gates_verified',progressChecklistVerified:true,
+    progressDone:3,progressTotal:6,progressRemaining:3,activeLease:false,heartbeatFresh:false,
+    nextStep:'Bước tiếp: Kiểm tra mã nguồn'
+  }));
+  const done={...rows[0],number:719,status:'DONE',progressPercent:100,progressSource:'terminal'};
+  await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
+  await page.goto('https://tigeriq.test/command-center');
+  for(const [i,[state,color]] of colors.entries()){
+    if(state==='DONE')await page.locator('.filter[data-filter="done"]').click();
+    else if(state==='OWNER_GATE')await page.locator('.filter[data-filter="owner"]').click();
+    else if(state==='QUEUED')await page.locator('.filter[data-filter="ready"]').click();
+    else if(state==='WAITING')await page.locator('.filter[data-filter="waiting"]').click();
+    else if(state==='PAUSED')await page.locator('.filter[data-filter="paused"]').click();
+    else if(state==='BLOCKED')await page.locator('.filter[data-filter="blocked"]').click();
+    else if(state==='VERIFY')await page.locator('.filter[data-filter="verify"]').click();
+    else if(state==='REVIEW')await page.locator('.filter[data-filter="review"]').click();
+    else if(state==='WORKING')await page.locator('.filter[data-filter="running"]').click();
+    const card=page.locator('.work-row[data-work-number="'+(state==='DONE'?719:710+i)+'"]');
+    await expect(card).toBeVisible();
+    const data=await card.evaluate(el=>{
+      const meter=el.querySelector('.progress')!,fill=el.querySelector('.progress-fill')!,pct=el.querySelector('.progress-text')!,
+        action=el.querySelector('.work-quick')!,bottom=el.querySelector('.work-progress-bottom')!,
+        title=el.querySelector('.work-title')!;
+      return {status:getComputedStyle(el).getPropertyValue('--status-color').trim().toUpperCase(),
+        meterColor:getComputedStyle(meter).color,fillColor:getComputedStyle(fill).backgroundColor,
+        percentColor:getComputedStyle(pct).color,hasBottom:!!bottom,
+        meterTop:meter.getBoundingClientRect().top,actionTop:action.getBoundingClientRect().top,
+        titleTop:title.getBoundingClientRect().top,nextText:action.textContent||'',
+        animated:getComputedStyle(fill,'::after').animationName};
+    });
+    const rgb=parseInt(color.slice(1,3),16)+', '+parseInt(color.slice(3,5),16)+', '+parseInt(color.slice(5,7),16);
+    expect(data.status).toBe(color);
+    expect(data.fillColor).toBe('rgb('+rgb+')');
+    expect(data.percentColor).toBe('rgb('+rgb+')');
+    expect(data.hasBottom).toBe(true);
+    expect(data.meterTop).toBeGreaterThan(data.actionTop);
+    expect(data.actionTop).toBeGreaterThan(data.titleTop);
+    expect(data.nextText).not.toMatch(/Bước tiếp/i);
+    expect(data.animated).toBe('none');
+  }
+});
+
+test('P0 shimmer is shown only for live WORKING runtime lease, never on review or stale',async({page})=>{
+  const active={...snapshot.openWork[0],number:810,activeLease:true,heartbeatFresh:true,status:'WORKING',
+    progressSource:'explicit_verified',progressPercent:50};
+  const review={...active,number:811,status:'REVIEW'};
+  await routeTiger(page,{...snapshot,openWork:[active,review],activeWork:[],nextQueue:[],openSummary:{},liveConnected:true});
+  await page.goto('https://tigeriq.test/command-center');
+  const activeCard=page.locator('.work-row[data-work-number="810"]');
+  const reviewCard=page.locator('.work-row[data-work-number="811"]');
+  await expect(activeCard).toHaveClass(/progress-running/);
+  await expect(reviewCard).not.toHaveClass(/progress-running/);
+  const animations=await Promise.all([activeCard,reviewCard].map(card=>card.locator('.progress-fill').evaluate(el=>getComputedStyle(el,'::after').animationName)));
+  expect(animations[0]).toContain('progress-shimmer');
+  expect(animations[1]).toBe('none');
+});
+
 test('LIVE compact owner grid shows five to six cards per row on desktop with readable mobile fallback',async({page})=>{
   const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
     [1664,950,5],[2560,1440,6],[1280,900,4],[390,844,1]
