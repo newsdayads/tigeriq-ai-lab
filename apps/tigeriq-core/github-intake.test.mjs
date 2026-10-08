@@ -102,7 +102,7 @@ describe('GitHub Core intake guardrails',()=>{
       'PRIORITY=P0',
       'AUTO_QUEUE=EXCLUDED_P0_OWNER_DIRECT',
       'CURRENT_STATE=WAIT_PIN_PR_GATES_AND_REVIEW',
-    ].join('\\n');
+    ].join('\n');
     const canonicalHistory={...issue,body:historicalBody};
     expect(safeAutoWorkAdmission(canonicalHistory)).toMatchObject({eligible:true});
     expect(parseExecutableIssue(canonicalHistory)).toMatchObject({
