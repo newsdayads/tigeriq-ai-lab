@@ -1406,6 +1406,28 @@ async function coreFallbackReleaseEligible(pool,row){
   return String(job?.status||'').toLowerCase()==='failed';
 }
 
+// Active objectives must not outlive a canonical hard denial. Do not retire on
+// transient WAIT/DEPENDENCY/RESOURCE states, which have their own rearm policy.
+export function activeGithubObjectiveSourceExclusion(issue){
+  const body=String(issue?.body||'');
+  const explicitExclusion=explicitAutoExecutionExclusion(body);
+  if(explicitExclusion)return explicitExclusion;
+  if(!issue||issue.state!=='open')return 'NOT_OPEN_ISSUE';
+  const admission=safeAutoWorkAdmission(issue);
+  if(admission.eligible)return '';
+  const reason=String(admission.reason||'');
+  const terminal=bodyValue(body,'CURRENT_STATE').toUpperCase();
+  const trulyTerminal= /^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(terminal)
+    ||Boolean(bodyValue(body,'SUPERSEDED_BY').trim());
+  if(reason==='NON_EXECUTABLE_STATE')return trulyTerminal?reason:'';
+  if([
+    'EXPLICIT_SAFETY_FLAG_DISABLED','TERMINAL_BLOCKED','P0_OR_INVALID_PRIORITY',
+    'OWNER_OR_HOLD_GATE','OWNER_POLICY_NOT_AUTO','APP_CHROME_EXCLUDED',
+    'ANDROID_PRODUCT_OWNER_DIRECT',
+  ].includes(reason))return reason;
+  return '';
+}
+
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
@@ -1434,7 +1456,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     }
     const sourceBody=String(sourceIssueForGate?.body||'');
     const currentSourceRevision=githubIssueSourceRevision(sourceIssueForGate||{});
-    const sourceExecutionExclusion=explicitAutoExecutionExclusion(sourceBody);
+    const sourceExecutionExclusion=activeGithubObjectiveSourceExclusion(sourceIssueForGate);
     if(row.status==='active'&&sourceExecutionExclusion){
       const summary=`source is non-executable (${sourceExecutionExclusion}); retired stale active objective without mutating GitHub source`;
       const exclusionPatch={
