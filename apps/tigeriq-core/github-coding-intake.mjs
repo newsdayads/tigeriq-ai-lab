@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerControlled,backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isAppChromeLocalOnlyPath,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
@@ -17,8 +17,14 @@ const DEFAULT_CONCURRENCY_CAP=3;
 const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
+function currentCodingValue(body,key){
+  // The first anchored header is authoritative; later historical headers
+  // must never grant execution permission denied by the current contract.
+  const escaped=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return String(String(body||'').match(new RegExp(`^${escaped}=(.*)$`,'m'))?.[1]||'').trim();
+}
 function exactFlag(body,key,value='true'){
-  return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
+  return currentCodingValue(body,key)===value;
 }
 
 export function codingSourceTruthRevision(issue,comments=[]){
@@ -128,7 +134,15 @@ export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   if(chatMutationOwnerPlan(body,issue.title).owner==='VY')return null;
-  if(isOwnerOnlyP0(body,issue.title))return null;
+  if(isOwnerOnlyP0(body,issue.title)||backlogOwnerControlled(body))return null;
+  // Closed/terminal canonical work and explicit current queue exclusions must
+  // not be revived by the presence of historical executable=true flags.
+  const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
+  const state=currentCodingValue(body,'CURRENT_STATE').toUpperCase();
+  if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return null;
+  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||currentCodingValue(body,'SUPERSEDED_BY'))return null;
+  if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   if(!isActiveExecutionSpec(body))return null;
