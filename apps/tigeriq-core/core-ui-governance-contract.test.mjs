@@ -49,7 +49,7 @@ test('NV03/NV04 are eligible for narrow independent roles and do not self-pull',
   assert.equal(review.workerId,'NV03');
   const research=classifyWorkOrder(reviewIssue({capability:'deep_research'}).body);
   assert.equal(research.workerId,'NV04');
-  assert.deepEqual(parseCoreUiIssue(reviewIssue()).eligibleWorkerIds,['NV03']);
+  assert.deepEqual(parseCoreUiIssue(reviewIssue()).eligibleWorkerIds,['NV03','NV04']); // NV03 primary, NV04 eligible fallback
   assert.deepEqual(parseCoreUiIssue(reviewIssue({number:4565002,capability:'deep_research'})).eligibleWorkerIds,['NV04']);
   for(const worker of ['NV02','NV03','NV04'])assert.equal(roleCanPull(worker),false);
 });
