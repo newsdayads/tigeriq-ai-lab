@@ -267,6 +267,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       '../apps/tigeriq-core/work-handoff.mjs',
       '../apps/tigeriq-core/web-control-server.mjs',
       '../apps/tigeriq-core/web-control-unified.js',
+      '../apps/tigeriq-core/web-control.html',
     ];
     for (const sourcePath of outboundSourcePaths) {
       const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
