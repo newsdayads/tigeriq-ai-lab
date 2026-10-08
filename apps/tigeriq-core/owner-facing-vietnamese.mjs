@@ -90,7 +90,7 @@ const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
   [/\bsign current CI artifact\b/gi, 'ký gói CI hiện hành'],
   [/\bcurrent CI artifact\b/gi, 'gói CI hiện hành'],
   [/\bruntime apply\b/gi, 'áp dụng môi trường chạy'],
-  [/\bpublish manifest\b/gi, 'xuất bản tệp mô tả (manifest)'],
+  [/\bpublish manifest\b/gi, 'xuất bản manifest (tệp mô tả)'],
   [/\bS10 acceptance\b/gi, 'nghiệm thu S10'],
   [/\bsystem precheck\b/gi, 'tiền kiểm hệ thống'],
   [/\brequest Owner secret injection only if required\b/gi, 'chỉ yêu cầu anh Sơn nạp bí mật nếu cần'],
