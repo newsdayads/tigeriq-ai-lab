@@ -899,3 +899,129 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
     transition:none!important;
   }
 }
+
+
+/* TIGERIQ_HEALTH_LIVE_PARITY_V3: unmistakable LIVE visual parity; API Health only. */
+.api-health{
+  --health-card-working:#10d994;
+  --health-card-ready:#27c9ae;
+  --health-card-waiting:#f2b854;
+  --health-card-attention:#ff7287;
+  --health-card-idle:#6395c8;
+}
+.api-health .topbar{
+  position:relative;
+  background:linear-gradient(100deg,#102a48 0%,#0a1c32 62%,#092440 100%);
+  border-bottom:2px solid #35aaf5;
+  box-shadow:0 9px 27px rgba(0,77,141,.30);
+}
+.api-health .brand-product{
+  color:#ddf6ff;
+  background:#104269;
+  border:1px solid #4abfff;
+  box-shadow:0 0 16px rgba(50,174,255,.22);
+}
+.api-health .panel{
+  border:1px solid #27638e;
+  background:linear-gradient(160deg,#102843,#07192c 65%,#0a2036);
+  box-shadow:0 10px 30px rgba(0,0,0,.26),inset 0 1px 0 rgba(130,206,255,.06);
+}
+.api-health .panel-h{
+  position:relative;
+  background:linear-gradient(92deg,rgba(35,105,165,.34),rgba(15,46,81,.22));
+  border-bottom:1px solid #3176a8;
+  box-shadow:inset 0 -2px 0 rgba(57,166,234,.12);
+}
+.api-health .workforce-panel .panel-h{
+  background:linear-gradient(92deg,rgba(113,69,200,.27),rgba(25,53,91,.18));
+  border-bottom-color:#6e59b4;
+}
+.api-health .activity-panel .panel-h{border-bottom-color:#2e98d0}
+.api-health .alert-panel .panel-h{border-bottom-color:#b28539}
+.api-health .panel-h h2{font-weight:900;letter-spacing:.038em;text-shadow:0 0 13px rgba(92,174,255,.22)}
+.api-health .worker.employee-card{
+  --health-card-accent:var(--health-card-idle);
+  background:linear-gradient(158deg,#183651 0%,#0d2239 70%,#0a1b2f 100%);
+  border:1px solid var(--health-card-accent);
+  border-radius:11px;
+  position:relative;
+  box-shadow:0 7px 22px rgba(0,0,0,.28),0 0 0 1px rgba(70,165,248,.06);
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.api-health .worker.employee-card.state-working{--health-card-accent:var(--health-card-working);background:linear-gradient(145deg,#144339,#0c2b34 55%,#0b1e32)}
+.api-health .worker.employee-card.state-ready{--health-card-accent:var(--health-card-ready)}
+.api-health .worker.employee-card.state-waiting{--health-card-accent:var(--health-card-waiting)}
+.api-health .worker.employee-card.state-attention{--health-card-accent:var(--health-card-attention)}
+.api-health .worker.employee-card.state-unknown{--health-card-accent:#8399b2}
+.api-health .worker.employee-card::before{
+  content:"";
+  position:absolute;
+  top:0;left:8px;right:8px;height:3px;
+  background:var(--health-card-accent);
+  border-radius:0 0 6px 6px;
+  box-shadow:0 0 12px var(--health-card-accent);
+  pointer-events:none;
+  opacity:.92;
+}
+.api-health .worker.employee-card .employee-id{
+  color:#ebd4ff;
+  background:#3c2958;
+  border:1px solid #815bb4;
+  text-shadow:0 1px 3px rgba(0,0,0,.45);
+}
+.api-health .worker.employee-card .employee-name{color:#f5faff;font-weight:900}
+.api-health .worker.employee-card .employee-task{color:#b9dff9}
+.api-health .worker.employee-card.state-working .employee-state{
+  color:#9cf8ca;border-color:var(--health-card-working);
+  background:rgba(16,185,129,.18);
+}
+.api-health .worker.employee-card.state-working .employee-live-dot{
+  background:var(--health-card-working);
+  box-shadow:0 0 8px var(--health-card-working);
+}
+.api-health .worker.employee-card:hover,.api-health .worker.employee-card:focus-visible{
+  transform:translateY(-2px);
+  box-shadow:0 15px 28px rgba(0,0,0,.34),0 0 20px rgba(64,158,235,.16);
+}
+.api-health .work-row{
+  --health-work-accent:#8096ad;
+  position:relative;
+  border:1px solid var(--health-work-accent);
+  background:linear-gradient(160deg,#183451,#0a1f35 70%,#09192b);
+  box-shadow:0 7px 25px rgba(0,0,0,.25);
+  transition:transform .16s ease,box-shadow .16s ease;
+}
+.api-health .work-row.status-working{--health-work-accent:#10d994}
+.api-health .work-row.status-review,.api-health .work-row.status-waiting,.api-health .work-row.status-verify{--health-work-accent:#f2b854}
+.api-health .work-row.status-queued{--health-work-accent:#5aaeff}
+.api-health .work-row.status-blocked,.api-health .work-row.status-owner_gate{--health-work-accent:#ff7287}
+.api-health .work-row.status-done{--health-work-accent:#4cd9ca}
+.api-health .work-row::before{
+  display:block;
+  content:"";
+  position:absolute;
+  top:0;left:0;right:0;bottom:auto;
+  width:auto;height:3px;
+  background:var(--health-work-accent);
+  opacity:.94;
+  box-shadow:0 0 9px var(--health-work-accent);
+  pointer-events:none;
+}
+.api-health .work-row .work-title{font-weight:900;text-shadow:0 1px 2px rgba(0,0,0,.28)}
+.api-health .work-row:hover,.api-health .work-row:focus-visible{
+  transform:translateY(-2px);
+  box-shadow:0 15px 30px rgba(0,0,0,.34),0 0 20px rgba(71,164,232,.12);
+}
+.api-health .wo-filter.on,.api-health .filter.on{box-shadow:0 0 0 1px rgba(84,173,243,.19),0 0 13px rgba(44,168,245,.12)}
+@media(prefers-reduced-motion:reduce){
+  .api-health .worker.employee-card,.api-health .work-row,.api-health .panel{
+    transition:none!important;
+  }
+  .api-health .worker.employee-card:hover,.api-health .worker.employee-card:focus-visible,
+  .api-health .work-row:hover,.api-health .work-row:focus-visible{
+    transform:none!important;
+  }
+  .api-health .worker.employee-card.state-working,.api-health .work-row.status-working{
+    animation:none!important;
+  }
+}
