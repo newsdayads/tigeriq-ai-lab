@@ -79,6 +79,14 @@ public final class ChatGptB1Policy {
             && stableMs >= 1200L;
     }
 
+    /**
+     * Permit at most one durable send attempt for each cycle. This gate is
+     * evaluated before dispatching the irreversible accessibility click.
+     */
+    public static boolean canClaimSendAttempt(String state, int cycle, int sentCycle) {
+        return "INPUT_READY".equals(state) && cycle > 0 && sentCycle != cycle;
+    }
+
     public static boolean projectBindTimedOut(long startedElapsedMs, long nowElapsedMs) {
         return !projectBindElapsedAnchorInvalid(startedElapsedMs, nowElapsedMs)
             && nowElapsedMs - startedElapsedMs >= PROJECT_BIND_TIMEOUT_MS;
