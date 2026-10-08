@@ -93,6 +93,22 @@ describe('GitHub Core intake guardrails',()=>{
       number:2949,priority:'P2',route:'CODING',
       requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',capability:'reasoning',
     });
+    // Canonical #2949 has a current Owner P2 override followed by historical
+    // P0/queue-excluded records. Intake must use the first current contract
+    // without relabeling other Android work or accepting the historical P0.
+    const historicalBody=body+[
+      '',
+      '--- HISTORICAL ONLY ---',
+      'PRIORITY=P0',
+      'AUTO_QUEUE=EXCLUDED_P0_OWNER_DIRECT',
+      'CURRENT_STATE=WAIT_PIN_PR_GATES_AND_REVIEW',
+    ].join('\\n');
+    const canonicalHistory={...issue,body:historicalBody};
+    expect(safeAutoWorkAdmission(canonicalHistory)).toMatchObject({eligible:true});
+    expect(parseExecutableIssue(canonicalHistory)).toMatchObject({
+      number:2949,priority:'P2',requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',
+    });
+    expect(parseExecutableIssue({...canonicalHistory,number:3900})).toBe(null);
     // Core's acceptance is a reasoning handoff, not proof that Coding Lane
     // directly accepted the physical master. Never invent credentials/browser
     // flags simply to force direct intake for a device workflow.
