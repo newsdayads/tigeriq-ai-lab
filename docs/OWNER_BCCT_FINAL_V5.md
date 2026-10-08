@@ -43,3 +43,12 @@ SOURCE_OF_TRUTH=GitHub main Loader + Interaction Policy #504 + this specificatio
 - CI và Queue Hygiene PASS, main readback PASS.
 - Nghiệm thu thực tế một CHAT MỚI với lệnh `bcct` là cổng riêng, CHƯA PASS nếu chưa có test trực tiếp; không đánh tráo source merge với runtime enforcement.
 STATE=BCCT_FINAL_V5_CANONICAL_SPEC
+
+## OWNER FINAL SCREENSHOT DISPLAY LOCK
+- Strictly match the Owner-approved compact dashboard screenshot: single-line heading, narrow RDC control directly beneath, single-line status metrics, compact clickable task rows, collapsed completed section, and three concise bottom sections.
+- Preserve colored vector icons and semantic status colors. Avoid giant metric cards or long Markdown prose.
+- Keep uppercase section labels and action buttons. Default all task details and RDC details closed; expand only when clicked.
+- Each task must retain filter, progress, blocker, evidence, open issue, and read-only refresh actions.
+- Derive tasks, completion states and account quotas from freshly checked sources, never screenshot constants.
+- This source policy cannot override ChatGPT native rendering or force preexisting sessions to adopt it.
+STATE=OWNER_FINAL_SCREENSHOT_LOCK
