@@ -636,6 +636,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     const retryDispatched=await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n);
     const recoveryHistory=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
     const retryEpoch=codingRetryEpochState(retryDispatched,recoveryHistory,id);
+    // A malformed/cyclic/duplicate retry journal is not a valid recovery signal.
+    // Failing only the budget count closed would still enter the recovery branch
+    // below when main/source changes, and silently re-dispatch corrupt history.
+    if(retryEpoch.reason!=='CURRENT_OBJECTIVE_EPOCH'){
+      await finalize('RETRY_HISTORY_INVALID',{terminalReason:retryEpoch.reason});
+      continue;
+    }
     const retryCount=retryEpoch.retryCount;
     if(retryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
