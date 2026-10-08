@@ -213,6 +213,13 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('function healthWorkIcon(status)');
     expect(dashboard).toContain('function openWorkDetail(row,trigger)');
     expect(shared).toContain('TIGERIQ_HEALTH_WORKLIST_LIVE_PARITY_P0');
+    expect(shared).toContain('TIGERIQ_HEALTH_WORKLIST_COMPACT_P0');
+    expect(shared).toContain('grid-auto-rows:max-content!important');
+    expect(shared).toContain('align-items:start!important');
+    expect(shared).toContain('.health-live-work-card .work-progress-bottom{');
+    expect(shared).toContain('margin-top:8px!important');
+    expect(shared).toContain('min-height:0!important');
+
     expect(shared).toContain('grid-template-columns:repeat(5,minmax(0,1fr))!important');
     expect(shared).toContain('.api-health .work-panel .health-live-work-card>.work-id');
     expect(shared).toContain('.api-health .work-panel .health-live-work-card .work-main');
