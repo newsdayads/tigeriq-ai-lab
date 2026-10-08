@@ -166,7 +166,7 @@ test('P0 workforce cards use 3 / 2 / 1 columns; show job id directly and no over
 test('P0 5-second workforce refresh does not rebuild unrelated work cards or unchanged employee DOM',async({page})=>{
   const at=new Date().toISOString();
   const employee={employeeId:'NV20',label:'NVIDIA NIM',state:'working',currentJobId:'GH-201',job:'JOB đầu tiên',heartbeatAt:at};
-  let workforce={ok:true,liveConnected:true,generatedAt:at,workers:[employee]};
+  let workforce:Record<string,unknown>={ok:true,liveConnected:true,generatedAt:at,workers:[employee]};
   let fullCalls=0,workforceCalls=0;
   await page.route('https://tigeriq.test/**',async(route:Route)=>{
     const url=route.request().url();
@@ -192,27 +192,27 @@ test('P0 5-second workforce refresh does not rebuild unrelated work cards or unc
   });
   expect(before.active).toBe('NV20');
   workforce={...workforce,workers:[{...employee,job:'JOB đã đổi',currentJobId:'GH-202'}]};
-  await page.evaluate(()=>loadWorkforce());
+  await page.evaluate(()=>(window as unknown as {loadWorkforce:()=>Promise<void>}).loadWorkforce());
   await expect(page.locator('.live-worker-card .live-worker-code')).toHaveText('GH-202');
   await expect(page.locator('.live-worker-card')).toHaveAttribute('data-dom-identity','kept');
   await expect(page.locator('.work-row[data-work-number="111"]')).toHaveAttribute('data-work-identity','kept');
   expect(fullCalls).toBe(1);
   expect(workforceCalls).toBeGreaterThanOrEqual(2);
   workforce={...workforce,workers:[]};
-  await page.evaluate(()=>loadWorkforce());
+  await page.evaluate(()=>(window as unknown as {loadWorkforce:()=>Promise<void>}).loadWorkforce());
   await expect(page.locator('.live-worker-card')).toHaveCount(0);
 });
 
 test('P0 independent PC01 workforce failure clears active cards, without converting jobs into DONE',async({page})=>{
   const at=new Date().toISOString();
-  let workforce={ok:true,liveConnected:true,generatedAt:at,workers:[
+  let workforce:Record<string,unknown>={ok:true,liveConnected:true,generatedAt:at,workers:[
     {employeeId:'NV10',label:'Ollama',state:'working',job:'Đang rà soát',heartbeatAt:at,currentJobId:'GH-4242'}
   ]};
   await routeTiger(page,{...snapshot,generatedAt:at},()=>workforce);
   await page.goto('https://tigeriq.test/command-center');
   await expect(page.locator('.live-worker-card')).toHaveCount(1);
   workforce={ok:true,liveConnected:false,staleAll:true,generatedAt:at,workers:workforce.workers};
-  await page.evaluate(()=>loadWorkforce());
+  await page.evaluate(()=>(window as unknown as {loadWorkforce:()=>Promise<void>}).loadWorkforce());
   await expect(page.locator('.live-worker-card')).toHaveCount(0);
   await expect(page.locator('#liveWorkers')).toContainText('CHƯA XÁC MINH');
   await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
