@@ -144,6 +144,14 @@ describe('GitHub Core intake guardrails',()=>{
       number:2949,priority:'P2',route:'CODING',
       requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',capability:'reasoning',
     });
+    // The Owner's Android P2 exception must not bypass the terminal-state
+    // admission fence integrated from the existing Core work #4576.
+    for(const terminalState of ['DONE_VERIFIED','FAILED_RETRY_EXHAUSTED','CANCELLED','CLOSED']){
+      const ended={...issue,body:body.replace('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION','CURRENT_STATE='+terminalState)};
+      expect(androidProductAutoExecutionExclusion(ended)).toBe('');
+      expect(safeAutoWorkAdmission(ended)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(ended)).toBeNull();
+    }
     // Canonical #2949 has a current Owner P2 override followed by historical
     // P0/queue-excluded records. Intake must use the first current contract
     // without relabeling other Android work or accepting the historical P0.
