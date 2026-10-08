@@ -756,7 +756,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
-  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
+  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Mở TigerIQ với nội dung trao đổi; có sao chép dự phòng">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
 <script>
 const $=id=>document.getElementById(id);
@@ -1872,7 +1872,7 @@ function openChatGptHandoff(url,prompt){
 $('drawerAskVy').addEventListener('click',()=>{
   if(!drawerRow)return;
   const prompt=buildVyHandoffPrompt(drawerRow);
-  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL,prompt);
+  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL+'?prompt='+encodeURIComponent(prompt),prompt);
 });
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
