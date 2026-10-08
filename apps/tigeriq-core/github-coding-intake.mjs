@@ -17,11 +17,16 @@ const DEFAULT_CONCURRENCY_CAP=3;
 const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
+function canonicalCodingHeader(body){
+  // Only the top-level header defines the currently executable contract.
+  // A flag found in later markdown evidence/history does not authorize work.
+  const text=String(body||'');
+  const section=text.search(/^ {0,3}#{1,6}[ \t]+\S/m);
+  return section>=0?text.slice(0,section):text;
+}
 function currentCodingValue(body,key){
-  // The first anchored header is authoritative; later historical headers
-  // must never grant execution permission denied by the current contract.
   const escaped=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  return String(String(body||'').match(new RegExp(`^${escaped}=(.*)$`,'m'))?.[1]||'').trim();
+  return String(canonicalCodingHeader(body).match(new RegExp(`^${escaped}=(.*)$`,'m'))?.[1]||'').trim();
 }
 function exactFlag(body,key,value='true'){
   return currentCodingValue(body,key)===value;
@@ -133,8 +138,9 @@ export function codingScopesOverlap(a,b){
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
+  const header=canonicalCodingHeader(body);
   if(chatMutationOwnerPlan(body,issue.title).owner==='VY')return null;
-  if(isOwnerOnlyP0(body,issue.title)||backlogOwnerControlled(body))return null;
+  if(isOwnerOnlyP0(header,issue.title)||backlogOwnerControlled(header))return null;
   // Closed/terminal canonical work and explicit current queue exclusions must
   // not be revived by the presence of historical executable=true flags.
   const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
@@ -151,7 +157,7 @@ export function parseCodingIssue(issue){
   if(!isActiveExecutionSpec(body))return null;
   const classification=classifyWorkOrder(body);
   if(classification.route!=='CODING')return null;
-  const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(body,'P3');
+  const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(header,'P3');
   const scopeLease=parseCodingScope(body);
   const controlRepair=controlPlaneRepairIntent(body);
   const appChromeLocalOnly=/\[APP-CHROME\]/i.test(String(issue.title||''))
