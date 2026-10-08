@@ -14,6 +14,7 @@ ZERO_COST=true
 NO_PC01_SHELL=true
 NO_PAID_COST=true
 NO_CREDENTIAL_CHANGE=true
+NO_SECURITY_BOUNDARY_CHANGE=true
 NO_DESTRUCTIVE=true
 NO_PRODUCTION_RELEASE=true
 NO_BROWSER_AUTH=true
@@ -131,10 +132,21 @@ describe('GitHub coding intake guard',()=>{
   it('accepts a complete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE))?.number).toBe(777);});
   it('rejects an incomplete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE.replace('## DEPENDENCIES','## DEPENDENCIES_MISSING')))).toBeNull();});
   it('fails closed when a required guard is missing',()=>{expect(parseCodingIssue(issue(SAFE.replace('NO_DIRECT_MAIN=true','')))).toBeNull();});
+  it('requires the current coding security-boundary guard, never historical approval',()=>{
+    expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);
+    for(const current of [
+      SAFE.replace('NO_SECURITY_BOUNDARY_CHANGE=true',''),
+      SAFE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false'),
+    ]){
+      expect(parseCodingIssue(issue(current))).toBeNull();
+      expect(parseCodingIssue(issue(current+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=true'))).toBeNull();
+    }
+    expect(parseCodingIssue(issue(SAFE+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=false'))?.number).toBe(777);
+  });
   it('honors current coding contract flags over historical grants and denies terminal owner holds',()=>{
     for(const key of [
       'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
-      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
       'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
     ]){
       const value=key==='OWNER_POLICY'?'MANUAL':'false';
@@ -148,7 +160,6 @@ describe('GitHub coding intake guard',()=>{
       'CURRENT_STATE=NOT_PLANNED','CURRENT_STATE=SUPERSEDED',
       'STATE=SUPERSEDED','SUPERSEDED_BY=#9999',
       'OWNER_HOLD=true','OWNER_CONTROLLED=true',
-      'NO_SECURITY_BOUNDARY_CHANGE=false',
     ]){
       expect(parseCodingIssue(issue(`${SAFE}\n${extra}\n## HISTORICAL\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\nOWNER_HOLD=false\nNO_SECURITY_BOUNDARY_CHANGE=true`))).toBeNull();
     }
@@ -182,7 +193,7 @@ describe('GitHub coding intake guard',()=>{
   it('never accepts mandatory flags or owner permissions found only in historical sections',()=>{
     for(const key of [
       'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
-      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
       'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
     ]){
       const trueValue=key==='OWNER_POLICY'?'AUTO':'true';
