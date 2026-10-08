@@ -569,6 +569,9 @@ export function androidProductAutoExecutionExclusion(issue){
     && bodyValue(body,'NO_RDC').toLowerCase()==='true'
     && bodyValue(body,'NO_CODEX').toLowerCase()==='true'
     && bodyValue(body,'NO_PC01_SHELL').toLowerCase()==='true'
+    && ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+        'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
+    ].every((key)=>bodyValue(body,key).toLowerCase()==='true')
     && bodyValue(body,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
