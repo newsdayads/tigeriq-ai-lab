@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,androidProductAutoExecutionExclusion,safeAutoWorkAdmission,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -88,7 +89,19 @@ describe('GitHub Core intake guardrails',()=>{
     const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
     expect(androidProductAutoExecutionExclusion(issue)).toBe('');
     expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
-    expect(parseExecutableIssue(issue)).toMatchObject({number:2949,priority:'P2',route:'CODING'});
+    expect(parseExecutableIssue(issue)).toMatchObject({
+      number:2949,priority:'P2',route:'CODING',
+      requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',capability:'reasoning',
+    });
+    // Core's acceptance is a reasoning handoff, not proof that Coding Lane
+    // directly accepted the physical master. Never invent credentials/browser
+    // flags simply to force direct intake for a device workflow.
+    expect(parseCodingIssue(issue)).toBe(null);
+    expect(parseCodingIssue({
+      ...issue,body:body+'\nAUTONOMOUS_CODE=true\nZERO_COST=true',
+    })).toBe(null);
+    expect(parseExecutableIssue({...issue,number:3900})).toBe(null);
+    expect(parseExecutableIssue({...issue,title:'[P0][ANDROID][NV102] S10 worker'})).toBe(null);
     expect(androidProductAutoExecutionExclusion({...issue,number:3900})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
     expect(androidProductAutoExecutionExclusion({...issue,title:'[P0][ANDROID][NV102] S10 worker'})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
     expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('PRIORITY=P2','PRIORITY=P0')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
