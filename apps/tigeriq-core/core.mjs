@@ -28,7 +28,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
@@ -2243,8 +2243,25 @@ async function managerTick() {
         const summary=completionGate.reason==='final_review_pending'
           ? 'completion pending trusted independent final review for current source revision'
           : 'completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
-        await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
-        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason,managerCyclesReset:true});
+        const wait=managerAcceptancePausePlan({
+          source:o.metadata?.source,
+          sourceRevision:o.metadata?.sourceRevision,
+          gate:completionGate,
+        });
+        if(wait.park){
+          // Active for evidence reconciliation, but not runnable by AI Manager
+          // until GitHub intake sees accepted proof or a new source revision.
+          await pool.query(
+            "update tigeriq_objectives set summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1",
+            [o.id,summary,JSON.stringify(wait.revision)],
+          );
+          await event('OBJECTIVE_COMPLETION_WAITING_EVIDENCE',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:wait.revision,reason:wait.reason});
+        }else{
+          // Non-GitHub/missing-revision objectives have no proven watcher.
+          // Retain the bounded manager stall budget rather than reset it.
+          await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
+          await event('OBJECTIVE_COMPLETION_RETRY_BOUNDED',{objectiveId:o.id,phaseIndex:currentPhase,reason:completionGate.reason});
+        }
         return;
       }
       await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
