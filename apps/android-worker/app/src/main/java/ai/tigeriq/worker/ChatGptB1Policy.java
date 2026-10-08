@@ -91,6 +91,44 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Expose only a bounded, fresh diagnostic mode. Accessibility text and
+     * raw node lineage can include user content and MUST NOT leave the device.
+     * Older modes left in SharedPreferences by another run are not evidence.
+     */
+    public static String safeProjectGateModeForEvidence(
+        String mode, long observedAt, long runStartedAt
+    ) {
+        if (observedAt <= 0L || runStartedAt <= 0L || observedAt < runStartedAt) {
+            return "UNAVAILABLE";
+        }
+        if (mode == null) return "UNAVAILABLE";
+        switch (mode) {
+            case "DIRECT_LINEAGE":
+            case "LOCAL_CLICKABLE_SCOPE":
+            case "CLICK_REJECTED":
+            case "AUTO_PROJECT_CLICK":
+            case "AUTO_MENU_CLICK":
+            case "AUTO_MENU_CLICK_FAILED":
+            case "AUTO_NAV_WAIT":
+            case "CONTEXT_WAIT":
+            case "CONTEXT_CANDIDATE":
+            case "STABLE_PROJECT_CONTEXT":
+            case "STANDALONE_WAIT_NEW_CHAT":
+            case "STANDALONE_NEW_CHAT_CLICK":
+            case "STANDALONE_NEW_CHAT_CLICK_FAILED":
+            case "STANDALONE_WAIT_COMPOSER":
+            case "STANDALONE_FALLBACK_READY":
+                return mode;
+            default:
+                return "UNAVAILABLE";
+        }
+    }
+
+    public static boolean projectClickObservedInRun(long lastClickAt, long runStartedAt) {
+        return runStartedAt > 0L && lastClickAt >= runStartedAt;
+    }
+
+    /**
      * A Project-label click is only navigation evidence, never proof of a ready
      * Project conversation. Require a stable Project title outside clickable
      * navigation and a real composer before accepting the Project binding.
