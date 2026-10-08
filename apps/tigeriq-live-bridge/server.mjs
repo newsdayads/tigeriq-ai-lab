@@ -85,13 +85,32 @@ async function snapshot(){
   let uiController=null,uiError=null;try{uiController=await getJson(UI_CONTROLLER,1800)}catch(e){uiError=String(e?.message||e)}
   const uiOk=!!uiController||await health(UI_HEALTH);
   const jobs=[...(Array.isArray(coding?.jobs)?coding.jobs:[]),...(Array.isArray(core?.jobs)?core.jobs:[])];
+  // Real Core UI assignment receipts are separate from verified worker heartbeat.
+  // A queued assignment must never be displayed as a running AI employee.
+  const coreUiAssignments=[];
+  const seenUiIssues=new Set();
+  for(const job of (Array.isArray(core?.jobs)?core.jobs:[])){
+    const match=String(job?.id||'').match(/^GH-(\d+)-R[A-Za-z0-9]+$/);
+    const issueNumber=Number(match?.[1]||0);
+    const status=String(job?.status||'').toLowerCase();
+    const employeeId=String(job?.employee_id||'').toUpperCase();
+    if(job?.kind!=='ui'||!issueNumber||seenUiIssues.has(issueNumber)||
+      !['NV03','NV04'].includes(employeeId)||
+      !['ui_assigned','ui_running','done','failed'].includes(status))continue;
+    seenUiIssues.add(issueNumber);
+    coreUiAssignments.push({
+      issueNumber,jobId:String(job.id),employeeId,status,
+      startedAt:job.started_at||null,completedAt:job.completed_at||null,
+    });
+    if(coreUiAssignments.length>=40)break;
+  }
   const activeByEmployee=new Map();
   for(const j of jobs){if(!j?.employee_id||!isActiveStatus(j.status))continue;const old=activeByEmployee.get(j.employee_id);const jt=Date.parse(j.started_at||j.updated_at||j.created_at||0)||0;const ot=Date.parse(old?.started_at||old?.updated_at||old?.created_at||0)||0;if(!old||jt>=ot)activeByEmployee.set(j.employee_id,j)}
   const workers=[];for(const r of (Array.isArray(core?.resources)?core.resources:[])){if(r?.employee_id)workers.push(normResource(r,activeByEmployee.get(r.employee_id)))}
   for(const id of ['NV02','NV03','NV04'])workers.push(uiWorker(id,uiController,uiOk));
   const rank={working:0,waiting:1,blocked:2,unknown:3,idle:4,paused:5};workers.sort((a,b)=>(rank[a.state]??9)-(rank[b.state]??9)||a.employeeId.localeCompare(b.employeeId));
   const summary={working:workers.filter(w=>w.state==='working').length,waiting:workers.filter(w=>w.state==='waiting').length,blocked:workers.filter(w=>w.state==='blocked').length,idle:workers.filter(w=>w.state==='idle').length,unknown:workers.filter(w=>w.state==='unknown').length,total:workers.length};
-  return {ok:true,generatedAt,refreshSeconds:5,authority:'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers};
+  return {ok:true,generatedAt,refreshSeconds:5,authority:'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments};
 }
 async function readRaw(req,max=512*1024){
   const chunks=[];let size=0;
