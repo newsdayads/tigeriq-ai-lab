@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "strict-count-parser",
+      "title": "Sửa parser số đếm nghiêm ngặt",
+      "prompt": "Sửa src/parse-count.mjs để chỉ chấp nhận chuỗi số nguyên không âm ở dạng thập phân thuần. '12x', '3.5', số âm, rỗng phải trả null. Không sửa tests. Chạy node --test trước khi kết thúc.",
+      "files": {
+        "src/parse-count.mjs": "export function parseCount(value) {\n  const parsed = Number.parseInt(String(value ?? ''), 10);\n  if (!Number.isFinite(parsed) || parsed < 0) return null;\n  return parsed;\n}\n",
+        "tests/parse-count.test.mjs": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { parseCount } from '../src/parse-count.mjs';\n\ntest('accepts canonical non-negative integers', () => {\n  assert.equal(parseCount('0'), 0);\n  assert.equal(parseCount('12'), 12);\n  assert.equal(parseCount(7), 7);\n});\n\ntest('rejects partial, decimal, negative and empty values', () => {\n  assert.equal(parseCount('12x'), null);\n  assert.equal(parseCount('3.5'), null);\n  assert.equal(parseCount('-1'), null);\n  assert.equal(parseCount(''), null);\n});\n"
+      }
+    },
+    {
+      "id": "bounded-tag-normalizer",
+      "title": "Bổ sung validation danh sách tag có giới hạn",
+      "prompt": "Sửa src/normalize-tags.mjs: input phải là mảng; chuẩn hóa trim+lowercase; bỏ rỗng; dedupe giữ thứ tự; tối đa 8 tag unique; mỗi tag tối đa 24 ký tự. Vượt giới hạn phải throw TypeError. Không sửa tests. Chạy node --test trước khi kết thúc.",
+      "files": {
+        "src/normalize-tags.mjs": "export function normalizeTags(input) {\n  if (!Array.isArray(input)) throw new TypeError('tags must be an array');\n  return input\n    .map((item) => String(item ?? '').trim().toLowerCase())\n    .filter(Boolean);\n}\n",
+        "tests/normalize-tags.test.mjs": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { normalizeTags } from '../src/normalize-tags.mjs';\n\ntest('normalizes and deduplicates while preserving order', () => {\n  assert.deepEqual(normalizeTags([' Core ', 'core', '', 'News', 'AI']), ['core', 'news', 'ai']);\n});\n\ntest('rejects invalid shape and bounded-limit violations', () => {\n  assert.throws(() => normalizeTags('core'), TypeError);\n  assert.throws(() => normalizeTags(Array.from({ length: 9 }, (_, i) => 't' + i)), TypeError);\n  assert.throws(() => normalizeTags(['x'.repeat(25)]), TypeError);\n});\n"
+      }
+    },
+    {
+      "id": "shared-metric-sum-refactor",
+      "title": "Gom logic tính tổng metric mà không đổi hành vi",
+      "prompt": "Refactor src/metrics.mjs để sumLatencyMs và sumTokens dùng chung một helper tên sumFinite. Export helper đó để test structural acceptance xác minh. Giữ nguyên hành vi: chỉ cộng giá trị number hữu hạn, bỏ qua phần tử khác. Không sửa tests. Chạy node --test trước khi kết thúc.",
+      "files": {
+        "src/metrics.mjs": "export function sumLatencyMs(rows) {\n  return (Array.isArray(rows) ? rows : [])\n    .map((row) => row?.latencyMs)\n    .filter((value) => typeof value === 'number' && Number.isFinite(value))\n    .reduce((sum, value) => sum + value, 0);\n}\n\nexport function sumTokens(rows) {\n  return (Array.isArray(rows) ? rows : [])\n    .map((row) => row?.tokens)\n    .filter((value) => typeof value === 'number' && Number.isFinite(value))\n    .reduce((sum, value) => sum + value, 0);\n}\n",
+        "tests/metrics.test.mjs": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport * as metrics from '../src/metrics.mjs';\n\ntest('preserves latency and token behavior', () => {\n  const rows = [\n    { latencyMs: 10, tokens: 100 },\n    { latencyMs: Number.NaN, tokens: 50 },\n    { latencyMs: 5, tokens: 'bad' },\n    null,\n  ];\n  assert.equal(metrics.sumLatencyMs(rows), 15);\n  assert.equal(metrics.sumTokens(rows), 150);\n});\n\ntest('exposes one shared finite-number helper', () => {\n  assert.equal(typeof metrics.sumFinite, 'function');\n  assert.equal(metrics.sumFinite([{ x: 2 }, { x: Infinity }, { x: 3 }], 'x'), 5);\n});\n"
+      }
+    }
+  ]
+}
