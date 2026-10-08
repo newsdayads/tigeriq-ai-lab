@@ -115,7 +115,11 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parseExecutableIssue({...canonicalHistory,number:3900})).toBe(null);
     // A current explicit false cannot be overridden by historical true
     // anywhere later in a long canonical Work Order document.
-    for(const key of ['OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL']){
+    for(const key of [
+      'OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL',
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
       const currentDenied=body.replace(key+'=true',key+'=false');
       const historyOverride=currentDenied+['','--- HISTORICAL ONLY ---',key+'=true'].join('\n');
       const conflicting={...issue,body:historyOverride};
