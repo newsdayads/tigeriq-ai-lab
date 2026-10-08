@@ -38,6 +38,22 @@ public final class ChatGptB1Policy {
             && nowElapsedMs - startedElapsedMs < PROJECT_BIND_TIMEOUT_MS;
     }
 
+    /**
+     * Check LIVE context again before touching a composer or Send control.
+     * A prior persisted Project binding is not proof that the current chat
+     * still belongs to the pinned Project. Manual B1 flows are unchanged.
+     */
+    public static boolean canMutateComposerInLiveProjectContext(
+        String taskId, String projectMode, boolean projectBound,
+        boolean liveProjectTitle, boolean composerReady
+    ) {
+        return (taskId == null || taskId.isEmpty())
+            || (projectBound
+                && "PROJECT".equals(projectMode)
+                && liveProjectTitle
+                && composerReady);
+    }
+
     /** A Core-leased task pinned to the TigerIQ Project must never fall back to standalone chat. */
     public static boolean canUseStandaloneFallbackForTask(String taskId) {
         return taskId == null || taskId.isEmpty();
