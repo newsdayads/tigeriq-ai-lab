@@ -2410,6 +2410,8 @@ async function refreshApiHealthLiveWork(){
     if(upstream?.ok!==true||upstream?.liveConnected!==true||upstream?.staleAll||upstream?.workProjection?.stale
       ||!Array.isArray(upstream?.openWork)||!Number.isFinite(age)||age<0||age>90000)
       throw Error('LIVE_VERIFICATION_NOT_FRESH');
+    const previousTime=Date.parse(healthLiveWorkCache.result?.projection?.generatedAt||'');
+    if(Number.isFinite(previousTime)&&Date.parse(upstream.generatedAt)<previousTime)return;
     healthLiveWorkCache.at=Date.now();
     healthLiveWorkCache.result={ok:true,projection:{
       openWork:upstream.openWork,
