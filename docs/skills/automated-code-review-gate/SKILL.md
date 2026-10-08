@@ -5,48 +5,44 @@
 - Version: 1.1.0
 - State: ACTIVE
 - Target: engineering-review
-- Provenance: registry.yaml; review evidence #1874/#2194
+- Provenance: registry.yaml; #1874/#2194; #4578 (2026-10-08 upstream delta)
 
 ## Trigger
-Use before merging repository/source changes when independent review materially reduces correctness, scope, security, or regression risk.
+Pre-merge source review where an independent assessment materially reduces correctness, scope, security or regression risk.
 
 ## Input
-- Canonical Work Order and acceptance.
-- Exact PR head SHA and diff.
-- Required checks/gates.
-- Implementer identity and prohibited mutation boundaries.
+- Work Order/SPEC and criterion list; exact PR head/diff.
+- Repository standards/ADR, checks, author and allowed mutation scope.
+- Evidence suitable for the actual claim and target surface.
 
 ## Steps
-1. Pin review to the exact PR head, diff, originating Work Order/SPEC, and available repository conventions/architecture decisions.
-2. Ensure reviewer independence when required and keep implementation ownership distinct.
-3. Evaluate two explicit axes: **SPEC** (each requested acceptance criterion versus the implementation) and **STANDARDS** (repository-specific correctness, safety, maintainability and documented conventions). Avoid failing work merely for advisory code-style heuristics unless a real requirement is violated.
-4. Build a scoped claim-to-evidence matrix for material completion claims. For UI claims, screenshots establish appearance but not persistence or functional behavior: require interactions, assertions, traces or durable outcome receipts as applicable. For non-UI work, use relevant programmatic/runtime evidence rather than demanding screenshots.
-5. Check allowed paths, prohibited mutations, exact-head checks, and evidence freshness; identify untested or unavailable surfaces honestly. Return PASS, CHANGES_REQUIRED or BLOCKED with precise criterion/axis/findings and references.
-6. Re-review after a head change; never reuse stale approval or infer a successful production rollout from source-only verification.
+1. Pin exact head, originating SPEC and repository conventions; reject an empty/stale target.
+2. Ensure independent reviewer when required; never approve one's own implementation.
+3. Assess separate axes: **SPEC** (acceptance met by actual changes) and **STANDARDS** (repository correctness, safety and conventions). Distinguish blocking defects from optional style advice.
+4. Map each material completion claim to evidence on the same revision. For UI: screenshots show appearance, not interaction/persistence; require relevant assertions, traces or durable outcome receipts. For non-UI: do not demand screenshots.
+5. Validate allowlisted scope, checks, evidence freshness and untested cases. Return PASS, CHANGES_REQUIRED or BLOCKED with exact axis, criterion and proof.
+6. Re-review on head change; source-level checks never imply successful live release.
 
 ## Tools / Output
-Use existing GitHub PR/diff/check/review surfaces. Output a durable review record containing TARGET_HEAD, decision, check evidence, and precise blockers/required changes.
+Existing GitHub diff/check/review only; durable target head, SPEC/STANDARDS findings, claim↔evidence mapping, uncovered scope and bounded decision.
 
 ## Acceptance
-- Stale-head review never satisfies the gate.
-- Required independent reviewer is distinct from implementer.
-- Scope and required checks are verified before PASS.
-- Material claims map to current, suitable evidence; a screenshot alone cannot prove behavior or persistence.
-- Separate actual defects from advisory improvements; zero reproducible defects is valid for the tested scope, but untested scope must be disclosed.
-- PASS never overrides explicit Owner/hard gates.
+- PASS requires current evidence for each applicable acceptance criterion and required checks.
+- Reviewer != implementer when independence is required.
+- No stale-head review; no screenshot-only assertion of functional behavior.
+- Zero reproduced issues is valid for **tested** scope; untested scope is declared.
+- Advisory improvement cannot block absent a real requirement; no Owner gate override.
 
 ## Evidence
-- #1874 independent review of PR #1568.
-- #2194 independent review of PR #2193.
-- Existing TigerIQ branch -> PR -> exact-head checks -> independent-review flows.
-- Two-axis technique adapted from mattpocock/skills `skills/engineering/code-review/SKILL.md` @ `b0618bc436ad893b3c5e84e55fba86586d34a404` (MIT).
-- Claim/evidence separation adapted from msitarzewski/agency-agents `testing/testing-evidence-collector.md` and `testing/testing-reality-checker.md` @ `f99f6aa910a442b0197b768ce0ea7751e35e2060` (MIT). No external agent profile was installed; see learning log 2026-10-08 and #4578 - [P2][SKILLS][TÍCH HỢP] Chọn lọc Matt Pocock Skills + The Agency, loại trùng và nâng chuẩn kỹ thuật.
+- #1874 and #2194; TigerIQ exact-head review pipeline.
+- Two-axis source: `mattpocock/skills/skills/engineering/code-review/SKILL.md` @ `b0618bc436ad893b3c5e84e55fba86586d34a404` (MIT).
+- Evidence separation: `msitarzewski/agency-agents/testing/testing-evidence-collector.md` and `testing/testing-reality-checker.md` @ `f99f6aa910a442b0197b768ce0ea7751e35e2060` (MIT). External agent profiles not installed; see learning log 2026-10-08.
 
 ## Fallback
-If exact-head evidence or an independent reviewer is unavailable, keep the PR unapproved/parked and record the missing gate.
+Missing exact head, test proof or eligible independent reviewer => BLOCKED on the precise step, not fictitious PASS; other safe work may continue.
 
 ## Safety
-The reviewer does not mutate the implementation under review, self-approve when independence is required, or bypass Production/credential/security/destructive gates.
+No self-review, direct main mutation, automatic release, Codex, RDC, credentials, security change, paid/destructive action or App Chrome mutation.
 
 ## Non-goals
-This skill does not merge by itself merely because a textual review says PASS.
+No second reviewer system, Agency worker identity, universal screenshot gate or automatic FAIL regardless of evidence.
