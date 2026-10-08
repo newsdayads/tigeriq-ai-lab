@@ -1201,6 +1201,34 @@ function actionableStatus(issue, overlays = {}) {
   return 'OPEN';
 }
 
+export function checklistForIssue(issue) {
+  const body = String(issue?.body || '');
+  const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
+  const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
+    || source === 'VERIFIED' || source === 'VERIFIED_CHECKLIST';
+  const items = [];
+  let fenced = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (/^\s*(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const match = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/);
+    if (!match) continue;
+    const rawLabel = match[2].trim();
+    const attachment = rawLabel.match(/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/);
+    const href = attachment ? safeEvidenceUrl(attachment[1]) : null;
+    const title = rawLabel.replace(/\[([^\]]+)\]\(https:\/\/[^\s)]+\)/g, '$1').slice(0, 300).trim();
+    items.push({ title: title || 'Bước chưa đặt tên', done: /x/i.test(match[1]), evidenceUrl: href });
+  }
+  if (items.length < 2) return { steps: [], done: 0, total: 0, remaining: 0, verified: false };
+  return {
+    steps: items,
+    done: items.filter((item) => item.done).length,
+    total: items.length,
+    remaining: items.filter((item) => !item.done).length,
+    verified,
+  };
+}
+
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
   const normalizedStatus = String(status || 'OPEN').toUpperCase();
@@ -1225,11 +1253,10 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
     if (accepted) return accepted;
   }
 
-  const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
-  if (boxes.length >= 2) {
-    const done = boxes.filter((match) => /x/i.test(match[1])).length;
-    const percent = Math.round((done / boxes.length) * 100);
-    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', done + '/' + boxes.length + ' checklist verified');
+  const checklist = checklistForIssue(issue);
+  if (checklist.total >= 2 && checklist.verified) {
+    const percent = Math.round((checklist.done / checklist.total) * 100);
+    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', checklist.done + '/' + checklist.total + ' bước xác minh');
     if (accepted) return accepted;
   }
 
@@ -1329,6 +1356,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
+  const checklist = classification.workKind === 'WORK' ? checklistForIssue(issue) : { steps: [], done: 0, total: 0, remaining: 0, verified: false };
   const progress = classification.workKind === 'SYSTEM'
     ? { percent: null, source: 'none', detail: null }
     : progressForIssue(issue, status, checks, hasPull);
@@ -1420,6 +1448,11 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
+    progressSteps: checklist.steps,
+    progressDone: checklist.done,
+    progressTotal: checklist.total,
+    progressRemaining: checklist.remaining,
+    progressChecklistVerified: checklist.verified,
     prNumber: classification.ownerGate ? null : active?.prNumber || null,
     prUrl: classification.ownerGate ? null : active?.prUrl || null,
     checks,
