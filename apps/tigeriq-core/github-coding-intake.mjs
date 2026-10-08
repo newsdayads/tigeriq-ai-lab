@@ -139,9 +139,12 @@ export function parseCodingIssue(issue){
   // not be revived by the presence of historical executable=true flags.
   const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
   const state=currentCodingValue(body,'CURRENT_STATE').toUpperCase();
+  const legacyState=currentCodingValue(body,'STATE').toUpperCase();
   if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return null;
-  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
-    ||currentCodingValue(body,'SUPERSEDED_BY'))return null;
+  if(/^(?:SUPERSEDED|CANCELLED|CANCELED)(?:_|$)/.test(legacyState)
+    ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||currentCodingValue(body,'SUPERSEDED_BY')
+    ||currentCodingValue(body,'SUPERSEDED'))return null;
   if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
@@ -332,7 +335,16 @@ export async function relevantRecoveryMainChange(fetchImpl,owner,repo,token,from
 function issueSuperseded(issue){
   if(!issue||issue.state!=='open')return true;
   const body=String(issue.body||'');
-  return /^(?:STATE=(?:SUPERSEDED|CANCELLED)|SUPERSEDED(?:_BY)?=|TIGERIQ_EXECUTABLE=false)$/mi.test(body);
+  const legacyState=currentCodingValue(body,'STATE').toUpperCase();
+  const state=currentCodingValue(body,'CURRENT_STATE').toUpperCase();
+  const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
+  // Only the canonical first anchored value may retire currently executable
+  // work. Historical `TIGERIQ_EXECUTABLE=false` notes are not live denials.
+  return /^(?:SUPERSEDED|CANCELLED|CANCELED)(?:_|$)/.test(legacyState)
+    ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||currentCodingValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='false'
+    ||autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_')
+    ||Boolean(currentCodingValue(body,'SUPERSEDED_BY')||currentCodingValue(body,'SUPERSEDED'));
 }
 function objectiveTerminal(objective){return ['completed','blocked'].includes(String(objective?.status||'').toLowerCase())}
 function objectiveMentionsIssue(objective,n){return new RegExp(`(?:issue\\s+|#)${n}\\b`,'i').test(String(objective?.objective||''))}
