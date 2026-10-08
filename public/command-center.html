@@ -757,6 +757,37 @@ html,body,body{background:#071321!important}
 @media(max-width:430px){.drawer-actions{gap:6px!important}.drawer-actions .drawer-btn{font-size:11px!important;padding:8px 4px!important;min-height:46px!important}}
 @media(prefers-reduced-motion:reduce){.drawer-actions .drawer-btn{transition:none!important}}
 </style>
+
+<style id="tigeriq-live-semantic-status-v23">
+/* Semantic status ≠ priority: canonical colors, all filter states, no status gradient */
+.work-row.status-owner_gate{--status-color:#A78BFA}
+.work-row.status-working{--status-color:#10B981}
+.work-row.status-review{--status-color:#3B82F6}
+.work-row.status-verify{--status-color:#14B8A6}
+.work-row.status-waiting,.work-row.status-queued{--status-color:#F59E0B}
+.work-row.status-blocked{--status-color:#F43F5E}
+.work-row.status-done{--status-color:#06B6D4}
+.work-row.status-paused,.work-row.status-system,.work-row.status-open,.work-row.status-unknown,.work-row.status-goal{--status-color:#64748B}
+.drawer[data-status="paused"],.drawer[data-status="system"],.drawer[data-status="open"],.drawer[data-status="unknown"],.drawer[data-status="goal"]{--detail-color:#64748B}
+.drawer[data-status="queued"]{--detail-color:#F59E0B}
+.filter[data-filter]{--filter-accent:#94A3B8;color:var(--filter-accent)!important;border:1px solid color-mix(in srgb,var(--filter-accent) 56%,#071321)!important;background:transparent!important}
+.filter[data-filter].active{color:var(--filter-accent)!important;border-color:var(--filter-accent)!important;background:color-mix(in srgb,var(--filter-accent) 17%,#071321)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--filter-accent) 18%,transparent) inset}
+.filter[data-filter="action"]{--filter-accent:#94A3B8}
+.filter[data-filter="owner"]{--filter-accent:#A78BFA}
+.filter[data-filter="running"]{--filter-accent:#10B981}
+.filter[data-filter="review"]{--filter-accent:#3B82F6}
+.filter[data-filter="verify"]{--filter-accent:#14B8A6}
+.filter[data-filter="waiting"]{--filter-accent:#F59E0B}
+.filter[data-filter="blocked"]{--filter-accent:#F43F5E}
+.filter[data-filter="paused"]{--filter-accent:#64748B}
+.filter[data-filter="system"]{--filter-accent:#64748B}
+.filter[data-filter="done"]{--filter-accent:#06B6D4}
+.work-row .state{color:var(--status-color,#64748B)!important}
+.work-row .work-id{background:var(--status-color,#64748B)!important;color:#fff!important}
+.work-row .work-main{border-color:var(--status-color,#64748B)!important}
+.work-row .progress{color:var(--status-color,#64748B)!important}
+.filter:focus-visible,.work-row:focus-visible{outline:2px solid #E2E8F0;outline-offset:3px}
+</style>
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -788,7 +819,10 @@ html,body,body{background:#071321!important}
     <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
     <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
     <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
-    <button class="filter" data-filter="waiting" data-legacy-label="CHỜ/BLOCKED">CHỜ / BỊ CHẶN <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="verify">XÁC MINH <b id="verifyCount">0</b></button>
+    <button class="filter" data-filter="waiting">ĐANG CHỜ <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="blocked">BỊ CHẶN <b id="blockedCount">0</b></button>
+    <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
@@ -821,8 +855,9 @@ let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
 let drawerReturnFocus=null;
-const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
+const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
 function verifiedProgress(row){
@@ -840,7 +875,11 @@ function workStatus(row){
   const map={
     'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING',
     'BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN',
-    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
+    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','CHỜ ANH SƠN':'OWNER_GATE',
+    'CHỜ':'WAITING','TẠM DỪNG':'PAUSED','PAUSED':'PAUSED',
+    'ĐANG RÀ SOÁT':'REVIEW','ĐANG XÁC MINH':'VERIFY','ĐANG LÀM':'WORKING',
+    'CHƯA LÀM':'OPEN','CHƯA RÕ':'UNKNOWN','LỖI':'BLOCKED',
+    'CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
     'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE'
   };
   return map[raw]||raw;
@@ -898,8 +937,11 @@ function normalizeRows(value){
   if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
   if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
   if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
-  if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
-  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
+  if(currentFilter==='review') return openRows.filter(x=>workStatus(x)==='REVIEW');
+  if(currentFilter==='verify') return openRows.filter(x=>workStatus(x)==='VERIFY');
+  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING'].includes(workStatus(x)));
+  if(currentFilter==='blocked') return openRows.filter(x=>workStatus(x)==='BLOCKED');
+  if(currentFilter==='paused') return openRows.filter(x=>workStatus(x)==='PAUSED');
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
   return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
 }
@@ -924,8 +966,11 @@ function updateCounts(){
   $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
-  $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
-  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x))).length;
+  $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
+  $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
+  $('waitingCount').textContent=actionable.filter(x=>['QUEUED','WAITING'].includes(workStatus(x))).length;
+  $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
+  $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
@@ -1789,6 +1834,7 @@ function populateDrawer(row){
   $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('workDrawer').dataset.status=workStatus(row).toLowerCase();
+  $('workDrawer').style.setProperty('--detail-color',STATUS_COLORS[workStatus(row)]||'#64748B');
   $('drawerProgress').innerHTML=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
     :drawerProgressMarkup(row);
@@ -1846,6 +1892,7 @@ function render(){
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    el.style.setProperty('--status-color',STATUS_COLORS[status]||'#64748B');
     el.setAttribute('data-work-number',String(row.number));
     el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
