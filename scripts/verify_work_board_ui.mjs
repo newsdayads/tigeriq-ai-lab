@@ -134,7 +134,7 @@ const staleFallback = liveApi.indexOf("if (cache.value && now - cache.at < STALE
 assert.ok(liveCatch >= 0 && githubFallback > liveCatch && staleFallback > githubFallback, 'fresh GitHub fallback must run before stale response cache');
 
 // Feature gate: never infer step completion or percentages from an unverified issue.
-const { checklistForIssue, executionPlanForIssue, progressForIssue, parseOpenWorkIssue } = await import('../api/live-status.mjs');
+const { checklistForIssue, executionPlanForIssue, progressForIssue, parseOpenWorkIssue, githubMilestoneSpec, githubMilestoneChecklist } = await import('../api/live-status.mjs');
 const verifiedStepBody='PROGRESS_VERIFIED=true\n- [x] Phân tích yêu cầu\n- [x] Thiết kế phương án\n- [ ] Kiểm thử\n- [ ] Xác minh thực tế';
 const verifiedStepIssue={number:987654,title:'[P1] Kiểm thử tiến độ',body:verifiedStepBody,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/987654'};
 const list=checklistForIssue(verifiedStepIssue);
@@ -168,6 +168,32 @@ assert.equal(planRow.progressChecklistVerified,false);
 assert.equal(executionPlanForIssue({...planOnlyIssue,body:'CURRENT_STATE=WAIT_OWNER'}).steps.length,0,'Do not invent steps when GitHub lacks NEXT');
 for (const x of ['id="drawerChecklistSection"','function verifiedStepSummary(row)','function drawerChecklistMarkup(row)','progressSteps','progressRemaining','Có ','Còn ','class="drawer-checklist-step']) assert.ok(publicView.includes(x),'Checklist UI missing '+x);
 assert.match(publicView,/tigeriq-live-verified-checklist-v24/);
+// Live GitHub gates: current authoritative block only, and independent PR/run/review proof.
+const gateSha='1234567890abcdef1234567890abcdef12345678';
+const gatedIssue={number:4321,state:'open',body:'## CURRENT — authoritative\nPR_IN_PROGRESS=PR #5432\nTARGET_EXACT_HEAD='+gateSha+'\nEXACT_HEAD_CI=PASS|RUN_12345678\nEXACT_HEAD_QUEUE_HYGIENE=PASS|RUN_23456789\nREVIEW_PASS=false\nDONE=false\n\n## Old historical state\nREVIEW_PASS=true\nDONE=true'};
+const gateSpec=githubMilestoneSpec(gatedIssue);
+assert.equal(gateSpec.prNumber,5432);
+assert.equal(gateSpec.head,gateSha);
+const ghProof={
+  pr:{number:5432,head:{sha:gateSha},user:{login:'implementer'},html_url:'https://github.com/newsdayads/tigeriq-ai-lab/pull/5432',merged:false},
+  ciRun:{id:12345678,name:'CI',head_sha:gateSha,status:'completed',conclusion:'success'},
+  queueRun:{id:23456789,name:'Queue Hygiene',head_sha:gateSha,status:'completed',conclusion:'success'},
+  reviews:[{user:{login:'implementer'},state:'APPROVED',commit_id:gateSha,submitted_at:'2026-10-08T10:00:00Z'}],
+};
+const gateList=githubMilestoneChecklist(gatedIssue,gateSpec,ghProof);
+assert.deepEqual({done:gateList.done,total:gateList.total,remaining:gateList.remaining},{done:3,total:6,remaining:3});
+assert.equal(gateList.steps[3].done,false,'self-approval must never count');
+assert.equal(gateList.steps[5].done,false,'historical DONE=true must not count');
+assert.equal(githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,pr:{...ghProof.pr,head:{sha:'a'.repeat(40)}}}),null,'stale PR HEAD is rejected');
+const badCI=githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,ciRun:{...ghProof.ciRun,head_sha:'b'.repeat(40)}});
+assert.equal(badCI.done,2,'CI on another commit must not count');
+const approved=githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,reviews:[{user:{login:'real-reviewer'},state:'APPROVED',commit_id:gateSha,submitted_at:'2026-10-08T10:01:00Z'}]});
+assert.equal(approved.done,4,'only another reviewer APPROVED at target HEAD counts');
+assert.equal(githubMilestoneSpec({...gatedIssue,body:'## CURRENT\nDONE=false\n\n## OLD\nPR=PR #5432\nTARGET_HEAD='+gateSha}),null,'do not read historical PR');
+assert.equal(githubMilestoneChecklist(gatedIssue,gateSpec,{pr:null}),null,'no authenticated PR proof means no progress');
+assert.ok(publicView.includes("'github_gates_verified'"),'UI must accept verified GitHub gate source');
+assert.ok(publicView.includes('CỔNG TIẾN ĐỘ GITHUB'),'drawer must explain GitHub evidence');
+console.log('TIGERIQ_GITHUB_AUTO_PROGRESS_PASS');
 console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
