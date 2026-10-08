@@ -32,6 +32,9 @@ test('GitHub source changes resume the existing objective exactly when its revis
   assert.equal(managerAcceptanceWakePlan({
     awaitingRevision:'rev4569',sourceRevision:'',acceptanceAllowed:false,
   }).wake,false);
+  assert.deepEqual(managerAcceptanceWakePlan({
+    awaitingRevision:'rev4569',sourceRevision:'',acceptanceAllowed:true,
+  }),{wake:false,reason:'awaiting_evidence'});
 });
 
 test('final review and declared dependency gates park; unknown/unwatched sources do not park forever',()=>{
@@ -60,4 +63,18 @@ test('Core and GitHub intake wire evidence parking and atomic active-only wakeup
   assert.match(intake,/metadata=coalesce\(metadata,'\{\}'::jsonb\)-'managerAwaitingAcceptanceRevision'/);
   assert.match(intake,/where id=\$1 and status='active'/);
   assert.match(intake,/OBJECTIVE_COMPLETION_EVIDENCE_RESUMED/);
+});
+
+test('a parked objective clears exhausted manager cycle budget without losing its acceptance fence',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const fence="manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz";
+  assert.ok(core.includes(fence));
+  assert.ok(core.includes("'{managerAwaitingAcceptanceRevision}'"));
+  assert.ok(core.includes("manager_cycles=manager_cycles+1,summary=$2,next_check_at=now()+interval '1 minute'"));
+  assert.deepEqual(managerAcceptanceWakePlan({
+    awaitingRevision:'rev4569',sourceRevision:'rev4569',acceptanceAllowed:false,
+  }),{wake:false,reason:'awaiting_evidence'});
+  assert.deepEqual(managerAcceptanceWakePlan({
+    awaitingRevision:'rev4569',sourceRevision:'rev4569',acceptanceAllowed:true,
+  }),{wake:true,reason:'acceptance_satisfied'});
 });
