@@ -253,6 +253,38 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   );
 }
 
+// The retry budget belongs to the CURRENT dispatched objective's recovery epoch.
+// Counting every retry ever dispatched for an issue makes a newly rearmed objective
+// immediately exhaust its inherited historical budget (even without a new retry).
+export function codingRetryEpochState(retryEvents=[],recoveryEvents=[],objectiveId=''){
+  const id=String(objectiveId||'');
+  const byId=new Map();
+  for(const retry of Array.isArray(retryEvents)?retryEvents:[]){
+    const key=String(retry?.codingObjectiveId||'');
+    if(!key)continue;
+    if(byId.has(key))return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'DUPLICATE_RETRY_EVENT'};
+    byId.set(key,retry);
+  }
+  let cursor=id,previous=MAX_AUTO_RETRIES+1;
+  const visited=new Set();
+  while(cursor&&byId.has(cursor)){
+    if(visited.has(cursor))return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'RETRY_CHAIN_CYCLE'};
+    visited.add(cursor);
+    const attempt=Number(byId.get(cursor)?.retryAttempt);
+    if(!Number.isInteger(attempt)||attempt<1||attempt>=previous||attempt>MAX_AUTO_RETRIES){
+      return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'INVALID_RETRY_CHAIN'};
+    }
+    previous=attempt;
+    cursor=String(byId.get(cursor)?.priorObjectiveId||'');
+  }
+  const direct=byId.get(id);
+  const retryCount=direct?Number(direct.retryAttempt):0;
+  const epochRootId=cursor||id;
+  const recovered=(Array.isArray(recoveryEvents)?recoveryEvents:[])
+    .some(x=>String(x?.codingObjectiveId||'')===epochRootId);
+  return {retryCount,epochRootId,recovered,reason:'CURRENT_OBJECTIVE_EPOCH'};
+}
+
 export async function relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease,compareCache=null){
   const from=String(fromSha||'').trim(),to=String(toSha||'').trim();
   const paths=[...new Set((scopeLease?.paths||[]).map(x=>String(x||'').trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))];
@@ -602,7 +634,9 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const retryDispatched=await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n);
-    const retryCount=retryDispatched.length;
+    const recoveryHistory=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
+    const retryEpoch=codingRetryEpochState(retryDispatched,recoveryHistory,id);
+    const retryCount=retryEpoch.retryCount;
     if(retryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
@@ -635,7 +669,9 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const retryAttempt=retryCount+1;
-    const retryKey=`GITHUB-ISSUE-${n}-RETRY-${retryAttempt}`;
+    const recoveryTag=retryEpoch.recovered
+      ?`-RECOVERY-${createHash('sha256').update(retryEpoch.epochRootId).digest('hex').slice(0,12)}`:'';
+    const retryKey=`GITHUB-ISSUE-${n}${recoveryTag}-RETRY-${retryAttempt}`;
     let retryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RETRY_KEY=${retryKey}`));
     const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
     if(otherActiveForIssue)continue;
@@ -644,11 +680,12 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       if(blockedByActiveOwner||retryCreatedThisTick)continue;
     }
 
-    let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>Number(x.retryAttempt)===retryAttempt);
+    let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>
+      Number(x.retryAttempt)===retryAttempt&&(x.retryKey===retryKey||(!retryEpoch.recovered&&!x.retryKey)));
     if(!scheduled){
       const delayMs=classification.transient?PROVIDER_RETRY_BASE_MS*(2**(retryAttempt-1)):0;
       const nextAt=new Date(Number(now())+delayMs).toISOString();
-      scheduled={issueNumber:n,priorObjectiveId:id,retryAttempt,reason:classification.reason,transient:classification.transient,nextAt};
+      scheduled={issueNumber:n,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,transient:classification.transient,nextAt};
       await mark(pool,'GITHUB_CODING_RETRY_SCHEDULED',scheduled);
       await comment(fetchImpl,owner,repo,n,token,`[RETRY_SCHEDULED] prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} nextAt=${nextAt} reason=${classification.reason.slice(0,500)}`);
       results++;
@@ -664,7 +701,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       retryCreatedThisTick=true;
     }
 
-    const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
+    const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>
+      Number(x.retryAttempt)===retryAttempt&&(x.retryKey===retryKey||(!retryEpoch.recovered&&!x.retryKey)));
     if(!alreadyDispatched){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
