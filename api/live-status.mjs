@@ -1311,9 +1311,19 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
   const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
   const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
-  const staleBodyAdmissionReason = ['NON_EXECUTABLE_STATE','EXPLICIT_EXECUTION_DISABLED','AUTO_QUEUE_EXCLUDED'].includes(String(admission.reason || '').toUpperCase());
   const lifecycleRunnable = lifecycleHasNoBlocker && ['WORKING','REVIEW','QUEUED'].includes(String(lifecycleDisplayStatus || '').toUpperCase());
-  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleRunnable && staleBodyAdmissionReason
+  const lifecycleAdmission = lifecycleRunnable
+    ? safeAutoWorkAdmission({
+        ...issue,
+        body: [
+          'CURRENT_STATE=' + String(currentLifecycle?.state || ''),
+          'TIGERIQ_EXECUTABLE=true',
+          'AUTO_QUEUE=INCLUDED',
+          body,
+        ].join('\n'),
+      })
+    : null;
+  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
     ? 'READY'
     : rawExecutionEligibility;
 
