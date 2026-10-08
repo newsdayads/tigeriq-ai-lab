@@ -297,6 +297,8 @@ export function codingRetryEpochState(retryEvents=[],recoveryEvents=[],objective
   const direct=byId.get(id);
   const retryCount=direct?Number(direct.retryAttempt):0;
   const epochRootId=cursor||id;
+  // Includes exhausted-budget recovery, stale-result rearm and
+  // reopened-completion rearm; every new canonical objective gets unique keys.
   const recovered=(Array.isArray(recoveryEvents)?recoveryEvents:[])
     .some(x=>String(x?.codingObjectiveId||'')===epochRootId);
   return {retryCount,epochRootId,recovered,reason:'CURRENT_OBJECTIVE_EPOCH'};
@@ -660,7 +662,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const retryDispatched=await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n);
-    const recoveryHistory=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
+    // All three safe rearm paths begin a new retry epoch. Otherwise the
+    // historic deterministic RETRY_KEY may silently resolve an older objective.
+    const recoveryHistory=[
+      ...await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n),
+      ...await eventData(pool,'GITHUB_CODING_STALE_RESULT_REARMED',n),
+      ...await eventData(pool,'GITHUB_CODING_COMPLETED_REARMED',n),
+    ];
     const retryEpoch=codingRetryEpochState(retryDispatched,recoveryHistory,id);
     // A malformed/cyclic/duplicate retry journal is not a valid recovery signal.
     // Failing only the budget count closed would still enter the recovery branch
