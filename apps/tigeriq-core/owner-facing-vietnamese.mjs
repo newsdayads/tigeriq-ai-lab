@@ -100,6 +100,7 @@ const OWNER_PHRASE_REPLACEMENTS = Object.freeze([
   [/\bquality gates\b/gi, 'cổng chất lượng'],
   [/\bverify live\b/gi, 'xác minh thực tế'],
   [/\blive verify\b/gi, 'xác minh thực tế'],
+  [/\blive acceptance\b/gi, 'nghiệm thu trực tiếp'],
   [/\bacceptance\b/gi, 'nghiệm thu'],
   [/\bverify\b/gi, 'xác minh'],
   [/\bprivate preflight\b/gi, 'tiền kiểm riêng'],
