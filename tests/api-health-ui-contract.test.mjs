@@ -192,7 +192,11 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(core).toContain('async function apiHealthLiveWorkProjection()');
     expect(core).toContain("source:'LIVE_VERIFIED_GATES'");
     expect(core).toContain("source:'PC01_FALLBACK'");
-    expect(core).toContain("const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},7000)");
+    expect(core).toContain("const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},14000)");
+    expect(core).toContain('const pending=refreshApiHealthLiveWork()');
+    expect(core).toContain('healthLiveResultFresh(healthLiveWorkCache.result)');
+    expect(core).toContain('verifiedGateSource:false');
+    expect(core).toContain('source:\'PC01_FALLBACK\'');
     for(const token of ["['review','RÀ SOÁT']","['verify','XÁC MINH']","['ready','SẴN SÀNG']","['waiting','ĐANG CHỜ']","['blocked','BỊ CHẶN']","['paused','TẠM DỪNG']"]){
       expect(dashboard).toContain(token);
     }
