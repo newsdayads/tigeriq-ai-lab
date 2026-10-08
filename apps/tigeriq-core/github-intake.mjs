@@ -612,10 +612,14 @@ export function safeAutoWorkAdmission(issue){
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
-  // The current authorization contract ends at the first Markdown heading.
-  // Missing current flags must not be supplied by appended historical records.
-  const safetyHistoryBoundary=body.search(/^ {0,3}#{1,6}[ \t]+\S/m);
-  const currentSafetyBody=safetyHistoryBoundary>=0?body.slice(0,safetyHistoryBoundary):body;
+  // When a current override starts with a Markdown title, its first section
+  // is the contract; otherwise the pre-heading header is authoritative.
+  // Never borrow missing current safeguards from subsequent history sections.
+  const safetyHeadings=[...body.matchAll(/^ {0,3}#{1,6}[ \t]+\S/gm)];
+  const safetyHistoryBoundary=safetyHeadings[0]?.index===0
+    ?(safetyHeadings[1]?.index??body.length)
+    :(safetyHeadings[0]?.index??body.length);
+  const currentSafetyBody=body.slice(0,safetyHistoryBoundary);
   const currentSafetyValue=(key)=>bodyValue(currentSafetyBody,key).toLowerCase();
   // The first current contract value is authoritative: old true flags cannot override a present denial.
   const deniedSafetyKeys=['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_DIRECT_MAIN'];
