@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,androidProductAutoExecutionExclusion,safeAutoWorkAdmission,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -65,6 +65,37 @@ describe('GitHub Core intake guardrails',()=>{
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
+  it('allows ONLY Owner-reclassified #2949 to enter P2 Android system queue',()=>{
+    const body=[
+      'PRIORITY=P2',
+      'OWNER_APPROVED_ANDROID_AUTO_P2=true',
+      'OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED',
+      'TIGERIQ_EXECUTABLE=true',
+      'CAPABILITY=coding',
+      'EXECUTION_SURFACE=CODING',
+      'RESOURCE_SCOPE=ANDROID_NV102_S10_5G_24X7_ACCEPTANCE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      'BLOCKED_BY=NONE',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_DIRECT_MAIN=true',
+    ].join('\\n');
+    const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
+    expect(androidProductAutoExecutionExclusion(issue)).toBe('');
+    expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    expect(parseExecutableIssue(issue)).toMatchObject({number:2949,priority:'P2',route:'CODING'});
+    expect(androidProductAutoExecutionExclusion({...issue,number:3900})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,title:'[P0][ANDROID][NV102] S10 worker'})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('PRIORITY=P2','PRIORITY=P0')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('OWNER_APPROVED_ANDROID_AUTO_P2=true','OWNER_APPROVED_ANDROID_AUTO_P2=false')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('RESOURCE_SCOPE=ANDROID_NV102_S10_5G_24X7_ACCEPTANCE','RESOURCE_SCOPE=ANDROID_OTHER')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+  });
+
   it('parses multi-phase keep-open lifecycle marker',()=>{
     const parsed=parseExecutableIssue({...base,body:base.body+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'});
     expect(parsed).toMatchObject({keepOpenOnStepComplete:true});
