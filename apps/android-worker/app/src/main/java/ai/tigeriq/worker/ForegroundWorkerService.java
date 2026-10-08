@@ -139,6 +139,10 @@ public final class ForegroundWorkerService extends Service {
                         if ("COMPLETE".equals(run.state)) output.put("validatedToken", task.expectedToken);
                         output.put("responseText", run.responseText == null ? "" : run.responseText);
                         output.put("runState", run.state);
+                        // Expose verified Project binding in Core results for live acceptance.
+                        // A completed response token alone does not prove Project context.
+                        output.put("projectMode", run.projectMode);
+                        output.put("projectBound", run.projectBound);
                         output.put("sendCount", run.sendCount);
                         output.put("duplicateSendCount", run.duplicateSendCount);
                         output.put("recoveryCount", run.recoveryCount);
