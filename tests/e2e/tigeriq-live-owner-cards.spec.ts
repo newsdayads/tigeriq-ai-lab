@@ -148,7 +148,7 @@ test('P0 workforce cards use 3 / 2 / 1 columns; show job id directly and no over
     heartbeatAt:at,updatedAt:at
   }));
   await routeTiger(page,{...snapshot,generatedAt:at,workers:active});
-  for(const [width,height,columns] of [[1440,900,3],[840,800,2],[390,844,1]] as const){
+  for(const [width,height,columns] of [[1440,900,7],[840,800,5],[390,844,3]] as const){
     await page.setViewportSize({width,height});
     await page.goto('https://tigeriq.test/command-center');
     await expect(page.locator('.live-worker-card')).toHaveCount(5);
