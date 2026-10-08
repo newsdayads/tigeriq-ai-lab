@@ -705,6 +705,31 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 @media(max-width:759px){.work-list{grid-template-columns:1fr}.top{padding-bottom:7px}.brand h1{font-size:19px}.live{padding:6px 8px;font-size:10px}.work-row{padding:8px}.work-title{font-size:12.5px}}
 @media(max-height:520px) and (min-width:760px){.work-row{padding:7px 8px}.work-title{margin-top:5px}.progress{margin-top:5px}.filters{padding-bottom:5px}}
 @media(prefers-reduced-motion:reduce){.progress.indeterminate .progress-fill{animation:none!important;transform:none!important;width:45%}}
+
+/* TIGERIQ LIVE V2.1 — THEO THIẾT KẾ OWNER: HUY HIỆU TREO LUÔN HIỆN */
+.work-list{gap:14px 13px;margin-top:13px}
+.work-row{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;border-radius:0!important;overflow:visible!important;position:relative}
+.work-row .work-main{margin-top:28px;height:calc(100% - 28px);min-width:0;padding:13px 13px 12px;border:1px solid var(--status-color,#64748B);border-radius:0 0 13px 13px;background:linear-gradient(180deg,#11263D,#0B1829);box-shadow:0 8px 24px rgba(0,0,0,.16);transition:box-shadow .18s ease,border-color .18s ease}
+.work-row:hover,.work-row:focus-visible{transform:translateY(-2px);box-shadow:none!important}
+.work-row:hover .work-main,.work-row:focus-visible .work-main{box-shadow:0 13px 28px rgba(0,0,0,.32)}
+.work-row .work-id,.work-row .priority{position:absolute;top:0!important;height:28px;z-index:2;display:flex;align-items:center;justify-content:center;font-size:18px!important;font-weight:900;padding:0 12px;border-radius:9px 9px 0 0;line-height:1}
+.work-row .work-id{left:0!important;background:var(--status-color,#64748B);color:#061522}
+.work-row .priority{right:0!important;color:#fff}
+.work-row .priority.p0{background:#EF4444}.work-row .priority.p1{background:#F97316}.work-row .priority.p2{background:#F59E0B;color:#071321}.work-row .priority.p3{background:#3B82F6}.work-row .priority.p4{background:#8B5CF6}.work-row .priority.p5{background:#64748B}.work-row .priority.meta{background:#64748B;color:#fff}
+.work-row .rank{height:25px;width:27px;font-size:12px;background:#234460;border:1px solid #4B7497;color:#EAF6FF}
+.work-row .work-title{font-size:15px;line-height:1.37;margin-top:10px;min-height:0}
+.work-row .work-top .state{font-size:11px;padding:5px 8px;white-space:nowrap}
+.work-row .work-nv{max-width:150px;font-size:10px;color:#A4B9CE}
+.work-row .work-quick{font-size:11.5px;line-height:1.48;margin-top:9px;color:#A9D4F8}
+.work-row.status-owner_gate .state{border-color:#A78BFA;color:#E0CAFF;background:#302447}
+.work-row.status-review .state{border-color:#3B82F6;color:#B8D5FF;background:#172E54}
+.work-row.status-verify .state{border-color:#14B8A6;color:#A3F5E7;background:#123D3A}
+.work-row.status-blocked .state{border-color:#F43F5E;color:#FFB9C7;background:#48212D}
+.work-row.status-done .state{border-color:#06B6D4;color:#A0F2FC;background:#113943}
+.filter[data-filter="owner"].active{border-color:#A78BFA;background:#302447;color:#E0CAFF}
+.filter[data-filter="review"].active{border-color:#3B82F6;background:#172E54;color:#B8D5FF}
+.filter[data-filter="waiting"].active{border-color:#F59E0B;background:#3A2B14;color:#FFE2A1}
+@media(max-width:759px){.work-list{gap:13px}.work-row .work-main{padding:12px 11px}.work-row .work-title{font-size:14px}.work-row .work-id,.work-row .priority{font-size:16px!important;height:27px}.work-row .work-main{margin-top:27px;height:calc(100% - 27px)}}
 </style>
 </head>
 <body>
@@ -1816,7 +1841,7 @@ function render(){
     const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
     const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
     const quickKind=blockerText?'blocked':usefulSummary?'current':usefulNext?'next':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulSummary?('Đang: '+usefulSummary):usefulNext?('Bước tới: '+usefulNext):'';
+    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?('Bước tới: '+usefulNext):usefulSummary?('Hiện tại: '+usefulSummary):'';
     const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+esc(quickText)+'</div>':'';
     const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText;
     const previous=lastVisualState.get(Number(row.number));
