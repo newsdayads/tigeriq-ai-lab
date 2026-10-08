@@ -59,6 +59,19 @@ public final class ChatGptB1Automation {
             return;
         }
 
+        // The user/app may navigate to another chat after the original Project
+        // binding. Revalidate the non-navigation Project title on the LIVE tree
+        // before ANY set-text or send click for a Core-leased task.
+        boolean liveProjectTitle = treeContainsExactLabelOutsideClickableNavigation(
+            root, ChatGptB1Policy.REQUIRED_PROJECT, 3
+        );
+        if (!ChatGptB1Policy.canMutateComposerInLiveProjectContext(
+            s.taskId, s.projectMode, s.projectBound, liveProjectTitle, true
+        )) {
+            ChatGptB1RunStore.fail(service, "PROJECT_CONTEXT_LOST_BEFORE_COMPOSER_MUTATION");
+            return;
+        }
+
         String prompt = ChatGptB1RunStore.prompt(s);
         String currentText = text(input.getText());
         if (!currentText.isEmpty() && !currentText.equals(prompt)) {
