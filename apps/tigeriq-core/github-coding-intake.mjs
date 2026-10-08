@@ -139,7 +139,7 @@ export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
   const header=canonicalCodingHeader(body);
-  if(chatMutationOwnerPlan(body,issue.title).owner==='VY')return null;
+  if(chatMutationOwnerPlan(header,issue.title).owner==='VY')return null;
   if(isOwnerOnlyP0(header,issue.title)||backlogOwnerControlled(header))return null;
   // Closed/terminal canonical work and explicit current queue exclusions must
   // not be revived by the presence of historical executable=true flags.
