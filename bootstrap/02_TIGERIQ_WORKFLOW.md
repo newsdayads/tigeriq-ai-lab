@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 4.1
+Version: 4.2
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -83,6 +83,15 @@ Chứa trạng thái thay đổi thường xuyên: `docs/CURRENT_STATE.md`, CENT
 - `CHỜ` là trạng thái **cấp bước**, không phải khóa toàn thẻ. Nếu một bước bị chặn nhưng còn bước độc lập an toàn có thể làm, worker phải checkpoint bước bị chặn, nhả lease phù hợp và tiếp tục phần còn lại.
 - Khi không còn bước an toàn nào khác, Work Order giữ đúng blocker thật và tự rearm khi dependency/event thay đổi; không bắt anh Sơn giao lại.
 - Việc có bề mặt LIVE/real-world chỉ được coi là hoàn tất sau khi kết quả thật được xác minh. Sau đó ghi một bản tóm tắt vào `#4426 - [RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem`; hộp kết quả chỉ để review sau kết quả, không phải approval gate.
+
+### 5.1.1. KHÓA CỨNG P0 VÀ QUYỀN LỆNH TRỰC TIẾP — mọi chat / mọi nhân sự AI
+- `P0_OWNER_VY_EXCLUSIVE=true`: chỉ anh Sơn và Vy điều hành P0. CORE, nhân sự AI, bộ điều phối và hàng đợi tự động KHÔNG tự nhận, điều phối, sửa, phát hành hoặc đóng P0. Mọi hỗ trợ có hành động vào P0 chỉ thực hiện khi đã có ủy quyền đúng phạm vi từ anh Sơn/Vy; không tự mở rộng quyền.
+- `OWNER_DIRECT_COMMAND_IS_AUTHORIZATION=true`: lệnh trực tiếp hiện hành của anh Sơn đứng đầu thứ tự quyết định trong TigerIQ. Lệnh có mục tiêu rõ ràng đủ để tự thực hiện các bước an toàn, có thể hoàn tác, không phát sinh chi phí trong phạm vi; **cấm yêu cầu anh xác nhận lại cùng quyền** chỉ vì nhãn hàng đợi, trạng thái nhân sự AI hay quy trình nội bộ.
+- `AI_QUEUE_REVIEW_CANNOT_VETO_OWNER=true`: nhân sự AI, người rà soát, trạng thái `AUTO_QUEUE` và nhãn `TIGERIQ_EXECUTABLE` là điều phối hoặc bằng chứng kỹ thuật, KHÔNG là cấp duyệt cao hơn anh Sơn. Nếu một bước thiếu người rà soát thì tự chuyển sang nguồn lực độc lập phù hợp; không yêu cầu Owner làm nhân viên rà soát.
+- `REVIEW_IS_NOT_OWNER_APPROVAL=true`: vẫn chạy các cổng kiểm thử, rà soát độc lập, bảo vệ nhánh và ghi bằng chứng cần thiết. Khi chưa đạt thì ghi rõ `CHỜ KIỂM THỬ / CHỜ RÀ SOÁT`, không nói Owner chưa cấp quyền. Nếu anh Sơn **phê duyệt miễn rà soát cho đúng phạm vi** và cổng tương ứng cho phép, lưu `OWNER_WAIVER`, tuyệt đối không khai `REVIEW_PASS`.
+- `REAL_HARD_GATES=PAID_FINANCIAL|CREDENTIAL_SECRET|SECURITY_PERMISSION_BOUNDARY|DESTRUCTIVE_IRREVERSIBLE|PHYSICAL_LEGAL`: hỏi anh **một lần theo thao tác và phạm vi cụ thể** nếu chưa có ủy quyền; không suy rộng ủy quyền sang việc khác. Các giới hạn pháp luật, dịch vụ/công cụ và bảo mật vẫn có hiệu lực. Cổng điều khiển máy tính từ xa chỉ mở theo từng lệnh đã được cấp quyền; Codex chỉ khi anh nêu rõ tên Codex và phạm vi.
+- `EXECUTE_WITH_EVIDENCE=true`: không có quyền tự nhận đạt, giả mạo kết quả, vượt rào kỹ thuật hoặc làm mất dữ liệu. Bước vướng thực sự được ghi và nhả khóa, tiếp tục các bước an toàn độc lập; chỉ báo HOÀN TẤT khi đã xác minh.
+- `SCOPE=ALL_TIGERIQ_CHATS_AND_AGENTS`: các tài khoản nạp Loader canonical phải thực thi cùng quy tắc theo Constitution, Workflow, Registry và chính sách #504; không sao chép bộ quyền riêng trái nguồn chuẩn. Cập nhật tài liệu không tự chứng minh môi trường chạy hiện hữu đã được nâng cấp.
 
 ## 6. Quy tắc chống mất việc khi đổi chat
 - Mọi việc chưa hoàn tất phải có state đủ để NEW CHAT tiếp tục mà không cần mở chat cũ.
