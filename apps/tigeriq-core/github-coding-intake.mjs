@@ -158,8 +158,8 @@ export function parseCodingIssue(issue){
   const classification=classifyWorkOrder(body);
   if(classification.route!=='CODING')return null;
   const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(header,'P3');
-  const scopeLease=parseCodingScope(body);
-  const controlRepair=controlPlaneRepairIntent(body);
+  const scopeLease=parseCodingScope(header);
+  const controlRepair=controlPlaneRepairIntent(header);
   const appChromeLocalOnly=/\[APP-CHROME\]/i.test(String(issue.title||''))
     || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(body)
     || /^APP_CHROME_REQUEST_ONLY=true$/mi.test(body)
@@ -167,9 +167,9 @@ export function parseCodingIssue(issue){
     || scopeLease.paths.some(isAppChromeLocalOnlyPath);
   if(appChromeLocalOnly)return null;
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
-  const routing=parseCodingRouteMetadata(body);
+  const routing=parseCodingRouteMetadata(header);
   if(!routing.valid)return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair,routing};
+  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(header),ownerDirect:backlogOwnerDirect(header),scopeLease,controlRepair,routing};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){
