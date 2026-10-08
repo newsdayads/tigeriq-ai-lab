@@ -306,6 +306,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void maybeActivateStandaloneFallback(AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state) || root == null) return;
+        // Core tasks require the exact pinned Project. A standalone chat is not an accepted fallback.
+        if (!ChatGptB1Policy.canUseStandaloneFallbackForTask(run.taskId)) return;
         if (!ChatGptB1Policy.shouldUseStandaloneFallback(run.startedElapsedAt, SystemClock.elapsedRealtime())) return;
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
