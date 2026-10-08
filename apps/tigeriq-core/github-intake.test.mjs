@@ -69,7 +69,7 @@ describe('GitHub Core intake guardrails',()=>{
       '## Historical execution (superseded)',
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO',
       'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
-    ].join('\\n');
+    ].join('\n');
     for(const [current,reason] of [
       [['TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED','CURRENT_STATE=BLOCKED_REVIEW'], 'EXPLICIT_EXECUTION_DISABLED'],
       [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=EXCLUDED_TERMINAL','CURRENT_STATE=READY'], 'AUTO_QUEUE_EXCLUDED'],
@@ -80,7 +80,7 @@ describe('GitHub Core intake guardrails',()=>{
         ...current,'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=LEGACY_FAIL_CLOSED',
         'OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
         history,
-      ].join('\\n')};
+      ].join('\n')};
       expect(safeAutoWorkAdmission(issue).reason).toBe(reason);
       expect(parseExecutableIssue(issue)).toBeNull();
     }
