@@ -124,6 +124,45 @@ describe('GitHub coding intake guard',()=>{
     expect(parsed?.dependsOn).toEqual([]);
   });
   it('keeps legacy safe coding issues backward compatible',()=>{expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);});
+
+  it('accepts a leading active Markdown heading while keeping historical grants excluded',()=>{
+    const current='## OWNER OVERRIDE — CURRENT CONTRACT\n'+SAFE
+      +'\nRESOURCE_SCOPE=CODING_HEADING_FIRST_TEST'
+      +'\nALLOW_PATH_PREFIX=docs/evidence/coding-heading.md'
+      +'\nCURRENT_STATE=READY';
+    const historical='\n## HISTORICAL CONTRACT'
+      +'\nTIGERIQ_EXECUTABLE=false'
+      +'\nOWNER_HOLD=true'
+      +'\nNO_SECURITY_BOUNDARY_CHANGE=false'
+      +'\nRESOURCE_SCOPE=HISTORICAL_WRITER'
+      +'\nTARGET_EMPLOYEE=NV03'
+      +'\nDEPENDS_ON=#9999';
+    expect(parseCodingIssue(issue(current+historical))).toMatchObject({
+      number:777,priority:'P1',ownerControlled:false,dependsOn:[],
+      scopeLease:{resourceScope:'CODING_HEADING_FIRST_TEST',paths:['docs/evidence/coding-heading.md']},
+      routing:{targetEmployee:null},
+    });
+    expect(parseCodingIssue(issue(current+'\n---\n'+historical))).toMatchObject({
+      number:777,scopeLease:{resourceScope:'CODING_HEADING_FIRST_TEST'},
+    });
+    // A historical-only first section is never a current contract.
+    expect(parseCodingIssue(issue('## HISTORICAL CONTRACT\n'+SAFE))).toBeNull();
+    expect(parseCodingIssue(issue('## LỊCH SỬ\n'+SAFE))).toBeNull();
+    // Old true flags cannot reactivate a current explicit denial.
+    const denied=[
+      current.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'),
+      current.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false'),
+      current.replace('NO_BROWSER_AUTH=true',''),
+      current+'\nAUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED',
+      current+'\nOWNER_HOLD=true',
+      current+'\nCURRENT_STATE=FAILED_RETRY_EXHAUSTED',
+      current.replace('PRIORITY=P1','PRIORITY=P0'),
+    ];
+    for(const body of denied){
+      expect(parseCodingIssue(issue(body+'\n## HISTORICAL\n'+SAFE))).toBeNull();
+    }
+  });
+
   it('rejects REVIEW_ONLY work from mutation coding intake',()=>{expect(parseCodingIssue(issue(`${SAFE}\nREVIEW_ONLY=true`))).toBeNull();});
   it('rejects V1 canonical or non-active work from mutation coding intake',()=>{
     expect(parseCodingIssue(issue(V1_COMPLETE.replace('ACTIVE_EXECUTION=true','ACTIVE_EXECUTION=false')))).toBeNull();
