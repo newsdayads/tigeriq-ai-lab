@@ -584,6 +584,36 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+  it('does not promote a stale excluded body to READY when mandatory safety flags are incomplete', () => {
+    const lifecycle = parseStructuredLifecycleComment({
+      body: [
+        'CURRENT_STATE=CODING_LANE_ACTIVE',
+        'BLOCKER=NONE',
+      ].join('\n'),
+      created_at: '2026-10-08T00:18:00Z',
+    });
+    const row = parseOpenWorkIssue(issue(4598, '[P1][CORE] Safety fixture', [
+      'CURRENT_STATE=WAITING_CI',
+      'TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_WAIT_REVIEW',
+      'OWNER_POLICY=AUTO',
+      'PRIORITY=P1',
+      'RESOURCE_SCOPE=SAFETY_FIXTURE',
+      'MUTATION_OWNER=NONE',
+      'NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      // intentionally omit NO_SECURITY_BOUNDARY_CHANGE and NO_DESTRUCTIVE
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n'), { updated_at: '2026-10-08T00:18:00Z' }), { lifecycle });
+
+    expect(row.status).toBe('WORKING');
+    expect(row.currentState).toBe('CODING_LANE_ACTIVE');
+    expect(row.executionEligibility).toBe('PARKED_DEPENDENCY');
+    expect(row.executionEligibilityReason).toBe('EXPLICIT_EXECUTION_DISABLED');
+  });
+
   it('does not let a fresh lifecycle display override erase a real dependency gate', () => {
     const lifecycle = parseStructuredLifecycleComment({
       body: [
