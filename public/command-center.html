@@ -860,24 +860,26 @@ html,body,body{background:#071321!important}
 </style>
 
 <style id="tigeriq-live-workers-approved-p0">
-.live-workers-panel{margin:0 0 13px}
-.live-workers-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+/* P0 Owner: stable 3/2/1 glance cards, independent 5-second workforce refresh. */
+.live-workers-panel{margin:0 0 12px}
+.live-workers-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
 .live-workers-head h2{font-size:12px;font-weight:900;color:#eef7ff;letter-spacing:.03em;margin:0}
 .live-workers-head span{font-size:10px;color:#64e6af;font-weight:800}
+.live-workers-head span.unverified{color:#efb85c}
 .live-workers-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.live-worker-card{border:1px solid #286a9b;background:linear-gradient(180deg,#10263a,#091b2b);border-radius:12px;min-width:0;padding:10px;overflow:hidden}
+.live-worker-card{border:1px solid #286a9b;background:linear-gradient(180deg,#10263a,#091b2b);border-radius:11px;min-width:0;padding:9px 11px;overflow:hidden}
 .live-worker-top,.live-worker-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.live-worker-id{color:#d5b4ff;font-size:11px;font-weight:900}
-.live-worker-state,.live-worker-footer{color:#64e6af;font-size:9px;font-weight:800}
+.live-worker-id{color:#d5b4ff;font-size:12px;font-weight:900}
+.live-worker-state{color:#64e6af;font-size:10px;font-weight:800;white-space:nowrap}
 .live-worker-state::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#46d48f;margin-right:5px;vertical-align:middle}
-.live-worker-name{font-size:12px;font-weight:900;color:#f2f7fd;margin:8px 0 5px;overflow-wrap:anywhere}
-.live-worker-job{font-size:10px;line-height:1.4;color:#b8ccdc;overflow-wrap:anywhere;min-height:28px}
-.live-worker-footer{margin-top:8px;padding-top:7px;border-top:1px solid #244258;flex-wrap:wrap}
-.live-worker-empty{border:1px solid #29445d;background:#0b1e30;border-radius:10px;padding:11px;color:#9ab2c6;font-size:10px}
-@media(min-width:2100px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
-@media(min-width:1600px) and (max-width:2099px){.live-workers-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(min-width:760px) and (max-width:1099px){.live-workers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:759px){.live-workers-grid{grid-template-columns:1fr}.live-worker-card{padding:9px}}
+.live-worker-name{font-size:13px;font-weight:900;color:#f2f7fd;margin:6px 0 3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.live-worker-job{font-size:12px;line-height:1.35;color:#b8ccdc;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;min-height:32px}
+.live-worker-footer{margin-top:7px;padding-top:6px;border-top:1px solid #244258;flex-wrap:wrap;font-size:10px;color:#8dbbb8}
+.live-worker-code{font-weight:800;color:#afd6ff;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-worker-updated{white-space:nowrap}
+.live-worker-empty{border:1px solid #29445d;background:#0b1e30;border-radius:10px;padding:11px;color:#9ab2c6;font-size:11px}
+@media(max-width:1099px){.live-workers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:599px){.live-workers-grid{grid-template-columns:minmax(0,1fr)}.live-worker-card{padding:9px 10px}}
 </style>
 </head>
 <body>
@@ -1871,54 +1873,88 @@ function renderNowRunning(){
   });
 }
 
-function renderLiveWorkers(){
-  const panel=$('liveWorkers');
-  const at=Date.parse(snapshot?.generatedAt||'');
-  const snapshotAge=Date.now()-at;
-  const snapshotFresh=snapshot?.liveConnected===true&&!snapshot?.staleAll
-    &&Number.isFinite(at)&&snapshotAge>=0&&snapshotAge<=90000;
-  const workers=snapshotFresh?(Array.isArray(snapshot?.workers)?snapshot.workers:[]).filter(worker=>{
-    const heartbeat=Date.parse(worker?.heartbeatAt||'');
-    const heartbeatAge=Date.now()-heartbeat;
+let workforceSnapshot=null;
+let workforcePolling=false;
+function liveWorkforceRows(){
+  // Latest independent runtime check wins: never revive active cards from cached work projection.
+  const source=workforceSnapshot||snapshot;
+  const at=Date.parse(source?.generatedAt||'');
+  const age=Date.now()-at;
+  const fresh=source?.ok!==false&&source?.liveConnected===true&&!source?.staleAll
+    &&Number.isFinite(at)&&age>=0&&age<=90000;
+  const rows=fresh?(Array.isArray(source?.workers)?source.workers:[]).filter(worker=>{
+    const at=Date.parse(worker?.heartbeatAt||'');
+    const age=Date.now()-at;
     return /^NV\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
       &&String(worker?.state||'').toLowerCase()==='working'
       &&Boolean(String(worker?.currentJobId||'').trim())
-      &&Number.isFinite(heartbeat)&&heartbeatAge>=0&&heartbeatAge<=60000;
-  }):[];
-  const add=(parent,tag,cls,value)=>{
-    const el=document.createElement(tag);
-    el.className=cls;
-    el.textContent=String(value??'');
-    parent.append(el);
-    return el;
+      &&Number.isFinite(at)&&age>=0&&age<=60000;
+  }).sort((a,b)=>Number(String(a.employeeId).slice(2))-Number(String(b.employeeId).slice(2))):[];
+  return {fresh,rows};
+}
+function renderLiveWorkers(){
+  const panel=$('liveWorkers');
+  const {fresh,rows}=liveWorkforceRows();
+  const text=(element,value)=>{const val=String(value??'');if(element.textContent!==val)element.textContent=val;};
+  const node=(tag,cls,parent)=>{
+    const n=document.createElement(tag);n.className=cls;parent.append(n);return n;
   };
-  const header=document.createElement('header');header.className='live-workers-head';
-  add(header,'h2','', 'NHÂN VIÊN ĐANG LÀM');
-  add(header,'span','',workers.length+' NHÂN VIÊN');
-  panel.replaceChildren(header);
-  if(!workers.length){
-    add(panel,'div','live-worker-empty',snapshotFresh
-      ?'Hiện chưa có nhân viên nào được xác nhận đang thực thi công việc.'
-      :'Chưa xác minh được nhân viên đang làm — nguồn PC01 đang gián đoạn hoặc dữ liệu đã cũ.');
+  let head=panel.querySelector('.live-workers-head');
+  if(!head){head=node('header','live-workers-head',panel);node('h2','',head);node('span','',head);}
+  text(head.querySelector('h2'),'NHÂN VIÊN ĐANG LÀM');
+  const count=head.querySelector('span');
+  count.classList.toggle('unverified',!fresh);
+  text(count,fresh?rows.length+' NHÂN VIÊN · 5 GIÂY':'CHƯA XÁC MINH');
+  let grid=panel.querySelector('.live-workers-grid');
+  let empty=panel.querySelector('.live-worker-empty');
+  if(!rows.length){
+    if(grid){grid.remove();grid=null;}
+    if(!empty)empty=node('div','live-worker-empty',panel);
+    text(empty,fresh?'Hiện chưa có nhân viên được xác nhận đang thực thi.':'Nguồn PC01 gián đoạn hoặc dữ liệu quá hạn — chưa xác minh được nhân viên đang làm.');
     return;
   }
-  const grid=document.createElement('div');grid.className='live-workers-grid';
-  for(const worker of workers){
-    const card=document.createElement('article');card.className='live-worker-card';
-    card.dataset.liveEmployee=String(worker.employeeId||'').toUpperCase();
-    const top=document.createElement('div');top.className='live-worker-top';
-    add(top,'b','live-worker-id',worker.employeeId);
-    add(top,'span','live-worker-state','ĐANG LÀM');
-    card.append(top);
-    add(card,'div','live-worker-name',worker.label||worker.employeeId);
-    add(card,'div','live-worker-job',worker.job||worker.currentJobId||'Chưa có mô tả công việc');
-    const footer=document.createElement('div');footer.className='live-worker-footer';
-    add(footer,'span','', [worker.provider,worker.model].filter(Boolean).join(' · ')||'Đang thực thi');
-    const age=add(footer,'span','', 'Cập nhật '+ownerAgeText(worker.heartbeatAt||worker.updatedAt));
-    age.title=String(worker.currentJobId||'');
-    card.append(footer);grid.append(card);
+  if(empty)empty.remove();
+  if(!grid)grid=node('div','live-workers-grid',panel);
+  const known=new Map(Array.from(grid.children).map(el=>[el.dataset.liveEmployee,el]));
+  const seen=new Set();
+  rows.forEach((worker,index)=>{
+    const id=String(worker.employeeId).toUpperCase();
+    seen.add(id);
+    let card=known.get(id);
+    if(!card){
+      card=document.createElement('article');card.className='live-worker-card';card.dataset.liveEmployee=id;
+      const top=node('div','live-worker-top',card);
+      node('b','live-worker-id',top);node('span','live-worker-state',top);
+      node('div','live-worker-name',card);node('div','live-worker-job',card);
+      const footer=node('div','live-worker-footer',card);
+      node('span','live-worker-code',footer);node('span','live-worker-updated',footer);
+    }
+    if(grid.children[index]!==card)grid.insertBefore(card,grid.children[index]||null);
+    text(card.querySelector('.live-worker-id'),id);
+    text(card.querySelector('.live-worker-state'),'ĐANG LÀM');
+    text(card.querySelector('.live-worker-name'),worker.label||id);
+    text(card.querySelector('.live-worker-job'),worker.job||'Chưa có mô tả công việc');
+    text(card.querySelector('.live-worker-code'),worker.currentJobId);
+    text(card.querySelector('.live-worker-updated'),ownerAgeText(worker.heartbeatAt));
+    card.title=[worker.provider,worker.model].filter(Boolean).join(' · ');
+  });
+  known.forEach((card,id)=>{if(!seen.has(id))card.remove();});
+}
+async function loadWorkforce(){
+  if(workforcePolling)return;
+  workforcePolling=true;
+  try{
+    const response=await fetch('/api/live-status?scope=workforce',{cache:'no-store'});
+    if(!response.ok)throw Error('WORKFORCE_HTTP_'+response.status);
+    const value=await response.json();
+    // Failed/stale responses invalidate running badges immediately; no cached active fallback.
+    workforceSnapshot=value?.ok===true?value:{ok:false,liveConnected:false,workers:[]};
+  }catch{
+    workforceSnapshot={ok:false,liveConnected:false,workers:[]};
+  }finally{
+    workforcePolling=false;
+    renderLiveWorkers();
   }
-  panel.append(grid);
 }
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
@@ -2207,9 +2243,11 @@ document.addEventListener('keydown',event=>{
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
   }
 });
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){load();loadWorkforce();}});
 load();
+loadWorkforce();
 setInterval(()=>{if(!document.hidden)load()},10000);
+setInterval(()=>{if(!document.hidden)loadWorkforce()},5000);
 </script>
 </body>
 </html>
