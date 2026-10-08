@@ -18,11 +18,18 @@ const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
 function canonicalCodingHeader(body){
-  // Only the top-level header defines the currently executable contract.
-  // A flag found in later markdown evidence/history does not authorize work.
+  // Only the first current contract section can authorize coding work.
+  // A leading active Markdown heading is valid; historical headings are not.
   const text=String(body||'');
-  const section=text.search(/^ {0,3}#{1,6}[ \t]+\S/m);
-  return section>=0?text.slice(0,section):text;
+  const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const sectionEnd=first?.index===0
+    ?(headings[1]?.index??text.length)
+    :(first?.index??text.length);
+  // A divider also separates the current contract from archived snapshots.
+  const divider=text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return text.slice(0,Math.min(sectionEnd,divider?.index??text.length));
 }
 function currentCodingValue(body,key){
   const escaped=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
