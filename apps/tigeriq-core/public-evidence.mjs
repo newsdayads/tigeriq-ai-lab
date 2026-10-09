@@ -201,6 +201,16 @@ function collectTrustedFileReadJsonSources(node,depth=0,seen=new Set(),out=[]){
   return out;
 }
 
+// Restrict this receipt path to authenticated tigeriq_pc bridge calls.
+// Never trust a nested JSON object that merely imitates a file_read receipt.
+function trustedFileReadHealthSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls
+    .filter((call)=>String(call?.tool||'')==='tigeriq_pc')
+    .map((call)=>parseTrustedFileReadJsonReceipt(call?.result))
+    .filter(Boolean);
+}
+
 function hasGateCV021BridgeAction(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   return calls.some(call=>GATE_C_V021_ACTIONS.has(String(call?.result?.action||'')));
@@ -252,7 +262,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
   const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls);
-  const fileReadHealthSources=collectTrustedFileReadJsonSources(bridgeCalls);
+  const fileReadHealthSources=trustedFileReadHealthSources(bridgeCalls);
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
