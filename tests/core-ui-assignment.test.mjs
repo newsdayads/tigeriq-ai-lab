@@ -645,3 +645,43 @@ test('internal final-review preserves BLOCKED and EXTERNAL_WAIT job semantics',a
     assert.ok(pool.events.some(e=>e.type===expectedEvent));
   }
 });
+
+
+test('review substep DONE keeps parent open despite header drift; ordinary DONE may close',async()=>{
+  const scenarios=[
+    {n:44571,assigned:['REVIEW_ONLY=true'],terminal:[],close:false,sticky:true},
+    {n:45781,assigned:[],terminal:['REVIEW_ONLY=true'],close:false,sticky:false},
+    {n:44572,assigned:['KEEP_OPEN_ON_STEP_COMPLETE=true'],terminal:[],close:false,sticky:true},
+    {n:44573,assigned:[],terminal:[],close:true,sticky:false},
+  ];
+  for(const scenario of scenarios){
+    const pool=fakePool();
+    let current=issue(scenario.n,safe(['CAPABILITY=review',...scenario.assigned]),'Terminal boundary');
+    let posted=0,patched=0;
+    const base='https://github.com/newsdayads/tigeriq-ai-lab/issues/'+scenario.n;
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/comments')&&init.method==='POST'){
+        posted++;
+        return response({html_url:base+'#issuecomment-'+posted,body:JSON.parse(init.body).body});
+      }
+      if(url.includes('/comments?'))return response([]);
+      if(url.endsWith('/issues/'+scenario.n)&&init.method==='PATCH'){
+        patched++;
+        current={...current,state:'closed',state_reason:'completed'};
+        return response(current);
+      }
+      if(url.endsWith('/issues/'+scenario.n))return response(current);
+      return response([current]);
+    };
+    await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+    assert.equal(pool.objectives[0].metadata.keepParentOpenAtAssignment,scenario.sticky);
+    current={...current,body:safe(['CAPABILITY=review',...scenario.terminal])};
+    const result=await completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-'+scenario.n,workerId:'NV03',terminal:'DONE',result:'Review substep complete; no parent acceptance'});
+    assert.equal(result.terminal,'DONE');
+    assert.equal(posted,1,'exactly one reviewer evidence comment');
+    assert.equal(patched,scenario.close?1:0,'parent closure must honor sticky/current policy');
+    assert.equal(current.state,scenario.close?'closed':'open');
+    assert.equal(pool.jobs[0].status,'done','review slot must be released');
+    assert.equal(pool.objectives[0].status,'completed','only Core UI subtask objective is terminal');
+  }
+});
