@@ -1,0 +1,29 @@
+schema: tigeriq.project.v2
+id: tigeriq-dexcam-personal
+name: DeXCam Personal
+kind: project
+order: 80
+status: discovery
+owner: SON
+orchestrator: VY
+source_issue: 4625
+source_pr: 4626
+implementation_authorized: false
+auto_queue: excluded
+source_roots:
+  - projects/dexcam-personal
+workstreams:
+  - id: dexcam-personal-planning-and-delivery
+    name: Hồ sơ, khảo sát, xây dựng và nghiệm thu
+    order: 10
+  - id: usb-camera
+    name: Camera lùi USB và tự mở theo số R
+    order: 20
+  - id: dex-window
+    name: Quản lý cửa sổ Samsung DeX
+    order: 30
+  - id: integration-qa
+    name: Tích hợp và nghiệm thu trên thiết bị
+    order: 40
+# Source of truth for checklist progress: GitHub Issue 4625 body.
+# The project metadata is not an execution authorization.
