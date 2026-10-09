@@ -1,0 +1,44 @@
+name: TigerIQ Trusted Independent Review Publisher
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Existing PR number; does not approve it"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  checks: write
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'newsdayads/tigeriq-ai-lab' &&
+      (github.event_name != 'issue_comment' ||
+       (github.event.issue.pull_request != null &&
+        github.event.comment.user.login == 'newsdayads' &&
+        github.event.comment.body == '/tigeriq-review-check'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout protected main only; never checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Publish exact-head check from trusted source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NV03_GITHUB_LOGIN: ${{ vars.TIGERIQ_NV03_GITHUB_LOGIN }}
+          NV04_GITHUB_LOGIN: ${{ vars.TIGERIQ_NV04_GITHUB_LOGIN }}
+        run: node scripts/github-trusted-review-gate.mjs
