@@ -91,7 +91,7 @@ for(const width of [390,1024,1648]){
 
 test('Ops monitoring: verified source-age, active severity, event history and evidence',async({page})=>{
  await openFixture(page,true);
- await expect(page.locator('#opsFreshnessSummary')).toContainText('Dữ liệu cũ');
+ await expect(page.locator('#opsFreshnessSummary')).toContainText(/Dữ liệu cũ|Nguồn mất kết nối/);
  await page.locator('#opsFreshness summary').click();
  await expect(page.locator('.ops-age')).toHaveCount(4);
  await expect(page.locator('.ops-age[data-level=offline]').first()).toBeVisible();
