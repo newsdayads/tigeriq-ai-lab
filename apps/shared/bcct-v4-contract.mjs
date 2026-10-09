@@ -39,8 +39,10 @@ export function validateBcctV4(report) {
         !['TRỰC TUYẾN','NGOẠI TUYẾN',UNKNOWN].includes(a.pc01) ||
         (a.remainingPct !== null && (!Number.isFinite(a.remainingPct) || a.remainingPct < 0 || a.remainingPct > 100)) ||
         (a.pc01 === UNKNOWN && a.remainingPct !== null))) errors.push('FIVE_RDC_ACCOUNTS_OR_UNKNOWN_REQUIRED');
+  if (Array.isArray(report.rdc) && new Set(report.rdc.map(a=>a?.account)).size !== report.rdc.length) errors.push('RDC_ACCOUNTS_MUST_BE_UNIQUE');
   if (report.rdc?.some(a=>a.remainingPct !== null) &&
       !report.rdcCheckedAt) errors.push('RDC_CHECKED_AT_REQUIRED');
+  if (report.rdcCheckedAt && Number.isNaN(Date.parse(report.rdcCheckedAt))) errors.push('RDC_TIMESTAMP_INVALID');
   if (report.rdcPreferredAccount != null) {
     const candidates = report.rdc?.filter(a=>a.pc01 === 'TRỰC TUYẾN' && a.remainingPct > 0) || [];
     const max = Math.max(...candidates.map(a=>a.remainingPct));
