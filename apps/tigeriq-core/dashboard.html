@@ -126,7 +126,7 @@ body.api-health .work-panel .work-row.health-live-work-card{
 }
 body.api-health .work-panel .health-live-work-card>.work-main{
  background:#111C2E!important;border:1px solid #304159!important;
- min-height:0!important;width:100%!important;height:calc(100% - 29px)!important;
+ min-height:0!important;width:100%!important;height:calc(100% - 29px)!important;box-shadow:none!important;
  margin-top:29px!important;flex:1 1 auto!important;display:flex!important;
  flex-direction:column!important;transition:border-color 120ms ease!important;
 }
@@ -170,7 +170,7 @@ body.api-health .issue-indicator.has-issues{color:#F87171!important;border-color
 body.api-health .sync-status{color:#CBD5E1!important}
 body.api-health .filter,body.api-health .wo-filter{
  background:transparent!important;border:1px solid #304159!important;
- border-radius:8px!important;font-size:11px!important;font-weight:700!important;
+ border-radius:8px!important;font-weight:700!important;
  transition:color 120ms ease,border-color 120ms ease!important;
 }
 body.api-health .filter[data-filter="all"]{color:#CBD5E1!important}
@@ -210,6 +210,7 @@ body.api-health :is(.panel,.topbar,.filter,.wo-filter,.work-detail-btn,.employee
 body.api-health :is(.work-detail-modal,.detail-modal,.work-detail-section,.detail-grid,.tech-popover){
  background:#111C2E!important;border-color:#304159!important;
 }
+body.api-health .work-detail-modal{box-shadow:none!important}
 body.api-health .work-detail-btn.ask-vy,body.api-health #workDetailGithub{
  background:transparent!important;color:#60A5FA!important;border-color:#3B82F6!important;
 }
