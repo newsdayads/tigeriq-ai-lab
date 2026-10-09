@@ -20,5 +20,6 @@ describe('BCCT V4 fail-closed presentation contract',()=>{
   it('rejects percentages without verified denominator',()=>{const v=valid();v.completionPercent=80;expect(validateBcctV4(v).errors).toContain('UNVERIFIED_PERCENT');});
   it('rejects missing RDC or fake selection',()=>{const v=valid();v.rdc.pop();v.rdcPreferredAccount='RDC01';expect(validateBcctV4(v).errors).toContain('FIVE_RDC_ACCOUNTS_OR_UNKNOWN_REQUIRED');expect(validateBcctV4(v).errors).toContain('RDC_PREFERRED_UNVERIFIED');});
   it('requires real interactive handler',()=>{const v=valid();v.filters.mode='interactive';expect(validateBcctV4(v).errors).toContain('FILTER_ACTION_REQUIRED');v.filters.onSelect=()=>{};expect(validateBcctV4(v).ok).toBe(true);});
+  it('rejects duplicate RDC accounts and malformed checked-at',()=>{const v=valid();v.rdc[1].account=v.rdc[0].account;v.rdcCheckedAt='not-a-time';expect(validateBcctV4(v).errors).toContain('RDC_ACCOUNTS_MUST_BE_UNIQUE');expect(validateBcctV4(v).errors).toContain('RDC_TIMESTAMP_INVALID');});
   it('never emits a failed report',()=>{const emit=vi.fn();const v=valid();v.jobs=[{issue:4569,title:'A',url:'not-url'}];expect(publishBcctV4(v,emit).published).toBe(false);expect(emit).not.toHaveBeenCalled();expect(publishBcctV4(valid(),emit).published).toBe(true);expect(emit).toHaveBeenCalledTimes(1);});
 });
