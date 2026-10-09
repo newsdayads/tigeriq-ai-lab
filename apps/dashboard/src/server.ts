@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import type { WorkOrderSnapshot } from '../../../packages/control-plane/src/index.js';
 import { buildDashboard } from './index.js';
+import { renderBcctV4 } from './bcct.mjs';
 import { listTypedCapabilities, WorkforceControllerV1Client, type ExecutionSubmitter, type TypedExecutionRequest } from './typed-execution.js';
 import { collectControllerRuntimeTruth } from './runtime-truth-client.js';
 
@@ -369,6 +370,11 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
     const url = new URL(request.url ?? '/', 'http://localhost');
     const path = url.pathname;
     try {
+      if (request.method === 'GET' && path === '/bcct') {
+        const output = renderBcctV4(buildDashboard(await source.list()), url.searchParams.get('filter') || 'Tất cả', repo);
+        if (!output.ok || output.html === null) return respond(response, 503, 'application/json; charset=utf-8', JSON.stringify({error:'BCCT_V4_CONTRACT_REJECTED',details:output.errors}));
+        return respond(response, 200, 'text/html; charset=utf-8', output.html);
+      }
       if (request.method === 'GET' && path === '/api/status') {
         return respond(response, 200, 'application/json; charset=utf-8', JSON.stringify(buildDashboard(await source.list())));
       }
