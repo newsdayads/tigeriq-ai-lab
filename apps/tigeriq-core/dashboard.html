@@ -537,7 +537,8 @@ function renderWork(){
  workDetailRows=rows;
  workList.innerHTML=rows.map((x,i)=>{
   const s=woVisualStatus(x),kind=s.toLowerCase(),p=String(x.effectivePriority||x.priority||'META').toUpperCase(),priorityKey=/^P[0-5]$/.test(p)?p.toLowerCase():'meta';
-    const parent=Number(x.parentNumber),parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
+    const hierarchy='';
+  const parent=Number(x.parentNumber),parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
   const proof=healthWorkProof(x,s);
   const quick=healthWorkQuick(x,s);
   const signature=[s,p,x.currentStep,x.nextStep,x.blocker,x.progressPercent,x.progressDone,x.progressTotal,x.progressSource].join('|');
