@@ -1201,6 +1201,122 @@ function actionableStatus(issue, overlays = {}) {
   return 'OPEN';
 }
 
+export function checklistForIssue(issue) {
+  const body = String(issue?.body || '');
+  const source = bodyValue(body, 'PROGRESS_SOURCE').toUpperCase();
+  const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
+    || source === 'VERIFIED' || source === 'VERIFIED_CHECKLIST';
+  const items = [];
+  let fenced = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (/^\s*(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const match = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/);
+    if (!match) continue;
+    const rawLabel = match[2].trim();
+    const attachment = rawLabel.match(/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/);
+    const href = attachment ? safeEvidenceUrl(attachment[1]) : null;
+    const title = rawLabel.replace(/\[([^\]]+)\]\(https:\/\/[^\s)]+\)/g, '$1').slice(0, 300).trim();
+    items.push({ title: title || 'Bước chưa đặt tên', done: /x/i.test(match[1]), evidenceUrl: href });
+  }
+  if (items.length < 2) return { steps: [], done: 0, total: 0, remaining: 0, verified: false };
+  return {
+    steps: items,
+    done: items.filter((item) => item.done).length,
+    total: items.length,
+    remaining: items.filter((item) => !item.done).length,
+    verified,
+  };
+}
+
+// Actionable, source-grounded plan only. Never equate an action plan with verified progress.
+export function executionPlanForIssue(issue, currentNext = '') {
+  const body = String(issue?.body || '');
+  const lines = body.split(/\r?\n/);
+  const firstHeading = lines.findIndex((line) => /^#{1,3}\s+\S/.test(line));
+  const from = firstHeading < 0 ? 0 : firstHeading + 1;
+  const nextHeading = lines.findIndex((line, index) => index >= from && /^#{1,3}\s+\S/.test(line));
+  const activeBlock = lines.slice(from, nextHeading < 0 ? from + 250 : nextHeading).join('\n');
+  const action = String(currentNext || firstBodyValue(activeBlock, ['NEXT', 'NEXT_ACTION', 'CURRENT_STEP']) || '').trim();
+  if (!action) return { steps: [], source: null };
+  const seen = new Set();
+  const parts = action.split(/\s*;\s*|\s+(?:->|→)\s+/).map((part) => part.trim())
+    .filter((part) => part.length > 5 && !/^(?:no\b|never\b|do not\b|until\b|không\b|cấm\b)/i.test(part))
+    .slice(0, 8);
+  const steps = [];
+  for (const part of parts) {
+    const title = part.slice(0, 300);
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    steps.push({ title, done: false, evidenceUrl: null });
+  }
+  return { steps, source: steps.length ? 'GITHUB_CURRENT_NEXT' : null };
+}
+
+export function githubMilestoneSpec(issue) {
+  const body=String(issue?.body||''),h=body.match(/^#{1,3}\s+[^\n]+/m);
+  if(!h||h.index>300)return null;
+  const rest=body.slice(h.index+h[0].length),next=rest.search(/^#{1,3}\s+\S/m),block=next<0?rest.slice(0,6000):rest.slice(0,next);
+  const field=(keys)=>{for(const k of keys){const m=block.match(new RegExp('^'+k+'=(.+)$','mi'));if(m)return m[1].trim();}return '';};
+  const ref=field(['PR_IN_PROGRESS','PR','TARGET_PR','SOURCE_PR','PR_URL','TARGET_PR_NUMBER']);
+  const prNumber=Number(ref.match(/(?:pull\/|#|^)(\d{2,8})\b/i)?.[1]||0);
+  const head=field(['TARGET_EXACT_HEAD','CURRENT_EXACT_HEAD','TARGET_HEAD','PR_HEAD','SOURCE_COMMIT','EXACT_HEAD']);
+  if(!prNumber||!/^[0-9a-f]{40}$/i.test(head))return null;
+  const runId=(keys)=>{const v=field(keys);return /^PASS(?:\||$)/i.test(v)?Number(v.match(/\bRUN_(\d{6,})\b/i)?.[1]||0)||null:null;};
+  return {prNumber,head:head.toLowerCase(),ciRunId:runId(['EXACT_HEAD_CI','CI_HEAD','SOURCE_CI','CI']),queueRunId:runId(['EXACT_HEAD_QUEUE_HYGIENE','QUEUE_HYGIENE','SOURCE_QUEUE_HYGIENE']),block};
+}
+export function githubMilestoneChecklist(issue,spec,proof={}){
+  if(!spec||!proof.pr||Number(proof.pr.number)!==spec.prNumber||String(proof.pr.head?.sha||'').toLowerCase()!==spec.head)return null;
+  const base='https://github.com/'+REPO,prUrl=base+'/pull/'+spec.prNumber;
+  const runOk=(run,id,ci)=>Boolean(id&&Number(run?.id)===id&&run?.status==='completed'&&run?.conclusion==='success'
+    &&String(run?.head_sha||'').toLowerCase()===spec.head
+    &&(ci?/^CI(?:\s|$)|CI Verify/i.test(String(run?.name||'')):/queue hygiene/i.test(String(run?.name||''))));
+  const ci=runOk(proof.ciRun,spec.ciRunId,true),queue=runOk(proof.queueRun,spec.queueRunId,false);
+  const author=String(proof.pr.user?.login||'').toLowerCase(),latest=new Map();
+  for(const r of (Array.isArray(proof.reviews)?proof.reviews:[])){
+    const user=String(r?.user?.login||'').toLowerCase(),at=Date.parse(r?.submitted_at||'')||0;
+    if(!user||user===author||String(r?.commit_id||'').toLowerCase()!==spec.head)continue;
+    if(!latest.has(user)||at>=latest.get(user).at)latest.set(user,{state:r.state,at,url:r.html_url});
+  }
+  const review=[...latest.values()].find(x=>x.state==='APPROVED');
+  const merged=proof.pr.merged===true&&Boolean(proof.pr.merge_commit_sha);
+  const doneIssue=issue?.state==='closed'&&/^true$/i.test(spec.block.match(/^DONE=(.+)$/mi)?.[1]?.trim()||'');
+  const steps=[
+    {title:'PR #'+spec.prNumber+' đúng HEAD',done:true,evidenceUrl:proof.pr.html_url||prUrl},
+    {title:'CI PASS đúng HEAD',done:ci,evidenceUrl:ci?base+'/actions/runs/'+spec.ciRunId:null},
+    {title:'Queue Hygiene PASS đúng HEAD',done:queue,evidenceUrl:queue?base+'/actions/runs/'+spec.queueRunId:null},
+    {title:'Reviewer độc lập APPROVED',done:Boolean(review),evidenceUrl:review?.url||null},
+    {title:'PR đã hợp nhất',done:merged,evidenceUrl:merged?prUrl:null},
+    {title:'Work Order đã đóng và DONE=true',done:doneIssue,evidenceUrl:doneIssue?base+'/issues/'+issue.number:null},
+  ];
+  const done=steps.filter(x=>x.done).length;
+  return {steps,done,total:steps.length,remaining:steps.length-done,verified:true,source:'GITHUB_VERIFIED_GATES'};
+}
+const githubMilestoneCache=new Map();
+export async function githubMilestonesForIssues(issues,owner,repo,fetchImpl=fetch){
+  const candidates=(Array.isArray(issues)?issues:[]).map(issue=>({issue,spec:githubMilestoneSpec(issue)})).filter(x=>x.spec);
+  const result=new Map(),root='/repos/'+owner+'/'+repo;
+  await Promise.all(candidates.map(async({issue,spec})=>{
+    const n=Number(issue.number),now=Date.now(),key=[issue.updated_at,spec.prNumber,spec.head,spec.ciRunId,spec.queueRunId].join('|');
+    const cached=githubMilestoneCache.get(n);
+    if(cached?.key===key&&now-cached.at<60000){if(cached.value)result.set(n,cached.value);return;}
+    let value=null;
+    try{
+      const [pr,ciRun,queueRun,reviews]=await Promise.all([
+        gh(root+'/pulls/'+spec.prNumber,fetchImpl),
+        spec.ciRunId?gh(root+'/actions/runs/'+spec.ciRunId,fetchImpl):Promise.resolve(null),
+        spec.queueRunId?gh(root+'/actions/runs/'+spec.queueRunId,fetchImpl):Promise.resolve(null),
+        gh(root+'/pulls/'+spec.prNumber+'/reviews?per_page=100',fetchImpl),
+      ]);
+      value=githubMilestoneChecklist(issue,spec,{pr,ciRun,queueRun,reviews});
+    }catch{/* Fail closed on unavailable GitHub evidence. */}
+    githubMilestoneCache.set(n,{at:now,key,value});
+    if(value)result.set(n,value);
+  }));
+  return result;
+}
+
 export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull = false) {
   const body = String(issue?.body || '');
   const normalizedStatus = String(status || 'OPEN').toUpperCase();
@@ -1218,6 +1334,17 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
     return { percent, source: progressSource, detail };
   };
 
+  // Checklist đã xác minh là cơ sở chính; tránh % khai báo khác với số bước thực tế.
+  const checklist = checklistForIssue(issue);
+  if (checklist.total >= 2 && checklist.verified) {
+    const completePercent = Math.round((checklist.done / checklist.total) * 100);
+    const percent = checklist.done < checklist.total ? Math.min(99, completePercent) : completePercent;
+    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', checklist.done + '/' + checklist.total + ' bước xác minh');
+    if (accepted) return accepted;
+    // Nếu mọi checkbox được tích nhưng việc chưa DONE, không lấy % khai báo để thay thế.
+    if (checklist.done === checklist.total) return { percent: null, source: 'non_terminal_100_rejected', detail: 'Chờ xác minh điều kiện DONE' };
+  }
+
   const explicitRaw = bodyValue(body, 'PROGRESS_PERCENT');
   if (/^\d{1,3}$/.test(explicitRaw)) {
     const explicit = Number(explicitRaw);
@@ -1225,13 +1352,6 @@ export function progressForIssue(issue, status = 'OPEN', checks = null, hasPull 
     if (accepted) return accepted;
   }
 
-  const boxes = [...body.matchAll(/^\s*[-*]\s+\[([ xX])\]/gm)];
-  if (boxes.length >= 2) {
-    const done = boxes.filter((match) => /x/i.test(match[1])).length;
-    const percent = Math.round((done / boxes.length) * 100);
-    const accepted = acceptVerifiedPercent(percent, 'checklist_verified', done + '/' + boxes.length + ' checklist verified');
-    if (accepted) return accepted;
-  }
 
   return { percent: null, source: 'none', detail: null };
 }
@@ -1329,9 +1449,15 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
+  const originalChecklist = classification.workKind === 'WORK' ? checklistForIssue(issue) : { steps: [], done: 0, total: 0, remaining: 0, verified: false };
+  const githubChecklist = originalChecklist.total < 2 ? overlays.githubMilestones || null : null;
+  const checklist = githubChecklist || originalChecklist;
   const progress = classification.workKind === 'SYSTEM'
     ? { percent: null, source: 'none', detail: null }
-    : progressForIssue(issue, status, checks, hasPull);
+    : githubChecklist && githubChecklist.verified
+      ? { percent:Math.min(status === 'DONE' ? 100 : 99,Math.round(githubChecklist.done / githubChecklist.total * 100)),
+          source:'github_gates_verified',detail:githubChecklist.done+'/'+githubChecklist.total+' cổng GitHub xác minh' }
+      : progressForIssue(issue, status, checks, hasPull);
   const priority = issuePriority(issue);
   const relations = workflowRelationsForIssue(issue);
   const technicalComplete = classification.ownerGate && ownerGateTechnicalComplete(body, phase);
@@ -1354,6 +1480,9 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
+  const executionPlan = classification.workKind === 'WORK' && checklist.total < 2
+    ? executionPlanForIssue(issue, nextStep || '')
+    : { steps: [], source: null };
   const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
   const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
   const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
@@ -1420,6 +1549,13 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     progressPercent: progress.percent,
     progressSource: progress.source,
     progressDetail: progress.detail,
+    progressSteps: checklist.steps,
+    progressDone: checklist.done,
+    progressTotal: checklist.total,
+    progressRemaining: checklist.remaining,
+    progressChecklistVerified: checklist.verified,
+    executionSteps: executionPlan.steps,
+    executionPlanSource: executionPlan.source,
     prNumber: classification.ownerGate ? null : active?.prNumber || null,
     prUrl: classification.ownerGate ? null : active?.prUrl || null,
     checks,
@@ -1667,8 +1803,12 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
 
     const activeMap = new Map(activeRows.map((row) => [Number(row.number), row]));
     const queueMap = new Map(rankedQueue.map((row) => [Number(row.number), row]));
-    const resultInboxProjection = await ownerResultInboxProjection(openIssues, owner, repo, fetchImpl);
+    const [resultInboxProjection, githubMilestones] = await Promise.all([
+      ownerResultInboxProjection(openIssues, owner, repo, fetchImpl),
+      githubMilestonesForIssues(openIssues, owner, repo, fetchImpl),
+    ]);
     const openWork = annotatePortfolioRows(openIssues.map((issue) => parseOpenWorkIssue(issue, {
+      githubMilestones: githubMilestones.get(Number(issue.number)) || null,
       active: activeMap.get(Number(issue.number)) || null,
       queued: queueMap.get(Number(issue.number)) || null,
       lifecycle: lifecycleOverrides.get(Number(issue.number)) || null,

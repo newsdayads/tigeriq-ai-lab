@@ -136,6 +136,49 @@ body.drawer-open{overflow:hidden}
 @media(max-width:700px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}}
 @media(max-width:420px){.owner-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-main{grid-column:1/-1}.summary-tile{min-height:64px}}
 
+
+/* TigerIQ Live V2 — Owner-approved semantic system */
+:root{--green:#10B981;--cyan:#06B6D4;--violet:#A78BFA;--amber:#F59E0B;--red:#F43F5E;--blue:#3B82F6;--teal:#14B8A6;--slate:#64748B}
+.filter[data-filter="owner"].active{border-color:var(--violet);background:#32224e;color:#e6d6ff}
+.filter[data-filter="review"].active{border-color:var(--blue);background:#172d54;color:#c5ddff}
+.filter[data-filter="waiting"].active{border-color:var(--amber);background:#382c16;color:#ffe2a1}
+.work-list{gap:25px 13px;margin-top:19px}
+.work-row{overflow:visible;padding:17px 13px 12px;border-radius:0 0 14px 14px;border-color:var(--status-color,#64748B);transition:transform .16s ease,box-shadow .16s ease}
+.work-row:hover,.work-row:focus-visible{transform:translateY(-2px);box-shadow:0 14px 28px #0005;outline-offset:3px}
+.work-row::before{display:none}
+.work-row.status-working{--status-color:#10B981}.work-row.status-done{--status-color:#06B6D4}.work-row.status-owner_gate{--status-color:#A78BFA}.work-row.status-waiting{--status-color:#F59E0B}.work-row.status-blocked{--status-color:#F43F5E}.work-row.status-review{--status-color:#3B82F6}.work-row.status-verify{--status-color:#14B8A6}.work-row.status-system,.work-row.status-open,.work-row.status-unknown{--status-color:#64748B}
+.work-row.status-queued{--status-color:#F59E0B}
+.work-row .work-top{justify-content:space-between;gap:9px}
+.work-row .work-id,.work-row .priority{position:absolute;top:-28px;height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:9px 9px 0 0;padding:0 13px;font-size:18px;font-weight:900;line-height:1}
+.work-row .work-id{left:-1px;color:#071321;background:var(--status-color)}
+.work-row .priority{right:-1px;color:#fff}
+.work-row .priority.p0{background:#EF4444}.work-row .priority.p1{background:#F97316}.work-row .priority.p2{background:#F59E0B;color:#071321}.work-row .priority.p3{background:#3B82F6}.work-row .priority.p4{background:#8B5CF6}.work-row .priority.p5{background:#64748B}
+.rank{width:29px;height:26px;font-size:13px;background:#273D53;border:1px solid #456079;color:#f2f7fd}
+.work-row .state{font-size:12px;padding:5px 9px;border-radius:8px;margin-left:auto;border-color:var(--status-color);color:var(--status-color);background:color-mix(in srgb,var(--status-color) 12%,#11263D);animation:none}
+.work-row .state::before{content:"";display:inline-block;width:9px;height:9px;border:2px solid currentColor;border-radius:50%;margin-right:7px}
+.work-row.status-done .state::before{border-radius:3px}
+.work-title{font-size:15.5px;line-height:1.35;font-weight:750;margin-top:12px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.work-quick{font-size:12px;line-height:1.45;margin-top:10px}
+.work-row.status-owner_gate .work-facts .owner-pending{color:#d5baff}
+.work-row.status-owner_gate .progress{color:var(--violet)}.work-row.status-review .progress{color:var(--blue)}.work-row.status-verify .progress{color:var(--teal)}.work-row.status-done .progress{color:var(--cyan)}
+.drawer{--detail-color:#64748B}
+.drawer[data-status="working"]{--detail-color:#10B981}.drawer[data-status="done"]{--detail-color:#06B6D4}.drawer[data-status="owner_gate"]{--detail-color:#A78BFA}.drawer[data-status="waiting"]{--detail-color:#F59E0B}.drawer[data-status="blocked"]{--detail-color:#F43F5E}.drawer[data-status="review"]{--detail-color:#3B82F6}.drawer[data-status="verify"]{--detail-color:#14B8A6}
+.drawer-head{border-top:5px solid var(--detail-color);background:linear-gradient(125deg,color-mix(in srgb,var(--detail-color) 15%,#10243A),#10243A)}
+.drawer-kicker{color:var(--detail-color);font-size:15px;font-weight:850}
+.drawer-title{font-size:20px;line-height:1.35;color:#f4f8ff}
+.drawer-section{border-color:#29435c;background:#142a40;border-radius:12px}
+.drawer-section h3{color:var(--detail-color);font-size:15px}
+.drawer-row{font-size:13px;line-height:1.55}
+.drawer-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.drawer-actions .drawer-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:10px;min-height:46px;font-weight:800;font-size:13px}
+.drawer-actions .ask-vy{grid-column:1/-1;background:#123D79;color:#fff;border-color:#387DC1}
+.drawer-actions #drawerGithub{background:#176C64;color:white;border-color:#279587}
+.drawer-actions #drawerCloseBottom{background:#334155;color:white;border-color:#526479}
+.drawer-actions #drawerAskVyFallback{display:none!important}
+@media(max-width:700px){.work-list{gap:26px}.work-row{padding:17px 12px 12px}.drawer-title{font-size:18px}}
+@media(prefers-reduced-motion:reduce){.work-row{transition:none}.work-row:hover,.work-row:focus-visible{transform:none}}
+
+.live-status-icon{width:17px;height:17px;flex:none;vertical-align:middle;margin-right:6px}.work-row .state::before{display:none}
 .bcct-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0;color:var(--muted);font-size:11px}.bcct-toolbar select,.bcct-toolbar button{border:1px solid #426080;border-radius:8px;background:#132a45;color:#f2f7fd;padding:7px;cursor:pointer}.bcct-toolbar select:focus-visible,.bcct-toolbar button:focus-visible{outline:2px solid #8cbbec}.bcct-toolbar span{font-size:10px}@media(max-width:700px){.bcct-toolbar span{flex-basis:100%}}
 </style>
 
@@ -663,6 +706,180 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 @media(max-width:759px){.work-list{grid-template-columns:1fr}.top{padding-bottom:7px}.brand h1{font-size:19px}.live{padding:6px 8px;font-size:10px}.work-row{padding:8px}.work-title{font-size:12.5px}}
 @media(max-height:520px) and (min-width:760px){.work-row{padding:7px 8px}.work-title{margin-top:5px}.progress{margin-top:5px}.filters{padding-bottom:5px}}
 @media(prefers-reduced-motion:reduce){.progress.indeterminate .progress-fill{animation:none!important;transform:none!important;width:45%}}
+
+/* TIGERIQ LIVE V2.1 — THEO THIẾT KẾ OWNER: HUY HIỆU TREO LUÔN HIỆN */
+.work-list{gap:14px 13px;margin-top:13px}
+.work-row{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;border-radius:0!important;overflow:visible!important;position:relative}
+.work-row .work-main{margin-top:28px;height:calc(100% - 28px);min-width:0;padding:13px 13px 12px;border:1px solid var(--status-color,#64748B);border-radius:0 0 13px 13px;background:linear-gradient(180deg,#11263D,#0B1829);box-shadow:0 8px 24px rgba(0,0,0,.16);transition:box-shadow .18s ease,border-color .18s ease}
+.work-row:hover,.work-row:focus-visible{transform:translateY(-2px);box-shadow:none!important}
+.work-row:hover .work-main,.work-row:focus-visible .work-main{box-shadow:0 13px 28px rgba(0,0,0,.32)}
+.work-row .work-id,.work-row .priority{position:absolute;top:0!important;height:28px;z-index:2;display:flex;align-items:center;justify-content:center;font-size:18px!important;font-weight:900;padding:0 12px;border-radius:9px 9px 0 0;line-height:1}
+.work-row .work-id{left:0!important;background:var(--status-color,#64748B);color:#061522}
+.work-row .priority{right:0!important;color:#fff}
+.work-row .priority.p0{background:#EF4444}.work-row .priority.p1{background:#F97316}.work-row .priority.p2{background:#F59E0B;color:#071321}.work-row .priority.p3{background:#3B82F6}.work-row .priority.p4{background:#8B5CF6}.work-row .priority.p5{background:#64748B}.work-row .priority.meta{background:#64748B;color:#fff}
+.work-row .rank{height:25px;width:27px;font-size:12px;background:#234460;border:1px solid #4B7497;color:#EAF6FF}
+.work-row .work-title{font-size:15px;line-height:1.37;margin-top:10px;min-height:0}
+.work-row .work-top .state{font-size:11px;padding:5px 8px;white-space:nowrap}
+.work-row .work-nv{max-width:150px;font-size:10px;color:#A4B9CE}
+.work-row .work-quick{font-size:11.5px;line-height:1.48;margin-top:9px;color:#A9D4F8}
+.work-row.status-owner_gate .state{border-color:#A78BFA;color:#E0CAFF;background:#302447}
+.work-row.status-review .state{border-color:#3B82F6;color:#B8D5FF;background:#172E54}
+.work-row.status-verify .state{border-color:#14B8A6;color:#A3F5E7;background:#123D3A}
+.work-row.status-blocked .state{border-color:#F43F5E;color:#FFB9C7;background:#48212D}
+.work-row.status-done .state{border-color:#06B6D4;color:#A0F2FC;background:#113943}
+.filter[data-filter="owner"].active{border-color:#A78BFA;background:#302447;color:#E0CAFF}
+.filter[data-filter="review"].active{border-color:#3B82F6;background:#172E54;color:#B8D5FF}
+.filter[data-filter="waiting"].active{border-color:#F59E0B;background:#3A2B14;color:#FFE2A1}
+@media(max-width:759px){.work-list{gap:13px}.work-row .work-main{padding:12px 11px}.work-row .work-title{font-size:14px}.work-row .work-id,.work-row .priority{font-size:16px!important;height:27px}.work-row .work-main{margin-top:27px;height:calc(100% - 27px)}}
+</style>
+
+<style id="tigeriq-live-owner-polish-v22">
+/* Owner V2.2 — backgrounds, clear icons, next-step vector, three equal actions */
+html,body,body{background:#071321!important}
+.raw-work-details,.raw-work-details[open],.live-work-shell,.raw-work-inner{background:#071321!important;box-shadow:none!important}
+.work-row .work-main{background:#10243A!important}
+.drawer,.drawer-body,.drawer-actions{background:#071321!important}
+.drawer-head,.drawer-section{background:#10243A!important}
+.drawer{background-image:none!important}
+.drawer-head{background-image:none!important}
+.work-row .work-id{color:#FFFFFF!important;text-shadow:0 1px 2px rgba(0,0,0,.55)!important}
+.work-row .state,.work-row.status-owner_gate .state,.work-row.status-review .state,.work-row.status-verify .state,.work-row.status-blocked .state,.work-row.status-done .state{border:none!important;background:transparent!important;box-shadow:none!important;color:var(--status-color,#94A3B8)!important;padding:4px 2px!important;border-radius:0!important}
+.work-row .state svg,.live-status-icon{background:transparent!important;box-shadow:none!important;border:none!important;border-radius:0!important;stroke:currentColor;flex-shrink:0}
+.work-row .work-quick.next{display:flex;align-items:flex-start;gap:7px}
+.work-row .work-quick.next .next-step-icon{width:17px;height:17px;flex:none;stroke:#58B7FF;stroke-width:2.2;margin-top:1px;background:none;border:0;box-shadow:none}
+.work-row .work-quick.next span{flex:1;min-width:0}
+.drawer-actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.drawer-actions .drawer-btn{grid-column:auto!important;min-width:0;width:100%;padding:9px 10px!important;min-height:48px!important;font-size:13px!important;font-weight:800!important;line-height:1.2!important;text-align:center}
+.drawer-actions #drawerAskVy{background:#123D79!important;border-color:#3679B9!important;color:#FFFFFF!important}
+.drawer-actions #drawerGithub{background:#176C64!important;border-color:#279587!important;color:#FFFFFF!important}
+.drawer-actions #drawerCloseBottom,.drawer-actions #drawerCloseBottom.primary{background:#DC2626!important;border-color:#F87171!important;color:#FFFFFF!important}
+.drawer-close{color:#FCA5A5!important;border-color:#B91C1C!important;background:transparent!important}
+.drawer-actions .drawer-btn:hover{filter:brightness(1.12)}
+@media(max-width:430px){.drawer-actions{gap:6px!important}.drawer-actions .drawer-btn{font-size:11px!important;padding:8px 4px!important;min-height:46px!important}}
+@media(prefers-reduced-motion:reduce){.drawer-actions .drawer-btn{transition:none!important}}
+</style>
+
+<style id="tigeriq-live-semantic-status-v23">
+/* Semantic status ≠ priority: canonical colors, all filter states, no status gradient */
+.work-row.status-owner_gate{--status-color:#A78BFA}
+.work-row.status-working{--status-color:#10B981}
+.work-row.status-review{--status-color:#3B82F6}
+.work-row.status-verify{--status-color:#14B8A6}
+.work-row.status-waiting,.work-row.status-queued{--status-color:#F59E0B}
+.work-row.status-blocked{--status-color:#F43F5E}
+.work-row.status-done{--status-color:#06B6D4}
+.work-row.status-paused,.work-row.status-system,.work-row.status-open,.work-row.status-unknown,.work-row.status-goal{--status-color:#64748B}
+.drawer[data-status="paused"],.drawer[data-status="system"],.drawer[data-status="open"],.drawer[data-status="unknown"],.drawer[data-status="goal"]{--detail-color:#64748B}
+.drawer[data-status="queued"]{--detail-color:#F59E0B}
+.filter[data-filter]{--filter-accent:#94A3B8;color:var(--filter-accent)!important;border:1px solid color-mix(in srgb,var(--filter-accent) 56%,#071321)!important;background:transparent!important}
+.filter[data-filter].active{color:var(--filter-accent)!important;border-color:var(--filter-accent)!important;background:color-mix(in srgb,var(--filter-accent) 17%,#071321)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--filter-accent) 18%,transparent) inset}
+.filter[data-filter="action"]{--filter-accent:#94A3B8}
+.filter[data-filter="owner"]{--filter-accent:#A78BFA}
+.filter[data-filter="running"]{--filter-accent:#10B981}
+.filter[data-filter="review"]{--filter-accent:#3B82F6}
+.filter[data-filter="verify"]{--filter-accent:#14B8A6}
+.filter[data-filter="waiting"]{--filter-accent:#F59E0B}
+.filter[data-filter="blocked"]{--filter-accent:#F43F5E}
+.filter[data-filter="paused"]{--filter-accent:#64748B}
+.filter[data-filter="system"]{--filter-accent:#64748B}
+.filter[data-filter="done"]{--filter-accent:#06B6D4}
+.work-row .state{color:var(--status-color,#64748B)!important}
+.work-row .work-id{background:var(--status-color,#64748B)!important;color:#fff!important}
+.work-row .work-main{border-color:var(--status-color,#64748B)!important}
+.work-row .progress{color:var(--status-color,#64748B)!important}
+.filter:focus-visible,.work-row:focus-visible{outline:2px solid #E2E8F0;outline-offset:3px}
+</style>
+<style id="tigeriq-live-verified-checklist-v24">
+/* Verified checklist counters derive only from API source with auditable scope */
+.work-step-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:7px;font-size:11px;line-height:1.45;color:#B5D6EB;font-weight:750}
+.work-step-summary .step-remaining{color:#F2C879}
+.work-step-summary.unverified{color:#8CA6BC;font-weight:650}
+.drawer-checklist-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.drawer-checklist-meta{color:#B7D9EC;font-size:12px;line-height:1.45}
+.drawer-checklist-list{display:grid;gap:7px;margin-top:9px}
+.drawer-checklist-step{display:flex;gap:9px;align-items:flex-start;padding:10px 9px;border:1px solid #2A4560;border-radius:9px;background:#0A1D31}
+.drawer-checklist-step .check-icon{height:19px;width:19px;flex:none;margin-top:1px;color:#8DA8BF}
+.drawer-checklist-step.verified.done .check-icon{color:#10B981}
+.drawer-checklist-step.verified.done{border-color:#28664C}
+.drawer-checklist-copy{min-width:0;flex:1}
+.drawer-checklist-copy strong{display:block;font-size:13px;line-height:1.45;overflow-wrap:anywhere;color:#EDF5FE;font-weight:700}
+.drawer-checklist-copy small{display:block;margin-top:3px;color:#96AFC4;font-size:11px;line-height:1.4}
+.drawer-checklist-copy a{color:#7BCBFF;text-decoration:underline;text-underline-offset:2px}
+.drawer-checklist-hint{margin-top:9px;color:#A5BBD0;font-size:11px;line-height:1.5}
+.drawer-checklist-head h3{margin:0!important}
+@media(max-width:430px){.work-step-summary{font-size:10px}.drawer-checklist-step{padding:8px 7px}.drawer-checklist-copy strong{font-size:12px}}
+</style>
+<style id="tigeriq-live-compact-grid-v25">
+.work-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 9px;margin-top:12px}
+.work-row .work-main{margin-top:25px;height:calc(100% - 25px);min-height:150px;padding:9px 10px 10px!important}
+.work-row .work-id,.work-row .priority{height:25px!important;font-size:15px!important;padding:0 9px}
+.work-row .work-top{gap:4px;flex-wrap:nowrap;min-width:0}
+.work-row .rank{width:23px;height:22px;font-size:10px}
+.work-row .work-nv{font-size:9px;max-width:65px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.work-row .work-top .state{font-size:9px!important;padding:2px 0!important;max-width:132px}
+.work-row .work-top .state .live-status-icon{width:15px;height:15px;margin-right:3px}
+.work-row .work-title{font-size:12.5px!important;line-height:1.34!important;margin-top:7px!important;min-height:2.68em!important;-webkit-line-clamp:2;overflow-wrap:anywhere}
+.work-row .work-quick{font-size:10px!important;line-height:1.35!important;margin-top:7px!important}
+.work-row .work-quick.next{gap:5px}
+.work-row .work-quick.next .next-step-icon{width:14px;height:14px}
+.work-row .work-quick span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.work-row .progress{margin-top:5px;gap:4px}.work-row .progress-track{height:5px}.work-row .work-step-summary{font-size:9px;gap:4px;margin-top:4px}
+@media(min-width:900px){.work-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1200px){.work-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:1450px){.work-list{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(min-width:2100px){.work-list{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:599px){.work-list{grid-template-columns:1fr}.work-row .work-main{min-height:145px}.work-row .work-title{font-size:13px!important}}
+/* Owner P0: visible hierarchy and independent scoped filters */
+.owner-filter-toolbar{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:10px 0}
+.owner-filter-toolbar label{display:flex;flex-direction:column;align-items:stretch;gap:4px;font-size:10px;color:#A8C2D6;font-weight:800;min-width:120px;flex:1 1 145px}
+.owner-filter-toolbar label select{width:100%;min-width:0;font-size:12px;min-height:35px}
+.owner-filter-toolbar button{min-height:35px}.owner-filter-toolbar span{flex:1 0 100%;font-weight:500}
+.work-row .work-hierarchy{font-size:10px;font-weight:700;color:#97C8E2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:7px;line-height:1.4}
+.work-row .work-hierarchy span{color:#CBD5E1;margin:0 3px}
+.work-row .work-parent{font-size:9px;color:#B5C2D6;line-height:1.4;margin-top:2px}
+.work-row .work-title{margin-top:5px!important}
+@media(max-width:599px){.owner-filter-toolbar label{flex:1 1 calc(50% - 8px)}.work-row .work-hierarchy{font-size:11px}.work-row .work-parent{font-size:10px}}
+
+/* Owner-approved P0: preserve existing STATUS_COLORS; meter matches badge, status and border. */
+.work-row .work-main{display:flex!important;flex-direction:column!important}
+.work-row .work-progress-bottom{margin-top:auto;padding-top:9px;min-width:0}
+.work-row .work-progress-bottom .work-step-summary{margin-top:0;margin-bottom:5px}
+.work-row .work-progress-bottom .progress{margin-top:0;color:var(--status-color,#64748B)!important}
+.work-row .work-progress-bottom .progress-fill{background:var(--status-color,#64748B)!important;box-shadow:0 0 9px color-mix(in srgb,var(--status-color,#64748B) 26%,transparent)}
+.work-row .work-progress-bottom .progress-text{color:var(--status-color,#64748B)!important}
+.work-row .work-progress-bottom .progress.indeterminate .progress-fill{background:linear-gradient(90deg,transparent,var(--status-color,#64748B),transparent)!important}
+.work-row:not(.progress-running) .progress-fill::after{content:none!important;animation:none!important}
+.work-row:not(.progress-running) .progress.indeterminate .progress-fill{display:none!important;animation:none!important}
+.work-row.progress-running .progress-fill{box-shadow:0 0 11px color-mix(in srgb,var(--status-color,#64748B) 44%,transparent)}
+.work-row.progress-running .progress-fill::after{content:"";position:absolute;inset:0;width:38%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.48),transparent);animation:progress-shimmer 2.3s ease-in-out infinite}
+.work-row.progress-running .progress.indeterminate .progress-fill{display:block!important;animation:progress-indeterminate 1.45s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){
+ .work-row.progress-running .progress-fill::after{content:none!important;animation:none!important}
+ .work-row.progress-running .progress.indeterminate .progress-fill{animation:none!important;transform:none!important}
+}
+</style>
+
+<style id="tigeriq-live-workers-approved-p0">
+/* Owner P0: 7 desktop / 5 tablet / 3 mobile; 5-second workforce refresh. */
+.live-workers-panel{margin:0 0 12px}
+.live-workers-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.live-workers-head h2{font-size:12px;font-weight:900;color:#eef7ff;letter-spacing:.03em;margin:0}
+.live-workers-head span{font-size:10px;color:#64e6af;font-weight:800}
+.live-workers-head span.unverified{color:#efb85c}
+.live-workers-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.live-worker-card{border:1px solid #286a9b;background:linear-gradient(180deg,#10263a,#091b2b);border-radius:11px;min-width:0;padding:9px 11px;overflow:hidden}
+.live-worker-top,.live-worker-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.live-worker-id{color:#d5b4ff;font-size:12px;font-weight:900}
+.live-worker-state{color:#64e6af;font-size:10px;font-weight:800;white-space:nowrap}
+.live-worker-state::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#46d48f;margin-right:5px;vertical-align:middle}
+.live-worker-name{font-size:13px;font-weight:900;color:#f2f7fd;margin:6px 0 3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.live-worker-job{font-size:12px;line-height:1.35;color:#b8ccdc;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;min-height:32px}
+.live-worker-footer{margin-top:7px;padding-top:6px;border-top:1px solid #244258;flex-wrap:wrap;font-size:10px;color:#8dbbb8}
+.live-worker-code{font-weight:800;color:#afd6ff;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-worker-updated{white-space:nowrap}
+.live-worker-empty{border:1px solid #29445d;background:#0b1e30;border-radius:10px;padding:11px;color:#9ab2c6;font-size:11px}
+@media(max-width:1099px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}}
+@media(max-width:599px){.live-workers-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.live-worker-card{padding:6px 5px;border-radius:8px}.live-worker-top{align-items:flex-start;flex-direction:column;gap:2px}.live-worker-id{font-size:10px}.live-worker-state{font-size:8px}.live-worker-name{font-size:10px;margin:3px 0 2px}.live-worker-job{font-size:9px;line-height:1.25;min-height:23px}.live-worker-footer{font-size:8px;gap:2px;align-items:flex-start;flex-direction:column;margin-top:4px;padding-top:4px}.live-worker-code{max-width:100%}.live-worker-updated{font-size:8px}}
 </style>
 </head>
 <body>
@@ -688,6 +905,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <div class="raw-work-inner">
 <section id="nowRunning" class="live-focus" aria-label="Việc đang chạy ngay lúc này" hidden></section>
 <section id="apiWorkforce" class="api-workforce-summary" aria-label="Tiến độ API Workforce" hidden></section>
+<section id="liveWorkers" class="live-workers-panel" aria-label="Nhân viên đang làm" aria-live="polite"></section>
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
@@ -695,11 +913,15 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
     <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
     <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
     <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
-    <button class="filter" data-filter="waiting" data-legacy-label="CHỜ/BLOCKED">CHỜ / BỊ CHẶN <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="verify">XÁC MINH <b id="verifyCount">0</b></button>
+    <button class="filter" data-filter="ready">SẴN SÀNG <b id="readyCount">0</b></button>
+    <button class="filter" data-filter="waiting">ĐANG CHỜ <b id="waitingCount">0</b></button>
+    <button class="filter" data-filter="blocked">BỊ CHẶN <b id="blockedCount">0</b></button>
+    <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div class="bcct-toolbar"><label for="bcctSort">ƯU TIÊN</label><select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select><button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Chỉ sắp xếp và kiểm tra; không tự giao việc</span></div><div id="workList" class="work-list"></div>
+  <div id="workList" class="work-list"></div>
 </section>
 </div>
 </details>
@@ -712,10 +934,15 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
   <div class="drawer-body">
     <section id="drawerOwnerResults" class="drawer-section" hidden><h3>Kết quả hoàn tất</h3><div id="drawerOwnerResultsList" class="owner-result-list"></div></section>
     <section id="drawerProgressSection" class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
+    <section id="drawerChecklistSection" class="drawer-section" hidden>
+      <div class="drawer-checklist-head"><h3>DANH SÁCH BƯỚC THỰC HIỆN</h3><span id="drawerChecklistMeta" class="drawer-checklist-meta"></span></div>
+      <div id="drawerChecklistList" class="drawer-checklist-list"></div>
+      <div id="drawerChecklistHint" class="drawer-checklist-hint"></div>
+    </section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
-  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
+  <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Mở TigerIQ với nội dung trao đổi; có sao chép dự phòng">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
 <script>
 const $=id=>document.getElementById(id);
@@ -728,8 +955,9 @@ let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
 let drawerReturnFocus=null;
-const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
+const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
 function verifiedProgress(row){
@@ -738,7 +966,7 @@ function verifiedProgress(row){
   const status=workStatus(row);
   const evidenceFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   const terminal100=status==='DONE'&&source==='terminal'&&pct===100;
-  const nonTerminalVerified=['explicit_verified','checklist_verified'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<100;
+  const nonTerminalVerified=['explicit_verified','checklist_verified','github_gates_verified'].includes(source)&&Number.isFinite(pct)&&pct>=0&&pct<100;
   return {pct,verified:evidenceFresh&&(terminal100||nonTerminalVerified)};
 }
 function statusRank(v){return ({OWNER_GATE:0,WORKING:1,REVIEW:2,VERIFY:3,QUEUED:4,BLOCKED:5,WAITING:6,UNKNOWN:7,OPEN:8,DONE:9})[String(v||'').toUpperCase()]??8}
@@ -747,7 +975,11 @@ function workStatus(row){
   const map={
     'ĐANG XỬ LÝ':'WORKING','RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG CHỜ':'WAITING',
     'BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','SẴN SÀNG':'QUEUED','MỞ':'OPEN',
-    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
+    'CHỜ BÊN NGOÀI':'WAITING','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','CHỜ ANH SƠN':'OWNER_GATE',
+    'CHỜ':'WAITING','TẠM DỪNG':'PAUSED','PAUSED':'PAUSED',
+    'ĐANG RÀ SOÁT':'REVIEW','ĐANG XÁC MINH':'VERIFY','ĐANG LÀM':'WORKING',
+    'CHƯA LÀM':'OPEN','CHƯA RÕ':'UNKNOWN','LỖI':'BLOCKED',
+    'CHỜ ANH SƠN DUYỆT':'OWNER_GATE',
     'ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT':'OWNER_GATE'
   };
   return map[raw]||raw;
@@ -798,18 +1030,26 @@ function executionWaitReason(row){
 function normalizeRows(value){
   const fallbackOpen=()=>{
     const map=new Map();
-    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])]) if(Number(row?.number)) map.set(Number(row.number),row);
+    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])])if(Number(row?.number))map.set(Number(row.number),row);
     return [...map.values()];
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
-  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
-  if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
-  if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
-  if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
-  if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
-  if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
+  let rows=[];
+  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
+  else if(currentFilter==='owner')rows=openRows.filter(x=>workStatus(x)==='OWNER_GATE');
+  else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
+  else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
+  else if(currentFilter==='verify')rows=openRows.filter(x=>workStatus(x)==='VERIFY');
+  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
+  else if(currentFilter==='waiting')rows=openRows.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY');
+  else if(currentFilter==='blocked')rows=openRows.filter(x=>workStatus(x)==='BLOCKED');
+  else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
+  else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
+  else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
+  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
+  return rows;
 }
+
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
 function snapshotTimestamp(value){
@@ -827,12 +1067,16 @@ function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
   const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  const visibleActionable=actionable.filter(x=>workPriority(x)!=='P5');
+  const visibleActionable=actionable;
   $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
-  $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
-  $('waitingCount').textContent=Number.isFinite(Number(s.waiting))?s.waiting:actionable.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x))).length;
+  $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
+  $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
+  $('readyCount').textContent=actionable.filter(x=>['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY')).length;
+  $('waitingCount').textContent=actionable.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY').length;
+  $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
+  $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
   $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
 }
@@ -1629,6 +1873,89 @@ function renderNowRunning(){
   });
 }
 
+let workforceSnapshot=null;
+let workforcePolling=false;
+function liveWorkforceRows(){
+  // Latest independent runtime check wins: never revive active cards from cached work projection.
+  const source=workforceSnapshot||snapshot;
+  const at=Date.parse(source?.generatedAt||'');
+  const age=Date.now()-at;
+  const fresh=source?.ok!==false&&source?.liveConnected===true&&!source?.staleAll
+    &&Number.isFinite(at)&&age>=0&&age<=90000;
+  const rows=fresh?(Array.isArray(source?.workers)?source.workers:[]).filter(worker=>{
+    const at=Date.parse(worker?.heartbeatAt||'');
+    const age=Date.now()-at;
+    return /^NV\d{2}$/.test(String(worker?.employeeId||'').toUpperCase())
+      &&String(worker?.state||'').toLowerCase()==='working'
+      &&Boolean(String(worker?.currentJobId||'').trim())
+      &&Number.isFinite(at)&&age>=0&&age<=60000;
+  }).sort((a,b)=>Number(String(a.employeeId).slice(2))-Number(String(b.employeeId).slice(2))):[];
+  return {fresh,rows};
+}
+function renderLiveWorkers(){
+  const panel=$('liveWorkers');
+  const {fresh,rows}=liveWorkforceRows();
+  const text=(element,value)=>{const val=String(value??'');if(element.textContent!==val)element.textContent=val;};
+  const node=(tag,cls,parent)=>{
+    const n=document.createElement(tag);n.className=cls;parent.append(n);return n;
+  };
+  let head=panel.querySelector('.live-workers-head');
+  if(!head){head=node('header','live-workers-head',panel);node('h2','',head);node('span','',head);}
+  text(head.querySelector('h2'),'NHÂN VIÊN ĐANG LÀM');
+  const count=head.querySelector('span');
+  count.classList.toggle('unverified',!fresh);
+  text(count,fresh?rows.length+' NHÂN VIÊN · 5 GIÂY':'CHƯA XÁC MINH');
+  let grid=panel.querySelector('.live-workers-grid');
+  let empty=panel.querySelector('.live-worker-empty');
+  if(!rows.length){
+    if(grid){grid.remove();grid=null;}
+    if(!empty)empty=node('div','live-worker-empty',panel);
+    text(empty,fresh?'Hiện chưa có nhân viên được xác nhận đang thực thi.':'Nguồn PC01 gián đoạn hoặc dữ liệu quá hạn — chưa xác minh được nhân viên đang làm.');
+    return;
+  }
+  if(empty)empty.remove();
+  if(!grid)grid=node('div','live-workers-grid',panel);
+  const known=new Map(Array.from(grid.children).map(el=>[el.dataset.liveEmployee,el]));
+  const seen=new Set();
+  rows.forEach((worker,index)=>{
+    const id=String(worker.employeeId).toUpperCase();
+    seen.add(id);
+    let card=known.get(id);
+    if(!card){
+      card=document.createElement('article');card.className='live-worker-card';card.dataset.liveEmployee=id;
+      const top=node('div','live-worker-top',card);
+      node('b','live-worker-id',top);node('span','live-worker-state',top);
+      node('div','live-worker-name',card);node('div','live-worker-job',card);
+      const footer=node('div','live-worker-footer',card);
+      node('span','live-worker-code',footer);node('span','live-worker-updated',footer);
+    }
+    if(grid.children[index]!==card)grid.insertBefore(card,grid.children[index]||null);
+    text(card.querySelector('.live-worker-id'),id);
+    text(card.querySelector('.live-worker-state'),'ĐANG LÀM');
+    text(card.querySelector('.live-worker-name'),worker.label||id);
+    text(card.querySelector('.live-worker-job'),worker.job||'Chưa có mô tả công việc');
+    text(card.querySelector('.live-worker-code'),worker.currentJobId);
+    text(card.querySelector('.live-worker-updated'),ownerAgeText(worker.heartbeatAt));
+    card.title=[worker.provider,worker.model].filter(Boolean).join(' · ');
+  });
+  known.forEach((card,id)=>{if(!seen.has(id))card.remove();});
+}
+async function loadWorkforce(){
+  if(workforcePolling)return;
+  workforcePolling=true;
+  try{
+    const response=await fetch('/api/live-status?scope=workforce',{cache:'no-store'});
+    if(!response.ok)throw Error('WORKFORCE_HTTP_'+response.status);
+    const value=await response.json();
+    // Failed/stale responses invalidate running badges immediately; no cached active fallback.
+    workforceSnapshot=value?.ok===true?value:{ok:false,liveConnected:false,workers:[]};
+  }catch{
+    workforceSnapshot={ok:false,liveConnected:false,workers:[]};
+  }finally{
+    workforcePolling=false;
+    renderLiveWorkers();
+  }
+}
 function renderApiWorkforce(){
   const a=snapshot?.apiWorkforceSummary||{};
   const el=$('apiWorkforce');
@@ -1644,11 +1971,62 @@ function renderApiWorkforce(){
     +'</div>'
     +'<div class="api-summary-blocker"><span>Hiện tại:</span> '+esc(a.blocker||'Đang theo dõi độ ổn định')+'</div>';
 }
+function verifiedStepSummary(row){
+  const total=Number(row?.progressTotal||0),done=Number(row?.progressDone||0);
+  const verified= row?.progressChecklistVerified===true && !(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(!Number.isSafeInteger(total)||total<2||!Number.isSafeInteger(done)||done<0||done>total){
+    const planned=Array.isArray(row?.executionSteps)?row.executionSteps.length:0;
+    return planned>0?'<div class="work-step-summary unverified">Có '+planned+' bước theo GitHub · chưa xác minh</div>':'';
+  }
+  if(!verified)return '<div class="work-step-summary unverified">Có '+total+' bước trong GitHub · chưa xác minh</div>';
+  const left=total-done;
+  const isGate=row?.progressSource==='github_gates_verified',noun=isGate?'cổng GitHub':'bước';
+  return '<div class="work-step-summary"><span>'+done+'/'+total+' '+noun+' đã xác minh</span><span class="step-remaining">Còn '+left+' '+noun+'</span></div>';
+}
+function drawerChecklistMarkup(row){
+  const checklist=Array.isArray(row?.progressSteps)?row.progressSteps:[];
+  const plan=Array.isArray(row?.executionSteps)?row.executionSteps:[];
+  const fromPlan=checklist.length<2;
+  const entries=fromPlan?plan:checklist;
+  const fresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  const verified= !fromPlan && row?.progressChecklistVerified===true && fresh;
+  const canShow=String(row?.workKind||'WORK').toUpperCase()==='WORK';
+  $('drawerChecklistSection').hidden=!canShow;
+  $('drawerChecklistSection').querySelector('h3').textContent=row?.progressSource==='github_gates_verified'?'CỔNG TIẾN ĐỘ GITHUB':'DANH SÁCH BƯỚC THỰC HIỆN';
+  if(entries.length===0){
+    $('drawerChecklistMeta').textContent='Chưa ghi bước thực hiện';
+    $('drawerChecklistList').innerHTML='';
+    $('drawerChecklistHint').textContent='GitHub chưa cung cấp bước thực hiện có cấu trúc. Cần bổ sung vào Work Order; không tự tạo bước hoặc tính % giả.';
+    return;
+  }
+  const noun=row?.progressSource==='github_gates_verified'?' cổng GitHub':' bước';
+  $('drawerChecklistMeta').textContent=verified
+    ?row.progressDone+'/'+row.progressTotal+noun+' · còn '+row.progressRemaining+noun
+    :entries.length+(fromPlan?' bước theo GitHub · chưa xác minh':noun+' · chưa xác minh');
+  const checked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const unchecked='<svg class="check-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
+  $('drawerChecklistList').innerHTML=entries.map((step,i)=>{
+    const done=!fromPlan && step?.done===true;
+    const href=safeOwnerResultHref(step?.evidenceUrl);
+    const link=href?' <a href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Nguồn đính kèm ↗</a>':'';
+    const stepStatus=fromPlan?'Kế hoạch GitHub · chưa có bằng chứng hoàn tất':verified?(done?'Đã xác minh':'Chưa hoàn tất'):(done?'Đã đánh dấu · chưa xác minh':'Chưa hoàn tất · chưa xác minh');
+    return '<div class="drawer-checklist-step'+(done?' done':'')+(verified?' verified':'')+'">'+(done?checked:unchecked)
+      +'<div class="drawer-checklist-copy"><strong>'+String(i+1).padStart(2,'0')+'. '+esc(step?.title||'Bước chưa đặt tên')+'</strong><small>'+esc(stepStatus)+link+'</small></div></div>';
+  }).join('');
+  $('drawerChecklistHint').textContent=verified
+    ?(row?.progressSource==='github_gates_verified'
+      ?'Tỷ lệ các cổng GitHub có bằng chứng thật, không phải tỷ lệ thời gian hoặc khối lượng. 100% chỉ khi công việc DONE.'
+      :workStatus(row)==='DONE'?'Công việc đã đóng và có checklist xác minh.':'100% chỉ được công nhận khi công việc hoàn tất và có đủ bằng chứng.')
+    :fromPlan
+      ?'Các bước được trích từ hành động tiếp theo trong Work Order GitHub, chưa được xác minh hoàn tất; không tính %.'
+      :'Các ô đánh dấu từ GitHub chưa có xác nhận tiến độ; không tự tính phần trăm.';
+}
 function drawerProgressMarkup(row){
   const {pct,verified}=verifiedProgress(row);
-  return verified
+  const bar=verified
     ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
     :'<div class="progress unverified"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa xác minh</span></div>';
+  return bar+verifiedStepSummary(row);
 }
 function effectiveBlocker(row){
   if(row?.blocker)return String(row.blocker);
@@ -1656,6 +2034,7 @@ function effectiveBlocker(row){
   return '';
 }
 function safeOwnerResultHref(value){
+  if(!String(value||'').trim())return '';
   try{const url=new URL(String(value||''),location.origin);return url.protocol==='https:'?url.toString():''}catch{return ''}
 }
 function ownerResultTime(value){
@@ -1686,14 +2065,21 @@ function renderOwnerResultInbox(row){
     return '<article class="owner-result-card"><div class="owner-result-head">'+work+'<span class="owner-result-verification">'+esc(item?.verification||'ĐÃ XÁC MINH')+'</span></div><div class="owner-result-text">'+esc(item?.result||'Đã hoàn tất')+'</div><div class="owner-result-meta"><span>'+esc(ownerResultTime(item?.completedAt))+'</span>'+live+evidence+'</div></article>';
   }).join('');
 }
+function liveStateIcon(status){
+ const paths={WORKING:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',DONE:'<path d="M20 6 9 17l-5-5"/><path d="m20 12-8 8-4-4"/>',OWNER_GATE:'<circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/>',WAITING:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',QUEUED:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',BLOCKED:'<path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',REVIEW:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',VERIFY:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m9 13 2 2 4-4"/>',SYSTEM:'<rect x="3" y="3" width="18" height="18" rx="3"/>',OPEN:'<circle cx="12" cy="12" r="9"/>',UNKNOWN:'<circle cx="12" cy="12" r="9"/><path d="M12 17h.01"/>',GOAL:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>'};
+ return '<svg class="live-status-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(paths[status]||paths.OPEN)+'</svg>';
+}
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
   $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
+  $('workDrawer').dataset.status=workStatus(row).toLowerCase();
+  $('workDrawer').style.setProperty('--detail-color',STATUS_COLORS[workStatus(row)]||'#64748B');
   $('drawerProgress').innerHTML=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'
     ?'<div class="technical-pass">✓ Đã xong kỹ thuật · chờ anh Sơn duyệt</div>'
     :drawerProgressMarkup(row);
+  drawerChecklistMarkup(row);
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
@@ -1732,6 +2118,7 @@ function refreshOpenDrawer(){
 }
 function render(){
   if(!snapshot)return;
+  renderLiveWorkers();
   renderOwnerSummary();
   renderMissionControl();
   renderJobJourney();
@@ -1739,10 +2126,7 @@ function render(){
   renderApiWorkforce();
   updateCounts();
   const rows=normalizeRows(snapshot);
-  const bcctMode=$('bcctSort')?.value||'default';
-  if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
-  if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
-  $('workMeta').textContent=rows.length+' việc';
+  $('workMeta').textContent=rows.length+' mục';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
   if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
@@ -1751,17 +2135,27 @@ function render(){
     const status=workStatus(row),label=stateLabel[status]||status;
     const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
     el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
+    el.style.setProperty('--status-color',STATUS_COLORS[status]||'#64748B');
     el.setAttribute('data-work-number',String(row.number));
     el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
     const title=displayTitle(row.title);
     const rank=String(index+1).padStart(2,'0');
     const {pct,verified:progressVerified}=verifiedProgress(row);
     const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status);
+    const liveRunning=status==='WORKING'&&row?.activeLease===true&&row?.heartbeatFresh===true
+      &&snapshot?.liveConnected===true&&!(snapshot?.staleAll||snapshot?.workProjection?.stale);
+    if(liveRunning)el.classList.add('progress-running');
     const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
       ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
       :activeWithoutPercent
         ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
         :'';
+    const stepSummary=verifiedStepSummary(row);
+    const project=String(row?.projectName||'Chưa phân dự án').trim();
+    const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
+    const parent=Number(row?.parentNumber);
+    const parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
+    const hierarchy='<div class="work-hierarchy" title="'+esc(project+' → '+stream)+'">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine;
     const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
       ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
       :(row?.currentStep||(row?.workKind==='SYSTEM'?'Chính sách / nguồn chuẩn — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':''))).trim();
@@ -1771,14 +2165,16 @@ function render(){
     const executionText=executionLabel(row),activeHolderText=activeHolder(row),waitReasonText=executionWaitReason(row);
     const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
     const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
-    const quickKind=blockerText?'blocked':usefulSummary?'current':usefulNext?'next':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulSummary?('Đang: '+usefulSummary):usefulNext?('Bước tới: '+usefulNext):'';
-    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+esc(quickText)+'</div>':'';
-    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText;
+    const quickKind=blockerText?'blocked':usefulNext?'next':usefulSummary?'current':'';
+    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):usefulSummary?('Hiện tại: '+usefulSummary):'';
+    const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
+    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
+    const progressBottom=progress||stepSummary?'<div class="work-progress-bottom">'+stepSummary+progress+'</div>':'';
+    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText+'|'+(row?.progressDone??'-')+'/'+(row?.progressTotal??'-')+'/'+Boolean(row?.progressChecklistVerified);
     const previous=lastVisualState.get(Number(row.number));
     if(previous&&previous!==signature)el.classList.add('recently-updated');
     lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+esc(label)+'</span></div><div class="work-title">'+esc(title)+'</div>'+progress+quickLine+'</div>';
+    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+quickLine+progressBottom+'</div>';
     el.addEventListener('click',()=>openDrawer(row,el));
     el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
     box.append(el);
@@ -1814,8 +2210,6 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
-$('bcctSort').addEventListener('change',render);
-$('bcctRefresh').addEventListener('click',load);
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
@@ -1824,14 +2218,7 @@ document.querySelectorAll('.filter').forEach(button=>button.addEventListener('cl
 $('drawerClose').addEventListener('click',closeDrawer);
 $('drawerCloseBottom').addEventListener('click',closeDrawer);
 function buildVyHandoffPrompt(row){
-  const issue='#'+row.number;
-  return [
-    'LÀM — NO YAPPING.',
-    'TigerIQ Owner review '+issue+' — '+displayTitle(row.title)+'.',
-    'Bắt buộc trước khi kết luận: dùng GitHub connector đọc newsdayads/tigeriq-ai-lab@main theo thứ tự bootstrap/00_TIGERIQ_LOADER.md rồi 5 Bootstrap canonical, issue #504, docs/CURRENT_STATE.md, issue #280, issue #335, sau đó '+issue+' và PR/evidence liên quan trực tiếp.',
-    'Không dùng chat history, memory, Drive hoặc local copy nếu xung đột canonical. Nếu không đọc được nguồn bắt buộc: BỊ CHẶN / SOURCE_UNAVAILABLE.',
-    'Tóm tắt cực ngắn theo KẾT QUẢ → BỊ CHẶN (nếu có) → BƯỚC TIẾP THEO; nêu đúng phần cần anh Sơn duyệt.'
-  ].join('\\n');
+  return 'LÀM — NO YAPPING. Trao đổi công việc #'+row.number+' — '+displayTitle(row.title)+'. Đọc trạng thái mới nhất trên GitHub, tóm tắt ngắn và hỗ trợ tôi xử lý vấn đề này.';
 }
 function openChatGptHandoff(url,prompt){
   if(navigator.clipboard?.writeText)navigator.clipboard.writeText(prompt).catch(()=>{});
@@ -1842,12 +2229,7 @@ function openChatGptHandoff(url,prompt){
 $('drawerAskVy').addEventListener('click',()=>{
   if(!drawerRow)return;
   const prompt=buildVyHandoffPrompt(drawerRow);
-  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL,prompt);
-});
-$('drawerAskVyFallback').addEventListener('click',()=>{
-  if(!drawerRow)return;
-  const prompt=buildVyHandoffPrompt(drawerRow);
-  openChatGptHandoff('https://chatgpt.com/?prompt='+encodeURIComponent(prompt),prompt);
+  openChatGptHandoff(TIGERIQ_OWNER_CHATGPT_PROJECT_URL+'?prompt='+encodeURIComponent(prompt),prompt);
 });
 $('drawerBackdrop').addEventListener('click',closeDrawer);
 document.addEventListener('keydown',event=>{
@@ -1861,9 +2243,11 @@ document.addEventListener('keydown',event=>{
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
   }
 });
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){load();loadWorkforce();}});
 load();
+loadWorkforce();
 setInterval(()=>{if(!document.hidden)load()},10000);
+setInterval(()=>{if(!document.hidden)loadWorkforce()},5000);
 </script>
 </body>
 </html>

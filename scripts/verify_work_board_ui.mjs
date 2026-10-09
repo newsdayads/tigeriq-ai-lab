@@ -28,7 +28,20 @@ assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
 assert.match(publicView, /CẦN XỬ LÝ/);
 assert.match(publicView, /CHỜ ANH SƠN/);
-assert.match(publicView, /CHỜ\/BLOCKED/);
+// Owner V2.3: waiting and blocked are separate, truthful filter buckets.
+for (const bucket of ['waiting','blocked','review','verify','paused']) {
+  assert.match(publicView, new RegExp('data-filter="'+bucket+'"'));
+}
+assert.doesNotMatch(publicView, /CHỜ \/ BỊ CHẶN <b/);
+for (const [status,color] of Object.entries({
+  OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',
+  VERIFY:'#14B8A6',WAITING:'#F59E0B',BLOCKED:'#F43F5E',
+  DONE:'#06B6D4',PAUSED:'#64748B'
+})) {
+  assert.ok(publicView.includes(status+":'"+color+"'"), 'missing semantic status color '+status);
+}
+assert.match(publicView, /el\.style\.setProperty\('--status-color',STATUS_COLORS\[status\]/);
+assert.match(publicView, /style\.setProperty\('--detail-color',STATUS_COLORS\[workStatus\(row\)\]/);
 assert.match(publicView, /data-filter="owner"/);
 assert.match(publicView, /data-filter="review"/);
 assert.match(publicView, /data-filter="system"/);
@@ -119,5 +132,68 @@ const liveCatch = liveApi.indexOf("liveError = String(error instanceof Error ? e
 const githubFallback = liveApi.indexOf("const value = await buildLiveStatus();", liveCatch);
 const staleFallback = liveApi.indexOf("if (cache.value && now - cache.at < STALE_RESPONSE_MS)", githubFallback);
 assert.ok(liveCatch >= 0 && githubFallback > liveCatch && staleFallback > githubFallback, 'fresh GitHub fallback must run before stale response cache');
+
+// Feature gate: never infer step completion or percentages from an unverified issue.
+const { checklistForIssue, executionPlanForIssue, progressForIssue, parseOpenWorkIssue, githubMilestoneSpec, githubMilestoneChecklist } = await import('../api/live-status.mjs');
+const verifiedStepBody='PROGRESS_VERIFIED=true\n- [x] Phân tích yêu cầu\n- [x] Thiết kế phương án\n- [ ] Kiểm thử\n- [ ] Xác minh thực tế';
+const verifiedStepIssue={number:987654,title:'[P1] Kiểm thử tiến độ',body:verifiedStepBody,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/987654'};
+const list=checklistForIssue(verifiedStepIssue);
+assert.deepEqual({done:list.done,total:list.total,remaining:list.remaining,verified:list.verified},{done:2,total:4,remaining:2,verified:true});
+assert.equal(list.steps[0].title,'Phân tích yêu cầu');
+assert.equal(list.steps[2].done,false);
+assert.deepEqual(progressForIssue(verifiedStepIssue,'WORKING'),{percent:50,source:'checklist_verified',detail:'2/4 bước xác minh'});
+const row=parseOpenWorkIssue(verifiedStepIssue);
+assert.equal(row.progressDone,2);assert.equal(row.progressTotal,4);assert.equal(row.progressRemaining,2);
+assert.equal(row.progressSteps.length,4);
+const unverifiedIssue={...verifiedStepIssue,body:verifiedStepBody.replace('PROGRESS_VERIFIED=true','')};
+assert.equal(checklistForIssue(unverifiedIssue).verified,false);
+assert.equal(progressForIssue(unverifiedIssue,'WORKING').percent,null);
+const allCheckedIssue={...verifiedStepIssue,body:'PROGRESS_VERIFIED=true\n- [x] Bước 1\n- [x] Bước 2'};
+assert.equal(progressForIssue(allCheckedIssue,'REVIEW').percent,null,'No 100% without DONE');
+assert.equal(progressForIssue(allCheckedIssue,'DONE').percent,100);
+const mixedBodyIssue={...verifiedStepIssue,body:'PROGRESS_SOURCE=VERIFIED\nPROGRESS_PERCENT=75\n- [x] A\n- [ ] B\n- [ ] C\n- [ ] D'};
+assert.equal(progressForIssue(mixedBodyIssue,'WORKING').percent,25,'Checklist is the primary basis over freehand percent');
+const fences={...verifiedStepIssue,body:'PROGRESS_VERIFIED=true\n\`\`\`md\n- [x] not a step\n\`\`\`\n- [x] real A\n- [ ] real B'};
+assert.equal(checklistForIssue(fences).total,2);
+// Source-grounded NEXT remains visible without creating imaginary completed checklist steps.
+const planOnlyIssue={...verifiedStepIssue,body:'## CURRENT — AUTHORITATIVE\nCURRENT_STATE=READY_INDEPENDENT_REVIEW\nNEXT=Review exact HEAD of PR; after PASS guarded merge; do not close or mark DONE\nDONE=false\n## Historical\nNEXT=ignore older step'};
+const plan=executionPlanForIssue(planOnlyIssue);
+assert.equal(plan.source,'GITHUB_CURRENT_NEXT');
+assert.deepEqual(plan.steps.map((step)=>step.title),['Review exact HEAD of PR','after PASS guarded merge']);
+const planRow=parseOpenWorkIssue(planOnlyIssue);
+assert.equal(planRow.executionSteps.length,2);
+assert.equal(planRow.progressSteps.length,0);
+assert.equal(planRow.progressPercent,null);
+assert.equal(planRow.progressChecklistVerified,false);
+assert.equal(executionPlanForIssue({...planOnlyIssue,body:'CURRENT_STATE=WAIT_OWNER'}).steps.length,0,'Do not invent steps when GitHub lacks NEXT');
+for (const x of ['id="drawerChecklistSection"','function verifiedStepSummary(row)','function drawerChecklistMarkup(row)','progressSteps','progressRemaining','Có ','Còn ','class="drawer-checklist-step']) assert.ok(publicView.includes(x),'Checklist UI missing '+x);
+assert.match(publicView,/tigeriq-live-verified-checklist-v24/);
+// Live GitHub gates: current authoritative block only, and independent PR/run/review proof.
+const gateSha='1234567890abcdef1234567890abcdef12345678';
+const gatedIssue={number:4321,state:'open',body:'## CURRENT — authoritative\nPR_IN_PROGRESS=PR #5432\nTARGET_EXACT_HEAD='+gateSha+'\nEXACT_HEAD_CI=PASS|RUN_12345678\nEXACT_HEAD_QUEUE_HYGIENE=PASS|RUN_23456789\nREVIEW_PASS=false\nDONE=false\n\n## Old historical state\nREVIEW_PASS=true\nDONE=true'};
+const gateSpec=githubMilestoneSpec(gatedIssue);
+assert.equal(gateSpec.prNumber,5432);
+assert.equal(gateSpec.head,gateSha);
+const ghProof={
+  pr:{number:5432,head:{sha:gateSha},user:{login:'implementer'},html_url:'https://github.com/newsdayads/tigeriq-ai-lab/pull/5432',merged:false},
+  ciRun:{id:12345678,name:'CI',head_sha:gateSha,status:'completed',conclusion:'success'},
+  queueRun:{id:23456789,name:'Queue Hygiene',head_sha:gateSha,status:'completed',conclusion:'success'},
+  reviews:[{user:{login:'implementer'},state:'APPROVED',commit_id:gateSha,submitted_at:'2026-10-08T10:00:00Z'}],
+};
+const gateList=githubMilestoneChecklist(gatedIssue,gateSpec,ghProof);
+assert.deepEqual({done:gateList.done,total:gateList.total,remaining:gateList.remaining},{done:3,total:6,remaining:3});
+assert.equal(gateList.steps[3].done,false,'self-approval must never count');
+assert.equal(gateList.steps[5].done,false,'historical DONE=true must not count');
+assert.equal(githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,pr:{...ghProof.pr,head:{sha:'a'.repeat(40)}}}),null,'stale PR HEAD is rejected');
+const badCI=githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,ciRun:{...ghProof.ciRun,head_sha:'b'.repeat(40)}});
+assert.equal(badCI.done,2,'CI on another commit must not count');
+const approved=githubMilestoneChecklist(gatedIssue,gateSpec,{...ghProof,reviews:[{user:{login:'real-reviewer'},state:'APPROVED',commit_id:gateSha,submitted_at:'2026-10-08T10:01:00Z'}]});
+assert.equal(approved.done,4,'only another reviewer APPROVED at target HEAD counts');
+assert.equal(githubMilestoneSpec({...gatedIssue,body:'## CURRENT\nDONE=false\n\n## OLD\nPR=PR #5432\nTARGET_HEAD='+gateSha}),null,'do not read historical PR');
+assert.equal(githubMilestoneChecklist(gatedIssue,gateSpec,{pr:null}),null,'no authenticated PR proof means no progress');
+assert.ok(publicView.includes("'github_gates_verified'"),'UI must accept verified GitHub gate source');
+assert.ok(publicView.includes('CỔNG TIẾN ĐỘ GITHUB'),'drawer must explain GitHub evidence');
+console.log('TIGERIQ_GITHUB_AUTO_PROGRESS_PASS');
+console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
