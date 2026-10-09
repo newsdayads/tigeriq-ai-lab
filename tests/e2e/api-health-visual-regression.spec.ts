@@ -9,7 +9,7 @@ const recent=(seconds=1)=>new Date(Date.now()-seconds*1000).toISOString();
 const ahead=(seconds=3600)=>new Date(Date.now()+seconds*1000).toISOString();
 
 const work=[
- {number:3278,title:'Verified API work',workKind:'WORK',status:'RÀ SOÁT',priority:'P1',projectName:'Nền tảng TigerIQ',workstreamName:'Auto-RCA',jobId:'GH-3278',progressSource:'github_gates_verified',progressPercent:50,progressTotal:2,progressDone:1,progressChecklistVerified:true,currentStep:'Đã kiểm tra CI',nextStep:'Reviewer xác nhận'},
+ {number:3278,title:'Verified API work',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/3278',workKind:'WORK',status:'RÀ SOÁT',priority:'P1',projectName:'Nền tảng TigerIQ',workstreamName:'Auto-RCA',jobId:'GH-3278',progressSource:'github_gates_verified',progressPercent:50,progressTotal:2,progressDone:1,progressChecklistVerified:true,currentStep:'Đã kiểm tra CI',nextStep:'Reviewer xác nhận'},
  {number:4574,title:'Work ready to execute',workKind:'WORK',status:'ĐANG CHỜ',executionEligibility:'READY',priority:'P2',projectName:'TigerIQ News',workstreamName:'Publisher',currentStep:'Sẵn sàng',nextStep:'Chờ người thực hiện'},
  {number:2054,title:'Blocked implementation',workKind:'WORK',status:'BỊ CHẶN',priority:'P0',blocker:'Thiếu quyền ngoài hệ thống'}
 ];
