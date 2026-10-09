@@ -41,6 +41,8 @@ Tạo ứng dụng Android **mới, độc lập, dùng cá nhân**, kết hợp
 5. [05_QUALITY_ACCEPTANCE.md](05_QUALITY_ACCEPTANCE.md) — ma trận kiểm thử, định nghĩa đạt, tiêu chuẩn ghi bằng chứng.
 6. [06_BACKLOG_AND_ROADMAP.md](06_BACKLOG_AND_ROADMAP.md) — tiến trình đề xuất, phụ thuộc, phân tách hạng mục.
 7. [07_DECISIONS_RISKS_EXTENSIONS.md](07_DECISIONS_RISKS_EXTENSIONS.md) — quyết định, rủi ro, ý tưởng mở rộng, quy tắc thay đổi.
+8. [08_PROGRESS_TRACKING.md](08_PROGRESS_TRACKING.md) — cách theo dõi 30 mốc, bằng chứng và tiến độ trên TigerIQ.
+9. [project.yaml](project.yaml) — định danh và nhánh việc để hệ thống nhóm thành dự án riêng.
 
 ## V. Cổng điều hành / phạm vi ủy quyền
 ```
