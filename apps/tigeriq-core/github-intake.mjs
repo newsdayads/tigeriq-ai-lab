@@ -1785,6 +1785,65 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
+// Preserve the historical API failure and independently recorded GitHub completion.
+// Never equate an Owner release with an NV03/NV04 independent reviewer PASS.
+export function closedGithubSourceReconciliationPlan(row={},issue={}) {
+  const metadata=row?.metadata||{};
+  const number=Number(metadata.issueNumber||0);
+  if(row?.status!=='blocked'||metadata.source!=='github'||!Number.isInteger(number)||number<1)return null;
+  if(Number(issue?.number)!==number||issue?.state!=='closed'||issue?.state_reason!=='completed')return null;
+  const body=String(issue.body||'');
+  if(bodyValue(body,'DONE').trim().toLowerCase()!=='true')return null;
+  const releaseSha=String(bodyValue(body,'P0_RELEASE_SHA')||bodyValue(body,'SOURCE_RELEASE_SHA')||'').trim().toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(releaseSha))return null;
+  const evidence=String(bodyValue(body,'CURRENT_ACCEPTANCE_EVIDENCE')||bodyValue(body,'P0_RELEASE_EVIDENCE')||'').trim();
+  const evidenceValid=/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-\d+$/i.test(evidence)
+    ||/^issuecomment-\d+$/.test(evidence);
+  if(!evidenceValid)return null;
+  const currentState=String(bodyValue(body,'CURRENT_STATE')).trim().toUpperCase();
+  if(!/(?:DEPLOYED|ACCEPTED|VERIFIED)/.test(currentState))return null;
+  return {
+    releaseSha,evidence,sourceIssueNumber:number,
+    summary:'GitHub issue #'+number+' completed after external release '+releaseSha.slice(0,12)+'; historical Core blocked result preserved in metadata.',
+    metadataPatch:{
+      githubClosed:true,githubSourceState:'closed',githubSourceStateReason:'completed',
+      githubSourceClosedAt:String(issue.closed_at||''),externalSourceTerminalReconciled:true,
+      externalSourceReleaseSha:releaseSha,externalSourceEvidence:evidence,
+      previousCoreBlockedSummary:String(row.summary||'').slice(0,2000),
+      previousCoreBlockedStatus:'blocked'
+    }
+  };
+}
+
+// Bounded, idempotent synchronization; does not mutate GitHub or infer reviewer PASS.
+export async function reconcileClosedGithubBlockedObjectives({pool,issues=[]}={}){
+  const candidates=(Array.isArray(issues)?issues:[]).filter(x=>x?.state==='closed'&&x?.state_reason==='completed');
+  if(!candidates.length)return {scanned:0,reconciled:0,issueNumbers:[]};
+  const byNumber=new Map(candidates.map(issue=>[Number(issue.number),issue]));
+  const numbers=[...byNumber.keys()].filter(n=>Number.isInteger(n)&&n>0).map(String);
+  if(!numbers.length)return {scanned:0,reconciled:0,issueNumbers:[]};
+  const rows=(await pool.query(
+    "select id,status,summary,metadata from tigeriq_objectives where status='blocked' and metadata->>'source'='github' and metadata->>'issueNumber'=any($1::text[])",
+    [numbers]
+  )).rows||[];
+  const changed=[];
+  for(const row of rows){
+    const plan=closedGithubSourceReconciliationPlan(row,byNumber.get(Number(row.metadata?.issueNumber)));
+    if(!plan)continue;
+    const patched=await pool.query(
+      "update tigeriq_objectives set status='completed',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1 and status='blocked' and metadata->>'source'='github' returning id",
+      [row.id,plan.summary,JSON.stringify(plan.metadataPatch)]
+    );
+    if(patched.rowCount!==1)continue;
+    changed.push(plan.sourceIssueNumber);
+    await pool.query(
+      "insert into tigeriq_events(type,objective_id,data) values('GITHUB_BLOCKED_SOURCE_COMPLETED_RECONCILED',$1,$2)",
+      [row.id,JSON.stringify({issueNumber:plan.sourceIssueNumber,releaseSha:plan.releaseSha,evidence:plan.evidence,priorStatus:'blocked',reviewResult:'NOT_INFERRED'})]
+    );
+  }
+  return {scanned:rows.length,reconciled:changed.length,issueNumbers:changed};
+}
+
 export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',intervalMs=Number(process.env.TIGERIQ_GITHUB_RECONCILE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=1000}={}){
   if(!databaseUrl)return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1});
@@ -1792,6 +1851,16 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
   let stopped=false,busy=false,timer=null,interval=null,githubCooldownUntil=0;
   const pendingEvents=[];
   let backlogSweepState=createBacklogSweepState(Date.now());
+  let lastClosedSourceAuditMs=0;
+  const syncExternallyCompletedSource=async(issues=null)=>{
+    const candidateIssues=Array.isArray(issues)?issues:await ghJson(fetchImpl,
+      'https://api.github.com/repos/'+owner+'/'+repo+'/issues?state=closed&per_page=100&sort=updated&direction=desc',
+      token,{freshMs:60000});
+    const result=await reconcileClosedGithubBlockedObjectives({pool,issues:candidateIssues});
+    if(result.reconciled)console.log(JSON.stringify({event:'GITHUB_CLOSED_SOURCE_RECONCILED',...result}));
+    return result;
+  };
+
 
   const runScheduledBacklogHygiene=async(openIssues)=>{
     const now=Date.now();
@@ -1853,6 +1922,7 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
         return;
       }
       const issues=[issue];
+      if(issue.state==='closed')await syncExternallyCompletedSource([issue]);
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:issues,issueNumbers:[n]});
       const a=await materializeGithubIssues({pool,fetchImpl,owner,repo,token,openIssues:issues});
       console.log(JSON.stringify({event:'GITHUB_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:n,created:a.created,claims:b.claims,results:b.results}));
@@ -1883,6 +1953,10 @@ export function startGithubIntake({databaseUrl=process.env.DATABASE_URL,fetchImp
         if(handoff.changed)handedOff.add(Number(issue.number));
       }
       const stableIssues=openIssues.filter(issue=>!handedOff.has(Number(issue.number)));
+      if(Date.now()-lastClosedSourceAuditMs>=10*60*1000){
+        await syncExternallyCompletedSource();
+        lastClosedSourceAuditMs=Date.now();
+      }
       const b=await syncGithubOutcomes({pool,fetchImpl,owner,repo,token,openIssues:stableIssues});
       let created=0,lastIssueNumber=null,lastActive=0;
       for(let i=0;i<DEFAULT_MATERIALIZE_BATCH;i++){
