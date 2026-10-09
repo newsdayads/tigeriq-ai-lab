@@ -4,6 +4,13 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+## PREBOOT BCCT — BẮT BUỘC NGAY LẦN GỌI ĐẦU
+- Khi Owner gửi `BCCT`, `báo cáo chi tiết` hoặc `bc chi tiết`, trước nội dung trả lời phải đọc GitHub `main`: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` (nội dung V4), `docs/OWNER_BCCT_VISUAL_PRESENTATION_V2.md`, và trạng thái nguồn động liên quan.
+- Một lệnh duy nhất phải tạo báo cáo 6 phần, biểu tượng vector/chữ thuần (không emoji trạng thái), bộ lọc/nút thực sự hoạt động nếu giao diện hỗ trợ, và mục RDC 5 tài khoản chỉ-đọc khi kết nối khả dụng.
+- Thiếu quyền truy cập RDC hoặc dữ liệu kiểm chứng thì nêu CHƯA XÁC MINH theo từng tài khoản; không bỏ mục, không giả phần trăm, không yêu cầu Owner gọi lần hai.
+- Với bề mặt render do TigerIQ kiểm soát, gọi `validateBcctV4` / `publishBcctV4` từ `apps/shared/bcct-v4-contract.mjs` trước khi xuất bản. Sai hợp đồng phải bị chặn thay vì hiện báo cáo giả đạt.
+- GitHub không thể cưỡng chế bộ kết xuất ChatGPT gốc. Khác biệt giữa quy tắc và cưỡng chế phải được ghi đúng; chỉ ghi ĐẠT sau kiểm thử lần gọi đầu trên bề mặt thực tế.
+
 ## PREBOOT HARD COMMAND — OWNER AUTHORITY
 - `LÀM APP CHROME` is the primary hard command. Aliases `APP CHROME`, `APPCHROME`, and legacy `AC` are supported. Matching is trimmed and case-insensitive. The command MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
 - `LÀM APP CHROME = APP_CHROME_OWNER_MODE`. Legacy `AC` maps to the same mode but is no longer the recommended user command.
