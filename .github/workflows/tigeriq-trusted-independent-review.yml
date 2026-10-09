@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed, edited]
+  workflow_run:
+    workflows: [CI, WO-014 Queue Hygiene, WO-012/013 Vercel Online Verify]
+    types: [completed]
   issue_comment:
     types: [created]
   workflow_dispatch:
