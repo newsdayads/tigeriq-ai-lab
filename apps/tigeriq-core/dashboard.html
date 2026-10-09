@@ -57,76 +57,61 @@ body.api-health .work-row .rank{box-shadow:none!important}
 /* Responsive API performance rows: keep all columns accessible without page overflow. */
 @media(max-width:1100px){body.api-health .perf-list{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}body.api-health .perf-row{min-width:345px}}
 
-/* P0 visual inspection: white canvas, semantic controls; preserve workforce geometry. */
-body.api-health{background:#fff!important;background-image:none!important}
-body.api-health .app{background:#fff!important}
-body.api-health .work-panel .health-live-work-card>.priority{color:#fff!important;text-shadow:none!important;display:flex!important;align-items:center!important;justify-content:center!important;line-height:1!important}
-body.api-health .topbar .top-indicator,body.api-health .topbar .sync-status{height:30px!important;min-height:30px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;padding:0 10px!important;line-height:1!important;box-sizing:border-box!important;border-radius:999px!important;vertical-align:middle!important}
-body.api-health .topbar .top-indicator :is(b,small,span){line-height:1!important;vertical-align:middle!important}
-body.api-health .employee-card::before,body.api-health .employee-card::after{display:none!important}
-body.api-health .employee-card{background-image:none!important}
-body.api-health .work-panel .health-live-work-card>.priority{box-shadow:none!important}
-body.api-health .filter{font-weight:700;border:1px solid #37516d;background:#132d49;color:#dbeafe}
-body.api-health .filter[data-filter="all"].on{background:#2563eb!important;border-color:#60a5fa!important;color:#fff!important}
-body.api-health .filter[data-filter="working"]{border-color:#2563eb;color:#93c5fd}
-body.api-health .filter[data-filter="working"].on{background:#2563eb!important;color:#fff!important}
-body.api-health .filter[data-filter="local"]{border-color:#16a34a;color:#86efac}
-body.api-health .filter[data-filter="local"].on{background:#166534!important;color:#fff!important}
-body.api-health .filter[data-filter="cloud"]{border-color:#7c3aed;color:#c4b5fd}
-body.api-health .filter[data-filter="cloud"].on{background:#6d28d9!important;color:#fff!important}
-body.api-health .filter[data-filter="manual"]{border-color:#64748b;color:#e2e8f0}
-body.api-health .filter[data-filter="manual"].on{background:#475569!important;color:#fff!important}
-body.api-health .filter[data-filter="problem"]{border-color:#dc2626;color:#fca5a5}
-body.api-health .filter[data-filter="problem"].on{background:#b91c1c!important;color:#fff!important}
-/* P0 CSS audit: neutral gray canvas, transparent panels and unified semantic selected controls. */
+/* API HEALTH CSS AUDIT CANONICAL — inspection skin, no layout redesign.
+   Shared Live work-card CSS remains in work-ui.css; use one final scoped override. */
 body.api-health,body.api-health .app{background-color:#9ca3af!important;background-image:none!important}
 body.api-health :is(.topbar,.panel,.panel-h,.work-panel,.workforce-panel,.api-perf-panel,.activity-panel,.alert-panel,.work-row,.work-main,.employee-card,.worker,.chartbox,.wo-filters,.work-list,.wo-list){background-color:transparent!important;background-image:none!important}
 body.api-health .topbar{backdrop-filter:none!important;box-shadow:none!important}
+body.api-health .topbar :is(.top-indicator,.sync-status){height:30px!important;min-height:30px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;padding:0 10px!important;line-height:1!important;box-sizing:border-box!important;border-radius:999px!important;vertical-align:middle!important}
+body.api-health .topbar .top-indicator :is(b,small,span){line-height:1!important;vertical-align:middle!important}
+body.api-health .employee-card::before,body.api-health .employee-card::after{display:none!important}
+body.api-health .employee-card{background-image:none!important}
+body.api-health .work-panel .health-live-work-card>.priority{color:#fff!important;text-shadow:none!important;display:flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;box-shadow:none!important}
 body.api-health .work-list,body.api-health .wo-list{align-items:stretch!important;grid-auto-rows:1fr!important}
 body.api-health .work-list>.health-live-work-card,body.api-health .wo-list>.health-live-work-card{height:100%!important;align-self:stretch!important}
-body.api-health .work-list>.health-live-work-card>.work-main{height:100%!important;display:flex!important;flex-direction:column!important}
 body.api-health .work-list>.health-live-work-card .work-proof{margin-top:auto!important}
-body.api-health .filter[data-filter="all"]{color:#e2e8f0!important;border-color:#64748b!important;background-color:#334155!important}
-body.api-health .filter[data-filter="all"].on{color:#fff!important;border-color:#94a3b8!important;background-color:#475569!important}
-body.api-health .wo-filter{font-weight:700!important;transition:background-color .14s,color .14s,border-color .14s}
-body.api-health .wo-filter.on{background-color:#2563eb!important;border-color:#60a5fa!important;color:#fff!important;box-shadow:none!important}
-body.api-health .wo-filter.owner.on,body.api-health .wo-filter.blocked.on{background-color:#b91c1c!important;border-color:#f87171!important}
-body.api-health .wo-filter.running.on{background-color:#166534!important;border-color:#4ade80!important}
-body.api-health .wo-filter.review.on,body.api-health .wo-filter.verify.on{background-color:#6d28d9!important;border-color:#c4b5fd!important}
-body.api-health .wo-filter.waiting.on{background-color:#b45309!important;border-color:#fbbf24!important}
-body.api-health .wo-filter.done.on{background-color:#15803d!important;border-color:#4ade80!important}
-body.api-health .wo-filter.system.on,body.api-health .wo-filter.paused.on{background-color:#475569!important;border-color:#94a3b8!important}
-/* Live verification repair: shared work-main has !important dark background and intrinsic rows. */
-body.api-health .work-panel .health-live-work-card>.work-main{background-color:transparent!important;background-image:none!important;box-shadow:none!important;min-height:0!important;flex:1 1 auto!important}
 body.api-health .work-panel .work-row.health-live-work-card{height:100%!important;align-self:stretch!important;display:flex!important;flex-direction:column!important}
-body.api-health .work-panel .health-live-work-card>.work-main{width:100%!important;height:calc(100% - 29px)!important;margin-top:29px!important;flex:1 1 auto!important}
-body.api-health .work-panel .work-row.health-live-work-card:hover>.work-main{box-shadow:none!important}
-
-/* CSS inspection: controls use text and borders, never filled backgrounds. */
-body.api-health :is(.filter,.wo-filter,.top-indicator,.sync-status,.badge,.state,.priority,.runtime-pill,.work-detail-btn){background:transparent!important;background-image:none!important;box-shadow:none!important}
-body.api-health :is(.filter,.wo-filter,.top-indicator,.work-detail-btn):hover{background:transparent!important;box-shadow:none!important}
-body.api-health :is(.filter.on,.wo-filter.on){outline:2px solid currentColor!important;outline-offset:-2px!important;font-weight:900!important}
+body.api-health .work-panel .health-live-work-card>.work-main{background:transparent!important;box-shadow:none!important;min-height:0!important;width:100%!important;height:calc(100% - 29px)!important;margin-top:29px!important;flex:1 1 auto!important;display:flex!important;flex-direction:column!important}
 body.api-health .work-panel .health-live-work-card:hover,body.api-health .work-panel .health-live-work-card:focus-visible{transform:none!important;background:transparent!important;box-shadow:none!important}
 body.api-health .work-panel .health-live-work-card:hover>.work-main,body.api-health .work-panel .health-live-work-card:focus-visible>.work-main{background:transparent!important;box-shadow:none!important}
-body.api-health .panel{border:1px solid #2563eb!important;box-shadow:none!important}
-body.api-health .workforce-panel{border-color:#2563eb!important}
-body.api-health .work-panel{border-color:#7c3aed!important}
-body.api-health .api-perf-panel{border-color:#16a34a!important}
-body.api-health .activity-panel{border-color:#2563eb!important}
-body.api-health .alert-panel{border-color:#d97706!important}
-
-/* Exact cascade fix for previously declared colored !important selectors. */
+body.api-health .filter{font-weight:700;border:1px solid #37516d}
+body.api-health .filter[data-filter="all"]{color:#e2e8f0!important;border-color:#64748b!important}
+body.api-health .filter[data-filter="all"].on{color:#fff!important;border-color:#94a3b8!important}
+body.api-health .filter[data-filter="working"]{border-color:#2563eb;color:#93c5fd}
+body.api-health .filter[data-filter="working"].on{color:#fff!important}
+body.api-health .filter[data-filter="local"]{border-color:#16a34a;color:#86efac}
+body.api-health .filter[data-filter="local"].on{color:#fff!important}
+body.api-health .filter[data-filter="cloud"]{border-color:#7c3aed;color:#c4b5fd}
+body.api-health .filter[data-filter="cloud"].on{color:#fff!important}
+body.api-health .filter[data-filter="manual"]{border-color:#64748b;color:#e2e8f0}
+body.api-health .filter[data-filter="manual"].on{color:#fff!important}
+body.api-health .filter[data-filter="problem"]{border-color:#dc2626;color:#fca5a5}
+body.api-health .filter[data-filter="problem"].on{color:#fff!important}
+body.api-health .wo-filter{font-weight:700!important;transition:background-color .14s,color .14s,border-color .14s}
+body.api-health .wo-filter.on{border-color:#60a5fa!important;color:#fff!important;box-shadow:none!important}
+body.api-health .wo-filter.owner.on,body.api-health .wo-filter.blocked.on{border-color:#f87171!important}
+body.api-health .wo-filter.running.on,body.api-health .wo-filter.done.on{border-color:#4ade80!important}
+body.api-health .wo-filter.review.on,body.api-health .wo-filter.verify.on{border-color:#c4b5fd!important}
+body.api-health .wo-filter.waiting.on{border-color:#fbbf24!important}
+body.api-health .wo-filter.system.on,body.api-health .wo-filter.paused.on{border-color:#94a3b8!important}
+body.api-health :is(.filter,.wo-filter,.top-indicator,.sync-status,.badge,.state,.priority,.runtime-pill,.work-detail-btn){background:transparent!important;background-image:none!important;box-shadow:none!important}
 body.api-health .workforce-panel .filters .filter,
 body.api-health .workforce-panel .filters .filter.on,
 body.api-health .workforce-panel .filters .filter[data-filter].on,
 body.api-health .work-panel .wo-filters .wo-filter,
 body.api-health .work-panel .wo-filters .wo-filter.on,
 body.api-health .topbar .top-indicator,
-body.api-health .topbar .sync-status {background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important}
+body.api-health .topbar .sync-status{background:transparent!important;background-image:none!important;box-shadow:none!important}
+body.api-health :is(.filter,.wo-filter,.top-indicator,.work-detail-btn):hover,
 body.api-health .workforce-panel .filters .filter:hover,
-body.api-health .work-panel .wo-filters .wo-filter:hover {background:transparent!important;background-color:transparent!important}
-
-/* Canonical API Health typography and motion-free workforce cards. */
+body.api-health .work-panel .wo-filters .wo-filter:hover{background:transparent!important;box-shadow:none!important}
+body.api-health :is(.filter.on,.wo-filter.on){outline:2px solid currentColor!important;outline-offset:-2px!important;font-weight:900!important}
+body.api-health .panel{border:1px solid #2563eb!important;box-shadow:none!important}
+body.api-health .workforce-panel{border-color:#2563eb!important}
+body.api-health .work-panel{border-color:#7c3aed!important}
+body.api-health .api-perf-panel{border-color:#16a34a!important}
+body.api-health .activity-panel{border-color:#2563eb!important}
+body.api-health .alert-panel{border-color:#d97706!important}
 body.api-health,body.api-health :is(button,input,select,textarea,a,span,div,section,article,header,footer,small,b,strong,h1,h2,h3,p){font-family:"Roboto Flex","Segoe UI",Arial,sans-serif!important}
 body.api-health .worker:hover,body.api-health .employee-card:hover,body.api-health .worker:focus-visible,body.api-health .employee-card:focus-visible{transform:none!important;translate:none!important;animation:none!important;box-shadow:none!important}
 body.api-health .worker,body.api-health .employee-card{transition:none!important}
