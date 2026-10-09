@@ -16,9 +16,9 @@ export function validateBcctV4(report) {
       sections.some((s,i)=>!s || s.title !== BCCT_SECTIONS[i] || typeof s.text !== 'string' || !s.text.trim())) {
     errors.push('SIX_ORDERED_SECTIONS_REQUIRED');
   }
-  if (typeof report.generatedAt !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T/.test(report.generatedAt) ||
+  if (typeof report.generatedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(report.generatedAt) ||
       Number.isNaN(Date.parse(report.generatedAt))) errors.push('VERIFIED_TIMESTAMP_REQUIRED');
-  if (typeof report.sourceUrl !== 'string' || !/^https:\\/\\/(github\\.com|api\\.github\\.com)\\//.test(report.sourceUrl))
+  if (typeof report.sourceUrl !== 'string' || !/^https:\/\/(github\.com|api\.github\.com)\//.test(report.sourceUrl))
     errors.push('SOURCE_URL_REQUIRED');
   if (!report.dataVerified && report.completionPercent != null) errors.push('UNVERIFIED_PERCENT');
   if (report.completionPercent != null && (!Number.isFinite(report.completionPercent) || report.completionPercent < 0 ||
@@ -33,7 +33,7 @@ export function validateBcctV4(report) {
       !['Tất cả','Chưa xong','P0','Đã xong'].every(x=>report.filters.options.includes(x))) errors.push('FILTER_REQUIRED');
   if (report.filters?.mode === 'interactive' && typeof report.filters.onSelect !== 'function') errors.push('FILTER_ACTION_REQUIRED');
   if (!Array.isArray(report.jobs) || report.jobs.some(j=>!j || !Number.isInteger(j.issue) ||
-      !j.title?.trim() || !/^https:\\/\\/github\\.com\\//.test(j.url || ''))) errors.push('GROUNDED_JOB_LINKS_REQUIRED');
+      !j.title?.trim() || !/^https:\/\/github\.com\//.test(j.url || ''))) errors.push('GROUNDED_JOB_LINKS_REQUIRED');
   if (!Array.isArray(report.rdc) || report.rdc.length !== 5 ||
       report.rdc.some(a=>!a || typeof a.account !== 'string' || !a.account ||
         !['TRỰC TUYẾN','NGOẠI TUYẾN',UNKNOWN].includes(a.pc01) ||
