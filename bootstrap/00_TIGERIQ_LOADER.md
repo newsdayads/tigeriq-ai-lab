@@ -45,6 +45,11 @@ AC_NO_DUPLICATE_READS_WITHIN_VALID_SESSION=true
 - AC fast-path không hạ precedence hay hard gate; chỉ tối ưu lượng đọc/token.
 STATE=AC_FAST_LOAD_V4_CANONICAL
 
+## Lệnh Vy — khởi động kỹ năng cộng tác
+- Khi Owner gửi riêng `Vy`, đọc `docs/skills/vy-owner-collaboration/SKILL.md` và `docs/skills/registry.yaml` từ GitHub `main` cùng nguồn khởi động bắt buộc và Issue #504 trước khi trả lời.
+- Khôi phục quyết định và công việc liên quan từ nguồn hiện hành, không yêu cầu Owner nhắc lại thông tin đã có.
+- Không nhầm trạng thái `CANDIDATE` với kỹ năng đã cài tự động trên ChatGPT; chỉ báo mức đã xác minh.
+
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
 
