@@ -951,12 +951,13 @@ describe('TigerIQ Live Work Order projection', () => {
   });
 
   it('#4582 places Owner platform foundation work first without granting new execution rights', async () => {
+    const safeBody = (priority) => ['PRIORITY=' + priority, 'TIGERIQ_EXECUTABLE=false'].join('\n');
     const sourceIssues = [
-      issue(5800, '[P2][CONTENT] Công việc thường', 'PRIORITY=P2\\nTIGERIQ_EXECUTABLE=false'),
-      issue(5801, '[P1][CORE] Công việc nền tảng', 'PRIORITY=P1\\nTIGERIQ_EXECUTABLE=false'),
-      issue(4532, '[P1][NỀN TẢNG TIGERIQ][CLINE] Chuẩn bị thử nghiệm', 'PRIORITY=P1\\nTIGERIQ_EXECUTABLE=false'),
-      issue(4565, '[P1][ĐIỀU PHỐI] Khắc phục nhận việc', 'PRIORITY=P1\\nTIGERIQ_EXECUTABLE=false'),
-      issue(4576, '[P1][CORE][ĐIỀU PHỐI] Khắc phục tồn đọng', 'PRIORITY=P1\\nTIGERIQ_EXECUTABLE=false'),
+      issue(5800, '[P2][CONTENT] Công việc thường', safeBody('P2')),
+      issue(5801, '[P1][CORE] Công việc nền tảng', safeBody('P1')),
+      issue(4532, '[P1][NỀN TẢNG TIGERIQ][CLINE] Chuẩn bị thử nghiệm', safeBody('P1')),
+      issue(4565, '[P1][ĐIỀU PHỐI] Khắc phục nhận việc', safeBody('P1')),
+      issue(4576, '[P1][CORE][ĐIỀU PHỐI] Khắc phục tồn đọng', safeBody('P1')),
     ];
     const fetchImpl = async (url) => {
       const value = String(url);
@@ -964,7 +965,7 @@ describe('TigerIQ Live Work Order projection', () => {
       if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
       if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
       if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
-      if (/\\/issues\\/\\d+\\/comments\\?/.test(value)) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/comments?')) return new Response(JSON.stringify([]), { status: 200 });
       throw new Error('unexpected_url:' + value);
     };
     const result = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
