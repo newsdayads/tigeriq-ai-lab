@@ -1,4 +1,4 @@
-import {test} from 'node:test';
+import {it as test} from 'vitest';
 import assert from 'node:assert/strict';
 import {evaluateTrustedReview,REQUIRED_CHECKS} from '../scripts/github-trusted-review-gate.mjs';
 
