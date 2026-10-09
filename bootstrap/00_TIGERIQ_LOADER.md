@@ -50,6 +50,14 @@ STATE=AC_FAST_LOAD_V4_CANONICAL
 - Khôi phục quyết định và công việc liên quan từ nguồn hiện hành, không yêu cầu Owner nhắc lại thông tin đã có.
 - Không nhầm trạng thái `CANDIDATE` với kỹ năng đã cài tự động trên ChatGPT; chỉ báo mức đã xác minh.
 
+## Đồng bộ nguồn Project — bắt buộc kiểm tra khi nguồn/vận hành thay đổi
+- GitHub `main` là Nguồn Sự Thật; tệp Drive phản chiếu mà Project TigerIQ đang tham chiếu có tên `00_TIGERIQ_LOADER.md`, file ID `1YB5Re85ts6XYuWnjvc9jZxKpIhwQVCyt`.
+- Với mọi thay đổi nguồn, Skill, cách làm việc hoặc vận hành: xác định thay đổi đó có ảnh hưởng Loader/điểm khởi động hay không. Nếu KHÔNG, ghi `DRIVE_SYNC=NOT_REQUIRED` và lý do.
+- Nếu CÓ, sau khi nhánh thay đổi được kiểm tra và hợp nhất GitHub `main`, cập nhật đúng tệp Drive theo nội dung canonical; đọc lại kiểm tra phiên bản và nội dung, không tạo bản sao cạnh tranh.
+- Xác minh Project đã nhận nội dung đồng bộ và nghiệm thu Chat mới với lệnh `vy` nếu thay đổi liên quan khởi động. Không suy diễn ChatGPT đã tự áp dụng chỉ từ GitHub/Drive.
+- Nếu công cụ không truy cập được nguồn Project hoặc chưa có bằng chứng nghiệm thu: báo rõ phần `CHƯA XÁC MINH`, không đánh dấu hoàn tất toàn bộ.
+- Quyết định Owner ngày 2026-10-09: chênh lệch Loader Drive từng là nguyên nhân khả dĩ khiến quy tắc mới không được thực hiện; đây không phải bằng chứng rằng nó là nguyên nhân duy nhất.
+
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
 
