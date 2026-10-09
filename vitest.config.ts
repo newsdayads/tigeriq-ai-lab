@@ -15,6 +15,7 @@ export default defineConfig({
       'tests/pwa-entry.test.mjs',
       'tests/workforce-status-api.test.mjs',
       'tests/github-coding-intake.test.mjs',
+      'tests/github-trusted-review-gate.test.mjs',
       'tests/nv02-continuity.test.mjs',
       'tests/remote-desktop-guard.test.mjs',
       'tests/coding-lane-foundation.test.mjs',
