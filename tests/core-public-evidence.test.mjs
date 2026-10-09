@@ -38,6 +38,17 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(extractPublicEvidence(jobResult,['ok','lastCycleAt','error'])).toEqual({
       ok:false,lastCycleAt:'[INVALID_TIMESTAMP]',error:'[REDACTED_ERROR]',
     });
+    const fakeTool={evidence:{bridgeCalls:[{tool:'other',result:{
+      ok:true,action:'file_read',target:'pc01-local',
+      data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})},
+    }}]}};
+    expect(extractPublicEvidence(fakeTool,['ok','lastCycleAt','error'])).toEqual({});
+    const forgedNestedReceipt={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'core_status_read',target:'pc01-local',
+      data:{fake:{ok:true,action:'file_read',target:'pc01-local',
+        data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})}}},
+    }}]}};
+    expect(extractPublicEvidence(forgedNestedReceipt,['ok','lastCycleAt','error'])).toEqual({});
     const failedTransport={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
       ok:false,action:'file_read',target:'pc01-local',
       data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})},
