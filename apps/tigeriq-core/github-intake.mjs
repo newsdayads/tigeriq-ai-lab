@@ -1785,6 +1785,9 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   return {claims,results};
 }
 
+// CORE_DEPLOYMENT_REARM_20261009: this source file is deliberately included in
+// the updater recovery release so the pre-fix updater restarts the running CORE
+// process when installing the fixed updater script; no work is re-enqueued.
 // Preserve the historical API failure and independently recorded GitHub completion.
 // Never equate an Owner release with an NV03/NV04 independent reviewer PASS.
 export function closedGithubSourceReconciliationPlan(row={},issue={}) {
