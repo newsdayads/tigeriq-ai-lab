@@ -200,7 +200,7 @@ export async function startDashboard(source: DashboardSource, options: CommandCe
     try {
       if (request.method === 'GET' && path === '/bcct') {
         const output = renderBcctV4(buildDashboard(await source.list()), url.searchParams.get('filter') || 'Tất cả', repo);
-        if (!output.ok) return respond(response, 503, 'application/json; charset=utf-8', JSON.stringify({error:'BCCT_V4_CONTRACT_REJECTED',details:output.errors}));
+        if (!output.ok || output.html === null) return respond(response, 503, 'application/json; charset=utf-8', JSON.stringify({error:'BCCT_V4_CONTRACT_REJECTED',details:output.errors}));
         return respond(response, 200, 'text/html; charset=utf-8', output.html);
       }
       if (request.method === 'GET' && path === '/api/status') {
