@@ -16,6 +16,7 @@ export default defineConfig({
       'tests/workforce-status-api.test.mjs',
       'tests/github-coding-intake.test.mjs',
       'tests/github-closed-objective-reconciliation.test.mjs',
+      'tests/runtime-updater-source-identity.test.mjs',
       'tests/nv02-continuity.test.mjs',
       'tests/remote-desktop-guard.test.mjs',
       'tests/coding-lane-foundation.test.mjs',
