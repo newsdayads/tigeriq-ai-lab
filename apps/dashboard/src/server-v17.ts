@@ -353,7 +353,7 @@ async function relay(options: OwnerCockpitV17Options, req: IncomingMessage, res:
     res.end(renderExecutiveOverviewV4(data));
     return;
   }
-  const typedDirectPaths = new Set(['/api/session','/api/execution-capabilities','/api/executions']);
+  const typedDirectPaths = new Set(['/api/session','/api/execution-capabilities','/api/executions','/bcct']);
   if (typedDirectPaths.has(path)) {
     const headers = new Headers();
     if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
