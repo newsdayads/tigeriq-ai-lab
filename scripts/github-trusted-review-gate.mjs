@@ -70,7 +70,7 @@ async function main(){
   const token=process.env.GITHUB_TOKEN;
   if(!token)throw new Error('GITHUB_TOKEN_MISSING');
   const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
-  const prNumber=Number(event.pull_request?.number||event.issue?.number||event.inputs?.pr_number);
+  const prNumber=Number(event.pull_request?.number||event.issue?.number||event.inputs?.pr_number||event.workflow_run?.pull_requests?.[0]?.number);
   if(!Number.isInteger(prNumber)||prNumber<1)throw new Error('INVALID_PR_NUMBER');
   const pr=await api('/pulls/'+prNumber,token);
   if(pr.number!==prNumber)throw new Error('PR_LOOKUP_MISMATCH');
