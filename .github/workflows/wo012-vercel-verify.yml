@@ -6,30 +6,10 @@ on:
       - main
       - wo012/command-center-vercel-online
       - wo013/chief-of-staff-chat
-    paths:
-      - 'command-center.html'
-      - 'public/**'
-      - 'api/**'
-      - 'vercel.json'
-      - 'docs/VERCEL_DEPLOYMENT_POLICY.md'
-      - 'scripts/verify-vercel-deployment-policy.mjs'
-      - 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs'
-      - 'tests/vercel-deployment-boundary.test.mjs'
-      - '.github/workflows/wo012-vercel-verify.yml'
   pull_request:
     branches:
       - main
       - wo010/command-center-web-control
-    paths:
-      - 'command-center.html'
-      - 'public/**'
-      - 'api/**'
-      - 'vercel.json'
-      - 'docs/VERCEL_DEPLOYMENT_POLICY.md'
-      - 'scripts/verify-vercel-deployment-policy.mjs'
-      - 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs'
-      - 'tests/vercel-deployment-boundary.test.mjs'
-      - '.github/workflows/wo012-vercel-verify.yml'
   workflow_dispatch:
 
 permissions:
@@ -37,7 +17,7 @@ permissions:
 
 jobs:
   verify:
-    name: Web Hosting Guard Verify
+    name: Vercel Online Verify
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:

@@ -74,6 +74,64 @@ test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(selectCoreUiWorker('research'),'NV04');
 });
 
+
+test('Core UI rejects canonical disabled, excluded, blocked and historical-only grants',()=>{
+  const granted=safe(['CAPABILITY=review','AUTO_QUEUE=INCLUDED','CURRENT_STATE=READY','NO_SECURITY_BOUNDARY_CHANGE=true']);
+  const historical='\n## HISTORICAL CONTRACT\n'+granted;
+  assert.equal(parseCoreUiIssue(issue(3278,'## CURRENT AUTO RCA\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED\nCURRENT_STATE=BLOCKED_INDEPENDENT_REVIEW_CHANGES_REQUIRED'+historical)),null);
+  assert.equal(parseCoreUiIssue(issue(3279,'## HISTORICAL CONTRACT\n'+granted)),null);
+  for(const revoked of [
+    granted.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'),
+    granted.replace('AUTO_QUEUE=INCLUDED','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED'),
+    granted.replace('CURRENT_STATE=READY','CURRENT_STATE=FAILED_RETRY_EXHAUSTED'),
+    granted.replace('CURRENT_STATE=READY','CURRENT_STATE=BLOCKED_REVIEW'),
+    granted.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false'),
+    granted+'\nOWNER_HOLD=true',
+    granted.replace('PRIORITY=P2','PRIORITY=P0'),
+  ]){
+    assert.equal(parseCoreUiIssue(issue(3280,'## CURRENT CONTRACT\n'+revoked+historical)),null);
+  }
+  const valid=issue(3281,'## CURRENT CONTRACT\n'+granted+'\n## HISTORICAL CONTRACT\nTIGERIQ_EXECUTABLE=false\nOWNER_HOLD=true\nAUTO_QUEUE=EXCLUDED_OLD');
+  assert.equal(parseCoreUiIssue(valid)?.number,3281);
+});
+
+test('Core UI reconciles a revoked GitHub assignment without delivering the stale NV03 job',async()=>{
+  const pool=fakePool();
+  const enabled=safe(['CAPABILITY=review','AUTO_QUEUE=INCLUDED','CURRENT_STATE=READY','NO_SECURITY_BOUNDARY_CHANGE=true']);
+  let current=issue(3278,'## ACTIVE REVIEW\n'+enabled,'Review must be revoked');
+  const fetchImpl=async url=>response(url.endsWith('/issues/3278')?current:[current]);
+  const first=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(first.nextJobs[0].workerId,'NV03');
+  assert.equal(pool.jobs[0].status,'ui_assigned');
+  current={...current,body:'## CURRENT AUTO RCA\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED\nCURRENT_STATE=BLOCKED_INDEPENDENT_REVIEW_CHANGES_REQUIRED\n'+enabled+'\n## HISTORICAL ONLY\n'+enabled};
+  const revoked=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs[0].status,'cancelled');
+  assert.equal(pool.objectives[0].status,'blocked');
+  assert.equal(revoked.assignmentState,'READY_UNASSIGNED');
+  assert.equal(revoked.nextJobs.length,0);
+  assert.equal(revoked.workerBindings.NV03.currentWorkOrder,null);
+  const repeat=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(repeat.assignmentState,'READY_UNASSIGNED');
+  assert.equal(pool.jobs.length,1);
+  const previous=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x',previousJobId:'GH-3278'});
+  assert.equal(previous.previousJob?.status,'CANCELLED');
+  assert.equal(previous.nextJobs.length,0);
+});
+
+test('Core UI fails closed if GitHub source cannot be reverified for a previously assigned job',async()=>{
+  const pool=fakePool();
+  const enabled=issue(3282,safe(['CAPABILITY=review']),'Revalidation outage');
+  let outage=false;
+  const fetchImpl=async url=>{
+    if(outage&&url.endsWith('/issues/3282'))throw new Error('NETWORK_UNAVAILABLE');
+    return response(url.endsWith('/issues/3282')?enabled:[enabled]);
+  };
+  await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  outage=true;
+  await assert.rejects(()=>buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'}),/CORE_UI_CURRENT_SOURCE_UNVERIFIED/);
+  assert.equal(pool.jobs[0].status,'ui_assigned');
+});
+
 test('Core UI honors TARGET_EMPLOYEE precedence for NV03/NV04',()=>{
   let x=parseCoreUiIssue(issue(208,safe(['TARGET_EMPLOYEE=NV03','ASSIGNED_EXECUTOR=NV11','PRIMARY_EMPLOYEE=NV12','CAPABILITY=review']),'Explicit review target'));
   assert.equal(x.workerId,'NV03');assert.equal(x.capability,'review');
@@ -405,7 +463,7 @@ test('concurrent terminal replay creates one evidence comment and one terminal t
 });
 
 
-test('active Core UI assignment remains projectable when GitHub list/read is temporarily unavailable',async()=>{
+test('active Core UI assignment remains durable but is not exposed as executable during GitHub outage',async()=>{
   const pool=fakePool();
   const review=issue(28150,safe(['CAPABILITY=review']).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=REVIEW_OUTAGE_KEEP'),'Outage keep assignment');
   let githubAvailable=true;
@@ -421,13 +479,20 @@ test('active Core UI assignment remains projectable when GitHub list/read is tem
   assert.equal(snap.nextJobs[0].workerId,'NV03');
 
   githubAvailable=false;
-  snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  await assert.rejects(
+    ()=>buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'}),
+    /CORE_UI_CURRENT_SOURCE_UNVERIFIED/,
+  );
+  // Fail closed for consumers; preserve the durable job for a later retry.
   assert.equal(pool.jobs.length,1);
   assert.equal(pool.objectives.length,1);
+  assert.equal(pool.jobs[0].status,'ui_assigned');
+  assert.equal(pool.objectives[0].status,'active');
+  githubAvailable=true;
+  snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
   assert.equal(snap.assignmentState,'READY_ASSIGNED');
   assert.equal(snap.nextJobs[0].jobId,'GH-28150');
-  assert.equal(snap.nextJobs[0].workerId,'NV03');
-  assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+  assert.equal(pool.jobs.length,1);
 });
 
 test('Core UI fails closed on GitHub source outage when there is no active DB assignment',async()=>{

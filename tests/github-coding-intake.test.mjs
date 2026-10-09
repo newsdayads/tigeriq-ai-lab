@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
-import {parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
+import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
 function issue(body,extra={}){
   return {number:777,title:'Safe autonomous coding task',body,state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/777',...extra};
@@ -14,6 +14,7 @@ ZERO_COST=true
 NO_PC01_SHELL=true
 NO_PAID_COST=true
 NO_CREDENTIAL_CHANGE=true
+NO_SECURITY_BOUNDARY_CHANGE=true
 NO_DESTRUCTIVE=true
 NO_PRODUCTION_RELEASE=true
 NO_BROWSER_AUTH=true
@@ -123,6 +124,45 @@ describe('GitHub coding intake guard',()=>{
     expect(parsed?.dependsOn).toEqual([]);
   });
   it('keeps legacy safe coding issues backward compatible',()=>{expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);});
+
+  it('accepts a leading active Markdown heading while keeping historical grants excluded',()=>{
+    const current='## OWNER OVERRIDE — CURRENT CONTRACT\n'+SAFE
+      +'\nRESOURCE_SCOPE=CODING_HEADING_FIRST_TEST'
+      +'\nALLOW_PATH_PREFIX=docs/evidence/coding-heading.md'
+      +'\nCURRENT_STATE=READY';
+    const historical='\n## HISTORICAL CONTRACT'
+      +'\nTIGERIQ_EXECUTABLE=false'
+      +'\nOWNER_HOLD=true'
+      +'\nNO_SECURITY_BOUNDARY_CHANGE=false'
+      +'\nRESOURCE_SCOPE=HISTORICAL_WRITER'
+      +'\nTARGET_EMPLOYEE=NV03'
+      +'\nDEPENDS_ON=#9999';
+    expect(parseCodingIssue(issue(current+historical))).toMatchObject({
+      number:777,priority:'P1',ownerControlled:false,dependsOn:[],
+      scopeLease:{resourceScope:'CODING_HEADING_FIRST_TEST',paths:['docs/evidence/coding-heading.md']},
+      routing:{targetEmployee:null},
+    });
+    expect(parseCodingIssue(issue(current+'\n---\n'+historical))).toMatchObject({
+      number:777,scopeLease:{resourceScope:'CODING_HEADING_FIRST_TEST'},
+    });
+    // A historical-only first section is never a current contract.
+    expect(parseCodingIssue(issue('## HISTORICAL CONTRACT\n'+SAFE))).toBeNull();
+    expect(parseCodingIssue(issue('## LỊCH SỬ\n'+SAFE))).toBeNull();
+    // Old true flags cannot reactivate a current explicit denial.
+    const denied=[
+      current.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'),
+      current.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false'),
+      current.replace('NO_BROWSER_AUTH=true',''),
+      current+'\nAUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED',
+      current+'\nOWNER_HOLD=true',
+      current.replace('CURRENT_STATE=READY','CURRENT_STATE=FAILED_RETRY_EXHAUSTED'),
+      current.replace('PRIORITY=P1','PRIORITY=P0'),
+    ];
+    for(const body of denied){
+      expect(parseCodingIssue(issue(body+'\n## HISTORICAL\n'+SAFE))).toBeNull();
+    }
+  });
+
   it('rejects REVIEW_ONLY work from mutation coding intake',()=>{expect(parseCodingIssue(issue(`${SAFE}\nREVIEW_ONLY=true`))).toBeNull();});
   it('rejects V1 canonical or non-active work from mutation coding intake',()=>{
     expect(parseCodingIssue(issue(V1_COMPLETE.replace('ACTIVE_EXECUTION=true','ACTIVE_EXECUTION=false')))).toBeNull();
@@ -131,6 +171,88 @@ describe('GitHub coding intake guard',()=>{
   it('accepts a complete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE))?.number).toBe(777);});
   it('rejects an incomplete V1 ACTIVE_EXECUTION contract',()=>{expect(parseCodingIssue(issue(V1_COMPLETE.replace('## DEPENDENCIES','## DEPENDENCIES_MISSING')))).toBeNull();});
   it('fails closed when a required guard is missing',()=>{expect(parseCodingIssue(issue(SAFE.replace('NO_DIRECT_MAIN=true','')))).toBeNull();});
+  it('requires the current coding security-boundary guard, never historical approval',()=>{
+    expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);
+    for(const current of [
+      SAFE.replace('NO_SECURITY_BOUNDARY_CHANGE=true',''),
+      SAFE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false'),
+    ]){
+      expect(parseCodingIssue(issue(current))).toBeNull();
+      expect(parseCodingIssue(issue(current+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=true'))).toBeNull();
+    }
+    expect(parseCodingIssue(issue(SAFE+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=false'))?.number).toBe(777);
+  });
+  it('honors current coding contract flags over historical grants and denies terminal owner holds',()=>{
+    for(const key of [
+      'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
+    ]){
+      const value=key==='OWNER_POLICY'?'MANUAL':'false';
+      const trueValue=key==='OWNER_POLICY'?'AUTO':'true';
+      const current=SAFE.replace(`${key}=${trueValue}`,`${key}=${value}`);
+      expect(parseCodingIssue(issue(`${current}\n## HISTORICAL SUPERSEDED\n${key}=${trueValue}`))).toBeNull();
+    }
+    for(const extra of [
+      'AUTO_QUEUE=EXCLUDED','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED',
+      'CURRENT_STATE=DONE_VERIFIED','CURRENT_STATE=FAILED_RETRY_EXHAUSTED',
+      'CURRENT_STATE=NOT_PLANNED','CURRENT_STATE=SUPERSEDED',
+      'STATE=SUPERSEDED','SUPERSEDED_BY=#9999',
+      'OWNER_HOLD=true','OWNER_CONTROLLED=true',
+    ]){
+      expect(parseCodingIssue(issue(`${SAFE}\n${extra}\n## HISTORICAL\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\nOWNER_HOLD=false\nNO_SECURITY_BOUNDARY_CHANGE=true`))).toBeNull();
+    }
+    expect(parseCodingIssue(issue(`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL SUPERSEDED\nTIGERIQ_EXECUTABLE=false\nNO_PAID_COST=false\nAUTO_QUEUE=EXCLUDED_HISTORIC\nCURRENT_STATE=FAILED_OLD`))).toMatchObject({number:777});
+  });
+
+  it('reconciles a completed coding objective with current true despite historical false flags',async()=>{
+    const n=865,id='obj-865',body=`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_OLD`;
+    const current=issue(body,{number:n});
+    const revision=codingSourceTruthRevision(current,[]);
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,sourceRevision:revision}});
+    const calls=[];
+    const fetchImpl=async(url,init={})=>{
+      const method=String(init.method||'GET');
+      if(url.includes('/api/status'))return response({objectives:[{id,status:'completed',summary:'Source patch complete'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-865'}});
+      if(url.endsWith('/issues/865')&&method==='GET')return response(current);
+      if(url.endsWith('/issues/865')&&method==='PATCH'){calls.push('close');return response({state:'closed'});}
+      if(url.includes('/issues/865/comments')&&method==='POST'){calls.push('result');return response({});}
+      if(url.includes('/issues/865/comments'))return response([]);
+      if(url.includes('/issues/865/labels/')&&method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(calls).toContain('close');
+    expect(calls).toContain('result');
+  });
+
+  it('never accepts mandatory flags or owner permissions found only in historical sections',()=>{
+    for(const key of [
+      'TIGERIQ_EXECUTABLE','OWNER_POLICY','AUTONOMOUS_CODE','ZERO_COST',
+      'NO_PC01_SHELL','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_BROWSER_AUTH','NO_DIRECT_MAIN',
+    ]){
+      const trueValue=key==='OWNER_POLICY'?'AUTO':'true';
+      const removed=SAFE.replace(key+'='+trueValue,'');
+      expect(parseCodingIssue(issue(removed+'\n## HISTORICAL CONTRACT\n'+key+'='+trueValue))).toBeNull();
+    }
+    expect(parseCodingIssue(issue('## HISTORICAL CONTRACT\n'+SAFE))).toBeNull();
+  });
+
+  it('uses only the current header for Coding owner gates, scope, route and dependencies',()=>{
+    const current=SAFE+'\nOWNER_HOLD=false\nRESOURCE_SCOPE=CURRENT_SAFE_SCOPE\nALLOW_PATH_PREFIX=docs/evidence/current-safe.md';
+    const historical='\n## HISTORICAL CONTRACT\nOWNER_HOLD=true\nOWNER_CONTROLLED=true\nOWNER_DIRECT=true\nRESOURCE_SCOPE=HISTORIC_SCOPE\nALLOW_PATH_PREFIX=apps/historical-unsafe\nDEPENDS_ON=#9999\nTARGET_EMPLOYEE=NV03\nTARGET_REPOSITORY=newsdayads/tigeriq-media';
+    const parsed=parseCodingIssue(issue(current+historical));
+    expect(parsed).toMatchObject({
+      ownerControlled:false,ownerDirect:false,dependsOn:[],
+      scopeLease:{resourceScope:'CURRENT_SAFE_SCOPE',paths:['docs/evidence/current-safe.md']},
+      routing:{targetEmployee:null,targetRepository:null},
+    });
+    expect(parseCodingIssue(issue(current.replace('OWNER_HOLD=false','OWNER_HOLD=true')+historical))).toBeNull();
+  });
   it('ignores pull requests and closed issues',()=>{
     expect(parseCodingIssue(issue(SAFE,{pull_request:{}}))).toBeNull();
     expect(parseCodingIssue(issue(SAFE,{state:'closed'}))).toBeNull();
@@ -575,6 +697,142 @@ describe('GitHub coding continuity supervisor',()=>{
     const markers=pool.events.filter(e=>e.type==='GITHUB_CODING_PROGRESS_REPORTED'&&e.data.codingObjectiveId==='obj-811-b');
     expect(markers).toHaveLength(1);
     expect(markers[0].data).toMatchObject({issueNumber:811,codingObjectiveId:'obj-811-b',jobId:'job-b',prNumber:2133});
+  });
+
+  it('does not inherit a prior retry budget or stale retry keys after a recovery rearm',async()=>{
+    const n=862;
+    const oldRoot='obj-862-old';
+    const oldR1='obj-862-old-r1';
+    const oldR2='obj-862-old-r2';
+    const recovered='obj-862-recovered';
+    const current=issue(SAFE,{number:n});
+    const sourceRevision=codingSourceTruthRevision(current,[]);
+    const pool=fakePool();
+    const oldRetries=[
+      {issueNumber:n,codingObjectiveId:oldR1,priorObjectiveId:oldRoot,retryAttempt:1,retryKey:'GITHUB-ISSUE-862-RETRY-1'},
+      {issueNumber:n,codingObjectiveId:oldR2,priorObjectiveId:oldR1,retryAttempt:2,retryKey:'GITHUB-ISSUE-862-RETRY-2'},
+    ];
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:oldR2}},
+      ...oldRetries.map(data=>({type:'GITHUB_CODING_RETRY_DISPATCHED',data})),
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:n,codingObjectiveId:oldR2,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision}},
+      {type:'GITHUB_CODING_RECOVERY_REARMED',data:{issueNumber:n,priorObjectiveId:oldR2,codingObjectiveId:recovered,mainSha:'new-main',sourceRevision}},
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:recovered,sourceRevision}},
+    );
+    const rearmData=pool.events.find(x=>x.type==='GITHUB_CODING_RECOVERY_REARMED').data;
+    expect(codingRetryEpochState(oldRetries,[rearmData],recovered)).toMatchObject({
+      retryCount:0,epochRootId:recovered,recovered:true,
+    });
+    expect(codingRetryEpochState(oldRetries,[rearmData],oldR2)).toMatchObject({
+      retryCount:2,recovered:false,
+    });
+    let active={id:recovered,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'};
+    const historical={id:oldR1,status:'blocked',objective:'Old retry RETRY_KEY=GITHUB-ISSUE-862-RETRY-1'};
+    const createdKeys=[];
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[active,historical],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/api/objectives')&&init.method==='POST'){
+        const payload=JSON.parse(init.body);
+        const retryKey=payload.objective.match(/^RETRY_KEY=(.+)$/m)?.[1];
+        createdKeys.push(retryKey);
+        active={id:`obj-862-new-r${createdKeys.length}`,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED',objective:payload.objective};
+        return response({id:active.id});
+      }
+      if(url.includes('/issues/862')&&!url.includes('/comments'))return response(current);
+      if(url.includes('/comments'))return response([]);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(1);
+    expect(createdKeys[0]).toMatch(/^GITHUB-ISSUE-862-RECOVERY-[a-f0-9]{12}-RETRY-1$/);
+    expect(active.id).toBe('obj-862-new-r1');
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL'&&x.data.codingObjectiveId===recovered)).toHaveLength(0);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(2);
+    expect(createdKeys[1]).toBe(createdKeys[0].replace(/-RETRY-1$/,'-RETRY-2'));
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RETRY_DISPATCHED'&&x.data.retryKey?.includes('-RECOVERY-'))).toHaveLength(2);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(createdKeys).toHaveLength(2);
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL'&&x.data.codingObjectiveId==='obj-862-new-r2')).toHaveLength(1);
+    expect(codingRetryEpochState([
+      ...oldRetries,
+      ...pool.events.filter(x=>x.type==='GITHUB_CODING_RETRY_DISPATCHED').map(x=>x.data).filter(x=>x.retryKey?.includes('-RECOVERY-')),
+    ],[rearmData],'obj-862-new-r2')).toMatchObject({retryCount:2,epochRootId:recovered,recovered:true});
+  });
+
+  it('isolates stale-result and reopened-completion retries from historic deterministic keys',async()=>{
+    for(const [index,kind] of ['GITHUB_CODING_STALE_RESULT_REARMED','GITHUB_CODING_COMPLETED_REARMED'].entries()){
+      const n=866+index, fresh='fresh-'+n, old1='old1-'+n, old2='old2-'+n;
+      const current=issue(SAFE,{number:n,title:'Coding rearm epoch'});
+      const revision=codingSourceTruthRevision(current,[]);
+      const oldKey='GITHUB-ISSUE-'+n+'-RETRY-1';
+      const pool=fakePool();
+      pool.events.push(
+        {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:old1,priorObjectiveId:'original-'+n,retryAttempt:1,retryKey:oldKey}},
+        {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:old2,priorObjectiveId:old1,retryAttempt:2,retryKey:'GITHUB-ISSUE-'+n+'-RETRY-2'}},
+        {type:kind,data:{issueNumber:n,codingObjectiveId:fresh,priorObjectiveId:old2}},
+        {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:fresh,sourceRevision:revision}},
+      );
+      let posts=0,retryKey='';
+      const fetchImpl=async(url,init={})=>{
+        if(url.includes('/api/status'))return response({objectives:[
+          {id:fresh,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'},
+          {id:old1,status:'blocked',objective:'historic RETRY_KEY='+oldKey},
+        ],jobs:[]});
+        if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-new-epoch'}});
+        if(url.includes('/api/objectives')&&init.method==='POST'){
+          posts++;retryKey=JSON.parse(init.body).objective.match(/^RETRY_KEY=(.+)$/m)?.[1]||'';
+          return response({id:'new-retry-'+n});
+        }
+        if(url.includes('/issues/'+n)&&!url.includes('/comments'))return response(current);
+        if(url.includes('/comments'))return response([]);
+        return response({});
+      };
+      await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+      expect(posts).toBe(1);
+      expect(retryKey.startsWith('GITHUB-ISSUE-'+n+'-RECOVERY-')).toBe(true);
+      expect(retryKey.endsWith('-RETRY-1')).toBe(true);
+      expect(retryKey).not.toBe(oldKey);
+      expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RETRY_DISPATCHED'&&x.data.retryKey===retryKey)).toHaveLength(1);
+    }
+  });
+  it('fails closed for malformed current-objective retry attempts and cycles',()=>{
+    const r='r-current';
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:0}],[],r).retryCount).toBe(2);
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:1,priorObjectiveId:r}],[],r).retryCount).toBe(2);
+    expect(codingRetryEpochState([{codingObjectiveId:r,retryAttempt:1},{codingObjectiveId:r,retryAttempt:1}],[],r).retryCount).toBe(2);
+  });
+
+  it('never re-arms an invalid retry journal even when the source revision changed',async()=>{
+    const n=863,id='obj-863-corrupt';
+    const current=issue(SAFE,{number:n});
+    const pool=fakePool();
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,priorObjectiveId:'obj-863-root',retryAttempt:1}},
+      {type:'GITHUB_CODING_RETRY_DISPATCHED',data:{issueNumber:n,codingObjectiveId:id,priorObjectiveId:'obj-863-root',retryAttempt:1}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:'OUTPUT_CONTRACT_EXHAUSTED',mainSha:'old-main',sourceRevision:'old-revision'}},
+    );
+    let posted=0;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id,status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
+      if(url.includes('/api/objectives')&&init.method==='POST'){posted++;return response({id:'should-not-create'});}
+      if(url.includes('/issues/863')&&!url.includes('/comments')&&!url.includes('/labels'))return response(current);
+      if(url.includes('/comments'))return response([]);
+      if(url.includes('/labels'))return response([]);
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    const final=pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL');
+    expect(final).toHaveLength(2);
+    expect(final.at(-1)?.data).toMatchObject({issueNumber:n,codingObjectiveId:id,reason:'RETRY_HISTORY_INVALID',terminalReason:'DUPLICATE_RETRY_EVENT'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(0);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_BLOCKED_FINAL')).toHaveLength(2);
+    expect(posted).toBe(0);
   });
 
   it('emits BLOCKED_FINAL after the retry budget is exhausted',async()=>{
@@ -1262,7 +1520,7 @@ describe('terminal lifecycle label regression in CI discovery',()=>{
     expect(TERMINAL_BLOCKED_LABEL).toBe('tigeriq:terminal-blocked');
     expect(hasTerminalBlockedLabel({labels:['x','tigeriq:terminal-blocked']})).toBe(true);
     expect(hasTerminalBlockedLabel({labels:[{name:'TIGERIQ:TERMINAL-BLOCKED'}]})).toBe(true);
-    const row=parseQueueIssue({
+    const blockedIssue={
       number:2011,
       title:'[P1][CORE] Terminal blocked',
       body:['TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','AUTO_QUEUE=INCLUDED','PRIORITY=P1'].join('\n'),
@@ -1270,9 +1528,13 @@ describe('terminal lifecycle label regression in CI discovery',()=>{
       html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2011',
       updated_at:'2026-09-27T00:00:00Z',
       labels:[{name:'tigeriq:terminal-blocked'}],
+    };
+    // No executable queue row, but retain the truthful BLOCKED Open Work card.
+    expect(parseQueueIssue(blockedIssue)).toBeNull();
+    expect(rankQueueRows([parseQueueIssue(blockedIssue)].filter(Boolean))).toEqual([]);
+    expect(parseOpenWorkIssue(blockedIssue)).toMatchObject({
+      status:'BLOCKED',executionEligibility:'TERMINAL',executionEligibilityReason:'TERMINAL_BLOCKED',
     });
-    expect(row).toMatchObject({status:'BLOCKED',waitReason:'TigerIQ terminal BLOCKED'});
-    expect(rankQueueRows([row])[0]).toMatchObject({eligibleNow:false,dispatchRank:null});
   });
 
   it('adds an existing terminal label without repository-label mutation',async()=>{
