@@ -6,7 +6,7 @@ const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url)
 describe('Core throughput loader compatibility with two manager prompts',()=>{
   it('transforms live Core source without startup exceptions',()=>{
     const compiled=transformCoreSource(core);
-    expect(compiled).toContain('MAX_MANAGER_JOBS');
+    expect(compiled).toContain('MANAGER_MAX_JOBS');
     expect(compiled.split('let liveHealthyResourceCount=3;').length-1).toBe(2);
     expect(compiled.split('Maximum ${MANAGER_MAX_JOBS} jobs.').length-1).toBe(2);
     expect(compiled).not.toContain('Maximum 3 jobs.');
