@@ -273,6 +273,29 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Accessibility callbacks can arrive after a lease is replaced. All
+     * Core-only status writes must compare the observed run identity against
+     * the live active run and permit only the expected source state.
+     */
+    public static boolean canMutateObservedCoreRun(
+        String observedRunId, String observedTaskId, int observedCycle,
+        String liveRunId, String liveTaskId, int liveCycle,
+        String liveState, String... allowedStates
+    ) {
+        if (observedRunId == null || observedRunId.isEmpty()
+            || observedTaskId == null || observedTaskId.isEmpty()
+            || liveRunId == null || liveTaskId == null
+            || observedCycle <= 0 || observedCycle != liveCycle
+            || !observedRunId.equals(liveRunId)
+            || !observedTaskId.equals(liveTaskId)
+            || allowedStates == null) return false;
+        for (String allowed : allowedStates) {
+            if (allowed != null && allowed.equals(liveState)) return true;
+        }
+        return false;
+    }
+
+    /**
      * A Core task may click Send only when the action itself has a trusted
      * native button identity in the local composer scope. Do not accept the
      * word "send" in arbitrary message text or guess from an icon's shape.
