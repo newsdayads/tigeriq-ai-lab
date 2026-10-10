@@ -6,6 +6,11 @@ export const TARGET = Object.freeze({
 });
 export const PROJECTS = Object.freeze(['TigerIQ AI', 'TigerIQ News / Media', 'Paperclip vNext', 'Revenue Lab', 'TigerIQ Driver', 'DeXCam Personal', 'TigerIQ Coin']);
 export const SUBPROJECTS = Object.freeze(['Nền tảng TigerIQ — Core, AI, API', 'TigerIQ Mobile Worker', 'TigerIQ Live', 'Workflow Lab', 'App Chrome', 'DeX Shot', 'DeXCam Personal', 'derophone', 'derophone_BK', 'derobizfly', 'zephyr']);
+const SUBPROJECTS_BY_PROJECT = Object.freeze({
+ 'TigerIQ AI': SUBPROJECTS.slice(0, 5), 'TigerIQ Driver': ['DeX Shot'], 'DeXCam Personal': ['DeXCam Personal'],
+ 'TigerIQ Coin': ['derophone', 'derophone_BK', 'derobizfly', 'zephyr'],
+ 'TigerIQ News / Media': [], 'Paperclip vNext': [], 'Revenue Lab': [],
+});
 const REPOS = new Set(['tigeriq-ai-lab', 'tigeriq-media', 'tigeriq-media-content', 'drivetrack', 'derophone', 'derophone_BK', 'derobizfly', 'zephyr']);
 const STATES = Object.freeze({ OPEN: 'CHƯA XÁC MINH', READY: 'CHỜ', QUEUED: 'CHỜ', RUNNING: 'ĐANG XỬ LÝ', WORKING: 'ĐANG XỬ LÝ', REVIEW: 'RÀ SOÁT', DONE: 'HOÀN TẤT', BLOCKED: 'BỊ CHẶN', OWNER_GATE: 'BỊ CHẶN', EXTERNAL_WAIT: 'CHỜ' });
 const STATUS_ALIASES = Object.freeze({ PASS: 'DONE', COMPLETED: 'DONE', WAITING: 'QUEUED', WAIT_RESOURCE: 'QUEUED', PENDING: 'QUEUED', EXTERNAL_WAIT: 'EXTERNAL_WAIT', VERIFY: 'REVIEW', FAILED: 'BLOCKED', ERROR: 'BLOCKED', OWNER_APPROVAL_REQUIRED: 'OWNER_GATE', READY_FOR_OWNER_APPROVAL: 'OWNER_GATE' });
@@ -62,7 +67,7 @@ export function planSync(snapshot, inventory, { now = Date.now(), receipts = {} 
     // Explicitly excluded ride data; no raw title/body/comment/log is ever inspected or emitted.
     if (ident.repository === 'newsdayads/drivetrack' && ident.number === 366) { skipped.push({ key: ident.key, reason: 'SENSITIVE_EXCLUDED' }); continue; }
     if (!/^P[0-5]$/.test(row.priority || '')) { skipped.push({ key: ident.key, reason: 'UNVERIFIED_PRIORITY' }); continue; }
-    if (!PROJECTS.includes(row.project) || (row.subproject && !SUBPROJECTS.includes(row.subproject))) fail('UNKNOWN_PROJECT_MAPPING');
+    if (!PROJECTS.includes(row.project) || (row.subproject && !SUBPROJECTS_BY_PROJECT[row.project]?.includes(row.subproject))) fail('UNKNOWN_PROJECT_MAPPING');
     const values = { PROJECT: row.project, Status: row.runtimeVerified === true ? (STATES[normalizeCoreStatus(row.status)] || 'CHƯA XÁC MINH') : 'CHƯA XÁC MINH' };
     if (row.subproject) values.SUBPROJECT = row.subproject;
     if (typeof row.aiOwner === 'string' && /^(?:NV\d{2}|VY|CODEX_[A-Z0-9_]{1,40})$/.test(row.aiOwner) && snapshot.registeredAiOwners?.includes(row.aiOwner)) values['AI OWNER'] = row.aiOwner;
@@ -192,6 +197,7 @@ export function snapshotFromLiveStatus(payload, { endpoint, transportVerified = 
  for (const [key, row] of merged) {
    const ident = identity(row.url), mapping = LIVE_PROJECT_MAP[row.projectId], item = matched.get(key);
    if (!mapping || !item?.content?.id) continue; // No title/body inference, manufacture, or item creation.
+   if (row.subproject && !SUBPROJECTS_BY_PROJECT[mapping[0]].includes(row.subproject)) fail('UNKNOWN_PROJECT_MAPPING');
    const state = row.ownerGate === true || row.executionEligibility === 'OWNER_GATE' ? 'OWNER_GATE' : normalizeCoreStatus(row.displayState || row.status);
    const active = activeByKey.get(key);
    const runningVerified = active?.live === true && ['WORKING', 'RUNNING'].includes(normalizeCoreStatus(active.displayState || active.status));

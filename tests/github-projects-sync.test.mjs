@@ -113,7 +113,7 @@ describe('verified live-status bridge', () => {
 
 describe('Driver project mapping', () => {
  it('does not mislabel all Driver work as DeX Shot', () => {
-  const r = { ...row, repository: 'newsdayads/drivetrack', number: 370, url: 'https://github.com/newsdayads/drivetrack/issues/370', projectId: 'tigeriq-driver' };
+  const r = { ...row, repository: 'newsdayads/drivetrack', number: 370, url: 'https://github.com/newsdayads/drivetrack/issues/370', projectId: 'tigeriq-driver', subproject: null };
   const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [r] };
   const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory([r]), now });
   expect(planSync(s, inventory([r]), { now }).updates[0].values.SUBPROJECT).toBeUndefined();
@@ -153,5 +153,11 @@ describe('running state needs matching live worker', () => {
  it('accepts only exact URL with live worker running state', () => {
   expect(plan(snapshotFromLiveStatus({ ...live, activeWork: [{ url: row.url, live: true, status: 'ĐANG XỬ LÝ' }] }, options)).updates[0].values.Status).toBe('ĐANG XỬ LÝ');
   expect(plan(snapshotFromLiveStatus({ ...live, activeWork: [{ url: row.url.replace('4640','4641'), live: true, status: 'WORKING' }] }, options)).updates[0].values.Status).toBe('CHƯA XÁC MINH');
+ });
+});
+
+describe('subproject pairing', () => {
+ it('rejects cross-project subprojects even though globally allowlisted', () => {
+  for (const [project, subproject] of [['TigerIQ Driver','Workflow Lab'], ['TigerIQ Coin','App Chrome'], ['TigerIQ AI','DeX Shot'], ['Revenue Lab','derophone']]) expect(() => plan(snapshot([{ ...row, project, subproject }]))).toThrow('UNKNOWN_PROJECT_MAPPING');
  });
 });
