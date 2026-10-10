@@ -11,17 +11,19 @@
 - **Điều hành hiện hành (Owner 2026-10-10):** P1, NV02 được tiếp tục rà soát và bổ sung tài liệu trong phạm vi có sẵn; chưa có bằng chứng Core tự giao việc và `AUTO_QUEUE=EXCLUDED` vẫn giữ. Chưa cấp quyền lập trình APP, không dùng Codex/RDC hoặc sửa App Chrome.
 
 ## 2. Giai đoạn và kết quả bàn giao dự kiến
+
+**Quy ước ưu tiên:** Work Order `GH-4625` có ưu tiên điều hành **P1**. Các nhãn `P0`/`P1` trong bảng yêu cầu chức năng và danh sách đầu việc bên dưới **chỉ thể hiện mức độ thiết yếu của tính năng DeXCam sau khi được phép lập trình**; không biến bất kỳ bước con nào thành Work Order P0, không trao quyền thực thi P0 và không dỡ khóa `IMPLEMENTATION_AUTHORIZATION=false`. Mã giai đoạn dùng `G0..G6` để tránh nhầm với lớp ưu tiên TigerIQ.
 | Giai đoạn | Trạng thái | Đầu ra cần có | Điều kiện kết thúc |
 |---|---|---|---|
-| P0-0: Ghi nhận mục tiêu | HOÀN THÀNH (hồ sơ) | Issue + tài liệu phân tích | GitHub ghi và đọc lại được |
-| P0-1: Khảo sát thiết bị | CHƯA THỰC HIỆN | USB descriptor, Android/DeX, trigger R, log 5 lượt | Owner cho phép đo/thu log |
-| P0-2: Khóa đặc tả | CHỜ KẾT QUẢ KHẢO SÁT | Chốt phạm vi giao diện, mode camera, quyền task, độ trễ | Quyết định Owner |
-| P0-3: Bắt đầu xây dựng | CHƯA ĐƯỢC PHÉP | Repository độc lập, mã nguồn và thử mô phỏng | Lệnh Owner rõ ràng `LÀM APP` |
-| P0-4: Tích hợp với thiết bị | CHƯA ĐƯỢC PHÉP | APK thử, log USB/DeX, 5 chu kỳ đầu | Thiết bị và quyền thật |
-| P0-5: Ổn định, kiểm thử | CHƯA ĐƯỢC PHÉP | 50 chu kỳ R, độ trễ, lỗi khôi phục | Số liệu kiểm thử |
-| P0-6: Phát hành cá nhân | CHƯA ĐƯỢC PHÉP | Bản ký chính chủ và hướng dẫn phục hồi | Owner duyệt cài/phát hành |
+| G0: Ghi nhận mục tiêu | HOÀN THÀNH (hồ sơ) | Issue + tài liệu phân tích | GitHub ghi và đọc lại được |
+| G1: Khảo sát thiết bị | CHƯA THỰC HIỆN | USB descriptor, Android/DeX, trigger R, log 5 lượt | Owner cho phép đo/thu log |
+| G2: Khóa đặc tả | CHỜ KẾT QUẢ KHẢO SÁT | Chốt phạm vi giao diện, mode camera, quyền task, độ trễ | Quyết định Owner |
+| G3: Bắt đầu xây dựng | CHƯA ĐƯỢC PHÉP | Repository độc lập, mã nguồn và thử mô phỏng | Lệnh Owner rõ ràng `LÀM APP` |
+| G4: Tích hợp với thiết bị | CHƯA ĐƯỢC PHÉP | APK thử, log USB/DeX, 5 chu kỳ đầu | Thiết bị và quyền thật |
+| G5: Ổn định, kiểm thử | CHƯA ĐƯỢC PHÉP | 50 chu kỳ R, độ trễ, lỗi khôi phục | Số liệu kiểm thử |
+| G6: Phát hành cá nhân | CHƯA ĐƯỢC PHÉP | Bản ký chính chủ và hướng dẫn phục hồi | Owner duyệt cài/phát hành |
 
-**Lưu ý:** P0-0 chỉ là hoàn tất **khâu ghi nhận**, không phải hoàn thành phát triển. Tất cả tỷ lệ dự án phải dựa trên danh sách hạng mục đã nghiệm thu, không gán % cho phần chưa kiểm thử.
+**Lưu ý:** G0 chỉ là hoàn tất **khâu ghi nhận**, không phải hoàn thành phát triển. Tất cả tỷ lệ dự án phải dựa trên danh sách hạng mục đã nghiệm thu, không gán % cho phần chưa kiểm thử.
 
 ## 3. Danh sách đầu việc theo mức độ ưu tiên và phụ thuộc
 
