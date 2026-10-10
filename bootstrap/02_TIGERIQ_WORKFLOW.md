@@ -306,3 +306,10 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Chỉ tự làm P1–P5 có khả năng hoàn tất, không sửa App Chrome hoặc tự tạo/sửa Core trong lane chưa được phép. NV03 thực thi không thể tự rà soát độc lập chính kết quả đó; NV04 hoặc reviewer độc lập khác kiểm đúng HEAD và bằng chứng.
 - Kiểm thử quyết định, triển khai local-only qua Owner→Vy→PC01, xác minh quyền GitHub thật, 1 vòng nhận việc→tiến hành→kết thúc→đổi việc và giao trùng = 0. Thiếu bất kỳ cổng nào: `NV03_SELF_PULL_ACTIVE=false`, báo tình trạng thật.
 - NV04: chỉ đề xuất tự lấy `research|analysis|review`; **chưa phê duyệt kích hoạt**; giữ Core typed assignment khi chưa có đường đọc/claim GitHub tin cậy và bằng chứng kiểm thử.
+
+## 20.3. Owner yêu cầu NV03 độc lập Core — 2026-10-10
+- Owner chỉ đạo NV03 tự lấy việc GitHub P1–P5 giống NV02; Core không còn giao/đẩy việc mới tới NV03 khi cổng vận hành TIGERIQ_NV03_CORE_DISPATCH_DISABLED=1 được bật trên Core runtime PC01. Không tự đặt giá trị này trong mã hoặc giả runtime đã bật.
+- Đối với công việc Core đã có: chỉ rời việc sau khi được checkpoint/terminal có bằng chứng, không xóa nhiệm vụ chạy dở và không tuyên bố DONE nếu bị BLOCKED.
+- App Chrome PC01 LOCAL-only nhắc NV03 tự kiểm tra nguồn GitHub và tự nhận công việc trên tài khoản NV03; không phải dịch vụ claim GitHub. Chỉ được mutation sau khi chính NV03 xác minh GitHub hợp lệ và claim/lease không trùng. Không xung đột RESOURCE_SCOPE, không P0/hard gates, không tự review mã do chính mình làm.
+- NV04 vẫn do Core điều phối review/research, có thể nhận review thay NV03 khi đủ năng lực. Việc giao NV04 chưa bị Owner thay đổi.
+- NV03_SELF_PULL_ACTIVE là trạng thái phải chứng minh bằng bằng chứng trên PC01 và GitHub, không suy ra từ PR merge, cấu hình hoặc việc Chrome đã gửi prompt.
