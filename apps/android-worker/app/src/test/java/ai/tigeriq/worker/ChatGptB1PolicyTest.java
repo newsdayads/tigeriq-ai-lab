@@ -208,6 +208,111 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void projectBindingRequiresExactWaitingCoreLease() {
+        assertTrue(ChatGptB1Policy.canBindObservedCoreProject(
+            "run-1", "task-1", 1, "run-1", "task-1", 1, "WAITING_PROJECT", false
+        ));
+        assertFalse("Cannot bind Project for a different run",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-2", "task-1", 1, "WAITING_PROJECT", false
+            ));
+        assertFalse("Cannot bind Project for a different task",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-1", "task-2", 1, "WAITING_PROJECT", false
+            ));
+        assertFalse("Cannot bind Project for a different cycle",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-1", "task-1", 2, "WAITING_PROJECT", false
+            ));
+        assertFalse("Cannot resurrect a completed run as Project-bound",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-1", "task-1", 1, "COMPLETE", false
+            ));
+        assertFalse("Cannot reset a sent run to REQUESTED",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-1", "task-1", 1, "WAITING_AI", false
+            ));
+        assertFalse("Already bound Project must not be reset",
+            ChatGptB1Policy.canBindObservedCoreProject(
+                "run-1", "task-1", 1, "run-1", "task-1", 1, "WAITING_PROJECT", true
+            ));
+    }
+
+    @Test
+    public void stableProjectContextSamplesMustBelongToSameRun() {
+        assertTrue(ChatGptB1Policy.isSameProjectContextCandidate(
+            "run-A", "task-A", 1, "run-A", "task-A", 1
+        ));
+        assertFalse("Old run's samples must never count for new run",
+            ChatGptB1Policy.isSameProjectContextCandidate(
+                "run-A", "task-A", 1, "run-B", "task-A", 1
+            ));
+        assertFalse("Old task's samples must never count for new task",
+            ChatGptB1Policy.isSameProjectContextCandidate(
+                "run-A", "task-A", 1, "run-A", "task-B", 1
+            ));
+        assertFalse(ChatGptB1Policy.isSameProjectContextCandidate(
+            "run-A", "task-A", 1, "run-A", "task-A", 2
+        ));
+        assertFalse(ChatGptB1Policy.isSameProjectContextCandidate(
+            "", "task-A", 1, "run-A", "task-A", 1
+        ));
+        assertFalse(ChatGptB1Policy.isSameProjectContextCandidate(
+            "run-A", "task-A", 0, "run-A", "task-A", 0
+        ));
+    }
+
+    @Test
+    public void coreProjectBindingMutatesOnlyMatchingRunAfterFreshSamples() throws Exception {
+        String service = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int start = service.indexOf("private void maybeBindProjectFromStableContext(");
+        int end = service.indexOf("private void maybeActivateStandaloneFallback(", start);
+        assertTrue(start >= 0 && end > start);
+        String binder = service.substring(start, end);
+        assertTrue("Reset candidate when run/task/cycle changes",
+            binder.contains("isSameProjectContextCandidate(")
+                && binder.contains("resetProjectContextCandidate()")
+                && binder.contains("projectContextCandidateRunId = run.runId")
+                && binder.contains("projectContextCandidateTaskId = run.taskId")
+                && binder.contains("projectContextCandidateCycle = run.cycle"));
+        assertTrue("Core-only stable Project binding must be identity guarded",
+            binder.contains("if (coreTask)")
+                && binder.contains("markCoreProjectBoundIfCurrent("));
+        assertTrue("Manual B1 Project path remains independent",
+            binder.contains("ChatGptB1RunStore.markProjectBound(this)"));
+        int begin = store.indexOf(
+            "public static synchronized boolean markCoreProjectBoundIfCurrent("
+        );
+        int finish = store.indexOf(
+            "public static synchronized void markStandaloneFallbackReady(", begin
+        );
+        assertTrue(begin >= 0 && finish > begin);
+        String guarded = store.substring(begin, finish);
+        assertTrue(guarded.contains("Snapshot live = read(context)"));
+        assertTrue(guarded.contains("canBindObservedCoreProject("));
+        assertTrue("Persistent write happens only after durable Core validation",
+            guarded.indexOf("canBindObservedCoreProject(")
+                < guarded.indexOf(".putBoolean(K_PROJECT_BOUND, true)"));
+        assertTrue("Core Project binding must be durably committed",
+            guarded.contains(".commit()"));
+        assertFalse("Core Project binding may not be asynchronous",
+            guarded.contains(".apply()"));
+        assertTrue("Clear sample identity when discarding evidence",
+            service.contains("projectContextCandidateRunId = \"\"")
+                && service.contains("projectContextCandidateTaskId = \"\"")
+                && service.contains("projectContextCandidateCycle = 0"));
+    }
+
+    @Test
     public void observedCoreCallbackRejectsReplacementAndWrongState() {
         assertTrue(ChatGptB1Policy.canMutateObservedCoreRun(
             "run-old", "task-old", 1, "run-old", "task-old", 1,
