@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, runBoundedManagerDecision } from './manager-json.mjs';
 const PROVIDER_ALIAS = { openrouter: 'openrouter-free' };
 const managerProviderBodyForHost = (provider, ...args) => {
   const normalized = PROVIDER_ALIAS[provider] ?? provider;
@@ -59,6 +59,8 @@ const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+// Owner P0: locally hosted Ollama is the canonical Core autonomous brain.
+const CORE_LOCAL_BRAIN_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID]);
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
@@ -1699,8 +1701,8 @@ async function runJob(j) {
     }
     const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
-    const employeeAllowlist=j.kind==='github_api_autowork'?['NV10','NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
-    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    const employeeAllowlist=j.kind==='github_api_autowork'?CORE_LOCAL_BRAIN_EMPLOYEES:stabilityAllowlist;
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
       const packet=executionPacketFromPrompt(j.prompt);
@@ -1708,7 +1710,7 @@ async function runJob(j) {
       if(!executionGate.pass){
         await event('EXECUTION_ACCEPTANCE_RETRY',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision});
         const retryPrompt=strictExecutionRetryPrompt(routedPrompt,executionGate);
-        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
         executionGate=executionResultGate(routed.text,packet);
       }
       if(!executionGate.pass){
@@ -1787,24 +1789,20 @@ async function runJob(j) {
 }
 async function callManagerDecision(prompt,objectiveId){
   const jobId=`MGR-${objectiveId}`,starts=new Map();
-  const localResource=resources.find(x=>x.id===OLLAMA_EMPLOYEE_ID&&x.provider==='ollama')||resources.find(x=>x.provider==='ollama')||null;
-  const localResourceId=localResource?.resourceId||null;
+  const localResource=resources.find(x=>x.id===OLLAMA_EMPLOYEE_ID&&x.provider==='ollama')||null;
   return runBoundedManagerDecision({
     prompt,
-    maxProviders:3,
+    // The local brain must not depend on cloud NV API activation.
+    // Fail closed with bounded retry/backoff if NV10 is unavailable.
+    maxProviders:1,
     acquire:async excluded=>{
-      const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id);
-      let row=null;
-      if(!managerShouldUseLocalFallback(excluded.length,2)){
-        const cloudExcludes=localResourceId?[...new Set([...excludedResources,localResourceId])]:excludedResources;
-        row=await claimResource('reasoning',jobId,cloudExcludes,{profile:'AUTO',taskKind:'manager'});
-      }
-      if(!row&&localResourceId&&!excludedResources.includes(localResourceId)){
-        const nonLocalIds=resources.filter(x=>x.provider!=='ollama').map(x=>x.resourceId);
-        row=await claimResource('reasoning',jobId,[...new Set([...excludedResources,...nonLocalIds])],{profile:'LOCAL',taskKind:'manager'});
-      }
-      if(!row)return null;
-      return resources.find(x=>x.resourceId===row.resource_id)||null;
+      if(!localResource||excluded.includes(localResource.id))return null;
+      const nonLocalIds=resources.filter(x=>x.resourceId!==localResource.resourceId).map(x=>x.resourceId);
+      const row=await claimResource('reasoning',jobId,nonLocalIds,{
+        profile:'LOCAL',taskKind:'manager',preferredEmployeeId:OLLAMA_EMPLOYEE_ID,
+        employeeAllowlist:CORE_LOCAL_BRAIN_EMPLOYEES,
+      });
+      return row?localResource:null;
     },
     invoke:async(r,nextPrompt)=>{
       starts.set(r.id,Date.now());
@@ -2784,10 +2782,13 @@ async function collectSelfAuditSnapshot(store=pool){
   for(const job of queueJobs){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
-    const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
+    // Match dispatch: health/readiness must not hide an eligible local NV10 job.
+    const profile=taskKind==='github_api_autowork'
+      ? 'LOCAL'
+      : deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
     const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
     const employeeAllowlist=taskKind==='github_api_autowork'
-      ? new Set(['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'])
+      ? new Set(CORE_LOCAL_BRAIN_EMPLOYEES)
       : null;
     const reviewerResourceIds=capability==='review'?new Set(await reviewerResourceIdsForJob(job)):new Set();
     const candidateResources=idleResources.filter(resource=>{
