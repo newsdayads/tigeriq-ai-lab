@@ -208,6 +208,33 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreReceiptTokenMustMatchExactIdentifierAndCase() {
+        String expected = "TIGERIQ_B1_OK_4402";
+        assertTrue(ChatGptB1Policy.containsExactCoreToken("Confirmed: " + expected, expected));
+        assertTrue(ChatGptB1Policy.containsExactCoreToken("(" + expected + ").", expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken(expected + "_OTHER", expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken(expected + "9", expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken("X" + expected, expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken("prefix_" + expected, expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken(expected.toLowerCase(java.util.Locale.ROOT), expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken(null, expected));
+        assertFalse(ChatGptB1Policy.containsExactCoreToken("anything", ""));
+
+        ChatGptB1Policy.CoreReplyMatcher prefixSpoof =
+            new ChatGptB1Policy.CoreReplyMatcher("Current task", expected, true);
+        prefixSpoof.observe("USER", "Current task");
+        prefixSpoof.observe("ASSISTANT", "Completed: " + expected + "_OTHER");
+        assertEquals("A longer token is not the Core receipt", "", prefixSpoof.verifiedReply());
+
+        ChatGptB1Policy.CoreReplyMatcher validAfterSpoof =
+            new ChatGptB1Policy.CoreReplyMatcher("Current task", expected, true);
+        validAfterSpoof.observe("USER", "Current task");
+        validAfterSpoof.observe("ASSISTANT", "Another id " + expected + "_OTHER");
+        validAfterSpoof.observe("ASSISTANT", "Completed: " + expected);
+        assertEquals("Completed: " + expected, validAfterSpoof.verifiedReply());
+    }
+
+    @Test
     public void coreReplyMatcherPreSendFindsReplayWithoutRequiringTokenInUserText() {
         ChatGptB1Policy.CoreReplyMatcher promptAlreadySent =
             new ChatGptB1Policy.CoreReplyMatcher("Core payload", "REQ-9", false);
