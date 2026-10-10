@@ -191,8 +191,9 @@ const body=it.body||'',explicit=(marker(body,'PROJECT_ID')||'').toLowerCase();
 const aliases={'core':'tigeriq-platform','platform':'tigeriq-platform','tigeriq-ai':'tigeriq-platform','tigeriq-ai-lab':'tigeriq-platform','tigeriq-media':'tigeriq-news','tigeriq_news':'tigeriq-news','tigeriq_dexcam_personal':'dexcam-personal','tigeriq-dexcam-personal':'dexcam-personal','tigeriq_workflow_lab':'tigeriq-workflow-lab','tigeriq_app_chrome':'tigeriq-app-chrome'};
 const canonical=aliases[explicit]||explicit;
 if(config.some(x=>x[0]===canonical))return canonical;
-const t=(it.title||'')+'\n'+body;
-// Heuristics are fallback for legacy issues. Isolated projects precede generic Android.
+const t=it.title||'';
+// Fallback only uses the issue TITLE. Cross-project names in bodies denote dependencies,
+// warnings or forbidden scopes, and must never reassign the issue's project.
 if(/\bDEXCAM(?:[_ -]?PERSONAL)?\b|\bTIGERIQ[_ -]?DEXCAM[_ -]?PERSONAL\b/i.test(t))return 'dexcam-personal';
 if(/\bTIGERIQ[_ -]?COIN\b|\bDEROPHONE\b|\bDEROBIZFLY\b/i.test(t))return 'tigeriq-coin';
 if(/\bTIGERIQ[_ -]?DRIVER\b|\bDRIVETRACK\b|\bDEXSHOT\b/i.test(t))return 'tigeriq-driver';
