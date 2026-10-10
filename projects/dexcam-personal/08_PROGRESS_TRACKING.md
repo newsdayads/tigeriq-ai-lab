@@ -12,7 +12,7 @@
 1. Vào **TigerIQ Live → Dự án DeXCam Personal → Hồ sơ công việc GH-4625** (nếu bản giao diện Live đã đồng bộ).
 2. Xem tên bước A01…F05, dấu hoàn thành, bằng chứng có liên kết, bước đang chờ, người điều phối.
 3. Chọn **Mở GitHub** để đối chiếu danh sách đầy đủ trong Issue nếu bản giao diện Live đang dùng dữ liệu cũ.
-4. Xem PR liên quan để biết trạng thái tài liệu đang là bản nháp, được rà soát hay đã hợp nhất; không coi PR mở là hoàn tất.
+4. Xem trạng thái **thực tế trên GitHub** của PR tài liệu (mở, bản nháp, đã qua rà soát, đã hợp nhất); không suy ra `draft` từ Issue hoặc tài liệu tĩnh, và không coi PR mở là hoàn tất.
 5. Khi bổ sung tính năng, cập nhật checklist/phụ thuộc/tiêu chí nghiệm thu trước khi thay đổi mẫu số.
 
 ## Quy tắc phân vai và trạng thái
