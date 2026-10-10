@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
 const PROVIDER_ALIAS = { openrouter: 'openrouter-free' };
 const managerProviderBodyForHost = (provider, ...args) => {
   const normalized = PROVIDER_ALIAS[provider] ?? provider;
@@ -342,7 +342,7 @@ async function invokeProvider(r, prompt) {
   switch (r.provider) {
     case 'ollama': {
       if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
-      return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},OLLAMA_TIMEOUT_MS,r);
+      return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},r.id===CORE_MANAGER_EMPLOYEE_ID?CORE_MANAGER_TIMEOUT_MS:OLLAMA_TIMEOUT_MS,r);
     }
     case 'groq': return openAiCompat('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,{},90000,r);
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
@@ -896,8 +896,17 @@ async function probeResource(resourceOrEmployeeId){
       return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};
     }
     const marker='TIGERIQ_RESOURCE_PROBE_'+r.id;
-    const text=await invokeProvider(r,'Return exactly '+marker);
-    if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
+    const isCoreManager=r.id===CORE_MANAGER_EMPLOYEE_ID;
+    const text=isCoreManager
+      ? await invokeLocalManager('You are TigerIQ AI Manager. Return ONLY valid JSON with status blocked, summary '+marker+', jobs empty array. This is a read-only health probe, not a real task.',r.model)
+      : await invokeProvider(r,'Return exactly '+marker);
+    if(isCoreManager){
+      const receipt=parseManagerJson(text);
+      if(receipt.status!=='blocked'||receipt.jobs.length||!receipt.summary.includes(marker))
+        throw Object.assign(new Error('CORE_MANAGER_PROBE_SCHEMA_INVALID'),{kind:'invalid_response'});
+    }else if(!String(text).includes(marker)){
+      throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
+    }
     const latency=Date.now()-started;
     await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});
     return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};
