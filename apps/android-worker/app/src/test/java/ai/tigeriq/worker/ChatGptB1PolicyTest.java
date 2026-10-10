@@ -229,6 +229,56 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreReplyNeverSucceedsAfterDeadlineOrDuringGeneration() {
+        long sent = 1_000_000L;
+        long timeout = 90_000L;
+        assertTrue(ChatGptB1Policy.canAcceptCoreReplyWithinWindow(
+            sent, sent, timeout, false
+        ));
+        assertTrue(ChatGptB1Policy.canAcceptCoreReplyWithinWindow(
+            sent, sent + timeout, timeout, false
+        ));
+        assertFalse("Token on first millisecond AFTER deadline is never accepted",
+            ChatGptB1Policy.canAcceptCoreReplyWithinWindow(
+                sent, sent + timeout + 1L, timeout, false
+            ));
+        assertFalse("Visible generation control means the model is still streaming",
+            ChatGptB1Policy.canAcceptCoreReplyWithinWindow(
+                sent, sent + 1000L, timeout, true
+            ));
+        assertFalse("Missing durable send timestamp cannot be credited",
+            ChatGptB1Policy.canAcceptCoreReplyWithinWindow(0L, sent, timeout, false));
+        assertFalse("Clock rollback cannot credit an unverified transcript",
+            ChatGptB1Policy.canAcceptCoreReplyWithinWindow(sent, sent - 1L, timeout, false));
+        assertFalse("Zero timeout is invalid",
+            ChatGptB1Policy.canAcceptCoreReplyWithinWindow(sent, sent, 0L, false));
+    }
+
+    @Test
+    public void coreReplyDeadlineAndBusyGateRunBeforeAnyTokenScan() throws Exception {
+        String src = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int begin = src.indexOf("if (\"WAITING_AI\".equals(s.state))");
+        int end = src.indexOf("if (s.cycleStartedAt > 0", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String waiting = src.substring(begin, end);
+        int deadline = waiting.indexOf("canAcceptCoreReplyWithinWindow(");
+        int scan = waiting.indexOf("coreResponseTextContaining(");
+        assertTrue("Core deadline gate must PRECEDE token response scan",
+            deadline >= 0 && scan > deadline);
+        assertTrue("Busy state must feed the Core receipt gate",
+            waiting.contains("generationInProgress")
+                && waiting.contains("RESPONSE_TIMEOUT")
+                && waiting.contains("CORE_REPLY_CLOCK_OR_SEND_INVALID")
+                && waiting.contains("markBusySeen(service)"));
+        assertTrue("Manual B1 matcher must remain separately reachable",
+            waiting.contains(": responseTextContaining(root"));
+    }
+
+    @Test
     public void coreResponseContractUsesOrderedStructuralRoleEvidence() throws Exception {
         String src = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
