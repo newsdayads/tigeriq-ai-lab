@@ -201,8 +201,29 @@ public final class ChatGptB1RunStore {
      * automation must not click; if the app crashes after this claim, it may
      * time out but it cannot retry a potentially sent message.
      */
+    /**
+     * Core send claim: compare live durable identity under the same lock that
+     * serializes startTask, then commit before any physical ACTION_CLICK.
+     * A stale callback must never claim a newly bound Core or manual run.
+     */
+    public static synchronized boolean markSentExactlyOnce(
+        Context context, String expectedRunId, String expectedTaskId,
+        int expectedCycle, String expectedPrompt
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canClaimCoreSendForSnapshot(
+            expectedRunId, expectedTaskId, expectedCycle, expectedPrompt,
+            live.runId, live.taskId, live.cycle, live.state, live.sentCycle,
+            live.customPrompt, live.projectBound, live.projectMode
+        )) return false;
+        return persistSendClaim(context, live);
+    }
+
     public static synchronized boolean markSentExactlyOnce(Context context) {
-        Snapshot s = read(context);
+        return persistSendClaim(context, read(context));
+    }
+
+    private static boolean persistSendClaim(Context context, Snapshot s) {
         if (!ChatGptB1Policy.canClaimSendAttempt(s.state, s.cycle, s.sentCycle)) {
             if (s.sentCycle == s.cycle && s.cycle > 0) {
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -239,8 +260,33 @@ public final class ChatGptB1RunStore {
         completeCurrentCycle(context, "");
     }
 
+    /**
+     * Core response commit: the conversation snapshot is advisory. Reject if
+     * the durable run was replaced or changed while Accessibility scanned it.
+     * Never complete a different task using the old UI's response token.
+     */
+    public static synchronized boolean completeCoreReplyIfCurrent(
+        Context context, String expectedRunId, String expectedTaskId,
+        int expectedCycle, String expectedToken, String responseText
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+            expectedRunId, expectedTaskId, expectedCycle, expectedToken,
+            responseText, live.runId, live.taskId, live.cycle, live.state,
+            live.sentCycle, live.sendCount, live.duplicateSendCount,
+            expectedToken(live), live.projectBound, live.projectMode
+        )) return false;
+        finishCycleFromSnapshot(context, live, responseText);
+        return true;
+    }
+
     public static void completeCurrentCycle(Context context, String responseText) {
-        Snapshot s = read(context);
+        finishCycleFromSnapshot(context, read(context), responseText);
+    }
+
+    private static void finishCycleFromSnapshot(
+        Context context, Snapshot s, String responseText
+    ) {
         if (!s.active() || s.cycle <= 0) return;
         long now = System.currentTimeMillis();
         long latency = s.sentAt > 0 ? Math.max(0L, now - s.sentAt) : 0L;
