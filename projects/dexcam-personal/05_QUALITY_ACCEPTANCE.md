@@ -35,7 +35,7 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | CAM-14 | Bấm icon thủ công | tự mở thất bại có log | phân biệt lỗi auto và lỗi stream |
 | CAM-15 | Phát hiện màu/nhiễu | điều kiện có sự cố | error + mode + xử lý rõ |
 | CAM-16 | PD/hub yếu (chỉ quan sát an toàn) | nguồn hub thay đổi | phân biệt disconnect phần cứng và lỗi app |
-| CAM-19 | Nhật ký một lượt R có thể truy vết | 5 lượt R quan sát an toàn, gồm thành công/thất bại nếu phát sinh tự nhiên | 5 `cycle_id` riêng, mỗi mốc kèm nguồn đồng hồ và bằng chứng đồng bộ nếu dùng nhiều đồng hồ; đủ USB/quyền/frame/cửa sổ/R, không đưa dữ liệu riêng tư lên công khai |
+| CAM-19 | Nhật ký một lượt R có thể truy vết | 5 lượt R quan sát an toàn, gồm thành công/thất bại nếu phát sinh tự nhiên | 5 `cycle_id` riêng, nguồn đồng hồ riêng cho R và Android, bằng chứng đồng bộ/sai số nếu dùng nhiều clock; tách nhận frame, **frame sống đã render** và cửa sổ hiện; không đưa dữ liệu riêng tư lên công khai |
 | CAM-20 | USB mới gắn khi app ở nền, quyền chưa có hoặc vừa bị thu hồi | Android/One UI/DeX thực, quan sát trên xe đứng yên; so sánh có/không grant | phân biệt USB event, quyền đã xác nhận, stream và UI; khi cần tương tác phải báo `NEEDS_USER_PERMISSION`, không tự cấp quyền |
 | CAM-21 | USB lớp video + Android CAMERA permission (chỉ khi app target API 28+ và thiết bị thuộc `USB_CLASS_VIDEO`) | Lấy USB class thực, target SDK và permission state; mô phỏng deny/grant trong môi trường cho phép hoặc thử thiết bị an toàn | ghi riêng `CAMERA` runtime permission, USB permission và mở UVC; khi CAMERA bị từ chối không kết luận lỗi dây/hub, không báo đã cấp quyền hoặc tự bật quyền |
 
@@ -78,8 +78,8 @@ Cổng G3 chỉ đủ bằng chứng khi **từng yêu cầu** có kết quả t
 
 ## 5. Chỉ số chất lượng định lượng
 - **Auto-open rate:** `successful_auto_open / valid_R_events`; R event phải có mốc quan sát hợp lệ; mục tiêu nghiệm thu đề xuất **50/50**.
-- **Success by stage:** `USB_seen`, `permission_granted`, `first_live_frame`, `window_visible` đếm theo cùng một `test_id`.
-- **Latency P50/P95/P99:** các bước `R→USB`, `USB→first frame`, `frame→UI visible`, `R off→layout restored`. Chưa chốt ngưỡng ms.
+- **Success by stage:** `USB_seen`, `permission_granted`, `first_live_frame`, `first_live_frame_rendered`, `window_visible` đếm theo cùng một `test_id`; chỉ `frame_received` và `window_visible` chưa đủ chứng minh người dùng thấy hình trực tiếp.
+- **Latency P50/P95/P99:** các bước `R→USB`, `USB→first frame`, `first frame→first live frame rendered`, `frame rendered→UI visible`, `R off→layout restored`. Nếu R và Android dùng clock khác nhau, chỉ tính các mốc liên nguồn khi có offset và sai số đo; **không** điền 0 cho latency chưa đo. Chưa chốt ngưỡng ms.
 - **Recovery rate:** `recovered_automatically / recoverable_faults`; phải phân loại recoverable thật.
 - **False positive:** camera hiện khi R=OFF hoặc video không hợp lệ — ghi riêng, không chỉ tính tỷ lệ mở thành công.
 - **Task layout accuracy:** độ lệch requested vs applied bounds; tiêu chí chỉ chốt sau thử OS target.
@@ -96,8 +96,11 @@ APP_TARGET_SDK: [integer or NOT_MEASURED]
 CAMERA_RUNTIME_PERMISSION: GRANTED|DENIED|NOT_APPLICABLE|NOT_MEASURED
 USB_DEVICE_PERMISSION: GRANTED|DENIED|NOT_MEASURED
 PROFILE: [display, profile ID, required apps]
-CLOCK_SOURCE: [source for each timestamp; use monotonic basis when available] 
-CLOCK_SYNC_EVIDENCE: [offset/uncertainty for cross-clock timestamps or NOT_MEASURED]
+CLOCK_SOURCE: [Android USB/stream/window timestamps, monotonic if available]
+R_ON_CLOCK_SOURCE: [independent source or NOT_MEASURED]
+R_OFF_CLOCK_SOURCE: [independent source or NOT_MEASURED]
+CLOCK_SYNC_EVIDENCE: [method, clock offset and reference, or NOT_MEASURED]
+CLOCK_SYNC_UNCERTAINTY_MS: [measured uncertainty or NOT_MEASURED]
 REVERSE_STATE: ON|OFF|UNKNOWN
 REVERSE_STATE_EVIDENCE: [independent observed source; never infer OFF from video loss]
 R_ON: [timestamp or NOT_MEASURED]
@@ -106,7 +109,8 @@ USB_PRESENT_BEFORE_R: YES|NO|NOT_MEASURED
 USB_PRESENT_DURING_R: YES|NO|NOT_MEASURED
 USB_DETECTED: [timestamp or NOT_MEASURED]
 PERMISSION_READY: [timestamp or NOT_MEASURED]
-FIRST_LIVE_FRAME: [timestamp or NOT_MEASURED]
+FIRST_LIVE_FRAME: [timestamp received by stream engine or NOT_MEASURED]
+FIRST_LIVE_FRAME_RENDERED: [timestamp of actual live frame visible in app UI or NOT_MEASURED]
 CAMERA_WINDOW_SHOWN: [timestamp or NOT_MEASURED]
 R_OFF: [verified timestamp or NOT_MEASURED]
 R_OFF_EVIDENCE: [verified independent source or NOT_MEASURED]
@@ -118,7 +122,7 @@ LOG_POINTER: [private local-only evidence location]
 RESULT: PASS|FAIL|NOT_RUN
 NOTES:
 ```
-Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị. Với `CAM-21`, cần ghi rõ `targetSdkVersion`, USB class và trạng thái quyền; **không bắt buộc CAMERA cho mọi thiết bị USB theo suy đoán**, không coi cấp quyền USB đồng nghĩa có hình. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc **trừ khi có chứng cứ đồng bộ và sai số**; nếu chưa đủ thì dùng `NOT_MEASURED`. CAM-20/DEX-12 là ca thiết kế chờ đo, không chứng minh Android/DeX thực đã hoạt động.
+Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị, cùng dấu vết hình sống **đã render** khi bài thử đòi camera thực sự hiển thị. Với `CAM-21`, cần ghi rõ `targetSdkVersion`, USB class và trạng thái quyền; **không bắt buộc CAMERA cho mọi thiết bị USB theo suy đoán**, không coi cấp quyền USB đồng nghĩa có hình. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc **trừ khi có chứng cứ đồng bộ, offset và sai số**; nếu chưa đủ thì dùng `NOT_MEASURED`. Mẫu CSV tương ứng nằm trong `03_CAMERA_DIAGNOSTICS.md`, gồm các trường clock/R/frame-render riêng. CAM-20/DEX-12 là ca thiết kế chờ đo, không chứng minh Android/DeX thực đã hoạt động.
 
 ## 7. Rủi ro an toàn bắt buộc
 - Việc kiểm thử R thực hiện khi **xe dừng ở vị trí an toàn**, quy trình chèn bánh/phanh tùy hoàn cảnh; không vừa lái vừa chạm app.
