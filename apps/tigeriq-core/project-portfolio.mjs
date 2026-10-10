@@ -106,7 +106,7 @@ export function classifyProject(row = {}, issue = null) {
   // Fallback is restricted to issue title; prose mentioning another project does not reassign ownership.
   const title = String(issue?.title || row?.title || '');
   if (/\bDEX[_ -]?CAM\b|ULTRACARVN/i.test(title)) return PROJECT_BY_ID.get('dexcam-personal');
-  if (/\bTIGERIQ[ _-]?DRIVER\b|\bDEX[ _-]?SHOT\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-driver');
+  if (/\bTIGERIQ[ _-]?DRIVER\b|\[DRIVER\]|\bDEX[ _-]?SHOT\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-driver');
   if (/\bWORKFLOW[ _-]?LAB\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-workflow-lab');
   if (/\bAPP[ _-]?CHROME\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-app-chrome');
   if (/\bTIGERIQ[ _-]?COIN\b|\bDEROPHONE\b|\bDEROBIZFLY\b|\bZEPHYR\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-coin');
