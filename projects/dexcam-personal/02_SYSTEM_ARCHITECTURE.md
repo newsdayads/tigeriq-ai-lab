@@ -25,7 +25,7 @@
 | Android / Samsung DeX / USB Hub / camera controller             |
 +---------------------------------------------------------------+
 ```
-Mỗi module có giao diện rõ ràng, không trực tiếp gọi nhau vòng tròn; sự kiện camera xuất phát từ tầng USB, không phụ thuộc Activity đang foreground.
+Mỗi module có giao diện rõ ràng, không trực tiếp gọi nhau vòng tròn. **Thiết kế dự kiến** tách phát hiện USB/video khỏi vòng đời Activity; việc hệ điều hành có thực sự gửi/cho xử lý sự kiện khi app đang nền phải kiểm chứng theo phiên bản Android/One UI và quyền hiện hữu, không mặc định đạt.
 
 ## 2. Phân tách lõi
 ### 2.1. System Capability Probe
@@ -150,3 +150,16 @@ Trường null có nghĩa **chưa được đo**. Tọa độ là ví dụ lư�
 
 ## 8. Nghiệm thu kiến trúc trước code
 Dùng một sơ đồ sự kiện để chứng minh mọi nhánh USB/permission/signal/UI/restore có đường lỗi xử lý; xác nhận không cần Firebase hoặc Internet; liệt kê quyền thực cần xin; kiểm tra không buộc phải truy cập hidden API trái nền tảng.
+
+## 9. Cổng khả thi Android trước khi cam kết tự mở / tự chia cửa sổ (nghiên cứu tài liệu chính thức)
+
+**Nguồn ngoài — tài liệu Android Developers, không phải kết quả thử trên Samsung DeX của Owner:**
+
+| Ranh giới kỹ thuật | Điều Android công bố | Hệ quả bắt buộc cho thiết kế / chứng cứ |
+|---|---|---|
+| USB host và cấp quyền | Nhận `USB_DEVICE_ATTACHED` qua intent filter + metadata định danh thiết bị là một đường khám phá; thiết bị đã gắn có thể cần `UsbManager.requestPermission()`, người dùng được hỏi cấp quyền. Quyền xử lý attach không được suy là luôn sẵn sàng trên mọi phiên. | Đo riêng `device_seen`, `permission_granted`, `stream_opened` trên thiết bị thật, bao gồm cold start/background/reconnect; thiếu grant → `NEEDS_USER_PERMISSION`, không tự cấp quyền. [Android USB host](https://developer.android.com/develop/connectivity/usb/host) |
+| Background Activity Launch (BAL) | Android 10+ hạn chế ứng dụng nền tự mở Activity; Android 14+ và 15+ còn siết quyền truyền BAL qua `PendingIntent` theo ngữ cảnh/target SDK. Ngoại lệ có điều kiện, không phải cơ chế đảm bảo. | **Có USB event không đồng nghĩa được phép nổi cửa sổ camera.** Phải thử app visible, background và screen/display changed; không tăng quyền ngầm; khi bị chặn ghi `PRESENTATION_BLOCKED` cùng lý do và đề xuất nhắc người dùng ở trạng thái an toàn. [Activity security — BAL](https://developer.android.com/guide/components/activities/secure-bal) |
+| Foreground service (FGS) | Với app target Android 12+ có giới hạn khởi chạy FGS từ nền, trừ ngoại lệ được quy định; các loại cần quyền while-in-use có ràng buộc thêm. | Không lấy giả định “dùng FGS thì tự mở luôn hoạt động” làm nền kiến trúc; rà quyền và điều kiện khởi chạy theo OS/SDK, thử nghiệm riêng. [FGS background restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start) |
+| Điều khiển bố cục app | `ActivityOptions.setLaunchBounds()` có thể bị bỏ qua nếu tính năng freeform/PiP không được hỗ trợ cho thiết bị hoặc display; giá trị này là tùy chọn **lúc launch**, không trao quyền resize mọi task ứng dụng thứ ba đang chạy. | Kiểm chứng `PackageManager` capability, `requested_bounds` so với `actual_bounds`, `display_id`; nếu OS không nhận thì báo giới hạn và dùng fallback, không báo đã resize thành công. [ActivityOptions.setLaunchBounds](https://developer.android.com/reference/android/app/ActivityOptions#setLaunchBounds(android.graphics.Rect)) |
+
+**Cổng quyết định G2:** phải có ma trận thực nghiệm theo thiết bị/Android/One UI/DeX, trạng thái app (foreground/background), phiên USB và loại quyền; phương án `AUTO_USB` / `AUTO_VIDEO_SIGNAL` / `MANUAL_ONLY` chỉ chốt sau khi có bằng chứng. Các cơ chế overlay, ADB, Shizuku và foreground service không được coi là giấy phép vượt giới hạn Android, và không được tự bật. Không có khảo sát thật thì ghi `UNVERIFIED`, không hứa tính năng tự mở 100%.
