@@ -37,6 +37,12 @@ function replaceOnce(source,from,to,label){
   return source.slice(0,first)+to+source.slice(first+from.length);
 }
 
+function replaceExactly(source,from,to,label,expectedCount){
+  const occurrences=source.split(from).length-1;
+  if(occurrences!==expectedCount)throw new Error('CORE_THROUGHPUT_PATCH_COUNT:'+label+':'+occurrences);
+  return source.split(from).join(to);
+}
+
 export function parallelLimitFromHealthyCount(value){
   const n=Math.max(0,Math.trunc(Number(value)||0));
   return Math.max(3,Math.min(20,n));
@@ -47,7 +53,7 @@ export function transformCoreSource(value){
   source=replaceOnce(source,CORE_IDLE_FROM,CORE_IDLE_TO,'manager_idle');
   source=replaceOnce(source,CORE_SCHEMA_FROM,CORE_SCHEMA_TO,'manager_schema');
   source=replaceOnce(source,CORE_POOL_FROM,CORE_POOL_TO,'db_pool');
-  source=replaceOnce(source,CORE_PROMPT_FROM,CORE_PROMPT_TO,'manager_prompt');
+  source=replaceExactly(source,CORE_PROMPT_FROM,CORE_PROMPT_TO,'manager_prompt',2);
   source=replaceOnce(source,CORE_PARALLEL_FROM,CORE_PARALLEL_TO,'parallel_limit');
   source=replaceOnce(source,CORE_REFRESH_FROM,CORE_REFRESH_TO,'live_capacity_refresh');
   return source;
