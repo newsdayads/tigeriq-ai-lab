@@ -186,10 +186,10 @@ const config=[['tigeriq-platform','Nền tảng TigerIQ'],['tigeriq-mobile-worke
 const projects=config.map(([id,name])=>({id,name,desc:'Công việc được ghi nhận trong GitHub',icon:name[0],jobs:[]}));let currentProject=null,currentJob=null,view='portfolio',filter='all',dataTimestamp='',coverageReport='CHƯA XÁC MINH';
 const params=new URLSearchParams(location.search);
 function marker(body,key){return String(body||'').match(new RegExp('^'+key+'=(.+)$','mi'))?.[1]?.trim()||''}
-function classify(it){
-const body=it.body||'',explicit=(marker(body,'PROJECT_ID')||'').toLowerCase();
 // Canonical aliases remain explicit, not inferred from incidental body mentions.
 const projectAliases={'core':'tigeriq-platform','platform':'tigeriq-platform','tigeriq-ai':'tigeriq-platform','tigeriq-ai-lab':'tigeriq-platform','tigeriq-media':'tigeriq-news','tigeriq_news':'tigeriq-news','tigeriq_dexcam_personal':'dexcam-personal','tigeriq-dexcam-personal':'dexcam-personal','tigeriq_workflow_lab':'tigeriq-workflow-lab','tigeriq_app_chrome':'tigeriq-app-chrome'};
+function classify(it){
+const body=it.body||'',explicit=(marker(body,'PROJECT_ID')||'').toLowerCase();
 const canonical=projectAliases[explicit]||explicit;
 if(config.some(x=>x[0]===canonical))return canonical;
 const t=it.title||'';
