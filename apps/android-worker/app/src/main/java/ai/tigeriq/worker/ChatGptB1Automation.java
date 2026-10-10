@@ -127,7 +127,17 @@ public final class ChatGptB1Automation {
         }
 
         if ("REQUESTED".equals(s.state) || "VERIFYING_CONTEXT".equals(s.state)) {
+            // UI scanning and focus can outlive the original Core lease.
+            // Narrow this race both before focus and immediately before the
+            // native ACTION_SET_TEXT; do not fill a replacement task's composer.
+            boolean coreMutation = s.taskId != null && !s.taskId.isEmpty();
+            if (coreMutation && !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
+                service, s.runId, s.taskId, s.cycle, prompt
+            )) return;
             input.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            if (coreMutation && !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
+                service, s.runId, s.taskId, s.cycle, prompt
+            )) return;
             Bundle args = new Bundle();
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, prompt);
             boolean set = input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
