@@ -4,12 +4,15 @@
 Không đánh đồng **có mã nguồn** với **chạy được**, **mở thủ công** với **tự mở**, **USB thấy thiết bị** với **có hình sống**. Mọi chỉ tiêu chưa đo là mục tiêu đề xuất, không phải kết quả.
 
 ## 2. Giai đoạn kiểm chứng
-1. **G0 — Hồ sơ:** yêu cầu, phạm vi, bảng rủi ro và chốt dữ liệu cần đo; **chưa cho phép code**.
-2. **G1 — Thiết bị:** lập bộ hồ sơ camera/hub/Android/DeX thực tế, có chứng cứ USB và mốc R.
-3. **G2 — Khả thi:** xác minh UVC stream, quyền USB, cửa sổ DeX và hướng hiển thị phù hợp.
-4. **G3 — Chức năng:** cam kết P0 FR-001..FR-012 có testcase tối thiểu.
-5. **G4 — Tin cậy:** kiểm tra chu kỳ R, mất USB/preview, chuyển app, khởi động lại.
-6. **G5 — Nghiệm thu của Owner:** thử thật trên xe dừng ở điều kiện an toàn, ký nhận; **không có nghiệm thu ngầm**.
+
+**Nguồn tên giai đoạn duy nhất:** `06_BACKLOG_AND_ROADMAP.md` (G0–G6). Các ca kiểm thử dưới đây chỉ là thiết kế; **không phải bằng chứng sản phẩm/xe thật đã chạy**.
+1. **G0 — Ghi nhận mục tiêu:** Issue, yêu cầu, rủi ro và bộ đặc tả được ghi nhận; **chưa cho phép viết app**.
+2. **G1 — Khảo sát thiết bị:** ghi USB descriptor, Android/One UI/DeX, mốc R và tối thiểu 5 lượt quan sát **chỉ khi được phép, xe ở trạng thái an toàn**.
+3. **G2 — Khóa đặc tả:** đối chiếu bằng chứng USB/UVC, quyền và giới hạn cửa sổ DeX; quyết định phương án, phạm vi và tiêu chí độ trễ, có chấp thuận của Owner.
+4. **G3 — Bắt đầu xây dựng (chưa được phép):** chỉ sau lệnh Owner riêng về lập trình, xây code/test mock theo FR-001..FR-012; có mã và test chạy đúng bản, không lấy checklist thiết kế làm PASS.
+5. **G4 — Tích hợp với thiết bị (chưa được phép):** thử APK đã được cho phép trên Android/DeX, xác nhận USB/frame/cửa sổ và các lượt R thực khi xe đỗ an toàn.
+6. **G5 — Ổn định, kiểm thử (chưa được phép):** 50 chu kỳ R, mất USB/preview, chuyển ứng dụng, khởi động lại, đo độ trễ và lỗi khôi phục; số liệu có nguồn thật.
+7. **G6 — Phát hành cá nhân (chưa được phép):** chỉ sau nghiệm thu riêng của Owner về bản thử, quyền cài/ký/phát hành, cơ chế sao lưu và phục hồi. Không có nghiệm thu hoặc phát hành ngầm.
 
 ## 3. Ma trận kiểm thử camera
 | ID | Thử nghiệm | Điều kiện đầu | Bằng chứng cần |
