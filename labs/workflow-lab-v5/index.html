@@ -270,8 +270,7 @@ for(const it of rows){
  const id=classify(it),p=projects.find(x=>x.id===id);if(!p)continue;
  const coreRow=coreByNumber.get(it.number)||null;
  // Use the exact token parser for Core too: UNBLOCKED must not become BLOCKED.
- const state=it.state==='closed'?'closed':(coreRow&&status({current_state:coreRow.status})==='blocked'?'blocked':status(it));
- p.jobs.push({id:'GH-'+it.number,number:it.number,projectId:id,title:it.title,state,coreRow,githubState:it.state,githubStateReason:it.state_reason||null,projectEvidence:projectEvidence(it),currentState:it.current_state||null,updated:it.updated_at,body:it.body||'',url:it.html_url,worker:it.worker||marker(it.body,'TARGET_EMPLOYEE')||marker(it.body,'ASSIGNEE'),next:it.next_action||marker(it.body,'NEXT')||marker(it.body,'NEXT_ACTION'),pr:it.target_pr||marker(it.body,'TARGET_PR')});
+ p.jobs.push({id:'GH-'+it.number,number:it.number,projectId:id,title:it.title,state:it.state==='closed'?'closed':(coreRow&&status({current_state:coreRow.status})==='blocked'?'blocked':status(it)),coreRow,githubState:it.state,githubStateReason:it.state_reason||null,projectEvidence:projectEvidence(it),currentState:it.current_state||null,updated:it.updated_at,body:it.body||'',url:it.html_url,worker:it.worker||marker(it.body,'TARGET_EMPLOYEE')||marker(it.body,'ASSIGNEE'),next:it.next_action||marker(it.body,'NEXT')||marker(it.body,'NEXT_ACTION'),pr:it.target_pr||marker(it.body,'TARGET_PR')});
 }
 coverageReport=allComplete?'ĐÃ ĐỌC TỚI CUỐI PHÂN TRANG':'CHƯA ĐẦY ĐỦ: '+stopReason;
 dataTimestamp=new Date().toLocaleTimeString('vi-VN')+' · '+rows.length+' issue repo trung tâm ('+windows+' cửa sổ / '+pagesFetched+' trang GitHub · '+coverageReport+') · Core '+(core.connected?(core.stale?'DỮ LIỆU CŨ':'ĐÃ KẾT NỐI'):'CHƯA KẾT NỐI');
