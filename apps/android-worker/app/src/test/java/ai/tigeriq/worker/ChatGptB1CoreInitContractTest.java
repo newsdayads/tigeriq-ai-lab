@@ -91,4 +91,22 @@ public final class ChatGptB1CoreInitContractTest {
         assertTrue(bind.contains(".putString(K_RUN_ID,runId)"));
         assertTrue(bind.contains(".putBoolean(K_RESULT_REPORTED,false)"));
     }
+    @Test
+    public void leaseReacquisitionCannotSwapThePinnedCoreTaskPayload() throws Exception {
+        String source = new String(
+            Files.readAllBytes(Paths.get("src/main/java/ai/tigeriq/worker/MobileTaskStore.java")),
+            StandardCharsets.UTF_8
+        );
+        int begin = source.indexOf("public static Snapshot rebindLease(");
+        int end = source.indexOf("public static void markResultReported(", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String rebind = source.substring(begin, end);
+        assertTrue("reacquired lease must include its original prompt",
+            rebind.contains("current.prompt.equals(prompt)"));
+        assertTrue("reacquired lease must preserve the expected completion token",
+            rebind.contains("current.expectedToken.equals(expectedToken)"));
+        assertTrue("rebind must check before committing a new lease id",
+            rebind.indexOf("current.prompt.equals(prompt)") < rebind.indexOf(".putString(K_LEASE_ID"));
+    }
+
 }
