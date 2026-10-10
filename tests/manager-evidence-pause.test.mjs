@@ -121,6 +121,25 @@ test('GitHub scan time cannot hide actual manager job completion',()=>{
   assert.equal(managerCycleGuard({managerCycles:30,progressed:repeated.progressed}).blocked,true);
 });
 
+test('PostgreSQL Date timestamps retain subsecond terminal-job progress',()=>{
+  // pg returns completed_at as Date, not an ISO string. Date.toString()
+  // omits milliseconds: two DONE jobs in the same second must not collapse.
+  const first=new Date('2026-10-10T12:01:00.103Z');
+  const second=new Date('2026-10-10T12:01:00.437Z');
+  const baseline=managerTerminalProgressPlan({latestTerminalAt:first,managerCycles:0});
+  assert.deepEqual(baseline,{progressed:false,checkpoint:true,observedAt:first.toISOString()});
+  const advanced=managerTerminalProgressPlan({
+    latestTerminalAt:second,observedTerminalAt:baseline.observedAt,managerCycles:29,
+  });
+  assert.deepEqual(advanced,{progressed:true,checkpoint:true,observedAt:second.toISOString()});
+  assert.equal(managerCycleGuard({managerCycles:29,progressed:advanced.progressed}).effectiveCycles,0);
+  const repeat=managerTerminalProgressPlan({
+    latestTerminalAt:second,observedTerminalAt:advanced.observedAt,managerCycles:29,
+  });
+  assert.deepEqual(repeat,{progressed:false,checkpoint:false,observedAt:second.toISOString()});
+  assert.equal(managerTerminalProgressPlan({latestTerminalAt:new Date(NaN),managerCycles:29}).checkpoint,false);
+});
+
 test('legacy manager job progress watermark migrates only once, then requires new evidence',()=>{
   const latest=new Date('2026-10-10T12:01:00.000Z');
   const bootstrap=managerTerminalProgressPlan({latestTerminalAt:latest,managerCycles:12});
