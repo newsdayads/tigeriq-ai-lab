@@ -76,3 +76,14 @@ test('V5 DeXCam and Workflow Lab issues route to their own canonical projects',a
  await page.locator('[data-project="tigeriq-mobile-worker"]').click();
  await expect(page.locator('#jobCards')).not.toContainText('DeXCam Personal');
 });
+
+
+test('V5 incomplete coverage warning remains visible in project and issue detail',async({page})=>{
+ const data={...payload,coverage:{...payload.coverage,complete:false,truncated:true,stopReason:'GITHUB_HTTP_422_PAGE_2',nextSince:null}};
+ await openLab(page,data);
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('#catalogDescription')).toContainText('CHƯA ĐẦY ĐỦ');
+ await page.locator('#jobCards .jobcard').first().click();
+ await expect(page.locator('#workflowScreen .top-right .chip.warn')).toContainText('CHƯA ĐẦY ĐỦ');
+ await expect(page.locator('#workflowScreen .graph-head small')).toContainText('GITHUB_HTTP_422_PAGE_2');
+});
