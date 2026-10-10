@@ -116,3 +116,11 @@ test('first-page transport timeout returns 503, not an empty success',async()=>{
  assert.equal(res.body.ok,false);
  assert.equal(res.body.reason,'GITHUB_FETCH_ERROR_PAGE_1');
 });
+
+
+test('coverage declares source repository and excludes unindexed external repositories',async()=>{
+ const {res}=await invoke(()=>response(200,[fakeIssue(4625)]));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.coverage.scopeRepo,'newsdayads/tigeriq-ai-lab');
+ assert.equal(res.body.coverage.externalRepoCoverage,false);
+});
