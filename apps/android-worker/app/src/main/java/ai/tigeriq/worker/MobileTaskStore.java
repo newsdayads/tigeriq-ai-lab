@@ -52,7 +52,12 @@ public final class MobileTaskStore {
         Snapshot current=read(context);
         String taskId=required(task.optString("taskId",""),"taskId");
         String runId=required(task.optString("runId",""),"runId");
-        if(!current.present()||!current.taskId.equals(taskId)||!current.runId.equals(runId)) {
+        String prompt=required(task.optString("prompt",""),"prompt");
+        String expectedToken=required(task.optString("expectedToken",""),"expectedToken");
+        // A renewed lease may change its leaseId, never the pinned task payload.
+        // Otherwise an old ChatGPT reply can be attributed to a different prompt.
+        if(!current.present()||!current.taskId.equals(taskId)||!current.runId.equals(runId)
+            ||!current.prompt.equals(prompt)||!current.expectedToken.equals(expectedToken)) {
             throw new IllegalStateException("mobile task rebind mismatch");
         }
         boolean persisted=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
