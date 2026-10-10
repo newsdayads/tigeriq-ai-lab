@@ -950,6 +950,30 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(seen.some((url) => url.includes('per_page=100') && url.includes('page=2'))).toBe(true);
   });
 
+  it('#4582 places Owner platform foundation work first without granting new execution rights', async () => {
+    const safeBody = (priority) => ['PRIORITY=' + priority, 'TIGERIQ_EXECUTABLE=false'].join('\n');
+    const sourceIssues = [
+      issue(5800, '[P2][CONTENT] Công việc thường', safeBody('P2')),
+      issue(5801, '[P1][CORE] Công việc nền tảng', safeBody('P1')),
+      issue(4532, '[P1][NỀN TẢNG TIGERIQ][CLINE] Chuẩn bị thử nghiệm', safeBody('P1')),
+      issue(4565, '[P1][ĐIỀU PHỐI] Khắc phục nhận việc', safeBody('P1')),
+      issue(4576, '[P1][CORE][ĐIỀU PHỐI] Khắc phục tồn đọng', safeBody('P1')),
+    ];
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      if (value.includes('/issues?state=open')) return new Response(JSON.stringify(sourceIssues), { status: 200 });
+      if (value.includes('/pulls?state=open')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/actions/runs?per_page=100')) return new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 });
+      if (value.includes('/issues?state=closed')) return new Response(JSON.stringify([]), { status: 200 });
+      if (value.includes('/comments?')) return new Response(JSON.stringify([]), { status: 200 });
+      throw new Error('unexpected_url:' + value);
+    };
+    const result = await buildWorkSections({ workers: [], liveConnected: false }, fetchImpl);
+    expect(result.openWork.map((row) => row.number)).toEqual([4576, 4565, 4532, 5801, 5800]);
+    expect(result.nextExecutable).toBeNull();
+    expect(result.openWork.every((row) => row.status !== 'WORKING')).toBe(true);
+  });
+
   it('counts actionable blocked, queued and unknown work directly in openSummary', async () => {
     const blocked = issue(3981, '[P1] Blocked summary row', [
       'TIGERIQ_EXECUTABLE=false',
