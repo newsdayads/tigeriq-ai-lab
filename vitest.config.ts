@@ -9,6 +9,7 @@ export default defineConfig({
       'tests/android-stable-signing.test.mjs',
       'tests/company-progress-api.test.mjs',
       'tests/project-portfolio.test.mjs',
+      'tests/github-projects-sync.test.mjs',
       'tests/owner-facing-vietnamese.test.mjs',
       'tests/pc01-runtime-control.test.mjs',
       'tests/pc01-workforce-deployment.test.mjs',
