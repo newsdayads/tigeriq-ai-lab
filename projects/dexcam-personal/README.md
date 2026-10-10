@@ -1,6 +1,6 @@
 # DeXCam Personal — hồ sơ dự án độc lập (CHỈ ĐẶC TẢ)
 
-> PROJECT_ID: `TIGERIQ_DEXCAM_PERSONAL` · Nguồn quản lý: [Issue #4625 — dự án Android/DeX riêng](https://github.com/newsdayads/tigeriq-ai-lab/issues/4625)
+> PROJECT_ID canonical theo `projects/portfolio.yaml`: `dexcam-personal` · Mã lịch sử trên Issue: `TIGERIQ_DEXCAM_PERSONAL` (chưa đồng nhất metadata Issue) · Nguồn quản lý: [Issue #4625 — dự án Android/DeX riêng](https://github.com/newsdayads/tigeriq-ai-lab/issues/4625)
 >
 > **TRẠNG THÁI: DISCOVERY / ĐẶC TẢ. CHƯA LẬP TRÌNH, CHƯA BUILD, CHƯA KIỂM THỬ APK CÁ NHÂN.**
 >
