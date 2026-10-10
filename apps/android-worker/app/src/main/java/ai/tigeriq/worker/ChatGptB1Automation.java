@@ -381,8 +381,9 @@ public final class ChatGptB1Automation {
             if (raw.isEmpty()) raw = text(node.getContentDescription());
             if ("USER".equals(role) && raw.equals(text(prompt))) {
                 sentPromptSeen = true;
-            } else if ("ASSISTANT".equals(role)
-                && sentPromptSeen && normalize(raw).contains(wantedToken)) {
+            } else if (ChatGptB1Policy.canAcceptCoreResponseEvidence(
+                role, sentPromptSeen, sendClaimed
+            ) && normalize(raw).contains(wantedToken)) {
                 // Do not accept a user/composer echo; do not strip the token
                 // out of a message that must be attributed to the assistant.
                 String candidate = raw.trim();
