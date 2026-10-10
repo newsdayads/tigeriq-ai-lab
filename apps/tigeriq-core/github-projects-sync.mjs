@@ -14,7 +14,7 @@ export function normalizeCoreStatus(value) {
  const code = Object.keys(OWNER_STATUS_LABELS).find(key => OWNER_STATUS_LABELS[key].toUpperCase() === raw) || raw;
  return STATUS_ALIASES[code] || code;
 }
-const BLOCKERS = Object.freeze({ OWNER_GATE: 'Cần Owner', AUTH_REQUIRED: 'Cần xác thực', EXTERNAL_WAIT: 'Chờ bên ngoài', DEPENDENCY: 'Chờ phụ thuộc', NONE: '' });
+const BLOCKERS = Object.freeze({ BLOCKED: 'Bị chặn', OWNER_GATE: 'Cần Owner', AUTH_REQUIRED: 'Cần xác thực', EXTERNAL_WAIT: 'Chờ bên ngoài', DEPENDENCY: 'Chờ phụ thuộc', NONE: '' });
 const FIELDS = new Set(['PROJECT', 'SUBPROJECT', 'Status', 'AI OWNER', 'TARGET DATE', 'BLOCKER', 'EVIDENCE']);
 const INTERNAL_ERRORS = new WeakMap();
 function fail(code) { const error = new Error(code); INTERNAL_ERRORS.set(error, code); throw error; }
@@ -180,6 +180,7 @@ export function snapshotFromLiveStatus(payload, { endpoint, transportVerified = 
    const ident = identity(item.content?.url);
    if (ident) { if (matched.has(ident.key)) fail('DUPLICATE_PROJECT_ITEM'); matched.set(ident.key, item); }
  }
+ const activeByKey = new Map((payload.activeWork || []).map(row => [identity(row.url)?.key, row]));
  const merged = new Map();
  for (const rows of [payload.openWork, payload.activeWork, payload.recentWork]) for (const row of rows || []) {
    const ident = identity(row.url);
@@ -192,12 +193,14 @@ export function snapshotFromLiveStatus(payload, { endpoint, transportVerified = 
    const ident = identity(row.url), mapping = LIVE_PROJECT_MAP[row.projectId], item = matched.get(key);
    if (!mapping || !item?.content?.id) continue; // No title/body inference, manufacture, or item creation.
    const state = row.ownerGate === true || row.executionEligibility === 'OWNER_GATE' ? 'OWNER_GATE' : normalizeCoreStatus(row.displayState || row.status);
+   const active = activeByKey.get(key);
+   const runningVerified = active?.live === true && ['WORKING', 'RUNNING'].includes(normalizeCoreStatus(active.displayState || active.status));
    items.push({
      repository: ident.repository, number: ident.number, url: ident.url, contentId: item.content.id,
      priority: row.effectivePriority || row.priority, project: mapping[0], subproject: SUBPROJECTS.includes(row.subproject) ? row.subproject : mapping[1],
-     runtimeVerified: true, status: state, aiOwner: row.employeeId,
+     runtimeVerified: !['WORKING', 'RUNNING'].includes(state) || runningVerified, status: state, aiOwner: row.employeeId,
      targetDate: row.targetDate,
-     blockerCode: state === 'OWNER_GATE' ? 'OWNER_GATE' : state === 'BLOCKED' ? 'DEPENDENCY' : state === 'EXTERNAL_WAIT' ? 'EXTERNAL_WAIT' : STATES[state] ? 'NONE' : undefined,
+     blockerCode: state === 'OWNER_GATE' ? 'OWNER_GATE' : state === 'BLOCKED' ? (Object.hasOwn(BLOCKERS, row.blockerCode) && row.blockerCode !== 'NONE' ? row.blockerCode : 'BLOCKED') : state === 'EXTERNAL_WAIT' ? 'EXTERNAL_WAIT' : STATES[state] ? 'NONE' : undefined,
      evidenceUrl: evidence(row.evidenceUrl),
    });
  }

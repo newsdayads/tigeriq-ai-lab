@@ -123,12 +123,12 @@ describe('Driver project mapping', () => {
 describe('actual owner-facing Core states', () => {
  for (const [input, expected, blocker] of [
  ['ĐANG XỬ LÝ','ĐANG XỬ LÝ',''], ['RÀ SOÁT','RÀ SOÁT',''], ['HOÀN TẤT','HOÀN TẤT',''],
- ['ĐANG CHỜ','CHỜ',''], ['BỊ CHẶN','BỊ CHẶN','Chờ phụ thuộc'], ['XÁC MINH','RÀ SOÁT',''],
+ ['ĐANG CHỜ','CHỜ',''], ['BỊ CHẶN','BỊ CHẶN','Bị chặn'], ['XÁC MINH','RÀ SOÁT',''],
  ['CHỜ ANH SƠN DUYỆT','BỊ CHẶN','Cần Owner'], ['WAITING','CHỜ',''], ['VERIFY','RÀ SOÁT',''],
  ['EXTERNAL_WAIT','CHỜ','Chờ bên ngoài'], ['COMPLETED','HOÀN TẤT',''],
  ['ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT','BỊ CHẶN','Cần Owner'],
  ]) it('maps actual Core ' + input, () => {
-  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: input, displayState: input }] };
+  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: input, displayState: input }], activeWork: [{ url: row.url, live: true, status: input }] };
   const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now });
   const values = plan(s).updates[0].values;
   expect(values.Status).toBe(expected); expect(values.BLOCKER).toBe(blocker);
@@ -140,5 +140,18 @@ describe('projection freshness', () => {
  const options = { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now };
  it('rejects missing/incomplete/stale projection even with fresh service timestamp', () => {
   for (const workProjection of [undefined, { mode: 'stale-cache', stale: true }, { mode: 'unavailable' }, { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: false, verifiedAt: new Date(now).toISOString() }, { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now - 120001).toISOString() }]) expect(() => snapshotFromLiveStatus({ ...live, workProjection }, options)).toThrow('UNVERIFIED_WORK_PROJECTION');
+ });
+});
+
+describe('running state needs matching live worker', () => {
+ const live = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: 'ĐANG XỬ LÝ' }] };
+ const options = { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now };
+ it('never manufactures running work from GitHub management state', () => {
+  expect(plan(snapshotFromLiveStatus(live, options)).updates[0].values.Status).toBe('CHƯA XÁC MINH');
+  expect(plan(snapshotFromLiveStatus({ ...live, activeWork: [{ url: row.url, live: false, status: 'WORKING' }] }, options)).updates[0].values.Status).toBe('CHƯA XÁC MINH');
+ });
+ it('accepts only exact URL with live worker running state', () => {
+  expect(plan(snapshotFromLiveStatus({ ...live, activeWork: [{ url: row.url, live: true, status: 'ĐANG XỬ LÝ' }] }, options)).updates[0].values.Status).toBe('ĐANG XỬ LÝ');
+  expect(plan(snapshotFromLiveStatus({ ...live, activeWork: [{ url: row.url.replace('4640','4641'), live: true, status: 'WORKING' }] }, options)).updates[0].values.Status).toBe('CHƯA XÁC MINH');
  });
 });
