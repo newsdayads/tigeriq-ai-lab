@@ -18,7 +18,7 @@ public final class ChatGptB1CoreInitContractTest {
             StandardCharsets.UTF_8
         );
         int start = source.indexOf("public static synchronized Snapshot startTask(");
-        int end = source.indexOf("public static void cancel(", start);
+        int end = source.indexOf("public static synchronized void cancel(", start);
         assertTrue(start >= 0 && end > start);
         String coreStart = source.substring(start, end);
         assertTrue(coreStart.contains("newRunEditor(context, 1, runId.trim())"));
