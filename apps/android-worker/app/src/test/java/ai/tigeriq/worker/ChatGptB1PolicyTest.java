@@ -643,6 +643,42 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreComposerSetTextRechecksCurrentLeaseAfterFocus() throws Exception {
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String adapter = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        assertTrue(store.contains(
+            "public static synchronized boolean isCoreComposerMutationStillCurrent("
+        ));
+        int guard = store.indexOf(
+            "public static synchronized boolean isCoreComposerMutationStillCurrent("
+        );
+        int next = store.indexOf("public static synchronized boolean isCoreSendClaimStillCurrent(", guard);
+        String guarded = store.substring(guard, next);
+        assertTrue(guarded.contains("canMutateObservedCoreRun("));
+        assertTrue(guarded.contains("\"REQUESTED\", \"VERIFYING_CONTEXT\""));
+        assertTrue(guarded.contains("live.projectBound"));
+        assertTrue(guarded.contains("prompt.equals(live.customPrompt)"));
+
+        int fill = adapter.indexOf(
+            "if (\"REQUESTED\".equals(s.state) || \"VERIFYING_CONTEXT\".equals(s.state))"
+        );
+        int first = adapter.indexOf("isCoreComposerMutationStillCurrent(", fill);
+        int focus = adapter.indexOf("ACTION_FOCUS", first);
+        int second = adapter.indexOf("isCoreComposerMutationStillCurrent(", focus);
+        int setText = adapter.indexOf("ACTION_SET_TEXT", second);
+        assertTrue("Core fill must recheck live run before focus and after focus",
+            fill >= 0 && first > fill && focus > first && second > focus && setText > second);
+    }
+
+    @Test
     public void coreSendRequiresExactLiveComposerTextAfterFillCooldown() {
         String prompt = "Work lease 2949 confirmed TASK_77";
         assertTrue(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
