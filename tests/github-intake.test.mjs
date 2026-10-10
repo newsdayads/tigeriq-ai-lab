@@ -1689,9 +1689,12 @@ test('github_review job validates reviewer evidence before terminal done write',
   assert.match(run,/reviewEvidence/);
 });
 
-test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',()=>{
+test('github_api_autowork uses NV10 local Ollama without waiting for cloud NV API',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
+  assert.match(core,/const CORE_LOCAL_BRAIN_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID\]\)/);
+  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_LOCAL_BRAIN_EMPLOYEES:stabilityAllowlist/);
+  assert.match(core,/profile:j\.kind==='github_api_autowork'\?'LOCAL':\(j\.routing_profile\|\|'AUTO'\)/);
+  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_LOCAL_BRAIN_EMPLOYEES\)/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
