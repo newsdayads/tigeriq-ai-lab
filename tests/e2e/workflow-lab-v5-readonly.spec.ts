@@ -68,6 +68,23 @@ test('V5 excludes stale Core rows so old BLOCKED/employee/nextStep cannot overri
  await expect(page.locator('#graph')).not.toContainText('NV09');
 });
 
+test('V5 live Core UNBLOCKED state cannot falsely block GitHub working or closed issues',async({page})=>{
+ const data={...payload,issues:[
+  issue(7819,'open','WORKING'),
+  issue(7820,'open','WORKING'),
+  issue(7821,'closed','DONE'),
+ ],core:{connected:true,stale:false,rows:[
+  {number:7819,status:'UNBLOCKED_WORKING',employeeId:'NV02'},
+  {number:7820,status:'BLOCKED_WAIT',employeeId:'NV03'},
+  {number:7821,status:'BLOCKED_WAIT',employeeId:'NV04'},
+ ]}};
+ await openLab(page,data);
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('[data-job="GH-7819"] .jobstate')).toHaveText('ĐANG LÀM (THEO ISSUE)');
+ await expect(page.locator('[data-job="GH-7820"] .jobstate')).toHaveText('BỊ CHẶN');
+ await expect(page.locator('[data-job="GH-7821"] .jobstate')).toHaveText('ĐÃ ĐÓNG TRÊN GITHUB');
+});
+
 test('V5 keeps active Core evidence ahead of stale recentWork for the same GitHub issue',async({page})=>{
  const data={...payload,
   issues:[{...issue(4457,'open','REVIEW'),title:'[P1][CORE vNext] Current manager activity'}],
