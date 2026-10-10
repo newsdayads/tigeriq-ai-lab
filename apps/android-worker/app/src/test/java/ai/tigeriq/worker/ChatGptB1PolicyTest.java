@@ -208,6 +208,66 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreSendRequiresExactLiveComposerTextAfterFillCooldown() {
+        String prompt = "Work lease 2949 confirmed TASK_77";
+        assertTrue(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "INPUT_READY", prompt, prompt, true, true
+        ));
+        assertFalse("Empty input after fill must never claim/send Core work",
+            ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+                "INPUT_READY", prompt, "", true, true
+            ));
+        assertFalse("Human replacement must never be sent as Core work",
+            ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+                "INPUT_READY", prompt, "human text", true, true
+            ));
+        assertFalse("Prefix/subset of Core task is not the full prompt",
+            ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+                "INPUT_READY", prompt, "Work lease 2949", true, true
+            ));
+        assertFalse("Whitespace mutation is a different prompt",
+            ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+                "INPUT_READY", prompt, prompt + " ", true, true
+            ));
+        assertFalse(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "INPUT_READY", null, null, true, true
+        ));
+        assertFalse(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "INPUT_READY", prompt, null, true, true
+        ));
+        assertFalse(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "WAITING_AI", prompt, prompt, true, true
+        ));
+        assertFalse(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "INPUT_READY", prompt, prompt, false, true
+        ));
+        assertFalse(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+            "INPUT_READY", prompt, prompt, true, false
+        ));
+    }
+
+    @Test
+    public void coreSendLiveComposerGuardPrecedesSendButtonSelectionAndClaim() throws Exception {
+        String src = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int inputReady = src.indexOf("if (!\"INPUT_READY\".equals(s.state)) return;");
+        int exactGuard = src.indexOf("canSendCorePromptFromLiveComposer(", inputReady);
+        int findSend = src.indexOf("findTrustedCoreSendControl(root, input)", exactGuard);
+        int sendClaim = src.indexOf("markSentExactlyOnce(service)", findSend);
+        int sendClick = src.indexOf("ACTION_CLICK", sendClaim);
+        assertTrue("Core live composer verification must precede irreversible send",
+            inputReady >= 0 && exactGuard > inputReady && findSend > exactGuard
+                && sendClaim > findSend && sendClick > sendClaim);
+        assertTrue(src.substring(exactGuard, findSend)
+            .contains("CORE_COMPOSER_TEXT_LOST_BEFORE_SEND"));
+        assertTrue("Manual B1 must retain its independent send route",
+            src.contains(": findSendControl(root, input)"));
+    }
+
+    @Test
     public void coreSendControlRequiresOwnTrustedButtonIdentity() {
         assertTrue(ChatGptB1Policy.isTrustedCoreSendControl(
             true, true, true, "android.widget.ImageButton",
