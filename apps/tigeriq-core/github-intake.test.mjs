@@ -1011,6 +1011,71 @@ describe('GitHub Core intake guardrails',()=>{
     expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:false});
   });
 
+  it('rearms a parked GitHub objective when editing its source removes the last dependency gate',async()=>{
+    const sourceIssue={
+      number:4690,state:'open',title:'[P1] Source with dependency gate removed',comments:0,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_WAIT_DEPENDENCY_REMOVAL_TEST',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+        'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      ].join('\\n'),
+    };
+    expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe('');
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const oldRevision='old-source-with-dependency';
+    const row={
+      id:'OBJ-GH-4690',status:'active',summary:'parked for removed dependency',
+      metadata:{
+        source:'github',issueNumber:4690,sourceRevision:oldRevision,
+        managerAwaitingAcceptanceRevision:oldRevision,
+        dependencyGateRequired:true,dependencyGatePass:false,
+        githubClaimReported:true,githubResultReported:false,
+      },
+    };
+    let wakeCount=0,updatedRevision=null;
+    const queries=[];
+    const pool={async query(sql,params=[]){
+      queries.push(sql);
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))
+        return {rowCount:1,rows:[row]};
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const patch=JSON.parse(params[1]);
+        if(Object.hasOwn(patch,'sourceRevision'))updatedRevision=patch.sourceRevision;
+        Object.assign(row.metadata,patch);
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        expect(params[0]).toBe(row.id);
+        expect(params[2]).toBe(oldRevision);
+        expect(params[3]).toBe(revision);
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(oldRevision);
+        expect(row.status).toBe('active');
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.summary=params[1];
+        wakeCount++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      return {rowCount:0,rows:[]};
+    }};
+    const fetchImpl=async()=>{throw new Error('unexpected_GitHub_request');};
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(updatedRevision).toBe(revision);
+    expect(row.metadata.dependencyGateRequired).toBe(false);
+    expect(row.metadata.dependencyGatePass).toBe(true);
+    expect(row.metadata.managerAwaitingAcceptanceRevision).toBeUndefined();
+    expect(row.status).toBe('active');
+    expect(wakeCount).toBe(1);
+    expect(queries.some(sql=>sql.includes('OBJECTIVE_COMPLETION_EVIDENCE_RESUMED'))).toBe(true);
+    // The previous parked marker has been consumed; a second sync cannot wake twice.
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(wakeCount).toBe(1);
+  });
+
   it('keeps #2652-style source PASS open when live acceptance is still false',async()=>{
     const sourceIssue={number:2652,state:'open',state_reason:'reopened',title:'corrective',comments:1,body:'LIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'};
     const revision=githubIssueSourceRevision(sourceIssue);
