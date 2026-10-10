@@ -182,11 +182,29 @@
 <script>
 (()=>{'use strict';
 const el=id=>document.getElementById(id),E=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const config=[['tigeriq-platform','Nền tảng TigerIQ'],['tigeriq-mobile-worker','TigerIQ Mobile Worker'],['tigeriq-news','TigerIQ News'],['tigeriq-live','TigerIQ Live'],['paperclip-vnext','Paperclip vNext'],['revenue-lab','Revenue Lab']];
+const config=[['tigeriq-platform','Nền tảng TigerIQ'],['tigeriq-mobile-worker','TigerIQ Mobile Worker'],['tigeriq-live','TigerIQ Live'],['tigeriq-workflow-lab','Workflow Lab'],['tigeriq-app-chrome','App Chrome'],['tigeriq-news','TigerIQ News'],['paperclip-vnext','Paperclip vNext'],['revenue-lab','Revenue Lab'],['tigeriq-driver','TigerIQ Driver'],['dexcam-personal','DeXCam Personal'],['tigeriq-coin','TigerIQ Coin']];
 const projects=config.map(([id,name])=>({id,name,desc:'Công việc được ghi nhận trong GitHub',icon:name[0],jobs:[]}));let currentProject=null,currentJob=null,view='portfolio',filter='all',dataTimestamp='';
 const params=new URLSearchParams(location.search);
 function marker(body,key){return String(body||'').match(new RegExp('^'+key+'=(.+)$','mi'))?.[1]?.trim()||''}
-function classify(it){const body=it.body||'',explicit=(marker(body,'PROJECT_ID')||'').toLowerCase(),aliases={'core':'tigeriq-platform','platform':'tigeriq-platform','tigeriq-ai-lab':'tigeriq-platform','tigeriq-media':'tigeriq-news'};if(config.some(x=>x[0]===(aliases[explicit]||explicit)))return aliases[explicit]||explicit;const t=(it.title||'')+'\n'+body;if(/\bTIGERIQ[ _-](?:NEWS|MEDIA)\b/i.test(t))return 'tigeriq-news';if(/\bPAPERCLIP\b/i.test(t))return 'paperclip-vnext';if(/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(t))return 'revenue-lab';if(/\bANDROID\b|MOBILE[_ -]?WORKER|\bZ[ _-]?FLIP\b|\bTIQ[ _-]?WORKER\b/i.test(t))return 'tigeriq-mobile-worker';if(/\bTIGERIQ[ _-]LIVE\b|\[(?:LIVE)\]|COMMAND[ _-]?CENTER/i.test(t))return 'tigeriq-live';return 'tigeriq-platform'}
+function classify(it){
+const body=it.body||'',explicit=(marker(body,'PROJECT_ID')||'').toLowerCase();
+const aliases={'core':'tigeriq-platform','platform':'tigeriq-platform','tigeriq-ai':'tigeriq-platform','tigeriq-ai-lab':'tigeriq-platform','tigeriq-media':'tigeriq-news','tigeriq_news':'tigeriq-news','tigeriq_dexcam_personal':'dexcam-personal','tigeriq-dexcam-personal':'dexcam-personal','tigeriq_workflow_lab':'tigeriq-workflow-lab','tigeriq_app_chrome':'tigeriq-app-chrome'};
+const canonical=aliases[explicit]||explicit;
+if(config.some(x=>x[0]===canonical))return canonical;
+const t=(it.title||'')+'\n'+body;
+// Heuristics are fallback for legacy issues. Isolated projects precede generic Android.
+if(/\bDEXCAM(?:[_ -]?PERSONAL)?\b|\bTIGERIQ[_ -]?DEXCAM[_ -]?PERSONAL\b/i.test(t))return 'dexcam-personal';
+if(/\bTIGERIQ[_ -]?COIN\b|\bDEROPHONE\b|\bDEROBIZFLY\b/i.test(t))return 'tigeriq-coin';
+if(/\bTIGERIQ[_ -]?DRIVER\b|\bDRIVETRACK\b|\bDEXSHOT\b/i.test(t))return 'tigeriq-driver';
+if(/\bWORKFLOW[_ -]?LAB\b/i.test(t))return 'tigeriq-workflow-lab';
+if(/\bAPP[_ -]?CHROME\b|\bCHROME[_ -]?CONTROLLER\b/i.test(t))return 'tigeriq-app-chrome';
+if(/\bTIGERIQ[ _-](?:NEWS|MEDIA)\b/i.test(t))return 'tigeriq-news';
+if(/\bPAPERCLIP\b/i.test(t))return 'paperclip-vnext';
+if(/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(t))return 'revenue-lab';
+if(/\bANDROID\b|MOBILE[_ -]?WORKER|\bZ[ _-]?FLIP\b|\bTIQ[ _-]?WORKER\b/i.test(t))return 'tigeriq-mobile-worker';
+if(/\bTIGERIQ[ _-]LIVE\b|\[(?:LIVE)\]|COMMAND[ _-]?CENTER/i.test(t))return 'tigeriq-live';
+return 'tigeriq-platform';
+}
 function status(it){let s=marker(it.body,'CURRENT_STATE').toUpperCase();if(/BLOCK|HOLD|DENY/.test(s))return 'blocked';if(/REVIEW|VERIFY/.test(s))return 'review';if(/DONE|COMPLETED/.test(s))return 'done';if(/WORKING|IN_PROGRESS/.test(s))return 'working';return 'wait'}
 const statusName={working:'ĐANG LÀM (THEO ISSUE)',blocked:'BỊ CHẶN',review:'RÀ SOÁT',done:'BÁO HOÀN TẤT (THEO ISSUE)',closed:'ĐÃ ĐÓNG TRÊN GITHUB',wait:'CHƯA XÁC MINH'};
 function counts(list){const o={total:list.length,working:0,blocked:0,review:0,done:0,closed:0,wait:0};for(const x of list)o[x.state]++;return o}
