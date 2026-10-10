@@ -205,6 +205,38 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void navigationProofIsMandatoryOnlyForCoreProjectBinding() {
+        // Ordinary chat renamed to TigerIQ AI Lab with a composer and title:
+        // without a same-run Project navigation event it MUST NOT bind Core.
+        assertFalse(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, true, true, false, 3, 1200L
+        ));
+        // Same-run navigation is necessary, but must not skip stable evidence.
+        assertTrue(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, true, true, true, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, false, true, true, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, true, false, true, 3, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, true, true, true, 2, 1200L
+        ));
+        assertFalse(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "MT-2949", true, true, true, true, 3, 1199L
+        ));
+        // Existing manual/standalone B1 remains unchanged.
+        assertTrue(ChatGptB1Policy.canBindStableProjectContextForTask(
+            "", true, true, true, false, 3, 1200L
+        ));
+        assertTrue(ChatGptB1Policy.canBindStableProjectContextForTask(
+            null, true, true, true, false, 3, 1200L
+        ));
+    }
+
+    @Test
     public void projectHeaderCannotBindCoreTaskWithoutFreshNavigationProof()
         throws Exception {
         // A normal chat can be named exactly TigerIQ AI Lab. A title+composer
