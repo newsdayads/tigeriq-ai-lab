@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   managerAcceptancePausePlan,
+  managerAcceptanceRevisionRefresh,
   managerAcceptanceWakePlan,
 } from '../apps/tigeriq-core/manager-cycle-policy.mjs';
 
@@ -51,6 +52,27 @@ test('final review and declared dependency gates park; unknown/unwatched sources
   ])assert.equal(managerAcceptancePausePlan(input).park,false);
 });
 
+test('dependency-only paused GitHub objectives wake when source body revision changes',()=>{
+  const refresh=managerAcceptanceRevisionRefresh({
+    dependencyGateRequired:true,revisionChanged:true,status:'active',
+  });
+  assert.equal(refresh,true);
+  assert.deepEqual(managerAcceptanceWakePlan({
+    awaitingRevision:'old-dependency-body',sourceRevision:'new-dependency-body',acceptanceAllowed:false,
+  }),{wake:true,reason:'source_revision_changed'});
+  for(const input of [
+    {dependencyGateRequired:true,revisionChanged:false,status:'active'},
+    {dependencyGateRequired:true,revisionChanged:true,status:'blocked'},
+    {dependencyGateRequired:false,revisionChanged:true,status:'active'},
+  ])assert.equal(managerAcceptanceRevisionRefresh(input),false);
+  assert.equal(managerAcceptanceRevisionRefresh({
+    sourceLiveRequired:true,revisionChanged:true,status:'active',
+  }),true);
+  assert.equal(managerAcceptanceRevisionRefresh({
+    sourceFinalReviewRequired:true,revisionChanged:true,status:'active',
+  }),true);
+});
+
 test('Core and GitHub intake wire evidence parking and atomic active-only wakeup',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
@@ -58,6 +80,8 @@ test('Core and GitHub intake wire evidence parking and atomic active-only wakeup
   assert.match(core,/next_check_at='infinity'::timestamptz/);
   assert.match(core,/managerAwaitingAcceptanceRevision/);
   assert.match(core,/OBJECTIVE_COMPLETION_WAITING_EVIDENCE/);
+  assert.match(intake,/managerAcceptanceRevisionRefresh\(/);
+  assert.match(intake,/dependencyGateRequired:dependencyGate\.required/);
   assert.match(intake,/managerAcceptanceWakePlan\(/);
   assert.match(intake,/if\(row\.status==='active'&&wake\.wake\)/);
   assert.match(intake,/metadata=coalesce\(metadata,'\{\}'::jsonb\)-'managerAwaitingAcceptanceRevision'/);
