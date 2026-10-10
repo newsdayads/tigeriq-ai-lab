@@ -8,7 +8,7 @@
 - **Tài liệu:** `projects/dexcam-personal/`
 - **Mã nguồn ứng dụng:** **chưa có kho mã riêng**. Khi chuyển sang triển khai, ưu tiên tạo repository **riêng, riêng tư nếu chứa dữ liệu/driver thông tin chủ xe**, không dùng chung build pipeline TigerIQ Core.
 - **Môi trường:** Android/Samsung DeX; không liên quan App Chrome, không thay đổi Core/PC01.
-- **Điều hành:** P0 Owner/Vy. Không tự gán Core/NV02/NV03/NV04 và không dùng Codex/RDC nếu chưa được phê duyệt riêng.
+- **Điều hành hiện hành (Owner 2026-10-10):** P1, NV02 được tiếp tục rà soát và bổ sung tài liệu trong phạm vi có sẵn; chưa có bằng chứng Core tự giao việc và `AUTO_QUEUE=EXCLUDED` vẫn giữ. Chưa cấp quyền lập trình APP, không dùng Codex/RDC hoặc sửa App Chrome.
 
 ## 2. Giai đoạn và kết quả bàn giao dự kiến
 | Giai đoạn | Trạng thái | Đầu ra cần có | Điều kiện kết thúc |
