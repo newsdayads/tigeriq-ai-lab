@@ -79,8 +79,8 @@ Cổng G3 chỉ đủ bằng chứng khi **từng yêu cầu** có kết quả t
 
 ## 5. Chỉ số chất lượng định lượng
 - **Auto-open rate:** `successful_auto_open / valid_R_events`; R event phải có mốc quan sát hợp lệ; mục tiêu nghiệm thu đề xuất **50/50**.
-- **Success by stage:** `USB_seen`, `permission_granted`, `first_live_frame`, `first_live_frame_rendered`, `window_visible` đếm theo cùng một `test_id`; chỉ `frame_received` và `window_visible` chưa đủ chứng minh người dùng thấy hình trực tiếp.
-- **Latency P50/P95/P99:** các bước `R→USB`, `USB→first frame`, `first frame→first live frame rendered`, `frame rendered→UI visible`, `R off→layout restored`. Nếu R và Android dùng clock khác nhau, chỉ tính các mốc liên nguồn khi có offset và sai số đo; **không** điền 0 cho latency chưa đo. Chưa chốt ngưỡng ms.
+- **Success by stage:** `USB_seen`, `permission_granted`, `first_live_frame`, `first_live_frame_rendered`, `window_visible`, **`first_visible_live_frame`** đếm cùng `cycle_id`; việc nhận frame hoặc mở cửa sổ riêng lẻ **không đủ** chứng minh người dùng thấy hình trực tiếp.
+- **Latency P50/P95/P99:** các bước `R→USB`, `USB→first frame`, `first frame→first visible live frame`, `R off→layout restored`; phân tích bổ sung mốc `window_visible`, `first_live_frame_rendered` theo từng lượt nhưng **không mặc định thứ tự hai mốc này**. Không suy ra `first_visible_live_frame = max(window_visible, frame_rendered)` nếu thiếu bằng chứng frame mới/freshness và thực sự hiển thị; không tính giá trị âm từ thứ tự giả định. Nếu R và Android dùng clock khác nhau, chỉ tính các mốc liên nguồn khi có offset và sai số đo; **không** điền 0 cho latency chưa đo. Chưa chốt ngưỡng ms.
 - **Recovery rate:** `recovered_automatically / recoverable_faults`; phải phân loại recoverable thật.
 - **False positive:** camera hiện khi R=OFF hoặc video không hợp lệ — ghi riêng, không chỉ tính tỷ lệ mở thành công.
 - **Task layout accuracy:** độ lệch requested vs applied bounds; tiêu chí chỉ chốt sau thử OS target.
@@ -112,8 +112,9 @@ USB_PRESENT_DURING_R: YES|NO|NOT_MEASURED
 USB_DETECTED: [timestamp or NOT_MEASURED]
 PERMISSION_READY: [timestamp or NOT_MEASURED]
 FIRST_LIVE_FRAME: [timestamp received by stream engine or NOT_MEASURED]
-FIRST_LIVE_FRAME_RENDERED: [timestamp of actual live frame visible in app UI or NOT_MEASURED]
-CAMERA_WINDOW_SHOWN: [timestamp or NOT_MEASURED]
+FIRST_LIVE_FRAME_RENDERED: [timestamp frame rendered by UI, may precede window visibility, or NOT_MEASURED]
+CAMERA_WINDOW_SHOWN: [timestamp window is visible or NOT_MEASURED]
+FIRST_VISIBLE_LIVE_FRAME: [first observable fresh/live frame on visible window with supporting evidence, or NOT_MEASURED]
 R_OFF: [verified timestamp or NOT_MEASURED]
 R_OFF_EVIDENCE: [verified independent source or NOT_MEASURED]
 LAYOUT_RESTORED: [timestamp or NOT_MEASURED]
@@ -124,7 +125,7 @@ LOG_POINTER: [private local-only evidence location]
 RESULT: PASS|FAIL|NOT_RUN
 NOTES:
 ```
-Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị, cùng dấu vết hình sống **đã render** khi bài thử đòi camera thực sự hiển thị. Với `CAM-21`/`CAM-22`, cần ghi rõ `targetSdkVersion`, **device và interface USB class**, trạng thái CAMERA/USB, camera privacy nếu quan sát được; **không bắt buộc CAMERA cho mọi thiết bị USB theo suy đoán**, không coi cấp quyền USB đồng nghĩa có hình và không tự thay đổi quyền riêng tư hệ thống. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc **trừ khi có chứng cứ đồng bộ, offset và sai số**; nếu chưa đủ thì dùng `NOT_MEASURED`. Mẫu CSV tương ứng nằm trong `03_CAMERA_DIAGNOSTICS.md`, gồm các trường clock/R/frame-render riêng. CAM-20/DEX-12 là ca thiết kế chờ đo, không chứng minh Android/DeX thực đã hoạt động.
+Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị, cùng dấu vết **hình sống thật sự nhìn thấy trong cửa sổ** (`FIRST_VISIBLE_LIVE_FRAME`) khi bài thử đòi camera thực sự hiển thị; chỉ render vào buffer hoặc mở cửa sổ riêng lẻ không đạt. Với `CAM-21`/`CAM-22`, cần ghi rõ `targetSdkVersion`, **device và interface USB class**, trạng thái CAMERA/USB, camera privacy nếu quan sát được; **không bắt buộc CAMERA cho mọi thiết bị USB theo suy đoán**, không coi cấp quyền USB đồng nghĩa có hình và không tự thay đổi quyền riêng tư hệ thống. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc **trừ khi có chứng cứ đồng bộ, offset và sai số**; nếu chưa đủ thì dùng `NOT_MEASURED`. Mẫu CSV tương ứng nằm trong `03_CAMERA_DIAGNOSTICS.md`, gồm các trường clock/R/frame-render riêng. CAM-20/DEX-12 là ca thiết kế chờ đo, không chứng minh Android/DeX thực đã hoạt động.
 
 ## 7. Rủi ro an toàn bắt buộc
 - Việc kiểm thử R thực hiện khi **xe dừng ở vị trí an toàn**, quy trình chèn bánh/phanh tùy hoàn cảnh; không vừa lái vừa chạm app.
