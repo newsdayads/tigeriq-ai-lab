@@ -1,29 +1,21 @@
 schema: tigeriq.project.v2
-id: tigeriq-dexcam-personal
+id: dexcam-personal
 name: DeXCam Personal
 kind: project
-order: 80
-status: discovery
-owner: SON
-orchestrator: VY
+order: 100
 source_issue: 4625
-source_pr: 4626
-implementation_authorized: false
-auto_queue: excluded
-source_roots:
-  - projects/dexcam-personal
+original_app_reference: UltraCarVN
+status: planning_spec_only
+excluded_components:
+  - app.tigeriq.dexshot
 workstreams:
-  - id: dexcam-personal-planning-and-delivery
-    name: Hồ sơ, khảo sát, xây dựng và nghiệm thu
+  - id: personal-android
+    name: Khảo sát ứng dụng gốc, máy chủ và thiết kế
     order: 10
-  - id: usb-camera
-    name: Camera lùi USB và tự mở theo số R
+  - id: implementation
+    name: Ứng dụng cá nhân
     order: 20
-  - id: dex-window
-    name: Quản lý cửa sổ Samsung DeX
+  - id: real-device-qa
+    name: Nghiệm thu trên thiết bị
     order: 30
-  - id: integration-qa
-    name: Tích hợp và nghiệm thu trên thiết bị
-    order: 40
-# Source of truth for checklist progress: GitHub Issue 4625 body.
-# The project metadata is not an execution authorization.
+integration_policy: separate_data_auth_and_release

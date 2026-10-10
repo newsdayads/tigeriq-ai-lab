@@ -48,7 +48,7 @@ Tạo ứng dụng Android **mới, độc lập, dùng cá nhân**, kết hợp
 ```
 OWNER=SON
 ORCHESTRATOR=VY
-PRIORITY=P0_OWNER_VY_EXCLUSIVE
+PRIORITY=P1_OWNER_OVERRIDE_20261010
 RESOURCE_SCOPE=DEXCAM_PERSONAL_SPEC_20261009
 STAGE=SPEC_ONLY
 APP_IMPLEMENTATION=HOLD_UNTIL_EXPLICIT_OWNER_COMMAND
@@ -62,6 +62,8 @@ PAYMENT_OR_PAID_SERVICE=FORBIDDEN
 DRIVE_SYNC=NOT_REQUIRED
 ```
 Dự án được **tách riêng bằng hồ sơ, phạm vi tài nguyên, yêu cầu và tiến trình** bên trong repository điều hành TigerIQ. Đây **chưa phải repository mã nguồn Android riêng**; quyết định kho mã riêng phải hoàn tất trước khi viết ứng dụng.
+
+**Đối chiếu nguồn động 2026-10-10:** Issue #4625 đã được Owner chuyển sang P1, NV02 có thể tiếp tục phần tài liệu trong đúng phạm vi. `AUTO_QUEUE=EXCLUDED` và `APP_IMPLEMENTATION=HOLD` vẫn áp dụng cho phần lập trình cho đến khi có lệnh rõ ràng; không khẳng định nhân sự đang chạy.
 
 ## VI. Điều kiện đổi trạng thái
 - `DISCOVERY` → `SPEC_APPROVED`: Owner xác nhận phạm vi, camera/hub và các tiêu chí đo đã được thống nhất.

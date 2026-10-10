@@ -17,7 +17,7 @@
 
 ## Quy tắc phân vai và trạng thái
 - **VY:** điều phối và cập nhật hồ sơ (không suy ra nhân sự lập trình đang chạy).
-- **P0:** phạm vi do anh Sơn/Vy trực tiếp điều hành; không vào hàng đợi tự động.
+- **P1 (Owner chuyển ngày 2026-10-10):** NV02 được tiếp tục phần đặc tả trong phạm vi đã cấp; không suy ra Core đã nhận việc, và không dỡ khóa `IMPLEMENTATION_AUTHORIZATION=false`. Dữ liệu `P0` trong các bản ghi cũ chỉ có giá trị lịch sử.
 - **Chỉ đặc tả:** không bị chặn kỹ thuật do chưa cấp quyền viết app; phần viết app **chủ động để chưa được phép** cho tới khi Owner ra lệnh.
 - **Rà soát tài liệu:** là bước đang chờ nghiệm thu kỹ thuật, không phải yêu cầu Owner cấp quyền lại cho việc đã giao.
 - Nếu màn hình ghi *BỊ CHẶN vì không thuộc hàng đợi*, đó là trạng thái đủ điều kiện điều phối tự động của P0, **khác** với kết luận tiến độ kỹ thuật dự án bị lỗi; cần kiểm tra cột nguồn mới trước khi khẳng định là lỗi.
