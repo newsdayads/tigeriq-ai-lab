@@ -47,7 +47,7 @@ test('short first page marks catalog complete and never fabricates more rows',as
 test('invalid GitHub schema fails closed',async()=>{
   const {res}=await invoke(()=>response(200,{message:'not an array'}));
   assert.equal(res.statusCode,503);
-  assert.equal(res.body.reason,'GITHUB_SCHEMA');
+  assert.equal(res.body.reason,'GITHUB_SCHEMA_PAGE_1');
 });
 
 test('not_planned closure retains provenance and is not silently promoted to DONE',async()=>{
@@ -87,4 +87,32 @@ test('non-advancing cursor cannot create an endless history loop',async()=>{
  assert.equal(res.body.coverage.complete,false);
  assert.equal(res.body.coverage.nextSince,null);
  assert.equal(res.body.coverage.stopReason,'CURSOR_NO_PROGRESS');
+});
+
+test('later-page transport timeout keeps verified rows without declaring complete',async()=>{
+ const {res}=await invoke(page=>{
+   if(page===1)return response(200,Array.from({length:100},(_,i)=>fakeIssue(i+1)));
+   throw Error('network timeout');
+ });
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues.length,100);
+ assert.equal(res.body.coverage.complete,false);
+ assert.equal(res.body.coverage.truncated,true);
+ assert.equal(res.body.coverage.nextSince,null);
+ assert.equal(res.body.coverage.stopReason,'GITHUB_FETCH_ERROR_PAGE_2');
+});
+test('later-page malformed JSON keeps earlier verified rows with explicit evidence',async()=>{
+ const {res}=await invoke(page=>page===1
+   ?response(200,Array.from({length:100},(_,i)=>fakeIssue(i+1)))
+   :response(200,{error:'unexpected schema'}));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues.length,100);
+ assert.equal(res.body.coverage.complete,false);
+ assert.equal(res.body.coverage.stopReason,'GITHUB_SCHEMA_PAGE_2');
+});
+test('first-page transport timeout returns 503, not an empty success',async()=>{
+ const {res}=await invoke(()=>{throw Error('network timeout')});
+ assert.equal(res.statusCode,503);
+ assert.equal(res.body.ok,false);
+ assert.equal(res.body.reason,'GITHUB_FETCH_ERROR_PAGE_1');
 });
