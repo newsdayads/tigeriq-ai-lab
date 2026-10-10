@@ -208,6 +208,108 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void observedCoreCallbackRejectsReplacementAndWrongState() {
+        assertTrue(ChatGptB1Policy.canMutateObservedCoreRun(
+            "run-old", "task-old", 1, "run-old", "task-old", 1,
+            "INPUT_READY", "INPUT_READY"
+        ));
+        assertFalse("A replaced run cannot be failed by an old callback",
+            ChatGptB1Policy.canMutateObservedCoreRun(
+                "run-old", "task-old", 1, "run-new", "task-old", 1,
+                "INPUT_READY", "INPUT_READY"
+            ));
+        assertFalse("A replaced task cannot be marked INPUT_READY",
+            ChatGptB1Policy.canMutateObservedCoreRun(
+                "run-old", "task-old", 1, "run-old", "task-new", 1,
+                "REQUESTED", "REQUESTED"
+            ));
+        assertFalse("An earlier cycle cannot fail its successor",
+            ChatGptB1Policy.canMutateObservedCoreRun(
+                "run-old", "task-old", 1, "run-old", "task-old", 2,
+                "WAITING_AI", "WAITING_AI"
+            ));
+        assertFalse("Terminal Core runs reject stale errors",
+            ChatGptB1Policy.canMutateObservedCoreRun(
+                "run-old", "task-old", 1, "run-old", "task-old", 1,
+                "COMPLETE", "WAITING_AI", "INPUT_READY", "REQUESTED"
+            ));
+        assertFalse("A sent task cannot be reverted to verifying context",
+            ChatGptB1Policy.canMutateObservedCoreRun(
+                "run-old", "task-old", 1, "run-old", "task-old", 1,
+                "WAITING_AI", "REQUESTED", "VERIFYING_CONTEXT"
+            ));
+        assertFalse(ChatGptB1Policy.canMutateObservedCoreRun(
+            "", "task-old", 1, "run-old", "task-old", 1, "INPUT_READY",
+            "INPUT_READY"
+        ));
+        assertFalse(ChatGptB1Policy.canMutateObservedCoreRun(
+            "run-old", null, 1, "run-old", "task-old", 1, "INPUT_READY",
+            "INPUT_READY"
+        ));
+        assertFalse(ChatGptB1Policy.canMutateObservedCoreRun(
+            "run-old", "task-old", 0, "run-old", "task-old", 0, "INPUT_READY",
+            "INPUT_READY"
+        ));
+        assertFalse(ChatGptB1Policy.canMutateObservedCoreRun(
+            "run-old", "task-old", 1, "run-old", "task-old", 1, "INPUT_READY",
+            (String[]) null
+        ));
+    }
+
+    @Test
+    public void allCoreAccessibilityStateWritesRequireObservedLeaseIdentity() throws Exception {
+        String src = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int drive = src.indexOf("public static void drive(");
+        int wrappers = src.indexOf("private static void failObservedRun(", drive);
+        int end = src.indexOf("public static AccessibilityNodeInfo findExactProjectControl(", wrappers);
+        assertTrue(drive >= 0 && wrappers > drive && end > wrappers);
+        String body = src.substring(drive, wrappers);
+        String guards = src.substring(wrappers, end);
+        assertFalse("Never fail the current run via stale Accessibility callback",
+            body.contains("ChatGptB1RunStore.fail(service,"));
+        assertFalse("Never reset a replacement run's state",
+            body.contains("ChatGptB1RunStore.markVerifying(service)")
+                || body.contains("ChatGptB1RunStore.markInputReady(service)")
+                || body.contains("ChatGptB1RunStore.markBusySeen(service)"));
+        assertTrue("Core failure must use a guarded writer",
+            body.contains("failObservedRun(service, s,")
+                && guards.contains("failCoreIfCurrent("));
+        assertTrue("Core input and busy states must use guarded writers",
+            body.contains("markVerifyingObservedRun(service, s)")
+                && body.contains("markInputReadyObservedRun(service, s)")
+                && body.contains("markBusyObservedRun(service, s)")
+                && guards.contains("markCoreVerifyingIfCurrent(")
+                && guards.contains("markCoreInputReadyIfCurrent(")
+                && guards.contains("markCoreBusyIfCurrent("));
+        assertTrue("Check durable Core send claim again before click",
+            body.contains("isCoreSendClaimStillCurrent(")
+                && body.indexOf("isCoreSendClaimStillCurrent(")
+                    < body.indexOf("boolean clicked = send.performAction("));
+        assertTrue("Manual B1 run keeps its existing independent path",
+            guards.contains("ChatGptB1RunStore.fail(service, code);")
+                && guards.contains("ChatGptB1RunStore.markVerifying(service);"));
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        assertTrue("Core failure must be guarded and durable",
+            store.contains("public static synchronized boolean failCoreIfCurrent(")
+                && store.contains(".putString(K_STATE, \"ERROR\")")
+                && store.contains(".putInt(K_EVIDENCE_SEQ, live.evidenceSeq + 1)")
+                && store.contains(".commit();"));
+        assertTrue("Core callback transitions must serialize with startTask",
+            store.contains("public static synchronized boolean markCoreVerifyingIfCurrent(")
+                && store.contains("public static synchronized boolean markCoreInputReadyIfCurrent(")
+                && store.contains("public static synchronized boolean markCoreBusyIfCurrent(")
+                && store.contains("public static synchronized void cancel(Context context)"));
+    }
+
+    @Test
     public void coreSendClaimRejectsAnyReplacedRunTaskCycleOrPrompt() {
         String run = "RUN-A", task = "TASK-A", prompt = "LEASED-PROMPT-A";
         assertTrue(ChatGptB1Policy.canClaimCoreSendForSnapshot(
