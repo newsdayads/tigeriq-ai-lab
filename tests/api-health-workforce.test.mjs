@@ -110,4 +110,21 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain("if(!x.live_resource)");
     expect(dashboard).not.toContain("Registry: ${esc(x.admin_state)}");
   });
+  it('translates Core technical jobs into readable Vietnamese with technical IDs kept in detail',()=>{
+    const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
+    expect(dashboard).toContain("function isCoreProbe(x)");
+    expect(dashboard).toContain("🔍 Đang kiểm tra khả năng phản hồi của AI");
+    expect(dashboard).toContain("function knownHumanJob(x)");
+    expect(dashboard).toContain("function employeeNextStep(x)");
+    expect(dashboard).toContain("function employeeBlocker(x)");
+    expect(dashboard).toContain("['Đang làm gì?',employeeTask(x)]");
+    expect(dashboard).toContain("['Công việc / dự án',knownHumanJob(x)||'Chưa có thông tin xác thực']");
+    expect(dashboard).toContain("['Bước tiếp theo',employeeNextStep(x)]");
+    expect(dashboard).toContain("['Job ID',x.current_job_id||'—']");
+    expect(dashboard).toContain("label:'CHỜ GIAO VIỆC'");
+    expect(dashboard).toContain("'CHỜ GIỚI HẠN API'");
+    expect(dashboard).toContain("'MẤT KẾT NỐI'");
+    expect(dashboard).not.toContain("return jobId+' · '+job");
+  });
+
 });
