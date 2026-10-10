@@ -1,7 +1,9 @@
 export const MANAGER_STALL_CYCLE_LIMIT=30;
 
 function timestampMs(value){
-  const parsed=value?Date.parse(String(value)):NaN;
+  // PostgreSQL timestamp fields arrive as Date objects; String(Date) drops
+  // fractional seconds, hiding distinct DONE jobs within the same second.
+  const parsed=value instanceof Date?value.getTime():value?Date.parse(String(value)):NaN;
   return Number.isFinite(parsed)?parsed:NaN;
 }
 
