@@ -206,39 +206,32 @@ public final class ChatGptB1PolicyTest {
 
     @Test
     public void rejectsChatMessageSpoofingTheProjectHeader() {
-        // Window 0..2000; true Project header at y=80; composer starts at 1700.
         assertTrue(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, false, false, 0, 2000, 80, 130, 1700
+            true, true, false, false, true
         ));
-        // A visible chat message may contain the exact Project name.
+        // A visible chat message or markdown heading with identical Project text.
         assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, false, false, false, 0, 2000, 80, 130, 1700
+            true, false, false, false, true
         ));
-        // Even a text heading in an actual scrolling conversation is NOT a Project header.
+        // Chat content can be nested in a scroll container even if isScrollable is false.
         assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, true, false, 0, 2000, 80, 130, 1700
+            true, true, true, false, true
         ));
-        // A Project link in a drawer can be nested more than three parents deep.
+        // A sidebar navigation element more than three parents deep.
         assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, false, true, 0, 2000, 80, 130, 1700
+            true, true, false, true, true
         ));
-        // An ordinary conversation heading lower in the content region.
+        // A truncated ancestry is not trustworthy Project evidence.
         assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, false, false, 0, 2000, 800, 850, 1700
-        ));
-        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, false, false, 0, 2000, 1600, 1720, 1700
+            true, true, false, false, false
         ));
         assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            true, true, false, false, 0, 0, 80, 130, 1700
-        ));
-        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-            false, true, false, false, 0, 2000, 80, 130, 1700
+            false, true, false, false, true
         ));
     }
 
     @Test
-    public void liveProjectTitleGuardMustInspectFullAncestryAndScreenLocation()
+    public void liveProjectTitleGuardMustInspectFullAncestryAndSemanticToolbar()
         throws Exception {
         String source = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
@@ -251,19 +244,19 @@ public final class ChatGptB1PolicyTest {
         int end = source.indexOf("public static boolean nodeOrAncestorContainsLabel(", start);
         assertTrue(start >= 0 && end > start);
         String guard = source.substring(start, end);
-        assertTrue("Do not accept chat content by exact text alone",
+        assertTrue("Do not trust any arbitrary matching chat bubble",
             guard.contains("isVerifiedProjectHeaderEvidence("));
-        assertTrue("Check all ancestors, not only maxParents=3",
+        assertTrue("Scan full ancestry rather than three parent levels",
             guard.contains("getParent()"));
-        assertTrue("Exclude a scrolling conversation's message subtree",
+        assertTrue("Exclude scrolling message content",
             guard.contains("isScrollable()"));
-        assertTrue("Exclude RecyclerView/ScrollView when isScrollable=false",
+        assertTrue("Exclude scrolling containers regardless of current scrollability",
             guard.contains("recyclerview") && guard.contains("scrollview"));
-        assertTrue("Require a named heading/toolbar rather than a plain bubble",
-            guard.contains("isHeading()") && guard.contains("toolbar"));
-        assertTrue("Bind header location to visible root and composer",
+        assertTrue("Require explicitly named toolbar hierarchy",
+            guard.contains("toolbar") && guard.contains("semanticToolbar"));
+        assertFalse("No coordinates in semantic-only accessibility adapter",
             guard.contains("getBoundsInScreen"));
-        assertFalse("Never reuse depth-limited clickable ancestor as authentication",
+        assertFalse("Never truncate clickable ancestor check at maxParents=3",
             guard.contains("depth <= maxParents"));
     }
 
