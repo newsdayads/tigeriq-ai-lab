@@ -31,6 +31,7 @@
 - `stream opened`: UVC mở thành công;
 - `frame valid`: nhận hình sống hợp lệ;
 - `window visible`: giao diện camera thực sự nổi trên ứng dụng khác.
+- `reverse intent OFF`: **chỉ được ghi nếu nguồn R=OFF đã kiểm chứng**; mất frame, USB detach hay stream stop không mặc nhiên tương đương rời số R. Khi không rõ R đang ON/OFF mà camera mất hình, phải ưu tiên trạng thái cảnh báo và ghi `reverse_state=UNKNOWN` thay vì tự đóng cửa sổ để trả bố cục.
 
 ## 3. Dấu vết từ APK (đã đọc tĩnh)
 - Có `classes.dex`, các native library `libUVCCamera.so`, `libuvc.so`, `libusb1.0.so`.
