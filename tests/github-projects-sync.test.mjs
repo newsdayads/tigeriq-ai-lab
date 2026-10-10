@@ -93,7 +93,7 @@ describe('Core → Projects metadata fence', () => {
 });
 
 describe('verified live-status bridge', () => {
- const live = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', employeeId: 'NV02', body: 'PII', blocker: 'PII' }], activeWork: [], recentWork: [] };
+ const live = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', employeeId: 'NV02', body: 'PII', blocker: 'PII' }], activeWork: [], recentWork: [] };
  const options = { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), registeredAiOwners: ['NV02'], now };
  it('requires connected authoritative Core and trusted transport', () => {
   expect(() => snapshotFromLiveStatus(live, { ...options, transportVerified: false })).toThrow();
@@ -114,7 +114,7 @@ describe('verified live-status bridge', () => {
 describe('Driver project mapping', () => {
  it('does not mislabel all Driver work as DeX Shot', () => {
   const r = { ...row, repository: 'newsdayads/drivetrack', number: 370, url: 'https://github.com/newsdayads/drivetrack/issues/370', projectId: 'tigeriq-driver' };
-  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [r] };
+  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [r] };
   const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory([r]), now });
   expect(planSync(s, inventory([r]), { now }).updates[0].values.SUBPROJECT).toBeUndefined();
  });
@@ -128,9 +128,17 @@ describe('actual owner-facing Core states', () => {
  ['EXTERNAL_WAIT','CHỜ','Chờ bên ngoài'], ['COMPLETED','HOÀN TẤT',''],
  ['ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT','BỊ CHẶN','Cần Owner'],
  ]) it('maps actual Core ' + input, () => {
-  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: input, displayState: input }] };
+  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, workProjection: { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now).toISOString() }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: input, displayState: input }] };
   const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now });
   const values = plan(s).updates[0].values;
   expect(values.Status).toBe(expected); expect(values.BLOCKER).toBe(blocker);
+ });
+});
+
+describe('projection freshness', () => {
+ const live = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [row] };
+ const options = { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now };
+ it('rejects missing/incomplete/stale projection even with fresh service timestamp', () => {
+  for (const workProjection of [undefined, { mode: 'stale-cache', stale: true }, { mode: 'unavailable' }, { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: false, verifiedAt: new Date(now).toISOString() }, { mode: 'pc01-live+github', stale: false, openIssueEnumerationComplete: true, verifiedAt: new Date(now - 120001).toISOString() }]) expect(() => snapshotFromLiveStatus({ ...live, workProjection }, options)).toThrow('UNVERIFIED_WORK_PROJECTION');
  });
 });

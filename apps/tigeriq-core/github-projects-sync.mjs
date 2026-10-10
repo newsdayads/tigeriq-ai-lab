@@ -172,6 +172,9 @@ const LIVE_PROJECT_MAP = Object.freeze({
 export function snapshotFromLiveStatus(payload, { endpoint, transportVerified = false, inventory, registeredAiOwners = [], now = Date.now() } = {}) {
  // The trusted caller verifies HTTPS endpoint/provenance; this function is not an HTTP input handler.
  if (!transportVerified || endpoint !== CORE_STATUS_URL || payload?.ok !== true || payload.liveConnected !== true || payload.mode !== 'pc01-live' || payload.authority !== 'PC01 live runtime' || payload.source?.core !== true) fail('UNVERIFIED_CORE_TRANSPORT');
+ const projection = payload.workProjection;
+ const projectionAge = now - Date.parse(projection?.verifiedAt);
+ if (projection?.mode !== 'pc01-live+github' || projection.stale !== false || projection.openIssueEnumerationComplete !== true || !Number.isFinite(projectionAge) || projectionAge < 0 || projectionAge > 120000) fail('UNVERIFIED_WORK_PROJECTION');
  const matched = new Map();
  for (const item of inventory?.items || []) {
    const ident = identity(item.content?.url);
