@@ -32,6 +32,7 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | CAM-14 | Bấm icon thủ công | tự mở thất bại có log | phân biệt lỗi auto và lỗi stream |
 | CAM-15 | Phát hiện màu/nhiễu | điều kiện có sự cố | error + mode + xử lý rõ |
 | CAM-16 | PD/hub yếu (chỉ quan sát an toàn) | nguồn hub thay đổi | phân biệt disconnect phần cứng và lỗi app |
+| CAM-19 | Nhật ký một lượt R có thể truy vết | 5 lượt R quan sát an toàn, gồm thành công/thất bại nếu phát sinh tự nhiên | 5 `cycle_id` riêng, cùng nguồn đồng hồ, đủ mốc USB/quyền/frame/cửa sổ và trạng thái R kèm bằng chứng; không dùng dữ liệu riêng tư công khai |
 
 ## 4. Ma trận kiểm thử cửa sổ
 | ID | Bài thử | Tiêu chí |
@@ -46,6 +47,28 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | DEX-08 | Sau khi rời R | Snapshot trước camera được khôi phục |
 | DEX-09 | Thiếu quyền resize | Có thông báo "OS không cho phép" |
 | DEX-10 | App đích có minWidth | Không retry vô hạn, báo lý do |
+| DEX-11 | Lưu cấu hình qua khởi động lạnh | Tạo preset, lưu, thoát hẳn ứng dụng rồi mở lại; đối chiếu dữ liệu cục bộ và bounds khi DeX cho phép; không dùng lần quay về Activity làm bằng chứng khởi động lạnh |
+
+## 4A. Truy vết yêu cầu chức năng ưu tiên P0 → ca kiểm thử
+
+Bảng liên kết **thiết kế kiểm thử**, không phải biên nhận đã chạy. Không đánh dấu một yêu cầu đạt chỉ vì có ca kiểm thử hoặc vì camera bật thủ công.
+
+| Yêu cầu | Điều cần xác nhận | Ca kiểm thử tối thiểu |
+|---|---|---|
+| FR-001 | Phát hiện đúng thiết bị/mode USB | CAM-01, CAM-02, CAM-07 |
+| FR-002 | Cấp/từ chối quyền USB và tái kết nối | CAM-06, CAM-07 |
+| FR-003 | Kích hoạt tự động theo R thật | CAM-03, CAM-04, CAM-05 |
+| FR-004 | Camera nổi trong bối cảnh ứng dụng khác | CAM-02, CAM-12 |
+| FR-005 | Trả bố cục **chỉ khi đã xác nhận kết thúc R** | CAM-13, CAM-18, DEX-08 |
+| FR-006 | Có hình sống; mất hình phải cảnh báo | CAM-08, CAM-09, CAM-17 |
+| FR-007 | Phục hồi có giới hạn khi mất luồng/USB | CAM-07, CAM-09, CAM-11 |
+| FR-008 | Preset, ứng dụng đích và giới hạn OS | DEX-01, DEX-02, DEX-04 |
+| FR-009 | X/Y/W/H, DPI và kích thước tối thiểu | DEX-03, DEX-06, DEX-10 |
+| FR-010 | Cấu hình cục bộ tồn tại qua khởi động lạnh | DEX-11 |
+| FR-011 | Nhật ký R/USB/frame/cửa sổ cùng một lượt | CAM-19 |
+| FR-012 | Nút mở thủ công khi đường tự động lỗi | CAM-14 |
+
+Cổng G3 chỉ đủ bằng chứng khi **từng yêu cầu** có kết quả thực tế đúng thiết bị, phiên bản và nhật ký riêng. CAM-19 thuộc khảo sát ban đầu khi chưa có ứng dụng mới chỉ là **đánh giá dữ liệu thu thập**, không chứng minh FR-011 đã được lập trình. Thử nghiệm USB/DeX/xe thật chỉ khi được cho phép và thực hiện lúc xe đứng yên an toàn.
 
 ## 5. Chỉ số chất lượng định lượng
 - **Auto-open rate:** `successful_auto_open / valid_R_events`; R event phải có mốc quan sát hợp lệ; mục tiêu nghiệm thu đề xuất **50/50**.
