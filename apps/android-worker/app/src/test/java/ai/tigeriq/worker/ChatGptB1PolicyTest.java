@@ -208,6 +208,91 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreSendControlRequiresOwnTrustedButtonIdentity() {
+        assertTrue(ChatGptB1Policy.isTrustedCoreSendControl(
+            true, true, true, "android.widget.ImageButton",
+            "com.openai.chatgpt:id/composer_send_button", ""
+        ));
+        assertTrue(ChatGptB1Policy.isTrustedCoreSendControl(
+            true, true, true, "android.widget.Button", "", "Send message"
+        ));
+        assertTrue(ChatGptB1Policy.isTrustedCoreSendControl(
+            true, true, true, "android.widget.ImageButton", "", "Gửi"
+        ));
+        assertFalse("A clickable chat bubble quoting Send must not become a Core action",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, true, true, "android.view.View",
+                "message_bubble", "Send"
+            ));
+        assertFalse("Generic icon buttons must never be guessed as Send",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, true, true, "android.widget.ImageButton",
+                "arrow_up", ""
+            ));
+        assertFalse("A send-later button is not the current Send action",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, true, true, "android.widget.Button", "", "Send later"
+            ));
+        assertFalse("Navigation Send labels are not automatically Core Send",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, true, true, "android.widget.Button",
+                "settings_send_logs", ""
+            ));
+        assertFalse("Hidden controls cannot trigger Core sending",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                false, true, true, "android.widget.Button", "send_button", ""
+            ));
+        assertFalse("Disabled controls cannot trigger Core sending",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, false, true, "android.widget.Button", "send_button", ""
+            ));
+        assertFalse("Nonclickable labels cannot trigger Core sending",
+            ChatGptB1Policy.isTrustedCoreSendControl(
+                true, true, false, "android.widget.Button", "send_button", ""
+            ));
+    }
+
+    @Test
+    public void coreSendSelectorCannotScanWholeTranscriptOrGuessAnonymousIcons()
+        throws Exception {
+        String source = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String coreDispatch = "(s.taskId != null && !s.taskId.isEmpty())"
+            + "\n            ? findTrustedCoreSendControl(root, input)"
+            + "\n            : findSendControl(root, input)";
+        assertTrue("Leased Core must use stronger Send selector than manual B1",
+            source.contains(coreDispatch));
+        int begin = source.indexOf(
+            "public static AccessibilityNodeInfo findTrustedCoreSendControl("
+        );
+        int end = source.indexOf(
+            "public static AccessibilityNodeInfo findSendControl(", begin
+        );
+        assertTrue(begin >= 0 && end > begin);
+        String selector = source.substring(begin, end);
+        assertTrue("Core Send must be scoped to the actual live composer",
+            selector.contains("composerInput.getParent()")
+                && selector.contains("belongsToRoot"));
+        assertTrue("Native own-button role must be checked",
+            selector.contains("isTrustedCoreSendControl("));
+        assertTrue("Refuse broad transcript/scroll-containing selection",
+            selector.contains("node.isScrollable()")
+                && selector.contains("message_list")
+                && selector.contains("inspected > 48"));
+        assertTrue("Refuse multiple competing Send controls",
+            selector.contains("found != null && !found.equals(node)"));
+        assertFalse("No global visible-message scan for Core send",
+            selector.contains("nodes(root)"));
+        assertFalse("No anonymous icon guessing for Core send",
+            selector.contains("uniqueComposerAction("));
+        assertFalse("No coordinate/gesture fallback",
+            selector.contains("getBoundsInScreen"));
+    }
+
+    @Test
     public void coreReceiptTokenMustMatchExactIdentifierAndCase() {
         String expected = "TIGERIQ_B1_OK_4402";
         assertTrue(ChatGptB1Policy.containsExactCoreToken("Confirmed: " + expected, expected));
