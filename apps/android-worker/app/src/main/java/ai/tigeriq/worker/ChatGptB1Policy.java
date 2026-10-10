@@ -208,6 +208,36 @@ public final class ChatGptB1Policy {
             && !generationInProgress;
     }
 
+    /**
+     * A Core task may click Send only when the action itself has a trusted
+     * native button identity in the local composer scope. Do not accept the
+     * word "send" in arbitrary message text or guess from an icon's shape.
+     */
+    public static boolean isTrustedCoreSendControl(
+        boolean visible, boolean enabled, boolean clickable,
+        String className, String viewId, String contentDescription
+    ) {
+        if (!visible || !enabled || !clickable) return false;
+        String klass = className == null ? "" : className.toLowerCase(java.util.Locale.ROOT);
+        boolean button = klass.contains("button");
+        if (!button) return false;
+        String id = viewId == null ? "" : viewId.toLowerCase(java.util.Locale.ROOT);
+        int slash = id.lastIndexOf('/');
+        if (slash >= 0) id = id.substring(slash + 1);
+        boolean exactSendId = id.equals("send_button")
+            || id.equals("send_message_button")
+            || id.equals("composer_send")
+            || id.equals("composer_send_button")
+            || id.equals("chat_send_button");
+        String desc = contentDescription == null
+            ? "" : contentDescription.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean exactSendDescription = desc.equals("send")
+            || desc.equals("send message")
+            || desc.equals("gửi")
+            || desc.equals("gửi tin nhắn");
+        return exactSendId || exactSendDescription;
+    }
+
     /** A token alone cannot establish the sender or freshness of a Core reply. */
     public static boolean canAcceptCoreResponseEvidence(
         String senderRole, boolean sentPromptSeen, boolean durableSendClaim
