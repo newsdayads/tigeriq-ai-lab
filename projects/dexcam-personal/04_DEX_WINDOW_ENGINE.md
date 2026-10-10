@@ -70,7 +70,7 @@ Gợi ý preset **chỉ là ví dụ để người dùng chọn**, không là c
 5. Nếu có quyền L2, resize theo `task_id` thật, xác nhận result code / readback.
 6. Nếu thiếu quyền hoặc hệ thống bỏ qua, báo giới hạn; lưu `requested_bounds` và `actual_bounds` khác nhau.
 7. Khi camera mở: đánh dấu snapshot `pre_camera_layout`; giữ task app trong nền.
-8. Khi camera tắt: khôi phục chính xác những gì coordinator đã thay đổi, không tự ý đóng app không do mình tạo.
+8. Chỉ khôi phục khi có tín hiệu **R=OFF đã kiểm chứng**, hoặc người dùng chủ động thoát chế độ camera trong điều kiện an toàn. Nếu chỉ mất USB, luồng hình hoặc khung hình mà R còn ON/chưa xác định, giữ ảnh chụp bố cục và hiển thị cảnh báo `CAMERA_UNAVAILABLE`; không được tự coi đó là lệnh khôi phục. Khi đủ điều kiện, chỉ đảo các thay đổi do coordinator gây ra và không đóng ứng dụng khác.
 
 ## 7. Ràng buộc quyền & an toàn
 - Không dùng Accessibility để giành quyền vượt giới hạn hoặc tự click vào UI nhạy cảm; mọi quyền đều có thông báo rõ.
@@ -85,11 +85,11 @@ Gợi ý preset **chỉ là ví dụ để người dùng chọn**, không là c
 | W-02 | Áp 50/50, 65/35 | Tỉ lệ/tọa độ được lưu, dùng lại được |
 | W-03 | Đổi kích thước màn hình | Điều chỉnh theo profile hoặc cảnh báo, không rơi mất cửa sổ |
 | W-04 | App có kích thước tối thiểu | Không treo/lặp resize; báo giới hạn |
-| W-05 | Chuyển R → camera → D | Trả lại bố cục ban đầu, không kill app |
+| W-05 | Chuyển R → camera → D | Chỉ trả bố cục sau khi R=OFF được chứng minh hoặc thao tác đóng có chủ ý trong điều kiện an toàn; không đóng ứng dụng khác |
 | W-06 | Nhiều lần R nhanh | Không phát lại thao tác đóng/mở khiến cửa sổ bị đảo |
 | W-07 | Android kill app | Có chiến lược phục hồi dựa vào state/dữ liệu cục bộ |
 | W-08 | Thiếu quyền ADB | Có chế độ giảm tính năng, không báo thành công giả |
-| W-09 | Camera không có frame | Cảnh báo rõ, ưu tiên trạng thái an toàn hơn chỉ tô cửa sổ |
+| W-09 | Camera không có frame khi R còn ON/UNKNOWN | Cảnh báo `CAMERA_UNAVAILABLE`, không hiện hình cũ, không tự trả bố cục |
 | W-10 | Nhiều màn hình/HDMI thay đổi | Xác định đúng display ID trước khi đặt bounds |
 
 ## 9. Phần còn cần kiểm tra
