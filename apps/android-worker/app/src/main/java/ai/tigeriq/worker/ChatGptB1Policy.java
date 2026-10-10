@@ -296,6 +296,34 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Stable Project-context evidence belongs to one durable Core run only.
+     * The final Project-binding commit must still see that exact run waiting.
+     */
+    public static boolean canBindObservedCoreProject(
+        String observedRunId, String observedTaskId, int observedCycle,
+        String liveRunId, String liveTaskId, int liveCycle,
+        String liveState, boolean liveProjectBound
+    ) {
+        return !liveProjectBound
+            && canMutateObservedCoreRun(
+                observedRunId, observedTaskId, observedCycle,
+                liveRunId, liveTaskId, liveCycle, liveState, "WAITING_PROJECT"
+            );
+    }
+
+    /** A stable sample from another lease must not count for this run. */
+    public static boolean isSameProjectContextCandidate(
+        String candidateRunId, String candidateTaskId, int candidateCycle,
+        String currentRunId, String currentTaskId, int currentCycle
+    ) {
+        return candidateRunId != null && !candidateRunId.isEmpty()
+            && currentRunId != null && candidateRunId.equals(currentRunId)
+            && candidateTaskId != null && currentTaskId != null
+            && candidateTaskId.equals(currentTaskId)
+            && candidateCycle > 0 && candidateCycle == currentCycle;
+    }
+
+    /**
      * A Core task may click Send only when the action itself has a trusted
      * native button identity in the local composer scope. Do not accept the
      * word "send" in arbitrary message text or guess from an icon's shape.
