@@ -133,6 +133,18 @@ public final class ChatGptB1Automation {
         if (!"INPUT_READY".equals(s.state)) return;
         if (s.sentCycle == s.cycle) return;
 
+        // INPUT_READY is persisted after ACTION_SET_TEXT but the human or app
+        // may clear/replace the composer during the fill-to-send cooldown.
+        // For a Core lease, never claim the at-most-once send against a stale
+        // snapshot without the EXACT live prompt still in the editable field.
+        if (s.taskId != null && !s.taskId.isEmpty()
+            && !ChatGptB1Policy.canSendCorePromptFromLiveComposer(
+                s.state, prompt, currentText, input.isVisibleToUser(), input.isEditable()
+            )) {
+            ChatGptB1RunStore.fail(service, "CORE_COMPOSER_TEXT_LOST_BEFORE_SEND");
+            return;
+        }
+
         AccessibilityNodeInfo send = (s.taskId != null && !s.taskId.isEmpty())
             ? findTrustedCoreSendControl(root, input)
             : findSendControl(root, input);
