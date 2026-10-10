@@ -151,8 +151,8 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 3050, title: '[P1][TIGERIQ NEWS] Editorial', workKind: 'WORK', status: 'WORKING' },
       { number: 4640, title: '[P0][PORTFOLIO] TigerIQ AI', workKind: 'WORK', status: 'WAITING' },
     ], [
-      { number: 4625, title: 'DeXCam Personal', body: 'PROJECT_ID=TIGERIQ_DEXCAM_PERSONAL\\nPROJECT_NAME=DeXCam Personal' },
-      { number: 3050, title: 'TIGERIQ MEDIA', body: 'PROJECT_ID=tigeriq-media\\nPROJECT_NAME=TigerIQ Media' },
+      { number: 4625, title: 'DeXCam Personal', body: 'PROJECT_ID=TIGERIQ_DEXCAM_PERSONAL\nPROJECT_NAME=DeXCam Personal' },
+      { number: 3050, title: 'TIGERIQ MEDIA', body: 'PROJECT_ID=tigeriq-media\nPROJECT_NAME=TigerIQ Media' },
     ]);
     expect(rows[0]).toMatchObject({ projectId: 'dexcam-personal', projectGroupId: 'dexcam-personal' });
     expect(rows[1]).toMatchObject({ projectId: 'tigeriq-news', projectGroupId: 'tigeriq-news' });
