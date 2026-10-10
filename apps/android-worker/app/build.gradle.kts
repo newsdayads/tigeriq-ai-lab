@@ -20,8 +20,8 @@ android {
         applicationId = "ai.tigeriq.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "0.26.0-vn-new-chat"
+        versionCode = 27
+        versionName = "0.27.0-nv02-core-guard"
     }
 
     if (stableSigningEnabled) {
