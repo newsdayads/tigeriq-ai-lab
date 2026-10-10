@@ -133,7 +133,9 @@ public final class ChatGptB1Automation {
         if (!"INPUT_READY".equals(s.state)) return;
         if (s.sentCycle == s.cycle) return;
 
-        AccessibilityNodeInfo send = findSendControl(root, input);
+        AccessibilityNodeInfo send = (s.taskId != null && !s.taskId.isEmpty())
+            ? findTrustedCoreSendControl(root, input)
+            : findSendControl(root, input);
         if (send == null) {
             // Text has been set; wait for the provider to render its semantic send control.
             return;
@@ -261,6 +263,72 @@ public final class ChatGptB1Automation {
             }
         }
         return best;
+    }
+
+    /**
+     * Core only: look for exactly one explicitly labelled native Send button
+     * inside a bounded composer region. Never scan the transcript, nav bar or
+     * other clickable UI for a keyword/anonymous up-arrow guess.
+     */
+    public static AccessibilityNodeInfo findTrustedCoreSendControl(
+        AccessibilityNodeInfo root, AccessibilityNodeInfo composerInput
+    ) {
+        if (root == null || composerInput == null
+            || !composerInput.isVisibleToUser() || !composerInput.isEditable()) return null;
+        AccessibilityNodeInfo cursor = composerInput;
+        boolean belongsToRoot = false;
+        for (int i = 0; cursor != null && i < 32; i++) {
+            if (cursor.equals(root)) {
+                belongsToRoot = true;
+                break;
+            }
+            cursor = cursor.getParent();
+        }
+        if (!belongsToRoot) return null;
+
+        AccessibilityNodeInfo scope = composerInput.getParent();
+        for (int depth = 0; scope != null && depth < 4; depth++) {
+            if (!scope.isVisibleToUser() || scope.isScrollable()) return null;
+            String scopeClass = normalize(String.valueOf(scope.getClassName()));
+            String scopeId = normalize(text(scope.getViewIdResourceName()));
+            if (containsAny(scopeClass, "scrollview", "recyclerview", "listview", "webview")
+                || containsAny(scopeId, "message_list", "conversation_list", "chat_list")) {
+                return null;
+            }
+
+            AccessibilityNodeInfo found = null;
+            int editables = 0;
+            int inspected = 0;
+            for (AccessibilityNodeInfo node : preorderNodes(scope)) {
+                inspected++;
+                if (inspected > 48) return null;
+                String cls = normalize(String.valueOf(node.getClassName()));
+                String id = normalize(text(node.getViewIdResourceName()));
+                // If this scope includes the scrolling transcript, it cannot
+                // authorize a Core Send click even when a named button exists.
+                if (node.isScrollable()
+                    || containsAny(cls, "scrollview", "recyclerview", "listview", "webview")
+                    || containsAny(id, "message_list", "conversation_list", "chat_list")) {
+                    return null;
+                }
+                if (node.isEditable()) {
+                    editables++;
+                    if (!node.equals(composerInput)) return null;
+                }
+                if (ChatGptB1Policy.isTrustedCoreSendControl(
+                    node.isVisibleToUser(), node.isEnabled(), node.isClickable(),
+                    String.valueOf(node.getClassName()),
+                    text(node.getViewIdResourceName()),
+                    text(node.getContentDescription())
+                )) {
+                    if (found != null && !found.equals(node)) return null;
+                    found = node;
+                }
+            }
+            if (editables == 1 && found != null) return found;
+            scope = scope.getParent();
+        }
+        return null;
     }
 
     public static AccessibilityNodeInfo findSendControl(
