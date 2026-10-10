@@ -468,9 +468,19 @@ public final class ChatGptB1RunStore {
     }
 
     public static boolean projectClickObservedInRun(Context context, Snapshot s) {
-        long clickAt = context.getSharedPreferences(
+        SharedPreferences prefs = context.getSharedPreferences(
             AccessibilityBridgeService.PREFS, Context.MODE_PRIVATE
-        ).getLong(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        );
+        long clickAt = prefs.getLong(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        if (s.taskId != null && !s.taskId.isEmpty()) {
+            return ChatGptB1Policy.isCoreProjectClickProofForRun(
+                s.runId, s.taskId, s.cycle, s.startedAt,
+                prefs.getString(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_RUN_ID, ""),
+                prefs.getString(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_TASK_ID, ""),
+                prefs.getInt(AccessibilityBridgeService.KEY_AUTO_PROJECT_CLICK_CYCLE, 0),
+                clickAt
+            );
+        }
         return ChatGptB1Policy.projectClickObservedInRun(clickAt, s.startedAt);
     }
 
