@@ -47,6 +47,8 @@ test('project inventory refuses public projects and cross-project duplicates',()
  assert.equal(validateInventory(inventory).size,8);
  inventory.user.p4.public=true;assert.throws(()=>validateInventory(inventory));
  inventory.user.p4.public=false;
+ inventory.user.p6.viewerCanUpdate=false;assert.throws(()=>validateInventory(inventory));
+ inventory.user.p6.viewerCanUpdate=true;
  const dup={id:'I',content:{id:'C',url:base+'tigeriq-ai-lab/issues/10'}};
  inventory.user.p2.items.nodes=[dup];inventory.user.p3.items.nodes=[dup];assert.throws(()=>validateInventory(inventory));
 });
