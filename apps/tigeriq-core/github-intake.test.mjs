@@ -881,12 +881,12 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
-  it('sync prioritizes active GitHub objectives and rotates the oldest checked rows first',()=>{
+  it('sync fairly rotates all pending GitHub objective statuses with active as tie-breaker',()=>{
     const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     expect(source).not.toContain("order by created_at asc limit 100");
     expect(source).toContain("status='active'");
     expect(source).toContain("githubResultReported");
-    expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
+    expect(source).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
   });
 
 
@@ -1040,7 +1040,7 @@ describe('GitHub Core intake guardrails',()=>{
     const pool={async query(sql,params=[]){
       if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
         scanCount++;
-        expect(sql).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
         expect(sql).toContain('limit 100');
         const filtered=params.length?rows.filter(x=>params[0].includes(String(x.metadata.issueNumber))):rows;
         const page=[...filtered].sort((a,b)=>a.updatedAt-b.updatedAt||a.id.localeCompare(b.id)).slice(0,100);
@@ -1079,6 +1079,69 @@ describe('GitHub Core intake guardrails',()=>{
     expect(wakeCount).toBe(1);
   });
 
+  it('reports blocked outcomes despite 101 continuously eligible active objectives',async()=>{
+    const body=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=MANAGER_TERMINAL_OUTCOME_FAIR_SCAN',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+    ].join('\n');
+    const issues=Array.from({length:101},(_,i)=>({
+      number:8100+i,state:'open',title:'[P1] Fair active scan',
+      comments:0,labels:[],body,
+    }));
+    const terminalIssue={number:8299,state:'open',title:'[P1] Blocked result pending',comments:0,labels:[],body};
+    issues.push(terminalIssue);
+    const rows=issues.map((issue,i)=>({
+      id:'OBJ-GH-'+issue.number,status:i===101?'blocked':'active',
+      updatedAt:i+1,summary:i===101?'bounded work blocked':'active',
+      metadata:{
+        source:'github',issueNumber:issue.number,
+        sourceRevision:githubIssueSourceRevision(issue),
+        githubClaimReported:true,githubResultReported:false,
+        ...(i===101?{githubTerminalLabelSynced:true}:{}),
+      },
+    }));
+    let clock=102,postCount=0,scanCount=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        scanCount++;
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
+        const page=[...rows].filter(x=>x.status==='active'||!x.metadata.githubResultReported)
+          .sort((a,b)=>a.updatedAt-b.updatedAt||Number(b.status==='active')-Number(a.status==='active'))
+          .slice(0,100);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      throw Error('UNEXPECTED_TERMINAL_FAIR_SCAN_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/8299/comments')&&init.method==='POST'){
+        postCount++;
+        return new Response(JSON.stringify({id:123}),{status:201,headers:{'content-type':'application/json'}});
+      }
+      throw Error('UNEXPECTED_TERMINAL_FAIR_SCAN_FETCH: '+url);
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(1);
+    expect(postCount).toBe(0);
+    expect(rows[101].metadata.githubResultReported).toBe(false);
+    const second=await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(second.results).toBe(1);
+    expect(rows[101].metadata.githubResultReported).toBe(true);
+    expect(postCount).toBe(1);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(postCount).toBe(1);
+  });
+
   it('rotates failed GitHub source lookups rather than starving a newer parked objective',async()=>{
     // The test database uses a 2-row page to exercise the same cursor contract
     // as the production LIMIT 100 without issuing 100 noisy network failures.
@@ -1105,7 +1168,7 @@ describe('GitHub Core intake guardrails',()=>{
     let clock=3,sourceLookupErrors=0,targetWoken=0;
     const pool={async query(sql,params=[]){
       if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
-        expect(sql).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
         expect(sql).toContain('limit 100');
         const page=[...rows].sort((a,b)=>a.updatedAt-b.updatedAt).slice(0,2);
         return {rowCount:page.length,rows:page};
