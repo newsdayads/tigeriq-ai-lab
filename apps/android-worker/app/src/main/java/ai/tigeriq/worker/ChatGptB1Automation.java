@@ -1,7 +1,5 @@
 package ai.tigeriq.worker;
 
-import android.graphics.Rect;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -353,28 +351,19 @@ public final class ChatGptB1Automation {
         String wanted = normalize(label);
         if (root == null || wanted.isEmpty()) return false;
 
-        // A matching message, quoted Project name or sidebar entry is not an
-        // authenticated Project context. The actual composer and top-level
-        // header must both be visible in the SAME current Accessibility tree.
-        AccessibilityNodeInfo composer = findComposerInput(root);
-        if (composer == null) return false;
-        Rect windowBounds = new Rect();
-        Rect composerBounds = new Rect();
-        root.getBoundsInScreen(windowBounds);
-        composer.getBoundsInScreen(composerBounds);
-        if (windowBounds.isEmpty() || composerBounds.isEmpty()) return false;
-
+        // Plain text in a chat bubble or a nested sidebar can equal the exact
+        // Project name. Such labels are NOT authorization to mutate a Core task.
+        // We need a semantic toolbar hierarchy in the active Accessibility tree.
         for (AccessibilityNodeInfo node : nodes(root)) {
             if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
 
-            boolean semanticHeader = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                && node.isHeading();
+            boolean semanticToolbar = false;
             boolean scrollOrMessageAncestor = false;
             boolean clickableAncestor = false;
             boolean reachesRoot = false;
             AccessibilityNodeInfo current = node;
-            // Scan the full bounded path, not just 3 levels: navigation buttons
-            // and scroll containers may be nested much more deeply.
+            // Do not trust a depth-limited non-clickable prefix: the real
+            // navigation or scrolling ancestor can be nested >3 levels deep.
             for (int depth = 0; current != null && depth < 32; depth++) {
                 if (current.isClickable()) clickableAncestor = true;
                 if (current.isScrollable() || current.isEditable()) {
@@ -387,10 +376,12 @@ public final class ChatGptB1Automation {
                         "conversation_list", "chat_list")) {
                     scrollOrMessageAncestor = true;
                 }
+                // Structural toolbar identification, not merely a text heading:
+                // a message in the transcript can itself be a heading.
                 if (containsAny(className, "toolbar", "actionbar", "appbar")
                     || containsAny(viewId, "toolbar", "action_bar", "app_bar",
                         "project_header", "chat_header")) {
-                    semanticHeader = true;
+                    semanticToolbar = true;
                 }
                 if (current.equals(root)) {
                     reachesRoot = true;
@@ -398,17 +389,12 @@ public final class ChatGptB1Automation {
                 }
                 current = current.getParent();
             }
-            if (!reachesRoot) continue; // Truncated ancestry is not proof.
-
-            Rect titleBounds = new Rect();
-            node.getBoundsInScreen(titleBounds);
-            if (titleBounds.isEmpty()) continue;
             if (ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
-                true, semanticHeader, scrollOrMessageAncestor, clickableAncestor,
-                windowBounds.top, windowBounds.bottom,
-                titleBounds.top, titleBounds.bottom, composerBounds.top
+                true, semanticToolbar, scrollOrMessageAncestor,
+                clickableAncestor, reachesRoot
             )) return true;
         }
+        // No toolbar semantic proof => fail closed, pending real S10 UI canary.
         return false;
     }
 
