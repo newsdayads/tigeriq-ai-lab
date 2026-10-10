@@ -63,7 +63,31 @@ function normalizedProjects(data){
   }
   return [...map.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name)).map(p=>({...p,streams:[...p.streams.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name))}));
 }
+// Seven Owner-approved top-level groups; work counts come only from API snapshot.
+function renderGroups(data){
+  const groups=Array.isArray(data?.portfolioGroups)?data.portfolioGroups:[];
+  if(groups.length!==7)return false;
+  const grid=$('projectGrid');grid.replaceChildren();
+  for(const group of groups){
+    const children=Array.isArray(group.projects)?group.projects:[];
+    const sum={working:0,review:0,blocked:0,waiting:0,done:0};
+    for(const p of children)for(const key of Object.keys(sum))sum[key]+=Number(p?.counts?.[key]||0);
+    const card=document.createElement('article');card.className='project-card';card.dataset.projectId=String(group.id||'');
+    const parts=children.flatMap((p,i)=>{
+      if(group.id==='tigeriq-ai')return ['<div class="stream" data-project-id="'+esc(p.id)+'"><b>1.'+(i+1)+' · '+esc(p.name)+'</b><small>Đang làm '+Number(p?.counts?.working||0)+' · Bị chặn '+Number(p?.counts?.blocked||0)+' · Chờ '+Number(p?.counts?.waiting||0)+'</small></div>'];
+      const streams=Array.isArray(p?.workstreams)?p.workstreams:[];
+      if(streams.length)return streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.itemCount||0)+' công việc trong nguồn</small></div>');
+      return ['<div class="stream"><b>Chưa có công việc được xác minh</b></div>'];
+    });
+    card.innerHTML='<div class="project-head"><h2>'+esc(group.name)+'</h2><span class="kind">DỰ ÁN CHÍNH</span></div>'
+      +'<div class="stats"><span class="stat working">Đang làm '+sum.working+'</span><span class="stat review">Rà soát '+sum.review+'</span><span class="stat blocked">Bị chặn '+sum.blocked+'</span><span class="stat">Chờ '+sum.waiting+'</span><span class="stat">Xong '+sum.done+'</span></div>'
+      +'<div class="streams">'+parts.join('')+'</div>';
+    grid.append(card);
+  }
+  return true;
+}
 function render(data){
+  if(renderGroups(data))return;
   const grid=$('projectGrid'),projects=normalizedProjects(data);grid.replaceChildren();
   if(!projects.length){grid.innerHTML='<div class="empty">Chưa có dữ liệu dự án đã xác minh.</div>';return}
   for(const project of projects){
