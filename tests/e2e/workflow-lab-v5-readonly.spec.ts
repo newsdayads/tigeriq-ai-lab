@@ -26,6 +26,22 @@ async function openLab(page:Page, data:unknown=payload){
   await expect(page.locator('#projectCards .projecttile').first()).toBeVisible();
 }
 
+test('V5 keeps active Core evidence ahead of stale recentWork for the same GitHub issue',async({page})=>{
+ const data={...payload,
+  issues:[{...issue(4457,'open','REVIEW'),title:'[P1][CORE vNext] Current manager activity'}],
+  core:{connected:true,stale:false,rows:[
+   {number:4457,status:'active',employeeId:'NV09',nextStep:'Continue current source review'},
+   {number:4457,status:'completed',employeeId:'NV03',nextStep:'Superseded old activity'},
+  ]},
+ };
+ await openLab(page,data);
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await page.locator('#jobCards .jobcard').click();
+ await expect(page.locator('#graph')).toContainText('NV09');
+ await expect(page.locator('#graph')).toContainText('Continue current source review');
+ await expect(page.locator('#graph')).not.toContainText('Superseded old activity');
+});
+
 test('V5 project and issue navigation keeps GitHub closed distinct from completed',async({page})=>{
   await openLab(page);
   await page.locator('[data-project="tigeriq-platform"]').click();
