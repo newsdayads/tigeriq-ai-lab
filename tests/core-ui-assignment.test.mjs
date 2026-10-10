@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03CoreRoutingDisabled,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -694,4 +694,24 @@ test('NV03 independent self-pull fence requires all three verified Core gates; d
   assert.equal(coreUiNv03SelfPullFenced(env),true);
   assert.equal(selectCoreUiWorker('review'),'NV03');
   assert.equal(selectCoreUiWorker('research'),'NV04');
+});
+
+test('Owner explicit NV03 Core routing disable is fail-closed by default and preserves NV04 and NV02',()=>{
+  assert.equal(coreUiNv03CoreRoutingDisabled({}),false);
+  assert.equal(coreUiNv03CoreRoutingDisabled({TIGERIQ_NV03_CORE_DISPATCH_DISABLED:'true'}),false);
+  assert.equal(coreUiNv03CoreRoutingDisabled({TIGERIQ_NV03_CORE_DISPATCH_DISABLED:'1'}),true);
+  const before=process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+  try{
+    process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1';
+    const snap=readyUnassignedCoreUiSnapshot();
+    assert.equal(snap.workerBindings.NV03.state,'EXTERNAL_TO_CORE');
+    assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+    assert.equal(snap.workerBindings.NV02.state,'EXTERNAL_TO_CORE');
+    assert.equal(selectCoreUiWorker('review'),'NV04');
+    assert.equal(selectCoreUiWorker('research'),'NV04');
+  }finally{
+    if(before===undefined)delete process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+    else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=before;
+  }
+  assert.equal(selectCoreUiWorker('review'),'NV03');
 });
