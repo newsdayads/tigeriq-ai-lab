@@ -30,6 +30,7 @@ export default defineConfig({
       'tests/routing-fault-recovery.test.mjs',
       'tests/continuous-capability-verify.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
+      'labs/workflow-lab-v5/api/portfolio.test.mjs',
     ],
     environment: 'node'
   }
