@@ -205,6 +205,51 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void projectNavigationCannotClickAnExactNameChatMessage()
+        throws Exception {
+        // The UI may show the exact Project name as a quoted message. An
+        // enabled clickable ancestor is NOT sufficient to select a Project.
+        assertFalse(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            true, true, false, false, true
+        ));
+        assertFalse(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            true, true, true, true, true
+        ));
+        assertFalse(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            true, true, true, false, false
+        ));
+        assertFalse(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            true, false, true, false, true
+        ));
+        assertFalse(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            false, true, true, false, true
+        ));
+        assertTrue(ChatGptB1Policy.isTrustedProjectNavigationTarget(
+            true, true, true, false, true
+        ));
+
+        String source = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int begin = source.indexOf("public static AccessibilityNodeInfo findExactProjectControl(");
+        int end = source.indexOf("public static AccessibilityNodeInfo findNewChatControl(", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String select = source.substring(begin, end);
+        assertTrue("Navigation selection must gate exact-name clickable",
+            select.contains("isTrustedProjectNavigationTarget("));
+        assertTrue("Reject any clickable message with a matching quote",
+            select.contains("conversationScope"));
+        assertTrue("Require navigation drawer or semantic project list scope",
+            select.contains("navigationScope"));
+        assertTrue("Reject unverified/incomplete hierarchy",
+            select.contains("completeAncestry"));
+        assertFalse("Never click arbitrary matching text via nearestClickable alone",
+            select.contains("if (clickable != null && clickable.isEnabled()) return clickable;"));
+    }
+
+    @Test
     public void navigationProofIsMandatoryOnlyForCoreProjectBinding() {
         // Ordinary chat renamed to TigerIQ AI Lab with a composer and title:
         // without a same-run Project navigation event it MUST NOT bind Core.
