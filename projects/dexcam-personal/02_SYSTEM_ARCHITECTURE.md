@@ -98,7 +98,7 @@ RECOVERING
   ├─ recovered → WAIT_FIRST_FRAME
   └─ max attempts → USER_ACTION_REQUIRED
 ```
-**Tất cả ngưỡng thời gian chỉ được chốt sau đo**, không mặc định con số cố định cho mọi chipset.
+**Tất cả ngưỡng thời gian chỉ được chốt sau đo**, không mặc định con số cố định cho mọi chipset. `RECOVERING` trong trạng thái R=ON/UNKNOWN chỉ có quyền xử lý luồng hình/cảnh báo; **không được gọi** `RESTORE_LAYOUT` trừ khi xuất hiện R=OFF đã kiểm chứng hoặc người dùng chủ động đóng an toàn.
 
 ## 4. Hàng đợi sự kiện có xác nhận
 Các sự kiện đề xuất:
@@ -108,7 +108,7 @@ Các sự kiện đề xuất:
 - `StreamOpened/Failed(epoch, at)`
 - `FrameReceived(frameId, at, quality)`
 - `SignalValid/Invalid(epoch, at)`
-- `ReverseIntentDetected(source, confidence, at)`
+- `ReverseStateObserved(state: ON|OFF|UNKNOWN, source, evidenceRef, at)` — chỉ chấp nhận `OFF` khi `evidenceRef` chứng minh nguồn R=OFF độc lập; mất USB/frame không tự sinh sự kiện `OFF`
 - `WindowShown/Hidden(taskId, at)`
 - `LayoutRestored(profileId, at)`
 Nguyên tắc: serial event reducer hoặc single-writer actor cho một camera session. Không phát `open` kiểu fire-and-forget mà không xác nhận cửa sổ thực hiện xong. `requestId` + `generation` chống race khi R bật/tắt nhanh. Cancel tác vụ cũ khi epoch thay đổi.
