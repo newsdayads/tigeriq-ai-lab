@@ -116,19 +116,19 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   capabilities: ['general', 'reasoning', 'review'],
 });
 const nv09Registration = registerNv09();
-const nv08Resource = R(CORE_MANAGER_EMPLOYEE_ID,'Core AI Manager (Ollama Local)','ollama',CORE_MANAGER_MODEL,[],85);
+const nv08Resource = R(CORE_MANAGER_EMPLOYEE_ID,'Core AI Manager · Ollama Qwen3 8B','ollama',CORE_MANAGER_MODEL,[],85);
 // Dedicated capability and account binding: no general/review/coding work, no
 // logical lease collision even if an operator selects NV10's model tag later.
 nv08Resource.capabilities = ['manager'];
 nv08Resource.accountBinding = 'nv08-manager';
 nv08Resource.resourceId = createResourceId('ollama',CORE_MANAGER_MODEL,nv08Resource.accountBinding,'core');
-const nv09Resource = R(NV09_EMPLOYEE_ID,'Qwen3-Coder Local','ollama',NV09_MODEL,[],98);
+const nv09Resource = R(NV09_EMPLOYEE_ID,'Core AI Coder · Ollama Qwen3.6 27B','ollama',NV09_MODEL,[],98);
 nv09Resource.capabilities = ['coding_local'];
 nv09Resource.runtimeBinding = 'ollama_on_demand';
-const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
+const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Core API Doctor · Ollama Qwen3 4B','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
 nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY];
 const openclawResource={
-  id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'OpenClaw Operator',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
+  id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'PC Operator · OpenClaw',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
   accountBinding:'default',runtimeBinding:'pc01',costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['pc_operator'],
 };
 const resources = [
