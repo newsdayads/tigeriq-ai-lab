@@ -33,7 +33,13 @@ const params=new URLSearchParams({state:'all',per_page:'100',sort:'updated',dire
 let list;
 try{
   const response=await fetch(root+'/issues?'+params.toString(),{headers:{Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Workflow-Lab-ReadOnly'},signal:controller.signal});
-  if(!response.ok)throw Error('GITHUB_HTTP_'+response.status+'_PAGE_'+page);
+  if(!response.ok){
+    const remaining=response.headers?.get?.('x-ratelimit-remaining');
+    const retryAfter=response.headers?.get?.('retry-after');
+    const rateLimited=(response.status===403||response.status===429) &&
+      (String(remaining)==='0'||(retryAfter!==null&&retryAfter!==undefined&&String(retryAfter)!==''));
+    throw Error((rateLimited?'GITHUB_RATE_LIMIT_PAGE_':'GITHUB_HTTP_'+response.status+'_PAGE_')+page);
+  }
   list=await response.json();
   if(!Array.isArray(list))throw Error('GITHUB_SCHEMA_PAGE_'+page);
 }catch(err){
