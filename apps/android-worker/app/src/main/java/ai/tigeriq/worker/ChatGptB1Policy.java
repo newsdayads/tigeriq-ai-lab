@@ -183,6 +183,26 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * A regular conversation can be named exactly like the required Project.
+     * For a Core lease, header + composer must be backed by a Project
+     * navigation action observed during THIS run. Manual standalone B1 retains
+     * its prior policy. Navigation alone is still insufficient: stable
+     * semantic header and composer evidence must independently pass.
+     */
+    public static boolean canBindStableProjectContextForTask(
+        String taskId, boolean exactProjectVisible, boolean projectTitleContext,
+        boolean composerReady, boolean projectNavigationObservedInRun,
+        int stableSamples, long stableMs
+    ) {
+        boolean navRequired = taskId != null && !taskId.isEmpty();
+        return (!navRequired || projectNavigationObservedInRun)
+            && canBindStableProjectContext(
+                exactProjectVisible, projectTitleContext, composerReady,
+                stableSamples, stableMs
+            );
+    }
+
+    /**
      * Permit at most one durable send attempt for each cycle. This gate is
      * evaluated before dispatching the irreversible accessibility click.
      */
