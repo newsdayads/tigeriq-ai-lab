@@ -1541,8 +1541,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         ? 'GitHub source revision changed; reassessing the updated Work Order'
         : 'Durable acceptance/review gate satisfied; resume bounded manager evaluation';
       const resumed=await pool.query(
-        "update tigeriq_objectives set next_check_at=now(),summary=$2,metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision',updated_at=now() where id=$1 and status='active'",
-        [row.id,summary],
+        "update tigeriq_objectives set next_check_at=now(),summary=$2,metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision',updated_at=now() where id=$1 and status='active' and metadata->>'managerAwaitingAcceptanceRevision'=$3 and metadata->>'sourceRevision'=$4",
+        [row.id,summary,row.metadata.managerAwaitingAcceptanceRevision,row.metadata.sourceRevision],
       );
       if(resumed.rowCount===1){
         delete row.metadata.managerAwaitingAcceptanceRevision;
