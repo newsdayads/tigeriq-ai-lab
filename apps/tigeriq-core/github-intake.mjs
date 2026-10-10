@@ -1489,8 +1489,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
   const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
-  // Reconcile oldest-first: policy reconciliation updates successful rows, and
-  // failures advance their scan position, so parked work rotates into view.
+  // Preserve active-first priority, but rotate oldest-first within the lane:
+  // successful checks update the row, and failed checks advance their cursor.
   // Keep targeted issueNumber filtering INSIDE SQL; filtering after LIMIT can
   // silently miss the requested objective once the backlog is large.
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
@@ -1502,7 +1502,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
       ${issueFilter?"and metadata->>'issueNumber'=any($1::text[])":""}
-    order by updated_at asc, created_at asc, id asc
+    order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc
     limit 100`,issueFilter?[[...issueFilter].map(String)]:[])).rows;
   let claims=0,results=0;
   for(const row of rows){
