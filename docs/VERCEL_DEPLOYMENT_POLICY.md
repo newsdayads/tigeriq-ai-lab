@@ -45,7 +45,7 @@ That script must fail closed unless all are true:
 - any second script introduces a Vercel deploy command;
 - the canonical deploy script loses its hard release gates.
 
-The web-hosting-specific workflow is path-scoped to web-hosting files only and performs **verification only**. It must not deploy.
+The required GitHub Actions check is named exactly `Vercel Online Verify` and performs **verification only**. It runs for every pull request to the protected branches and every push to its configured branches; path filters must not leave the required context absent on CORE, documentation or other non-web changes. It validates hosting policy and the existing test gates without creating a Vercel deployment. It must not deploy.
 
 ## Operational rule
 

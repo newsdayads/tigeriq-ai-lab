@@ -1,0 +1,23 @@
+schema: tigeriq.project.v2
+id: tigeriq-coin
+name: TigerIQ Coin
+kind: project
+order: 110
+external_repositories:
+  - newsdayads/derophone
+  - newsdayads/derophone_BK
+  - newsdayads/derobizfly
+  - newsdayads/zephyr
+source_mode: source_inventory_only
+execution: disabled
+wallet_modification: forbidden
+mining_launch: forbidden
+infrastructure_configuration: forbidden
+resource_allocation: requires_explicit_owner_authorization
+workstreams:
+  - id: source-inventory
+    name: Kiểm kê bốn kho mã
+    order: 10
+  - id: security-review
+    name: Rà soát bảo mật và tuân thủ
+    order: 20

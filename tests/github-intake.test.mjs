@@ -1223,7 +1223,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
   const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\\(\\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
+  assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\(\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
   assert.match(coreSource,/android_worker_gate_c_v021_status/);
   assert.match(coreSource,/android_worker_gate_c_v021_enqueue_10/);
 });
@@ -1689,9 +1689,12 @@ test('github_review job validates reviewer evidence before terminal done write',
   assert.match(run,/reviewEvidence/);
 });
 
-test('github_api_autowork runtime restricts routing to NV11-NV20 API employees',()=>{
+test('github_api_autowork uses NV10 local Ollama without waiting for cloud NV API',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/j\.kind==='github_api_autowork'\?\['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'\]:\[\]/);
+  assert.match(core,/const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID\]\)/);
+  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
+  assert.match(core,/profile:j\.kind==='github_api_autowork'\?'LOCAL':\(j\.routing_profile\|\|'AUTO'\)/);
+  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_LOCAL_AUTOWORK_EMPLOYEES\)/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });

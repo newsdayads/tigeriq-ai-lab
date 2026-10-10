@@ -203,3 +203,13 @@ skills:
     target: skill-system
     triggers: marketing sales research department domain skill pack capability
     summary: Package department-specific reusable skills under the existing Skill Registry, ownership, security and review contracts without expanding Core authority.
+
+  - id: vy-owner-collaboration
+    title: Vy Owner Collaboration
+    state: CANDIDATE
+    version: 1.0.0
+    provenance_batch: owner-direct-2026-10-09
+    source_log: vy-owner-collaboration/SKILL.md
+    target: owner-interface
+    triggers: owner vy giao việc tiếp tục quyết định ghi nhớ lỗi học hỏi trao đổi
+    summary: Recover Owner goals and decisions from canonical sources, execute safely, learn from verified outcomes and checkpoint without repeated questions.

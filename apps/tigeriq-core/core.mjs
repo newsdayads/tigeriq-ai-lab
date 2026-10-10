@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
-import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, managerShouldUseLocalFallback, runBoundedManagerDecision } from './manager-json.mjs';
+import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
 const PROVIDER_ALIAS = { openrouter: 'openrouter-free' };
 const managerProviderBodyForHost = (provider, ...args) => {
   const normalized = PROVIDER_ALIAS[provider] ?? provider;
@@ -58,7 +58,11 @@ const FAILURE_LEARNING_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_
 const SURFSENSE_APP_URL = process.env.TIGERIQ_SURFSENSE_APP_URL?.trim() || 'http://127.0.0.1:3929';
 const SURFSENSE_SEARCH_URL = process.env.TIGERIQ_SURFSENSE_SEARCH_URL?.trim() || 'http://127.0.0.1:3930/search';
 const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.trim() || 'gemma3:4b';
+const CORE_MANAGER_EMPLOYEE_ID = 'NV08';
+const CORE_MANAGER_MODEL = process.env.TIGERIQ_CORE_MANAGER_MODEL?.trim() || 'qwen3:8b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
+// NV08 is the sole manager; NV10 remains dedicated to independent local work.
+const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID]);
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
@@ -98,6 +102,7 @@ const GEMINI_MANAGER_RESPONSE_SCHEMA={
   additionalProperties:true,
 };
 const OLLAMA_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_OLLAMA_TIMEOUT_MS || 30000));
+const CORE_MANAGER_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_CORE_MANAGER_TIMEOUT_MS || 60000));
 const NV14_FALLBACK_MODEL = process.env.TIGERIQ_NV14_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 const NV16_FAILURE_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.TIGERIQ_NV16_FAILURE_THRESHOLD || 0.5)));
 const NV16_FAILURE_WINDOW = Math.max(10, Number(process.env.TIGERIQ_NV16_FAILURE_WINDOW || 20));
@@ -111,16 +116,23 @@ const R = (id, name, provider, model, req = [], rank = 50) => ({
   capabilities: ['general', 'reasoning', 'review'],
 });
 const nv09Registration = registerNv09();
-const nv09Resource = R(NV09_EMPLOYEE_ID,'Qwen3-Coder Local','ollama',NV09_MODEL,[],98);
+const nv08Resource = R(CORE_MANAGER_EMPLOYEE_ID,'Core AI Manager · Ollama Qwen3 8B','ollama',CORE_MANAGER_MODEL,[],85);
+// Dedicated capability and account binding: no general/review/coding work, no
+// logical lease collision even if an operator selects NV10's model tag later.
+nv08Resource.capabilities = ['manager'];
+nv08Resource.accountBinding = 'nv08-manager';
+nv08Resource.resourceId = createResourceId('ollama',CORE_MANAGER_MODEL,nv08Resource.accountBinding,'core');
+const nv09Resource = R(NV09_EMPLOYEE_ID,'Core AI Coder · Ollama Qwen3.6 27B','ollama',NV09_MODEL,[],98);
 nv09Resource.capabilities = ['coding_local'];
 nv09Resource.runtimeBinding = 'ollama_on_demand';
-const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Ollama','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
+const nv10Resource = R(OLLAMA_EMPLOYEE_ID,'Core API Doctor · Ollama Qwen3 4B','ollama',process.env.TIGERIQ_OLLAMA_MODEL || 'qwen3:4b',[],90);
 nv10Resource.capabilities = ['general','reasoning','review',API_DOCTOR_CAPABILITY];
 const openclawResource={
-  id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'OpenClaw Operator',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
+  id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'PC Operator · OpenClaw',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
   accountBinding:'default',runtimeBinding:'pc01',costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['pc_operator'],
 };
 const resources = [
+  nv08Resource,
   nv09Resource,
   nv10Resource,
   openclawResource,
@@ -222,16 +234,16 @@ async function summarizeSurfSense(evidence, query) {
 async function runSurfSenseResearch(query, limit=6) {
   const id=`JOB-${randomUUID()}`; await pool.query("insert into tigeriq_jobs(id,title,prompt,capability,kind,status,started_at) values($1,$2,$3,'reasoning','research','running',now())",[id,`Research: ${query}`.slice(0,200),query]);
   try { const sources=await surfSenseSearch(query,limit); const evidence=sources.map(x=>`[${x.index}] ${x.title}\nURL: ${x.url}\n${x.snippet}`).join('\n\n'); const local=await summarizeSurfSense(evidence,query);
-    const ollama=resources.find(x=>x.provider==='ollama'); const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider='ollama',result=$4,lease_until=null,completed_at=now() where id=$1",[id,OLLAMA_EMPLOYEE_ID,ollama?.resourceId||null,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,provider:'ollama'}); return {ok:true,jobId:id,...result};
+    const ollama=resources.find(x=>x.id===OLLAMA_EMPLOYEE_ID&&x.provider==='ollama'); const result={text:local.text,sources,researchProvider:'surfsense',aiProvider:'ollama',employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,model:SURFSENSE_SUMMARY_MODEL,latencyMs:local.latencyMs}; await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider='ollama',result=$4,lease_until=null,completed_at=now() where id=$1",[id,OLLAMA_EMPLOYEE_ID,ollama?.resourceId||null,JSON.stringify(result)]); await event('SURFSENSE_RESEARCH_DONE',{jobId:id,employeeId:OLLAMA_EMPLOYEE_ID,resourceId:ollama?.resourceId||null,provider:'ollama'}); return {ok:true,jobId:id,...result};
   } catch(error){ await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify({message:String(error?.message||error)})]); await event('SURFSENSE_RESEARCH_FAILED',{jobId:id}); throw error; }
 }
 
-async function invokeLocalManager(prompt) {
+async function invokeLocalManager(prompt,model) {
   const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
     method:'POST',
     headers:{'content-type':'application/json'},
-    body:JSON.stringify(managerLocalRequestBody(nv10Resource.model,prompt)),
-  },OLLAMA_TIMEOUT_MS);
+    body:JSON.stringify(managerLocalRequestBody(model,prompt)),
+  },CORE_MANAGER_TIMEOUT_MS);
   const text=String(body?.response||'').trim();
   if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
   return text;
@@ -330,7 +342,7 @@ async function invokeProvider(r, prompt) {
   switch (r.provider) {
     case 'ollama': {
       if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
-      return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},OLLAMA_TIMEOUT_MS,r);
+      return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},r.id===CORE_MANAGER_EMPLOYEE_ID?CORE_MANAGER_TIMEOUT_MS:OLLAMA_TIMEOUT_MS,r);
     }
     case 'groq': return openAiCompat('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,{},90000,r);
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
@@ -721,6 +733,8 @@ async function candidates(capability='general',options={}){
 }
 async function claimResource(capability,jobId,excluded=[],options={}){
   const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
+  // Never lease NV08 outside an actual Core Manager decision.
+  if(capability==='manager'&&(taskKind!=='manager'||!String(jobId).startsWith('MGR-')))return null;
   const q=await pool.query(`select * from tigeriq_ai_resources where enabled=true and credential_state in ('LOCAL','READY') and health_state in ('READY','ONLINE') and current_job_id is null`);
   const [stats,initialFunctionalEvidence]=await Promise.all([taskPerformance(taskKind),routingFunctionalEvidence()]);
   const preferredEmployeeId=String(options.preferredEmployeeId||'').trim().toUpperCase();
@@ -882,8 +896,17 @@ async function probeResource(resourceOrEmployeeId){
       return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};
     }
     const marker='TIGERIQ_RESOURCE_PROBE_'+r.id;
-    const text=await invokeProvider(r,'Return exactly '+marker);
-    if(!String(text).includes(marker))throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
+    const isCoreManager=r.id===CORE_MANAGER_EMPLOYEE_ID;
+    const text=isCoreManager
+      ? await invokeLocalManager('You are TigerIQ AI Manager. Return ONLY valid JSON with status blocked, summary '+marker+', jobs empty array. This is a read-only health probe, not a real task.',r.model)
+      : await invokeProvider(r,'Return exactly '+marker);
+    if(isCoreManager){
+      const receipt=parseManagerJson(text);
+      if(receipt.status!=='blocked'||receipt.jobs.length||!receipt.summary.includes(marker))
+        throw Object.assign(new Error('CORE_MANAGER_PROBE_SCHEMA_INVALID'),{kind:'invalid_response'});
+    }else if(!String(text).includes(marker)){
+      throw Object.assign(new Error('PROBE_UNEXPECTED_RESPONSE'),{kind:'invalid_response'});
+    }
     const latency=Date.now()-started;
     await markResourceSuccess(r,null,latency,'RESOURCE_PROBE_OK',false,{taskKind:'probe',profile:'FAST'});
     return{ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,latencyMs:latency};
@@ -1699,8 +1722,8 @@ async function runJob(j) {
     }
     const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
-    const employeeAllowlist=j.kind==='github_api_autowork'?['NV10','NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20']:stabilityAllowlist;
-    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    const employeeAllowlist=j.kind==='github_api_autowork'?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist;
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
       const packet=executionPacketFromPrompt(j.prompt);
@@ -1708,7 +1731,7 @@ async function runJob(j) {
       if(!executionGate.pass){
         await event('EXECUTION_ACCEPTANCE_RETRY',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision});
         const retryPrompt=strictExecutionRetryPrompt(routedPrompt,executionGate);
-        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
         executionGate=executionResultGate(routed.text,packet);
       }
       if(!executionGate.pass){
@@ -1787,28 +1810,24 @@ async function runJob(j) {
 }
 async function callManagerDecision(prompt,objectiveId){
   const jobId=`MGR-${objectiveId}`,starts=new Map();
-  const localResource=resources.find(x=>x.id===OLLAMA_EMPLOYEE_ID&&x.provider==='ollama')||resources.find(x=>x.provider==='ollama')||null;
-  const localResourceId=localResource?.resourceId||null;
+  const localResource=resources.find(x=>x.id===CORE_MANAGER_EMPLOYEE_ID&&x.provider==='ollama')||null;
   return runBoundedManagerDecision({
     prompt,
-    maxProviders:3,
+    // The local brain must not depend on cloud NV API activation.
+    // Fail closed with bounded retry/backoff if NV10 is unavailable.
+    maxProviders:1,
     acquire:async excluded=>{
-      const excludedResources=excluded.map(id=>resources.find(x=>x.id===id)?.resourceId||id);
-      let row=null;
-      if(!managerShouldUseLocalFallback(excluded.length,2)){
-        const cloudExcludes=localResourceId?[...new Set([...excludedResources,localResourceId])]:excludedResources;
-        row=await claimResource('reasoning',jobId,cloudExcludes,{profile:'AUTO',taskKind:'manager'});
-      }
-      if(!row&&localResourceId&&!excludedResources.includes(localResourceId)){
-        const nonLocalIds=resources.filter(x=>x.provider!=='ollama').map(x=>x.resourceId);
-        row=await claimResource('reasoning',jobId,[...new Set([...excludedResources,...nonLocalIds])],{profile:'LOCAL',taskKind:'manager'});
-      }
-      if(!row)return null;
-      return resources.find(x=>x.resourceId===row.resource_id)||null;
+      if(!localResource||excluded.includes(localResource.id))return null;
+      const otherResourceIds=resources.filter(x=>x.resourceId!==localResource.resourceId).map(x=>x.resourceId);
+      const row=await claimResource('manager',jobId,otherResourceIds,{
+        profile:'LOCAL',taskKind:'manager',preferredEmployeeId:CORE_MANAGER_EMPLOYEE_ID,
+        employeeAllowlist:[CORE_MANAGER_EMPLOYEE_ID],
+      });
+      return row?localResource:null;
     },
     invoke:async(r,nextPrompt)=>{
       starts.set(r.id,Date.now());
-      return r.provider==='ollama'?invokeLocalManager(nextPrompt):invokeProvider(r,nextPrompt);
+      return r.provider==='ollama'?invokeLocalManager(nextPrompt,r.model):invokeProvider(r,nextPrompt);
     },
     onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),
     onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
@@ -2392,6 +2411,52 @@ async function snapshot(){
 
 let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}function issueBucket(issue){const body=String(issue.body||''),state=issueField(body,'CURRENT_STATE').toUpperCase(),labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());if(issue.state==='closed')return'HOÀN THÀNH';if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state)))return'CHỜ ANH SƠN';if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK')))return'BLOCKED';if(/REVIEW|RÀ SOÁT/.test(state))return'RÀ SOÁT';if(/WORKING|IMPLEMENTING|EXECUTING|ACTIVE/.test(state))return'ĐANG LÀM';if(labels.some(x=>x.includes('SYSTEM'))||/\[SYSTEM\]/i.test(issue.title||''))return'HỆ THỐNG';return'CẦN XỬ LÝ'}function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}async function githubWorkOrders(){const now=Date.now();if(now-workOrdersCache.at<30000)return workOrdersCache.value;if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}try{const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>({number:x.number,title:String(x.title||''),priority:issuePriority(x),state:x.state,bucket:issueBucket(x),owner:issueOwner(x),updated_at:x.updated_at,html_url:x.html_url}));const value={ok:true,updatedAt:nowIso(),items};workOrdersCache={at:now,value};return value}catch(error){const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};workOrdersCache={at:now,value};return value}}
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
+
+
+/* Owner P0: non-blocking read-only LIVE verification for API Health work-list.
+   Serve local Core work immediately, warm the enriched GitHub gates in the background.
+   Never expose stale progress as verified. */
+const healthLiveWorkCache={at:0,result:null,pending:null,lastAttempt:0};
+function healthLiveResultFresh(result){
+  const age=Date.now()-Date.parse(result?.projection?.generatedAt||'');
+  return result?.ok===true&&result?.source==='LIVE_VERIFIED_GATES'
+    &&Number.isFinite(age)&&age>=0&&age<=90000;
+}
+async function refreshApiHealthLiveWork(){
+  try{
+    const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},14000);
+    const age=Date.now()-Date.parse(upstream?.generatedAt||'');
+    if(upstream?.ok!==true||upstream?.liveConnected!==true||upstream?.staleAll||upstream?.workProjection?.stale
+      ||!Array.isArray(upstream?.openWork)||!Number.isFinite(age)||age<0||age>90000)
+      throw Error('LIVE_VERIFICATION_NOT_FRESH');
+    const previousTime=Date.parse(healthLiveWorkCache.result?.projection?.generatedAt||'');
+    if(Number.isFinite(previousTime)&&Date.parse(upstream.generatedAt)<previousTime)return;
+    healthLiveWorkCache.at=Date.now();
+    healthLiveWorkCache.result={ok:true,projection:{
+      openWork:upstream.openWork,
+      recentWork:Array.isArray(upstream.recentWork)?upstream.recentWork:[],
+      openSummary:upstream.openSummary||{},
+      generatedAt:upstream.generatedAt,
+      verifiedGateSource:true,stale:false
+    },source:'LIVE_VERIFIED_GATES'};
+  }catch{ /* Keep the local projection path available. Never infer verified progress. */ }
+}
+async function apiHealthLiveWorkProjection(){
+  const now=Date.now();
+  if(!healthLiveWorkCache.pending&&now-healthLiveWorkCache.lastAttempt>=8000){
+    healthLiveWorkCache.lastAttempt=now;
+    const pending=Promise.resolve().then(refreshApiHealthLiveWork);
+    healthLiveWorkCache.pending=pending;
+    const finish=()=>{if(healthLiveWorkCache.pending===pending)healthLiveWorkCache.pending=null};
+    void pending.then(finish,finish);
+  }
+  if(healthLiveResultFresh(healthLiveWorkCache.result)&&now-healthLiveWorkCache.at<=45000)
+    return {...healthLiveWorkCache.result,cached:true};
+  const local=await apiHealthWorkProjection();
+  return local?.ok&&local?.projection
+    ?{ok:true,projection:{...local.projection,verifiedGateSource:false},source:'PC01_FALLBACK',verificationUnavailable:true}
+    :{ok:false,reason:'WORK_PROJECTION_UNAVAILABLE',projection:null};
+}
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
 async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw,'utf8')>maxBytes)throw new Error('BODY_TOO_LARGE');}return raw;}
@@ -2463,6 +2528,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       await event('SELF_AUDIT_CANARY',{pass:canary.pass,queueMutation:false,contractIds:canary.anomalies.map(x=>x.contractId),anomalyCount:canary.anomalies.length});
       res.writeHead(canary.pass?200:500,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(canary));
     }
+    if(req.method==='GET'&&url.pathname==='/api/health-live-work'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthLiveWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-projection'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-orders'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await githubWorkOrders()));}
     if(req.method==='POST'&&url.pathname==='/api/github-event'){
@@ -2737,10 +2803,13 @@ async function collectSelfAuditSnapshot(store=pool){
   for(const job of queueJobs){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
-    const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
+    // Match dispatch: health/readiness must not hide an eligible local NV10 job.
+    const profile=taskKind==='github_api_autowork'
+      ? 'LOCAL'
+      : deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
     const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
     const employeeAllowlist=taskKind==='github_api_autowork'
-      ? new Set(['NV11','NV12','NV13','NV14','NV15','NV16','NV17','NV18','NV19','NV20'])
+      ? new Set(CORE_LOCAL_AUTOWORK_EMPLOYEES)
       : null;
     const reviewerResourceIds=capability==='review'?new Set(await reviewerResourceIdsForJob(job)):new Set();
     const candidateResources=idleResources.filter(resource=>{

@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority,exactBodyFlag} from './github-backlog-policy.mjs';
+import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
@@ -8,11 +8,36 @@ const DEFAULT_TARGET_REPOSITORY=OWNER+'/'+REPO;
 const ALLOWED_TARGET_REPOSITORIES=new Set([DEFAULT_TARGET_REPOSITORY.toLowerCase(),'newsdayads/tigeriq-media']);
 const ALL_WORKERS=['NV02','NV03','NV04'];
 const WORKERS=['NV03','NV04'];
+// Default disabled. Activation requires a separately verified global claim/lease and source-specific runtime mode.
+export function coreUiNv03CoreRoutingDisabled(env=process.env){
+  // Owner direct 2026-10-10: NV03 is an external, GitHub-self-pull UI worker just like NV02.
+  // A separate switch fences Core assignment without pretending the global GitHub lease is verified.
+  return String(env?.TIGERIQ_NV03_CORE_DISPATCH_DISABLED||'')==='1';
+}
+export function coreUiNv03SelfPullFenced(env=process.env){
+  return String(env?.TIGERIQ_NV03_SELF_PULL_MODE||'')==='GITHUB_SELF_PULL'
+    && String(env?.TIGERIQ_NV03_CORE_ROUTE_FENCED||'')==='1'
+    && String(env?.TIGERIQ_NV03_GLOBAL_LEASE_VERIFIED||'')==='1';
+}
 const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
 export const CORE_UI_ASSIGNMENT_STALE_MS=Math.max(30000,Number(process.env.TIGERIQ_CORE_UI_ASSIGNMENT_STALE_MS||90000));
 
+// Read permissions only from the current canonical section. Previous
+// Markdown snapshots must never authorize an excluded UI assignment.
+function currentCoreUiHeader(body=''){
+  const text=String(body||'');
+  const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const boundary=first?.index===0
+    ?(headings[1]?.index??text.length)
+    :(first?.index??text.length);
+  const divider=text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return text.slice(0,Math.min(boundary,divider?.index??text.length));
+}
 function value(body,key){return bodyValue(body,key);}
-function yes(body,key){return exactBodyFlag(body,key,'true');}
+// First current value is authoritative: a later true cannot undo a denial.
+function yes(body,key){return value(body,key)==='true';}
 function clean(v){return String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);}
 function safeResult(v){return String(v||'').replace(/\0/g,'').trim().slice(0,4000);}
 const VI_TERMINAL_TO_CODE=new Map([
@@ -136,7 +161,7 @@ export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,re
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
-  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
+  return cap==='review'?(coreUiNv03CoreRoutingDisabled()?'NV04':'NV03'):(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
 }
 
 function explicitUiWorkerRequested(body=''){
@@ -146,8 +171,14 @@ function explicitUiWorkerRequested(body=''){
 
 export function parseCoreUiIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
-  const body=String(issue.body||'');
+  const body=currentCoreUiHeader(issue.body);
   if(!yes(body,'TIGERIQ_EXECUTABLE')||value(body,'OWNER_POLICY')!=='AUTO')return null;
+  const queue=value(body,'AUTO_QUEUE').toUpperCase();
+  const state=value(body,'CURRENT_STATE').toUpperCase();
+  if(queue==='EXCLUDED'||queue.startsWith('EXCLUDED_'))return null;
+  if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED|WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state))return null;
+  if(['OWNER_HOLD','OWNER_CONTROLLED','OWNER_GATE','OWNER_APPROVAL_REQUIRED','MANUAL_GATE'].some(key=>yes(body,key)))return null;
+  if(value(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
   const targetRepository=resolveCoreUiTargetRepository(body);
   if(!targetRepository.valid)return null;
   if(REQUIRED.some(k=>!yes(body,k)))return null;
@@ -165,7 +196,7 @@ export function parseCoreUiIssue(issue){
   const implementers=new Set(['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','CODING_EXECUTOR']
     .map((key)=>String(value(body,key)||'').trim().toUpperCase())
     .filter((workerId)=>WORKERS.includes(workerId)));
-  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview||genericReviewOverflow)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
+  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview||genericReviewOverflow)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()));
   if(!eligibleWorkerIds.length)return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
@@ -212,7 +243,7 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
   ].filter(Boolean).join('\n');
 }
 
-function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
+function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled())?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
 export function readyUnassignedCoreUiSnapshot({observedAt=new Date().toISOString(),revision='core-ui-v3:ready-unassigned',previousJob,reason='NO_CURRENT_UI_ASSIGNMENT'}={}){
   return {source:'CORE',authority:'CORE',observedAt,revision,assignmentState:'READY_UNASSIGNED',previousJob,nextJobs:[],requiredWorkers:[],workerBindings:bindings(),reason};
 }
@@ -247,9 +278,18 @@ async function row(pool,{jobId,workerId}={}){
 
 async function reconcile({pool,fetchImpl,owner,repo,token,item,observedAt}){
   if(!item)return null;const n=Number(item.metadata?.issueNumber||issueNo(item.job_id));if(!n)return item;
-  let issue;try{issue=await readIssue(fetchImpl,owner,repo,token,n);}catch{return item;}
-  if(issue.state!=='closed')return {...item,issue};
-  const done=issue.state_reason==='completed'||!issue.state_reason,status=done?'done':'cancelled';
+  // Failure to refresh the source must not expose an unverified assignment
+  // as executable. Keep the persisted job unchanged for a subsequent retry.
+  let issue;try{issue=await readIssue(fetchImpl,owner,repo,token,n);}
+  catch{throw new Error('CORE_UI_CURRENT_SOURCE_UNVERIFIED');}
+  const githubUi=String(item.metadata?.source||'')==='github_ui'
+    ||String(item.routing_decision?.authority||'')==='CORE';
+  const spec=githubUi&&issue.state==='open'?parseCoreUiIssue(issue):null;
+  const revised=spec&&String(item.metadata?.sourceRevision||'');
+  const sourceChanged=Boolean(revised)&&revised!==spec.sourceRevision;
+  if(issue.state==='open'&&(!githubUi||(spec&&!sourceChanged)))return {...item,issue};
+  const done=issue.state==='closed'&&(issue.state_reason==='completed'||!issue.state_reason);
+  const status=done?'done':'cancelled';
   await pool.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=coalesce(result,'{}'::jsonb)||$3::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[item.job_id,status,JSON.stringify({source:'github',issueRef:issue.html_url,verifiedAt:observedAt})]);
   await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[item.objective_id,done?'completed':'blocked',done?'Core-assigned UI Work Order completed with GitHub evidence':'Core-assigned UI Work Order cancelled/superseded']);
   return {...item,status,completed_at:issue.closed_at||issue.updated_at,issue};
@@ -289,6 +329,8 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 }
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
+  // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
+  if(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced()))return null;
   if(await row(pool,{workerId}))return null;
   const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
@@ -300,7 +342,7 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
     if(!exactContext.ok)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',keepParentOpenAtAssignment:(yes(currentCoreUiHeader(spec.body),'REVIEW_ONLY')||yes(currentCoreUiHeader(spec.body),'KEEP_OPEN_ON_STEP_COMPLETE')),readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
     if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
     const materializedSpec={...spec,jobId:ids.jobId};
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo,exactContext.bundle),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null})]);
@@ -329,7 +371,7 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   const spec=parseCoreUiIssue(issue);
   if(!spec)return item;
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
-  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
+  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker&&!(id==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))){
     if(await row(pool,{workerId}))continue;
     const exactContext=await loadCoreUiExactHeadContext({fetchImpl,owner,repo,token,spec});
     if(!exactContext.ok)continue;
@@ -357,14 +399,14 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
   const current=[],missingWorkers=[];
-  for(const workerId of WORKERS){
+  for(const workerId of WORKERS.filter(id=>id!=='NV03'||!coreUiNv03CoreRoutingDisabled())){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
-    else missingWorkers.push(workerId);
+    else if(!(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))missingWorkers.push(workerId);
   }
   if(missingWorkers.length){
     let issues,sourceError;
@@ -452,7 +494,12 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
     const state=priorState||requestedState;
     const evidenceBody=formatCoreUiTerminalComment({jobId,workerId,state,result:terminalResult});
     const comment=prior||await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n+'/comments',token,'POST',{body:evidenceBody});
-    if(state==='DONE'&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
+    // A review-step terminal does not signify parent Work Order acceptance/merge.
+    // Sticky assignment evidence survives mutable issue headers; legacy rows use current policy.
+    const activePolicy=currentCoreUiHeader(issue.body);
+    const keepParentOpen=item.metadata?.keepParentOpenAtAssignment===true
+      ||yes(activePolicy,'REVIEW_ONLY')||yes(activePolicy,'KEEP_OPEN_ON_STEP_COMPLETE');
+    if(state==='DONE'&&!keepParentOpen&&issue.state!=='closed')await ghWrite(fetchImpl,'https://api.github.com/repos/'+owner+'/'+repo+'/issues/'+n,token,'PATCH',{state:'closed',state_reason:'completed'});
     const jobStatus=state==='DONE'?'done':'failed';
     const objectiveStatus=state==='DONE'?'completed':'blocked';
     const evidenceRef=String(comment?.html_url||issue.html_url||'');

@@ -25,10 +25,10 @@ const snapshot = {
   nextQueue:[],recentWork:[],workers:[{employeeId:'NV03',state:'working',status:'ĐANG LÀM'}]
 };
 
-async function routeTiger(page:Page){
+async function routeTiger(page:Page, data:unknown = snapshot){
   await page.route('https://tigeriq.test/**',async(route:Route)=>{
     const url=route.request().url();
-    if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(snapshot)});return}
+    if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});return}
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
     await route.fulfill({status:204,body:''});
@@ -92,4 +92,35 @@ test('mobile LIVE has no document overflow and work list remains first usable co
   const metrics=await page.evaluate(()=>({viewport:window.innerWidth,scroll:document.documentElement.scrollWidth,top:(document.querySelector('#workListHeading') as HTMLElement).getBoundingClientRect().top}));
   expect(metrics.scroll).toBeLessThanOrEqual(metrics.viewport+1);
   expect(metrics.top).toBeLessThan(520);
+});
+
+test('Projects keeps seven groups plus custom projects and counts recent/owner-gated work once',async({page})=>{
+  const definitions=[
+    {id:'tigeriq-ai',name:'TigerIQ AI',children:['tigeriq-platform','tigeriq-mobile-worker','tigeriq-live','tigeriq-workflow-lab','tigeriq-app-chrome']},
+    {id:'tigeriq-news',name:'TigerIQ News / Media',children:['tigeriq-news']},
+    {id:'paperclip-vnext',name:'Paperclip vNext',children:['paperclip-vnext']},
+    {id:'revenue-lab',name:'Revenue Lab',children:['revenue-lab']},
+    {id:'tigeriq-driver',name:'TigerIQ Driver',children:['tigeriq-driver']},
+    {id:'dexcam-personal',name:'DeXCam Personal',children:['dexcam-personal']},
+    {id:'tigeriq-coin',name:'TigerIQ Coin',children:['tigeriq-coin']},
+  ];
+  const gate={number:8401,title:'Driver gate',status:'OWNER_GATE',workKind:'WORK',projectId:'tigeriq-driver',projectName:'TigerIQ Driver',workstreamId:'release',workstreamName:'Phát hành'};
+  const done={...gate,number:8402,title:'Driver complete',status:'DONE'};
+  const data={...snapshot,
+    portfolioGroups:definitions.map(g=>({id:g.id,name:g.name,projects:g.children.map(id=>({id,name:id,counts:{working:0,review:0,blocked:0,waiting:0,done:0},workstreams:[]}))})),
+    openWork:[...snapshot.openWork,gate],
+    activeWork:snapshot.activeWork,
+    recentWork:[done],
+  };
+  await routeTiger(page,data);await page.goto('https://tigeriq.test/projects');
+  await expect(page.locator('.project-card')).toHaveCount(9);
+  for(const group of definitions)await expect(page.locator('.project-card[data-project-id="'+group.id+'"]')).toBeVisible();
+  await expect(page.locator('.project-card[data-project-id="alpha"]')).toContainText('Đang làm 1');
+  await expect(page.locator('.project-card[data-project-id="alpha"]')).toContainText('Rà soát 1');
+  await expect(page.locator('.project-card[data-project-id="alpha"]')).toContainText('2 công việc');
+  await expect(page.locator('.project-card[data-project-id="beta"]')).toContainText('Beta');
+  const driver=page.locator('.project-card[data-project-id="tigeriq-driver"]');
+  await expect(driver).toContainText('Bị chặn 1');
+  await expect(driver).toContainText('Xong 1');
+  await expect(driver).toContainText('2 công việc trong nguồn');
 });

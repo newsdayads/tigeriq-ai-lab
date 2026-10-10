@@ -1,0 +1,20 @@
+schema: tigeriq.project.v2
+id: tigeriq-workflow-lab
+name: Workflow Lab
+kind: project
+portfolio_group_id: tigeriq-ai
+order: 40
+source_mode: isolated_draft_branch
+source_repository: newsdayads/tigeriq-ai-lab
+source_branch: feat/workflow-lab-v5-full-readonly-4636
+source_pr: 4637
+source_path_in_branch: labs/workflow-lab-v5
+published_to_main: false
+workstreams:
+  - id: read-only
+    name: Giao diện dữ liệu chỉ đọc
+    order: 10
+  - id: qa
+    name: Kiểm thử và nghiệm thu
+    order: 20
+integration_policy: no_core_mutation

@@ -281,11 +281,12 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 
 ## 20. Ranh giới Core ↔ NV02/NV03/NV04 — phân quyền tách biệt
 - **NV02 (ChatGPT Plus)** là UI/subscription worker **ngoài quyền giao việc của Core**. Core KHÔNG được assign, dispatch, route, claim hộ, thu hồi, chuyển việc, heartbeat-gate hoặc tạo `READY_UNASSIGNED` để điều khiển NV02. NV02 chỉ tự nhận việc P1–P5 qua luồng local self-pull đã được Owner ủy quyền riêng; không được tự nhận P0.
-- **NV03 (ChatGPT Go)** là nhân sự rà soát độc lập/QA. **NV04 (Gemini Pro)** là nhân sự nghiên cứu chuyên sâu/đối chiếu, có thể rà soát độc lập khi phù hợp. Hai nhân sự này được Core **giao trực tiếp Work Order P1–P5 đúng năng lực** thông qua cơ chế CORE_UI typed assignment đã kiểm tra, mỗi người tối đa một công việc đang thực hiện; không tự quét/chọn/claim GitHub backlog và không sửa mã trong nhiệm vụ review-only.
+- **NV03 (ChatGPT Go)**: theo lệnh trực tiếp Owner 2026-10-10, được **ủy quyền chuẩn bị chế độ tự chọn/nhận và thực thi P1–P5 đúng năng lực** từ nguồn GitHub khi không có nhiệm vụ/lease Core còn hiệu lực; vẫn ưu tiên rà soát độc lập/QA. Việc tự nhận thật chỉ bật sau khi cổng chuyển chế độ Core↔self-pull, khóa chống tranh việc và kiểm chứng quyền GitHub của NV03 đạt. Trong nhiệm vụ `REVIEW_ONLY` tuyệt đối không sửa mã; khi NV03 thực thi mã phải chuyển kiểm duyệt cho người khác độc lập.
+- **NV04 (Gemini Pro)** tiếp tục nghiên cứu sâu, phản biện/kiểm duyệt độc lập, được Core giao P1–P5 phù hợp. Tự lấy việc qua GitHub là **phương án chưa kích hoạt**, cần đường đọc/claim GitHub đáng tin cậy cho Gemini và kiểm chứng lease tương tự trước khi bật; không tự mở quyền sửa mã.
 - Core ưu tiên NV03 cho rà soát độc lập, NV04 cho nghiên cứu/second opinion hoặc rà soát thay thế khi phù hợp. Người rà soát phải độc lập với người thực thi, đúng phiên bản mã được kiểm tra, có bằng chứng và kết quả rõ ràng; thiếu tài nguyên phù hợp chỉ chặn đúng bước rà soát, không dừng toàn bộ hàng đợi.
 - Quyền Core giao NV03/NV04 **không mở rộng sang NV02, không cấp quyền sửa App Chrome**, không cho NV03/NV04 tự ý thay đổi mã nguồn hoặc điều hành P0. Mọi hỗ trợ rà soát P0 chỉ theo giao việc có phạm vi rõ của anh Sơn/Vy; Core không tự nhận/giao/đóng P0.
 - Core tiếp tục điều phối các tài nguyên API, Coding Lane, `NV06/OpenClaw`, và tài nguyên chuyên dụng khác theo năng lực/trạng thái; giữ một người thực thi ghi trên mỗi RESOURCE_SCOPE, chống giao trùng, chuyển việc có kiểm soát và ghi bằng chứng khi hoàn tất.
-- App Chrome chỉ duy trì giao diện/tiếp tục phiên cục bộ cho `NV02/NV03/NV04`; **không là bên giao việc**, không quét GitHub, không tự chọn công việc, không thay đổi source/runtime theo lệnh Core. CORE_UI assignment là luồng Core có định danh Work Order/lease rõ ràng, không phải quyền điều khiển App Chrome.
+- App Chrome chỉ duy trì giao diện/tiếp tục phiên cục bộ cho `NV02/NV03/NV04`; **không là bên giao việc**, không quét GitHub, không tự chọn công việc, không thay đổi source/runtime theo lệnh Core. NV03 có thể nhận *lệnh nhắc tự lấy việc* trên Chrome cục bộ, nhưng chính worker phải kiểm chứng GitHub, claim và lease trong hệ điều phối hợp lệ; nhắc tự lấy việc không chứng minh đã nhận công việc. CORE_UI assignment là luồng Core có định danh Work Order/lease rõ ràng, không phải quyền điều khiển App Chrome.
 - P0 chỉ anh Sơn/Vy điều hành; các giới hạn chi phí, thông tin xác thực, bảo mật, hành động không thể hoàn tác và Codex giữ nguyên.
 
 
@@ -297,3 +298,18 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - GitHub vẫn là authority cho **công việc/quyền/role của NV02, NV03, NV04 và phần TigerIQ ngoài App Chrome**; GitHub không còn là source/deploy authority cho bản thân App Chrome.
 - Source App Chrome còn nằm trong repository chỉ là **frozen historical mirror**, không được dùng làm nguồn deploy hay căn cứ tự động mutation.
 - Ngoại lệ này không nới quyền cho bất kỳ actor nào khác: system chỉ được READ/OBSERVE App Chrome nếu cần dashboard; mutation App Chrome từ system luôn bị cấm.
+
+## 20.2. Cổng bật NV03 tự lấy việc P1–P5 — Owner 2026-10-10
+- `NV03_SELF_PULL_AUTHORIZED=true` chỉ là phê duyệt thay đổi; **không coi là đã triển khai hoặc tự nhận việc thành công**.
+- Phải chứng minh Core không còn đồng thời giao việc cho NV03 ở chế độ tự lấy; mọi nhiệm vụ `QUEUED|DISPATCHING|SUBMITTED|WORKING|WAITING_EVIDENCE|VERIFY` cùng worker/resource phải được xét trước khi mở quyền tự lấy.
+- Claim phải nguyên tử hoặc có một cơ chế lease toàn hệ thống tương đương; bỏ qua P0, OWNER_HOLD, lease còn hiệu lực, trùng scope, hard gates và bước chưa executable; ghi durable checkpoint và nhả lease khi DONE/BLOCKED/EXTERNAL_WAIT.
+- Chỉ tự làm P1–P5 có khả năng hoàn tất, không sửa App Chrome hoặc tự tạo/sửa Core trong lane chưa được phép. NV03 thực thi không thể tự rà soát độc lập chính kết quả đó; NV04 hoặc reviewer độc lập khác kiểm đúng HEAD và bằng chứng.
+- Kiểm thử quyết định, triển khai local-only qua Owner→Vy→PC01, xác minh quyền GitHub thật, 1 vòng nhận việc→tiến hành→kết thúc→đổi việc và giao trùng = 0. Thiếu bất kỳ cổng nào: `NV03_SELF_PULL_ACTIVE=false`, báo tình trạng thật.
+- NV04: chỉ đề xuất tự lấy `research|analysis|review`; **chưa phê duyệt kích hoạt**; giữ Core typed assignment khi chưa có đường đọc/claim GitHub tin cậy và bằng chứng kiểm thử.
+
+## 20.3. Owner yêu cầu NV03 độc lập Core — 2026-10-10
+- Owner chỉ đạo NV03 tự lấy việc GitHub P1–P5 giống NV02; Core không còn giao/đẩy việc mới tới NV03 khi cổng vận hành TIGERIQ_NV03_CORE_DISPATCH_DISABLED=1 được bật trên Core runtime PC01. Không tự đặt giá trị này trong mã hoặc giả runtime đã bật.
+- Đối với công việc Core đã có: chỉ rời việc sau khi được checkpoint/terminal có bằng chứng, không xóa nhiệm vụ chạy dở và không tuyên bố DONE nếu bị BLOCKED.
+- App Chrome PC01 LOCAL-only nhắc NV03 tự kiểm tra nguồn GitHub và tự nhận công việc trên tài khoản NV03; không phải dịch vụ claim GitHub. Chỉ được mutation sau khi chính NV03 xác minh GitHub hợp lệ và claim/lease không trùng. Không xung đột RESOURCE_SCOPE, không P0/hard gates, không tự review mã do chính mình làm.
+- NV04 vẫn do Core điều phối review/research, có thể nhận review thay NV03 khi đủ năng lực. Việc giao NV04 chưa bị Owner thay đổi.
+- NV03_SELF_PULL_ACTIVE là trạng thái phải chứng minh bằng bằng chứng trên PC01 và GitHub, không suy ra từ PR merge, cấu hình hoặc việc Chrome đã gửi prompt.
