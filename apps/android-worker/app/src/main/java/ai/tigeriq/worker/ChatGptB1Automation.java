@@ -21,7 +21,7 @@ public final class ChatGptB1Automation {
         if (!s.projectBound) return;
         // A persisted standalone fallback must not send a leased Core task into the wrong chat.
         if (!ChatGptB1Policy.canExecuteCoreTaskInProjectContext(s.taskId, s.projectMode)) {
-            ChatGptB1RunStore.fail(service, "REQUIRED_PROJECT_CONTEXT_MISMATCH");
+            failObservedRun(service, s, "REQUIRED_PROJECT_CONTEXT_MISMATCH");
             return;
         }
 
@@ -40,11 +40,11 @@ public final class ChatGptB1Automation {
                 s.sentAt, now, RESPONSE_TIMEOUT_MS, generationInProgress
             )) {
                 if (s.sentAt <= 0L || now < s.sentAt) {
-                    ChatGptB1RunStore.fail(service, "CORE_REPLY_CLOCK_OR_SEND_INVALID");
+                    failObservedRun(service, s, "CORE_REPLY_CLOCK_OR_SEND_INVALID");
                 } else if (now - s.sentAt > RESPONSE_TIMEOUT_MS) {
-                    ChatGptB1RunStore.fail(service, "RESPONSE_TIMEOUT");
+                    failObservedRun(service, s, "RESPONSE_TIMEOUT");
                 } else {
-                    ChatGptB1RunStore.markBusySeen(service);
+                    markBusyObservedRun(service, s);
                 }
                 return;
             }
@@ -67,7 +67,7 @@ public final class ChatGptB1Automation {
                 if (!ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
                     s.taskId, s.projectMode, s.projectBound, liveProjectTitle
                 )) {
-                    ChatGptB1RunStore.fail(service, "PROJECT_CONTEXT_LOST_BEFORE_RESPONSE_ACCEPTANCE");
+                    failObservedRun(service, s, "PROJECT_CONTEXT_LOST_BEFORE_RESPONSE_ACCEPTANCE");
                     return;
                 }
                 if (coreLease) {
@@ -83,26 +83,26 @@ public final class ChatGptB1Automation {
                 return;
             }
             if (treeContainsAny(root, "stop", "dừng", "stop generating", "đang trả lời")) {
-                ChatGptB1RunStore.markBusySeen(service);
+                markBusyObservedRun(service, s);
             }
             if (treeContainsAny(root, "something went wrong", "try again", "đã xảy ra lỗi", "thử lại")) {
-                ChatGptB1RunStore.fail(service, "PROVIDER_ERROR_VISIBLE");
+                failObservedRun(service, s, "PROVIDER_ERROR_VISIBLE");
                 return;
             }
             if (s.sentAt > 0 && now - s.sentAt > RESPONSE_TIMEOUT_MS) {
-                ChatGptB1RunStore.fail(service, "RESPONSE_TIMEOUT");
+                failObservedRun(service, s, "RESPONSE_TIMEOUT");
             }
             return;
         }
 
         if (s.cycleStartedAt > 0 && now - s.cycleStartedAt > INPUT_TIMEOUT_MS) {
-            ChatGptB1RunStore.fail(service, "INPUT_NOT_READY_TIMEOUT");
+            failObservedRun(service, s, "INPUT_NOT_READY_TIMEOUT");
             return;
         }
 
         AccessibilityNodeInfo input = findComposerInput(root);
         if (input == null) {
-            ChatGptB1RunStore.markVerifying(service);
+            markVerifyingObservedRun(service, s);
             return;
         }
 
@@ -115,14 +115,14 @@ public final class ChatGptB1Automation {
         if (!ChatGptB1Policy.canMutateComposerInLiveProjectContext(
             s.taskId, s.projectMode, s.projectBound, liveProjectTitle, true
         )) {
-            ChatGptB1RunStore.fail(service, "PROJECT_CONTEXT_LOST_BEFORE_COMPOSER_MUTATION");
+            failObservedRun(service, s, "PROJECT_CONTEXT_LOST_BEFORE_COMPOSER_MUTATION");
             return;
         }
 
         String prompt = ChatGptB1RunStore.prompt(s);
         String currentText = text(input.getText());
         if (!currentText.isEmpty() && !currentText.equals(prompt)) {
-            ChatGptB1RunStore.fail(service, "INPUT_NOT_EMPTY_HUMAN_GATE");
+            failObservedRun(service, s, "INPUT_NOT_EMPTY_HUMAN_GATE");
             return;
         }
 
@@ -132,10 +132,10 @@ public final class ChatGptB1Automation {
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, prompt);
             boolean set = input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
             if (!set) {
-                ChatGptB1RunStore.fail(service, "ACTION_SET_TEXT_FAILED");
+                failObservedRun(service, s, "ACTION_SET_TEXT_FAILED");
                 return;
             }
-            ChatGptB1RunStore.markInputReady(service);
+            markInputReadyObservedRun(service, s);
             return;
         }
 
@@ -150,7 +150,7 @@ public final class ChatGptB1Automation {
             && !ChatGptB1Policy.canSendCorePromptFromLiveComposer(
                 s.state, prompt, currentText, input.isVisibleToUser(), input.isEditable()
             )) {
-            ChatGptB1RunStore.fail(service, "CORE_COMPOSER_TEXT_LOST_BEFORE_SEND");
+            failObservedRun(service, s, "CORE_COMPOSER_TEXT_LOST_BEFORE_SEND");
             return;
         }
 
@@ -169,7 +169,7 @@ public final class ChatGptB1Automation {
             && coreTranscriptAlreadyContainsTask(
                 root, prompt, ChatGptB1RunStore.expectedToken(s)
             )) {
-            ChatGptB1RunStore.fail(service, "CORE_RESPONSE_PROVENANCE_PREEXISTS");
+            failObservedRun(service, s, "CORE_RESPONSE_PROVENANCE_PREEXISTS");
             return;
         }
 
@@ -186,13 +186,67 @@ public final class ChatGptB1Automation {
             // If the same Core lease remains active, INPUT_READY will time
             // out safely; the manual B1 error path stays unchanged.
             if (!coreLeaseAtSend) {
-                ChatGptB1RunStore.fail(service, "SEND_CLAIM_PERSIST_FAILED");
+                failObservedRun(service, s, "SEND_CLAIM_PERSIST_FAILED");
             }
             return;
         }
+        // Owner cancellation or task replacement can race with the durable
+        // claim. A second identity check narrows the non-atomic UI-click window.
+        if (coreLeaseAtSend && !ChatGptB1RunStore.isCoreSendClaimStillCurrent(
+            service, s.runId, s.taskId, s.cycle
+        )) return;
         boolean clicked = send.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         if (!clicked) {
-            ChatGptB1RunStore.fail(service, "SEND_CLICK_FAILED");
+            failObservedRun(service, s, "SEND_CLICK_FAILED");
+        }
+    }
+
+    private static void failObservedRun(
+        AccessibilityBridgeService service, ChatGptB1RunStore.Snapshot snapshot,
+        String code
+    ) {
+        if (snapshot.taskId != null && !snapshot.taskId.isEmpty()) {
+            ChatGptB1RunStore.failCoreIfCurrent(
+                service, snapshot.runId, snapshot.taskId, snapshot.cycle, code
+            );
+        } else {
+            ChatGptB1RunStore.fail(service, code);
+        }
+    }
+
+    private static void markVerifyingObservedRun(
+        AccessibilityBridgeService service, ChatGptB1RunStore.Snapshot snapshot
+    ) {
+        if (snapshot.taskId != null && !snapshot.taskId.isEmpty()) {
+            ChatGptB1RunStore.markCoreVerifyingIfCurrent(
+                service, snapshot.runId, snapshot.taskId, snapshot.cycle
+            );
+        } else {
+            ChatGptB1RunStore.markVerifying(service);
+        }
+    }
+
+    private static void markInputReadyObservedRun(
+        AccessibilityBridgeService service, ChatGptB1RunStore.Snapshot snapshot
+    ) {
+        if (snapshot.taskId != null && !snapshot.taskId.isEmpty()) {
+            ChatGptB1RunStore.markCoreInputReadyIfCurrent(
+                service, snapshot.runId, snapshot.taskId, snapshot.cycle
+            );
+        } else {
+            ChatGptB1RunStore.markInputReady(service);
+        }
+    }
+
+    private static void markBusyObservedRun(
+        AccessibilityBridgeService service, ChatGptB1RunStore.Snapshot snapshot
+    ) {
+        if (snapshot.taskId != null && !snapshot.taskId.isEmpty()) {
+            ChatGptB1RunStore.markCoreBusyIfCurrent(
+                service, snapshot.runId, snapshot.taskId, snapshot.cycle
+            );
+        } else {
+            ChatGptB1RunStore.markBusySeen(service);
         }
     }
 
