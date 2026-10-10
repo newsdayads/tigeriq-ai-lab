@@ -49,3 +49,17 @@ test('invalid GitHub schema fails closed',async()=>{
   assert.equal(res.statusCode,503);
   assert.equal(res.body.reason,'GITHUB_SCHEMA');
 });
+
+test('not_planned closure retains provenance and is not silently promoted to DONE',async()=>{
+  const closed={...fakeIssue(88),state:'closed',state_reason:'not_planned',closed_at:'2026-10-10T00:00:00Z'};
+  const {res}=await invoke(()=>response(200,[closed]));
+  assert.equal(res.statusCode,200);
+  assert.equal(res.body.issues[0].state,'closed');
+  assert.equal(res.body.issues[0].state_reason,'not_planned');
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  assert.match(html,/state:it\.state==='closed'\?'closed'/);
+  assert.doesNotMatch(html,/state:it\.state==='closed'\?'done'/);
+  assert.match(html,/data-jobfilter="closed"/);
+  assert.match(html,/closed:'ĐÃ ĐÓNG TRÊN GITHUB'/);
+  assert.match(html,/githubStateReason:it\.state_reason\|\|null/);
+});
