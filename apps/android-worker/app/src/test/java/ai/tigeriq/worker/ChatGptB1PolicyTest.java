@@ -205,6 +205,69 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void rejectsChatMessageSpoofingTheProjectHeader() {
+        // Window 0..2000; true Project header at y=80; composer starts at 1700.
+        assertTrue(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, false, false, 0, 2000, 80, 130, 1700
+        ));
+        // A visible chat message may contain the exact Project name.
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, false, false, false, 0, 2000, 80, 130, 1700
+        ));
+        // Even a text heading in an actual scrolling conversation is NOT a Project header.
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, true, false, 0, 2000, 80, 130, 1700
+        ));
+        // A Project link in a drawer can be nested more than three parents deep.
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, false, true, 0, 2000, 80, 130, 1700
+        ));
+        // An ordinary conversation heading lower in the content region.
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, false, false, 0, 2000, 800, 850, 1700
+        ));
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, false, false, 0, 2000, 1600, 1720, 1700
+        ));
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            true, true, false, false, 0, 0, 80, 130, 1700
+        ));
+        assertFalse(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+            false, true, false, false, 0, 2000, 80, 130, 1700
+        ));
+    }
+
+    @Test
+    public void liveProjectTitleGuardMustInspectFullAncestryAndScreenLocation()
+        throws Exception {
+        String source = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int start = source.indexOf(
+            "public static boolean treeContainsExactLabelOutsideClickableNavigation("
+        );
+        int end = source.indexOf("public static boolean nodeOrAncestorContainsLabel(", start);
+        assertTrue(start >= 0 && end > start);
+        String guard = source.substring(start, end);
+        assertTrue("Do not accept chat content by exact text alone",
+            guard.contains("isVerifiedProjectHeaderEvidence("));
+        assertTrue("Check all ancestors, not only maxParents=3",
+            guard.contains("getParent()"));
+        assertTrue("Exclude a scrolling conversation's message subtree",
+            guard.contains("isScrollable()"));
+        assertTrue("Exclude RecyclerView/ScrollView when isScrollable=false",
+            guard.contains("recyclerview") && guard.contains("scrollview"));
+        assertTrue("Require a named heading/toolbar rather than a plain bubble",
+            guard.contains("isHeading()") && guard.contains("toolbar"));
+        assertTrue("Bind header location to visible root and composer",
+            guard.contains("getBoundsInScreen"));
+        assertFalse("Never reuse depth-limited clickable ancestor as authentication",
+            guard.contains("depth <= maxParents"));
+    }
+
+    @Test
     public void invisibleProjectTitleCannotProveLiveProjectContext() {
         assertTrue(ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
             true, true, false
