@@ -44,3 +44,35 @@ test('V5 displays incomplete GitHub history without inventing a full catalog',as
   await expect(page.locator('#catalogDescription')).toContainText('CHƯA ĐẦY ĐỦ');
   await expect(page.locator('#catalogDescription')).toContainText('GITHUB_HTTP_422_PAGE_2');
 });
+
+
+test('V5 portfolio contains every canonical project from main portfolio registry',async({page})=>{
+  const portfolio=readFileSync(new URL('../../projects/portfolio.yaml',import.meta.url),'utf8');
+  const canonical=[...portfolio.matchAll(/^\s+children:\s*\[([^\]]+)\]/gm)]
+    .flatMap((m)=>m[1].split(',').map(s=>s.trim())).sort();
+  await openLab(page);
+  const ids=await page.locator('#projectCards [data-project]').evaluateAll(
+    nodes=>nodes.map(n=>n.getAttribute('data-project')||'').sort());
+  expect(ids).toEqual(canonical);
+  expect(ids).toHaveLength(11);
+});
+
+test('V5 DeXCam and Workflow Lab issues route to their own canonical projects',async({page})=>{
+ const dexcam={...issue(4625,'open','SPEC_DOCUMENTATION_REVIEW_PENDING'),
+   title:'[P1][ANDROID/DEX] DeXCam Personal — camera lùi',
+   body:'PROJECT_ID=TIGERIQ_DEXCAM_PERSONAL'};
+ const workflow={...issue(4636,'open','WORKING'),
+   title:'[P1][WORKFLOW LAB V5] Portfolio các dự án',
+   body:'PROJECT_ID=tigeriq-workflow-lab'};
+ await openLab(page,{...payload,issues:[...payload.issues,dexcam,workflow]});
+ await page.locator('[data-project="dexcam-personal"]').click();
+ await expect(page.locator('#jobCards')).toContainText('DeXCam Personal');
+ await expect(page.locator('#jobCards')).not.toContainText('Workflow Lab');
+ await page.locator('#backToProjects').click();
+ await page.locator('[data-project="tigeriq-workflow-lab"]').click();
+ await expect(page.locator('#jobCards')).toContainText('Portfolio các dự án');
+ await expect(page.locator('#jobCards')).not.toContainText('DeXCam Personal');
+ await page.locator('#backToProjects').click();
+ await page.locator('[data-project="tigeriq-mobile-worker"]').click();
+ await expect(page.locator('#jobCards')).not.toContainText('DeXCam Personal');
+});
