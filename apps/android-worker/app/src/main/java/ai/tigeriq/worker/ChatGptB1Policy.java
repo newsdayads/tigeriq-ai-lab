@@ -95,28 +95,26 @@ public final class ChatGptB1Policy {
     }
 
     /**
-     * A title copied into a chat bubble must not authenticate the Project.
-     * Only a visible semantic header above the composer, at the top of the
-     * window, outside any scrollable or clickable conversation/navigation
-     * ancestor, is even eligible as Project evidence. In doubt, fail closed.
+     * A Project title copied into a chat bubble cannot authenticate context.
+     * Trust ONLY a visible exact label inside an explicitly identified toolbar
+     * hierarchy, with no scrollable conversation or clickable navigation
+     * ancestor and a complete ancestry up to the active root. This deliberately
+     * fails closed when ChatGPT supplies no structural toolbar semantics.
      *
-     * This is structural UI evidence, NOT a claim of physical S10 acceptance.
+     * No coordinates, gestures or physical S10 acceptance are inferred here.
      */
     public static boolean isVerifiedProjectHeaderEvidence(
         boolean exactVisibleLabel,
-        boolean semanticHeader,
+        boolean semanticToolbarAncestor,
         boolean scrollOrMessageAncestor,
         boolean clickableAncestor,
-        int rootTop, int rootBottom,
-        int titleTop, int titleBottom,
-        int composerTop
+        boolean completeAncestry
     ) {
-        if (!exactVisibleLabel || !semanticHeader
-            || scrollOrMessageAncestor || clickableAncestor) return false;
-        if (rootBottom <= rootTop || titleBottom <= titleTop
-            || titleTop < rootTop || titleBottom > composerTop) return false;
-        long bandLimit = (long) rootTop + ((long) rootBottom - rootTop) / 3L;
-        return titleTop <= bandLimit && titleBottom <= bandLimit;
+        return exactVisibleLabel
+            && semanticToolbarAncestor
+            && !scrollOrMessageAncestor
+            && !clickableAncestor
+            && completeAncestry;
     }
 
     /**
