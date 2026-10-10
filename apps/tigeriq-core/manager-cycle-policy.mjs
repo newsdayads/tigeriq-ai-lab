@@ -40,6 +40,11 @@ export function managerAcceptancePausePlan({source='',sourceRevision='',gate={}}
   return {park,revision:park?revision:null,reason};
 }
 
+/** Source changes must rearm parked dependency-only GitHub work, too. */
+export function managerAcceptanceRevisionRefresh({sourceLiveRequired=false,sourceFinalReviewRequired=false,dependencyGateRequired=false,revisionChanged=false,status='active'}={}){
+  return Boolean(revisionChanged&&status!=='blocked'&&(sourceLiveRequired||sourceFinalReviewRequired||dependencyGateRequired));
+}
+
 export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false}={}){
   const pending=String(awaitingRevision||'').trim();
   const current=String(sourceRevision||'').trim();
