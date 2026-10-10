@@ -212,7 +212,18 @@ function projectEvidence(it){
  const canonical=projectAliases[explicit]||explicit;
  return config.some(x=>x[0]===canonical)?'PROJECT_ID':'TITLE_INFERRED';
 }
-function status(it){let s=(it.current_state||marker(it.body,'CURRENT_STATE')||'').toUpperCase();if(/BLOCK|HOLD|DENY/.test(s))return 'blocked';if(/REVIEW|VERIFY/.test(s))return 'review';if(/DONE|COMPLETED/.test(s))return 'done';if(/WORKING|IN_PROGRESS/.test(s))return 'working';return 'wait'}
+function status(it){
+ const source=String(it.current_state||marker(it.body,'CURRENT_STATE')||'').toUpperCase();
+ const words=new Set(source.split(/[^A-Z0-9]+/).filter(Boolean));
+ const has=(...values)=>values.some(v=>words.has(v));
+ // State identifiers are tokens, not substrings: UNBLOCKED and NOT_DONE
+ // must never become BLOCKED or DONE. Do not trust incomplete completion.
+ if(has('BLOCK','BLOCKED','BLOCKING','HOLD','HELD','DENY','DENIED'))return 'blocked';
+ if(has('REVIEW','VERIFY','VERIFICATION'))return 'review';
+ if(has('DONE','COMPLETED')&&!has('NOT','FALSE','PENDING','WAIT','WAITING','UNVERIFIED'))return 'done';
+ if(has('WORKING','RUNNING')||(words.has('IN')&&words.has('PROGRESS')))return 'working';
+ return 'wait';
+}
 const statusName={working:'ĐANG LÀM (THEO ISSUE)',blocked:'BỊ CHẶN',review:'RÀ SOÁT',done:'BÁO HOÀN TẤT (THEO ISSUE)',closed:'ĐÃ ĐÓNG TRÊN GITHUB',wait:'CHƯA XÁC MINH'};
 function counts(list){const o={total:list.length,working:0,blocked:0,review:0,done:0,closed:0,wait:0};for(const x of list)o[x.state]++;return o}
 const stat=(name,val)=>'<div class="statbox"><small>'+E(name)+'</small><strong>'+val+'</strong></div>';
