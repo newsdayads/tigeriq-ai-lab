@@ -26,6 +26,25 @@ async function openLab(page:Page, data:unknown=payload){
   await expect(page.locator('#projectCards .projecttile').first()).toBeVisible();
 }
 
+test('V5 excludes stale Core rows so old BLOCKED/employee/nextStep cannot override GitHub',async({page})=>{
+ const current={...issue(4457,'open','WORKING'),
+  title:'[P1][CORE vNext] Source still working',
+  body:'PROJECT_ID=tigeriq-platform\\nCURRENT_STATE=WORKING\\nASSIGNEE=NV02\\nNEXT_ACTION=Verify GitHub source changes'};
+ const data={...payload,issues:[current],
+  core:{connected:true,stale:true,rows:[
+   {number:4457,status:'BLOCKED',employeeId:'NV09',nextStep:'Outdated Core retry loop'},
+  ]}};
+ await openLab(page,data);
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('#jobCards .jobcard')).toContainText('ĐANG LÀM');
+ await expect(page.locator('#jobCards .jobcard')).not.toContainText('BỊ CHẶN');
+ await page.locator('#jobCards .jobcard').click();
+ await expect(page.locator('#graph')).toContainText('NV02');
+ await expect(page.locator('#graph')).toContainText('Verify GitHub source changes');
+ await expect(page.locator('#graph')).not.toContainText('Outdated Core retry loop');
+ await expect(page.locator('#graph')).not.toContainText('NV09');
+});
+
 test('V5 keeps active Core evidence ahead of stale recentWork for the same GitHub issue',async({page})=>{
  const data={...payload,
   issues:[{...issue(4457,'open','REVIEW'),title:'[P1][CORE vNext] Current manager activity'}],
