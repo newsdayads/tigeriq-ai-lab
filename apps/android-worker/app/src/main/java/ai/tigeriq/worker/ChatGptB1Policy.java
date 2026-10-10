@@ -226,6 +226,53 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Refuse a stale Accessibility callback when the durable Core run has
+     * changed since its snapshot. Identity and prompt are checked under the
+     * RunStore synchronized claim, before its irreversible send claim.
+     */
+    public static boolean canClaimCoreSendForSnapshot(
+        String expectedRunId, String expectedTaskId, int expectedCycle,
+        String expectedPrompt, String liveRunId, String liveTaskId,
+        int liveCycle, String liveState, int liveSentCycle,
+        String livePrompt, boolean projectBound, String projectMode
+    ) {
+        return expectedRunId != null && !expectedRunId.isEmpty()
+            && expectedTaskId != null && !expectedTaskId.isEmpty()
+            && expectedPrompt != null && !expectedPrompt.isEmpty()
+            && expectedRunId.equals(liveRunId)
+            && expectedTaskId.equals(liveTaskId)
+            && expectedCycle > 0 && expectedCycle == liveCycle
+            && expectedPrompt.equals(livePrompt)
+            && projectBound && "PROJECT".equals(projectMode)
+            && canClaimSendAttempt(liveState, liveCycle, liveSentCycle);
+    }
+
+    /**
+     * A response observed for one run may never complete a replaced lease.
+     * Check again under the RunStore synchronized finalization boundary.
+     */
+    public static boolean canCompleteCoreReplyForSnapshot(
+        String expectedRunId, String expectedTaskId, int expectedCycle,
+        String expectedToken, String reply, String liveRunId, String liveTaskId,
+        int liveCycle, String liveState, int liveSentCycle,
+        int sendCount, int duplicateSendCount,
+        String liveToken, boolean projectBound, String projectMode
+    ) {
+        return expectedRunId != null && !expectedRunId.isEmpty()
+            && expectedTaskId != null && !expectedTaskId.isEmpty()
+            && expectedToken != null && !expectedToken.isEmpty()
+            && expectedRunId.equals(liveRunId)
+            && expectedTaskId.equals(liveTaskId)
+            && expectedCycle > 0 && expectedCycle == liveCycle
+            && "WAITING_AI".equals(liveState)
+            && liveSentCycle == liveCycle
+            && sendCount == 1 && duplicateSendCount == 0
+            && expectedToken.equals(liveToken)
+            && projectBound && "PROJECT".equals(projectMode)
+            && containsExactCoreToken(reply, expectedToken);
+    }
+
+    /**
      * A Core task may click Send only when the action itself has a trusted
      * native button identity in the local composer scope. Do not accept the
      * word "send" in arbitrary message text or guess from an icon's shape.
