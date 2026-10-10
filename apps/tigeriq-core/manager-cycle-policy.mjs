@@ -40,9 +40,13 @@ export function managerAcceptancePausePlan({source='',sourceRevision='',gate={}}
   return {park,revision:park?revision:null,reason};
 }
 
-/** Source changes must rearm parked dependency-only GitHub work, too. */
-export function managerAcceptanceRevisionRefresh({sourceLiveRequired=false,sourceFinalReviewRequired=false,dependencyGateRequired=false,revisionChanged=false,status='active'}={}){
-  return Boolean(revisionChanged&&status!=='blocked'&&(sourceLiveRequired||sourceFinalReviewRequired||dependencyGateRequired));
+/** Reconcile any parked GitHub objective when its source revision changes,
+ * including a source edit that removes the last declared dependency gate.
+ * Blocked objectives remain fenced and cannot be rearmed by this watcher.
+ */
+export function managerAcceptanceRevisionRefresh({sourceLiveRequired=false,sourceFinalReviewRequired=false,dependencyGateRequired=false,awaitingRevision='',revisionChanged=false,status='active'}={}){
+  const parked=Boolean(String(awaitingRevision||'').trim());
+  return Boolean(revisionChanged&&status!=='blocked'&&(sourceLiveRequired||sourceFinalReviewRequired||dependencyGateRequired||parked));
 }
 
 export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false}={}){
