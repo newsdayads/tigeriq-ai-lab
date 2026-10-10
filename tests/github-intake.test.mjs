@@ -1223,7 +1223,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
   const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\\(\\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
+  assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\(\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
   assert.match(coreSource,/android_worker_gate_c_v021_status/);
   assert.match(coreSource,/android_worker_gate_c_v021_enqueue_10/);
 });
