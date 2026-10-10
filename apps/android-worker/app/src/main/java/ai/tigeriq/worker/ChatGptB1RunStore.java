@@ -101,7 +101,7 @@ public final class ChatGptB1RunStore {
         return read(context);
     }
 
-    public static void cancel(Context context) {
+    public static synchronized void cancel(Context context) {
         Snapshot s = read(context);
         if (!s.active()) return;
         finish(context, "CANCELLED", "cancelled_by_owner");
@@ -182,6 +182,79 @@ public final class ChatGptB1RunStore {
             .putLong(K_NEXT_ACTION_AT, now + 750L)
             .putString(K_LAST_ERROR, "")
             .apply();
+    }
+
+    /**
+     * Core-specific state mutations are serialized with startTask and its
+     * send/receipt commits. They never mutate a successor run observed by a
+     * delayed Accessibility callback.
+     */
+    public static synchronized boolean markCoreVerifyingIfCurrent(
+        Context context, String runId, String taskId, int cycle
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "REQUESTED", "VERIFYING_CONTEXT"
+        ) || !live.projectBound || !"PROJECT".equals(live.projectMode)) return false;
+        writeState(context, "VERIFYING_CONTEXT", "");
+        return true;
+    }
+
+    public static synchronized boolean markCoreInputReadyIfCurrent(
+        Context context, String runId, String taskId, int cycle
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "REQUESTED", "VERIFYING_CONTEXT"
+        ) || !live.projectBound || !"PROJECT".equals(live.projectMode)) return false;
+        markInputReady(context);
+        return true;
+    }
+
+    public static synchronized boolean markCoreBusyIfCurrent(
+        Context context, String runId, String taskId, int cycle
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "WAITING_AI"
+        )) return false;
+        markBusySeen(context);
+        return true;
+    }
+
+    /**
+     * A stale failure event must never error or erase a new run. Use a durable
+     * terminal write for Core so process restart retains the failure evidence.
+     */
+    public static synchronized boolean failCoreIfCurrent(
+        Context context, String runId, String taskId, int cycle, String error
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "WAITING_PROJECT", "REQUESTED", "VERIFYING_CONTEXT", "INPUT_READY", "WAITING_AI"
+        )) return false;
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(K_STATE, "ERROR")
+            .putString(K_LAST_ERROR, trim(error, 120))
+            .putInt(K_EVIDENCE_SEQ, live.evidenceSeq + 1)
+            .commit();
+    }
+
+    /** Revalidate after durable send claim, just before the irreversible click. */
+    public static synchronized boolean isCoreSendClaimStillCurrent(
+        Context context, String runId, String taskId, int cycle
+    ) {
+        Snapshot live = read(context);
+        return ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "WAITING_AI"
+        ) && live.sentCycle == live.cycle && live.sendCount == 1
+            && live.duplicateSendCount == 0 && live.projectBound
+            && "PROJECT".equals(live.projectMode);
     }
 
     public static void markVerifying(Context context) {
