@@ -1488,6 +1488,11 @@ export function activeGithubObjectiveSourceExclusion(issue){
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
+  const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
+  // Reconcile oldest-first: every attempted row advances its timestamp below,
+  // so a parked GitHub objective cannot stay beyond the fixed 100-row window.
+  // Keep targeted issueNumber filtering INSIDE SQL; filtering after LIMIT can
+  // silently miss the requested objective once the backlog is large.
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
     where metadata->>'source'='github'
       and (
@@ -1496,11 +1501,14 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
         or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
-    order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
-    limit 100`)).rows;
-  const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
+      ${issueFilter?"and metadata->>'issueNumber'=any($1::text[])":""}
+    order by updated_at asc, created_at asc, id asc
+    limit 100`,issueFilter?[[...issueFilter].map(String)]:[])).rows;
   let claims=0,results=0;
   for(const row of rows){
+    // Advance the fair-scan cursor even when GitHub is temporarily unavailable.
+    // Otherwise 100 permanently failing old rows can starve newer parked work.
+    await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
     const number=Number(row.metadata?.issueNumber); if(!number) continue;
     if(issueFilter&&!issueFilter.has(number))continue;
     let sourceIssueForGate=null;
