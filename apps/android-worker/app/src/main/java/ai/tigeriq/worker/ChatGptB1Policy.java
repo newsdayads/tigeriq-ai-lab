@@ -95,6 +95,28 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Structural message-role evidence only. Never infer sender identity from
+     * user-controlled text or content descriptions. Unsupported native UI
+     * hierarchies intentionally return UNKNOWN and cannot complete Core tasks.
+     */
+    public static String structuralMessageRole(String className, String viewId) {
+        String structure = (String.valueOf(className) + " " + String.valueOf(viewId))
+            .toLowerCase(java.util.Locale.ROOT);
+        boolean assistant = structure.contains("assistant_message")
+            || structure.contains("message_assistant")
+            || structure.contains("assistant_response")
+            || structure.contains("response_assistant")
+            || structure.contains("bot_message")
+            || structure.contains("message_bot");
+        boolean user = structure.contains("user_message")
+            || structure.contains("message_user")
+            || structure.contains("human_message")
+            || structure.contains("message_human");
+        if (assistant == user) return "UNKNOWN";
+        return assistant ? "ASSISTANT" : "USER";
+    }
+
+    /**
      * A matching clickable chat quote is not a Project selector. Require
      * verified ancestry inside a semantic navigation drawer/projects list,
      * excluding all conversation/message/composer subtrees. No coordinate
