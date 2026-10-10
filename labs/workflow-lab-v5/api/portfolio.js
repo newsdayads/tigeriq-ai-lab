@@ -16,14 +16,18 @@ const root='https://api.github.com/repos/newsdayads/tigeriq-ai-lab';
 const issues=[];let complete=false;let pagesFetched=0;let stopReason=null;let nextSince=null;let lastTimestamp=null;
 for(let page=1;page<=PAGE_LIMIT;page++){
 const params=new URLSearchParams({state:'all',per_page:'100',sort:'updated',direction:'asc',since,page:String(page)});
-const response=await fetch(root+'/issues?'+params.toString(),{headers:{Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Workflow-Lab-ReadOnly'},signal:controller.signal});
-if(!response.ok){
-  const reason='GITHUB_HTTP_'+response.status+'_PAGE_'+page;
-  // Preserve verified rows but never claim complete coverage after an API fault.
+let list;
+try{
+  const response=await fetch(root+'/issues?'+params.toString(),{headers:{Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Workflow-Lab-ReadOnly'},signal:controller.signal});
+  if(!response.ok)throw Error('GITHUB_HTTP_'+response.status+'_PAGE_'+page);
+  list=await response.json();
+  if(!Array.isArray(list))throw Error('GITHUB_SCHEMA_PAGE_'+page);
+}catch(err){
+  // Keep valid earlier pages on timeout/transport/schema failure; never assert complete.
+  const reason=String(err?.message||err).startsWith('GITHUB_')?String(err.message):'GITHUB_FETCH_ERROR_PAGE_'+page;
   if(pagesFetched>0){stopReason=reason;break}
   throw Error(reason);
 }
-const list=await response.json();if(!Array.isArray(list))throw Error('GITHUB_SCHEMA');
 pagesFetched++;
 for(const item of list)if(!item.pull_request)issues.push({number:item.number,title:item.title,body:String(item.body||'').slice(0,1500),state:item.state,state_reason:item.state_reason||null,updated_at:item.updated_at,created_at:item.created_at,closed_at:item.closed_at,html_url:item.html_url,assignee:item.assignee?.login||null,labels:(item.labels||[]).map(l=>l.name).filter(Boolean)});
 if(list.length){lastTimestamp=list[list.length-1].updated_at;}
