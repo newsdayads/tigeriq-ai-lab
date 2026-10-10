@@ -23,9 +23,9 @@
 **Ngoại lệ:** event USB trùng, luồng camera xuất hiện rồi mất nhanh, quyền USB không cấp.
 
 ### UC-03 — Rời số R
-**Khi:** trạng thái R không còn hoặc camera mất tín hiệu đã qua xác nhận chống rung.
+**Khi:** có bằng chứng **R=OFF đáng tin cậy** từ đường kích hoạt đã được kiểm chứng, hoặc người dùng chủ động đóng chế độ camera thủ công khi xe đang an toàn.
 **Thì:** ẩn/đóng cửa sổ camera theo cài đặt, chuyển về chính xác bố cục trước đó; không tự đóng/kết thúc các app bản đồ.
-**Lưu ý:** không suy diễn 'USB detach = rời R' nếu thiết bị hỗ trợ cách truyền tín hiệu khác.
+**Không được suy diễn:** mất frame, tín hiệu video, stream hoặc USB không tự chứng minh xe đã rời số R. Khi R vẫn ON hoặc **chưa xác định**, phải hiện rõ `CAMERA_UNAVAILABLE`, không hiển thị khung hình cũ như hình sống và không tự khôi phục bố cục chỉ vì mất hình. Chỉ dùng quy tắc kết thúc theo tín hiệu sau khi đo và nghiệm thu được mối liên hệ tín hiệu↔R trên thiết bị thật.
 
 ### UC-04 — Camera không tự xuất hiện
 **Khi:** USB phát hiện nhưng không có frame/không thấy cửa sổ.
