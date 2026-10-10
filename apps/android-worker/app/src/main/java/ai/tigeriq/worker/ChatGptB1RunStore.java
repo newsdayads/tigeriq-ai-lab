@@ -268,6 +268,22 @@ public final class ChatGptB1RunStore {
             .commit();
     }
 
+    /**
+     * A delayed Core callback may have inspected a previous task before a
+     * replacement or cancellation. Revalidate the durable lease immediately
+     * before native composer editing; manual B1 is unchanged.
+     */
+    public static synchronized boolean isCoreComposerMutationStillCurrent(
+        Context context, String runId, String taskId, int cycle, String prompt
+    ) {
+        Snapshot live = read(context);
+        return ChatGptB1Policy.canMutateObservedCoreRun(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle, live.state,
+            "REQUESTED", "VERIFYING_CONTEXT"
+        ) && live.projectBound && "PROJECT".equals(live.projectMode)
+            && prompt != null && prompt.equals(live.customPrompt);
+    }
+
     /** Revalidate after durable send claim, just before the irreversible click. */
     public static synchronized boolean isCoreSendClaimStillCurrent(
         Context context, String runId, String taskId, int cycle
