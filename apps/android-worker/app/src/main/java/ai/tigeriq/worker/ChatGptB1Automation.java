@@ -359,11 +359,9 @@ public final class ChatGptB1Automation {
     }
 
     /**
-     * A Core lease must see its actual user prompt in a semantic message node,
-     * followed IN TREE ORDER by an assistant message containing the token.
-     * Message roles come only from app-owned class/resource IDs (never user
-     * text, labels or content descriptions). Unknown accessibility structure
-     * fails closed, pending a real device inspection.
+     * Scan structurally attributed transcript nodes in document order.
+     * The platform-independent matcher makes old-token/duplicate-prompt
+     * refusal executable under ordinary Android Worker JUnit.
      */
     static String coreResponseTextContaining(
         AccessibilityNodeInfo root, String token, String prompt, boolean sendClaimed
@@ -371,26 +369,17 @@ public final class ChatGptB1Automation {
         if (root == null || !sendClaimed || text(token).isEmpty() || text(prompt).isEmpty()) {
             return "";
         }
-        boolean sentPromptSeen = false;
-        String wantedToken = normalize(token);
+        ChatGptB1Policy.CoreReplyMatcher matcher =
+            new ChatGptB1Policy.CoreReplyMatcher(prompt, token, sendClaimed);
         for (AccessibilityNodeInfo node : preorderNodes(root)) {
             if (!node.isVisibleToUser() || node.isEditable()) continue;
             String role = trustedMessageRole(node, root);
             if (role.isEmpty()) continue;
             String raw = text(node.getText());
             if (raw.isEmpty()) raw = text(node.getContentDescription());
-            if ("USER".equals(role) && raw.equals(text(prompt))) {
-                sentPromptSeen = true;
-            } else if (ChatGptB1Policy.canAcceptCoreResponseEvidence(
-                role, sentPromptSeen, sendClaimed
-            ) && normalize(raw).contains(wantedToken)) {
-                // Do not accept a user/composer echo; do not strip the token
-                // out of a message that must be attributed to the assistant.
-                String candidate = raw.trim();
-                return candidate.length() > 4000 ? candidate.substring(0, 4000) : candidate;
-            }
+            matcher.observe(role, raw);
         }
-        return "";
+        return matcher.verifiedReply();
     }
 
     /** Refuse send if a matching task transcript already existed beforehand. */
@@ -398,17 +387,17 @@ public final class ChatGptB1Automation {
         AccessibilityNodeInfo root, String prompt, String token
     ) {
         if (root == null || text(prompt).isEmpty() || text(token).isEmpty()) return true;
-        String wantedToken = normalize(token);
+        ChatGptB1Policy.CoreReplyMatcher matcher =
+            new ChatGptB1Policy.CoreReplyMatcher(prompt, token, false);
         for (AccessibilityNodeInfo node : preorderNodes(root)) {
             if (!node.isVisibleToUser() || node.isEditable()) continue;
             String role = trustedMessageRole(node, root);
             if (role.isEmpty()) continue;
             String raw = text(node.getText());
             if (raw.isEmpty()) raw = text(node.getContentDescription());
-            if ("USER".equals(role) && raw.equals(text(prompt))) return true;
-            if ("ASSISTANT".equals(role) && normalize(raw).contains(wantedToken)) return true;
+            matcher.observe(role, raw);
         }
-        return false;
+        return matcher.hasPreexistingTaskTranscript();
     }
 
     /** Role evidence must reach the live root and never cross composer nodes. */
