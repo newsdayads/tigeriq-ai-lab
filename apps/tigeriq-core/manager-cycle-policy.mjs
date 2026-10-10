@@ -28,6 +28,26 @@ export function managerCycleGuard({managerCycles=0,progressed=false,maxCycles=MA
 }
 
 /**
+ * Observe terminal-job progress using its own durable watermark, not objective
+ * updated_at: GitHub reconciliation legitimately refreshes that timestamp on
+ * every scan, even when a manager's just-finished job is the only real progress.
+ * For pre-watermark active objectives with a nonzero retry budget, grant exactly
+ * one migration reset when a completed job exists, then persist the watermark.
+ */
+export function managerTerminalProgressPlan({latestTerminalAt,observedTerminalAt,managerCycles=0}={}){
+  const latest=timestampMs(latestTerminalAt);
+  const observed=timestampMs(observedTerminalAt);
+  if(!Number.isFinite(latest))return {progressed:false,checkpoint:false,observedAt:null};
+  const newCompletion=Number.isFinite(observed)&&latest>observed;
+  const firstObservation=!Number.isFinite(observed);
+  return {
+    progressed:newCompletion||(firstObservation&&Number(managerCycles)>0),
+    checkpoint:firstObservation||newCompletion,
+    observedAt:new Date(latest).toISOString(),
+  };
+}
+
+/**
  * GitHub acceptance/review gates are evidence-driven, not model-driven.
  * Park the manager only where GitHub intake can watch for accepted evidence
  * or a new source revision. Other objectives keep a bounded retry budget.
