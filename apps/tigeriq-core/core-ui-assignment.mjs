@@ -9,6 +9,11 @@ const ALLOWED_TARGET_REPOSITORIES=new Set([DEFAULT_TARGET_REPOSITORY.toLowerCase
 const ALL_WORKERS=['NV02','NV03','NV04'];
 const WORKERS=['NV03','NV04'];
 // Default disabled. Activation requires a separately verified global claim/lease and source-specific runtime mode.
+export function coreUiNv03CoreRoutingDisabled(env=process.env){
+  // Owner direct 2026-10-10: NV03 is an external, GitHub-self-pull UI worker just like NV02.
+  // A separate switch fences Core assignment without pretending the global GitHub lease is verified.
+  return String(env?.TIGERIQ_NV03_CORE_DISPATCH_DISABLED||'')==='1';
+}
 export function coreUiNv03SelfPullFenced(env=process.env){
   return String(env?.TIGERIQ_NV03_SELF_PULL_MODE||'')==='GITHUB_SELF_PULL'
     && String(env?.TIGERIQ_NV03_CORE_ROUTE_FENCED||'')==='1'
@@ -156,7 +161,7 @@ export async function loadCoreUiExactHeadContext({fetchImpl=fetch,owner=OWNER,re
 
 export function selectCoreUiWorker(capability='general'){
   const cap=String(capability||'general').toLowerCase();
-  return cap==='review'?'NV03':(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
+  return cap==='review'?(coreUiNv03CoreRoutingDisabled()?'NV04':'NV03'):(cap==='research'||cap==='deep_research'||cap==='second_opinion')?'NV04':null;
 }
 
 function explicitUiWorkerRequested(body=''){
@@ -191,7 +196,7 @@ export function parseCoreUiIssue(issue){
   const implementers=new Set(['IMPLEMENTER_EMPLOYEE','IMPLEMENTER','CODING_EXECUTOR']
     .map((key)=>String(value(body,key)||'').trim().toUpperCase())
     .filter((workerId)=>WORKERS.includes(workerId)));
-  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview||genericReviewOverflow)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId));
+  const eligibleWorkerIds=((coreReviewOverflow||flexibleReview||genericReviewOverflow)?WORKERS:[explicitWorker]).filter((workerId)=>WORKERS.includes(workerId)&&!implementers.has(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()));
   if(!eligibleWorkerIds.length)return null;
   const resourceScope=String(value(body,'RESOURCE_SCOPE')||'').trim();if(!resourceScope)return null;
   if(/^APP_CHROME_/i.test(resourceScope)||/\[APP-CHROME\]/i.test(String(issue.title||''))||/apps\/chrome-controller\//i.test(body))return null;
@@ -238,7 +243,7 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
   ].filter(Boolean).join('\n');
 }
 
-function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
+function bindings(){return Object.fromEntries(ALL_WORKERS.map(workerId=>[workerId,{workerId,state:WORKERS.includes(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled())?'READY_UNASSIGNED':'EXTERNAL_TO_CORE',currentWorkOrder:null}]));}
 export function readyUnassignedCoreUiSnapshot({observedAt=new Date().toISOString(),revision='core-ui-v3:ready-unassigned',previousJob,reason='NO_CURRENT_UI_ASSIGNMENT'}={}){
   return {source:'CORE',authority:'CORE',observedAt,revision,assignmentState:'READY_UNASSIGNED',previousJob,nextJobs:[],requiredWorkers:[],workerBindings:bindings(),reason};
 }
@@ -325,7 +330,7 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
   // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
-  if(workerId==='NV03'&&coreUiNv03SelfPullFenced())return null;
+  if(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced()))return null;
   if(await row(pool,{workerId}))return null;
   const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
@@ -366,7 +371,7 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   const spec=parseCoreUiIssue(issue);
   if(!spec)return item;
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
-  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker&&!(id==='NV03'&&coreUiNv03SelfPullFenced()))){
+  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker&&!(id==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))){
     if(await row(pool,{workerId}))continue;
     const exactContext=await loadCoreUiExactHeadContext({fetchImpl,owner,repo,token,spec});
     if(!exactContext.ok)continue;
@@ -394,14 +399,14 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
   const current=[],missingWorkers=[];
-  for(const workerId of WORKERS){
+  for(const workerId of WORKERS.filter(id=>id!=='NV03'||!coreUiNv03CoreRoutingDisabled())){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
-    else if(!(workerId==='NV03'&&coreUiNv03SelfPullFenced()))missingWorkers.push(workerId);
+    else if(!(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))missingWorkers.push(workerId);
   }
   if(missingWorkers.length){
     let issues,sourceError;
