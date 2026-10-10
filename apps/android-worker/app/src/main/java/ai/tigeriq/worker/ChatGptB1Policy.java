@@ -169,6 +169,21 @@ public final class ChatGptB1Policy {
         }
     }
 
+    /**
+     * Core receipt eligibility must be checked BEFORE reading any candidate
+     * token. A late response or an in-flight stream cannot be marked COMPLETE.
+     * For unknown/reversed wall clocks, fail closed until a safe retry/error.
+     */
+    public static boolean canAcceptCoreReplyWithinWindow(
+        long sentAtMs, long nowMs, long timeoutMs, boolean generationInProgress
+    ) {
+        return sentAtMs > 0L
+            && nowMs >= sentAtMs
+            && timeoutMs > 0L
+            && nowMs - sentAtMs <= timeoutMs
+            && !generationInProgress;
+    }
+
     /** A token alone cannot establish the sender or freshness of a Core reply. */
     public static boolean canAcceptCoreResponseEvidence(
         String senderRole, boolean sentPromptSeen, boolean durableSendClaim
