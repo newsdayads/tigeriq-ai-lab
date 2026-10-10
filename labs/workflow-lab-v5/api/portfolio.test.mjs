@@ -176,3 +176,32 @@ test('metadata extraction never promotes incidental prose to canonical project f
  assert.equal(res.body.issues[0].project_id,null);
  assert.equal(res.body.issues[0].current_state,null);
 });
+
+test('current NEXT_ACTION and ASSIGNEE precede stale historical aliases irrespective of key name',async()=>{
+ const body=[
+   '## CURRENT OVERRIDE — 2026-10-10',
+   'PROJECT_ID=dexcam-personal',
+   'ASSIGNEE=NV02',
+   'NEXT_ACTION=Review physical DeX camera measurements',
+   'CURRENT_STATE=SPEC_DOCUMENTATION_REVIEW_PENDING',
+   '---',
+   '## HISTORICAL — 2026-10-08',
+   'NEXT=Old action: start unauthorized APK build',
+   'TARGET_EMPLOYEE=NV04',
+   'CURRENT_STATE=OLD_UNVERIFIED',
+ ].join('\\n');
+ const {res}=await invoke(()=>response(200,[{...fakeIssue(4625),body}]));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues[0].project_id,'dexcam-personal');
+ assert.equal(res.body.issues[0].worker,'NV02');
+ assert.equal(res.body.issues[0].next_action,'Review physical DeX camera measurements');
+ assert.equal(res.body.issues[0].current_state,'SPEC_DOCUMENTATION_REVIEW_PENDING');
+});
+
+test('current NEXT and TARGET_EMPLOYEE remain supported without new aliases',async()=>{
+ const body='NEXT=Resume verified review\\nTARGET_EMPLOYEE=NV03\\nASSIGNEE=NV02';
+ const {res}=await invoke(()=>response(200,[{...fakeIssue(4457),body}]));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues[0].next_action,'Resume verified review');
+ assert.equal(res.body.issues[0].worker,'NV03');
+});
