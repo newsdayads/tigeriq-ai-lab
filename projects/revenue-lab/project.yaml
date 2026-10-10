@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: revenue-lab
 name: Revenue Lab
 kind: project
+portfolio_group_id: revenue-lab
 order: 60
 source_roots:
   - tools

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 
@@ -64,7 +65,417 @@ describe('GitHub Core intake guardrails',()=>{
 
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
+  it('honors current safety and legacy-contract denials ahead of superseded true flags',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'RESOURCE_SCOPE=CURRENT_SAFETY_CONTRACT','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ];
+    for(const key of [
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
+      const current=active.map((line)=>line===key+'=true'?key+'=false':line).join('\n');
+      const issue={...base,body:current+'\n\n## HISTORICAL, SUPERSEDED\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'EXPLICIT_SAFETY_FLAG_DISABLED'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const malformed={...base,body:active.join('\n').replace('NO_PAID_COST=true','NO_PAID_COST=PENDING')+'\nNO_PAID_COST=true'};
+    expect(safeAutoWorkAdmission(malformed).reason).toBe('EXPLICIT_SAFETY_FLAG_DISABLED');
+    expect(parseExecutableIssue(malformed)).toBeNull();
+
+    const safe={...base,body:active.join('\n')};
+    expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true});
+    const safeSpec=parseExecutableIssue(safe);
+    expect(safeSpec).toMatchObject({number:588,admissionMode:'SAFE_P1_P5_POLICY',dispatchLane:'CORE_REASONING'});
+    expect(sameRevisionFallbackRearmDecision({
+      prior:{status:'blocked',metadata:{coreFallbackReleased:true,admissionMode:safeSpec.admissionMode,dispatchLane:safeSpec.dispatchLane,sourceRevision:safeSpec.sourceRevision}},
+      spec:safeSpec,rearmCount:0,
+    })).toMatchObject({eligible:true,reason:'TRANSIENT_FALLBACK_RELEASED'});
+
+    // A historical true may not construct the legacy gap exception when
+    // the current header explicitly forbids a no-code/no-shell contract.
+    for(const key of ['NO_CODE_CHANGE','NO_PC01_SHELL']){
+      const issue={...base,body:base.body.replace(key+'=true',key+'=false')+'\n## HISTORICAL\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(issue).reason).toBe('RESOURCE_SCOPE_REQUIRED');
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+  });
+
+  it('blocks safety grants present only in historical issue sections',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'RESOURCE_SCOPE=SAFETY_HISTORY_GUARD','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    const safe={...base,body:active};
+    expect(safeAutoWorkAdmission(safe)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    expect(parseExecutableIssue(safe)).toMatchObject({number:588,admissionMode:'SAFE_P1_P5_POLICY'});
+    // Existing Owner overrides often begin with a Markdown heading. Its first
+    // section is current policy, and later headings are historical only.
+    const titled={...base,body:'## CURRENT OWNER OVERRIDE\n'+active+'\n## HISTORICAL CONTRACT\nNO_SECURITY_BOUNDARY_CHANGE=false'};
+    expect(safeAutoWorkAdmission(titled)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    const titledStale={...base,body:'## CURRENT OWNER OVERRIDE\n'+active.replace('NO_PAID_COST=true','')+'\n## HISTORICAL CONTRACT\nNO_PAID_COST=true'};
+    expect(safeAutoWorkAdmission(titledStale)).toMatchObject({eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'});
+    expect(parseExecutableIssue(titledStale)).toBeNull();
+    // The canonical #2949 body has a horizontal divider before historical
+    // overrides. The divider alone must end the current authorization section.
+    for(const divider of ['---', '--- HISTORICAL ONLY ---', '***']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const body=prefix+active.replace('NO_SECURITY_BOUNDARY_CHANGE=true','')
+          +'\n'+divider+'\nNO_SECURITY_BOUNDARY_CHANGE=true';
+        const denied={...base,body};
+        expect(safeAutoWorkAdmission(denied)).toMatchObject({
+          eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT',
+        });
+        expect(parseExecutableIssue(denied)).toBeNull();
+      }
+    }
+    for(const key of ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN']){
+      const missing=active.replace(key+'=true','');
+      const stale={...base,body:missing+'\n## HISTORICAL CONTRACT\n'+key+'=true'};
+      expect(safeAutoWorkAdmission(stale)).toMatchObject({eligible:false,reason:'HISTORICAL_ONLY_SAFETY_GRANT'});
+      expect(parseExecutableIssue(stale)).toBeNull();
+    }
+  });
+
+  it('never borrows mutation scope or routing authorization from historical issue sections',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=CURRENT_CORE_SCOPE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const separator of ['## HISTORICAL', '--- HISTORICAL ONLY ---']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const archivedScope={...base,body:prefix+active.replace('RESOURCE_SCOPE=CURRENT_CORE_SCOPE','')
+          +'\n'+separator+'\nRESOURCE_SCOPE=OLD_SCOPE'};
+        expect(safeAutoWorkAdmission(archivedScope)).toMatchObject({
+          eligible:false,reason:'HISTORICAL_ONLY_RESOURCE_SCOPE',
+        });
+        expect(parseExecutableIssue(archivedScope)).toBeNull();
+
+        const historicalRoute={...base,body:prefix+active.replace('CAPABILITY=reasoning','')
+          +'\n'+separator+'\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06'
+          +'\nPC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read"}'};
+        expect(safeAutoWorkAdmission(historicalRoute)).toMatchObject({
+          eligible:true,reason:'SAFE_P1_P5_POLICY',classification:{route:'CORE_REASONING'},
+        });
+        expect(parseExecutableIssue(historicalRoute)).toMatchObject({
+          dispatchLane:'CORE_REASONING',resourceScope:'CURRENT_CORE_SCOPE',
+          pcOperatorDirectAction:null,
+        });
+
+        const explicitCurrent={...base,body:prefix+active
+          +'\n'+separator+'\nCAPABILITY=pc_operator\nTARGET_EMPLOYEE=NV06'
+          +'\nPC_OPERATOR_DIRECT_ACTION_JSON={"action":"core_status_read"}'};
+        expect(parseExecutableIssue(explicitCurrent)).toMatchObject({
+          dispatchLane:'CORE_REASONING',resourceScope:'CURRENT_CORE_SCOPE',
+          pcOperatorDirectAction:null,
+        });
+      }
+    }
+  });
+
+  it('keeps priority, owner policy, writer lease and release grants inside the current contract',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=CURRENT_CORE_SCOPE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const separator of ['## HISTORICAL', '--- HISTORICAL ONLY ---']){
+      for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+        const current=prefix+active;
+        const archived=[
+          ['PRIORITY=P2','P0_OR_INVALID_PRIORITY'],
+          ['OWNER_POLICY=AUTO','HISTORICAL_ONLY_OWNER_POLICY'],
+          ['MUTATION_OWNER=CORE_DYNAMIC_LEASE','HISTORICAL_ONLY_MUTATION_OWNER'],
+        ];
+        for(const [grant,reason] of archived){
+          const historicalOnly={...base,body:current.replace(grant,'')+'\n'+separator+'\n'+grant};
+          expect(safeAutoWorkAdmission(historicalOnly)).toMatchObject({eligible:false,reason});
+          expect(parseExecutableIssue(historicalOnly)).toBeNull();
+        }
+        const historicalOwner={...base,body:current+'\n'+separator+'\nOWNER_DIRECT=true\nCORE_TARGET_STRICT=true'};
+        expect(safeAutoWorkAdmission(historicalOwner)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+        expect(parseExecutableIssue(historicalOwner)).toMatchObject({
+          admissionMode:'SAFE_P1_P5_POLICY',ownerDirect:false,
+          dispatchLane:'CORE_REASONING',targetWorker:null,
+        });
+        const currentOwner={...base,body:current+'\nOWNER_DIRECT=true\n'+separator+'\nOWNER_DIRECT=false'};
+        expect(parseExecutableIssue(currentOwner)).toMatchObject({ownerDirect:true});
+
+        const release='PC_OPERATOR_DIRECT_ACTION_JSON={"action":"tigeriq_live_3150_production_deploy","expectedSha":"'+('a'.repeat(40))+'"}';
+        const disabled={...base,body:current.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')
+          +'\n'+separator+'\n'+release};
+        expect(safeAutoWorkAdmission(disabled)).toMatchObject({eligible:false,reason:'EXPLICIT_EXECUTION_DISABLED'});
+        expect(parseExecutableIssue(disabled)).toBeNull();
+      }
+    }
+  });
+
+  it('ignores historical execution denials that are absent from the active contract',()=>{
+    const active=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
+      'OWNER_POLICY=AUTO','RESOURCE_SCOPE=ACTIVE_HEADER_ARCHIVE_REGRESSION',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    // AUTO_QUEUE is absent in the current section. An obsolete EXCLUDED in
+    // historical notes must never reject an otherwise valid current contract.
+    // Preserve hard denial when the CURRENT section itself says EXCLUDED.
+    for(const separator of ['## HISTORICAL CONTRACT','--- HISTORICAL ONLY ---']){
+      const current={...base,body:active+'\n'+separator+'\nAUTO_QUEUE=EXCLUDED_OLD'};
+      expect(safeAutoWorkAdmission(current)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+      expect(parseExecutableIssue(current)).toMatchObject({admissionMode:'SAFE_P1_P5_POLICY'});
+      expect(activeGithubObjectiveSourceExclusion(current)).toBe('');
+      const forbidden={...base,body:active+'\nAUTO_QUEUE=EXCLUDED_CURRENT\n'+separator+'\nAUTO_QUEUE=INCLUDED'};
+      expect(safeAutoWorkAdmission(forbidden)).toMatchObject({eligible:false,reason:'AUTO_QUEUE_EXCLUDED'});
+      expect(parseExecutableIssue(forbidden)).toBeNull();
+    }
+    // A missing current executable flag must not be authorized by stale true
+    // markers; the legacy route still needs all four current flags.
+    const missing={...base,body:active.replace('TIGERIQ_EXECUTABLE=true','')+'\n## HISTORICAL\nTIGERIQ_EXECUTABLE=true'};
+    expect(safeAutoWorkAdmission(missing)).toMatchObject({eligible:false,reason:'EXECUTION_FLAG_REQUIRED'});
+    expect(parseExecutableIssue(missing)).toBeNull();
+    expect(activeGithubObjectiveSourceExclusion(missing)).toBe('EXECUTION_FLAG_REQUIRED');
+  });
+
+  it('requires each legacy compatibility flag in the current execution section',()=>{
+    const keys=['TIGERIQ_EXECUTABLE','OWNER_POLICY','NO_CODE_CHANGE','NO_PC01_SHELL'];
+    for(const prefix of ['', '## CURRENT OWNER OVERRIDE\n']){
+      const current=prefix+base.body;
+      expect(parseExecutableIssue({...base,body:current})).toMatchObject({admissionMode:'LEGACY_EXECUTION_FLAGS'});
+      for(const key of keys){
+        const value=key==='OWNER_POLICY'?'AUTO':'true';
+        const missing=current.replace(key+'='+value,'');
+        const stale={...base,body:missing+'\n## HISTORICAL CONTRACT\n'+key+'='+value};
+        expect(parseExecutableIssue(stale)).toBeNull();
+      }
+    }
+  });
+
+  it('never revives a disabled/excluded historical Work Order through legacy true flags',()=>{
+    const history=[
+      '## Historical execution (superseded)',
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    ].join('\n');
+    for(const [current,reason] of [
+      [['TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_REVIEW_CHANGES_REQUIRED','CURRENT_STATE=BLOCKED_REVIEW'], 'EXPLICIT_EXECUTION_DISABLED'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=EXCLUDED_TERMINAL','CURRENT_STATE=READY'], 'AUTO_QUEUE_EXCLUDED'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','CURRENT_STATE=BLOCKED_INDEPENDENT_REVIEW'], 'NON_EXECUTABLE_STATE'],
+      [['TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','CURRENT_STATE=READY','OWNER_HOLD=true'], 'OWNER_OR_HOLD_GATE'],
+    ]){
+      const issue={...base,body:[
+        ...current,'PRIORITY=P2','CAPABILITY=reasoning','RESOURCE_SCOPE=LEGACY_FAIL_CLOSED',
+        'OWNER_POLICY=AUTO','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+        history,
+      ].join('\n')};
+      expect(safeAutoWorkAdmission(issue).reason).toBe(reason);
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+  });
+
+  it('rejects terminal CURRENT_STATE values even when GitHub issue is still open and no terminal label exists',()=>{
+    const safeFlags=[
+      'RESOURCE_SCOPE=TERMINAL_ADMISSION_REGRESSION',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+    ].join('\n');
+    for(const state of ['DONE_VERIFIED','COMPLETED','FAILED','FAILED_RETRY_EXHAUSTED','FAILED_REVIEW','TERMINAL_BLOCKED','CANCELLED','CANCELED','CLOSED']){
+      const issue={...base,body:base.body+'\nCURRENT_STATE='+state+'\n'+safeFlags+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const multiPhase={...base,body:base.body+'\nCURRENT_STATE=READY_NEXT_PHASE\n'+safeFlags+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'};
+    expect(safeAutoWorkAdmission(multiPhase).eligible).toBe(true);
+    expect(parseExecutableIssue(multiPhase)).toMatchObject({keepOpenOnStepComplete:true});
+  });
+
+  it('never admits superseded or not-planned open issues, even with a safe historical READY header',()=>{
+    const safeFlags=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO','AUTO_QUEUE=INCLUDED',
+      'CAPABILITY=reasoning','RESOURCE_SCOPE=SUPERSEDED_ISSUE_GUARD',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    ].join('\n');
+    for(const state of ['SUPERSEDED','SUPERSEDED_BY_NEW_WORK','NOT_PLANNED']){
+      const issue={...base,body:safeFlags+'\nCURRENT_STATE='+state};
+      expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(issue)).toBeNull();
+    }
+    const supersededBy={...base,body:safeFlags+'\nCURRENT_STATE=READY_FOR_SYSTEM_EXECUTION\nSUPERSEDED_BY=#9000'};
+    expect(safeAutoWorkAdmission(supersededBy)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+    expect(parseExecutableIssue(supersededBy)).toBeNull();
+    const eligible={...base,body:safeFlags+'\nCURRENT_STATE=READY_FOR_SYSTEM_EXECUTION'};
+    expect(safeAutoWorkAdmission(eligible)).toMatchObject({eligible:true});
+    expect(parseExecutableIssue(eligible)).toMatchObject({number:588});
+  });
+
+  it('does not retry a terminal-blocked legacy Work Order but retains safe legacy compatibility',()=>{
+    const terminal={...base,labels:[{name:'tigeriq:terminal-blocked'}]};
+    expect(safeAutoWorkAdmission(terminal).reason).toBe('TERMINAL_BLOCKED');
+    expect(parseExecutableIssue(terminal)).toBeNull();
+    expect(safeAutoWorkAdmission(base).reason).toBe('RESOURCE_SCOPE_REQUIRED');
+    expect(parseExecutableIssue(base)).toMatchObject({admissionMode:'LEGACY_EXECUTION_FLAGS'});
+  });
+
   it('accepts an explicitly safe autonomous issue',()=>{expect(parseExecutableIssue(base)).toMatchObject({number:588,priority:'P2',capability:'reasoning'});});
+  it('allows ONLY Owner-reclassified #2949 to enter P2 Android system queue',()=>{
+    const body=[
+      'PRIORITY=P2',
+      'OWNER_APPROVED_ANDROID_AUTO_P2=true',
+      'OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED',
+      'TIGERIQ_EXECUTABLE=true',
+      'CAPABILITY=coding',
+      'EXECUTION_SURFACE=CODING',
+      'RESOURCE_SCOPE=ANDROID_NV102_S10_5G_24X7_ACCEPTANCE',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      'BLOCKED_BY=NONE',
+      'NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true',
+      'NO_DIRECT_MAIN=true',
+      'NO_RDC=true',
+      'NO_CODEX=true',
+      'NO_PC01_SHELL=true',
+      'APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\n');
+    const issue={number:2949,title:'[P2][ANDROID][NV102] S10 worker',state:'open',body};
+    expect(androidProductAutoExecutionExclusion(issue)).toBe('');
+    expect(safeAutoWorkAdmission(issue)).toMatchObject({eligible:true,reason:'SAFE_P1_P5_POLICY'});
+    // The first titled Owner override is current. Later grant flags cannot
+    // rescue missing scope-specific authorization or Android tool denials.
+    const titledCurrent={...issue,body:'## OWNER OVERRIDE\n'+body+'\n## HISTORICAL\nNO_RDC=false'};
+    expect(androidProductAutoExecutionExclusion(titledCurrent)).toBe('');
+    for(const key of [
+      'OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL',
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
+      for(const currentPrefix of ['', '## OWNER OVERRIDE\n']){
+        const stale={...issue,body:currentPrefix+body.replace(key+'=true','')
+          +'\n## HISTORICAL\n'+key+'=true'};
+        expect(androidProductAutoExecutionExclusion(stale)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+        expect(parseExecutableIssue(stale)).toBeNull();
+      }
+    }
+    for(const currentPrefix of ['', '## OWNER OVERRIDE\n']){
+      const stale={...issue,body:currentPrefix+body.replace('APP_CHROME_MUTATION=FORBIDDEN','')
+        +'\n## HISTORICAL\nAPP_CHROME_MUTATION=FORBIDDEN'};
+      expect(androidProductAutoExecutionExclusion(stale)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    }
+    for(const divider of ['---', '--- HISTORICAL ONLY ---', '***']){
+      for(const prefix of ['', '## OWNER OVERRIDE\n']){
+        const stale={...issue,body:prefix+body.replace('OWNER_APPROVED_ANDROID_AUTO_P2=true','')
+          +'\n'+divider+'\nOWNER_APPROVED_ANDROID_AUTO_P2=true'};
+        expect(androidProductAutoExecutionExclusion(stale)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+        expect(parseExecutableIssue(stale)).toBeNull();
+      }
+    }
+    expect(parseExecutableIssue(issue)).toMatchObject({
+      number:2949,priority:'P2',route:'CODING',
+      requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',capability:'reasoning',
+    });
+    // The Owner's Android P2 exception must not bypass the terminal-state
+    // admission fence integrated from the existing Core work #4576.
+    for(const terminalState of ['DONE_VERIFIED','FAILED_RETRY_EXHAUSTED','CANCELLED','CLOSED']){
+      const ended={...issue,body:body.replace('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION','CURRENT_STATE='+terminalState)};
+      expect(androidProductAutoExecutionExclusion(ended)).toBe('');
+      expect(safeAutoWorkAdmission(ended)).toMatchObject({eligible:false,reason:'NON_EXECUTABLE_STATE'});
+      expect(parseExecutableIssue(ended)).toBeNull();
+    }
+    // Canonical #2949 has a current Owner P2 override followed by historical
+    // P0/queue-excluded records. Intake must use the first current contract
+    // without relabeling other Android work or accepting the historical P0.
+    const historicalBody=body+[
+      '',
+      '--- HISTORICAL ONLY ---',
+      'PRIORITY=P0',
+      'AUTO_QUEUE=EXCLUDED_P0_OWNER_DIRECT',
+      'CURRENT_STATE=WAIT_PIN_PR_GATES_AND_REVIEW',
+    ].join('\n');
+    const canonicalHistory={...issue,body:historicalBody};
+    expect(safeAutoWorkAdmission(canonicalHistory)).toMatchObject({eligible:true});
+    expect(parseExecutableIssue(canonicalHistory)).toMatchObject({
+      number:2949,priority:'P2',requiresCodingHandoff:true,dispatchLane:'CORE_REASONING',
+    });
+    expect(parseExecutableIssue({...canonicalHistory,number:3900})).toBe(null);
+    // A current explicit false cannot be overridden by historical true
+    // anywhere later in a long canonical Work Order document.
+    for(const key of [
+      'OWNER_APPROVED_ANDROID_AUTO_P2','NO_RDC','NO_CODEX','NO_PC01_SHELL',
+      'NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+      'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN',
+    ]){
+      const currentDenied=body.replace(key+'=true',key+'=false');
+      const historyOverride=currentDenied+['','--- HISTORICAL ONLY ---',key+'=true'].join('\n');
+      const conflicting={...issue,body:historyOverride};
+      expect(androidProductAutoExecutionExclusion(conflicting)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+      expect(safeAutoWorkAdmission(conflicting)).toMatchObject({
+        eligible:false,reason:'ANDROID_PRODUCT_OWNER_DIRECT',
+      });
+      expect(parseExecutableIssue(conflicting)).toBe(null);
+    }
+    const historicalAppChrome={
+      ...issue,
+      body:body.replace('APP_CHROME_MUTATION=FORBIDDEN','APP_CHROME_MUTATION=ALLOWED')
+        +'\nAPP_CHROME_MUTATION=FORBIDDEN',
+    };
+    expect(androidProductAutoExecutionExclusion(historicalAppChrome)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+
+    // Core's acceptance is a reasoning handoff, not proof that Coding Lane
+    // directly accepted the physical master. Never invent credentials/browser
+    // flags simply to force direct intake for a device workflow.
+    expect(parseCodingIssue(issue)).toBe(null);
+    expect(parseCodingIssue({
+      ...issue,body:body+'\nAUTONOMOUS_CODE=true\nZERO_COST=true',
+    })).toBe(null);
+    expect(parseExecutableIssue({...issue,number:3900})).toBe(null);
+    expect(parseExecutableIssue({...issue,title:'[P0][ANDROID][NV102] S10 worker'})).toBe(null);
+    expect(androidProductAutoExecutionExclusion({...issue,number:3900})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,title:'[P0][ANDROID][NV102] S10 worker'})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('PRIORITY=P2','PRIORITY=P0')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('OWNER_APPROVED_ANDROID_AUTO_P2=true','OWNER_APPROVED_ANDROID_AUTO_P2=false')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    expect(androidProductAutoExecutionExclusion({...issue,body:body.replace('RESOURCE_SCOPE=ANDROID_NV102_S10_5G_24X7_ACCEPTANCE','RESOURCE_SCOPE=ANDROID_OTHER')})).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+    for(const unsafe of [
+      ['NO_RDC=true','NO_RDC=false'],
+      ['NO_CODEX=true','NO_CODEX=false'],
+      ['NO_PC01_SHELL=true','NO_PC01_SHELL=false'],
+      ['APP_CHROME_MUTATION=FORBIDDEN','APP_CHROME_MUTATION=ALLOWED'],
+    ]){
+      const denied={...issue,body:body.replace(unsafe[0],unsafe[1])};
+      expect(androidProductAutoExecutionExclusion(denied)).toBe('ANDROID_PRODUCT_OWNER_DIRECT');
+      expect(safeAutoWorkAdmission(denied)).toMatchObject({
+        eligible:false,reason:'ANDROID_PRODUCT_OWNER_DIRECT',
+      });
+      expect(parseExecutableIssue(denied)).toBe(null);
+    }
+  });
+
   it('parses multi-phase keep-open lifecycle marker',()=>{
     const parsed=parseExecutableIssue({...base,body:base.body+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'});
     expect(parsed).toMatchObject({keepOpenOnStepComplete:true});
@@ -328,6 +739,35 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
+  it('never dispatches an archived-only PC ASSIGNED_ACTION while preserving the active #4456 layout',()=>{
+    const current=[
+      'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1',
+      'CAPABILITY=pc_operator','ASSIGNED_EXECUTOR=NV06','OWNER_DIRECT=true',
+      'RESOURCE_SCOPE=ACTIVE_PC_OPERATOR_ONLY',
+      'NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true'
+    ].join('\n');
+    const liveAction='## ASSIGNED_ACTION\ntigeriq_pc task_status taskName="TigerIQ Core Runtime Updater"\n\n## ACCEPTANCE\nPASS';
+    for(const prefix of ['', '## OWNER CURRENT EXECUTION\n']){
+      const issue={...base,body:prefix+current};
+      const archived={...issue,body:issue.body+'\n\n## HISTORICAL CONTRACT\n'+liveAction};
+      expect(parseExecutableIssue(archived)).toBeNull();
+      const archivedAfterDivider={...issue,body:issue.body+'\n\n--- HISTORICAL ONLY ---\n'+liveAction};
+      expect(parseExecutableIssue(archivedAfterDivider)).toBeNull();
+      // Real Owner work orders such as #4456 place the current instruction
+      // immediately after the active titled contract, not in its header.
+      const active={...issue,body:issue.body+'\n\n'+liveAction+'\n\n## HISTORICAL CONTRACT\n'+liveAction};
+      expect(parseExecutableIssue(active)).toMatchObject({
+        dispatchLane:'PC_OPERATOR',resourceScope:'ACTIVE_PC_OPERATOR_ONLY',
+        targetWorker:'NV06',pcOperatorDirectAction:null,
+      });
+      const intervening={...issue,body:issue.body+'\n\n## CHANGELOG\nignore\n\n'+liveAction};
+      expect(parseExecutableIssue(intervening)).toBeNull();
+    }
+  });
+
   it('fails closed on an invalid direct-action marker and preserves OpenClaw path when marker is absent',()=>{
     const basePc=[
       'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P1','CAPABILITY=pc_operator','OWNER_DIRECT=true',
@@ -428,7 +868,7 @@ describe('GitHub Core intake guardrails',()=>{
 
   it('treats an assigned API worker as non-strict for safe P1-P5 Core auto-work',()=>{
     const body=[
-      'PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','OWNER_POLICY=AUTO','CAPABILITY=reasoning','ASSIGNED_EXECUTOR=NV17',
       'RESOURCE_SCOPE=DYNAMIC_SAFE_SCOPE','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
       'AUTO_QUEUE=INCLUDED','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
       'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true'
@@ -495,6 +935,58 @@ describe('GitHub Core intake guardrails',()=>{
     expect(labelAdds).toBe(1);
     expect(resultComments).toBe(1);
     expect(row.metadata).toMatchObject({githubTerminalLabelSynced:true,githubResultReported:true});
+  });
+
+  it('retires stale active Core objectives after current terminal or safety denial but not transient wait',async()=>{
+    const baseline=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=SYNC_TERMINAL_GUARD','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    ];
+    const current=(...extras)=>baseline.concat(extras).join('\n');
+    const cases=[
+      ['terminal',current('CURRENT_STATE=SUPERSEDED_BY_NEW_WORK'),'NON_EXECUTABLE_STATE'],
+      ['current unsafe',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION').replace('NO_PAID_COST=true','NO_PAID_COST=false')+'\nNO_PAID_COST=true','EXPLICIT_SAFETY_FLAG_DISABLED'],
+      ['terminal label',current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION'),'TERMINAL_BLOCKED'],
+    ];
+    for(const [name,body,expectedReason] of cases){
+      const sourceIssue={number:897,state:'open',title:'[P1] Active Core objective',body,
+        labels:name==='terminal label'?[{name:'tigeriq:terminal-blocked'}]:[]};
+      expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe(expectedReason);
+      const row={id:'OBJ-GH-897',status:'active',summary:'previously running',metadata:{
+        source:'github',issueNumber:897,sourceRevision:'old',
+        githubClaimReported:true,githubResultReported:false,
+      }};
+      let retireCount=0,cleanCount=0;
+      const pool={async query(sql,params=[]){
+        if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
+        if(sql.includes('update tigeriq_objectives set status=$2')){
+          retireCount++;
+          row.status=params[1];row.summary=params[2];
+          Object.assign(row.metadata,JSON.parse(params[3]));
+          return {rowCount:1,rows:[]};
+        }
+        if(sql.includes('update tigeriq_jobs j')){cleanCount++;return {rowCount:0,rows:[]};}
+        throw new Error('unexpected_sql_for_retires: '+sql.slice(0,80));
+      }};
+      const fetchImpl=async()=>{throw new Error('unexpected_GitHub_mutation');};
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+      expect(retireCount).toBe(1);
+      expect(cleanCount).toBe(1);
+      expect(row.status).toBe('blocked');
+      expect(row.metadata).toMatchObject({
+        githubSourceExecutionExcluded:true,
+        githubSourceExecutionExclusionReason:expectedReason,
+        githubResultReported:true,
+      });
+    }
+    const safe=current('CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION');
+    const temporary=current('CURRENT_STATE=WAIT_RESOURCE');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'open',title:'[P1] Core',body:safe})).toBe('');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'open',title:'[P1] Core',body:temporary})).toBe('');
+    expect(activeGithubObjectiveSourceExclusion({number:897,state:'closed',title:'[P1] Core',body:safe})).toBe('NOT_OPEN_ISSUE');
   });
 
   it('keeps completed multi-phase Core issue open while reporting the step result',async()=>{

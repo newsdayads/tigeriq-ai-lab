@@ -69,6 +69,21 @@ function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[strin
   $d=[ordered]@{schema='TIGERIQ_RUNTIME_SOURCE_V1';sourcePath=$runtimeRepo;currentSha=$currentSha;previousSha=$previousSha;gateSha=$gateSha;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
   $tmp="$runtimeSourceState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeSourceState
 }
+function Resolve-DeployedSourceSha([string]$checkedOutSha,[string]$remoteSha){
+  # A reset of the worktree can finish before the deployment commit marker and
+  # process restart. In that case HEAD==remote alone is NOT an installed release.
+  if(-not $checkedOutSha -or $checkedOutSha -ne $remoteSha){return $checkedOutSha}
+  if(-not(Test-Path -LiteralPath $runtimeSourceState)){return $checkedOutSha}
+  try{
+    $meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop
+    if([string]$meta.sourcePath -ne $runtimeRepo){return $checkedOutSha}
+    $recorded=[string]$meta.currentSha
+    if($recorded -notmatch '^[a-f0-9]{40}$' -or $recorded -eq $remoteSha){return $checkedOutSha}
+    $knownCommit=Head $controlRepo ($recorded+'^{commit}')
+    if($knownCommit -ne $recorded){return $checkedOutSha}
+    return $recorded
+  }catch{return $checkedOutSha}
+}
 function Runtime-Source-Dirty(){
   if(-not(Test-Path -LiteralPath $runtimeRepo)){return $false}
   $inside=(& git -C $runtimeRepo rev-parse --is-inside-work-tree 2>$null|Out-String).Trim()
@@ -781,6 +796,7 @@ while($true){
       }
     }
     if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
     if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
