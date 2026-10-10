@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
+// @ts-expect-error JavaScript runtime helper without TypeScript declaration, covered by runtime tests.
 import {parseOwnerBacklogOrder,objectiveBacklogRank} from '../apps/tigeriq-core/owner-backlog-order.mjs';
 const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
 const fixture=`## OWNER CURRENT BACKLOG ORDER — 2026-10-10
