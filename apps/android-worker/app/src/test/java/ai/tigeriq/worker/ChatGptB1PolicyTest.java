@@ -205,6 +205,30 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void projectHeaderCannotBindCoreTaskWithoutFreshNavigationProof()
+        throws Exception {
+        // A normal chat can be named exactly TigerIQ AI Lab. A title+composer
+        // alone do not prove a genuine Core task's intended Project navigation.
+        String source = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int start = source.indexOf("private void maybeBindProjectFromStableContext(");
+        int end = source.indexOf("private void maybeActivateStandaloneFallback(", start);
+        assertTrue(start >= 0 && end > start);
+        String bind = source.substring(start, end);
+        assertTrue("Core must use the task-aware binding gate",
+            bind.contains("canBindStableProjectContextForTask("));
+        assertTrue("Core task identity must be passed to the binding gate",
+            bind.contains("run.taskId"));
+        assertTrue("Fresh automatic Project navigation evidence must be checked",
+            bind.contains("autoNavigationProof"));
+        assertFalse("Title-only context may not silently satisfy Core binding",
+            bind.contains("boolean contextProof = projectTitleContext;"));
+    }
+
+    @Test
     public void rejectsChatMessageSpoofingTheProjectHeader() {
         assertTrue(ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
             true, true, false, false, true
