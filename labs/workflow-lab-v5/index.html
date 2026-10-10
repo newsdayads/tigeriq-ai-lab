@@ -249,7 +249,8 @@ const rows=[...found.values()];
 // API rows arrive in authority order: activeWork, openWork, recentWork.
  // Preserve the first current record, never let historical activity replace active Core evidence.
  const coreByNumber=new Map();
- for(const row of core.rows||[]){
+ // Connected is not enough: stale Core snapshots must never override live GitHub evidence.
+ if(core.connected===true&&core.stale===false)for(const row of core.rows||[]){
   const id=Number(row.number);
   if(Number.isSafeInteger(id)&&id>0&&!coreByNumber.has(id))coreByNumber.set(id,row);
  }
