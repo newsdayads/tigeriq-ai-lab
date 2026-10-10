@@ -1011,6 +1011,92 @@ describe('GitHub Core intake guardrails',()=>{
     expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:false});
   });
 
+  it('rotates bounded GitHub reconciliation beyond 100 rows and wakes an older parked objective',async()=>{
+    const safeBody=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=MANAGER_FAIR_RECONCILE_TEST','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+      'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+    ].join('\n');
+    const issues=Array.from({length:101},(_,i)=>({
+      number:6000+i,state:'open',title:'[P1] Fair reconciliation',comments:0,
+      labels:[],body:safeBody,
+    }));
+    const parked=issues[100];
+    const oldRevision='old-parked-revision';
+    const rows=issues.map((issue,i)=>({
+      id:'OBJ-GH-'+issue.number,status:'active',summary:'waiting',
+      updatedAt:i+1,
+      metadata:{
+        source:'github',issueNumber:issue.number,
+        sourceRevision:i===100?oldRevision:githubIssueSourceRevision(issue),
+        ...(i===100?{managerAwaitingAcceptanceRevision:oldRevision}:{}),
+        githubClaimReported:true,githubResultReported:false,
+      },
+    }));
+    let clock=101,wakeCount=0,scanCount=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        scanCount++;
+        expect(sql).toContain('order by updated_at asc, created_at asc, id asc');
+        expect(sql).toContain('limit 100');
+        const filtered=params.length?rows.filter(x=>params[0].includes(String(x.metadata.issueNumber))):rows;
+        const page=[...filtered].sort((a,b)=>a.updatedAt-b.updatedAt||a.id.localeCompare(b.id)).slice(0,100);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        const row=rows.find(x=>x.id===params[0]);
+        expect(row.status).toBe('active');
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(params[2]);
+        expect(row.metadata.sourceRevision).toBe(params[3]);
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.updatedAt=++clock;
+        wakeCount++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_FAIR_RECONCILIATION_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async()=>{throw new Error('UNEXPECTED_NETWORK_CALL');};
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(1);
+    expect(rows[100].metadata.managerAwaitingAcceptanceRevision).toBe(oldRevision);
+    expect(wakeCount).toBe(0);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(2);
+    expect(rows[100].metadata.managerAwaitingAcceptanceRevision).toBeUndefined();
+    expect(rows[100].metadata.sourceRevision).toBe(githubIssueSourceRevision(parked));
+    expect(wakeCount).toBe(1);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(wakeCount).toBe(1);
+  });
+
+  it('applies explicit issueNumber filter in SQL before LIMIT 100',async()=>{
+    const target=7301;
+    let selectedRows=0,seenParams=null;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        expect(sql).toContain("metadata->>'issueNumber'=any($1::text[])");
+        expect(sql).toContain('limit 100');
+        seenParams=params;
+        selectedRows=1;
+        return {rows:[],rowCount:0};
+      }
+      throw new Error('UNEXPECTED_TARGETED_SYNC_SQL');
+    }};
+    await syncGithubOutcomes({pool,token:'fake',issueNumbers:[target]});
+    expect(selectedRows).toBe(1);
+    expect(seenParams).toEqual([[String(target)]]);
+  });
+
   it('rearms a parked GitHub objective when editing its source removes the last dependency gate',async()=>{
     const sourceIssue={
       number:4690,state:'open',title:'[P1] Source with dependency gate removed',comments:0,labels:[],
