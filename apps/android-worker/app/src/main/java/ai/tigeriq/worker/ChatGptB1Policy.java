@@ -95,6 +95,24 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * A matching clickable chat quote is not a Project selector. Require
+     * verified ancestry inside a semantic navigation drawer/projects list,
+     * excluding all conversation/message/composer subtrees. No coordinate
+     * heuristic or clickable-label-only fallback.
+     */
+    public static boolean isTrustedProjectNavigationTarget(
+        boolean enabledClickableTarget, boolean exactProjectLabel,
+        boolean navigationScope, boolean conversationScope,
+        boolean completeAncestry
+    ) {
+        return enabledClickableTarget
+            && exactProjectLabel
+            && navigationScope
+            && !conversationScope
+            && completeAncestry;
+    }
+
+    /**
      * A Project title copied into a chat bubble cannot authenticate context.
      * Trust ONLY a visible exact label inside an explicitly identified toolbar
      * hierarchy, with no scrollable conversation or clickable navigation
