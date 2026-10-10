@@ -1489,8 +1489,9 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
   const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
-  // Preserve active-first priority, but rotate oldest-first within the lane:
-  // successful checks update the row, and failed checks advance their cursor.
+  // Rotate oldest-first across ALL eligible statuses. Active-first ranking can
+  // permanently starve completed/blocked rows awaiting GitHub result reporting
+  // when 100+ active objectives remain eligible. Active is a tie-breaker only.
   // Keep targeted issueNumber filtering INSIDE SQL; filtering after LIMIT can
   // silently miss the requested objective once the backlog is large.
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
@@ -1502,7 +1503,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
       ${issueFilter?"and metadata->>'issueNumber'=any($1::text[])":""}
-    order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc
+    order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc
     limit 100`,issueFilter?[[...issueFilter].map(String)]:[])).rows;
   let claims=0,results=0;
   for(const row of rows){
