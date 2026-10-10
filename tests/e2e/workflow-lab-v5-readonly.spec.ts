@@ -119,3 +119,22 @@ test('V5 ignores unrelated project names in issue body when inferring issue proj
  await expect(page.locator('#jobCards')).toContainText('Generic legacy work');
  await expect(page.locator('#jobCards')).not.toContainText('openrouter source repair');
 });
+
+
+test('V5 issue detail discloses whether project assignment is explicit or inferred',async({page})=>{
+ const withId={...issue(4625,'open','PLANNING'),
+  title:'[P1][ANDROID] Generic item',
+  body:'PROJECT_ID=dexcam-personal\nCURRENT_STATE=PLANNING'};
+ const titleOnly={...issue(4457,'open','REVIEW'),
+  title:'[P1][CORE vNext] Manager checkpoint',
+  body:'CURRENT_STATE=REVIEW\nThe separate Workflow Lab should not be modified'};
+ await openLab(page,{...payload,issues:[withId,titleOnly]});
+ await page.locator('[data-project="dexcam-personal"]').click();
+ await page.locator('#jobCards .jobcard').click();
+ await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án theo PROJECT_ID');
+ await page.locator('#jobBack').click();
+ await page.locator('#backToProjects').click();
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await page.locator('#jobCards .jobcard').filter({hasText:'Manager checkpoint'}).click();
+ await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án suy luận từ tiêu đề');
+});
