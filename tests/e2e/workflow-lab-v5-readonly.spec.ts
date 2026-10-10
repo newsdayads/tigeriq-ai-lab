@@ -36,6 +36,11 @@ test('V5 status parser never promotes UNBLOCKED or NOT_DONE and rejects pending 
   {number:7816,source:'READY_INDEPENDENT_REVIEW',expected:'RÀ SOÁT'},
   {number:7817,source:'DONE_VERIFIED',expected:'BÁO HOÀN TẤT (THEO ISSUE)'},
   {number:7818,source:'IN_PROGRESS',expected:'ĐANG LÀM (THEO ISSUE)'},
+  {number:7822,source:'NOT_BLOCKED_WORKING',expected:'ĐANG LÀM (THEO ISSUE)'},
+  {number:7823,source:'NO_DENIED_WORKING',expected:'ĐANG LÀM (THEO ISSUE)'},
+  {number:7824,source:'NO_REVIEW_WORKING',expected:'ĐANG LÀM (THEO ISSUE)'},
+  {number:7825,source:'BLOCKED_NOT_RESOLVED',expected:'BỊ CHẶN'},
+  {number:7826,source:'NOT_BLOCKED_REVIEW',expected:'RÀ SOÁT'},
  ];
  const items=cases.map(c=>({
   ...issue(c.number,'open',c.source),
