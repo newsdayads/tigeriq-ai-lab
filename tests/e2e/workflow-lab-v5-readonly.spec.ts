@@ -138,3 +138,22 @@ test('V5 issue detail discloses whether project assignment is explicit or inferr
  await page.locator('#jobCards .jobcard').filter({hasText:'Manager checkpoint'}).click();
  await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án suy luận từ tiêu đề');
 });
+
+
+test('V5 honors canonical project and status fields extracted beyond 1500-character GitHub body',async({page})=>{
+ const dexcam={...issue(4625,'open',''),
+   title:'[P1] Generic personal Android work',
+   body:'Historical description '+'x'.repeat(1500),
+   project_id:'dexcam-personal',current_state:'BLOCKED_REAL_DEVICE',
+   worker:'NV02',next_action:'Review physical camera connection',target_pr:'4637'};
+ await openLab(page,{...payload,issues:[dexcam]});
+ await page.locator('[data-project="dexcam-personal"]').click();
+ await expect(page.locator('#jobCards')).toContainText('Generic personal Android work');
+ await expect(page.locator('#jobCards')).toContainText('BỊ CHẶN');
+ await page.locator('#jobCards .jobcard').click();
+ await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án theo PROJECT_ID');
+ await expect(page.locator('#graph')).toContainText('BLOCKED_REAL_DEVICE');
+ await expect(page.locator('#graph')).toContainText('NV02');
+ await expect(page.locator('#graph')).toContainText('Review physical camera connection');
+ await expect(page.locator('#graph')).toContainText('PR #4637');
+});
