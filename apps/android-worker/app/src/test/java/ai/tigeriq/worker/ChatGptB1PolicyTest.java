@@ -175,6 +175,60 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreReplyMatcherAcceptsOnlyCurrentPromptThenAttributedAssistant() {
+        ChatGptB1Policy.CoreReplyMatcher valid =
+            new ChatGptB1Policy.CoreReplyMatcher("RUN-44 prompt", "CORE_OK_44", true);
+        valid.observe("UNKNOWN", "CORE_OK_44 spoofed composer");
+        valid.observe("USER", "CORE_OK_44 quoted in another user message");
+        assertEquals("", valid.verifiedReply());
+        valid.observe("USER", "RUN-44 prompt");
+        valid.observe("ASSISTANT", "Verified: CORE_OK_44, finished");
+        assertEquals("Verified: CORE_OK_44, finished", valid.verifiedReply());
+
+        ChatGptB1Policy.CoreReplyMatcher stale =
+            new ChatGptB1Policy.CoreReplyMatcher("RUN-44 prompt", "CORE_OK_44", true);
+        stale.observe("ASSISTANT", "Old CORE_OK_44 response");
+        stale.observe("USER", "RUN-44 prompt");
+        stale.observe("ASSISTANT", "New CORE_OK_44 response");
+        assertEquals("Stale token before prompt poisons acceptance", "", stale.verifiedReply());
+
+        ChatGptB1Policy.CoreReplyMatcher duplicated =
+            new ChatGptB1Policy.CoreReplyMatcher("RUN-44 prompt", "CORE_OK_44", true);
+        duplicated.observe("USER", "RUN-44 prompt");
+        duplicated.observe("ASSISTANT", "CORE_OK_44");
+        duplicated.observe("USER", "RUN-44 prompt");
+        assertEquals("Two identical prompts cannot prove which response is current",
+            "", duplicated.verifiedReply());
+
+        ChatGptB1Policy.CoreReplyMatcher noDurableSend =
+            new ChatGptB1Policy.CoreReplyMatcher("RUN-44 prompt", "CORE_OK_44", false);
+        noDurableSend.observe("USER", "RUN-44 prompt");
+        noDurableSend.observe("ASSISTANT", "CORE_OK_44");
+        assertEquals("", noDurableSend.verifiedReply());
+    }
+
+    @Test
+    public void coreReplyMatcherPreSendFindsReplayWithoutRequiringTokenInUserText() {
+        ChatGptB1Policy.CoreReplyMatcher promptAlreadySent =
+            new ChatGptB1Policy.CoreReplyMatcher("Core payload", "REQ-9", false);
+        promptAlreadySent.observe("USER", "Core payload");
+        assertTrue(promptAlreadySent.hasPreexistingTaskTranscript());
+
+        ChatGptB1Policy.CoreReplyMatcher oldAssistant =
+            new ChatGptB1Policy.CoreReplyMatcher("Core payload", "REQ-9", false);
+        oldAssistant.observe("ASSISTANT", "result REQ-9");
+        assertTrue(oldAssistant.hasPreexistingTaskTranscript());
+
+        ChatGptB1Policy.CoreReplyMatcher userEcho =
+            new ChatGptB1Policy.CoreReplyMatcher("Core payload", "REQ-9", false);
+        userEcho.observe("USER", "REQ-9 from quoted log");
+        userEcho.observe("UNKNOWN", "REQ-9 in composer");
+        assertFalse("Quoted token is not proof of a completed Core task",
+            userEcho.hasPreexistingTaskTranscript());
+        assertEquals("", userEcho.verifiedReply());
+    }
+
+    @Test
     public void coreResponseContractUsesOrderedStructuralRoleEvidence() throws Exception {
         String src = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
@@ -200,10 +254,14 @@ public final class ChatGptB1PolicyTest {
             trustedScan.contains("preorderNodes(root)"));
         assertTrue("Role must derive from app-owned structural metadata",
             trustedScan.contains("structuralMessageRole("));
-        assertTrue("A fresh user task must precede the assistant reply",
-            trustedScan.contains("sentPromptSeen = true"));
-        assertTrue("A token alone must not create a Core receipt",
-            trustedScan.contains("canAcceptCoreResponseEvidence("));
+        assertTrue("One tested matcher must own response chronology",
+            trustedScan.contains("CoreReplyMatcher matcher"));
+        assertTrue("Receipt requires verified matcher output",
+            trustedScan.contains("matcher.verifiedReply()"));
+        assertTrue("Pre-send duplicate detection must share the same semantics",
+            trustedScan.contains("matcher.hasPreexistingTaskTranscript()"));
+        assertTrue("Structural roles must be fed to matcher",
+            trustedScan.contains("matcher.observe(role, raw)"));
         assertTrue("Prior matching transcript must be rejected before send",
             src.contains("coreTranscriptAlreadyContainsTask(")
                 && src.contains("CORE_RESPONSE_PROVENANCE_PREEXISTS"));
