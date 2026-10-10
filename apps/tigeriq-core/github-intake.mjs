@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
+import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
@@ -1553,19 +1553,25 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     // A blocked objective must keep the source revision it actually executed. Otherwise
     // outcome sync can consume a fresh revision before intake sees it and deadlock rearm.
     // Completed objectives intentionally retain legacy backfill/reopen semantics for live/final gates.
-    if((sourceLiveRequired||sourceFinalReviewRequired)&&revisionChanged&&row.status!=='blocked'){
+    const hasAcceptanceEvidenceGate=sourceLiveRequired||sourceFinalReviewRequired;
+    if(managerAcceptanceRevisionRefresh({
+      sourceLiveRequired,sourceFinalReviewRequired,dependencyGateRequired:dependencyGate.required,
+      revisionChanged,status:row.status,
+    })){
       policyPatch.sourceRevision=currentSourceRevision;
-      policyPatch.liveAcceptancePass=false;
-      policyPatch.liveAcceptanceRevision=null;
-      policyPatch.liveAcceptanceEvidenceCommentId=null;
-      policyPatch.liveAcceptanceCommentCount=-1;
-      policyPatch.finalReviewPass=false;
-      policyPatch.finalReviewRevision=null;
-      policyPatch.finalReviewJobId=null;
-      policyPatch.finalReviewerEmployeeId=null;
-      policyPatch.finalReviewerResourceId=null;
-      policyPatch.finalReviewImplementationFingerprint=null;
-    }else if((sourceLiveRequired||sourceFinalReviewRequired)&&(row.metadata?.liveAcceptanceRequired!==true||row.metadata?.finalReviewRequired!==true)){
+      if(hasAcceptanceEvidenceGate){
+        policyPatch.liveAcceptancePass=false;
+        policyPatch.liveAcceptanceRevision=null;
+        policyPatch.liveAcceptanceEvidenceCommentId=null;
+        policyPatch.liveAcceptanceCommentCount=-1;
+        policyPatch.finalReviewPass=false;
+        policyPatch.finalReviewRevision=null;
+        policyPatch.finalReviewJobId=null;
+        policyPatch.finalReviewerEmployeeId=null;
+        policyPatch.finalReviewerResourceId=null;
+        policyPatch.finalReviewImplementationFingerprint=null;
+      }
+    }else if(hasAcceptanceEvidenceGate&&(row.metadata?.liveAcceptanceRequired!==true||row.metadata?.finalReviewRequired!==true)){
       policyPatch.liveAcceptanceCommentCount=-1;
       policyPatch.finalReviewPass=false;
       policyPatch.finalReviewRevision=null;
