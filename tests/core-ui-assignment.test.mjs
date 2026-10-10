@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03CoreRoutingDisabled,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
@@ -714,4 +715,10 @@ test('Owner explicit NV03 Core routing disable is fail-closed by default and pre
     else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=before;
   }
   assert.equal(selectCoreUiWorker('review'),'NV03');
+});
+
+test('installed Core launcher persistently disables NV03 Core routing after updater restart',()=>{
+ const script=readFileSync(new URL('../scripts/tigeriq-core/run-core.ps1',import.meta.url),'utf8');
+ assert.match(script,/\$env:TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1'/);
+ assert.match(script,/\$env:TIGERIQ_CORE_PORT='8795'/);
 });
