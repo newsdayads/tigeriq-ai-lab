@@ -61,7 +61,8 @@ test('Core and GitHub intake wire evidence parking and atomic active-only wakeup
   assert.match(intake,/managerAcceptanceWakePlan\(/);
   assert.match(intake,/if\(row\.status==='active'&&wake\.wake\)/);
   assert.match(intake,/metadata=coalesce\(metadata,'\{\}'::jsonb\)-'managerAwaitingAcceptanceRevision'/);
-  assert.match(intake,/where id=\$1 and status='active'/);
+  assert.match(intake,/where id=\$1 and status='active' and metadata->>'managerAwaitingAcceptanceRevision'=\$3 and metadata->>'sourceRevision'=\$4/);
+  assert.match(intake,/\[row\.id,summary,row\.metadata\.managerAwaitingAcceptanceRevision,row\.metadata\.sourceRevision\]/);
   assert.match(intake,/OBJECTIVE_COMPLETION_EVIDENCE_RESUMED/);
 });
 
