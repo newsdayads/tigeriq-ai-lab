@@ -153,6 +153,16 @@ test('Core persists terminal progress without mutating the GitHub fairness curso
   assert.match(core,/observedTerminalAt:o\.metadata\?\.managerLastObservedTerminalAt/);
   assert.match(core,/metadata=jsonb_set\(coalesce\(metadata,'\{\}'::jsonb\),'\{managerLastObservedTerminalAt\}'/);
   assert.match(core,/managerGuard=managerCycleGuard\(\{managerCycles:o\.manager_cycles,progressed:terminalProgress\.progressed/);
+  // The previous two-statement implementation could checkpoint DONE job
+  // progress and crash before resetting manager_cycles. Those mutations must
+  // be one SQL UPDATE guarded by the exact previously observed watermark.
+  assert.match(core,/manager_cycles=case when \$4::boolean then 0 else manager_cycles end/);
+  assert.match(core,/updated_at=case when \$4::boolean then now\(\) else updated_at end/);
+  assert.match(core,/where id=\$1 and status='active' and \(metadata->>'managerLastObservedTerminalAt'\) is not distinct from \$3::text/);
+  assert.match(core,/\[o\.id,terminalProgress\.observedAt,o\.metadata\?\.managerLastObservedTerminalAt\?\?null,terminalProgress\.progressed\]/);
+  assert.match(core,/if\(saved\.rowCount!==1\)return;/);
+  assert.ok(!core.includes('update tigeriq_objectives set manager_cycles=0,updated_at=now() where id=$1'));
+
   assert.match(intake,/order by updated_at asc, case when status='active' then 0 else 1 end/);
   assert.ok(!core.includes('managerProgressSinceLastCycle({latestTerminalAt:latestManagerProgress,objectiveUpdatedAt:o.updated_at})'));
 });
