@@ -45,6 +45,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private boolean b1TickScheduled = false;
     private int projectContextSamples = 0;
     private long projectContextFirstSeenAt = 0L;
+    private String projectContextCandidateRunId = "";
+    private String projectContextCandidateTaskId = "";
+    private int projectContextCandidateCycle = 0;
     private long projectNavigationNextActionAt = 0L;
 
     private final Runnable b1TickRunnable = new Runnable() {
@@ -284,8 +287,23 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             return;
         }
 
+        // Context samples are not transferable across newly leased Core tasks.
+        // Two distinct runs viewing the same header must earn independent
+        // stable-time and sample-count proofs before Project binding.
+        if (projectContextSamples > 0
+            && !ChatGptB1Policy.isSameProjectContextCandidate(
+                projectContextCandidateRunId, projectContextCandidateTaskId,
+                projectContextCandidateCycle, run.runId, run.taskId, run.cycle
+            )) {
+            resetProjectContextCandidate();
+        }
         long now = System.currentTimeMillis();
-        if (projectContextSamples == 0) projectContextFirstSeenAt = now;
+        if (projectContextSamples == 0) {
+            projectContextFirstSeenAt = now;
+            projectContextCandidateRunId = run.runId;
+            projectContextCandidateTaskId = run.taskId;
+            projectContextCandidateCycle = run.cycle;
+        }
         projectContextSamples += 1;
         long stableMs = Math.max(0L, now - projectContextFirstSeenAt);
 
@@ -300,14 +318,22 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             run.taskId, exactProject, projectTitleContext, composerReady,
             autoNavigationProof, projectContextSamples, stableMs
         )) {
+            boolean bound;
+            if (coreTask) {
+                bound = ChatGptB1RunStore.markCoreProjectBoundIfCurrent(
+                    this, run.runId, run.taskId, run.cycle
+                );
+            } else {
+                ChatGptB1RunStore.markProjectBound(this);
+                bound = true;
+            }
             writeProjectDiag(
-                "STABLE_PROJECT_CONTEXT",
+                bound ? "STABLE_PROJECT_CONTEXT" : "STALE_PROJECT_CONTEXT_IGNORED",
                 "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
                     + "; autoNav=" + autoNavigationProof
                     + "; samples=" + projectContextSamples
                     + "; stableMs=" + stableMs
             );
-            ChatGptB1RunStore.markProjectBound(this);
             resetProjectContextCandidate();
         }
     }
@@ -352,6 +378,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void resetProjectContextCandidate() {
         projectContextSamples = 0;
         projectContextFirstSeenAt = 0L;
+        projectContextCandidateRunId = "";
+        projectContextCandidateTaskId = "";
+        projectContextCandidateCycle = 0;
     }
 
     private void writeProjectDiag(String mode, String detail) {
