@@ -66,13 +66,22 @@
 8. Nếu thấy màn hình xanh/mất màu: ghi đúng thời điểm so với thay R, frame format, resolution, FPS; không tự kết luận hỏng chipset.
 
 ## 6. Bộ dữ liệu kiểm thử tối thiểu (đề xuất)
-```text
-test_id,device_model,android_version,oneui,dex_mode,hub_power,
-usb_vid,usb_pid,usb_attach_on_R,usb_permission,
-R_on_timestamp,usb_detected_timestamp,first_live_frame_timestamp,
-window_visible_timestamp,R_off_timestamp,layout_restored_timestamp,
-auto_open_success,manual_open_success,error_code,notes
+
+Mỗi lần chuyển R là **một dòng CSV**, không tách tiêu đề thành nhiều dòng. Dùng cùng đồng hồ **monotonic** cho mọi mốc độ trễ; mốc không quan sát được ghi `NOT_MEASURED`, không thay bằng số 0 hoặc suy đoán R=OFF.
+
+```csv
+test_id,cycle_id,device_model,android_version,oneui,dex_mode,hub_power,usb_vid,usb_pid,usb_present_before_R,usb_present_during_R,usb_permission,reverse_state,reverse_state_evidence,clock_source,R_on_timestamp,usb_detected_timestamp,first_live_frame_timestamp,window_visible_timestamp,R_off_timestamp,layout_restored_timestamp,auto_open_success,manual_open_success,error_code,private_log_pointer,notes
 ```
+
+- `cycle_id`: mã khác nhau cho từng lượt, kể cả lượt thất bại; phải liên kết được log USB, frame và cửa sổ của **cùng lượt**.
+- `reverse_state`: `ON` / `OFF` / `UNKNOWN`; `reverse_state_evidence` ghi rõ nguồn xác nhận độc lập, không dùng việc mất hình/USB làm bằng chứng R=OFF.
+- `usb_present_before_R` và `usb_present_during_R`: `YES` / `NO` / `NOT_MEASURED`, nhằm phân biệt USB attach với video chỉ xuất hiện khi R.
+- `clock_source`: đồng hồ đo được sử dụng; chỉ tính chênh lệch khi các mốc cùng cơ sở thời gian.
+- `auto_open_success` / `manual_open_success`: `YES` / `NO` / `NOT_TESTED`. Không đánh dấu YES nếu chỉ thấy USB nhưng không có hình sống và cửa sổ thực sự hiện.
+- `private_log_pointer`: tham chiếu nhật ký **nội bộ trên thiết bị**, không đưa dữ liệu định danh, tệp log thô hoặc URL riêng tư lên kho công khai.
+
+**Cổng 5 lượt khám phá B04:** cần 5 `cycle_id` khác nhau, có mốc R và kết quả tự mở từng lượt; tối thiểu một lần auto fail (nếu xảy ra tự nhiên) phải đối chiếu với bấm mở thủ công cùng lượt. Không tạo lỗi giả hoặc coi lượt không đo được là đạt. **50 lượt nghiệm thu** là giai đoạn riêng và chỉ thực hiện sau khi có sản phẩm được phép thử.
+
 Lưu dữ liệu tại thiết bị; **không đưa log có IMEI/serial/vị trí/biển số lên GitHub công khai**.
 
 ## 7. Các phép thử phân biệt nguyên nhân
