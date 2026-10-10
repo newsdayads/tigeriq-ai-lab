@@ -36,8 +36,9 @@ try{
   if(!response.ok){
     const remaining=response.headers?.get?.('x-ratelimit-remaining');
     const retryAfter=response.headers?.get?.('retry-after');
-    const rateLimited=(response.status===403||response.status===429) &&
-      (String(remaining)==='0'||(retryAfter!==null&&retryAfter!==undefined&&String(retryAfter)!==''));
+    // HTTP 429 is intrinsically rate-limited; a GitHub 403 needs quota evidence.
+    const rateLimited=response.status===429 || (response.status===403 &&
+      (String(remaining)==='0'||(retryAfter!==null&&retryAfter!==undefined&&String(retryAfter)!=='')));
     throw Error((rateLimited?'GITHUB_RATE_LIMIT_PAGE_':'GITHUB_HTTP_'+response.status+'_PAGE_')+page);
   }
   list=await response.json();
