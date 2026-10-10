@@ -32,7 +32,8 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | CAM-14 | Bấm icon thủ công | tự mở thất bại có log | phân biệt lỗi auto và lỗi stream |
 | CAM-15 | Phát hiện màu/nhiễu | điều kiện có sự cố | error + mode + xử lý rõ |
 | CAM-16 | PD/hub yếu (chỉ quan sát an toàn) | nguồn hub thay đổi | phân biệt disconnect phần cứng và lỗi app |
-| CAM-19 | Nhật ký một lượt R có thể truy vết | 5 lượt R quan sát an toàn, gồm thành công/thất bại nếu phát sinh tự nhiên | 5 `cycle_id` riêng, cùng nguồn đồng hồ, đủ mốc USB/quyền/frame/cửa sổ và trạng thái R kèm bằng chứng; không dùng dữ liệu riêng tư công khai |
+| CAM-19 | Nhật ký một lượt R có thể truy vết | 5 lượt R quan sát an toàn, gồm thành công/thất bại nếu phát sinh tự nhiên | 5 `cycle_id` riêng, mỗi mốc kèm nguồn đồng hồ và bằng chứng đồng bộ nếu dùng nhiều đồng hồ; đủ USB/quyền/frame/cửa sổ/R, không đưa dữ liệu riêng tư lên công khai |
+| CAM-20 | USB mới gắn khi app ở nền, quyền chưa có hoặc vừa bị thu hồi | Android/One UI/DeX thực, quan sát trên xe đứng yên; so sánh có/không grant | phân biệt USB event, quyền đã xác nhận, stream và UI; khi cần tương tác phải báo `NEEDS_USER_PERMISSION`, không tự cấp quyền |
 
 ## 4. Ma trận kiểm thử cửa sổ
 | ID | Bài thử | Tiêu chí |
@@ -48,6 +49,7 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | DEX-09 | Thiếu quyền resize | Có thông báo "OS không cho phép" |
 | DEX-10 | App đích có minWidth | Không retry vô hạn, báo lý do |
 | DEX-11 | Lưu cấu hình qua khởi động lạnh | Tạo preset, lưu, thoát hẳn ứng dụng rồi mở lại; đối chiếu dữ liệu cục bộ và bounds khi DeX cho phép; không dùng lần quay về Activity làm bằng chứng khởi động lạnh |
+| DEX-12 | Android hạn chế mở cửa sổ từ nền (BAL) hoặc bỏ qua launch bounds | So sánh app visible/background trên đúng Android SDK/DeX và quyền thực tế | ghi `PRESENTATION_BLOCKED`/fallback nếu bị chặn; `actual_bounds` so với `requested_bounds`; không tuyên bố tự mở/resize thành công giả |
 
 ## 4A. Truy vết yêu cầu chức năng ưu tiên P0 → ca kiểm thử
 
@@ -56,9 +58,9 @@ Bảng liên kết **thiết kế kiểm thử**, không phải biên nhận đ�
 | Yêu cầu | Điều cần xác nhận | Ca kiểm thử tối thiểu |
 |---|---|---|
 | FR-001 | Phát hiện đúng thiết bị/mode USB | CAM-01, CAM-02, CAM-07 |
-| FR-002 | Cấp/từ chối quyền USB và tái kết nối | CAM-06, CAM-07 |
+| FR-002 | Cấp/từ chối quyền USB và tái kết nối | CAM-06, CAM-07, CAM-20 |
 | FR-003 | Kích hoạt tự động theo R thật | CAM-03, CAM-04, CAM-05 |
-| FR-004 | Camera nổi trong bối cảnh ứng dụng khác | CAM-02, CAM-12 |
+| FR-004 | Camera nổi trong bối cảnh ứng dụng khác | CAM-02, CAM-12, DEX-12 |
 | FR-005 | Trả bố cục **chỉ khi đã xác nhận kết thúc R** | CAM-13, CAM-18, DEX-08 |
 | FR-006 | Có hình sống; mất hình phải cảnh báo | CAM-08, CAM-09, CAM-17 |
 | FR-007 | Phục hồi có giới hạn khi mất luồng/USB | CAM-07, CAM-09, CAM-11 |
@@ -87,10 +89,12 @@ CYCLE_ID: [one unique ID per R transition]
 DEVICE: [model, Android, OneUI, DeX]
 USB: [VID, PID, UVC mode]
 PROFILE: [display, profile ID, required apps]
-CLOCK_SOURCE: [monotonic clock; same origin for all latency timestamps]
+CLOCK_SOURCE: [source for each timestamp; use monotonic basis when available] 
+CLOCK_SYNC_EVIDENCE: [offset/uncertainty for cross-clock timestamps or NOT_MEASURED]
 REVERSE_STATE: ON|OFF|UNKNOWN
 REVERSE_STATE_EVIDENCE: [independent observed source; never infer OFF from video loss]
 R_ON: [timestamp or NOT_MEASURED]
+R_ON_EVIDENCE: [independent observed source or NOT_MEASURED]
 USB_PRESENT_BEFORE_R: YES|NO|NOT_MEASURED
 USB_PRESENT_DURING_R: YES|NO|NOT_MEASURED
 USB_DETECTED: [timestamp or NOT_MEASURED]
@@ -98,6 +102,7 @@ PERMISSION_READY: [timestamp or NOT_MEASURED]
 FIRST_LIVE_FRAME: [timestamp or NOT_MEASURED]
 CAMERA_WINDOW_SHOWN: [timestamp or NOT_MEASURED]
 R_OFF: [verified timestamp or NOT_MEASURED]
+R_OFF_EVIDENCE: [verified independent source or NOT_MEASURED]
 LAYOUT_RESTORED: [timestamp or NOT_MEASURED]
 AUTO_OPEN_SUCCESS: YES|NO|NOT_TESTED
 MANUAL_FALLBACK_SUCCESS: YES|NO|NOT_TESTED
@@ -106,7 +111,7 @@ LOG_POINTER: [private local-only evidence location]
 RESULT: PASS|FAIL|NOT_RUN
 NOTES:
 ```
-Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc.
+Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc **trừ khi có chứng cứ đồng bộ và sai số**; nếu chưa đủ thì dùng `NOT_MEASURED`. CAM-20/DEX-12 là ca thiết kế chờ đo, không chứng minh Android/DeX thực đã hoạt động.
 
 ## 7. Rủi ro an toàn bắt buộc
 - Việc kiểm thử R thực hiện khi **xe dừng ở vị trí an toàn**, quy trình chèn bánh/phanh tùy hoàn cảnh; không vừa lái vừa chạm app.
