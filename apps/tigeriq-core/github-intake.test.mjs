@@ -1079,6 +1079,71 @@ describe('GitHub Core intake guardrails',()=>{
     expect(wakeCount).toBe(1);
   });
 
+  it('rotates failed GitHub source lookups rather than starving a newer parked objective',async()=>{
+    // The test database uses a 2-row page to exercise the same cursor contract
+    // as the production LIMIT 100 without issuing 100 noisy network failures.
+    const targetIssue={
+      number:9203,state:'open',title:'[P1] Fair retry target',comments:0,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_RECONCILE_ERROR_FAIRNESS',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+        'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      ].join('\n'),
+    };
+    const rows=[9201,9202,9203].map((number,index)=>({
+      id:'OBJ-GH-'+number,status:'active',updatedAt:index+1,summary:'old',
+      metadata:{
+        source:'github',issueNumber:number,githubClaimReported:true,
+        githubResultReported:false,sourceRevision:'old-revision',
+        ...(number===9203?{managerAwaitingAcceptanceRevision:'old-revision'}:{}),
+      },
+    }));
+    let clock=3,sourceLookupErrors=0,targetWoken=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        expect(sql).toContain('order by updated_at asc, created_at asc, id asc');
+        expect(sql).toContain('limit 100');
+        const page=[...rows].sort((a,b)=>a.updatedAt-b.updatedAt).slice(0,2);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql==="update tigeriq_objectives set updated_at=now() where id=$1"){
+        rows.find(x=>x.id===params[0]).updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        const row=rows.find(x=>x.id===params[0]);
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(params[2]);
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        targetWoken++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_FAILED_SCAN_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async()=>{sourceLookupErrors++;throw new Error('mock_transient_github_outage');};
+    const originalError=console.error;
+    try{
+      console.error=()=>{};
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[targetIssue]});
+      expect(sourceLookupErrors).toBe(2);
+      expect(targetWoken).toBe(0);
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[targetIssue]});
+      expect(targetWoken).toBe(1);
+    }finally{
+      console.error=originalError;
+    }
+  });
+
   it('applies explicit issueNumber filter in SQL before LIMIT 100',async()=>{
     const target=7301;
     let selectedRows=0,seenParams=null;
