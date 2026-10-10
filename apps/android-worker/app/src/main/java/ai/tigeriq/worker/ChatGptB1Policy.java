@@ -135,7 +135,7 @@ public final class ChatGptB1Policy {
 
         public CoreReplyMatcher(String prompt, String token, boolean durableSendClaim) {
             this.prompt = prompt == null ? "" : prompt.trim();
-            this.token = token == null ? "" : token.trim().toLowerCase(java.util.Locale.ROOT);
+            this.token = token == null ? "" : token.trim();
             this.durableSendClaim = durableSendClaim;
         }
 
@@ -147,7 +147,7 @@ public final class ChatGptB1Policy {
                 return;
             }
             if (!"ASSISTANT".equals(role)
-                || !raw.toLowerCase(java.util.Locale.ROOT).contains(token)) return;
+                || !containsExactCoreToken(raw, token)) return;
             assistantTokenSeen = true;
             if (matchingUserPrompts == 0) {
                 assistantTokenBeforePrompt = true;
@@ -167,6 +167,30 @@ public final class ChatGptB1Policy {
         public boolean hasPreexistingTaskTranscript() {
             return matchingUserPrompts > 0 || assistantTokenSeen;
         }
+    }
+
+    /**
+     * Core confirmation token is an exact case-sensitive ASCII identifier,
+     * not a substring or a case-folded approximation of another identifier.
+     * Letters, digits, underscores, hyphens and dots cannot adjoin the token.
+     */
+    public static boolean containsExactCoreToken(String message, String token) {
+        if (message == null || token == null || token.isEmpty()) return false;
+        int from = 0;
+        while (from <= message.length() - token.length()) {
+            int pos = message.indexOf(token, from);
+            if (pos < 0) return false;
+            int end = pos + token.length();
+            boolean before = pos > 0 && isCoreTokenCharacter(message.charAt(pos - 1));
+            boolean after = end < message.length() && isCoreTokenCharacter(message.charAt(end));
+            if (!before && !after) return true;
+            from = pos + 1;
+        }
+        return false;
+    }
+
+    private static boolean isCoreTokenCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.';
     }
 
     /**
