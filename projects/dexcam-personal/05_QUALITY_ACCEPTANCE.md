@@ -60,24 +60,30 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 ## 6. Mẫu chứng cứ cho từng lượt
 ```text
 CASE_ID:
+CYCLE_ID: [one unique ID per R transition]
 DEVICE: [model, Android, OneUI, DeX]
 USB: [VID, PID, UVC mode]
 PROFILE: [display, profile ID, required apps]
-R_TRANSITION: [timestamp relative/monotonic]
-USB_DETECTED:
-PERMISSION_READY:
-FIRST_LIVE_FRAME:
-CAMERA_WINDOW_SHOWN:
-R_OFF:
-LAYOUT_RESTORED:
-AUTO_OPEN_SUCCESS: YES/NO
-MANUAL_FALLBACK_SUCCESS: YES/NO/NOT_TESTED
+CLOCK_SOURCE: [monotonic clock; same origin for all latency timestamps]
+REVERSE_STATE: ON|OFF|UNKNOWN
+REVERSE_STATE_EVIDENCE: [independent observed source; never infer OFF from video loss]
+R_ON: [timestamp or NOT_MEASURED]
+USB_PRESENT_BEFORE_R: YES|NO|NOT_MEASURED
+USB_PRESENT_DURING_R: YES|NO|NOT_MEASURED
+USB_DETECTED: [timestamp or NOT_MEASURED]
+PERMISSION_READY: [timestamp or NOT_MEASURED]
+FIRST_LIVE_FRAME: [timestamp or NOT_MEASURED]
+CAMERA_WINDOW_SHOWN: [timestamp or NOT_MEASURED]
+R_OFF: [verified timestamp or NOT_MEASURED]
+LAYOUT_RESTORED: [timestamp or NOT_MEASURED]
+AUTO_OPEN_SUCCESS: YES|NO|NOT_TESTED
+MANUAL_FALLBACK_SUCCESS: YES|NO|NOT_TESTED
 ERROR_CLASS: USB|PERMISSION|STREAM|PRESENTATION|LAYOUT|UNKNOWN
-LOG_POINTER: private evidence location
+LOG_POINTER: [private local-only evidence location]
 RESULT: PASS|FAIL|NOT_RUN
 NOTES:
 ```
-Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị.
+Bảng chỉ được đánh `PASS` nếu case có bằng chứng đúng phiên bản app và đúng thiết bị. Nếu R không có nguồn xác nhận độc lập, ghi `UNKNOWN`; không cho `CAM-13` hoặc `DEX-08` đạt nhờ mất hình/USB. Không tính độ trễ từ hai đồng hồ khác gốc.
 
 ## 7. Rủi ro an toàn bắt buộc
 - Việc kiểm thử R thực hiện khi **xe dừng ở vị trí an toàn**, quy trình chèn bánh/phanh tùy hoàn cảnh; không vừa lái vừa chạm app.
