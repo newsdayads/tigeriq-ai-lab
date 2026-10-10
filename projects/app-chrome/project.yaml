@@ -1,0 +1,15 @@
+schema: tigeriq.project.v2
+id: tigeriq-app-chrome
+name: App Chrome
+kind: project
+portfolio_group_id: tigeriq-ai
+order: 50
+source_mode: PC01_LOCAL_ONLY
+local_authority: 'D:\TigerIQ\Apps\ChromeController\LocalOnly\Source'
+github_source: policy_and_inventory_only
+github_work_order: forbidden
+github_deploy: forbidden
+workstreams:
+  - id: local-only
+    name: Vận hành cục bộ PC01
+    order: 10
