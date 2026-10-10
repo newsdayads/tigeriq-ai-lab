@@ -41,7 +41,7 @@ function allRows(data){
   const map=new Map();
   for(const row of [...(data?.openWork||[]),...(data?.activeWork||[]),...(data?.recentWork||[])]){
     const key=Number(row?.number)||String(row?.jobId||'');
-    if(key)map.set(key,{...(map.get(key)||{}),...row});
+    if(key)map.set(key,{...row,...(map.get(key)||{})});
   }
   return [...map.values()];
 }
@@ -52,6 +52,7 @@ function normalizedProjects(data){
     map.set(id,{id,name:String(source?.name||id),kind:String(source?.kind||'project'),order:Number(source?.order||900),counts:{},streams:new Map((source?.workstreams||[]).map(s=>[String(s.id),{id:String(s.id),name:String(s.name||s.id),order:Number(s.order||900),count:0}]))});
   }
   for(const row of rows){
+    if(row?.workKind!=='WORK'||row?.portfolioHidden===true)continue;
     const id=String(row?.projectId||'').trim();if(!id)continue;
     if(!map.has(id))map.set(id,{id,name:String(row?.projectName||id),kind:String(row?.projectKind||'project'),order:Number(row?.projectOrder||900),counts:{},streams:new Map()});
     const project=map.get(id), sid=String(row?.workstreamId||row?.workPackageId||'').trim();
@@ -68,8 +69,13 @@ function renderGroups(data){
   const groups=Array.isArray(data?.portfolioGroups)?data.portfolioGroups:[];
   if(groups.length!==7)return false;
   const grid=$('projectGrid');grid.replaceChildren();
+  const actual=new Map(normalizedProjects(data).map(p=>[p.id,p])), grouped=new Set();
   for(const group of groups){
-    const children=Array.isArray(group.projects)?group.projects:[];
+    const children=(Array.isArray(group.projects)?group.projects:[]).map(p=>{
+      grouped.add(String(p.id));
+      const snapshot=actual.get(String(p.id));
+      return snapshot?{...p,...snapshot,workstreams:snapshot.streams.map(s=>({...s,itemCount:s.count}))}:p;
+    });
     const sum={working:0,review:0,blocked:0,waiting:0,done:0};
     for(const p of children)for(const key of Object.keys(sum))sum[key]+=Number(p?.counts?.[key]||0);
     const card=document.createElement('article');card.className='project-card';card.dataset.projectId=String(group.id||'');
@@ -84,12 +90,10 @@ function renderGroups(data){
       +'<div class="streams">'+parts.join('')+'</div>';
     grid.append(card);
   }
+  appendProjectCards(grid,[...actual.values()].filter(p=>!grouped.has(p.id)));
   return true;
 }
-function render(data){
-  if(renderGroups(data))return;
-  const grid=$('projectGrid'),projects=normalizedProjects(data);grid.replaceChildren();
-  if(!projects.length){grid.innerHTML='<div class="empty">Chưa có dữ liệu dự án đã xác minh.</div>';return}
+function appendProjectCards(grid,projects){
   for(const project of projects){
     const card=document.createElement('article');card.className='project-card';card.dataset.projectId=project.id;
     const c=project.counts||{},streams=project.streams||[];
@@ -98,6 +102,12 @@ function render(data){
       +'<div class="streams">'+(streams.length?streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.count||0)+' công việc</small></div>').join(''):'<div class="stream"><b>Chưa phân nhánh</b><small>Không có công việc hiện hành</small></div>')+'</div>';
     grid.append(card);
   }
+}
+function render(data){
+  if(renderGroups(data))return;
+  const grid=$('projectGrid'),projects=normalizedProjects(data);grid.replaceChildren();
+  if(!projects.length){grid.innerHTML='<div class="empty">Chưa có dữ liệu dự án đã xác minh.</div>';return}
+  appendProjectCards(grid,projects);
 }
 async function load(){
   try{

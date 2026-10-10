@@ -188,7 +188,7 @@ function statusBucket(status = '') {
   const value = String(status || '').toUpperCase();
   if (value === 'WORKING' || value === 'ĐANG XỬ LÝ' || value === 'ĐANG LÀM') return 'working';
   if (value === 'REVIEW' || value === 'VERIFY' || value === 'RÀ SOÁT' || value === 'XÁC MINH') return 'review';
-  if (value === 'BLOCKED' || value === 'BỊ CHẶN' || value === 'LỖI') return 'blocked';
+  if (value === 'OWNER_GATE' || value === 'BLOCKED' || value === 'BỊ CHẶN' || value === 'LỖI') return 'blocked';
   if (value === 'DONE' || value === 'COMPLETED' || value === 'HOÀN TẤT' || value === 'HOÀN THÀNH') return 'done';
   return 'waiting';
 }
@@ -237,6 +237,8 @@ export function annotatePortfolioRows(rows = [], issues = []) {
         row.projectId = parent.projectId;
         row.projectName = parent.projectName;
         row.projectOrder = parent.projectOrder;
+        row.projectKind = parent.projectKind;
+        row.projectGroupId = parent.projectGroupId;
       }
       if (!row._portfolioPackageExplicit) {
         row.workstreamId = parent.workstreamId;
@@ -265,6 +267,21 @@ export function annotatePortfolioRows(rows = [], issues = []) {
     const { _portfolioProjectExplicit, _portfolioPackageExplicit, ...clean } = next;
     return clean;
   });
+}
+
+
+// Presentation snapshot only. Prefer current open-work state over active/recent duplicates.
+export function mergePortfolioWorkRows(openWork = [], activeWork = [], recentWork = []) {
+  const rows = new Map();
+  for (const source of [openWork, activeWork, recentWork]) {
+    for (const row of Array.isArray(source) ? source : []) {
+      const key = row?.number ? String(row.number) : row?.jobId || row?.url;
+      if (!key) continue;
+      const current = rows.get(key);
+      rows.set(key, current ? { ...row, ...current } : { ...row });
+    }
+  }
+  return [...rows.values()];
 }
 
 export function buildProjectPortfolio(rows = []) {

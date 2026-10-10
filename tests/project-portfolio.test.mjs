@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, CANONICAL_PORTFOLIO_GROUPS, classifyProject } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, CANONICAL_PORTFOLIO_GROUPS, classifyProject, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 describe('TigerIQ LIVE project portfolio', () => {
   it('uses explicit project fields for future projects', () => {
@@ -184,5 +186,77 @@ describe('TigerIQ LIVE project portfolio', () => {
     expect(groups.find(g => g.id === 'tigeriq-ai').projects.find(p => p.id === 'tigeriq-workflow-lab').counts.waiting).toBe(1);
     expect(groups.find(g => g.id === 'tigeriq-coin').projects[0].presentInWorkSnapshot).toBe(false);
   });
+
+
+  it('keeps OWNER_GATE blocked without altering the execution state', () => {
+    const rows = annotatePortfolioRows([{ number: 8100, title: '[DRIVER] Owner gate', workKind: 'WORK', status: 'OWNER_GATE' }]);
+    const driver = buildProjectPortfolio(rows)[0];
+    expect(driver.counts).toEqual({ working: 0, review: 0, blocked: 1, waiting: 0, done: 0 });
+    expect(rows[0].status).toBe('OWNER_GATE');
+  });
+
+  it('inherits project kind and portfolio group across review chains', () => {
+    const rows = annotatePortfolioRows([
+      { number: 8101, title: '[DRIVER] Fix', workKind: 'WORK', status: 'WORKING' },
+      { number: 8102, parentNumber: 8101, title: '[REVIEW] First', reviewOnly: true, workKind: 'WORK', status: 'REVIEW' },
+      { number: 8103, parentNumber: 8102, title: '[REVIEW] Second', reviewOnly: true, workKind: 'WORK', status: 'REVIEW' },
+    ]);
+    for (const row of rows) expect(row).toMatchObject({ projectId: 'tigeriq-driver', projectKind: 'project', projectGroupId: 'tigeriq-driver' });
+    const driver = buildPortfolioGroups(buildProjectPortfolio(rows)).find(g => g.id === 'tigeriq-driver');
+    expect(driver.projects[0].counts.review).toBe(2);
+  });
+
+  it('includes completed-only and active-only work once while current open state wins stale history', () => {
+    const open = annotatePortfolioRows([{ number: 8201, title: '[DRIVER] Reopened', workKind: 'WORK', status: 'OWNER_GATE' }]);
+    const active = annotatePortfolioRows([
+      { number: 8201, title: '[DRIVER] Reopened', workKind: 'WORK', status: 'WORKING' },
+      { number: 8202, title: '[DRIVER] Active', workKind: 'WORK', status: 'WORKING' },
+    ]);
+    const recent = annotatePortfolioRows([
+      { number: 8201, title: '[DRIVER] Reopened', workKind: 'WORK', status: 'DONE' },
+      { number: 8203, title: '[DRIVER] Complete', workKind: 'WORK', status: 'DONE' },
+    ]);
+    const rows = mergePortfolioWorkRows(open, active, recent);
+    expect(rows).toHaveLength(3);
+    const driver = buildProjectPortfolio(rows)[0];
+    expect(driver.counts).toEqual({ working: 1, review: 0, blocked: 1, waiting: 0, done: 1 });
+    expect(driver.workstreams.reduce((sum, s) => sum + s.itemCount, 0)).toBe(3);
+  });
+
+  for (const page of ['projects.html', 'public/projects.html']) {
+    it(page + ' renders canonical and custom work including recent DONE without duplicate counts', () => {
+      const html = readFileSync(new URL('../' + page, import.meta.url), 'utf8');
+      const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].split('async function load()')[0];
+      const element = () => ({
+        dataset: {}, children: [], _html: '', _text: '',
+        set textContent(value) { this._text = String(value); this._html = this._text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
+        get innerHTML() { return this._html; }, set innerHTML(value) { this._html = String(value); },
+        append(child) { this.children.push(child); }, replaceChildren() { this.children = []; this._html = ''; },
+      });
+      const grid = element();
+      const context = vm.createContext({ document: { getElementById: () => grid, createElement: element } });
+      vm.runInContext(script, context);
+      const custom = { number: 8300, title: 'Alpha', projectId: 'alpha-lab', projectName: 'Alpha <Lab>', workKind: 'WORK', status: 'WORKING', workstreamId: 'alpha', workstreamName: 'Release' };
+      const driver = annotatePortfolioRows([{ number: 8301, title: '[DRIVER] Gate', workKind: 'WORK', status: 'OWNER_GATE' }])[0];
+      const done = annotatePortfolioRows([{ number: 8302, title: '[DRIVER] Finished', workKind: 'WORK', status: 'DONE' }])[0];
+      context.data = {
+        portfolioGroups: buildPortfolioGroups([]),
+        projectPortfolio: buildProjectPortfolio([custom, driver]),
+        openWork: [custom, driver],
+        activeWork: [{ ...custom, status: 'WORKING' }],
+        recentWork: [done],
+      };
+      vm.runInContext('render(data)', context);
+      expect(grid.children).toHaveLength(8);
+      const alpha = grid.children.find(card => card.dataset.projectId === 'alpha-lab');
+      expect(alpha.innerHTML).toContain('Alpha &lt;Lab&gt;');
+      expect(alpha.innerHTML).toContain('Đang làm 1');
+      expect(alpha.innerHTML).toContain('1 công việc');
+      const card = grid.children.find(item => item.dataset.projectId === 'tigeriq-driver');
+      expect(card.innerHTML).toContain('Bị chặn 1');
+      expect(card.innerHTML).toContain('Xong 1');
+      expect(card.innerHTML).toContain('2 công việc trong nguồn');
+    });
+  }
 
 });

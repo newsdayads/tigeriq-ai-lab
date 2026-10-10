@@ -4,7 +4,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
-import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -1744,6 +1744,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       issueNumber: stabilityIssue ? 2891 : null,
     };
 
+    const displayPortfolio = buildProjectPortfolio(mergePortfolioWorkRows(
+      openWork, annotatePortfolioRows(activeRows, openIssues), recentWork,
+    ));
+
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
@@ -1752,8 +1756,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       portfolioProgress,
       completionProgress,
       apiWorkforceSummary,
-      projectPortfolio: buildProjectPortfolio(openWork),
-      portfolioGroups: buildPortfolioGroups(buildProjectPortfolio(openWork)),
+      projectPortfolio: displayPortfolio,
+      portfolioGroups: buildPortfolioGroups(displayPortfolio),
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
