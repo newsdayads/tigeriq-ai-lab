@@ -101,7 +101,7 @@ test('bounded inference exposes ERROR when timeout settle cannot be confirmed', 
 test('Core wires NV09 as isolated on-demand local coder without changing NV10',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.match(core,/const NV09_TIMEOUT_MS/);
-  assert.match(core,/R\(NV09_EMPLOYEE_ID,'Qwen3-Coder Local','ollama',NV09_MODEL/);
+  assert.match(core,/R\(NV09_EMPLOYEE_ID,'Core AI Coder · Ollama Qwen3.6 27B','ollama',NV09_MODEL/);
   assert.match(core,/nv09Resource\.capabilities = \['coding_local'\]/);
   assert.match(core,/nv09Resource\.runtimeBinding = 'ollama_on_demand'/);
   assert.match(core,/const resources = \[\s*nv08Resource,\s*nv09Resource,\s*nv10Resource,/);
@@ -110,6 +110,6 @@ test('Core wires NV09 as isolated on-demand local coder without changing NV10',(
   assert.match(core,/url\.pathname==='\/api\/nv09\/canary'/);
   assert.match(core,/event\('NV09_CANARY_PASS'/);
   assert.match(core,/if\(r\.work_state==='ON_DEMAND'\) return 'ON_DEMAND'/);
-  assert.match(core,/const nv10Resource = R\(OLLAMA_EMPLOYEE_ID,'Ollama','ollama'/);
+  assert.match(core,/const nv10Resource = R\(OLLAMA_EMPLOYEE_ID,'Core API Doctor · Ollama Qwen3 4B','ollama'/);
   assert.match(core,/nv10Resource\.capabilities = \['general','reasoning','review',API_DOCTOR_CAPABILITY\]/);
 });
