@@ -246,7 +246,13 @@ while(windows<7){
 }
 if(!allComplete&&!stopReason)stopReason='ĐẠT GIỚI HẠN 7 CỬA SỔ';
 const rows=[...found.values()];
-const coreByNumber=new Map((core.rows||[]).filter(x=>x.number).map(x=>[Number(x.number),x]));
+// API rows arrive in authority order: activeWork, openWork, recentWork.
+ // Preserve the first current record, never let historical activity replace active Core evidence.
+ const coreByNumber=new Map();
+ for(const row of core.rows||[]){
+  const id=Number(row.number);
+  if(Number.isSafeInteger(id)&&id>0&&!coreByNumber.has(id))coreByNumber.set(id,row);
+ }
 for(const p of projects)p.jobs=[];
 for(const it of rows){
  const id=classify(it),p=projects.find(x=>x.id===id);if(!p)continue;
