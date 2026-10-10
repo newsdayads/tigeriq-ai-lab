@@ -44,7 +44,7 @@
 | ID | Ưu tiên | Yêu cầu | Chỉ tiêu nghiệm thu ban đầu |
 |---|---|---|---|
 | FR-001 | P0 | Khám phá USB/UVC theo interface, VID/PID, danh sách mode hỗ trợ | Có thông tin xác minh từ USB descriptor, không giả tên chipset |
-| FR-002 | P0 | Quản lý quyền USB khi kết nối lại | Trạng thái/grant/deny được ghi và UI hướng dẫn |
+| FR-002 | P0 | Quản lý quyền USB khi kết nối lại, gồm điều kiện quyền Android `CAMERA` nếu thiết bị thuộc `USB_CLASS_VIDEO` và app target API 28+ | Ghi riêng CAMERA permission, USB grant/deny và yêu cầu cấp quyền hợp lệ; không tự cấp quyền hoặc coi USB đã thấy là stream hoạt động |
 | FR-003 | P0 | Camera tự kích hoạt theo tín hiệu thực tế | Có kiểm thử lặp R/D trên xe |
 | FR-004 | P0 | Cửa sổ camera nổi ưu tiên trên bố cục khác | Không cần bấm icon trong điều kiện đã nghiệm thu |
 | FR-005 | P0 | Tự trả bố cục sau khi ngừng R | Bố cục trước đó không bị phá |
