@@ -54,7 +54,7 @@ export function transformCoreSource(value){
   source=replaceOnce(source,CORE_SCHEMA_FROM,CORE_SCHEMA_TO,'manager_schema');
   source=replaceOnce(source,CORE_POOL_FROM,CORE_POOL_TO,'db_pool');
   source=replaceExactly(source,CORE_PROMPT_FROM,CORE_PROMPT_TO,'manager_prompt',2);
-  source=replaceOnce(source,CORE_PARALLEL_FROM,CORE_PARALLEL_TO,'parallel_limit');
+  source=replaceExactly(source,CORE_PARALLEL_FROM,CORE_PARALLEL_TO,'parallel_limit',2);
   source=replaceOnce(source,CORE_REFRESH_FROM,CORE_REFRESH_TO,'live_capacity_refresh');
   return source;
 }
