@@ -30,6 +30,22 @@ test('422 on later GitHub page serves verified partial rows with explicit trunca
   assert.equal(calls.filter(x=>x.includes('api.github.com')).length,2);
 });
 
+test('GitHub rate-limit 403 on later page preserves partial rows and exposes rate-limit cause',async()=>{
+ const exhausted={...response(403,{message:'rate limit'}),headers:{get:k=>k==='x-ratelimit-remaining'?'0':null}};
+ const {res}=await invoke(page=>page===1?response(200,Array.from({length:100},(_,i)=>fakeIssue(i+1))):exhausted);
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues.length,100);
+ assert.equal(res.body.coverage.complete,false);
+ assert.equal(res.body.coverage.stopReason,'GITHUB_RATE_LIMIT_PAGE_2');
+ assert.equal(res.body.coverage.nextSince,null);
+});
+
+test('ordinary 403 without quota evidence remains an HTTP access error, not rate-limit',async()=>{
+ const {res}=await invoke(()=>response(403,{message:'access forbidden'}));
+ assert.equal(res.statusCode,503);
+ assert.equal(res.body.reason,'GITHUB_HTTP_403_PAGE_1');
+});
+
 test('422 on first GitHub page fails closed with page-specific evidence',async()=>{
   const {res}=await invoke(()=>response(422,{message:'invalid request'}));
   assert.equal(res.statusCode,503);
