@@ -134,6 +134,84 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreReplyRequiresTrustedAssistantRoleAfterSentPrompt() {
+        // A user can quote or type the same expected token: never count it.
+        assertEquals("USER", ChatGptB1Policy.structuralMessageRole(
+            "android.view.View", "chat_user_message"
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreResponseEvidence(
+            "USER", true, true
+        ));
+        // Editable composer and generic transcript text have no trusted role.
+        assertEquals("UNKNOWN", ChatGptB1Policy.structuralMessageRole(
+            "android.widget.EditText", "composer"
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreResponseEvidence(
+            "UNKNOWN", true, true
+        ));
+        // Old assistant replies before the newly sent prompt are not fresh.
+        assertEquals("ASSISTANT", ChatGptB1Policy.structuralMessageRole(
+            "android.view.View", "chat_message_assistant"
+        ));
+        assertFalse(ChatGptB1Policy.canAcceptCoreResponseEvidence(
+            "ASSISTANT", false, true
+        ));
+        // No durable send claim means no new response can be accepted.
+        assertFalse(ChatGptB1Policy.canAcceptCoreResponseEvidence(
+            "ASSISTANT", true, false
+        ));
+        // App-owned assistant role AFTER current prompt and send claim.
+        assertTrue(ChatGptB1Policy.canAcceptCoreResponseEvidence(
+            "ASSISTANT", true, true
+        ));
+        // Conflicting role indicators must fail closed, not guess.
+        assertEquals("UNKNOWN", ChatGptB1Policy.structuralMessageRole(
+            "user_message", "assistant_message"
+        ));
+        // Spoofed role in text/description is never consulted.
+        assertEquals("UNKNOWN", ChatGptB1Policy.structuralMessageRole(
+            "android.view.View", "message_text"
+        ));
+    }
+
+    @Test
+    public void coreResponseContractUsesOrderedStructuralRoleEvidence() throws Exception {
+        String src = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int waiting = src.indexOf("if (\"WAITING_AI\".equals(s.state))");
+        int timeout = src.indexOf("if (s.cycleStartedAt > 0", waiting);
+        assertTrue(waiting >= 0 && timeout > waiting);
+        String receipt = src.substring(waiting, timeout);
+        assertTrue("Core must use different scan from manual B1",
+            receipt.contains("coreLease") && receipt.contains("coreResponseTextContaining("));
+        assertTrue("Manual B1 behavior stays separate",
+            receipt.contains(": responseTextContaining(root"));
+        assertTrue("Send timestamp/cycle must be checked before a Core receipt",
+            receipt.contains("s.sentAt > 0 && s.sentCycle == s.cycle"));
+
+        int begin = src.indexOf("static String coreResponseTextContaining(");
+        int end = src.indexOf("static String responseTextContaining(", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String trustedScan = src.substring(begin, end);
+        assertTrue("Transcript order must be preserved",
+            trustedScan.contains("preorderNodes(root)"));
+        assertTrue("Role must derive from app-owned structural metadata",
+            trustedScan.contains("structuralMessageRole("));
+        assertTrue("A fresh user task must precede the assistant reply",
+            trustedScan.contains("sentPromptSeen = true"));
+        assertTrue("A token alone must not create a Core receipt",
+            trustedScan.contains("canAcceptCoreResponseEvidence("));
+        assertTrue("Prior matching transcript must be rejected before send",
+            src.contains("coreTranscriptAlreadyContainsTask(")
+                && src.contains("CORE_RESPONSE_PROVENANCE_PREEXISTS"));
+        assertFalse("No screen coordinate fallback",
+            trustedScan.contains("getBoundsInScreen"));
+    }
+
+    @Test
     public void coreTokenFromOtherChatCannotCompleteProjectTask() {
         assertTrue(ChatGptB1Policy.canAcceptResponseInLiveProjectContext(
             "MT-123", "PROJECT", true, true
