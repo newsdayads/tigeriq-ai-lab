@@ -70,7 +70,16 @@ public final class ChatGptB1Automation {
                     ChatGptB1RunStore.fail(service, "PROJECT_CONTEXT_LOST_BEFORE_RESPONSE_ACCEPTANCE");
                     return;
                 }
-                ChatGptB1RunStore.completeCurrentCycle(service, responseText);
+                if (coreLease) {
+                    // The UI scan may span a Core lease replacement. Only the
+                    // still-current durable task may store this reply.
+                    ChatGptB1RunStore.completeCoreReplyIfCurrent(
+                        service, s.runId, s.taskId, s.cycle,
+                        expectedToken, responseText
+                    );
+                } else {
+                    ChatGptB1RunStore.completeCurrentCycle(service, responseText);
+                }
                 return;
             }
             if (treeContainsAny(root, "stop", "dừng", "stop generating", "đang trả lời")) {
@@ -166,8 +175,19 @@ public final class ChatGptB1Automation {
 
         // Commit the at-most-once send claim to disk before the irreversible
         // accessibility click. On crash/restart we can safely time out, not resend.
-        if (!ChatGptB1RunStore.markSentExactlyOnce(service)) {
-            ChatGptB1RunStore.fail(service, "SEND_CLAIM_PERSIST_FAILED");
+        boolean coreLeaseAtSend = s.taskId != null && !s.taskId.isEmpty();
+        boolean sendClaimed = coreLeaseAtSend
+            ? ChatGptB1RunStore.markSentExactlyOnce(
+                service, s.runId, s.taskId, s.cycle, prompt
+            )
+            : ChatGptB1RunStore.markSentExactlyOnce(service);
+        if (!sendClaimed) {
+            // An old Accessibility callback cannot fail or click a newer run.
+            // If the same Core lease remains active, INPUT_READY will time
+            // out safely; the manual B1 error path stays unchanged.
+            if (!coreLeaseAtSend) {
+                ChatGptB1RunStore.fail(service, "SEND_CLAIM_PERSIST_FAILED");
+            }
             return;
         }
         boolean clicked = send.performAction(AccessibilityNodeInfo.ACTION_CLICK);
