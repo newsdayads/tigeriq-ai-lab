@@ -5,6 +5,8 @@ import {
   managerAcceptancePausePlan,
   managerAcceptanceRevisionRefresh,
   managerAcceptanceWakePlan,
+  managerTerminalProgressPlan,
+  managerCycleGuard,
 } from '../apps/tigeriq-core/manager-cycle-policy.mjs';
 
 const pending={allow:false,reason:'live_acceptance_pending'};
@@ -99,6 +101,60 @@ test('removing the last dependency gate refreshes a parked GitHub objective with
   assert.equal(managerAcceptanceRevisionRefresh({
     awaitingRevision:'old-dependency-source-revision',revisionChanged:true,status:'active',
   }),true);
+});
+
+test('GitHub scan time cannot hide actual manager job completion',()=>{
+  const latest='2026-10-10T12:01:00.000Z';
+  const old='2026-10-10T11:59:00.000Z';
+  const res=managerTerminalProgressPlan({
+    latestTerminalAt:latest,observedTerminalAt:old,managerCycles:29,
+    // Objective updated_at may already be 12:10 after a GitHub scan;
+    // it must not appear in this progress determination.
+  });
+  assert.deepEqual(res,{progressed:true,checkpoint:true,observedAt:latest});
+  assert.equal(managerCycleGuard({managerCycles:29,progressed:res.progressed}).effectiveCycles,0);
+  // Repeated reconciliation with no new DONE job must not claim progress again.
+  const repeated=managerTerminalProgressPlan({
+    latestTerminalAt:latest,observedTerminalAt:res.observedAt,managerCycles:29,
+  });
+  assert.deepEqual(repeated,{progressed:false,checkpoint:false,observedAt:latest});
+  assert.equal(managerCycleGuard({managerCycles:30,progressed:repeated.progressed}).blocked,true);
+});
+
+test('legacy manager job progress watermark migrates only once, then requires new evidence',()=>{
+  const latest=new Date('2026-10-10T12:01:00.000Z');
+  const bootstrap=managerTerminalProgressPlan({latestTerminalAt:latest,managerCycles:12});
+  assert.deepEqual(bootstrap,{progressed:true,checkpoint:true,observedAt:latest.toISOString()});
+  const after=managerTerminalProgressPlan({
+    latestTerminalAt:latest,observedTerminalAt:bootstrap.observedAt,managerCycles:12,
+  });
+  assert.deepEqual(after,{progressed:false,checkpoint:false,observedAt:latest.toISOString()});
+  const initialZero=managerTerminalProgressPlan({latestTerminalAt:latest,managerCycles:0});
+  assert.equal(initialZero.progressed,false);
+  assert.equal(initialZero.checkpoint,true);
+  const noJob=managerTerminalProgressPlan({managerCycles:24});
+  assert.deepEqual(noJob,{progressed:false,checkpoint:false,observedAt:null});
+  const badJob=managerTerminalProgressPlan({
+    latestTerminalAt:'invalid',observedTerminalAt:bootstrap.observedAt,managerCycles:24,
+  });
+  assert.deepEqual(badJob,{progressed:false,checkpoint:false,observedAt:null});
+  const olderJob=managerTerminalProgressPlan({
+    latestTerminalAt:'2026-10-10T11:58:00.000Z',observedTerminalAt:bootstrap.observedAt,
+    managerCycles:24,
+  });
+  assert.equal(olderJob.progressed,false);
+  assert.equal(olderJob.checkpoint,false);
+});
+
+test('Core persists terminal progress without mutating the GitHub fairness cursor',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  assert.match(core,/managerTerminalProgressPlan\(/);
+  assert.match(core,/observedTerminalAt:o\.metadata\?\.managerLastObservedTerminalAt/);
+  assert.match(core,/metadata=jsonb_set\(coalesce\(metadata,'\{\}'::jsonb\),'\{managerLastObservedTerminalAt\}'/);
+  assert.match(core,/managerGuard=managerCycleGuard\(\{managerCycles:o\.manager_cycles,progressed:terminalProgress\.progressed/);
+  assert.match(intake,/order by updated_at asc, case when status='active' then 0 else 1 end/);
+  assert.ok(!core.includes('managerProgressSinceLastCycle({latestTerminalAt:latestManagerProgress,objectiveUpdatedAt:o.updated_at})'));
 });
 
 test('Core and GitHub intake wire evidence parking and atomic active-only wakeup',()=>{
