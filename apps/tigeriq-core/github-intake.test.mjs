@@ -1022,7 +1022,7 @@ describe('GitHub Core intake guardrails',()=>{
         'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
         'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
         'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe('');
     const revision=githubIssueSourceRevision(sourceIssue);
