@@ -208,6 +208,92 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreProjectNavigationClickCannotBeBorrowedAcrossRuns() {
+        assertTrue(ChatGptB1Policy.isCoreProjectClickProofForRun(
+            "RUN-A", "TASK-A", 1, 1000L,
+            "RUN-A", "TASK-A", 1, 1100L
+        ));
+        assertFalse("A click from another run with fresh timestamp is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-B", "TASK-A", 1, 1000L,
+                "RUN-A", "TASK-A", 1, 1100L
+            ));
+        assertFalse("A click from another task is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-B", 1, 1000L,
+                "RUN-A", "TASK-A", 1, 1100L
+            ));
+        assertFalse("A click from an old cycle is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-A", 2, 1000L,
+                "RUN-A", "TASK-A", 1, 1100L
+            ));
+        assertFalse("A stale click before run start is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-A", 1, 1000L,
+                "RUN-A", "TASK-A", 1, 999L
+            ));
+        assertFalse("Missing click timestamp is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-A", 1, 1000L,
+                "RUN-A", "TASK-A", 1, 0L
+            ));
+        assertFalse("Missing click identity is not proof",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-A", 1, 1000L,
+                "", "TASK-A", 1, 1100L
+            ));
+        assertFalse("Timestamp alone cannot replace a task identity",
+            ChatGptB1Policy.isCoreProjectClickProofForRun(
+                "RUN-A", "TASK-A", 1, 1000L,
+                "RUN-A", "", 1, 1100L
+            ));
+    }
+
+    @Test
+    public void coreNavigationAndEvidenceUseSameLeaseClickIdentity() throws Exception {
+        String source = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int begin = source.indexOf("private void driveProjectNavigationIfNeeded(");
+        int end = source.indexOf("private void maybeBindProjectFromStableContext(", begin);
+        int bindEnd = source.indexOf("private void maybeActivateStandaloneFallback(", end);
+        assertTrue(begin >= 0 && end > begin && bindEnd > end);
+        String navigation = source.substring(begin, end);
+        String binding = source.substring(end, bindEnd);
+        assertTrue("Recorded Project click must pin all Core identity fields",
+            navigation.contains(".putString(KEY_AUTO_PROJECT_CLICK_RUN_ID, run.runId)")
+                && navigation.contains(".putString(KEY_AUTO_PROJECT_CLICK_TASK_ID, run.taskId)")
+                && navigation.contains(".putInt(KEY_AUTO_PROJECT_CLICK_CYCLE, run.cycle)"));
+        assertTrue("A replaced Core run must not receive a stale click receipt",
+            navigation.contains("canBindObservedCoreProject("));
+        assertTrue("Core binding requires identity, never timestamp alone",
+            binding.contains("isCoreProjectClickProofForRun("));
+        assertTrue("Manual B1 retains timestamp-only navigation behavior",
+            binding.contains("ChatGptB1Policy.projectClickObservedInRun("));
+        int evidenceStart = store.indexOf(
+            "public static boolean projectClickObservedInRun(Context context, Snapshot s)"
+        );
+        int evidenceEnd = store.indexOf(
+            "public static JSONObject evidencePayload(", evidenceStart
+        );
+        assertTrue(evidenceStart >= 0 && evidenceEnd > evidenceStart);
+        String evidence = store.substring(evidenceStart, evidenceEnd);
+        assertTrue("Core Project click evidence must also be same-lease",
+            evidence.contains("isCoreProjectClickProofForRun("));
+        assertTrue("No raw shared click timestamp alone for Core result",
+            evidence.indexOf("isCoreProjectClickProofForRun(")
+                < evidence.indexOf("return ChatGptB1Policy.projectClickObservedInRun("));
+    }
+
+    @Test
     public void projectBindingRequiresExactWaitingCoreLease() {
         assertTrue(ChatGptB1Policy.canBindObservedCoreProject(
             "run-1", "task-1", 1, "run-1", "task-1", 1, "WAITING_PROJECT", false
