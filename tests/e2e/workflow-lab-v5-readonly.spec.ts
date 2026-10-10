@@ -7,7 +7,7 @@ test.use({ channel: 'chrome' });
 const html = readFileSync(new URL('../../labs/workflow-lab-v5/index.html', import.meta.url), 'utf8');
 const issue = (number:number, state:'open'|'closed', current:string, reason:string|null=null) => ({
   number, title: number===88?'Không triển khai tính năng cũ':'Xử lý lỗi phân công',
-  body:'PROJECT_ID=tigeriq-ai-lab\\nCURRENT_STATE='+current,
+  body:['PROJECT_ID=tigeriq-ai-lab','CURRENT_STATE='+current].join(String.fromCharCode(10)),
   state, state_reason:reason, updated_at:'2026-10-10T06:00:00Z',
   html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/'+number,
 });
