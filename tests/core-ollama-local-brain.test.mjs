@@ -91,8 +91,8 @@ test('NV08 and NV10 have distinct IDs, NV08 is no longer retired in roster',()=>
   assert.match(source,/CORE_MANAGER_EMPLOYEE_ID = 'NV08'/);
   assert.match(source,/OLLAMA_EMPLOYEE_ID = 'NV10'/);
   const roster=completeRoster(new Map([
-    ['NV08',{employee_id:'NV08',name:'Core AI Manager',admin_state:'ACTIVE_CORE_RESOURCE'}],
-    ['NV10',{employee_id:'NV10',name:'Ollama',admin_state:'ACTIVE_CORE_RESOURCE'}],
+    ['NV08',{employee_id:'NV08',name:'Core AI Manager · Ollama Qwen3 8B',admin_state:'ACTIVE_CORE_RESOURCE'}],
+    ['NV10',{employee_id:'NV10',name:'Core API Doctor · Ollama Qwen3 4B',admin_state:'ACTIVE_CORE_RESOURCE'}],
   ]));
   assert.equal(roster.find(x=>x.employee_id==='NV08').retired,false);
   assert.equal(roster.find(x=>x.employee_id==='NV10').retired,false);

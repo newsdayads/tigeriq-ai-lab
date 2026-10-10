@@ -6,12 +6,12 @@ describe('#1600 full API Health workforce roster',()=>{
   it('keeps all canonical slots NV00 through NV20, including retired slots',()=>{
     const assignments=new Map([
       ['NV00',{employee_id:'NV00',name:'Vy (Trợ lý)',admin_state:'CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE'}],
-      ['NV09',{employee_id:'NV09',name:'Qwen3-Coder Local',admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434'}],
+      ['NV09',{employee_id:'NV09',name:'Core AI Coder · Ollama Qwen3.6 27B',admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434'}],
     ]);
     const roster=completeRoster(assignments,new Set(['NV05','NV07','NV08']));
     expect(roster).toHaveLength(21);
     expect(roster[0]).toMatchObject({employee_id:'NV00',name:'Vy (Trợ lý)',assigned:true});
-    expect(roster[9]).toMatchObject({employee_id:'NV09',name:'Qwen3-Coder Local',assigned:true});
+    expect(roster[9]).toMatchObject({employee_id:'NV09',name:'Core AI Coder · Ollama Qwen3.6 27B',assigned:true});
     expect(roster.find(x=>x.employee_id==='NV05')).toMatchObject({retired:true,admin_state:'RETIRED'});
     expect(roster.at(-1)?.employee_id).toBe('NV20');
   });
@@ -22,12 +22,12 @@ describe('#1600 full API Health workforce roster',()=>{
       '| mã | tên chuẩn | trạng thái quản trị |',
       '|---|---|---|',
       '| `NV00` | Vy (Trợ lý) | `CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE` |',
-      '| `NV09` | Qwen3-Coder Local | `PROVISIONING / LOCAL_CODER / IDLE_ON_DEMAND_AFTER_PASS` |',
+      '| `NV09` | Core AI Coder · Ollama Qwen3.6 27B | `PROVISIONING / LOCAL_CODER / IDLE_ON_DEMAND_AFTER_PASS` |',
       '5,7,8 RETIRED'
     ].join('\n'));
     expect(parsed.version).toBe('52');
     expect(parsed.workforce.find(x=>x.employee_id==='NV00')?.name).toBe('Vy (Trợ lý)');
-    expect(parsed.workforce.find(x=>x.employee_id==='NV09')?.name).toBe('Qwen3-Coder Local');
+    expect(parsed.workforce.find(x=>x.employee_id==='NV09')?.name).toBe('Core AI Coder · Ollama Qwen3.6 27B');
   });
 
   it('keeps NV00 in the backend roster but hides it from API Health cards and sorts operational groups deterministically',()=>{
