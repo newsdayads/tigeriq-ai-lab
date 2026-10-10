@@ -32,6 +32,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String KEY_PROJECT_GATE_MODE = "projectGateMode";
     public static final String KEY_PROJECT_GATE_AT = "projectGateAt";
     public static final String KEY_AUTO_PROJECT_CLICK_AT = "autoProjectClickAt";
+    public static final String KEY_AUTO_PROJECT_CLICK_RUN_ID = "autoProjectClickRunId";
+    public static final String KEY_AUTO_PROJECT_CLICK_TASK_ID = "autoProjectClickTaskId";
+    public static final String KEY_AUTO_PROJECT_CLICK_CYCLE = "autoProjectClickCycle";
     public static final String KEY_AUTO_PROJECT_CLICK_COUNT = "autoProjectClickCount";
     public static final String KEY_STANDALONE_NEW_CHAT_AT = "standaloneNewChatAt";
 
@@ -213,10 +216,25 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (project != null) {
             boolean clicked = project.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             if (clicked) {
+                // The UI action could race with a Core lease replacement. Do
+                // not write navigation proof for a successor run from this
+                // callback's stale snapshot. Record the click's own identity.
+                boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+                if (coreTask) {
+                    ChatGptB1RunStore.Snapshot live = ChatGptB1RunStore.read(this);
+                    if (!ChatGptB1Policy.canBindObservedCoreProject(
+                        run.runId, run.taskId, run.cycle,
+                        live.runId, live.taskId, live.cycle,
+                        live.state, live.projectBound
+                    )) return;
+                }
                 android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 int count = prefs.getInt(KEY_AUTO_PROJECT_CLICK_COUNT, 0) + 1;
                 prefs.edit()
-                    .putLong(KEY_AUTO_PROJECT_CLICK_AT, now)
+                    .putLong(KEY_AUTO_PROJECT_CLICK_AT, System.currentTimeMillis())
+                    .putString(KEY_AUTO_PROJECT_CLICK_RUN_ID, run.runId)
+                    .putString(KEY_AUTO_PROJECT_CLICK_TASK_ID, run.taskId)
+                    .putInt(KEY_AUTO_PROJECT_CLICK_CYCLE, run.cycle)
                     .putInt(KEY_AUTO_PROJECT_CLICK_COUNT, count)
                     .apply();
                 writeProjectDiag(
@@ -260,15 +278,25 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 3
             );
         boolean composerReady = root != null && ChatGptB1Automation.findComposerInput(root) != null;
-        long autoProjectClickAt = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
-        boolean autoNavigationProof = autoProjectClickAt >= run.startedAt && autoProjectClickAt > 0L;
+        android.content.SharedPreferences navigationPrefs = getSharedPreferences(
+            PREFS, Context.MODE_PRIVATE
+        );
+        long autoProjectClickAt = navigationPrefs.getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        boolean autoNavigationProof = coreTask
+            ? ChatGptB1Policy.isCoreProjectClickProofForRun(
+                run.runId, run.taskId, run.cycle, run.startedAt,
+                navigationPrefs.getString(KEY_AUTO_PROJECT_CLICK_RUN_ID, ""),
+                navigationPrefs.getString(KEY_AUTO_PROJECT_CLICK_TASK_ID, ""),
+                navigationPrefs.getInt(KEY_AUTO_PROJECT_CLICK_CYCLE, 0),
+                autoProjectClickAt
+            )
+            : ChatGptB1Policy.projectClickObservedInRun(autoProjectClickAt, run.startedAt);
         // Core tasks must have a Project navigation click from THIS run.
         // A lookalike ordinary chat can have the same toolbar title. Manual B1
         // retains its prior stable-title/composer-only binding behavior.
         // This click is necessary, not sufficient: live title and composer
         // still have to remain stable independently.
-        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
         boolean contextProof = projectTitleContext
             && (!coreTask || autoNavigationProof);
 
