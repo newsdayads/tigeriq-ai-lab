@@ -208,6 +208,148 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreSendClaimRejectsAnyReplacedRunTaskCycleOrPrompt() {
+        String run = "RUN-A", task = "TASK-A", prompt = "LEASED-PROMPT-A";
+        assertTrue(ChatGptB1Policy.canClaimCoreSendForSnapshot(
+            run, task, 1, prompt, run, task, 1, "INPUT_READY", 0,
+            prompt, true, "PROJECT"
+        ));
+        assertFalse("Cannot claim another run",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, "RUN-B", task, 1,
+                "INPUT_READY", 0, prompt, true, "PROJECT"
+            ));
+        assertFalse("Cannot claim another task",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, "TASK-B", 1,
+                "INPUT_READY", 0, prompt, true, "PROJECT"
+            ));
+        assertFalse("Cannot claim another cycle",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 2,
+                "INPUT_READY", 0, prompt, true, "PROJECT"
+            ));
+        assertFalse("A changed task prompt is not the original lease",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 1,
+                "INPUT_READY", 0, "OTHER-PROMPT", true, "PROJECT"
+            ));
+        assertFalse("Existing send claim prevents double sending",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 1,
+                "INPUT_READY", 1, prompt, true, "PROJECT"
+            ));
+        assertFalse("A standby run cannot claim Core Send",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 1,
+                "WAITING_AI", 0, prompt, true, "PROJECT"
+            ));
+        assertFalse("Standalone fallback can never claim Core Send",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 1,
+                "INPUT_READY", 0, prompt, true, "STANDALONE_FALLBACK"
+            ));
+        assertFalse("Unbound project can never claim Core Send",
+            ChatGptB1Policy.canClaimCoreSendForSnapshot(
+                run, task, 1, prompt, run, task, 1,
+                "INPUT_READY", 0, prompt, false, "PROJECT"
+            ));
+    }
+
+    @Test
+    public void coreReplyCannotCompleteReplacedOrMisattributedLease() {
+        String token = "TIGERIQ_CORE_OK_771", reply = "Completed " + token;
+        assertTrue(ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+            "RUN-A", "TASK-A", 1, token, reply,
+            "RUN-A", "TASK-A", 1, "WAITING_AI", 1,
+            1, 0, token, true, "PROJECT"
+        ));
+        assertFalse("Old chat cannot complete new run",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-B", "TASK-A", 1, "WAITING_AI", 1,
+                1, 0, token, true, "PROJECT"
+            ));
+        assertFalse("Old chat cannot complete new task",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-B", 1, "WAITING_AI", 1,
+                1, 0, token, true, "PROJECT"
+            ));
+        assertFalse("Old chat cannot complete a new cycle",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-A", 2, "WAITING_AI", 2,
+                1, 0, token, true, "PROJECT"
+            ));
+        assertFalse("A changed expected token is a different lease",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-A", 1, "WAITING_AI", 1,
+                1, 0, "OTHER_TOKEN", true, "PROJECT"
+            ));
+        assertFalse("Receipt must be attributed to the current send cycle",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-A", 1, "WAITING_AI", 0,
+                1, 0, token, true, "PROJECT"
+            ));
+        assertFalse("Duplicate send attempts invalidate completion",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-A", 1, "WAITING_AI", 1,
+                1, 1, token, true, "PROJECT"
+            ));
+        assertFalse("Incomplete or unverified response is not completion",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, "wrong token",
+                "RUN-A", "TASK-A", 1, "WAITING_AI", 1,
+                1, 0, token, true, "PROJECT"
+            ));
+        assertFalse("A terminal run must never be completed twice",
+            ChatGptB1Policy.canCompleteCoreReplyForSnapshot(
+                "RUN-A", "TASK-A", 1, token, reply,
+                "RUN-A", "TASK-A", 1, "COMPLETE", 1,
+                1, 0, token, true, "PROJECT"
+            ));
+    }
+
+    @Test
+    public void coreSendAndReplyMutationsCompareDurableIdentityWithinLock() throws Exception {
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String adapter = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int claim = store.indexOf("public static synchronized boolean markSentExactlyOnce(\n");
+        int manualClaim = store.indexOf("public static synchronized boolean markSentExactlyOnce(Context context)");
+        assertTrue(claim >= 0 && manualClaim > claim);
+        String coreClaim = store.substring(claim, manualClaim);
+        assertTrue(coreClaim.contains("Snapshot live = read(context)"));
+        assertTrue(coreClaim.contains("canClaimCoreSendForSnapshot("));
+        assertTrue(coreClaim.indexOf("canClaimCoreSendForSnapshot(")
+            < coreClaim.indexOf("persistSendClaim(context, live)"));
+        int complete = store.indexOf("public static synchronized boolean completeCoreReplyIfCurrent(");
+        int legacyComplete = store.indexOf("public static void completeCurrentCycle(Context context, String responseText)");
+        assertTrue(complete >= 0 && legacyComplete > complete);
+        String coreCompletion = store.substring(complete, legacyComplete);
+        assertTrue(coreCompletion.contains("canCompleteCoreReplyForSnapshot("));
+        assertTrue(coreCompletion.indexOf("canCompleteCoreReplyForSnapshot(")
+            < coreCompletion.indexOf("finishCycleFromSnapshot(context, live, responseText)"));
+        assertTrue("Both mutations must preserve original run identity",
+            adapter.contains("service, s.runId, s.taskId, s.cycle, prompt")
+                && adapter.contains("service, s.runId, s.taskId, s.cycle,"));
+        assertTrue("Stale Core claim must never fail or cancel the new run",
+            adapter.contains("if (!coreLeaseAtSend) {")
+                && adapter.contains("SEND_CLAIM_PERSIST_FAILED"));
+    }
+
+    @Test
     public void coreSendRequiresExactLiveComposerTextAfterFillCooldown() {
         String prompt = "Work lease 2949 confirmed TASK_77";
         assertTrue(ChatGptB1Policy.canSendCorePromptFromLiveComposer(
