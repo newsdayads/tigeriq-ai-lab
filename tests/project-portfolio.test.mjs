@@ -4,6 +4,12 @@ import vm from 'node:vm';
 import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, CANONICAL_PORTFOLIO_GROUPS, classifyProject, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 describe('TigerIQ LIVE project portfolio', () => {
+  it('does not let cross-project descriptions reassign portfolio issue ownership', () => {
+    const row = { number: 4640, title: '[P0][PORTFOLIO] Chuẩn hóa 7 dự án' };
+    const issue = { title: row.title, body: 'TigerIQ News / Media\nPaperclip vNext\nRevenue Lab\nTigerIQ Driver\nDeXCam Personal' };
+    expect(classifyProject(row, issue).id).toBe('tigeriq-platform');
+    expect(classifyProject(row, { ...issue, body: 'PROJECT_ID=tigeriq-news\n' + issue.body }).id).toBe('tigeriq-news');
+  });
   it('uses explicit project fields for future projects', () => {
     const project = classifyProject({ number: 9001, title: '[P2] Future product' }, {
       number: 9001,

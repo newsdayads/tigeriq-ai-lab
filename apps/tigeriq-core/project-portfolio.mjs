@@ -110,7 +110,9 @@ export function classifyProject(row = {}, issue = null) {
   if (/\bWORKFLOW[ _-]?LAB\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-workflow-lab');
   if (/\bAPP[ _-]?CHROME\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-app-chrome');
   if (/\bTIGERIQ[ _-]?COIN\b|\bDEROPHONE\b|\bDEROBIZFLY\b|\bZEPHYR\b/i.test(title)) return PROJECT_BY_ID.get('tigeriq-coin');
-  const text = rowText(row, issue);
+  // Never classify ownership from a body listing multiple project names (e.g. Portfolio #4640).
+  // Only an explicit PROJECT_ID/PROJECT_NAME metadata field may override the title.
+  const text = title;
   if (/\bTIGERIQ[ _-](?:NEWS|MEDIA)\b/i.test(text)) return PROJECT_BY_ID.get('tigeriq-news');
   if (/\bPAPERCLIP\b/i.test(text)) return PROJECT_BY_ID.get('paperclip-vnext');
   if (/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(text)) return PROJECT_BY_ID.get('revenue-lab');
