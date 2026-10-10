@@ -189,7 +189,7 @@ test('current NEXT_ACTION and ASSIGNEE precede stale historical aliases irrespec
    'NEXT=Old action: start unauthorized APK build',
    'TARGET_EMPLOYEE=NV04',
    'CURRENT_STATE=OLD_UNVERIFIED',
- ].join('\\n');
+ ].join('\n');
  const {res}=await invoke(()=>response(200,[{...fakeIssue(4625),body}]));
  assert.equal(res.statusCode,200);
  assert.equal(res.body.issues[0].project_id,'dexcam-personal');
@@ -199,7 +199,7 @@ test('current NEXT_ACTION and ASSIGNEE precede stale historical aliases irrespec
 });
 
 test('current NEXT and TARGET_EMPLOYEE remain supported without new aliases',async()=>{
- const body='NEXT=Resume verified review\\nTARGET_EMPLOYEE=NV03\\nASSIGNEE=NV02';
+ const body='NEXT=Resume verified review\nTARGET_EMPLOYEE=NV03\nASSIGNEE=NV02';
  const {res}=await invoke(()=>response(200,[{...fakeIssue(4457),body}]));
  assert.equal(res.statusCode,200);
  assert.equal(res.body.issues[0].next_action,'Resume verified review');
