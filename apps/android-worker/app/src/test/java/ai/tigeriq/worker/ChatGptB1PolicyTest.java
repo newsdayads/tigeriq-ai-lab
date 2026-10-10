@@ -689,7 +689,7 @@ public final class ChatGptB1PolicyTest {
             waiting.contains("generationInProgress")
                 && waiting.contains("RESPONSE_TIMEOUT")
                 && waiting.contains("CORE_REPLY_CLOCK_OR_SEND_INVALID")
-                && waiting.contains("markBusySeen(service)"));
+                && waiting.contains("markBusyObservedRun(service, s)"));
         assertTrue("Manual B1 matcher must remain separately reachable",
             waiting.contains(": responseTextContaining(root"));
     }
