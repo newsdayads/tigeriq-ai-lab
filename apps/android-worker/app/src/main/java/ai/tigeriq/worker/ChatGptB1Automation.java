@@ -30,7 +30,16 @@ public final class ChatGptB1Automation {
 
         if ("WAITING_AI".equals(s.state)) {
             String expectedToken = ChatGptB1RunStore.expectedToken(s);
-            String responseText = responseTextContaining(root, expectedToken, ChatGptB1RunStore.prompt(s));
+            // A Core receipt requires the newly sent user prompt followed by a
+            // structurally tagged assistant message. Broad token scans are
+            // legacy manual-B1 only; a visible token is never Core proof.
+            boolean coreLease = s.taskId != null && !s.taskId.isEmpty();
+            String responseText = coreLease
+                ? coreResponseTextContaining(
+                    root, expectedToken, ChatGptB1RunStore.prompt(s),
+                    s.sentAt > 0 && s.sentCycle == s.cycle
+                )
+                : responseTextContaining(root, expectedToken, ChatGptB1RunStore.prompt(s));
             if (!responseText.isEmpty()) {
                 // Another ChatGPT conversation can display the same token after
                 // navigation. Never credit it to a Core-lease Project run.
@@ -109,6 +118,17 @@ public final class ChatGptB1Automation {
         AccessibilityNodeInfo send = findSendControl(root, input);
         if (send == null) {
             // Text has been set; wait for the provider to render its semantic send control.
+            return;
+        }
+
+        // Reject stale task transcripts BEFORE the irreversible send. A
+        // previously visible matching user prompt or assistant token could
+        // otherwise be misattributed to this Core lease after navigation.
+        if (s.taskId != null && !s.taskId.isEmpty()
+            && coreTranscriptAlreadyContainsTask(
+                root, prompt, ChatGptB1RunStore.expectedToken(s)
+            )) {
+            ChatGptB1RunStore.fail(service, "CORE_RESPONSE_PROVENANCE_PREEXISTS");
             return;
         }
 
@@ -336,6 +356,100 @@ public final class ChatGptB1Automation {
             if (searchable(node).contains(wanted)) return true;
         }
         return false;
+    }
+
+    /**
+     * A Core lease must see its actual user prompt in a semantic message node,
+     * followed IN TREE ORDER by an assistant message containing the token.
+     * Message roles come only from app-owned class/resource IDs (never user
+     * text, labels or content descriptions). Unknown accessibility structure
+     * fails closed, pending a real device inspection.
+     */
+    static String coreResponseTextContaining(
+        AccessibilityNodeInfo root, String token, String prompt, boolean sendClaimed
+    ) {
+        if (root == null || !sendClaimed || text(token).isEmpty() || text(prompt).isEmpty()) {
+            return "";
+        }
+        boolean sentPromptSeen = false;
+        String wantedToken = normalize(token);
+        for (AccessibilityNodeInfo node : preorderNodes(root)) {
+            if (!node.isVisibleToUser() || node.isEditable()) continue;
+            String role = trustedMessageRole(node, root);
+            if (role.isEmpty()) continue;
+            String raw = text(node.getText());
+            if (raw.isEmpty()) raw = text(node.getContentDescription());
+            if ("USER".equals(role) && raw.equals(text(prompt))) {
+                sentPromptSeen = true;
+            } else if ("ASSISTANT".equals(role)
+                && sentPromptSeen && normalize(raw).contains(wantedToken)) {
+                // Do not accept a user/composer echo; do not strip the token
+                // out of a message that must be attributed to the assistant.
+                String candidate = raw.trim();
+                return candidate.length() > 4000 ? candidate.substring(0, 4000) : candidate;
+            }
+        }
+        return "";
+    }
+
+    /** Refuse send if a matching task transcript already existed beforehand. */
+    static boolean coreTranscriptAlreadyContainsTask(
+        AccessibilityNodeInfo root, String prompt, String token
+    ) {
+        if (root == null || text(prompt).isEmpty() || text(token).isEmpty()) return true;
+        String wantedToken = normalize(token);
+        for (AccessibilityNodeInfo node : preorderNodes(root)) {
+            if (!node.isVisibleToUser() || node.isEditable()) continue;
+            String role = trustedMessageRole(node, root);
+            if (role.isEmpty()) continue;
+            String raw = text(node.getText());
+            if (raw.isEmpty()) raw = text(node.getContentDescription());
+            if ("USER".equals(role) && raw.equals(text(prompt))) return true;
+            if ("ASSISTANT".equals(role) && normalize(raw).contains(wantedToken)) return true;
+        }
+        return false;
+    }
+
+    /** Role evidence must reach the live root and never cross composer nodes. */
+    private static String trustedMessageRole(
+        AccessibilityNodeInfo node, AccessibilityNodeInfo root
+    ) {
+        boolean assistant = false;
+        boolean user = false;
+        boolean completeAncestry = false;
+        AccessibilityNodeInfo current = node;
+        for (int depth = 0; current != null && depth < 32; depth++) {
+            if (current.isEditable()) return "";
+            String marker = ChatGptB1Policy.structuralMessageRole(
+                String.valueOf(current.getClassName()),
+                text(current.getViewIdResourceName())
+            );
+            if ("ASSISTANT".equals(marker)) assistant = true;
+            if ("USER".equals(marker)) user = true;
+            if (current.equals(root)) {
+                completeAncestry = true;
+                break;
+            }
+            current = current.getParent();
+        }
+        return completeAncestry && assistant != user ? (assistant ? "ASSISTANT" : "USER") : "";
+    }
+
+    /** Preorder preserves transcript sequence; a breadth-first scan does not. */
+    private static Iterable<AccessibilityNodeInfo> preorderNodes(AccessibilityNodeInfo root) {
+        java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+        if (root == null) return out;
+        Deque<AccessibilityNodeInfo> stack = new ArrayDeque<>();
+        stack.push(root);
+        while (!stack.isEmpty() && out.size() < MAX_NODES) {
+            AccessibilityNodeInfo node = stack.pop();
+            out.add(node);
+            for (int i = node.getChildCount() - 1; i >= 0; i--) {
+                AccessibilityNodeInfo child = node.getChild(i);
+                if (child != null) stack.push(child);
+            }
+        }
+        return out;
     }
 
     static String responseTextContaining(AccessibilityNodeInfo root, String token, String prompt) {
