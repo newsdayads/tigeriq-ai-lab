@@ -3,7 +3,7 @@
 > **CHỈ LẬP KẾ HOẠCH.** Mọi việc lập trình, cài đặt trên xe hoặc cấp quyền vượt mặc định đều **CHỜ LỆNH OWNER**. Không có nhân sự AI nào đang thực thi ngầm.
 
 ## 1. Cấu trúc dự án độc lập
-- **Mã dự án:** `TIGERIQ_DEXCAM_PERSONAL`
+- **Mã dự án chuẩn (`project.yaml`):** `dexcam-personal`. `TIGERIQ_DEXCAM_PERSONAL` là mã lịch sử đang còn trong Issue, không được tạo một dự án thứ hai khi đồng bộ.
 - **Hồ sơ điều hành:** [Issue #4625 — Dự án DeXCam Personal](https://github.com/newsdayads/tigeriq-ai-lab/issues/4625)
 - **Tài liệu:** `projects/dexcam-personal/`
 - **Mã nguồn ứng dụng:** **chưa có kho mã riêng**. Khi chuyển sang triển khai, ưu tiên tạo repository **riêng, riêng tư nếu chứa dữ liệu/driver thông tin chủ xe**, không dùng chung build pipeline TigerIQ Core.
