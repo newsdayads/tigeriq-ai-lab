@@ -260,9 +260,14 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         long autoProjectClickAt = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
         boolean autoNavigationProof = autoProjectClickAt >= run.startedAt && autoProjectClickAt > 0L;
-        // An automatic/menu click may leave an unrelated chat or drawer visible.
-        // It is diagnostic evidence, not sufficient proof of Project context.
-        boolean contextProof = projectTitleContext;
+        // Core tasks must have a Project navigation click from THIS run.
+        // A lookalike ordinary chat can have the same toolbar title. Manual B1
+        // retains its prior stable-title/composer-only binding behavior.
+        // This click is necessary, not sufficient: live title and composer
+        // still have to remain stable independently.
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        boolean contextProof = projectTitleContext
+            && (!coreTask || autoNavigationProof);
 
         if (!exactProject || !composerReady || !contextProof) {
             if (projectContextSamples > 0 || exactProject) {
@@ -291,9 +296,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; stableMs=" + stableMs
         );
 
-        if (ChatGptB1Policy.canBindStableProjectContext(
-            exactProject, projectTitleContext, composerReady,
-            projectContextSamples, stableMs
+        if (ChatGptB1Policy.canBindStableProjectContextForTask(
+            run.taskId, exactProject, projectTitleContext, composerReady,
+            autoNavigationProof, projectContextSamples, stableMs
         )) {
             writeProjectDiag(
                 "STABLE_PROJECT_CONTEXT",
