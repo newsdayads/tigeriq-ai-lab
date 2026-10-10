@@ -324,6 +324,22 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * A recent Project click is only Core navigation proof if it came from the
+     * exact same durable run/task/cycle. Timestamps alone are not identity.
+     */
+    public static boolean isCoreProjectClickProofForRun(
+        String expectedRunId, String expectedTaskId, int expectedCycle,
+        long runStartedAt, String clickedRunId, String clickedTaskId,
+        int clickedCycle, long clickAt
+    ) {
+        return projectClickObservedInRun(clickAt, runStartedAt)
+            && isSameProjectContextCandidate(
+                clickedRunId, clickedTaskId, clickedCycle,
+                expectedRunId, expectedTaskId, expectedCycle
+            );
+    }
+
+    /**
      * A Core task may click Send only when the action itself has a trusted
      * native button identity in the local composer scope. Do not accept the
      * word "send" in arbitrary message text or guess from an icon's shape.
