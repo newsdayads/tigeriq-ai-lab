@@ -1556,6 +1556,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     const hasAcceptanceEvidenceGate=sourceLiveRequired||sourceFinalReviewRequired;
     if(managerAcceptanceRevisionRefresh({
       sourceLiveRequired,sourceFinalReviewRequired,dependencyGateRequired:dependencyGate.required,
+      awaitingRevision:row.metadata?.managerAwaitingAcceptanceRevision,
       revisionChanged,status:row.status,
     })){
       policyPatch.sourceRevision=currentSourceRevision;
