@@ -214,7 +214,11 @@ function projectEvidence(it){
 }
 function status(it){
  const source=String(it.current_state||marker(it.body,'CURRENT_STATE')||'').toUpperCase();
- const words=new Set(source.split(/[^A-Z0-9]+/).filter(Boolean));
+ const tokens=source.split(/[^A-Z0-9]+/).filter(Boolean);
+ // Negated flags (NOT_BLOCKED_WORKING / NO_DENIED) are not terminal blockers.
+ // Keep BLOCKED_NOT_RESOLVED blocked: only a preceding negation cancels the flag.
+ const negatable=new Set(['BLOCK','BLOCKED','BLOCKING','HOLD','HELD','DENY','DENIED','REVIEW','VERIFY','VERIFICATION']);
+ const words=new Set(tokens.filter((token,i)=>!(i>0&&['NOT','NO'].includes(tokens[i-1])&&negatable.has(token))));
  const has=(...values)=>values.some(v=>words.has(v));
  // State identifiers are tokens, not substrings: UNBLOCKED and NOT_DONE
  // must never become BLOCKED or DONE. Do not trust incomplete completion.
