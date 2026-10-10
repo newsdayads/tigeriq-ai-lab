@@ -1489,8 +1489,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
   const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
-  // Reconcile oldest-first: every attempted row advances its timestamp below,
-  // so a parked GitHub objective cannot stay beyond the fixed 100-row window.
+  // Reconcile oldest-first: policy reconciliation updates successful rows, and
+  // failures advance their scan position, so parked work rotates into view.
   // Keep targeted issueNumber filtering INSIDE SQL; filtering after LIMIT can
   // silently miss the requested objective once the backlog is large.
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
@@ -1506,15 +1506,18 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     limit 100`,issueFilter?[[...issueFilter].map(String)]:[])).rows;
   let claims=0,results=0;
   for(const row of rows){
-    // Advance the fair-scan cursor even when GitHub is temporarily unavailable.
-    // Otherwise 100 permanently failing old rows can starve newer parked work.
-    await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
-    const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    const number=Number(row.metadata?.issueNumber);
+    if(!number){
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
+      continue;
+    }
     if(issueFilter&&!issueFilter.has(number))continue;
     let sourceIssueForGate=null;
     try{
       sourceIssueForGate=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
     }catch(error){
+      // A failed GitHub check must not monopolize the oldest-first 100-row page.
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
       if(githubRateLimitCooldownMs(error)>0)throw error;
       console.error(JSON.stringify({event:'GITHUB_LIVE_ACCEPTANCE_POLICY_SYNC_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       continue;
@@ -1544,6 +1547,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     try{
       dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,sourceIssueForGate,openIssueIndex);
     }catch(error){
+      // A failed GitHub check must not monopolize the oldest-first 100-row page.
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
       if(githubRateLimitCooldownMs(error)>0)throw error;
       console.error(JSON.stringify({event:'GITHUB_DEPENDENCY_TERMINAL_GATE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       continue;
