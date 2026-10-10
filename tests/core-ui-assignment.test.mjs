@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {readFileSync} from 'node:fs';
+import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03CoreRoutingDisabled,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -684,4 +685,40 @@ test('review substep DONE keeps parent open despite header drift; ordinary DONE 
     assert.equal(pool.jobs[0].status,'done','review slot must be released');
     assert.equal(pool.objectives[0].status,'completed','only Core UI subtask objective is terminal');
   }
+});
+
+test('NV03 independent self-pull fence requires all three verified Core gates; default keeps existing route',()=>{
+  const env={TIGERIQ_NV03_SELF_PULL_MODE:'GITHUB_SELF_PULL',
+    TIGERIQ_NV03_CORE_ROUTE_FENCED:'1',TIGERIQ_NV03_GLOBAL_LEASE_VERIFIED:'1'};
+  assert.equal(coreUiNv03SelfPullFenced({}),false);
+  for(const key of Object.keys(env))assert.equal(coreUiNv03SelfPullFenced({...env,[key]:''}),false,key);
+  assert.equal(coreUiNv03SelfPullFenced(env),true);
+  assert.equal(selectCoreUiWorker('review'),'NV03');
+  assert.equal(selectCoreUiWorker('research'),'NV04');
+});
+
+test('Owner explicit NV03 Core routing disable is fail-closed by default and preserves NV04 and NV02',()=>{
+  assert.equal(coreUiNv03CoreRoutingDisabled({}),false);
+  assert.equal(coreUiNv03CoreRoutingDisabled({TIGERIQ_NV03_CORE_DISPATCH_DISABLED:'true'}),false);
+  assert.equal(coreUiNv03CoreRoutingDisabled({TIGERIQ_NV03_CORE_DISPATCH_DISABLED:'1'}),true);
+  const before=process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+  try{
+    process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1';
+    const snap=readyUnassignedCoreUiSnapshot();
+    assert.equal(snap.workerBindings.NV03.state,'EXTERNAL_TO_CORE');
+    assert.equal(snap.workerBindings.NV04.state,'READY_UNASSIGNED');
+    assert.equal(snap.workerBindings.NV02.state,'EXTERNAL_TO_CORE');
+    assert.equal(selectCoreUiWorker('review'),'NV04');
+    assert.equal(selectCoreUiWorker('research'),'NV04');
+  }finally{
+    if(before===undefined)delete process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+    else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=before;
+  }
+  assert.equal(selectCoreUiWorker('review'),'NV03');
+});
+
+test('installed Core launcher persistently disables NV03 Core routing after updater restart',()=>{
+ const script=readFileSync(new URL('../scripts/tigeriq-core/run-core.ps1',import.meta.url),'utf8');
+ assert.match(script,/\$env:TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1'/);
+ assert.match(script,/\$env:TIGERIQ_CORE_PORT='8795'/);
 });
