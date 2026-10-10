@@ -1,5 +1,7 @@
 package ai.tigeriq.worker;
 
+import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -346,25 +348,65 @@ public final class ChatGptB1Automation {
     public static boolean treeContainsExactLabelOutsideClickableNavigation(
         AccessibilityNodeInfo root,
         String label,
-        int maxParents
+        int ignoredMaxParents
     ) {
         String wanted = normalize(label);
         if (root == null || wanted.isEmpty()) return false;
+
+        // A matching message, quoted Project name or sidebar entry is not an
+        // authenticated Project context. The actual composer and top-level
+        // header must both be visible in the SAME current Accessibility tree.
+        AccessibilityNodeInfo composer = findComposerInput(root);
+        if (composer == null) return false;
+        Rect windowBounds = new Rect();
+        Rect composerBounds = new Rect();
+        root.getBoundsInScreen(windowBounds);
+        composer.getBoundsInScreen(composerBounds);
+        if (windowBounds.isEmpty() || composerBounds.isEmpty()) return false;
+
         for (AccessibilityNodeInfo node : nodes(root)) {
-            // Hidden semantic labels can linger in an off-screen navigation
-            // subtree and cannot prove which Project currently owns the chat.
             if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
-            AccessibilityNodeInfo current = node;
+
+            boolean semanticHeader = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && node.isHeading();
+            boolean scrollOrMessageAncestor = false;
             boolean clickableAncestor = false;
-            for (int depth = 0; current != null && depth <= maxParents; depth++) {
-                if (current.isClickable()) {
-                    clickableAncestor = true;
+            boolean reachesRoot = false;
+            AccessibilityNodeInfo current = node;
+            // Scan the full bounded path, not just 3 levels: navigation buttons
+            // and scroll containers may be nested much more deeply.
+            for (int depth = 0; current != null && depth < 32; depth++) {
+                if (current.isClickable()) clickableAncestor = true;
+                if (current.isScrollable() || current.isEditable()) {
+                    scrollOrMessageAncestor = true;
+                }
+                String className = normalize(String.valueOf(current.getClassName()));
+                String viewId = normalize(text(current.getViewIdResourceName()));
+                if (containsAny(className, "scrollview", "recyclerview", "listview", "webview")
+                    || containsAny(viewId, "scrollview", "recyclerview", "message_list",
+                        "conversation_list", "chat_list")) {
+                    scrollOrMessageAncestor = true;
+                }
+                if (containsAny(className, "toolbar", "actionbar", "appbar")
+                    || containsAny(viewId, "toolbar", "action_bar", "app_bar",
+                        "project_header", "chat_header")) {
+                    semanticHeader = true;
+                }
+                if (current.equals(root)) {
+                    reachesRoot = true;
                     break;
                 }
                 current = current.getParent();
             }
-            if (ChatGptB1Policy.isVisibleNonNavigationProjectTitle(
-                true, node.isVisibleToUser(), clickableAncestor
+            if (!reachesRoot) continue; // Truncated ancestry is not proof.
+
+            Rect titleBounds = new Rect();
+            node.getBoundsInScreen(titleBounds);
+            if (titleBounds.isEmpty()) continue;
+            if (ChatGptB1Policy.isVerifiedProjectHeaderEvidence(
+                true, semanticHeader, scrollOrMessageAncestor, clickableAncestor,
+                windowBounds.top, windowBounds.bottom,
+                titleBounds.top, titleBounds.bottom, composerBounds.top
             )) return true;
         }
         return false;
