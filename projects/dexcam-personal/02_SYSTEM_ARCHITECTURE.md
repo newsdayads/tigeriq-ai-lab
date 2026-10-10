@@ -91,8 +91,8 @@ SIGNAL_VALID
   ├─ permission/UI blocked → PRESENTATION_BLOCKED
   └─ signal gone → SIGNAL_LOST_CONFIRM
 CAMERA_VISIBLE
-  ├─ signal/R gone confirmed → RESTORE_LAYOUT → WAIT_SIGNAL / NO_USB
-  ├─ stream stalls → RECOVERING (show unavailable, not stale)
+  ├─ verified R=OFF / manual close → RESTORE_LAYOUT → WAIT_SIGNAL / NO_USB
+  ├─ signal/frame/USB lost while R=ON or unknown → RECOVERING (show CAMERA_UNAVAILABLE, never stale frame)
   └─ repeated attach same epoch → no-op
 RECOVERING
   ├─ recovered → WAIT_FIRST_FRAME
