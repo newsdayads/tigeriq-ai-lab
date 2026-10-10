@@ -26,7 +26,9 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 | CAM-10 | Thay đổi chuẩn analog/mode | khi thiết bị cho phép | ghi format và hành vi recovery |
 | CAM-11 | App bị kill / Activity tái tạo | Android kill/restart | không phụ thuộc một instance UI |
 | CAM-12 | Đổi app khi camera đang mở | app thứ ba | không bỏ lỡ yêu cầu mở |
-| CAM-13 | Hết R | camera đang hiển thị | trả bố cục không đóng app |
+| CAM-13 | Hết R có bằng chứng đáng tin cậy | camera đang hiển thị; nguồn R_OFF đã kiểm chứng | trả bố cục không đóng app, ghi nguồn xác nhận R_OFF |
+| CAM-17 | Camera mất hình nhưng R vẫn ON | video/USB mất trong R được xác nhận | cảnh báo `CAMERA_UNAVAILABLE`, không hiện khung cũ, không tự suy ra rời R |
+| CAM-18 | Camera mất hình khi R không xác định | nguồn R_OFF không đủ tin cậy | ghi `reverse_state=UNKNOWN`, cảnh báo thay vì tự khôi phục bố cục; chỉ đóng theo thao tác có chủ ý |
 | CAM-14 | Bấm icon thủ công | tự mở thất bại có log | phân biệt lỗi auto và lỗi stream |
 | CAM-15 | Phát hiện màu/nhiễu | điều kiện có sự cố | error + mode + xử lý rõ |
 | CAM-16 | PD/hub yếu (chỉ quan sát an toàn) | nguồn hub thay đổi | phân biệt disconnect phần cứng và lỗi app |
