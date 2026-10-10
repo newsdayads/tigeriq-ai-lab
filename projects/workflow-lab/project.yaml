@@ -4,12 +4,12 @@ name: Workflow Lab
 kind: project
 portfolio_group_id: tigeriq-ai
 order: 40
-source_roots:
-  - labs/workflow-lab-v1
-  - labs/workflow-lab-v2
-  - labs/workflow-lab-v3
-  - labs/workflow-lab-v4
-  - labs/workflow-lab-v5
+source_mode: isolated_draft_branch
+source_repository: newsdayads/tigeriq-ai-lab
+source_branch: feat/workflow-lab-v5-full-readonly-4636
+source_pr: 4637
+source_path_in_branch: labs/workflow-lab-v5
+published_to_main: false
 workstreams:
   - id: read-only
     name: Giao diện dữ liệu chỉ đọc
