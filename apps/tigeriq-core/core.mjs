@@ -2782,7 +2782,10 @@ async function collectSelfAuditSnapshot(store=pool){
   for(const job of queueJobs){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
-    const profile=deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
+    // Match dispatch: health/readiness must not hide an eligible local NV10 job.
+    const profile=taskKind==='github_api_autowork'
+      ? 'LOCAL'
+      : deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
     const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
     const employeeAllowlist=taskKind==='github_api_autowork'
       ? new Set(CORE_LOCAL_BRAIN_EMPLOYEES)
