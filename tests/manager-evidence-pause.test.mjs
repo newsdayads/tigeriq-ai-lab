@@ -73,6 +73,34 @@ test('dependency-only paused GitHub objectives wake when source body revision ch
   }),true);
 });
 
+test('removing the last dependency gate refreshes a parked GitHub objective without bypassing blocked fences',()=>{
+  // An old dependency-only objective remains parked after source removes DEPENDS_ON.
+  // Even with no currently declared gates, the persisted parked marker is a watcher.
+  const refreshed=managerAcceptanceRevisionRefresh({
+    awaitingRevision:'old-dependency-source-revision',
+    dependencyGateRequired:false,
+    sourceLiveRequired:false,
+    sourceFinalReviewRequired:false,
+    revisionChanged:true,
+    status:'active',
+  });
+  assert.equal(refreshed,true);
+  assert.deepEqual(managerAcceptanceWakePlan({
+    awaitingRevision:'old-dependency-source-revision',
+    sourceRevision:'new-dependency-source-revision',
+    acceptanceAllowed:true,
+  }),{wake:true,reason:'acceptance_satisfied'});
+  for(const input of [
+    {awaitingRevision:'old-dependency-source-revision',revisionChanged:false,status:'active'},
+    {awaitingRevision:'old-dependency-source-revision',revisionChanged:true,status:'blocked'},
+    {awaitingRevision:'',revisionChanged:true,status:'active'},
+    {awaitingRevision:null,revisionChanged:true,status:'active'},
+  ])assert.equal(managerAcceptanceRevisionRefresh(input),false);
+  assert.equal(managerAcceptanceRevisionRefresh({
+    awaitingRevision:'old-dependency-source-revision',revisionChanged:true,status:'active',
+  }),true);
+});
+
 test('Core and GitHub intake wire evidence parking and atomic active-only wakeup',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
@@ -82,6 +110,7 @@ test('Core and GitHub intake wire evidence parking and atomic active-only wakeup
   assert.match(core,/OBJECTIVE_COMPLETION_WAITING_EVIDENCE/);
   assert.match(intake,/managerAcceptanceRevisionRefresh\(/);
   assert.match(intake,/dependencyGateRequired:dependencyGate\.required/);
+  assert.match(intake,/awaitingRevision:row\.metadata\?\.managerAwaitingAcceptanceRevision/);
   assert.match(intake,/managerAcceptanceWakePlan\(/);
   assert.match(intake,/if\(row\.status==='active'&&wake\.wake\)/);
   assert.match(intake,/metadata=coalesce\(metadata,'\{\}'::jsonb\)-'managerAwaitingAcceptanceRevision'/);
