@@ -8,6 +8,12 @@ const DEFAULT_TARGET_REPOSITORY=OWNER+'/'+REPO;
 const ALLOWED_TARGET_REPOSITORIES=new Set([DEFAULT_TARGET_REPOSITORY.toLowerCase(),'newsdayads/tigeriq-media']);
 const ALL_WORKERS=['NV02','NV03','NV04'];
 const WORKERS=['NV03','NV04'];
+// Default disabled. Activation requires a separately verified global claim/lease and source-specific runtime mode.
+export function coreUiNv03SelfPullFenced(env=process.env){
+  return String(env?.TIGERIQ_NV03_SELF_PULL_MODE||'')==='GITHUB_SELF_PULL'
+    && String(env?.TIGERIQ_NV03_CORE_ROUTE_FENCED||'')==='1'
+    && String(env?.TIGERIQ_NV03_GLOBAL_LEASE_VERIFIED||'')==='1';
+}
 const REQUIRED=['NO_PC01_SHELL','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
 export const CORE_UI_ASSIGNMENT_STALE_MS=Math.max(30000,Number(process.env.TIGERIQ_CORE_UI_ASSIGNMENT_STALE_MS||90000));
 
@@ -318,6 +324,8 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 }
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
+  // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
+  if(workerId==='NV03'&&coreUiNv03SelfPullFenced())return null;
   if(await row(pool,{workerId}))return null;
   const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
@@ -358,7 +366,7 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
   const spec=parseCoreUiIssue(issue);
   if(!spec)return item;
   const currentWorker=String(item.employee_id||item.metadata?.uiWorkerId||'');
-  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker)){
+  for(const workerId of spec.eligibleWorkerIds.filter((id)=>id!==currentWorker&&!(id==='NV03'&&coreUiNv03SelfPullFenced()))){
     if(await row(pool,{workerId}))continue;
     const exactContext=await loadCoreUiExactHeadContext({fetchImpl,owner,repo,token,spec});
     if(!exactContext.ok)continue;
@@ -393,7 +401,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
-    else missingWorkers.push(workerId);
+    else if(!(workerId==='NV03'&&coreUiNv03SelfPullFenced()))missingWorkers.push(workerId);
   }
   if(missingWorkers.length){
     let issues,sourceError;
