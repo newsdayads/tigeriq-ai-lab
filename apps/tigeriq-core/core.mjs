@@ -2176,17 +2176,20 @@ async function managerTick() {
     managerCycles:o.manager_cycles,
   });
   if(terminalProgress.checkpoint){
-    // Checkpoint progress independently of the GitHub reconciliation cursor.
-    // Do NOT alter updated_at; that is the bounded 100-row scan fairness key.
-    await pool.query(
-      "update tigeriq_objectives set metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerLastObservedTerminalAt}',to_jsonb($2::text),true) where id=$1 and status='active' and (metadata->>'managerLastObservedTerminalAt' is distinct from $2)",
-      [o.id,terminalProgress.observedAt],
+    // Atomic compare-and-set: never consume a completion watermark without
+    // also resetting its stale-cycle budget, or overwrite a newer watermark
+    // written by another Core instance. No progress => no updated_at churn.
+    const saved=await pool.query(
+      "update tigeriq_objectives set metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerLastObservedTerminalAt}',to_jsonb($2::text),true),manager_cycles=case when $4::boolean then 0 else manager_cycles end,updated_at=case when $4::boolean then now() else updated_at end where id=$1 and status='active' and (metadata->>'managerLastObservedTerminalAt') is not distinct from $3::text",
+      [o.id,terminalProgress.observedAt,o.metadata?.managerLastObservedTerminalAt??null,terminalProgress.progressed],
     );
+    // Stale workers must not run an unguarded manager decision after another
+    // instance consumed the same progress or terminalized the objective.
+    if(saved.rowCount!==1)return;
     o.metadata={...o.metadata,managerLastObservedTerminalAt:terminalProgress.observedAt};
   }
   const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:terminalProgress.progressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
   if(managerGuard.reset){
-    await pool.query("update tigeriq_objectives set manager_cycles=0,updated_at=now() where id=$1",[o.id]);
     o.manager_cycles=0;
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
