@@ -8,7 +8,7 @@ const {default:handler}=await import('data:text/javascript;base64,'+Buffer.from(
 const fakeIssue=n=>({number:n,title:'Issue '+n,body:'PROJECT_ID=tigeriq-ai',state:'open',labels:[],updated_at:'2026-10-10T00:00:00Z'});
 const response=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const fakeRes=()=>({headers:{},setHeader(k,v){this.headers[k]=v},status(n){this.statusCode=n;return this},json(body){this.body=body;return this}});
-async function invoke(githubPage){
+async function invoke(githubPage,query={}){
   const prior=globalThis.fetch;
   const calls=[];
   globalThis.fetch=async url=>{
@@ -17,7 +17,7 @@ async function invoke(githubPage){
     return response(200,{ok:true,mode:'public',liveConnected:false,staleAll:true,activeWork:[],openWork:[],recentWork:[]});
   };
   const res=fakeRes();
-  try{await handler({method:'GET'},res);return {res,calls}}finally{globalThis.fetch=prior}
+  try{await handler({method:'GET',query},res);return {res,calls}}finally{globalThis.fetch=prior}
 }
 
 test('422 on later GitHub page serves verified partial rows with explicit truncation',async()=>{
@@ -123,4 +123,27 @@ test('coverage declares source repository and excludes unindexed external reposi
  assert.equal(res.statusCode,200);
  assert.equal(res.body.coverage.scopeRepo,'newsdayads/tigeriq-ai-lab');
  assert.equal(res.body.coverage.externalRepoCoverage,false);
+});
+
+
+test('live-style cursor boundary replays one issue and preserves lossless unique history',async()=>{
+ const start=Date.parse('2026-02-01T00:00:00Z');
+ const withDate=(num,offset)=>({...fakeIssue(num),updated_at:new Date(start+offset*1000).toISOString()});
+ const first=await invoke(page=>response(200,Array.from({length:100},(_,i)=>withDate(page*100+i,page*100+i))));
+ assert.equal(first.res.statusCode,200);
+ assert.equal(first.res.body.coverage.stopReason,'NEXT_WINDOW_AVAILABLE');
+ const boundary=first.res.body.issues.at(-1);
+ assert.equal(boundary.number,899);
+ const since=first.res.body.coverage.nextSince;
+ assert.equal(since,new Date(Date.parse(boundary.updated_at)-1000).toISOString());
+ const second=await invoke(page=>response(200,page===1?[boundary,withDate(900,900),withDate(901,901)]:[]),{since});
+ assert.equal(second.res.statusCode,200);
+ assert.equal(second.res.body.coverage.complete,true);
+ assert.equal(second.res.body.coverage.since,since);
+ const githubUrl=second.calls.find(x=>x.includes('api.github.com'));
+ assert.equal(new URL(githubUrl).searchParams.get('since'),since);
+ const combined=new Map([...first.res.body.issues,...second.res.body.issues].map(i=>[i.number,i]));
+ assert.equal(combined.size,802);
+ assert.equal(combined.get(899).updated_at,boundary.updated_at);
+ assert.ok(combined.has(900)&&combined.has(901));
 });
