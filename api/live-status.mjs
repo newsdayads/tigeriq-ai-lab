@@ -4,7 +4,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
-import { annotatePortfolioRows, buildProjectPortfolio } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -1753,6 +1753,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       completionProgress,
       apiWorkforceSummary,
       projectPortfolio: buildProjectPortfolio(openWork),
+      portfolioGroups: buildPortfolioGroups(buildProjectPortfolio(openWork)),
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
@@ -1784,6 +1785,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
@@ -1969,6 +1971,7 @@ export default async function handler(req, res) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
