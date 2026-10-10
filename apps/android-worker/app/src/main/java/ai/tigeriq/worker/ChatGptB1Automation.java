@@ -133,8 +133,45 @@ public final class ChatGptB1Automation {
         for (AccessibilityNodeInfo node : nodes(root)) {
             if (!node.isVisibleToUser() || !nodeHasExactLabel(node, wanted)) continue;
             AccessibilityNodeInfo clickable = nearestClickable(node, 5);
-            if (clickable != null && clickable.isEnabled()) return clickable;
+            if (clickable == null || !clickable.isEnabled()) continue;
+
+            // A user message can literally say TigerIQ AI Lab, including in
+            // clickable content. Only choose a Project control when its own
+            // ancestry proves it belongs to the navigation UI. A generic
+            // scroll container or a bare matching label is not enough.
+            boolean navigationScope = false;
+            boolean conversationScope = false;
+            boolean completeAncestry = false;
+            AccessibilityNodeInfo current = node;
+            for (int depth = 0; current != null && depth < 32; depth++) {
+                if (current.isEditable()) conversationScope = true;
+                String klass = normalize(String.valueOf(current.getClassName()));
+                String id = normalize(text(current.getViewIdResourceName()));
+                if (containsAny(klass, "drawerlayout", "navigationview")
+                    || containsAny(id, "navigation_drawer", "nav_drawer", "sidebar",
+                        "project_list", "projects_list", "project_item",
+                        "project_row", "project_navigation", "nav_list")) {
+                    navigationScope = true;
+                }
+                if (containsAny(klass, "messagebubble", "chatmessage", "transcript")
+                    || containsAny(id, "message_list", "message_item", "message_row",
+                        "chat_bubble", "chat_content", "chat_messages",
+                        "transcript", "composer", "prompt_input")) {
+                    conversationScope = true;
+                }
+                if (current.equals(root)) {
+                    completeAncestry = true;
+                    break;
+                }
+                current = current.getParent();
+            }
+            if (ChatGptB1Policy.isTrustedProjectNavigationTarget(
+                clickable.isVisibleToUser() && clickable.isEnabled() && clickable.isClickable(),
+                true, navigationScope, conversationScope, completeAncestry
+            )) return clickable;
         }
+        // Missing semantic navigation structure is a safe non-selection,
+        // not permission to click an arbitrary matching chat message.
         return null;
     }
 
