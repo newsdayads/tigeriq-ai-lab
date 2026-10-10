@@ -29,7 +29,7 @@ async function openLab(page:Page, data:unknown=payload){
 test('V5 excludes stale Core rows so old BLOCKED/employee/nextStep cannot override GitHub',async({page})=>{
  const current={...issue(4457,'open','WORKING'),
   title:'[P1][CORE vNext] Source still working',
-  body:'PROJECT_ID=tigeriq-platform\\nCURRENT_STATE=WORKING\\nASSIGNEE=NV02\\nNEXT_ACTION=Verify GitHub source changes'};
+  body:['PROJECT_ID=tigeriq-platform','CURRENT_STATE=WORKING','ASSIGNEE=NV02','NEXT_ACTION=Verify GitHub source changes'].join(String.fromCharCode(10))};
  const data={...payload,issues:[current],
   core:{connected:true,stale:true,rows:[
    {number:4457,status:'BLOCKED',employeeId:'NV09',nextStep:'Outdated Core retry loop'},
