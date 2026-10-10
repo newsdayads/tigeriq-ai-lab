@@ -116,6 +116,13 @@ public final class ChatGptB1Policy {
         return assistant ? "ASSISTANT" : "USER";
     }
 
+    /** A token alone cannot establish the sender or freshness of a Core reply. */
+    public static boolean canAcceptCoreResponseEvidence(
+        String senderRole, boolean sentPromptSeen, boolean durableSendClaim
+    ) {
+        return "ASSISTANT".equals(senderRole) && sentPromptSeen && durableSendClaim;
+    }
+
     /**
      * A matching clickable chat quote is not a Project selector. Require
      * verified ancestry inside a semantic navigation drawer/projects list,
