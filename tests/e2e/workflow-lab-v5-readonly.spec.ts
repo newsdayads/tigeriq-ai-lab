@@ -87,3 +87,11 @@ test('V5 incomplete coverage warning remains visible in project and issue detail
  await expect(page.locator('#workflowScreen .top-right .chip.warn')).toContainText('CHƯA ĐẦY ĐỦ');
  await expect(page.locator('#workflowScreen .graph-head small')).toContainText('GITHUB_HTTP_422_PAGE_2');
 });
+
+
+test('V5 explicitly distinguishes central GitHub issues from external repository history',async({page})=>{
+ await openLab(page);
+ await expect(page.locator('.labnotice')).toContainText('newsdayads/tigeriq-ai-lab');
+ await expect(page.locator('.labnotice')).toContainText('Chưa thống kê các repository ngoài');
+ await expect(page.locator('#portfolioStats')).toContainText('ISSUE REPO TRUNG TÂM');
+});
