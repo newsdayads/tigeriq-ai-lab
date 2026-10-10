@@ -55,6 +55,54 @@ test('V5 project and issue navigation keeps GitHub closed distinct from complete
   await expect(page.locator('#graph')).not.toContainText('HOÀN TẤT 100%');
 });
 
+test('V5 follows two bounded history windows and de-duplicates by issue number',async({page})=>{
+ let calls=0;
+ const old={...issue(88,'open','REVIEW'),title:'Earlier issue state',updated_at:'2026-09-01T00:00:00Z'};
+ const latest={...old,title:'Latest issue state',updated_at:'2026-10-10T06:00:00Z'};
+ await page.route('https://workflow-lab.test/**',async(route:Route)=>{
+  const url=new URL(route.request().url());
+  if(url.pathname==='/api/portfolio'){
+   calls++;
+   const first=!url.searchParams.has('since');
+   const data={...payload,issues:first?[old,issue(99,'open','BLOCKED_WAIT')]:[latest,issue(120,'open','REVIEW')],
+    coverage:{...payload.coverage,complete:!first,truncated:first,pagesFetched:first?8:1,
+     stopReason:first?'NEXT_WINDOW_AVAILABLE':null,nextSince:first?'2026-09-01T00:00:00Z':null}};
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});return;
+  }
+  await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html});
+ });
+ await page.goto('https://workflow-lab.test/');
+ await expect(page.locator('#catalogDescription')).toContainText('ĐÃ ĐỌC TỚI CUỐI PHÂN TRANG');
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('#jobCards .jobcard')).toHaveCount(3);
+ await expect(page.locator('#jobCards')).toContainText('Latest issue state');
+ await expect(page.locator('#jobCards')).not.toContainText('Earlier issue state');
+ expect(calls).toBe(2);
+});
+
+test('V5 retains verified partial history and flags a failed second window',async({page})=>{
+ let calls=0;
+ await page.route('https://workflow-lab.test/**',async(route:Route)=>{
+  const url=new URL(route.request().url());
+  if(url.pathname==='/api/portfolio'){
+   calls++;
+   if(url.searchParams.has('since')){
+    await route.fulfill({status:503,contentType:'application/json',body:'{"ok":false,"reason":"GITHUB_HTTP_503_PAGE_1"}'});return;
+   }
+   const data={...payload,coverage:{...payload.coverage,complete:false,truncated:true,
+    pagesFetched:8,stopReason:'NEXT_WINDOW_AVAILABLE',nextSince:'2026-09-01T00:00:00Z'}};
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});return;
+  }
+  await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html});
+ });
+ await page.goto('https://workflow-lab.test/');
+ await expect(page.locator('#catalogDescription')).toContainText('CHƯA ĐẦY ĐỦ');
+ await expect(page.locator('#catalogDescription')).toContainText('CỬA SỔ 2');
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('#jobCards .jobcard')).toHaveCount(2);
+ expect(calls).toBe(2);
+});
+
 test('V5 displays incomplete GitHub history without inventing a full catalog',async({page})=>{
   await openLab(page,{...payload,coverage:{complete:false,truncated:true,pagesFetched:1,stopReason:'GITHUB_HTTP_422_PAGE_2',nextSince:null}});
   await expect(page.locator('#catalogDescription')).toContainText('CHƯA ĐẦY ĐỦ');
