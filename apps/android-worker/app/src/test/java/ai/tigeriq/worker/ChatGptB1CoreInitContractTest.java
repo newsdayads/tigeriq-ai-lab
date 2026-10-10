@@ -109,4 +109,23 @@ public final class ChatGptB1CoreInitContractTest {
             rebind.indexOf("current.prompt.equals(prompt)") < rebind.indexOf(".putString(K_LEASE_ID"));
     }
 
+    @Test
+    public void coreGuardCanaryVersionMustBeDistinctAndMatchHeartbeat() throws Exception {
+        // Live S10 has versionCode 26 / 0.26.0-vn-new-chat.
+        // Releasing a different APK under that identity would make Core's
+        // heartbeat version convergence an unreliable device acceptance gate.
+        String gradle = new String(
+            Files.readAllBytes(Paths.get("build.gradle.kts")), StandardCharsets.UTF_8
+        );
+        String version = WorkerVersion.NAME;
+        assertTrue("Canary must upgrade the installed Android package code",
+            gradle.contains("versionCode = 27"));
+        assertTrue("Reported Worker version and packaged version must match",
+            gradle.contains("versionName = \"" + version + "\""));
+        assertTrue("Canary must be distinguishable from installed v0.26",
+            version.startsWith("0.27.0-"));
+        assertFalse("Do not reuse the old installed version identity",
+            version.equals("0.26.0-vn-new-chat"));
+    }
+
 }
