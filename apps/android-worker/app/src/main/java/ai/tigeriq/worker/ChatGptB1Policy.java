@@ -209,6 +209,23 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * An INPUT_READY snapshot does not prove that the live composer still holds
+     * this leased task's exact prompt. Fail closed on cleared, replaced, or
+     * unavailable composer text immediately before the irreversible send.
+     */
+    public static boolean canSendCorePromptFromLiveComposer(
+        String runState, String expectedPrompt, String liveComposerText,
+        boolean visible, boolean editable
+    ) {
+        return "INPUT_READY".equals(runState)
+            && expectedPrompt != null
+            && !expectedPrompt.isEmpty()
+            && expectedPrompt.equals(liveComposerText)
+            && visible
+            && editable;
+    }
+
+    /**
      * A Core task may click Send only when the action itself has a trusted
      * native button identity in the local composer scope. Do not accept the
      * word "send" in arbitrary message text or guess from an icon's shape.
