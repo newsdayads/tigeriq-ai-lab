@@ -171,6 +171,30 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
+    /**
+     * Commit a Core Project binding only for the exact durable lease which
+     * supplied the stable UI evidence. Manual B1 retains markProjectBound.
+     */
+    public static synchronized boolean markCoreProjectBoundIfCurrent(
+        Context context, String observedRunId, String observedTaskId, int observedCycle
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canBindObservedCoreProject(
+            observedRunId, observedTaskId, observedCycle,
+            live.runId, live.taskId, live.cycle, live.state, live.projectBound
+        )) return false;
+        long now = System.currentTimeMillis();
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(K_PROJECT_BOUND, true)
+            .putLong(K_PROJECT_BOUND_AT, now)
+            .putString(K_PROJECT_MODE, "PROJECT")
+            .putString(K_STATE, "REQUESTED")
+            .putLong(K_CYCLE_STARTED_AT, now)
+            .putLong(K_NEXT_ACTION_AT, now + 750L)
+            .putString(K_LAST_ERROR, "")
+            .commit();
+    }
+
     public static synchronized void markStandaloneFallbackReady(Context context) {
         long now = System.currentTimeMillis();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
