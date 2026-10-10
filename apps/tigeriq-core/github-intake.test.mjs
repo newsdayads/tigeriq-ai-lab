@@ -881,12 +881,12 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
-  it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
+  it('sync prioritizes active GitHub objectives and rotates the oldest checked rows first',()=>{
     const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     expect(source).not.toContain("order by created_at asc limit 100");
     expect(source).toContain("status='active'");
     expect(source).toContain("githubResultReported");
-    expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
+    expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
   });
 
 
@@ -1040,7 +1040,7 @@ describe('GitHub Core intake guardrails',()=>{
     const pool={async query(sql,params=[]){
       if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
         scanCount++;
-        expect(sql).toContain('order by updated_at asc, created_at asc, id asc');
+        expect(sql).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
         expect(sql).toContain('limit 100');
         const filtered=params.length?rows.filter(x=>params[0].includes(String(x.metadata.issueNumber))):rows;
         const page=[...filtered].sort((a,b)=>a.updatedAt-b.updatedAt||a.id.localeCompare(b.id)).slice(0,100);
@@ -1105,7 +1105,7 @@ describe('GitHub Core intake guardrails',()=>{
     let clock=3,sourceLookupErrors=0,targetWoken=0;
     const pool={async query(sql,params=[]){
       if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
-        expect(sql).toContain('order by updated_at asc, created_at asc, id asc');
+        expect(sql).toContain("order by case when status='active' then 0 else 1 end, updated_at asc, created_at asc, id asc");
         expect(sql).toContain('limit 100');
         const page=[...rows].sort((a,b)=>a.updatedAt-b.updatedAt).slice(0,2);
         return {rowCount:page.length,rows:page};
