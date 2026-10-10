@@ -29,11 +29,29 @@ public final class ChatGptB1Automation {
         if (now < s.nextActionAt) return;
 
         if ("WAITING_AI".equals(s.state)) {
+            boolean coreLease = s.taskId != null && !s.taskId.isEmpty();
+            boolean generationInProgress = coreLease && treeContainsAny(
+                root, "stop generating", "đang trả lời", "dừng tạo"
+            );
+            // Deadline and generation state must be checked BEFORE any token
+            // recognition. Previously a late/streaming token could win the
+            // race with the timeout check and be reported as Core COMPLETE.
+            if (coreLease && !ChatGptB1Policy.canAcceptCoreReplyWithinWindow(
+                s.sentAt, now, RESPONSE_TIMEOUT_MS, generationInProgress
+            )) {
+                if (s.sentAt <= 0L || now < s.sentAt) {
+                    ChatGptB1RunStore.fail(service, "CORE_REPLY_CLOCK_OR_SEND_INVALID");
+                } else if (now - s.sentAt > RESPONSE_TIMEOUT_MS) {
+                    ChatGptB1RunStore.fail(service, "RESPONSE_TIMEOUT");
+                } else {
+                    ChatGptB1RunStore.markBusySeen(service);
+                }
+                return;
+            }
             String expectedToken = ChatGptB1RunStore.expectedToken(s);
             // A Core receipt requires the newly sent user prompt followed by a
             // structurally tagged assistant message. Broad token scans are
             // legacy manual-B1 only; a visible token is never Core proof.
-            boolean coreLease = s.taskId != null && !s.taskId.isEmpty();
             String responseText = coreLease
                 ? coreResponseTextContaining(
                     root, expectedToken, ChatGptB1RunStore.prompt(s),
