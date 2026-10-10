@@ -1,3 +1,4 @@
+import { OWNER_STATUS_LABELS } from './owner-facing-vietnamese.mjs';
 // One-way metadata adapter. No scheduler, token discovery, issue creation or Core mutation.
 export const TARGET = Object.freeze({
   url: 'https://github.com/users/newsdayads/projects/1',
@@ -6,10 +7,17 @@ export const TARGET = Object.freeze({
 export const PROJECTS = Object.freeze(['TigerIQ AI', 'TigerIQ News / Media', 'Paperclip vNext', 'Revenue Lab', 'TigerIQ Driver', 'DeXCam Personal', 'TigerIQ Coin']);
 export const SUBPROJECTS = Object.freeze(['Nền tảng TigerIQ — Core, AI, API', 'TigerIQ Mobile Worker', 'TigerIQ Live', 'Workflow Lab', 'App Chrome', 'DeX Shot', 'DeXCam Personal', 'derophone', 'derophone_BK', 'derobizfly', 'zephyr']);
 const REPOS = new Set(['tigeriq-ai-lab', 'tigeriq-media', 'tigeriq-media-content', 'drivetrack', 'derophone', 'derophone_BK', 'derobizfly', 'zephyr']);
-const STATES = Object.freeze({ OPEN: 'CHƯA XÁC MINH', READY: 'CHỜ', QUEUED: 'CHỜ', RUNNING: 'ĐANG XỬ LÝ', WORKING: 'ĐANG XỬ LÝ', REVIEW: 'RÀ SOÁT', DONE: 'HOÀN TẤT', BLOCKED: 'BỊ CHẶN', OWNER_GATE: 'BỊ CHẶN' });
+const STATES = Object.freeze({ OPEN: 'CHƯA XÁC MINH', READY: 'CHỜ', QUEUED: 'CHỜ', RUNNING: 'ĐANG XỬ LÝ', WORKING: 'ĐANG XỬ LÝ', REVIEW: 'RÀ SOÁT', DONE: 'HOÀN TẤT', BLOCKED: 'BỊ CHẶN', OWNER_GATE: 'BỊ CHẶN', EXTERNAL_WAIT: 'CHỜ' });
+const STATUS_ALIASES = Object.freeze({ PASS: 'DONE', COMPLETED: 'DONE', WAITING: 'QUEUED', WAIT_RESOURCE: 'QUEUED', PENDING: 'QUEUED', EXTERNAL_WAIT: 'EXTERNAL_WAIT', VERIFY: 'REVIEW', FAILED: 'BLOCKED', ERROR: 'BLOCKED', OWNER_APPROVAL_REQUIRED: 'OWNER_GATE', READY_FOR_OWNER_APPROVAL: 'OWNER_GATE' });
+export function normalizeCoreStatus(value) {
+ const raw = typeof value === 'string' ? value.trim().toUpperCase() : '';
+ const code = Object.keys(OWNER_STATUS_LABELS).find(key => OWNER_STATUS_LABELS[key].toUpperCase() === raw) || raw;
+ return STATUS_ALIASES[code] || code;
+}
 const BLOCKERS = Object.freeze({ OWNER_GATE: 'Cần Owner', AUTH_REQUIRED: 'Cần xác thực', EXTERNAL_WAIT: 'Chờ bên ngoài', DEPENDENCY: 'Chờ phụ thuộc', NONE: '' });
 const FIELDS = new Set(['PROJECT', 'SUBPROJECT', 'Status', 'AI OWNER', 'TARGET DATE', 'BLOCKER', 'EVIDENCE']);
-function fail(code) { throw new Error(code); }
+const INTERNAL_ERRORS = new WeakMap();
+function fail(code) { const error = new Error(code); INTERNAL_ERRORS.set(error, code); throw error; }
 export function identity(url) {
   if (typeof url !== 'string') return null;
   const m = /^https:\/\/github\.com\/newsdayads\/([^/?#]+)\/(issues|pull)\/([1-9]\d*)$/.exec(url);
@@ -55,7 +63,7 @@ export function planSync(snapshot, inventory, { now = Date.now(), receipts = {} 
     if (ident.repository === 'newsdayads/drivetrack' && ident.number === 366) { skipped.push({ key: ident.key, reason: 'SENSITIVE_EXCLUDED' }); continue; }
     if (!/^P[0-5]$/.test(row.priority || '')) { skipped.push({ key: ident.key, reason: 'UNVERIFIED_PRIORITY' }); continue; }
     if (!PROJECTS.includes(row.project) || (row.subproject && !SUBPROJECTS.includes(row.subproject))) fail('UNKNOWN_PROJECT_MAPPING');
-    const values = { PROJECT: row.project, Status: row.runtimeVerified === true ? (STATES[row.status] || 'CHƯA XÁC MINH') : 'CHƯA XÁC MINH' };
+    const values = { PROJECT: row.project, Status: row.runtimeVerified === true ? (STATES[normalizeCoreStatus(row.status)] || 'CHƯA XÁC MINH') : 'CHƯA XÁC MINH' };
     if (row.subproject) values.SUBPROJECT = row.subproject;
     if (typeof row.aiOwner === 'string' && /^(?:NV\d{2}|VY|CODEX_[A-Z0-9_]{1,40})$/.test(row.aiOwner) && snapshot.registeredAiOwners?.includes(row.aiOwner)) values['AI OWNER'] = row.aiOwner;
     if (row.targetDate && validDate(row.targetDate)) values['TARGET DATE'] = row.targetDate;
@@ -141,7 +149,7 @@ export async function syncProjects({ snapshot, token, mode = 'dry-run', fetchImp
     return { ok: true, mode, applied, receipts: Object.fromEntries(plan.updates.map(x => [x.key, x.fingerprint])) };
   } catch (error) {
     // Never return provider errors, request bodies, token, or arbitrary Core text.
-    const reason = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'SYNC_FAILED_CLOSED';
+    const reason = (error && INTERNAL_ERRORS.get(error)) || 'SYNC_FAILED_CLOSED';
     return { ok: false, mode, reason, retry: false };
   }
 }
@@ -156,7 +164,7 @@ const LIVE_PROJECT_MAP = Object.freeze({
  'tigeriq-news': ['TigerIQ News / Media', null],
  'paperclip-vnext': ['Paperclip vNext', null],
  'revenue-lab': ['Revenue Lab', null],
- 'tigeriq-driver': ['TigerIQ Driver', 'DeX Shot'],
+ 'tigeriq-driver': ['TigerIQ Driver', null],
  'dexcam-personal': ['DeXCam Personal', 'DeXCam Personal'],
  'tigeriq-dexcam-personal': ['DeXCam Personal', 'DeXCam Personal'],
  'tigeriq-coin': ['TigerIQ Coin', null],
@@ -180,13 +188,13 @@ export function snapshotFromLiveStatus(payload, { endpoint, transportVerified = 
  for (const [key, row] of merged) {
    const ident = identity(row.url), mapping = LIVE_PROJECT_MAP[row.projectId], item = matched.get(key);
    if (!mapping || !item?.content?.id) continue; // No title/body inference, manufacture, or item creation.
-   const state = row.ownerGate === true || row.executionEligibility === 'OWNER_GATE' ? 'OWNER_GATE' : (row.displayState || row.status);
+   const state = row.ownerGate === true || row.executionEligibility === 'OWNER_GATE' ? 'OWNER_GATE' : normalizeCoreStatus(row.displayState || row.status);
    items.push({
      repository: ident.repository, number: ident.number, url: ident.url, contentId: item.content.id,
-     priority: row.effectivePriority || row.priority, project: mapping[0], subproject: mapping[1],
+     priority: row.effectivePriority || row.priority, project: mapping[0], subproject: SUBPROJECTS.includes(row.subproject) ? row.subproject : mapping[1],
      runtimeVerified: true, status: state, aiOwner: row.employeeId,
      targetDate: row.targetDate,
-     blockerCode: state === 'OWNER_GATE' ? 'OWNER_GATE' : state === 'BLOCKED' ? 'DEPENDENCY' : 'NONE',
+     blockerCode: state === 'OWNER_GATE' ? 'OWNER_GATE' : state === 'BLOCKED' ? 'DEPENDENCY' : state === 'EXTERNAL_WAIT' ? 'EXTERNAL_WAIT' : STATES[state] ? 'NONE' : undefined,
      evidenceUrl: evidence(row.evidenceUrl),
    });
  }

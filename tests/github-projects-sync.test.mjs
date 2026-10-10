@@ -85,7 +85,7 @@ describe('Core → Projects metadata fence', () => {
  });
  it('stops on authorization change before mutation, never returns provider secrets', async () => {
   const api = fakeApi(); let count = 0;
-  const fetchImpl = async (...args) => { count++; if (count > 1) throw new Error('token=SECRET PII'); return api.fetchImpl(...args); };
+  const fetchImpl = async (...args) => { count++; if (count > 1) throw new Error('SECRET'); return api.fetchImpl(...args); };
   const result = await syncProjects({ snapshot: snapshot(), token: 'test', mode: 'write', fetchImpl, now: () => now });
   expect(result).toMatchObject({ ok: false, reason: 'SYNC_FAILED_CLOSED', retry: false });
   expect(api.calls.some(x => x.body.query.includes('mutation'))).toBe(false);
@@ -108,5 +108,29 @@ describe('verified live-status bridge', () => {
  it('fails closed for stale live snapshot and ignores unknown project IDs', () => {
   expect(() => snapshotFromLiveStatus({ ...live, generatedAt: '2000-01-01T00:00:00Z' }, options)).toThrow();
   expect(snapshotFromLiveStatus({ ...live, openWork: [{ ...live.openWork[0], projectId: 'custom-unknown' }] }, options).items).toHaveLength(0);
+ });
+});
+
+describe('Driver project mapping', () => {
+ it('does not mislabel all Driver work as DeX Shot', () => {
+  const r = { ...row, repository: 'newsdayads/drivetrack', number: 370, url: 'https://github.com/newsdayads/drivetrack/issues/370', projectId: 'tigeriq-driver' };
+  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [r] };
+  const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory([r]), now });
+  expect(planSync(s, inventory([r]), { now }).updates[0].values.SUBPROJECT).toBeUndefined();
+ });
+});
+
+describe('actual owner-facing Core states', () => {
+ for (const [input, expected, blocker] of [
+ ['ĐANG XỬ LÝ','ĐANG XỬ LÝ',''], ['RÀ SOÁT','RÀ SOÁT',''], ['HOÀN TẤT','HOÀN TẤT',''],
+ ['ĐANG CHỜ','CHỜ',''], ['BỊ CHẶN','BỊ CHẶN','Chờ phụ thuộc'], ['XÁC MINH','RÀ SOÁT',''],
+ ['CHỜ ANH SƠN DUYỆT','BỊ CHẶN','Cần Owner'], ['WAITING','CHỜ',''], ['VERIFY','RÀ SOÁT',''],
+ ['EXTERNAL_WAIT','CHỜ','Chờ bên ngoài'], ['COMPLETED','HOÀN TẤT',''],
+ ['ĐÃ ĐỦ ĐIỀU KIỆN — CHỜ ANH SƠN DUYỆT','BỊ CHẶN','Cần Owner'],
+ ]) it('maps actual Core ' + input, () => {
+  const payload = { ok: true, liveConnected: true, mode: 'pc01-live', authority: 'PC01 live runtime', source: { core: true }, generatedAt: new Date(now).toISOString(), openWork: [{ ...row, projectId: 'tigeriq-platform', status: input, displayState: input }] };
+  const s = snapshotFromLiveStatus(payload, { endpoint: CORE_STATUS_URL, transportVerified: true, inventory: inventory(), now });
+  const values = plan(s).updates[0].values;
+  expect(values.Status).toBe(expected); expect(values.BLOCKER).toBe(blocker);
  });
 });
