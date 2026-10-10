@@ -5,6 +5,11 @@ const owner='newsdayads',base='https://github.com/newsdayads/';
 const titles=['','TIGERIQ — MASTER PORTFOLIO','TIGERIQ AI','TIGERIQ NEWS / MEDIA','PAPERCLIP VNEXT','REVENUE LAB','TIGERIQ DRIVER','DEXCAM PERSONAL','TIGERIQ COIN'];
 const repoGroup={drivetrack:6,'tigeriq-media':3,'tigeriq-media-content':3,derophone:8,derophone_BK:8,derobizfly:8,zephyr:8};
 const codes={'CORE':2,'TIGERIQ AI':2,'TIGERIQ LIVE':2,'WORKFLOW LAB':2,'APP CHROME':2,'MOBILE WORKER':2,'TIGERIQ NEWS':3,'TIGERIQ MEDIA':3,'PAPERCLIP':4,'PAPERCLIP VNEXT':4,'REVENUE LAB':5,'TIGERIQ DRIVER':6,'DRIVER':6,'DEXCAM':7,'DEXCAM PERSONAL':7,'TIGERIQ COIN':8};
+const coreProjectOwner={
+ 'tigeriq-platform':2,'tigeriq-mobile-worker':2,'tigeriq-live':2,'tigeriq-workflow-lab':2,'tigeriq-app-chrome':2,
+ 'tigeriq-news':3,'tigeriq-media':3,'paperclip-vnext':4,'revenue-lab':5,'tigeriq-driver':6,
+ 'dexcam-personal':7,'tigeriq-dexcam-personal':7,'tigeriq-coin':8
+};
 const repos=['tigeriq-ai-lab',...Object.keys(repoGroup)];
 const labels=['','', 'TigerIQ AI','TigerIQ News / Media','Paperclip vNext','Revenue Lab','TigerIQ Driver','DeXCam Personal','TigerIQ Coin'];
 const gh=(args)=>{const r=spawnSync('gh',args,{encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:4e6});if(r.status!==0||r.error)throw Error('GH_API_BLOCKED');return r.stdout.trim()};
@@ -62,7 +67,9 @@ export function coreStates(c){
  if(!canonical(x.url)||x.portfolioHidden===true||x.workKind&&x.workKind!=='WORK')continue;
  const state=states[norm(x.status)]||states[norm(x.displayState)];if(!state)continue;
  if(state==='ĐANG XỬ LÝ'&&!active.has(x.url))continue;
- map.set(x.url,state);
+ const prior=map.get(x.url);
+ const projectId=x.projectId||prior?.projectId;
+ if(projectId)map.set(x.url,{state,projectId});
  }return map;
 }
 const field=(p,name)=>p.fields.nodes.find(x=>x.name===name);
@@ -83,7 +90,10 @@ export function proposals(ps,rows,statesByUrl){
  if(needsMaster||needsTarget)actions.push({kind:'add',url:row.url,number:target,needsMaster,needsTarget});
  }
  for(let n=2;n<=8;n++){const p=ps.get(n);const f=field(p,'Status'),fm=field(master,'Status');if(!f?.options||!fm?.options)throw Error('STATUS_SCHEMA_'+n);
- for(const [url,item] of p.items){const target=statesByUrl.get(url);if(!target||!master.items.has(url))continue;
+ for(const [url,item] of p.items){const record=statesByUrl.get(url);if(!record||!master.items.has(url))continue;
+ if(fieldValue(master.items.get(url),'PROJECT')!==labels[n]){quarantine.push({reason:'MASTER_TARGET_MISMATCH',url});continue}
+ if(coreProjectOwner[record.projectId]!==n){quarantine.push({reason:'CORE_PROJECT_MISMATCH',url});continue}
+ const target=record.state;
  for(const [proj,r,ff] of [[p,item,f],[master,master.items.get(url),fm]]){
  if(fieldValue(r,'Status')===target)continue;const opts=ff.options.filter(o=>o.name===target);if(opts.length!==1)throw Error('INVALID_STATUS_OPTION');
  actions.push({kind:'status',number:proj.number,url,projectId:proj.id,itemId:r.id,fieldId:ff.id,optionId:opts[0].id});
@@ -110,6 +120,8 @@ export async function main({write=false}={}){
  try{statesByUrl=coreStates(await getCore())}catch(e){report.failures.push({operation:'core_sync',error:String(e.message).slice(0,90)})}
  const plan=proposals(ps,issues.out,statesByUrl);
  report.actions=plan.actions.length;report.quarantine=plan.quarantine.length;report.itemCounts=[...ps].map(([n,p])=>[n,p.items.size]);
+ report.proposed=plan.actions.map(a=>({kind:a.kind,number:a.number,url:a.url,needsMaster:a.needsMaster,needsTarget:a.needsTarget}));
+ report.quarantineReasons=plan.quarantine.map(x=>x.reason);
  // Default dry-run; writes never change Core or Issue/PR, never create duplicate items.
  if(write){if(plan.actions.length>100)throw Error('WRITE_PLAN_TOO_LARGE');
  const effects=isolateActions(plan.actions.slice(0,40),a=>{

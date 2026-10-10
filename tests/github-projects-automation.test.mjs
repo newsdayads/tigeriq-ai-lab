@@ -25,12 +25,12 @@ test('Core requires connected, complete, fresh, attested source',()=>{
 });
 test('status mapping: running requires live active row; review can be shown',()=>{
  const url=base+'tigeriq-ai-lab/issues/123';
- const c={openWork:[{url,workKind:'WORK',status:'RA SOAT'}],activeWork:[],recentWork:[]};
- assert.equal(coreStates(c).get(url),'RÀ SOÁT');
- c.openWork=[{url,workKind:'WORK',status:'RUNNING'}];
+ const c={openWork:[{url,workKind:'WORK',status:'RA SOAT',projectId:'tigeriq-platform'}],activeWork:[],recentWork:[]};
+ assert.deepEqual(coreStates(c).get(url),{state:'RÀ SOÁT',projectId:'tigeriq-platform'});
+ c.openWork=[{url,workKind:'WORK',status:'RUNNING',projectId:'tigeriq-platform'}];
  assert.equal(coreStates(c).get(url),undefined);
- c.activeWork=[{url,workKind:'WORK',status:'RUNNING',live:true}];
- assert.equal(coreStates(c).get(url),'ĐANG XỬ LÝ');
+ c.activeWork=[{url,workKind:'WORK',status:'RUNNING',live:true,projectId:'tigeriq-platform'}];
+ assert.deepEqual(coreStates(c).get(url),{state:'ĐANG XỬ LÝ',projectId:'tigeriq-platform'});
 });
 test('failure in one project does not prevent other project action',()=>{
  const actions=[{number:2,kind:'status'},{number:6,kind:'add'},{number:3,kind:'status'}];
@@ -56,4 +56,22 @@ test('mapping fail-closed on ambiguous already-mastered Issue',()=>{
  ps.get(1).items.set(u,{fieldValues:{nodes:[]}});
  const x=proposals(ps,[{url:u,title:'[CORE] Fix'}],new Map());
  assert.equal(x.actions.length,0);assert.equal(x.quarantine.length,1);
+});
+
+test('Core project ownership drift is quarantined; no cross-project status overwrite',()=>{
+ const url=base+'tigeriq-ai-lab/issues/4640';
+ const statusField={name:'Status',id:'F_STATUS',options:[{id:'REVIEW',name:'RÀ SOÁT'},{id:'BLOCK',name:'BỊ CHẶN'}]};
+ const ps=new Map();
+ for(let n=1;n<=8;n++)ps.set(n,{id:'PVT_'+n,number:n,items:new Map(),fields:{nodes:[statusField]}});
+ const masterRow={id:'MASTER_ITEM',fieldValues:{nodes:[{name:'TigerIQ AI',field:{name:'PROJECT'}},{name:'BỊ CHẶN',field:{name:'Status'}}]}};
+ const aiRow={id:'AI_ITEM',fieldValues:{nodes:[{name:'BỊ CHẶN',field:{name:'Status'}}]}};
+ ps.get(1).items.set(url,masterRow);ps.get(2).items.set(url,aiRow);
+ const conflicting=coreStates({recentWork:[],activeWork:[],openWork:[{url,workKind:'WORK',status:'RA SOAT',projectId:'tigeriq-news'}]});
+ const blocked=proposals(ps,[],conflicting);
+ assert.equal(blocked.actions.length,0);
+ assert.deepEqual(blocked.quarantine.map(x=>x.reason),['CORE_PROJECT_MISMATCH']);
+ const matching=coreStates({recentWork:[],activeWork:[],openWork:[{url,workKind:'WORK',status:'RA SOAT',projectId:'tigeriq-platform'}]});
+ const safe=proposals(ps,[],matching);
+ assert.equal(safe.actions.length,2);
+ assert.deepEqual(safe.actions.map(x=>x.number),[2,1]);
 });
