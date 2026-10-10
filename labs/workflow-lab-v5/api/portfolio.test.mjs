@@ -147,3 +147,32 @@ test('live-style cursor boundary replays one issue and preserves lossless unique
  assert.equal(combined.get(899).updated_at,boundary.updated_at);
  assert.ok(combined.has(900)&&combined.has(901));
 });
+
+
+test('canonical issue fields survive a long source body while displayed body stays bounded',async()=>{
+ const suffix=['PROJECT_ID=dexcam-personal','CURRENT_STATE=BLOCKED_REAL_DEVICE',
+               'TARGET_EMPLOYEE=NV02','NEXT_ACTION=Review hardware acceptance',
+               'TARGET_PR=4637'].join('\n');
+ const longIssue={...fakeIssue(4625),title:'[P1] Generic Android issue',
+   body:'Provenance and old updates\n'+'x'.repeat(1700)+'\n'+suffix};
+ const {res}=await invoke(()=>response(200,[longIssue]));
+ assert.equal(res.statusCode,200);
+ const row=res.body.issues[0];
+ assert.equal(row.body.length,1500);
+ assert.ok(!row.body.includes('PROJECT_ID='));
+ assert.equal(row.project_id,'dexcam-personal');
+ assert.equal(row.current_state,'BLOCKED_REAL_DEVICE');
+ assert.equal(row.worker,'NV02');
+ assert.equal(row.next_action,'Review hardware acceptance');
+ assert.equal(row.target_pr,'4637');
+});
+
+test('metadata extraction never promotes incidental prose to canonical project fields',async()=>{
+ const source={...fakeIssue(4457),title:'[P1][CORE vNext] Manager',
+   body:'Notes: DeXCam Personal is independent\nAPP_CHROME_MUTATION=FORBIDDEN\n'+
+       'The workflow lab requires separate approval'};
+ const {res}=await invoke(()=>response(200,[source]));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.issues[0].project_id,null);
+ assert.equal(res.body.issues[0].current_state,null);
+});
