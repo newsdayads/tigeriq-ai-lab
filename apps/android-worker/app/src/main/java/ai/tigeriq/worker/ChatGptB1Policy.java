@@ -95,6 +95,31 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * A title copied into a chat bubble must not authenticate the Project.
+     * Only a visible semantic header above the composer, at the top of the
+     * window, outside any scrollable or clickable conversation/navigation
+     * ancestor, is even eligible as Project evidence. In doubt, fail closed.
+     *
+     * This is structural UI evidence, NOT a claim of physical S10 acceptance.
+     */
+    public static boolean isVerifiedProjectHeaderEvidence(
+        boolean exactVisibleLabel,
+        boolean semanticHeader,
+        boolean scrollOrMessageAncestor,
+        boolean clickableAncestor,
+        int rootTop, int rootBottom,
+        int titleTop, int titleBottom,
+        int composerTop
+    ) {
+        if (!exactVisibleLabel || !semanticHeader
+            || scrollOrMessageAncestor || clickableAncestor) return false;
+        if (rootBottom <= rootTop || titleBottom <= titleTop
+            || titleTop < rootTop || titleBottom > composerTop) return false;
+        long bandLimit = (long) rootTop + ((long) rootBottom - rootTop) / 3L;
+        return titleTop <= bandLimit && titleBottom <= bandLimit;
+    }
+
+    /**
      * Accessibility may expose an exact Project title even when its node is
      * hidden/off-screen. Never use an invisible or clickable-navigation title
      * as live context proof for a Core task.
