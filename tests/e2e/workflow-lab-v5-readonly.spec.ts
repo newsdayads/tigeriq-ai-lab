@@ -26,6 +26,29 @@ async function openLab(page:Page, data:unknown=payload){
   await expect(page.locator('#projectCards .projecttile').first()).toBeVisible();
 }
 
+test('V5 status parser never promotes UNBLOCKED or NOT_DONE and rejects pending completion',async({page})=>{
+ const cases=[
+  {number:7811,source:'UNBLOCKED_WORKING',expected:'ĐANG LÀM (THEO ISSUE)'},
+  {number:7812,source:'NOT_DONE',expected:'CHƯA XÁC MINH'},
+  {number:7813,source:'DONE=false',expected:'CHƯA XÁC MINH'},
+  {number:7814,source:'COMPLETED_PENDING_ACCEPTANCE',expected:'CHƯA XÁC MINH'},
+  {number:7815,source:'BLOCKED_WAIT',expected:'BỊ CHẶN'},
+  {number:7816,source:'READY_INDEPENDENT_REVIEW',expected:'RÀ SOÁT'},
+  {number:7817,source:'DONE_VERIFIED',expected:'BÁO HOÀN TẤT (THEO ISSUE)'},
+  {number:7818,source:'IN_PROGRESS',expected:'ĐANG LÀM (THEO ISSUE)'},
+ ];
+ const items=cases.map(c=>({
+  ...issue(c.number,'open',c.source),
+  title:'[P1][CORE] State check '+c.number,
+  current_state:c.source,
+ }));
+ await openLab(page,{...payload,issues:items});
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ for(const c of cases){
+  await expect(page.locator('[data-job="GH-'+c.number+'"] .jobstate')).toHaveText(c.expected);
+ }
+});
+
 test('V5 excludes stale Core rows so old BLOCKED/employee/nextStep cannot override GitHub',async({page})=>{
  const current={...issue(4457,'open','WORKING'),
   title:'[P1][CORE vNext] Source still working',
