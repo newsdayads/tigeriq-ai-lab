@@ -15,7 +15,7 @@ if(!r.ok){
 }
 const list=await r.json();if(!Array.isArray(list))throw Error('GITHUB_SCHEMA');
 pagesFetched++;
-for(const item of list)if(!item.pull_request)issues.push({number:item.number,title:item.title,body:String(item.body||'').slice(0,4000),state:item.state,updated_at:item.updated_at,created_at:item.created_at,closed_at:item.closed_at,html_url:item.html_url,assignee:item.assignee?.login||null,labels:(item.labels||[]).map(l=>l.name).filter(Boolean)});
+for(const item of list)if(!item.pull_request)issues.push({number:item.number,title:item.title,body:String(item.body||'').slice(0,4000),state:item.state,state_reason:item.state_reason||null,updated_at:item.updated_at,created_at:item.created_at,closed_at:item.closed_at,html_url:item.html_url,assignee:item.assignee?.login||null,labels:(item.labels||[]).map(l=>l.name).filter(Boolean)});
 if(list.length<100){complete=true;break}
 }
 if(!complete)truncated=true;
