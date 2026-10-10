@@ -67,19 +67,21 @@
 
 ## 6. Bộ dữ liệu kiểm thử tối thiểu (đề xuất)
 
-Mỗi lần chuyển R là **một dòng CSV**, không tách tiêu đề thành nhiều dòng. Dùng cùng đồng hồ **monotonic** cho mọi mốc độ trễ; mốc không quan sát được ghi `NOT_MEASURED`, không thay bằng số 0 hoặc suy đoán R=OFF.
+Mỗi lần chuyển R là **một dòng CSV**, không tách tiêu đề thành nhiều dòng. Các mốc nội bộ Android nên dùng cùng đồng hồ **monotonic**; mốc R quan sát bằng thiết bị ngoài **có thể có cơ sở thời gian khác**. Chỉ tính độ trễ khi đồng hồ giống nhau hoặc có bằng chứng đồng bộ, offset và sai số; mốc không quan sát được ghi `NOT_MEASURED`, không thay bằng số 0 hoặc suy đoán R=OFF.
 
 ```csv
-test_id,cycle_id,device_model,android_version,oneui,dex_mode,hub_power,usb_vid,usb_pid,usb_present_before_R,usb_present_during_R,usb_permission,reverse_state,reverse_state_evidence,clock_source,R_on_timestamp,R_on_evidence,usb_detected_timestamp,first_live_frame_timestamp,window_visible_timestamp,R_off_timestamp,R_off_evidence,layout_restored_timestamp,auto_open_success,manual_open_success,error_code,private_log_pointer,notes
+test_id,cycle_id,device_model,android_version,oneui,dex_mode,hub_power,usb_vid,usb_pid,usb_present_before_R,usb_present_during_R,usb_permission,reverse_state,reverse_state_evidence,clock_source,R_on_timestamp,R_on_clock_source,R_on_evidence,usb_detected_timestamp,first_live_frame_timestamp,first_live_frame_rendered_timestamp,window_visible_timestamp,R_off_timestamp,R_off_clock_source,R_off_evidence,layout_restored_timestamp,clock_sync_evidence,clock_sync_uncertainty_ms,auto_open_success,manual_open_success,error_code,private_log_pointer,notes
 ```
 
 - `cycle_id`: mã khác nhau cho từng lượt, kể cả lượt thất bại; phải liên kết được log USB, frame và cửa sổ của **cùng lượt**.
 - `reverse_state`: trạng thái tại **thời điểm kết thúc ghi nhận** của lượt (`ON` / `OFF` / `UNKNOWN`), không thay thế lịch sử hai cạnh chuyển số. `reverse_state_evidence` chỉ chứng minh trạng thái đó; không dùng việc mất hình/USB làm bằng chứng R=OFF.
 - `R_on_evidence` và `R_off_evidence`: hai nguồn xác nhận **riêng** cho mốc bật/tắt R. Chỉ ghi `R_off_timestamp` khi có nguồn R=OFF đã kiểm chứng; nếu chưa đo được, ghi `NOT_MEASURED` cho **cả mốc và bằng chứng**, giữ `reverse_state=UNKNOWN` nếu trạng thái cuối không thể xác định. Không suy ra R=OFF từ `usb_detached`, mất frame hoặc UI đóng.
-- Nếu R quan sát bằng camera/đồng hồ ngoài nhưng USB/frame đo theo clock Android, phải có mốc đồng bộ và sai số được ghi nhận trước khi tính độ trễ R→frame. Nếu chưa đồng bộ, **không tính latency liên nguồn**; chỉ so sánh các mốc cùng đồng hồ.
+- `R_on_clock_source` / `R_off_clock_source`: tên nguồn thời gian thật của từng cạnh R; `clock_source` là đồng hồ dùng cho mốc USB/stream/hiển thị nội bộ Android. Không gán nhãn `monotonic` cho mốc video quan sát bên ngoài nếu chưa chứng minh.
+- `clock_sync_evidence`: tham chiếu phép đối chiếu hai nguồn đồng hồ, gồm cách đồng bộ, offset giữa hai clock và nguồn chứng cứ; `clock_sync_uncertainty_ms` là sai số ước lượng có cơ sở. Nếu nguồn clock khác nhau mà thiếu một trong hai trường này, ghi `NOT_MEASURED` và **không tính latency liên nguồn**; chỉ so sánh các mốc cùng đồng hồ.
+- `first_live_frame_rendered_timestamp`: mốc UI **thực sự render frame sống**, khác với lúc Stream Engine mới nhận frame (`first_live_frame_timestamp`) và lúc cửa sổ hiện (`window_visible_timestamp`). Thiếu chứng cứ render thì không coi mở camera tự động thành công.
 - `usb_present_before_R` và `usb_present_during_R`: `YES` / `NO` / `NOT_MEASURED`, nhằm phân biệt USB attach với video chỉ xuất hiện khi R.
-- `clock_source`: đồng hồ đo được sử dụng; chỉ tính chênh lệch khi các mốc cùng cơ sở thời gian.
-- `auto_open_success` / `manual_open_success`: `YES` / `NO` / `NOT_TESTED`. Không đánh dấu YES nếu chỉ thấy USB nhưng không có hình sống và cửa sổ thực sự hiện.
+- `clock_source`: đồng hồ dùng cho **các mốc Android** (`usb_detected`, `first_live_frame`, `first_live_frame_rendered`, `window_visible`, `layout_restored`); chỉ tính chênh lệch khi các mốc cùng cơ sở thời gian hoặc có bù offset/sai số với nguồn R đã đo.
+- `auto_open_success` / `manual_open_success`: `YES` / `NO` / `NOT_TESTED`. Không đánh dấu YES nếu chỉ thấy USB/nhận được frame/hiện cửa sổ nhưng **không có bằng chứng frame sống đã render ra cửa sổ thực tế**.
 - `private_log_pointer`: tham chiếu nhật ký **nội bộ trên thiết bị**, không đưa dữ liệu định danh, tệp log thô hoặc URL riêng tư lên kho công khai.
 
 **Cổng 5 lượt khám phá B04:** cần 5 `cycle_id` khác nhau, có mốc R và kết quả tự mở từng lượt; tối thiểu một lần auto fail (nếu xảy ra tự nhiên) phải đối chiếu với bấm mở thủ công cùng lượt. Không tạo lỗi giả hoặc coi lượt không đo được là đạt. **50 lượt nghiệm thu** là giai đoạn riêng và chỉ thực hiện sau khi có sản phẩm được phép thử.
