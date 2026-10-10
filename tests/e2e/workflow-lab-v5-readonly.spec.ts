@@ -95,3 +95,27 @@ test('V5 explicitly distinguishes central GitHub issues from external repository
  await expect(page.locator('.labnotice')).toContainText('Chưa thống kê các repository ngoài');
  await expect(page.locator('#portfolioStats')).toContainText('ISSUE REPO TRUNG TÂM');
 });
+
+
+test('V5 ignores unrelated project names in issue body when inferring issue project',async({page})=>{
+ const coreIssue={...issue(4457,'open','REVIEW'),
+  title:'[P1][CORE vNext] Durable AI manager checkpoint',
+  body:'CURRENT_STATE=REVIEW\nNotes: Workflow Lab V5 has a separate approval process; App Chrome is local only; DeXCam Personal is independent.'};
+ const apiIssue={...issue(4595,'open','BLOCKED'),
+  title:'[P1][API DOCTOR] openrouter source repair',
+  body:'CURRENT_STATE=BLOCKED\nNotes: DeXCam Personal must not be modified.'};
+ const explicit={...issue(4625,'open','SPEC_DOCUMENTATION_REVIEW_PENDING'),
+  title:'[P1][ANDROID] Generic legacy work',
+  body:'PROJECT_ID=dexcam-personal\nNotes: Workflow Lab owns a different scope.'};
+ await openLab(page,{...payload,issues:[coreIssue,apiIssue,explicit]});
+ await page.locator('[data-project="tigeriq-platform"]').click();
+ await expect(page.locator('#jobCards')).toContainText('Durable AI manager checkpoint');
+ await expect(page.locator('#jobCards')).toContainText('openrouter source repair');
+ await page.locator('#backToProjects').click();
+ await page.locator('[data-project="tigeriq-workflow-lab"]').click();
+ await expect(page.locator('#jobCards')).not.toContainText('Durable AI manager checkpoint');
+ await page.locator('#backToProjects').click();
+ await page.locator('[data-project="dexcam-personal"]').click();
+ await expect(page.locator('#jobCards')).toContainText('Generic legacy work');
+ await expect(page.locator('#jobCards')).not.toContainText('openrouter source repair');
+});
