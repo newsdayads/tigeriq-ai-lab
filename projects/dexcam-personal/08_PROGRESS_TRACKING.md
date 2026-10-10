@@ -31,6 +31,6 @@
 
 ## Đồng bộ dự án vào nguồn chuẩn
 - Hồ sơ quản lý Issue hiện có trên GitHub.
-- `project.yaml` và hồ sơ Markdown hiện trên nhánh `docs/dexcam-personal-project-20261009`.
+- `project.yaml` đã tồn tại trên GitHub `main` (đã đối chiếu đúng SHA tệp với nhánh); 8 tài liệu Markdown và `README.md` đang ở nhánh `docs/dexcam-personal-project-20261009`, chưa được hợp nhất. Không tính lại mốc tiến độ chỉ vì có `project.yaml`.
 - Chỉ sau khi PR qua kiểm tra và hợp nhất `main`, kho chính thức mới có thể dùng các tài liệu dạng file; Issue vẫn là nguồn tiến độ động.
 - Khi đổi nguồn/qui tắc theo dõi, cần kiểm tra bộ đọc TigerIQ Live và xác minh đúng giao diện thực tế. Không tự cài/sửa code Live chỉ bằng đăng ký dự án.
