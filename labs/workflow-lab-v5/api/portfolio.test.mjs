@@ -25,7 +25,7 @@ test('422 on later GitHub page serves verified partial rows with explicit trunca
   assert.equal(res.statusCode,200);
   assert.equal(res.body.ok,true);
   assert.equal(res.body.issues.length,100);
-  assert.deepEqual(res.body.coverage,{issues:100,complete:false,truncated:true,pagesLimit:12,pagesFetched:1,stopReason:'GITHUB_HTTP_422_PAGE_2'});
+  assert.equal(res.body.coverage.issues,100);assert.equal(res.body.coverage.complete,false);assert.equal(res.body.coverage.stopReason,'GITHUB_HTTP_422_PAGE_2');assert.equal(res.body.coverage.nextSince,null);
   assert.equal(res.body.core.connected,true);
   assert.equal(calls.filter(x=>x.includes('api.github.com')).length,2);
 });
@@ -41,7 +41,7 @@ test('short first page marks catalog complete and never fabricates more rows',as
   const {res}=await invoke(()=>response(200,[fakeIssue(12),{...fakeIssue(13),pull_request:{url:'pr'}}]));
   assert.equal(res.statusCode,200);
   assert.equal(res.body.issues.length,1);
-  assert.deepEqual(res.body.coverage,{issues:1,complete:true,truncated:false,pagesLimit:12,pagesFetched:1,stopReason:null});
+  assert.equal(res.body.coverage.issues,1);assert.equal(res.body.coverage.complete,true);assert.equal(res.body.coverage.nextSince,null);assert.equal(res.body.coverage.pagesFetched,1);
 });
 
 test('invalid GitHub schema fails closed',async()=>{
@@ -62,4 +62,29 @@ test('not_planned closure retains provenance and is not silently promoted to DON
   assert.match(html,/data-jobfilter="closed"/);
   assert.match(html,/closed:'ĐÃ ĐÓNG TRÊN GITHUB'/);
   assert.match(html,/githubStateReason:it\.state_reason\|\|null/);
+});
+
+test('eight bounded pages return an advancing cursor without attempting GitHub page 9+',async()=>{
+ const {res,calls}=await invoke(page=>response(200,Array.from({length:100},(_,i)=>({...fakeIssue(page*100+i),updated_at:new Date(Date.UTC(2025,0,1)+(page*100+i)*1000).toISOString()}))));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.coverage.pagesFetched,8);
+ assert.equal(res.body.coverage.complete,false);
+ assert.equal(res.body.coverage.stopReason,'NEXT_WINDOW_AVAILABLE');
+ assert.match(res.body.coverage.nextSince,/^2025-01-01T/);
+ assert.equal(calls.filter(x=>x.includes('api.github.com')).length,8);
+ const firstUrl=new URL(calls[0]);
+ assert.equal(firstUrl.searchParams.get('direction'),'asc');
+ assert.equal(firstUrl.searchParams.get('since'),'2000-01-01T00:00:00Z');
+});
+test('bad external cursors fail closed without a GitHub request',async()=>{
+ const res=fakeRes();
+ await handler({method:'GET',query:{since:'2020-01-01T00:00:00Z&page=20'}},res);
+ assert.equal(res.statusCode,400);assert.equal(res.body.reason,'INVALID_SINCE_CURSOR');
+});
+test('non-advancing cursor cannot create an endless history loop',async()=>{
+ const {res}=await invoke(()=>response(200,Array.from({length:100},(_,i)=>({...fakeIssue(i),updated_at:'2000-01-01T00:00:00Z'}))));
+ assert.equal(res.statusCode,200);
+ assert.equal(res.body.coverage.complete,false);
+ assert.equal(res.body.coverage.nextSince,null);
+ assert.equal(res.body.coverage.stopReason,'CURSOR_NO_PROGRESS');
 });
