@@ -7,6 +7,7 @@ const CACHE_MS = Number(process.env.TIGERIQ_REGISTRY_CACHE_MS || 60000);
 const fallbackAssignments = new Map([
   ['NV00',{ employee_id:'NV00', name:'Vy (Trợ lý)', admin_state:'CHIEF_OF_STAFF / PRIMARY_UI / OWNER_INTERFACE' }],
   ['NV01',{ employee_id:'NV01', name:'MacroDroid Z Flip', admin_state:'OWNER_STOPPED / DO_NOT_ROUTE' }],
+  ['NV08',{ employee_id:'NV08', name:'Core AI Manager (Ollama Local)', admin_state:'ACTIVE_CORE_RESOURCE / MANAGER_ONLY / QWEN3_8B / NO_OTHER_JOBS' }],
   ['NV09',{ employee_id:'NV09', name:'Qwen3-Coder Local', admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11434 / CODING_CAPABILITY / RANK_PRIMARY' }],
   ['NV02',{ employee_id:'NV02', name:'ChatGPT Plus', admin_state:'AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR / SEPARATE_CHROME_SESSION / NOT_CHIEF_OF_STAFF' }],
   ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'AVAILABLE_MANUAL / SECOND_REVIEW / SUPPORT_UI_ACCOUNT' }],
@@ -27,7 +28,7 @@ const fallbackAssignments = new Map([
 
 const slotId = n => `NV${String(n).padStart(2,'0')}`;
 
-function completeRoster(assignments, retired = new Set(['NV05','NV07','NV08'])) {
+function completeRoster(assignments, retired = new Set(['NV05','NV07'])) {
   const base=Array.from({length:21},(_,i)=>{
     const employee_id=slotId(i);
     const found=assignments.get(employee_id);
