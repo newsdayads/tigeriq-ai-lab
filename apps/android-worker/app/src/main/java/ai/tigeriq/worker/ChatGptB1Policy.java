@@ -116,6 +116,59 @@ public final class ChatGptB1Policy {
         return assistant ? "ASSISTANT" : "USER";
     }
 
+    /**
+     * Testable, platform-independent Core transcript receipt matcher.
+     *
+     * Accessibility evidence is fed only after structural role validation.
+     * A stale assistant token before the current prompt poisons the receipt;
+     * duplicated identical user prompts are likewise ambiguous. Never infer
+     * sender or creation time from token-bearing user-controlled text.
+     */
+    public static final class CoreReplyMatcher {
+        private final String prompt;
+        private final String token;
+        private final boolean durableSendClaim;
+        private int matchingUserPrompts;
+        private boolean assistantTokenBeforePrompt;
+        private boolean assistantTokenSeen;
+        private String candidate = "";
+
+        public CoreReplyMatcher(String prompt, String token, boolean durableSendClaim) {
+            this.prompt = prompt == null ? "" : prompt.trim();
+            this.token = token == null ? "" : token.trim().toLowerCase(java.util.Locale.ROOT);
+            this.durableSendClaim = durableSendClaim;
+        }
+
+        public void observe(String role, String message) {
+            if (role == null || message == null || prompt.isEmpty() || token.isEmpty()) return;
+            String raw = message.trim();
+            if ("USER".equals(role) && raw.equals(prompt)) {
+                matchingUserPrompts++;
+                return;
+            }
+            if (!"ASSISTANT".equals(role)
+                || !raw.toLowerCase(java.util.Locale.ROOT).contains(token)) return;
+            assistantTokenSeen = true;
+            if (matchingUserPrompts == 0) {
+                assistantTokenBeforePrompt = true;
+                return;
+            }
+            if (canAcceptCoreResponseEvidence(role, matchingUserPrompts == 1, durableSendClaim)
+                && candidate.isEmpty()) candidate = raw;
+        }
+
+        public String verifiedReply() {
+            if (assistantTokenBeforePrompt || matchingUserPrompts != 1
+                || !durableSendClaim) return "";
+            if (candidate.length() > 4000) return candidate.substring(0, 4000);
+            return candidate;
+        }
+
+        public boolean hasPreexistingTaskTranscript() {
+            return matchingUserPrompts > 0 || assistantTokenSeen;
+        }
+    }
+
     /** A token alone cannot establish the sender or freshness of a Core reply. */
     public static boolean canAcceptCoreResponseEvidence(
         String senderRole, boolean sentPromptSeen, boolean durableSendClaim
