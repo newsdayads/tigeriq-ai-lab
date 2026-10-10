@@ -40,6 +40,12 @@ test('GitHub rate-limit 403 on later page preserves partial rows and exposes rat
  assert.equal(res.body.coverage.nextSince,null);
 });
 
+test('HTTP 429 is a rate-limit even without explicit quota headers',async()=>{
+ const {res}=await invoke(()=>response(429,{message:'Too Many Requests'}));
+ assert.equal(res.statusCode,503);
+ assert.equal(res.body.reason,'GITHUB_RATE_LIMIT_PAGE_1');
+});
+
 test('ordinary 403 without quota evidence remains an HTTP access error, not rate-limit',async()=>{
  const {res}=await invoke(()=>response(403,{message:'access forbidden'}));
  assert.equal(res.statusCode,503);
