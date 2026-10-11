@@ -93,7 +93,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         recoveryPending = false;
         if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        if (!run.active()) return;
         // A delayed callback may belong to an earlier lease or a restarted
         // run with reused IDs. Never recover a successor from old UI evidence.
         if (!ChatGptB1Policy.isSameProjectContextCandidate(
@@ -104,6 +104,22 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         CharSequence pkg = current == null ? null : current.getPackageName();
         if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) return;
         boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        // Allow one full 2.5s grace period after the final launch attempt.
+        // With no foreground ChatGPT at that point, fail only the original
+        // Core task, preserving terminal evidence instead of waiting forever.
+        if (run.recoveryCount >= MAX_B1_RECOVERIES) {
+            if (coreTask && ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+                run.runId, run.taskId, run.cycle, run.state,
+                run.recoveryCount, MAX_B1_RECOVERIES
+            )) {
+                ChatGptB1RunStore.failCoreIfCurrent(
+                    this, run.runId, run.taskId, run.cycle,
+                    "CHATGPT_RECOVERY_EXHAUSTED"
+                );
+            }
+            return;
+        }
         Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
         if (launch == null) {
             if (coreTask) {
@@ -464,7 +480,11 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void scheduleB1RecoveryIfNeeded() {
         if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        if (!run.active()) return;
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        // Keep the manual B1 limit unchanged. Core needs one extra delayed
+        // observation after its final launch attempt to report exhaustion.
+        if (!coreTask && run.recoveryCount >= MAX_B1_RECOVERIES) return;
         // The 750ms ticker must NOT push a pending 2500ms recovery forever.
         // Only replace the pending timer when the actual run identity changes.
         if (recoveryPending
