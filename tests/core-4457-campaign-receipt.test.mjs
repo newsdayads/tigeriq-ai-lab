@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { compileTaskPrompt } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
+import { verifyCampaignPhaseReceipt,campaignEvidenceJobId } from '../apps/tigeriq-core/campaign-runner.mjs';
+import { readFileSync } from 'node:fs';
+
+const objectiveId='OBJ-fixture',phaseIndex=1,acceptance='Verify fixture B, no tools';
+const id=campaignEvidenceJobId(objectiveId,phaseIndex);
+const {packet,prompt}=compileTaskPrompt({taskId:id,objectiveId,goal:'Inspect a synthetic fixture B',steps:['Inspect synthetic evidence'],acceptance:[acceptance],evidenceRequired:['Source fixture record']});
+const response={schema:'EXECUTION_RESULT_V1',status:'complete',summary:'The synthetic fixture B is verified as specified.',acceptance:[{criterion:acceptance,passed:true,evidence_refs:['e1']}],evidence:[{id:'e1',type:'test',value:'fixture B test evidence'}],block_reason:null};
+function receipt(extra={}){return {id,objective_id:objectiveId,phase_index:phaseIndex,kind:'compiled_campaign',status:'done',prompt,result:{text:JSON.stringify(response),executionGate:{pass:true,code:'EXECUTION_ACCEPTED'}},employee_id:'NV10',resource_id:'RES-NV10',provider:'ollama',completed_at:'2026-10-12T00:00:00Z',...extra};}
+test('accepts only a real DONE canonical phase receipt and matching output',()=>{assert.deepEqual(verifyCampaignPhaseReceipt(receipt(),{objectiveId,phaseIndex,acceptance}),{accepted:true,code:'EXECUTION_ACCEPTED',jobId:id});});
+for(const [name,patch] of [['phase mismatch',{phase_index:0}],['wrong worker',{employee_id:null}],['wrong kind',{kind:'readonly'}],['unfinished',{status:'running'}],['missing proof',{result:null}],['untrusted stored gate',{result:{text:JSON.stringify(response),executionGate:{pass:false,code:'FAKE'}}}],['wrong task',{id:'JOB-wrong'}]])test('fail closed: '+name,()=>{assert.equal(verifyCampaignPhaseReceipt(receipt(patch),{objectiveId,phaseIndex,acceptance}).accepted,false);});
+test('fail closed: phase criterion changed',()=>{assert.equal(verifyCampaignPhaseReceipt(receipt(),{objectiveId,phaseIndex,acceptance:'different'}).accepted,false);});
+test('fail closed: unproven response even with forged stored gate',()=>{const invalid={...response,acceptance:[{criterion:acceptance,passed:true,evidence_refs:['missing']}]};assert.equal(verifyCampaignPhaseReceipt(receipt({result:{text:JSON.stringify(invalid),executionGate:{pass:true,code:'EXECUTION_ACCEPTED'}}}),{objectiveId,phaseIndex,acceptance}).accepted,false);});
+test('regression: manager applies deterministic proof before stall guard',()=>{const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');const first=source.indexOf('if(phases.length && latestManagerProgress)');const guard=source.indexOf('const managerGuard=managerCycleGuard',first);assert.ok(first>=0&&guard>first);assert.match(source.slice(first,guard),/CAMPAIGN_PHASE_ADVANCED/);assert.match(source.slice(first,guard),/coalesce\(\(metadata#>>'\{campaign,currentPhase\}'\)::int,0\)=\$5/);assert.match(source.slice(first,guard),/verifyCampaignPhaseReceipt/);assert.match(source.slice(first,guard),/compiled_campaign/);});
