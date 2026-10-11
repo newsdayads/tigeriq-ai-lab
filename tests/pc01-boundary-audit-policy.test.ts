@@ -79,6 +79,18 @@ describe('PC01 NTFS and SMB boundary preflight source safety gate (#4661)', () =
     // real-Windows negative fixture; no cross-project E2E PASS is inferred.
   });
 
+  it('fails closed for a non-special SMB share with an unsupported path', () => {
+    // UNC/volume aliases and unresolved paths must not be silently skipped.
+    const unknownPathBranch = smb.indexOf("if ($rawSharePath -notmatch '^[A-Za-z]:\\\\') {");
+    const nonSpecialGuard = smb.indexOf('if (-not [bool]$share.Special) { $unresolvedSharePaths++ }', unknownPathBranch);
+    const normalizer = smb.indexOf('Normalize-LocalPath -Value $rawSharePath', unknownPathBranch);
+    expect(unknownPathBranch).toBeGreaterThan(0);
+    expect(nonSpecialGuard).toBeGreaterThan(unknownPathBranch);
+    expect(normalizer).toBeGreaterThan(nonSpecialGuard);
+    expect(smb).toContain("INCONCLUSIVE_SHARE_PATH");
+    expect(smb).toContain('if ($unresolvedSharePaths -gt 0 -or $unknown -gt 0) { exit 3 }');
+  });
+
   it('does not claim either audit establishes effective or remote authorization', () => {
     expect(ntfs).toContain('authorization_e2e_verified = $false');
     expect(smb).toContain('effective_access_verified = $false');
