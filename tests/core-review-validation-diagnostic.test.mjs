@@ -7,10 +7,10 @@ const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.ur
 const match=source.match(/export function parseGithubCoreReviewEvidence\(text,prompt=''\)\{([\s\S]*?)\n\}\n\nasync function reconcileGithubCoreReviewObjective/);
 if(!match)throw new Error('CORE_REVIEW_PRODUCTION_PARSER_NOT_FOUND');
 const parse=runInNewContext("(function(text,prompt){"+match[1]+"\n})");
-const retrySource=source.match(/export function githubReviewFormatRetryEligible\([\s\S]*?\n\}\nexport function githubReviewFormatRetryPrompt\([\s\S]*?\n\}\n/);
+const retrySource=source.match(/export function githubReviewFormatRetryEligible\([\s\S]*?\n\}\nexport function githubReviewRetryResourceExclusions\([\s\S]*?\n\}\nexport function githubReviewFormatRetryPrompt\([\s\S]*?\n\}\n/);
 if(!retrySource)throw new Error('GITHUB_REVIEW_RETRY_HELPERS_NOT_FOUND');
 const retryFns=runInNewContext(retrySource[0].replaceAll('export function ','function ')+
-  '\n({eligible:githubReviewFormatRetryEligible,prompt:githubReviewFormatRetryPrompt})');
+  '\n({eligible:githubReviewFormatRetryEligible,exclusions:githubReviewRetryResourceExclusions,prompt:githubReviewFormatRetryPrompt})');
 
 const head='e7f4f7dcd3c59de2c8e81ebc93982de59c62e5bc';
 const prompt='Source review\nTARGET_HEAD='+head;
@@ -57,6 +57,19 @@ describe('Core independent-review failure diagnostics for #2788',()=>{
     expect(retryFns.eligible({...valid,resource:{costTier:'FREE',zeroOutOfPocket:false}})).toBe(false);
     expect(retryFns.eligible({...valid,resource:{costTier:'LOCAL',zeroOutOfPocket:true}})).toBe(true);
   });
+  it('excludes every other resource before inference, even with the same employee ID',()=>{
+    const available=[
+      {resourceId:'res:nvidia:free',employeeId:'NV20',costTier:'FREE'},
+      {resourceId:'res:nvidia:paid',employeeId:'NV20',costTier:'PAID'},
+      {resourceId:'res:ollama:local',employeeId:'NV10',costTier:'LOCAL'},
+    ];
+    expect(retryFns.exclusions(available,'res:nvidia:free'))
+      .toEqual(['res:nvidia:paid','res:ollama:local']);
+    expect(retryFns.exclusions(available,'res:nvidia:paid'))
+      .toEqual(['res:nvidia:free','res:ollama:local']);
+    expect(()=>retryFns.exclusions(available,'')).toThrow('CORE_REVIEW_RETRY_RESOURCE_UNKNOWN');
+    expect(()=>retryFns.exclusions(available,'res:missing')).toThrow('CORE_REVIEW_RETRY_RESOURCE_UNKNOWN');
+  });
   it('provides original exact-head evidence and strict fail-closed format without invented decisions',()=>{
     const base='Review the exact PR patch; do not invent any source facts.';
     const text=retryFns.prompt(base,head);
@@ -74,6 +87,7 @@ describe('Core independent-review failure diagnostics for #2788',()=>{
     expect(source).toContain('githubReviewFormatRetryEligible({');
     expect(source).toContain("select attempts,max_attempts from tigeriq_jobs where id=$1");
     expect(source).toContain('employeeAllowlist:[originalResource.id]');
+    expect(source).toContain('excludedResourceIds:githubReviewRetryResourceExclusions(resources,originalResource.resourceId)');
     expect(source).toContain('if(retry.resource.resourceId!==originalResource.resourceId)');
     expect(source).toContain("throw Object.assign(new Error('CORE_REVIEW_RETRY_IDENTITY_CHANGED')");
     expect(source).toContain("GITHUB_CORE_REVIEW_FORMAT_RETRY");
