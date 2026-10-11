@@ -1767,8 +1767,7 @@ async function runJob(j) {
           taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,
           preferredEmployeeId:originalResource.id,employeeAllowlist:[originalResource.id],
           // Fail closed before any inference: same employee is insufficient when it has multiple models.
-          excludedResourceIds:resources.filter(resource=>resource.resourceId!==originalResource.resourceId)
-            .map(resource=>resource.resourceId),
+          excludedResourceIds:githubReviewRetryResourceExclusions(resources,originalResource.resourceId),
         });
         // The correction cannot transfer independent-review authority to a different identity.
         if(retry.resource.resourceId!==originalResource.resourceId){
@@ -1968,6 +1967,12 @@ export function githubReviewFormatRetryEligible({kind='',message='',resource={},
     &&resource?.zeroOutOfPocket===true&&['FREE','LOCAL'].includes(tier)
     &&Number.isInteger(used)&&Number.isInteger(limit)&&used>=0&&used<limit
     &&/^[a-f0-9]{40}$/.test(String(expectedHead||''));
+}
+export function githubReviewRetryResourceExclusions(available=[],originalResourceId=''){
+  const original=String(originalResourceId||'').trim();
+  if(!original||!Array.isArray(available)||!available.some(r=>r?.resourceId===original))
+    throw new Error('CORE_REVIEW_RETRY_RESOURCE_UNKNOWN');
+  return available.map(r=>String(r?.resourceId||'')).filter(id=>id&&id!==original);
 }
 export function githubReviewFormatRetryPrompt(original='',expectedHead=''){
   const head=String(expectedHead||'').toLowerCase();
