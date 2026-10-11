@@ -713,6 +713,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
     <section id="drawerOwnerResults" class="drawer-section" hidden><h3>Kết quả hoàn tất</h3><div id="drawerOwnerResultsList" class="owner-result-list"></div></section>
     <section id="drawerProgressSection" class="drawer-section"><h3>Tiến độ</h3><div id="drawerProgress"></div></section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
+    <section id="drawerTerminalSection" class="drawer-section"><h3>Kết thúc công việc</h3><div class="drawer-row"><span>Trạng thái cuối</span><strong id="drawerTerminalState">CHƯA HOÀN TẤT</strong></div><div class="drawer-row"><span>Điều kiện hoàn tất</span><span id="drawerTerminalCriteria">Chưa xác minh</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Yêu cầu sẽ được sao chép để dán trong TigerIQ Project">Mở TigerIQ + copy yêu cầu ↗</button><button id="drawerAskVyFallback" class="drawer-btn fallback-chat" type="button">Chat thường dự phòng ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
@@ -1328,6 +1329,7 @@ function ownerCleanStages(pack,focus){
     {label:'Thực hiện',state:executionState},
     {label:'Kiểm tra',state:reviewState},
     {label:'Kết quả',state:resultState},
+    {label:'Kết thúc',state:aggregate==='DONE'&&!reviewBlocked&&!reviewUnresolved&&!Boolean(snapshot?.staleAll||snapshot?.workProjection?.stale)?'DONE':'WAITING'},
   ];
 }
 function ownerCleanFlowHtml(pack,focus){
@@ -1667,6 +1669,7 @@ function renderOwnerResultInbox(row){
   $('drawerOwnerResults').hidden=!isInbox;
   $('drawerProgressSection').hidden=isInbox;
   $('drawerStatusSection').hidden=isInbox;
+  $('drawerTerminalSection').hidden=isInbox;
   $('drawerEvidenceSection').hidden=isInbox;
   if(!isInbox){$('drawerOwnerResultsList').innerHTML='';return}
   const list=$('drawerOwnerResultsList');
@@ -1686,6 +1689,16 @@ function renderOwnerResultInbox(row){
     return '<article class="owner-result-card"><div class="owner-result-head">'+work+'<span class="owner-result-verification">'+esc(item?.verification||'ĐÃ XÁC MINH')+'</span></div><div class="owner-result-text">'+esc(item?.result||'Đã hoàn tất')+'</div><div class="owner-result-meta"><span>'+esc(ownerResultTime(item?.completedAt))+'</span>'+live+evidence+'</div></article>';
   }).join('');
 }
+function jobCloseoutState(row){
+  const state=workStatus(row);
+  const stale=Boolean(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(stale)return {label:'CHƯA XÁC MINH KẾT THÚC',detail:'Dữ liệu đang cũ; phải đồng bộ nguồn trước khi xác nhận công việc hoàn tất.'};
+  if(state==='DONE')return {label:'HOÀN TẤT · ĐÃ KẾT THÚC',detail:'Nguồn công việc xác nhận DONE. Đối chiếu bằng chứng và bản phát hành tại GitHub.'};
+  if(state==='OWNER_GATE'&&row?.technicalComplete===true)return {label:'ĐÃ XONG KỸ THUẬT · CHƯA KẾT THÚC',detail:'Đang chờ phê duyệt/nghiệm thu cuối; không tự đóng Job.'};
+  if(state==='BLOCKED')return {label:'CHƯA KẾT THÚC · BỊ CHẶN',detail:'Phải giải quyết trở ngại, hoàn tất kiểm thử/nghiệm thu và ghi bằng chứng.'};
+  if(state==='REVIEW'||state==='VERIFY')return {label:'CHƯA KẾT THÚC · ĐANG NGHIỆM THU',detail:'Cần qua rà soát, xác minh thực tế và các cổng phát hành bắt buộc.'};
+  return {label:'CHƯA KẾT THÚC',detail:'Chỉ kết thúc khi đã hoàn thành, kiểm thử/nghiệm thu và nguồn xác nhận DONE.'};
+}
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
@@ -1697,6 +1710,9 @@ function populateDrawer(row){
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
+  const closeout=jobCloseoutState(row);
+  $('drawerTerminalState').textContent=closeout.label;
+  $('drawerTerminalCriteria').textContent=closeout.detail;
   $('drawerProject').textContent=row?.projectName||'Chưa phân dự án';
   $('drawerWorkstream').textContent=row?.workstreamName||row?.workPackageName||'Chưa phân nhánh';
   $('drawerJob').textContent=row?.jobId||('GH-'+row.number);
