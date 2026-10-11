@@ -2249,16 +2249,30 @@ async function managerTick() {
       const retryPlan=managerExhaustionRetryPlan({managerCycles:o.manager_cycles,maxCycles:30});
       const summary=String(routed.decision?.summary||'manager decision exhausted after bounded retry/failover').slice(0,2000);
       if(retryPlan.retry){
-        await pool.query("update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1",[o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs)]);
+        const retryCommitted=await pool.query(
+          "update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $5::text",
+          [o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs),o.metadata?.sourceRevision??null],
+        );
+        if(retryCommitted.rowCount!==1)return;
         await event('MANAGER_EXHAUSTED_RETRY_QUEUED',{objectiveId:o.id,phaseIndex:currentPhase,retryCount:retryPlan.nextCycle,delayMs:retryPlan.delayMs,failureCount:Array.isArray(routed.failures)?routed.failures.length:0});
         return;
       }
-      await pool.query("update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1",[o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted']);
+      const exhaustedCommitted=await pool.query(
+        "update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text",
+        [o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted',o.metadata?.sourceRevision??null],
+      );
+      if(exhaustedCommitted.rowCount!==1)return;
       await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:retryPlan.reason,retryCount:retryPlan.nextCycle});
       return;
     }
     const decision=routed.decision;
-    await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
+    // The manager model may return after GitHub intake has parked, blocked or
+    // superseded this objective. Never write a stale decision over that state.
+    const decisionCommitted=await pool.query(
+      "update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $3::text",
+      [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
+    );
+    if(decisionCommitted.rowCount!==1)return;
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
