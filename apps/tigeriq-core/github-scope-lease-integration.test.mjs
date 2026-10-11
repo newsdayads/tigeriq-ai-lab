@@ -27,3 +27,12 @@ test('lease acquire is a single DB upsert and never relies on GitHub comment set
   assert.match(lease,/where tigeriq_github_scope_leases\.lease_until<=now\(\)/);
   assert.doesNotMatch(lease,/claimSettleMs|postComment/);
 });
+
+test('Core worker lease API is opt-in only and uses per-worker session credentials',()=>{
+  assert.match(core,/createGithubScopeWorkerApi\(/);
+  assert.match(core,/await githubScopeWorkerApi\(req,res,url\)/);
+  assert.match(core,/TIGERIQ_GH_SCOPE_NV02_SECRET/);
+  assert.match(core,/TIGERIQ_GH_SCOPE_NV03_SECRET/);
+  assert.match(core,/TIGERIQ_GH_SCOPE_NV03_SESSION/);
+  assert.doesNotMatch(core,/GH_SCOPE_NV03_SECRET\s*\|\|\s*['"][^'"]{8,}['"]/);
+});
