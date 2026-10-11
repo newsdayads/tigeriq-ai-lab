@@ -284,6 +284,19 @@ public final class ChatGptB1RunStore {
             && prompt != null && prompt.equals(live.customPrompt);
     }
 
+    /** Old manual UI scan cannot edit a replacement Core chat. */
+    public static synchronized boolean isManualComposerMutationStillCurrent(
+        Context context, String runId, int cycle, long startedAt, String observedPrompt
+    ) {
+        Snapshot live = read(context);
+        return ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) && ("REQUESTED".equals(live.state) || "VERIFYING_CONTEXT".equals(live.state))
+            && live.projectBound && observedPrompt != null
+            && observedPrompt.equals(prompt(live));
+    }
+
     /** Revalidate after durable send claim, just before the irreversible click. */
     public static synchronized boolean isCoreSendClaimStillCurrent(
         Context context, String runId, String taskId, int cycle
@@ -360,6 +373,19 @@ public final class ChatGptB1RunStore {
         return persistSendClaim(context, live);
     }
 
+    /** Manual send is committed only for its original unleased run. */
+    public static synchronized boolean markManualSentExactlyOnceIfCurrent(
+        Context context, String runId, int cycle, long startedAt, String observedPrompt
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || !"INPUT_READY".equals(live.state) || !live.projectBound
+            || observedPrompt == null || !observedPrompt.equals(prompt(live))) return false;
+        return persistSendClaim(context, live);
+    }
+
     public static synchronized boolean markSentExactlyOnce(Context context) {
         return persistSendClaim(context, read(context));
     }
@@ -395,6 +421,18 @@ public final class ChatGptB1RunStore {
         ) || !"WAITING_AI".equals(live.state)) return false;
         markBusySeen(context);
         return true;
+    }
+
+    /** Check the same manual send before the non-atomic native click. */
+    public static synchronized boolean isManualSendClaimStillCurrent(
+        Context context, String runId, int cycle, long startedAt
+    ) {
+        Snapshot live = read(context);
+        return ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) && "WAITING_AI".equals(live.state) && live.projectBound
+            && live.sentCycle == live.cycle && live.sendCount > 0;
     }
 
     public static void markBusySeen(Context context) {
