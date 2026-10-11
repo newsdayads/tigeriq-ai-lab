@@ -31,7 +31,8 @@ function fixture(options={}){
     }
   };
   const postComment=async(n,body)=>{
-    if(options.failComment)throw Error('GITHUB_WRITE_FAILED');
+    if(options.failComment||options.failReleaseComment&&body.includes('[TIGERIQ_NV02_ATOMIC_RELEASE_V1]'))
+      throw Error('GITHUB_WRITE_FAILED');
     comments.push({issue:n,body});return true;
   };
   return {db,ops,holders,comments,postComment,verifySession,
@@ -64,8 +65,43 @@ test('release is bound to session; DONE requires verified terminal evidence',asy
   const result=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
     verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',evidenceVerified:true});
   assert.equal(result.released,true);
+  assert.equal(result.releaseAuditRecorded,true);
   assert.equal(f.holders.size,0);
+  assert.match(f.comments.at(-2).body,/TIGERIQ_NV02_TERMINAL_CHECKPOINT_V1/);
   assert.match(f.comments.at(-1).body,/CORE_POSTGRES_ATOMIC_RELEASED/);
+});
+test('terminal checkpoint is committed while still holding the global lease',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  const write=async(n,body)=>{
+    if(body.includes('[TIGERIQ_NV02_TERMINAL_CHECKPOINT_V1]'))assert.equal(f.holders.size,1);
+    if(body.includes('[TIGERIQ_NV02_ATOMIC_RELEASE_V1]'))assert.equal(f.holders.size,0);
+    return f.postComment(n,body);
+  };
+  const r=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:write,ops:f.ops,terminal:'DONE',evidenceVerified:true});
+  assert.equal(r.released,true);
+});
+test('failed terminal checkpoint retains lease, preventing duplicate claim',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:async()=>{throw Error('GITHUB_WRITE_FAILED')},ops:f.ops}),/GITHUB_WRITE_FAILED/);
+  assert.equal(f.holders.size,1);
+});
+test('failed secondary release audit cannot falsely rollback an already released lease',async()=>{
+  const f=fixture({failReleaseComment:true});const a=await claimNv02WorkOrderAtomic(args(f));
+  const r=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops});
+  assert.equal(r.released,true);
+  assert.equal(r.releaseAuditRecorded,false);
+  assert.equal(r.reason,'RELEASE_AUDIT_WRITE_FAILED');
+  assert.equal(f.holders.size,0);
+  assert.match(f.comments.at(-1).body,/TIGERIQ_NV02_TERMINAL_CHECKPOINT_V1/);
+});
+test('unrecognized terminal states are rejected without releasing the scope',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'APPROVED'}),/NV02_TERMINAL_INVALID/);
+  assert.equal(f.holders.size,1);
 });
 test('lease renew is fenced by worker session ownership',async()=>{
   const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
