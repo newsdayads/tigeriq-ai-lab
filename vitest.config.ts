@@ -34,6 +34,7 @@ export default defineConfig({
       'tests/core-vnext-shadow.test.mjs',
       'tests/world-model-contract.test.mjs',
       'tests/core-vnext-checkpoint-store.test.mjs',
+      'tests/core-ui-live-assignment-truth.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
     ],
     environment: 'node'
