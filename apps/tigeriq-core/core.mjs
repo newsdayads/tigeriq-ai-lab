@@ -1793,7 +1793,18 @@ async function runJob(j) {
       }
       resourceWaitExhausted={retryCount:plan.count,maxRetries:RESOURCE_WAIT_MAX_RETRIES,ageMs:plan.ageMs};
     }
-    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures})]);
+    // Persist bounded validation diagnostics, never raw model output or untrusted free text.
+    const reviewValidation=j.kind==='github_review'&&message==='CORE_REVIEW_EVIDENCE_INVALID'
+      ? {
+          expectedHead:/^[a-f0-9]{7,64}$/.test(String(error?.detail?.expectedHead||''))?error.detail.expectedHead:null,
+          targetHead:/^[a-f0-9]{7,64}$/.test(String(error?.detail?.targetHead||''))?error.detail.targetHead:null,
+          decision:['PASS','CHANGES_REQUIRED'].includes(String(error?.detail?.decision||''))?error.detail.decision:null,
+          markerPresent:error?.detail?.markerPresent===true,
+          summaryPresent:error?.detail?.summaryPresent===true,
+          findingsPresent:error?.detail?.findingsPresent===true,
+        }:null;
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures,...(reviewValidation?{reviewValidation}:{})})]);
+    if(reviewValidation)await event('GITHUB_CORE_REVIEW_EVIDENCE_DIAGNOSTIC',{objectiveId:j.objective_id,jobId:j.id,...reviewValidation});
     const blockedOutcome=/(?:NO_AI_RESOURCE_AVAILABLE|UNAVAILABLE|RATE_LIMIT|COOLDOWN)/i.test(message)?'blocked':'failed';
     await emitSkillEffectivenessObservations({
       job:j,
@@ -1920,7 +1931,11 @@ export function parseGithubCoreReviewEvidence(text,prompt=''){
   if(!valid){
     const error=new Error('CORE_REVIEW_EVIDENCE_INVALID');
     error.kind='invalid_response';
-    error.detail={expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
+    error.detail={
+      expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null,
+      markerPresent:raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]'),
+      summaryPresent:Boolean(summary),findingsPresent:Boolean(findings),
+    };
     throw error;
   }
   return {schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings};
