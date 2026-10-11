@@ -10,6 +10,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
+import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
@@ -103,7 +104,9 @@ const GEMINI_MANAGER_RESPONSE_SCHEMA={
   additionalProperties:true,
 };
 const OLLAMA_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_OLLAMA_TIMEOUT_MS || 30000));
-const CORE_MANAGER_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_CORE_MANAGER_TIMEOUT_MS || 60000));
+// NV08 qwen3:8b is CPU-only on PC01. A cold, schema-valid 121-token Manager reply was measured at 65–68s; a 60s default aborts legitimate work.
+// Keep a bounded budget and preserve the explicit environment override and existing failure/backoff policy.
+const CORE_MANAGER_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_CORE_MANAGER_TIMEOUT_MS || 150000));
 const NV14_FALLBACK_MODEL = process.env.TIGERIQ_NV14_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 const NV16_FAILURE_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.TIGERIQ_NV16_FAILURE_THRESHOLD || 0.5)));
 const NV16_FAILURE_WINDOW = Math.max(10, Number(process.env.TIGERIQ_NV16_FAILURE_WINDOW || 20));
@@ -2241,7 +2244,7 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. Maximum 3 jobs. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   // Read before the async Manager call. A GitHub evidence/revision update
   // during inference must invalidate any later terminal decision or evidence park.
@@ -2302,7 +2305,7 @@ async function managerTick() {
         acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
         evidenceRequired:['Concrete observations, identifiers, tests, sources, or artifacts that prove the acceptance criterion.'],
       });
-      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_campaign',$6) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase]);
+      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_campaign',$6,$7) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       if(inserted.rowCount===0){
         const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and phase_index=$3',[id,o.id,currentPhase])).rows[0];
         if(existing?.status==='failed'&&Number(existing.attempts)<Number(existing.max_attempts)){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1",[id]);await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});return;}
@@ -2399,6 +2402,10 @@ async function managerTick() {
         acceptance:Array.isArray(spec.acceptance)&&spec.acceptance.length?spec.acceptance:(spec.acceptance?[String(spec.acceptance)]:[`Complete task "${title}" with an observable, evidence-backed result.`]),
         evidenceRequired:Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']),
       }).prompt.slice(0,12000);
+      if(capability==='pc_operator'&&objectiveJobRoutingProfile(o.metadata)==='LOCAL'){
+        await event('MANAGER_LOCAL_OBJECTIVE_PC_OPERATOR_DENIED',{objectiveId:o.id,phaseIndex:currentPhase,title});
+        continue;
+      }
       if(capability==='pc_operator'){
         const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,title,promptText,capability,currentPhase]);
         if(inserted.rowCount===0){
@@ -2417,7 +2424,7 @@ async function managerTick() {
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
         }
-        await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_ai',$6)",[id,o.id,title,promptText,capability,currentPhase]);
+        await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_ai',$6,$7)",[id,o.id,title,promptText,capability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
@@ -2738,8 +2745,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
         res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
         return res.end(JSON.stringify({ok:false,error:'P0_OWNER_VY_DIRECT_ONLY'}));
       }
+      let profile;
+      try { profile=normalizeObjectiveRoutingProfile(b.routingProfile); }
+      catch { res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'OBJECTIVE_ROUTING_PROFILE_INVALID'})); }
       const phases=normalizeCampaignPhases(b.phases); const id=`OBJ-${randomUUID()}`; const priority=['P1','P2'].includes(b.priority)?b.priority:'P1';
-      const metadata={source:b.source||'api',...(phases.length?{campaign:{phases,currentPhase:0,checkpoints:[]}}:{})};
+      const metadata={source:b.source||'api',...(profile==='LOCAL'?{routingProfile:'LOCAL'}:{}),...(phases.length?{campaign:{phases,currentPhase:0,checkpoints:[]}}:{})};
       await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4)',[id,String(b.objective).slice(0,12000),priority,JSON.stringify(metadata)]);
       await event(phases.length?'CAMPAIGN_CREATED':'OBJECTIVE_CREATED',{objectiveId:id,phaseIndex:0,phaseCount:phases.length||1});
       res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id,campaign:phases.length>0,phaseCount:phases.length||1,currentPhase:0}));
