@@ -1487,11 +1487,18 @@ export function shouldWaitForTargetedReviewResource({job,message='',failures=[]}
     && failures.length===0;
 }
 
-async function busyCapableResourceCount(capability){
+async function busyCapableResourceCount(capability,profile='AUTO'){
+  // A LOCAL-only objective must wait when a configured local model is leased,
+  // cooling down or temporarily unhealthy; never fall back to cloud providers.
+  // Keep the existing non-local busy-resource rule unchanged.
+  const localOnly=profile==='LOCAL';
   const q=await pool.query(`select count(*)::int as count from tigeriq_ai_resources
     where enabled=true and credential_state in ('LOCAL','READY')
-      and health_state in ('READY','ONLINE') and current_job_id is not null
-      and capabilities @> ARRAY[$1]::text[]`,[String(capability||'general')]);
+      and capabilities @> ARRAY[$1]::text[]
+      and (
+        ($2::boolean and provider='ollama')
+        or (not $2::boolean and health_state in ('READY','ONLINE') and current_job_id is not null)
+      )`,[String(capability||'general'),localOnly]);
   return Number(q.rows[0]?.count||0);
 }
 
@@ -1781,13 +1788,13 @@ async function runJob(j) {
       }
     }
     let resourceWaitExhausted=null;
-    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
+    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability,j.routing_profile||'AUTO'):0;
     const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
     if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':j.routing_profile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
         const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
         await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
