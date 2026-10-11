@@ -75,7 +75,8 @@ public final class MobileTaskStore {
     }
 
     public static void clear(Context context) {
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().apply();
+        boolean persisted=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().commit();
+        if (!persisted) throw new IllegalStateException("CORE_TASK_CLEAR_PERSIST_FAILED");
     }
 
     private static String required(String value,String name) {
