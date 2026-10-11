@@ -654,6 +654,9 @@ export async function claimNv02WorkOrder({
   claimSettleMs = 250,
   nowMs = Date.now(),
 }) {
+  // Comment-settle is characterization-only: runtime MUST use the Core/PG
+  // atomic claim adapter, never a GitHub comment as exclusive ownership.
+  if(process.env.NODE_ENV!=='test')throw Error('NV02_LEGACY_COMMENT_ONLY_CLAIM_DISABLED');
   const resourceScope = String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE || '').trim();
   const workOrder = workOrderRef(issue);
   const lockKey = resourceScope;
