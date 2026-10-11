@@ -6,5 +6,5 @@ export function normalizeObjectiveRoutingProfile(value) {
   return profile;
 }
 export function objectiveJobRoutingProfile(metadata) {
-  return metadata?.routingProfile==='LOCAL'?'LOCAL':null;
+  return metadata?.routingProfile==='LOCAL'?'LOCAL':'AUTO';
 }
