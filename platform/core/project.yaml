@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: tigeriq-platform
 name: Nền tảng TigerIQ
 kind: platform
+portfolio_group_id: tigeriq-ai
 order: 10
 source_roots:
   - apps/tigeriq-core

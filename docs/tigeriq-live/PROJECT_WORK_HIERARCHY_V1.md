@@ -13,14 +13,19 @@ Owner approval: 2026-10-04. Canonical implementation Work Order: #3730.
 - **Evidence**: PR, SHA, checks, logs, artifact; chỉ là bằng chứng của Job.
 - **Platform**: nền tảng dùng chung (Core/Router/Workforce/Observability), được nhóm riêng và không giả thành product project.
 
-## Current canonical projects
-1. TigerIQ Mobile Worker
-2. TigerIQ News — tên canonical; “TigerIQ Media” chỉ là historical alias.
-3. TigerIQ Live
-4. Paperclip vNext
-5. Revenue Lab
+## Owner-approved portfolio groups (2026-10-10; issue #4640)
 
-Nhóm dùng chung: **Nền tảng TigerIQ** (`kind=platform`) cho Core / Router / Workforce / Auto-RCA.
+Bảy nhóm cấp cao, **không đổi danh tính Project/Job hiện có**:
+1. TigerIQ AI — nền tảng `tigeriq-platform`, `tigeriq-mobile-worker`, `tigeriq-live`, `tigeriq-workflow-lab`, `tigeriq-app-chrome`.
+2. TigerIQ News / Media — `tigeriq-news`.
+3. Paperclip vNext — `paperclip-vnext`.
+4. Revenue Lab — `revenue-lab`.
+5. TigerIQ Driver — `tigeriq-driver` (gồm DeX Shot, repo riêng `newsdayads/drivetrack`).
+6. DeXCam Personal — `dexcam-personal` (UltraCarVN, khác DeX Shot).
+7. TigerIQ Coin — `tigeriq-coin` (4 repo mã khai thác, mặc định không vận hành).
+
+Group `tigeriq-ai` là lớp tổng hợp, không phải một dự án thay thế `tigeriq-platform`. Những thành phần dùng chung của Core vẫn có `kind=platform`. Danh sách nhóm không tự cấp quyền chạy AI, ghi dữ liệu hay phát hành.
+Cấu hình `projects/portfolio.yaml` là khai báo danh mục; chưa khẳng định được nghiệm thu giao diện thực tế hoặc GitHub Projects đã được tạo.
 
 Dự án mới không được hard-code vào UI. Issue mới có thể khai báo:
 ```

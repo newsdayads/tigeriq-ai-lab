@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerControlled,backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isAppChromeLocalOnlyPath,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
@@ -17,8 +17,26 @@ const DEFAULT_CONCURRENCY_CAP=3;
 const MAX_AUTO_RETRIES=2;
 const PROVIDER_RETRY_BASE_MS=60000;
 
+function canonicalCodingHeader(body){
+  // Only the first current contract section can authorize coding work.
+  // A leading active Markdown heading is valid; historical headings are not.
+  const text=String(body||'');
+  const headings=[...text.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const sectionEnd=first?.index===0
+    ?(headings[1]?.index??text.length)
+    :(first?.index??text.length);
+  // A divider also separates the current contract from archived snapshots.
+  const divider=text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return text.slice(0,Math.min(sectionEnd,divider?.index??text.length));
+}
+function currentCodingValue(body,key){
+  const escaped=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return String(canonicalCodingHeader(body).match(new RegExp(`^${escaped}=(.*)$`,'m'))?.[1]||'').trim();
+}
 function exactFlag(body,key,value='true'){
-  return new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}=${value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`,'m').test(String(body||''));
+  return currentCodingValue(body,key)===value;
 }
 
 export function codingSourceTruthRevision(issue,comments=[]){
@@ -127,16 +145,28 @@ export function codingScopesOverlap(a,b){
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
-  if(chatMutationOwnerPlan(body,issue.title).owner==='VY')return null;
-  if(isOwnerOnlyP0(body,issue.title))return null;
-  const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
+  const header=canonicalCodingHeader(body);
+  if(chatMutationOwnerPlan(header,issue.title).owner==='VY')return null;
+  if(isOwnerOnlyP0(header,issue.title)||backlogOwnerControlled(header))return null;
+  // Closed/terminal canonical work and explicit current queue exclusions must
+  // not be revived by the presence of historical executable=true flags.
+  const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
+  const state=currentCodingValue(body,'CURRENT_STATE').toUpperCase();
+  const legacyState=currentCodingValue(body,'STATE').toUpperCase();
+  if(autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_'))return null;
+  if(/^(?:SUPERSEDED|CANCELLED|CANCELED)(?:_|$)/.test(legacyState)
+    ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||currentCodingValue(body,'SUPERSEDED_BY')
+    ||currentCodingValue(body,'SUPERSEDED'))return null;
+  if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
+  const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_SECURITY_BOUNDARY_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   if(!isActiveExecutionSpec(body))return null;
-  const classification=classifyWorkOrder(body);
+  const classification=classifyWorkOrder(header);
   if(classification.route!=='CODING')return null;
-  const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(body,'P3');
-  const scopeLease=parseCodingScope(body);
-  const controlRepair=controlPlaneRepairIntent(body);
+  const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(header,'P3');
+  const scopeLease=parseCodingScope(header);
+  const controlRepair=controlPlaneRepairIntent(header);
   const appChromeLocalOnly=/\[APP-CHROME\]/i.test(String(issue.title||''))
     || /^RESOURCE_SCOPE=APP_CHROME_/mi.test(body)
     || /^APP_CHROME_REQUEST_ONLY=true$/mi.test(body)
@@ -144,9 +174,9 @@ export function parseCodingIssue(issue){
     || scopeLease.paths.some(isAppChromeLocalOnlyPath);
   if(appChromeLocalOnly)return null;
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
-  const routing=parseCodingRouteMetadata(body);
+  const routing=parseCodingRouteMetadata(header);
   if(!routing.valid)return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(body),ownerDirect:backlogOwnerDirect(body),scopeLease,controlRepair,routing};
+  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(header),ownerDirect:backlogOwnerDirect(header),scopeLease,controlRepair,routing};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){
@@ -253,6 +283,40 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   );
 }
 
+// The retry budget belongs to the CURRENT dispatched objective's recovery epoch.
+// Counting every retry ever dispatched for an issue makes a newly rearmed objective
+// immediately exhaust its inherited historical budget (even without a new retry).
+export function codingRetryEpochState(retryEvents=[],recoveryEvents=[],objectiveId=''){
+  const id=String(objectiveId||'');
+  const byId=new Map();
+  for(const retry of Array.isArray(retryEvents)?retryEvents:[]){
+    const key=String(retry?.codingObjectiveId||'');
+    if(!key)continue;
+    if(byId.has(key))return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'DUPLICATE_RETRY_EVENT'};
+    byId.set(key,retry);
+  }
+  let cursor=id,previous=MAX_AUTO_RETRIES+1;
+  const visited=new Set();
+  while(cursor&&byId.has(cursor)){
+    if(visited.has(cursor))return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'RETRY_CHAIN_CYCLE'};
+    visited.add(cursor);
+    const attempt=Number(byId.get(cursor)?.retryAttempt);
+    if(!Number.isInteger(attempt)||attempt<1||attempt>=previous||attempt>MAX_AUTO_RETRIES){
+      return {retryCount:MAX_AUTO_RETRIES,epochRootId:id,recovered:false,reason:'INVALID_RETRY_CHAIN'};
+    }
+    previous=attempt;
+    cursor=String(byId.get(cursor)?.priorObjectiveId||'');
+  }
+  const direct=byId.get(id);
+  const retryCount=direct?Number(direct.retryAttempt):0;
+  const epochRootId=cursor||id;
+  // Includes exhausted-budget recovery, stale-result rearm and
+  // reopened-completion rearm; every new canonical objective gets unique keys.
+  const recovered=(Array.isArray(recoveryEvents)?recoveryEvents:[])
+    .some(x=>String(x?.codingObjectiveId||'')===epochRootId);
+  return {retryCount,epochRootId,recovered,reason:'CURRENT_OBJECTIVE_EPOCH'};
+}
+
 export async function relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,fromSha,toSha,scopeLease,compareCache=null){
   const from=String(fromSha||'').trim(),to=String(toSha||'').trim();
   const paths=[...new Set((scopeLease?.paths||[]).map(x=>String(x||'').trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))];
@@ -286,7 +350,16 @@ export async function relevantRecoveryMainChange(fetchImpl,owner,repo,token,from
 function issueSuperseded(issue){
   if(!issue||issue.state!=='open')return true;
   const body=String(issue.body||'');
-  return /^(?:STATE=(?:SUPERSEDED|CANCELLED)|SUPERSEDED(?:_BY)?=|TIGERIQ_EXECUTABLE=false)$/mi.test(body);
+  const legacyState=currentCodingValue(body,'STATE').toUpperCase();
+  const state=currentCodingValue(body,'CURRENT_STATE').toUpperCase();
+  const autoQueue=currentCodingValue(body,'AUTO_QUEUE').toUpperCase();
+  // Only the canonical first anchored value may retire currently executable
+  // work. Historical `TIGERIQ_EXECUTABLE=false` notes are not live denials.
+  return /^(?:SUPERSEDED|CANCELLED|CANCELED)(?:_|$)/.test(legacyState)
+    ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
+    ||currentCodingValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='false'
+    ||autoQueue==='EXCLUDED'||autoQueue.startsWith('EXCLUDED_')
+    ||Boolean(currentCodingValue(body,'SUPERSEDED_BY')||currentCodingValue(body,'SUPERSEDED'));
 }
 function objectiveTerminal(objective){return ['completed','blocked'].includes(String(objective?.status||'').toLowerCase())}
 function objectiveMentionsIssue(objective,n){return new RegExp(`(?:issue\\s+|#)${n}\\b`,'i').test(String(objective?.objective||''))}
@@ -602,7 +675,22 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const retryDispatched=await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n);
-    const retryCount=retryDispatched.length;
+    // All three safe rearm paths begin a new retry epoch. Otherwise the
+    // historic deterministic RETRY_KEY may silently resolve an older objective.
+    const recoveryHistory=[
+      ...await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n),
+      ...await eventData(pool,'GITHUB_CODING_STALE_RESULT_REARMED',n),
+      ...await eventData(pool,'GITHUB_CODING_COMPLETED_REARMED',n),
+    ];
+    const retryEpoch=codingRetryEpochState(retryDispatched,recoveryHistory,id);
+    // A malformed/cyclic/duplicate retry journal is not a valid recovery signal.
+    // Failing only the budget count closed would still enter the recovery branch
+    // below when main/source changes, and silently re-dispatch corrupt history.
+    if(retryEpoch.reason!=='CURRENT_OBJECTIVE_EPOCH'){
+      await finalize('RETRY_HISTORY_INVALID',{terminalReason:retryEpoch.reason});
+      continue;
+    }
+    const retryCount=retryEpoch.retryCount;
     if(retryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
@@ -635,7 +723,9 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     }
 
     const retryAttempt=retryCount+1;
-    const retryKey=`GITHUB-ISSUE-${n}-RETRY-${retryAttempt}`;
+    const recoveryTag=retryEpoch.recovered
+      ?`-RECOVERY-${createHash('sha256').update(retryEpoch.epochRootId).digest('hex').slice(0,12)}`:'';
+    const retryKey=`GITHUB-ISSUE-${n}${recoveryTag}-RETRY-${retryAttempt}`;
     let retryObjective=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RETRY_KEY=${retryKey}`));
     const otherActiveForIssue=(status.objectives||[]).some(x=>x.id!==id&&x.id!==retryObjective?.id&&!objectiveTerminal(x)&&objectiveMentionsIssue(x,n));
     if(otherActiveForIssue)continue;
@@ -644,11 +734,12 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       if(blockedByActiveOwner||retryCreatedThisTick)continue;
     }
 
-    let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>Number(x.retryAttempt)===retryAttempt);
+    let scheduled=(await eventData(pool,'GITHUB_CODING_RETRY_SCHEDULED',n)).find(x=>
+      Number(x.retryAttempt)===retryAttempt&&(x.retryKey===retryKey||(!retryEpoch.recovered&&!x.retryKey)));
     if(!scheduled){
       const delayMs=classification.transient?PROVIDER_RETRY_BASE_MS*(2**(retryAttempt-1)):0;
       const nextAt=new Date(Number(now())+delayMs).toISOString();
-      scheduled={issueNumber:n,priorObjectiveId:id,retryAttempt,reason:classification.reason,transient:classification.transient,nextAt};
+      scheduled={issueNumber:n,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,transient:classification.transient,nextAt};
       await mark(pool,'GITHUB_CODING_RETRY_SCHEDULED',scheduled);
       await comment(fetchImpl,owner,repo,n,token,`[RETRY_SCHEDULED] prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} nextAt=${nextAt} reason=${classification.reason.slice(0,500)}`);
       results++;
@@ -664,7 +755,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       retryCreatedThisTick=true;
     }
 
-    const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>Number(x.retryAttempt)===retryAttempt);
+    const alreadyDispatched=(await eventData(pool,'GITHUB_CODING_RETRY_DISPATCHED',n)).some(x=>
+      Number(x.retryAttempt)===retryAttempt&&(x.retryKey===retryKey||(!retryEpoch.recovered&&!x.retryKey)));
     if(!alreadyDispatched){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;

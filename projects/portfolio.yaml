@@ -1,0 +1,41 @@
+schema: tigeriq.portfolio.v1
+owner_issue: 4640
+state: owner_approved_implementation_under_review
+source_of_truth: newsdayads/tigeriq-ai-lab@main
+groups:
+  - id: tigeriq-ai
+    name: TigerIQ AI
+    order: 10
+    children: [tigeriq-platform, tigeriq-mobile-worker, tigeriq-live, tigeriq-workflow-lab, tigeriq-app-chrome]
+  - id: tigeriq-news
+    name: TigerIQ News / Media
+    order: 20
+    children: [tigeriq-news]
+  - id: paperclip-vnext
+    name: Paperclip vNext
+    order: 30
+    children: [paperclip-vnext]
+  - id: revenue-lab
+    name: Revenue Lab
+    order: 40
+    children: [revenue-lab]
+  - id: tigeriq-driver
+    name: TigerIQ Driver
+    order: 50
+    children: [tigeriq-driver]
+  - id: dexcam-personal
+    name: DeXCam Personal
+    order: 60
+    children: [dexcam-personal]
+  - id: tigeriq-coin
+    name: TigerIQ Coin
+    order: 70
+    children: [tigeriq-coin]
+integration:
+  default: isolated
+  cross_project: explicit_scoped_contract_only
+  p0_auto_dispatch: forbidden
+  secrets_sharing: forbidden
+  production_mutation: separate_gated_authorization
+  app_chrome: pc01_local_only
+  coin_mining: disabled

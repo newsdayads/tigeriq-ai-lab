@@ -4,7 +4,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
-import { annotatePortfolioRows, buildProjectPortfolio } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -754,8 +754,7 @@ async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, 
 
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
-  // Queue discovery is never permission to bypass current canonical execution guards.
-  // #3904/#2788 have historic eligible-looking data but are explicitly disabled now.
+  // Do not queue issues whose current canonical source explicitly denies execution.
   const admission = safeAutoWorkAdmission(issue);
   if (!admission.eligible && ['EXPLICIT_EXECUTION_DISABLED','AUTO_QUEUE_EXCLUDED'].includes(String(admission.reason||''))) return null;
   const coreSpec = parseExecutableIssue(issue);
@@ -1699,7 +1698,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       if (pa !== pb) return pa - pb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
-    attachCoreUiAssignmentReceipts(openWork,base.coreUiAssignments);
+    attachCoreUiAssignmentReceipts(openWork, base.coreUiAssignments);
     if (resultInboxProjection) {
       const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
       if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
@@ -1749,6 +1748,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       issueNumber: stabilityIssue ? 2891 : null,
     };
 
+    const displayPortfolio = buildProjectPortfolio(mergePortfolioWorkRows(
+      openWork, annotatePortfolioRows(activeRows, openIssues), recentWork,
+    ));
+
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
@@ -1757,7 +1760,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       portfolioProgress,
       completionProgress,
       apiWorkforceSummary,
-      projectPortfolio: buildProjectPortfolio(openWork),
+      projectPortfolio: displayPortfolio,
+      portfolioGroups: buildPortfolioGroups(displayPortfolio),
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
@@ -1789,6 +1793,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
@@ -2001,6 +2006,7 @@ export default async function handler(req, res) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
