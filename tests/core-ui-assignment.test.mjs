@@ -12,9 +12,9 @@ const issue=(number,body,title='Core UI canary')=>({number,title,state:'open',st
 function response(value,status=200){return{ok:status>=200&&status<300,status,json:async()=>value};}
 
 function fakePool(){
-  const objectives=[],jobs=[],events=[];let terminalLock=Promise.resolve();
+  const objectives=[],jobs=[],events=[],scopeLeases=new Map();let terminalLock=Promise.resolve();
   const joined=(j)=>{const o=objectives.find(x=>x.id===j.objective_id);return {job_id:j.id,objective_id:j.objective_id,status:j.status,employee_id:j.employee_id,resource_id:j.resource_id,provider:j.provider,prompt:j.prompt,created_at:j.created_at,started_at:j.started_at,completed_at:j.completed_at,result:j.result,routing_decision:j.routing_decision,priority:o.priority,metadata:o.metadata,objective_updated_at:o.updated_at};};
-  const pool={objectives,jobs,events,async connect(){
+  const pool={objectives,jobs,events,scopeLeases,async connect(){
     let unlock=()=>{};
     return {
       async query(sql,params=[]){
@@ -37,6 +37,7 @@ function fakePool(){
       return{rowCount:rows.length?1:0,rows:rows.length?[{id:rows[0].id,status:rows[0].status,metadata:rows[0].metadata,updated_at:rows[0].updated_at}]:[]};
     }
     if(sql.startsWith('select 1 from tigeriq_objectives where id=$1')){const found=objectives.some(x=>x.id===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
+    if(sql.startsWith('select 1 from tigeriq_github_scope_leases')){const active=scopeLeases.has(params[0]);return{rowCount:active?1:0,rows:active?[{one:1}]:[]};}
     if(sql.startsWith('with locked as materialized')){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);if(found)return{rowCount:0,rows:[]};objectives.push({id:params[1],objective:params[2],priority:params[3],status:'active',summary:params[4],metadata:JSON.parse(params[5]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[{id:params[1]}]};}
     if(sql.includes("metadata->>'resourceScope'=$1")){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
     if(sql.startsWith('insert into tigeriq_objectives')){objectives.push({id:params[0],objective:params[1],priority:params[2],status:'active',summary:params[3],metadata:JSON.parse(params[4]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
@@ -63,6 +64,17 @@ function fakePool(){
   }};
   return pool;
 }
+
+
+test('active verified GitHub worker lease prevents Core materialization on same scope',async()=>{
+  const pool=fakePool();pool.scopeLeases.set('UI_CANARY',{workerId:'NV03'});
+  const canary=issue(4653,safe(['CAPABILITY=review']));
+  const fetchImpl=async url=>response(url.endsWith('/issues/4653')?canary:[canary]);
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(pool.jobs.length,0);
+  assert.equal(pool.objectives.length,0);
+  assert.equal(snap.nextJobs.length,0);
+});
 
 test('Core routes only review/research UI work to NV03/NV04',()=>{
   assert.equal(parseCoreUiIssue(issue(200,safe(['CAPABILITY=general']))),null);

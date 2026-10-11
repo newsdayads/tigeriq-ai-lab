@@ -1,3 +1,4 @@
+import {scopeHasLiveGithubLease} from './github-scope-lease.mjs';
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
@@ -1158,21 +1159,37 @@ async function sameRevisionFallbackRearmPlan(pool,prior,spec){
 async function insertGithubObjectiveIfScopeFree(pool,{id,objective,priority,metadata,resourceScope,dedupeKey}){
   const scope=String(resourceScope||'').trim();
   const key=String(dedupeKey||scope||'').trim();
+  // Legacy unscoped items have no ownership claim. Preserve the prior path.
   if(!scope&&!key){
-    const q=await pool.query("insert into tigeriq_objectives(id,objective,priority,status,metadata) values($1,$2,$3,'active',$4) on conflict(id) do nothing returning id",[id,objective,priority,JSON.stringify(metadata)]);
+    const q=await pool.query("insert into tigeriq_objectives(id,objective,priority,status,metadata) values($1,$2,$3,'active',$4) on conflict(id) do nothing returning id",
+      [id,objective,priority,JSON.stringify(metadata)]);
     return q.rowCount===1;
   }
-  const q=await pool.query(
-    "with locked as materialized (select pg_advisory_xact_lock(hashtext($5)) as guard), inserted as ("+
-    "insert into tigeriq_objectives(id,objective,priority,status,metadata) "+
-    "select $1,$2,$3,'active',$4 from locked "+
-    "where not exists (select 1 from tigeriq_objectives where status='active' and (metadata->>'resourceScope'=$6 or metadata->>'workOrderDedupeKey'=$5)) "+
-    "on conflict(id) do nothing returning id) select id from inserted",
-    [id,objective,priority,JSON.stringify(metadata),key,scope]
-  );
-  return q.rowCount===1;
+  const client=await pool.connect();let inTx=false;
+  try{
+    await client.query('begin');inTx=true;
+    // Ordered multi-key lock prevents deadlocks. The scope lock matches
+    // Core UI admission and atomic worker claim/lease checks.
+    const keys=[...new Set([scope,key].filter(Boolean))].sort();
+    for(const lockKey of keys)await client.query('select pg_advisory_xact_lock(hashtext($1))',[lockKey]);
+    const existing=await client.query(
+      "select 1 from tigeriq_objectives where status='active' and (metadata->>'resourceScope'=$1 or metadata->>'workOrderDedupeKey'=$2) limit 1",
+      [scope,key]);
+    const githubHeld=scope?await scopeHasLiveGithubLease(client,scope):false;
+    if(existing.rowCount||githubHeld){
+      await client.query('commit');inTx=false;
+      return false;
+    }
+    const q=await client.query(
+      "insert into tigeriq_objectives(id,objective,priority,status,metadata) values($1,$2,$3,'active',$4) on conflict(id) do nothing returning id",
+      [id,objective,priority,JSON.stringify(metadata)]);
+    await client.query('commit');inTx=false;
+    return q.rowCount===1;
+  }catch(error){
+    if(inTx)await client.query('rollback').catch(()=>{});
+    throw error;
+  }finally{client.release();}
 }
-
 export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null}){
   const cleanup=await cleanupTerminalObjectiveJobs({pool});
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
