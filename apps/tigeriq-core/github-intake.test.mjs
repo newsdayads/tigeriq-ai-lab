@@ -1225,6 +1225,23 @@ describe('GitHub Core intake guardrails',()=>{
     expect(seenParams).toEqual([[String(target)]]);
   });
 
+  it('fences concurrent GitHub source and acceptance writes against stale revision and comment cursor',async()=>{
+    // Source policy and acceptance evidence must update only if the row still
+    // matches the snapshot. Otherwise a slower GitHub response can regress a
+    // freshly accepted/revised objective from a different intake worker.
+    const {readFileSync}=await import('node:fs');
+    const intake=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    for(const [target,expected] of [
+      ['const policyWritten=await pool.query(',['status=$4',"(metadata->>'sourceRevision') is not distinct from $3::text",'if(policyWritten.rowCount!==1)continue;']],
+      ['const evidenceWritten=await pool.query(',['status=$4',"(metadata->>'sourceRevision') is not distinct from $3::text","(metadata->>'liveAcceptanceCommentCount') is not distinct from $5::text",'if(evidenceWritten.rowCount!==1)continue;']],
+    ]){
+      const index=intake.indexOf(target);
+      expect(index).toBeGreaterThan(-1);
+      const fragment=intake.slice(index,index+950);
+      for(const condition of expected)expect(fragment).toContain(condition);
+    }
+  });
+
   it('does not refetch the same GitHub comments when only the live acceptance gate is required',async()=>{
     const sourceIssue={
       number:4691,state:'open',title:'[P1] Stable live-only acceptance',comments:2,labels:[],
