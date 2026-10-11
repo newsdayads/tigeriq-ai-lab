@@ -46,6 +46,7 @@ import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import {ensureGithubScopeLeases} from './github-scope-lease.mjs';
+import {createGithubScopeWorkerApi} from './github-scope-worker-api.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -2490,6 +2491,25 @@ async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of r
 async function readBody(req){const raw=await readRawBody(req,65536);return raw?JSON.parse(raw):{};}
 const labels={IDLE:'RẢNH',BUSY:'ĐANG LÀM',READY:'SẴN SÀNG',WAIT_KEY:'CHỜ KEY',RATE_LIMITED:'HẾT HẠN MỨC',OFFLINE:'OFFLINE',ERROR:'LỖI',DISABLED:'TẮT'};
 const mobileWorkerApi=createMobileWorkerApi({pool,event,coreAuthToken:TOKEN});
+const githubScopeWorkerApi=createGithubScopeWorkerApi({
+  pool,
+  configByWorker:{
+    NV02:{secret:process.env.TIGERIQ_GH_SCOPE_NV02_SECRET||'',sessionId:process.env.TIGERIQ_GH_SCOPE_NV02_SESSION||''},
+    NV03:{secret:process.env.TIGERIQ_GH_SCOPE_NV03_SECRET||'',sessionId:process.env.TIGERIQ_GH_SCOPE_NV03_SESSION||''},
+  },
+  fetchCanonicalIssue:async number=>{
+    if(!GITHUB_TOKEN||GITHUB_OWNER!=='newsdayads'||GITHUB_REPO!=='tigeriq-ai-lab')
+      throw Error('CANONICAL_GITHUB_ACCESS_UNAVAILABLE');
+    if(!Number.isSafeInteger(number)||number<=0)throw Error('ISSUE_INVALID');
+    const res=await fetch('https://api.github.com/repos/'+GITHUB_OWNER+'/'+GITHUB_REPO+'/issues/'+number,{
+      headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+GITHUB_TOKEN,
+        'User-Agent':'TigerIQ-Scope-Worker-Acceptance'},
+      signal:AbortSignal.timeout(10000),
+    });
+    if(!res.ok)throw Error('CANONICAL_GITHUB_READ_FAILED_'+res.status);
+    return await res.json();
+  },
+});
 async function runNvInferenceRequest(input={}){
   const request=normalizeNvInferenceRequest(input);
   const jobId=`NVAPI-${randomUUID()}`;
@@ -2521,6 +2541,7 @@ async function runNvInferenceRequest(input={}){
 function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
+    if(await githubScopeWorkerApi(req,res,url))return;
     if(await mobileWorkerApi(req,res,url))return;
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
