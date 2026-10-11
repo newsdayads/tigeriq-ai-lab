@@ -362,6 +362,24 @@ public final class ChatGptB1RunStore {
             .apply();
     }
 
+    /**
+     * Increment recovery count atomically for the originally scheduled Core
+     * task. Never credit an older callback to a replacement or terminal run.
+     * Manual B1 keeps its existing markRecovery contract separately.
+     */
+    public static synchronized boolean markCoreRecoveryIfCurrent(
+        Context context, String runId, String taskId, int cycle, int maxRecoveries
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+            runId, taskId, cycle, live.runId, live.taskId, live.cycle,
+            live.state, live.recoveryCount, maxRecoveries
+        )) return false;
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(K_RECOVERY_COUNT, live.recoveryCount + 1)
+            .commit();
+    }
+
     public static void markRecovery(Context context) {
         Snapshot s = read(context);
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
