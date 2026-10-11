@@ -69,57 +69,7 @@ try {
     throw 'INVALID_TARGET_COUNT'
   }
   $root = [System.IO.Path]::GetFullPath($RootPath).TrimEnd('\')
-  if ($root -match '^[A-Za-z]:
-  if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw 'ROOT_NOT_DIRECTORY' }
-
-  $records = @()
-  $parent = [System.IO.Directory]::GetParent($root)
-  if ($null -ne $parent) {
-    $records += Get-ScopedAclRecord -Path $parent.FullName -Scope 'PARENT'
-  }
-  $records += Get-ScopedAclRecord -Path $root -Scope 'ROOT'
-
-  $prefix = $root + '\'
-  $i = 0
-  foreach ($rel in $RelativePaths) {
-    $i++
-    if ([string]::IsNullOrWhiteSpace($rel)) { throw 'EMPTY_TARGET' }
-    $candidate = [System.IO.Path]::GetFullPath((Join-Path -Path $root -ChildPath $rel))
-    if (
-      -not [string]::Equals($candidate.TrimEnd('\'), $root, [System.StringComparison]::OrdinalIgnoreCase) -and
-      -not $candidate.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
-    ) {
-      throw 'TARGET_OUTSIDE_ROOT'
-    }
-    if (-not (Test-Path -LiteralPath $candidate)) { throw 'TARGET_NOT_FOUND' }
-    $records += Get-ScopedAclRecord -Path $candidate -Scope ('TARGET_' + $i)
-  }
-
-  $riskCount = @($records | Where-Object { $_.broad_allow_write }).Count
-  [pscustomobject]@{
-    schema = 'TIGERIQ_NTFS_BOUNDARY_AUDIT_V1'
-    mode = 'READ_ONLY'
-    status = $(if ($riskCount -gt 0) { 'BROAD_WRITE_RISK' } else { 'NO_BROAD_WRITE_ACE_DETECTED' })
-    scopes_checked = $records.Count
-    scopes_at_risk = $riskCount
-    mutation_performed = $false
-    authorization_e2e_verified = $false
-    records = $records
-  } | ConvertTo-Json -Depth 6
-  if ($riskCount -gt 0) { exit 2 }
-  exit 0
-} catch {
-  [pscustomobject]@{
-    schema = 'TIGERIQ_NTFS_BOUNDARY_AUDIT_V1'
-    mode = 'READ_ONLY'
-    status = 'AUDIT_ERROR'
-    mutation_performed = $false
-    authorization_e2e_verified = $false
-    error_code = $(if ($_.Exception.Message -match '^(ACL_IDENTITY_TRANSLATION_FAILED|INVALID_TARGET_COUNT|INVALID_ROOT|ROOT_NOT_DIRECTORY|EMPTY_TARGET|TARGET_OUTSIDE_ROOT|TARGET_NOT_FOUND)$') { $_.Exception.Message } else { 'UNCLASSIFIED_READ_ERROR' })
-  } | ConvertTo-Json -Depth 3
-  exit 3
-}
-) { $root += '\\' }
+  if ($root -match '^[A-Za-z]:$') { $root += '\\' }
   if ([string]::IsNullOrWhiteSpace($root)) { throw 'INVALID_ROOT' }
   if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw 'ROOT_NOT_DIRECTORY' }
 
@@ -130,7 +80,7 @@ try {
   }
   $records += Get-ScopedAclRecord -Path $root -Scope 'ROOT'
 
-  $prefix = $root + '\'
+  $prefix = $root.TrimEnd('\') + '\'
   $i = 0
   foreach ($rel in $RelativePaths) {
     $i++
