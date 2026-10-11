@@ -499,6 +499,30 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void exhaustedCoreRecoveryMustExitWithDurableTerminalEvidence() throws Exception {
+        String bridge = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int schedulerStart = bridge.indexOf("private void scheduleB1RecoveryIfNeeded()");
+        int schedulerEnd = bridge.indexOf("private void writeProbe(", schedulerStart);
+        assertTrue(schedulerStart >= 0 && schedulerEnd > schedulerStart);
+        String scheduler = bridge.substring(schedulerStart, schedulerEnd);
+        assertTrue("Exhausted Core tasks need one final delayed outcome check",
+            scheduler.contains("coreTask") && scheduler.contains("run.recoveryCount >= MAX_B1_RECOVERIES"));
+        int runnableStart = bridge.indexOf("private final Runnable recoveryRunnable");
+        int runnableEnd = bridge.indexOf("@Override", runnableStart);
+        assertTrue(runnableStart >= 0 && runnableEnd > runnableStart);
+        String runner = bridge.substring(runnableStart, runnableEnd);
+        assertTrue("A Core recovery cap should report a terminal error",
+            runner.contains("CHATGPT_RECOVERY_EXHAUSTED"));
+        assertTrue("Do not terminate an unverified successor lease",
+            runner.contains("canFailExhaustedCoreRecoveryForSnapshot(")
+                && runner.contains("failCoreIfCurrent("));
+    }
+
+    @Test
     public void delayedCoreRecoveryCannotResetForeverOrMutateSuccessor() throws Exception {
         String bridge = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
