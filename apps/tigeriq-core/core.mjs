@@ -29,7 +29,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
@@ -2196,10 +2196,26 @@ async function managerTick() {
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
   const latestManagerProgress=(await pool.query("select max(completed_at) as latest_terminal_at from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done'",[o.id,currentPhase])).rows[0]?.latest_terminal_at||null;
-  const managerProgressed=managerProgressSinceLastCycle({latestTerminalAt:latestManagerProgress,objectiveUpdatedAt:o.updated_at});
-  const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:managerProgressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
+  const terminalProgress=managerTerminalProgressPlan({
+    latestTerminalAt:latestManagerProgress,
+    observedTerminalAt:o.metadata?.managerLastObservedTerminalAt,
+    managerCycles:o.manager_cycles,
+  });
+  if(terminalProgress.checkpoint){
+    // Atomic compare-and-set: never consume a completion watermark without
+    // also resetting its stale-cycle budget, or overwrite a newer watermark
+    // written by another Core instance. No progress => no updated_at churn.
+    const saved=await pool.query(
+      "update tigeriq_objectives set metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerLastObservedTerminalAt}',to_jsonb($2::text),true),manager_cycles=case when $4::boolean then 0 else manager_cycles end,updated_at=case when $4::boolean then now() else updated_at end where id=$1 and status='active' and (metadata->>'managerLastObservedTerminalAt') is not distinct from $3::text",
+      [o.id,terminalProgress.observedAt,o.metadata?.managerLastObservedTerminalAt??null,terminalProgress.progressed],
+    );
+    // Stale workers must not run an unguarded manager decision after another
+    // instance consumed the same progress or terminalized the objective.
+    if(saved.rowCount!==1)return;
+    o.metadata={...o.metadata,managerLastObservedTerminalAt:terminalProgress.observedAt};
+  }
+  const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:terminalProgress.progressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
   if(managerGuard.reset){
-    await pool.query("update tigeriq_objectives set manager_cycles=0,updated_at=now() where id=$1",[o.id]);
     o.manager_cycles=0;
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
@@ -2227,22 +2243,45 @@ async function managerTick() {
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
   const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. Maximum 3 jobs. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
+  // Read before the async Manager call. A GitHub evidence/revision update
+  // during inference must invalidate any later terminal decision or evidence park.
+  const managerCompletionGateSnapshot=JSON.stringify([
+    o.metadata?.sourceRevision??null,
+    o.metadata?.dependencyGateRequired??null,o.metadata?.dependencyGatePass??null,
+    o.metadata?.liveAcceptanceRequired??null,o.metadata?.liveAcceptancePass??null,
+    o.metadata?.liveAcceptanceRevision??null,o.metadata?.finalReviewRequired??null,
+    o.metadata?.finalReviewPass??null,o.metadata?.finalReviewRevision??null,
+  ]);
   try {
     const routed=await callManagerDecision(prompt,o.id);
     if(routed.exhausted===true){
       const retryPlan=managerExhaustionRetryPlan({managerCycles:o.manager_cycles,maxCycles:30});
       const summary=String(routed.decision?.summary||'manager decision exhausted after bounded retry/failover').slice(0,2000);
       if(retryPlan.retry){
-        await pool.query("update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1",[o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs)]);
+        const retryCommitted=await pool.query(
+          "update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $5::text",
+          [o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs),o.metadata?.sourceRevision??null],
+        );
+        if(retryCommitted.rowCount!==1)return;
         await event('MANAGER_EXHAUSTED_RETRY_QUEUED',{objectiveId:o.id,phaseIndex:currentPhase,retryCount:retryPlan.nextCycle,delayMs:retryPlan.delayMs,failureCount:Array.isArray(routed.failures)?routed.failures.length:0});
         return;
       }
-      await pool.query("update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1",[o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted']);
+      const exhaustedCommitted=await pool.query(
+        "update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text",
+        [o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted',o.metadata?.sourceRevision??null],
+      );
+      if(exhaustedCommitted.rowCount!==1)return;
       await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:retryPlan.reason,retryCount:retryPlan.nextCycle});
       return;
     }
     const decision=routed.decision;
-    await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
+    // The manager model may return after GitHub intake has parked, blocked or
+    // superseded this objective. Never write a stale decision over that state.
+    const decisionCommitted=await pool.query(
+      "update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $3::text",
+      [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
+    );
+    if(decisionCommitted.rowCount!==1)return;
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
@@ -2276,7 +2315,14 @@ async function managerTick() {
       return;
     }
     const transition=campaignTransition({status:decision.status,currentPhase,phases});
-    if(transition.action==='blocked'){await pool.query("update tigeriq_objectives set status='blocked',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;}
+    if(transition.action==='blocked'){
+      const blocked=await pool.query(
+        "update tigeriq_objectives set status='blocked',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$2::jsonb",
+        [o.id,managerCompletionGateSnapshot],
+      );
+      if(blocked.rowCount!==1)return;
+      await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;
+    }
     if(transition.action==='complete'){
       if(phases.length){
         const handoff=await persistTerminalHandoff(o,decision,currentPhase);
@@ -2288,11 +2334,38 @@ async function managerTick() {
         const summary=completionGate.reason==='final_review_pending'
           ? 'completion pending trusted independent final review for current source revision'
           : 'completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
-        await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
-        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason,managerCyclesReset:true});
+        const wait=managerAcceptancePausePlan({
+          source:o.metadata?.source,
+          sourceRevision:o.metadata?.sourceRevision,
+          gate:completionGate,
+        });
+        if(wait.park){
+          // Active for evidence reconciliation, but not runnable by AI Manager
+          // until GitHub intake sees accepted proof or a new source revision.
+          const parked=await pool.query(
+            "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$4::jsonb",
+            [o.id,summary,JSON.stringify(wait.revision),managerCompletionGateSnapshot],
+          );
+          if(parked.rowCount!==1)return;
+          await event('OBJECTIVE_COMPLETION_WAITING_EVIDENCE',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:wait.revision,reason:wait.reason});
+        }else{
+          // Non-GitHub/missing-revision objectives have no proven watcher.
+          // The post-decision update already charged one manager cycle.
+          // Delay the next attempt without double-charging that same decision.
+          const delayed=await pool.query(
+            "update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$3::jsonb",
+            [o.id,summary,managerCompletionGateSnapshot],
+          );
+          if(delayed.rowCount!==1)return;
+          await event('OBJECTIVE_COMPLETION_RETRY_BOUNDED',{objectiveId:o.id,phaseIndex:currentPhase,reason:completionGate.reason});
+        }
         return;
       }
-      await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
+      const finished=await pool.query(
+        "update tigeriq_objectives set status='completed',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$2::jsonb",
+        [o.id,managerCompletionGateSnapshot],
+      );
+      if(finished.rowCount!==1)return;
       await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});
       return;
     }
@@ -2301,8 +2374,8 @@ async function managerTick() {
       const advanced=await pool.query(`update tigeriq_objectives
         set metadata=jsonb_set(jsonb_set(metadata,'{campaign,currentPhase}',to_jsonb($2::int),true),'{campaign,checkpoints}',coalesce(metadata#>'{campaign,checkpoints}','[]'::jsonb)||$3::jsonb,true),
             manager_cycles=0,summary=$4,next_check_at=now(),updated_at=now()
-        where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$5`,
-        [o.id,transition.nextPhase,JSON.stringify([checkpoint]),`phase ${currentPhase+1}/${phases.length} complete; continuing to phase ${transition.nextPhase+1}/${phases.length}`,currentPhase]);
+        where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$5 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$6::jsonb`,
+        [o.id,transition.nextPhase,JSON.stringify([checkpoint]),`phase ${currentPhase+1}/${phases.length} complete; continuing to phase ${transition.nextPhase+1}/${phases.length}`,currentPhase,managerCompletionGateSnapshot]);
       if(advanced.rowCount===1){await event('CAMPAIGN_PHASE_COMPLETED',{objectiveId:o.id,phaseIndex:currentPhase,nextPhaseIndex:transition.nextPhase,checkpoint});await event('CAMPAIGN_PHASE_ADVANCED',{objectiveId:o.id,phaseIndex:transition.nextPhase,phaseCount:phases.length});}
       return;
     }
