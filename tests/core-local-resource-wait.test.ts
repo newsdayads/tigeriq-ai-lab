@@ -20,6 +20,13 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
     expect(run).toContain('const plan=resourceWaitPlan(');
     expect(run.indexOf("status='waiting_resource'")).toBeLessThan(run.indexOf("status='failed'"));
   });
+  it('retries boundedly after real local timeout instead of immediately failing the job',()=>{
+    expect(core).toContain('TIGERIQ_OLLAMA_TIMEOUT_MS || 90000');
+    expect(run).toContain('mayWaitAfterLocalFailure({');
+    expect(run).toContain('LOCAL_TRANSIENT_INFERENCE_FAILURE');
+    expect(run).toContain('transientLocalWait||targetedReviewWait');
+    expect(core).toContain('RESOURCE_WAIT_MAX_RETRIES=6');
+  });
   it('never treats cloud capacity as a substitute for a LOCAL-only objective',()=>{
     expect(capacity).toContain("provider='ollama'");
     expect(capacity).toContain('where enabled=true');
