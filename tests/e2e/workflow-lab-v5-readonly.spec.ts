@@ -250,6 +250,7 @@ test('V5 ignores unrelated project names in issue body when inferring issue proj
 
 
 test('V5 issue detail discloses whether project assignment is explicit or inferred',async({page})=>{
+ const pageErrors:string[]=[];page.on('pageerror',error=>pageErrors.push(error.message));
  const withId={...issue(4625,'open','PLANNING'),
   title:'[P1][ANDROID] Generic item',
   body:'PROJECT_ID=dexcam-personal\nCURRENT_STATE=PLANNING'};
@@ -266,7 +267,10 @@ test('V5 issue detail discloses whether project assignment is explicit or inferr
  await page.locator('#backToProjects').click();
  await page.locator('[data-project="tigeriq-platform"]').click();
  await page.locator('#jobCards .jobcard').filter({hasText:'Manager checkpoint'}).click();
+ await expect(page.locator('#workflowScreen')).toBeVisible();
+ await expect(page.locator('#jobTitle')).toContainText('Manager checkpoint');
  await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án suy luận từ tiêu đề');
+ expect(pageErrors).toEqual([]);
 });
 
 
