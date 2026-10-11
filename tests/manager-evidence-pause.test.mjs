@@ -230,6 +230,32 @@ test('stale Manager model results never rearm a parked, blocked or revised GitHu
   }
 });
 
+test('post-decision terminal writes compare the acceptance gate snapshot atomically',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const snapshot=core.indexOf('const managerCompletionGateSnapshot=JSON.stringify([');
+  const call=core.indexOf('const routed=await callManagerDecision(prompt,o.id);');
+  assert.ok(snapshot>=0&&snapshot<call,'Evidence snapshot must precede async inference');
+  const fence="jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')";
+  for(const [target,checked] of [
+    ['const blocked=await pool.query(', 'if(blocked.rowCount!==1)return;'],
+    ['const parked=await pool.query(', 'if(parked.rowCount!==1)return;'],
+    ['const delayed=await pool.query(', 'if(delayed.rowCount!==1)return;'],
+    ['const finished=await pool.query(', 'if(finished.rowCount!==1)return;'],
+  ]){
+    const start=core.indexOf(target,call);
+    const end=core.indexOf(checked,start);
+    assert.ok(start>=0&&end>start, `Missing guarded transition: ${target}`);
+    const sql=core.slice(start,end);
+    assert.ok(sql.includes(fence),`Missing fresh acceptance evidence check: ${target}`);
+    assert.ok(sql.includes("status='active'")&&sql.includes("managerAwaitingAcceptanceRevision"),
+      `Must respect terminal status and parked objective: ${target}`);
+    assert.ok(sql.includes('managerCompletionGateSnapshot'),
+      `Must use the pre-inference gate snapshot: ${target}`);
+  }
+  assert.ok(core.includes(fence+'=$6::jsonb'));
+  assert.match(core,/currentPhase,managerCompletionGateSnapshot\]\);/);
+});
+
 test('a parked objective clears exhausted manager cycle budget without losing its acceptance fence',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   const fence="manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz";
