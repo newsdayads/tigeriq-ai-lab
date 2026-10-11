@@ -588,8 +588,8 @@ export function activeResourceClaims(comments = [], nowMs = Date.now()) {
   const active = new Map();
   for (const comment of [...comments].sort((a, b) => Number(a.id) - Number(b.id))) {
     const body = String(comment?.body || '');
-    const claim = body.match(/\[(?:TIGERIQ_NV02_LEASE_V1|TIGERIQ_ROLE_CLAIM_V1|APP_CHROME_CLAIM)\]/i);
-    const release = body.match(/\[(?:TIGERIQ_NV02_RELEASE_V1|TIGERIQ_NV02_LEASE_RELEASE_V1|TIGERIQ_ROLE_RELEASE_V1|APP_CHROME_RELEASE)\]/i);
+    const claim = body.match(/\[(?:TIGERIQ_NV02_ATOMIC_LEASE_V1|TIGERIQ_NV02_LEASE_V1|TIGERIQ_ROLE_CLAIM_V1|APP_CHROME_CLAIM)\]/i);
+    const release = body.match(/\[(?:TIGERIQ_NV02_ATOMIC_RELEASE_V1|TIGERIQ_NV02_RELEASE_V1|TIGERIQ_NV02_LEASE_RELEASE_V1|TIGERIQ_ROLE_RELEASE_V1|APP_CHROME_RELEASE)\]/i);
     const marker = claim || release;
     if (!marker) continue;
     const meta = fields(body.slice(marker.index));
