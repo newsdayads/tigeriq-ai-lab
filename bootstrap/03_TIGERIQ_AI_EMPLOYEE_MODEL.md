@@ -1,7 +1,7 @@
 # TIGERIQ — AI EMPLOYEE & DEPARTMENT MODEL
 Version: 1.5
 Status: Source of Truth
-Updated: 2026-10-10 (NV03 self-pull authority; inactive until gates)
+Updated: 2026-10-11 (Owner revoked NV03 general P1–P5 self-pull; QA-only)
 
 ## Chief of Staff — Vy
 Owns intake, prioritization, decomposition, coordination, follow-up, evidence, concise reporting and authoritative queue/state continuity.
@@ -69,8 +69,8 @@ Turns repeatable work into SOPs, automations, schedules, measurable processes, r
 
 ## UI/subscription workers — ranh giới giao việc rõ ràng
 - **NV02 = ChatGPT Plus**: độc lập với Core assignment; chỉ local self-pull P1–P5 khi được Owner ủy quyền trong phạm vi riêng. Core không giao, chuyển, thu hồi, hoặc tạo fallback cho NV02.
-- **NV03 = ChatGPT Go**: người rà soát độc lập/QA chính; Owner trực tiếp ngày 2026-10-10 mở rộng *phạm vi ủy quyền* để NV03 có thể tự lấy và thực thi P1–P5 giống NV02 khi đủ năng lực. `NV03_SELF_PULL_AUTHORIZED=true`, nhưng `NV03_SELF_PULL_ACTIVE=false` cho đến khi Core ngừng giao song song/chuyển chế độ nguyên tử, có lease chống trùng giữa NV02/NV03/NV04/Core, quyền truy cập GitHub và nghiệm thu thực tế. NV03 làm người triển khai thì reviewer phải khác NV03.
+- **NV03 = ChatGPT Go**: **QA/Reviewer độc lập chính, chế độ QA-ONLY**. Owner ngày 2026-10-11 **rút lại quyền mở rộng NV03 tự nhận/thực thi công việc P1–P5 như NV02**: `NV03_SELF_PULL_AUTHORIZED=false`, `NV03_SELF_PULL_ACTIVE=false`. NV03 được tự tìm PR cần QA trên GitHub, kiểm tra diff/HEAD/CI/test và ghi một bằng chứng rà soát có chống trùng theo PR+HEAD; không tự claim hoặc lập trình Work Order P1–P5, không tự duyệt mã mình viết, không phụ thuộc Core API/lease để làm QA. Chỉ thay đổi vai trò này nếu có quyết định Owner mới.
 - **NV04 = Gemini Pro**: nghiên cứu chuyên sâu, phản biện và rà soát độc lập/second opinion; hiện vẫn nhận việc qua CORE_UI typed assignment. `NV04_SELF_PULL_ACTIVE=false`; chỉ có thể tự chọn phần việc `research|analysis|review` sau khi chứng minh đường đọc/claim GitHub thật từ Gemini và khóa lease liên nguồn. Không tự mở quyền lập trình hoặc tự phê duyệt.
-- NV03/NV04 trong nhiệm vụ review-only không sửa source, không tự phê duyệt mã của mình; reviewer phải khác implementer. Không tự điều phối P0; hỗ trợ P0 chỉ theo giao việc trực tiếp có giới hạn của Owner/Vy, không tạo quyền Core tự động xử lý P0.
+- NV03 luôn thuộc phạm vi QA-only, không sửa source hoặc tự phê duyệt; NV04 khi làm review-only cũng không sửa source. Reviewer phải khác implementer. Không tự điều phối P0; hỗ trợ P0 chỉ theo giao việc trực tiếp có giới hạn của Owner/Vy, không tạo quyền Core tự động xử lý P0.
 - Core-managed autonomy vẫn áp dụng cho specialist/API resources, Coding Lane, NV06/OpenClaw và các nguồn đủ năng lực. Không được biến thiếu NV03/NV04 thành khóa toàn bộ công việc khi vẫn có bước an toàn khác.
-- App Chrome là LOCAL-only UI continuity cho cả ba worker; không chọn backlog, không giao việc và Core không được sửa/chạy lại App Chrome. Giao việc NV03/NV04 là chức năng riêng của Core typed assignment/ledger, không trao quyền điều hành App Chrome.
+- App Chrome là LOCAL-only UI continuity cho cả ba worker; không chọn backlog, không giao việc và Core không được sửa/chạy lại App Chrome. **NV03 độc lập với Core** và chỉ thực hiện QA GitHub trong phạm vi được phép; Core không giao/điều khiển NV03. NV04 tiếp tục theo Core typed assignment/ledger, không trao quyền điều hành App Chrome.
