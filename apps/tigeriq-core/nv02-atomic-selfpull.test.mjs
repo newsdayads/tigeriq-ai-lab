@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {claimNv02WorkOrderAtomic,renewNv02WorkOrderAtomic,releaseNv02WorkOrderAtomic} from './nv02-atomic-selfpull.mjs';
+import {claimNv02WorkOrderAtomic,renewNv02WorkOrderAtomic,releaseNv02WorkOrderAtomic,validateNv02CanonicalDoneEvidence} from './nv02-atomic-selfpull.mjs';
 
 const session='NV02-session-20261011';
 const issue={number:4653,title:'[P2] Atomic claim test',state:'open',
@@ -162,4 +162,46 @@ test('legacy advisory readers recognize new atomic receipt and release markers',
   const release={id:2,body:'[TIGERIQ_NV02_ATOMIC_RELEASE_V1]\nLEASE_ID=00000000-0000-4000-8000-000000000001\nWORKER=NV02\nRESOURCE_SCOPE=ATOMIC_SHARED'};
   assert.equal(activeResourceClaims([claim],now).length,1);
   assert.equal(activeResourceClaims([claim,release],now).length,0);
+});
+
+const rawReceiptIssue={number:4653};
+const rawReceiptLease={resourceScope:'NV02_ATOMIC_TEST',leaseId:'00000000-0000-4000-8000-000000000001'};
+const rawReceiptId=6101234567;
+const rawReceiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/issues/4653#issuecomment-'+rawReceiptId;
+const rawReceiptLines=['[TIGERIQ_NV02_WORK_EVIDENCE_V1]','WORK_ORDER=#4653','WORKER=NV02',
+  'RESOURCE_SCOPE=NV02_ATOMIC_TEST','LEASE_ID='+rawReceiptLease.leaseId,'RESULT=PASS',
+  'EVIDENCE_REF=https://github.com/newsdayads/tigeriq-ai-lab/pull/4660'];
+const rawReceipt=body=>({id:rawReceiptId,html_url:rawReceiptUrl,body});
+
+test('real GitHub REST LF comments are parsed at byte level',()=>{
+  const body=rawReceiptLines.join(String.fromCharCode(10));
+  assert.equal(Buffer.from(body).includes(10),true);
+  assert.equal(validateNv02CanonicalDoneEvidence(rawReceipt(body),rawReceiptIssue,rawReceiptLease).commentId,rawReceiptId);
+});
+test('real GitHub REST CRLF comments are parsed at byte level',()=>{
+  const body=rawReceiptLines.join(String.fromCharCode(13,10));
+  assert.equal(Buffer.from(body).includes(13),true);
+  assert.equal(validateNv02CanonicalDoneEvidence(rawReceipt(body),rawReceiptIssue,rawReceiptLease).commentId,rawReceiptId);
+});
+test('escaped literal backslash-n is NOT accepted as canonical line breaks',()=>{
+  const body=rawReceiptLines.join(String.fromCharCode(92,110));
+  assert.equal(Buffer.from(body).includes(10),false);
+  assert.throws(()=>validateNv02CanonicalDoneEvidence(rawReceipt(body),rawReceiptIssue,rawReceiptLease),/EVIDENCE_SCOPE_OR_RESULT_INVALID/);
+});
+test('duplicate raw GitHub fields reject DONE receipt',()=>{
+  assert.throws(()=>validateNv02CanonicalDoneEvidence(rawReceipt([...rawReceiptLines,'RESULT=PASS'].join(String.fromCharCode(10))),
+    rawReceiptIssue,rawReceiptLease),/EVIDENCE_DUPLICATE_FIELD/);
+});
+test('wrong scope, lease and evidence host reject DONE receipt',()=>{
+  for(const variant of [
+    rawReceiptLines.map(x=>x.startsWith('RESOURCE_SCOPE=')?'RESOURCE_SCOPE=WRONG':x),
+    rawReceiptLines.map(x=>x.startsWith('LEASE_ID=')?'LEASE_ID=00000000-0000-4000-8000-000000000099':x),
+    rawReceiptLines.map(x=>x.startsWith('EVIDENCE_REF=')?'EVIDENCE_REF=https://evil.invalid/no':x),
+  ])assert.throws(()=>validateNv02CanonicalDoneEvidence(rawReceipt(variant.join(String.fromCharCode(10))),
+    rawReceiptIssue,rawReceiptLease),/INVALID/);
+});
+test('wrong canonical GitHub URL or comment ID rejects DONE receipt',()=>{
+  const body=rawReceiptLines.join(String.fromCharCode(10));
+  assert.throws(()=>validateNv02CanonicalDoneEvidence({...rawReceipt(body),html_url:'https://evil.invalid'},rawReceiptIssue,rawReceiptLease),/CANONICAL_SOURCE_INVALID/);
+  assert.throws(()=>validateNv02CanonicalDoneEvidence({...rawReceipt(body),id:0},rawReceiptIssue,rawReceiptLease),/CANONICAL_SOURCE_INVALID/);
 });
