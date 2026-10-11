@@ -12,7 +12,14 @@ const loopback=new Set(['127.0.0.1','::1','::ffff:127.0.0.1']);
 const raw=(v)=>String(v||'').trim();
 function field(body,key){
   if(!/^[A-Z_]+$/.test(String(key)))throw Error('POLICY_FIELD_INVALID');
-  const matches=[...String(body||'').matchAll(new RegExp('^\\s*'+key+'\\s*=\\s*([^\\r\\n]*)\\s*
+  const rows=String(body||'').split(String.fromCharCode(10));
+  const values=rows.filter(line=>line.includes('=')).map(line=>{
+    const pos=line.indexOf('=');
+    return {name:line.slice(0,pos).trim().toUpperCase(),value:line.slice(pos+1).trim()};
+  }).filter(x=>x.name===key);
+  if(values.length>1)throw Error('ISSUE_POLICY_DUPLICATE_'+key);
+  return raw(values[0]?.value);
+}
 function secureEqual(a,b){
   const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));
   return x.length===y.length&&x.length>0&&timingSafeEqual(x,y);
