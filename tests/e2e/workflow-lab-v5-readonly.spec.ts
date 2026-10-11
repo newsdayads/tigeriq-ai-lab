@@ -261,6 +261,8 @@ test('V5 issue detail discloses whether project assignment is explicit or inferr
  await page.locator('#jobCards .jobcard').click();
  await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án theo PROJECT_ID');
  await page.locator('#jobBack').click();
+ // No prior issue evidence may survive a return to the list.
+ await expect(page.locator('#workflowScreen .source-evidence-note')).toHaveCount(0);
  await page.locator('#backToProjects').click();
  await page.locator('[data-project="tigeriq-platform"]').click();
  await page.locator('#jobCards .jobcard').filter({hasText:'Manager checkpoint'}).click();
