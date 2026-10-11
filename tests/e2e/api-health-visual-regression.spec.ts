@@ -59,17 +59,34 @@ for(const width of [390,1024,1648]){
   await page.locator('.filter[data-filter=all]').click();
   const employee=page.locator('.employee-card.state-ready').first();
   await expect(employee).toBeVisible();
-  const normal=await employee.screenshot({animations:'disabled'});
+  // Worker cards are replaced by 1-second live polling; screenshot a viewport clip, not a stale DOM node.
+  await employee.scrollIntoViewIfNeeded();
+  const cardBox=await employee.boundingBox();
+  expect(cardBox,'Expected a visible worker card for the hover screenshot').not.toBeNull();
+  const normalColor=await employee.evaluate(e=>getComputedStyle(e).backgroundColor);
+  const normal=await page.screenshot({clip:cardBox!,animations:'disabled'});
   await employee.hover();
-  const hover=await employee.screenshot({animations:'disabled'});
+  await expect.poll(()=>employee.evaluate(e=>getComputedStyle(e).backgroundColor)).not.toBe(normalColor);
+  const hover=await page.screenshot({clip:cardBox!,animations:'disabled'});
   expect(hover.equals(normal),'Hover must visibly tint the status card').toBe(false);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
-  expect(await popup.evaluate(e=>getComputedStyle(e).borderColor)).toBe(await employee.evaluate(e=>getComputedStyle(e).borderColor));
+  // The worker grid is replaced by live polling: never snapshot a border color from a detached card.
+  // Resolve the same ready-state CSS token in the browser and verify three independent surfaces.
+  const readyBorder=await page.evaluate(()=>{
+    const probe=document.createElement('span');
+    probe.style.border='1px solid var(--tiq-ready)';
+    document.body.appendChild(probe);
+    try{return getComputedStyle(probe).borderTopColor;}
+    finally{probe.remove();}
+  });
+  expect(readyBorder).toBe('rgb(59, 130, 246)');
+  await expect.poll(()=>employee.evaluate(e=>getComputedStyle(e).borderTopColor)).toBe(readyBorder);
+  await expect(popup).toHaveCSS('border-top-color',readyBorder);
   await testInfo.attach('api-health-worker-hover-'+width+'.png',{body:hover,contentType:'image/png'});
   await employee.click();
   await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
-  expect(await page.locator('#detailModal').evaluate(e=>getComputedStyle(e).borderColor)).toBe(await employee.evaluate(e=>getComputedStyle(e).borderColor));
+  await expect(page.locator('#detailModal')).toHaveCSS('border-top-color',readyBorder);
   await testInfo.attach('api-health-employee-modal-'+width+'.png',{body:await page.locator('#detailModal').screenshot({animations:'disabled'}),contentType:'image/png'});
   await page.locator('#detailClose').click();
   const card=page.locator('.work-row').filter({hasText:'#3278'}).first();
