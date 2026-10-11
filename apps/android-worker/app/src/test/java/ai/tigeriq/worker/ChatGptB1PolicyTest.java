@@ -448,6 +448,39 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void delayedCoreRecoveryCannotResetForeverOrMutateSuccessor() throws Exception {
+        String bridge = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int schedulerStart = bridge.indexOf("private void scheduleB1RecoveryIfNeeded()");
+        int schedulerEnd = bridge.indexOf("private void writeProbe(", schedulerStart);
+        assertTrue(schedulerStart >= 0 && schedulerEnd > schedulerStart);
+        String scheduler = bridge.substring(schedulerStart, schedulerEnd);
+        assertTrue("750ms ticker must not reset an existing 2500ms recovery timer",
+            scheduler.contains("if (recoveryPending") && scheduler.contains("return;"));
+        int runnerStart = bridge.indexOf("private final Runnable recoveryRunnable");
+        int runnerEnd = bridge.indexOf("@Override", runnerStart);
+        assertTrue(runnerStart >= 0 && runnerEnd > runnerStart);
+        String runner = bridge.substring(runnerStart, runnerEnd);
+        assertTrue("Recovery must check scheduled run, task, and cycle",
+            runner.contains("isSameProjectContextCandidate("));
+        assertTrue("Core recovery cannot write unscoped failure",
+            runner.contains("failCoreIfCurrent("));
+        assertTrue("Core recovery must make an identity-scoped durable claim",
+            runner.contains("markCoreRecoveryIfCurrent("));
+
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        assertTrue("Core recovery claim must be synchronized with lease replacement",
+            store.contains("public static synchronized boolean markCoreRecoveryIfCurrent("));
+    }
+
+    @Test
     public void allCoreAccessibilityStateWritesRequireObservedLeaseIdentity() throws Exception {
         String src = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
