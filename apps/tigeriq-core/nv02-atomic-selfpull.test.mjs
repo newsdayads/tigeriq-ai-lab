@@ -44,11 +44,15 @@ const args=(f)=>({db,issue,workerSessionId:session,verifySession,
 function canonicalDoneEvidence(lease){
   const id=6101234567;
   return {id,html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/'+issue.number+'#issuecomment-'+id,
-    body:['[TIGERIQ_NV02_WORK_EVIDENCE_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
+    user:{login:'newsdayads'},body:['[TIGERIQ_NV02_WORK_EVIDENCE_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
       'RESOURCE_SCOPE='+lease.resourceScope,'LEASE_ID='+lease.leaseId,
       'RESULT=PASS','EVIDENCE_REF=https://github.com/newsdayads/tigeriq-ai-lab/pull/4660'].join('\n')};
 }
 
+const trustedAcceptance=async ({commentId,evidenceRef,issueNumber,resourceScope,leaseId,workerId,workerSessionId})=>({
+  authority:'TRUSTED_HOST_GITHUB_AND_WORKER_SESSION',verdict:'PASS',
+  commentId,evidenceRef,issueNumber,resourceScope,leaseId,workerId,workerSessionId,
+});
 test('requires independent worker session verification before any claim',async()=>{
   const f=fixture();
   await assert.rejects(()=>claimNv02WorkOrderAtomic({...args(f),verifySession:undefined}),/ATTESTATION_REQUIRED/);
@@ -72,7 +76,7 @@ test('release is bound to session; DONE requires verified terminal evidence',asy
     verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',evidenceVerified:true}),/DONE_CANONICAL_EVIDENCE_READER_REQUIRED/);
   const result=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
     verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
-    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a)});
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a),verifyCanonicalAcceptance:trustedAcceptance});
   assert.equal(result.released,true);
   assert.equal(result.releaseAuditRecorded,true);
   assert.equal(f.holders.size,0);
@@ -88,7 +92,7 @@ test('terminal checkpoint is committed while still holding the global lease',asy
   };
   const r=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
     verifySession,postComment:write,ops:f.ops,terminal:'DONE',
-    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a)});
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a),verifyCanonicalAcceptance:trustedAcceptance});
   assert.equal(r.released,true);
 });
 test('failed terminal checkpoint retains lease, preventing duplicate claim',async()=>{
@@ -122,6 +126,36 @@ test('caller-supplied DONE boolean cannot bypass canonical GitHub evidence readb
   await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
     verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
     loadCanonicalTerminalEvidence:async()=>spoof}),/DONE_EVIDENCE_SCOPE_OR_RESULT_INVALID/);
+  assert.equal(f.holders.size,1);
+});
+test('DONE fails closed without a separate trusted outcome and worker-session verifier',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a)}),/TRUSTED_ACCEPTANCE_VERIFIER_REQUIRED/);
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a),
+    verifyCanonicalAcceptance:async()=>({authority:'TRUSTED_HOST_GITHUB_AND_WORKER_SESSION',verdict:'PASS'})}),
+    /SOURCE_ACCEPTANCE_UNVERIFIED/);
+  assert.equal(f.holders.size,1);
+});
+test('DONE evidence from another GitHub producer is rejected even with matching lease text',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  const fake=canonicalDoneEvidence(a);fake.user={login:'unknown-account'};
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>fake,verifyCanonicalAcceptance:trustedAcceptance}),
+    /PRODUCER_UNVERIFIED/);
+  assert.equal(f.holders.size,1);
+});
+test('mismatched trusted acceptance scope or worker session cannot authorize DONE',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a),
+    verifyCanonicalAcceptance:async x=>({...await trustedAcceptance(x),workerSessionId:'WRONG-SESSION'})}),
+    /SOURCE_ACCEPTANCE_UNVERIFIED/);
   assert.equal(f.holders.size,1);
 });
 test('DONE evidence requires canonical GitHub ID, unique fields and valid receipt URL',async()=>{
@@ -171,7 +205,7 @@ const rawReceiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/issues/4653#is
 const rawReceiptLines=['[TIGERIQ_NV02_WORK_EVIDENCE_V1]','WORK_ORDER=#4653','WORKER=NV02',
   'RESOURCE_SCOPE=NV02_ATOMIC_TEST','LEASE_ID='+rawReceiptLease.leaseId,'RESULT=PASS',
   'EVIDENCE_REF=https://github.com/newsdayads/tigeriq-ai-lab/pull/4660'];
-const rawReceipt=body=>({id:rawReceiptId,html_url:rawReceiptUrl,body});
+const rawReceipt=body=>({id:rawReceiptId,html_url:rawReceiptUrl,user:{login:'newsdayads'},body});
 
 test('real GitHub REST LF comments are parsed at byte level',()=>{
   const body=rawReceiptLines.join(String.fromCharCode(10));
