@@ -4,6 +4,13 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+## PREBOOT BCCT — BẮT BUỘC NGAY LẦN GỌI ĐẦU
+- Khi Owner gửi `BCCT`, `báo cáo chi tiết` hoặc `bc chi tiết`, trước nội dung trả lời phải đọc GitHub `main`: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` (nội dung V4), `docs/OWNER_BCCT_VISUAL_PRESENTATION_V2.md`, và trạng thái nguồn động liên quan.
+- Một lệnh duy nhất phải tạo báo cáo 6 phần, biểu tượng vector/chữ thuần (không emoji trạng thái), bộ lọc/nút thực sự hoạt động nếu giao diện hỗ trợ, và mục RDC 5 tài khoản chỉ-đọc khi kết nối khả dụng.
+- Thiếu quyền truy cập RDC hoặc dữ liệu kiểm chứng thì nêu CHƯA XÁC MINH theo từng tài khoản; không bỏ mục, không giả phần trăm, không yêu cầu Owner gọi lần hai.
+- Với bề mặt render do TigerIQ kiểm soát, gọi `validateBcctV4` / `publishBcctV4` từ `apps/shared/bcct-v4-contract.mjs` trước khi xuất bản. Sai hợp đồng phải bị chặn thay vì hiện báo cáo giả đạt.
+- GitHub không thể cưỡng chế bộ kết xuất ChatGPT gốc. Khác biệt giữa quy tắc và cưỡng chế phải được ghi đúng; chỉ ghi ĐẠT sau kiểm thử lần gọi đầu trên bề mặt thực tế.
+
 ## PREBOOT HARD COMMAND — OWNER AUTHORITY
 - `LÀM APP CHROME` is the primary hard command. Aliases `APP CHROME`, `APPCHROME`, and legacy `AC` are supported. Matching is trimmed and case-insensitive. The command MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
 - `LÀM APP CHROME = APP_CHROME_OWNER_MODE`. Legacy `AC` maps to the same mode but is no longer the recommended user command.
@@ -38,6 +45,19 @@ AC_NO_DUPLICATE_READS_WITHIN_VALID_SESSION=true
 - AC fast-path không hạ precedence hay hard gate; chỉ tối ưu lượng đọc/token.
 STATE=AC_FAST_LOAD_V4_CANONICAL
 
+## Lệnh Vy — khởi động kỹ năng cộng tác
+- Khi Owner gửi riêng `Vy`, đọc `docs/skills/vy-owner-collaboration/SKILL.md` và `docs/skills/registry.yaml` từ GitHub `main` cùng nguồn khởi động bắt buộc và Issue #504 trước khi trả lời.
+- Khôi phục quyết định và công việc liên quan từ nguồn hiện hành, không yêu cầu Owner nhắc lại thông tin đã có.
+- Không nhầm trạng thái `CANDIDATE` với kỹ năng đã cài tự động trên ChatGPT; chỉ báo mức đã xác minh.
+
+## Đồng bộ nguồn Project — bắt buộc kiểm tra khi nguồn/vận hành thay đổi
+- GitHub `main` là Nguồn Sự Thật; tệp Drive phản chiếu mà Project TigerIQ đang tham chiếu có tên `00_TIGERIQ_LOADER.md`, file ID `1YB5Re85ts6XYuWnjvc9jZxKpIhwQVCyt`.
+- Với mọi thay đổi nguồn, Skill, cách làm việc hoặc vận hành: xác định thay đổi đó có ảnh hưởng Loader/điểm khởi động hay không. Nếu KHÔNG, ghi `DRIVE_SYNC=NOT_REQUIRED` và lý do.
+- Nếu CÓ, sau khi nhánh thay đổi được kiểm tra và hợp nhất GitHub `main`, cập nhật đúng tệp Drive theo nội dung canonical; đọc lại kiểm tra phiên bản và nội dung, không tạo bản sao cạnh tranh.
+- Xác minh Project đã nhận nội dung đồng bộ và nghiệm thu Chat mới với lệnh `vy` nếu thay đổi liên quan khởi động. Không suy diễn ChatGPT đã tự áp dụng chỉ từ GitHub/Drive.
+- Nếu công cụ không truy cập được nguồn Project hoặc chưa có bằng chứng nghiệm thu: báo rõ phần `CHƯA XÁC MINH`, không đánh dấu hoàn tất toàn bộ.
+- Quyết định Owner ngày 2026-10-09: chênh lệch Loader Drive từng là nguyên nhân khả dĩ khiến quy tắc mới không được thực hiện; đây không phải bằng chứng rằng nó là nguyên nhân duy nhất.
+
 ## Mục tiêu
 Đây là entry point duy nhất để ChatGPT Plus, ChatGPT Go và Gemini Pro nạp TigerIQ theo cùng một Nguồn Sự Thật. Mỗi tài khoản chỉ cần giữ hoặc trỏ tới Loader này; không duy trì bản sao riêng của 5 file Bootstrap.
 
@@ -64,7 +84,7 @@ STATE=OWNER_BCCT_FINAL_V5_HARD_ROUTE
 ## OWNER CHAT V3 — PRE-SEND AND NEW-CHAT CONTRACT
 - Owner-approved specification: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` on GitHub `main`; dynamic policy: issue `#504`.
 - On EVERY new TigerIQ chat: load canonical Bootstrap and current `#504` before the first owner-facing report; apply V3 presentation immediately. Existing live chats must refresh this authority before reporting when possible, but cannot be remotely rewritten.
-- Before EACH owner-facing answer: keep Vietnamese and KẾT QUẢ → VƯỚNG THẬT (nếu có) → BƯỚC TIẾP THEO; normal answers stay concise. Prefer ONE consistent visual style: vector icons, semantic color cards and verified progress when supported; never mix legacy headline emojis, ordinary bullets and modern cards on the same report. The eight canonical status emojis `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` remain allowed only as meaningful text-fallback status signs, not mandatory headings. See Workflow section 10 (V4) and policy #504.
+- Before EACH owner-facing answer: keep Vietnamese and KẾT QUẢ → VƯỚNG THẬT (nếu có) → BƯỚC TIẾP THEO; normal answers stay concise. Prefer ONE consistent visual style: vector icons, semantic color cards and verified progress when supported; never mix legacy headline emojis, ordinary bullets and modern cards on the same report. Generated status emojis are forbidden even in plain-text fallback; render vector icons only where the host actually supports them, otherwise use Vietnamese status words without icon prefixes. Original user quotations are preserved unchanged. See Workflow section 10 (V4) and policy #504.
 - For `bc`: exactly six sections. For `bcct`: the same six sections PLUS an RDC 5-account read-only quota and device-status panel. `bcct` authorizes only reading RDC `who_am_i` and `list_devices` for those five connected accounts, NOT PC01 commands.
 - Do not invent progress or health: show percent only with a verified numerator/denominator; distinguish acceptance progress from runtime health; never equate GitHub assignment with a live worker.
 - If richer UI is unsupported, use compact plain text. Never claim this repository can update the ChatGPT native interface, existing conversations automatically, or accounts that have not loaded canonical sources.
@@ -77,13 +97,13 @@ STATE=OWNER_CHAT_V3_CANONICAL_LOADER
 - Không được dựa vào memory/model habit để thay #504. Nếu #504 không đọc được trong task TigerIQ thì fail closed theo SOURCE_UNAVAILABLE.
 STATE=OWNER_INTERACTION_HARD_LOAD_V1
 
-## DIRECT CHAT PRE-SEND ICON GUARD V1 — bắt buộc
-- Bộ icon Owner-facing được phép dùng làm trạng thái/đầu mục chỉ gồm: `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️`.
-- Trước khi gửi mọi phản hồi cho anh Sơn, phải quét bản nháp cuối. Nếu có icon/emoji ngoài bộ trên dùng để biểu diễn trạng thái/đầu mục, phải thay bằng icon canonical tương ứng hoặc bỏ đi.
-- Các icon màu tự phát như `🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫` bị cấm trong Owner-facing status/list; priority P0–P5 hiển thị bằng chữ, không dùng chấm màu.
-- Mapping cố định: `✅=HOÀN TẤT`, `⚙️=ĐANG XỬ LÝ`, `⏳=ĐANG CHỜ`, `⚠️=LỖI/CẦN CHÚ Ý`, `🔒=CẦN OWNER`, `💡=GỢI Ý`, `📌=ĐIỂM CHÍNH`, `➡️=BƯỚC TIẾP THEO`.
-- Guard này áp dụng cho direct chat và NEW CHAT ngay cả khi nội dung đã đúng tiếng Việt; không được dựa vào model habit/memory.
-STATE=DIRECT_CHAT_ICON_GUARD_V1
+## DIRECT CHAT PRE-SEND ICON GUARD V5 — TRẠNG THÁI CHỮ THUẦN HOẶC VECTOR
+- ICON_MODE=VECTOR_OR_TEXT_NO_EMOJI; chuẩn ưu tiên mới nhất của Owner thay thế mọi ví dụ V1/V4 cho phép dùng emoji trạng thái.
+- Không sinh emoji làm tiền tố đầu mục, trạng thái hoặc tiêu đề, kể cả bản chữ dự phòng. Khi thành phần giao diện thật sự hỗ trợ, dùng icon vector cùng phong cách; khi không hỗ trợ, chỉ dùng chữ tiếng Việt.
+- Cấm tự sinh emoji trạng thái kể cả 8 ký hiệu lịch sử. Emoji xuất hiện trong dữ liệu người dùng/trích dẫn nguyên văn phải được giữ nguyên, không tự sửa.
+- Trước mọi phản hồi Owner phải rà đầu ra dự kiến; ở bề mặt mã nguồn TigerIQ kiểm tra bắt buộc và chặn phát hành bản lỗi. Không khẳng định GitHub có thể can thiệp câu trả lời cũ hoặc trình hiển thị gốc của ChatGPT.
+- Ma trận nghiệm thu xuyên bề mặt và nguồn quy định: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md`; việc khắc phục `#4569`.
+STATE=DIRECT_CHAT_ICON_GUARD_V5_NO_EMOJI
 
 ## DIRECT CHAT PRE-SEND VALIDATOR V2 — FAIL CLOSED XUYÊN MỌI CHAT
 - Áp dụng cho MỌI phản hồi hiển thị trực tiếp cho anh Sơn, gồm chat hiện tại, NEW CHAT, chat khác trong Project, báo cáo, lưu/checkpoint, bàn giao và phản hồi sau tool.

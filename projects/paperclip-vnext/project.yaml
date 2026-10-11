@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: paperclip-vnext
 name: Paperclip vNext
 kind: project
+portfolio_group_id: paperclip-vnext
 order: 50
 source_roots:
   - docs

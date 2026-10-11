@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: tigeriq-news
 name: TigerIQ News
 kind: project
+portfolio_group_id: tigeriq-news
 order: 30
 source_roots:
   - services/news-engine

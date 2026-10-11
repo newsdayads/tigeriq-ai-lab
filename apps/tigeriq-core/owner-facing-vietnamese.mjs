@@ -223,7 +223,7 @@ export function ownerFacingWorkRow(row) {
   for (const field of ['title','waitReason','currentStep','latestCompletedStep','nextStep','nextAction','blocker','detail','job']) {
     if (typeof localized[field] === 'string') localized[field] = localizeOwnerFacingText(localized[field]);
   }
-  if (statusCode) localized.statusIcon = ownerStatusIcon(statusCode);
+  if (statusCode) { localized.statusIcon = ''; localized.statusIconName = ownerStatusVectorIcon(statusCode); }
   const progress = verifiedOwnerProgress(localized.progress);
   if (progress) localized.progressPresentation = progress;
   else if ('progressPresentation' in localized) delete localized.progressPresentation;
@@ -275,23 +275,22 @@ function hasOwnerWorkReference(value = '') {
 export const OWNER_STATUS_LABELS = STATUS_LABELS;
 
 
+// Tên icon vector được truyền dưới dạng dữ liệu có cấu trúc; tuyệt đối không in làm ký tự chữ.
 export const OWNER_PRESENTATION_ICONS = Object.freeze({
-  COMPLETED: '✅',
-  WORKING: '⚙️',
-  WAITING: '⏳',
-  ATTENTION: '⚠️',
-  OWNER: '🔒',
-  IDEA: '💡',
-  KEY: '📌',
-  NEXT: '➡️',
+  COMPLETED: 'circle-check',
+  WORKING: 'loader-circle',
+  WAITING: 'clock-3',
+  ATTENTION: 'alert-triangle',
+  OWNER: 'lock-keyhole',
+  IDEA: 'lightbulb',
+  KEY: 'pin',
+  NEXT: 'arrow-right',
 });
 
 export const OWNER_ALLOWED_ICONS = Object.freeze(Object.values(OWNER_PRESENTATION_ICONS));
 
 export function containsUnapprovedOwnerIcon(value = '') {
-  let text = String(value ?? '');
-  for (const icon of OWNER_ALLOWED_ICONS) text = text.split(icon).join('');
-  return /\p{Extended_Pictographic}/u.test(text);
+  return /\p{Extended_Pictographic}/u.test(String(value ?? ''));
 }
 
 const VI_STATUS_ICON = Object.freeze({
@@ -331,9 +330,14 @@ export const OWNER_SURFACE_REGISTRY = Object.freeze([
   'AUTOMATION_NOTICE',
 ]);
 
-export function ownerStatusIcon(value = '') {
+export function ownerStatusVectorIcon(value = '') {
   const label = ownerStatusLabel(value);
   return VI_STATUS_ICON[label] || OWNER_PRESENTATION_ICONS.KEY;
+}
+
+// Trường icon văn bản cũ chỉ còn là phương án chữ thuần, không được phát emoji hoặc tên vector thô.
+export function ownerStatusIcon(_value = '') {
+  return '';
 }
 
 export function verifiedOwnerProgress(input = null) {
@@ -359,7 +363,8 @@ export function ownerFacingPresentation({ status = '', result = '', blocker = ''
   const label = ownerStatusLabel(status);
   return {
     status: label,
-    icon: ownerStatusIcon(status),
+    icon: '',
+    iconName: ownerStatusVectorIcon(status),
     progress: progressView,
     result: localizeOwnerFacingText(result),
     blocker: localizeOwnerFacingText(blocker),

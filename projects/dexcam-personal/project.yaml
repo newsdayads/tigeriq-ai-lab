@@ -1,0 +1,21 @@
+schema: tigeriq.project.v2
+id: dexcam-personal
+name: DeXCam Personal
+kind: project
+order: 100
+source_issue: 4625
+original_app_reference: UltraCarVN
+status: planning_spec_only
+excluded_components:
+  - app.tigeriq.dexshot
+workstreams:
+  - id: personal-android
+    name: Khảo sát ứng dụng gốc, máy chủ và thiết kế
+    order: 10
+  - id: implementation
+    name: Ứng dụng cá nhân
+    order: 20
+  - id: real-device-qa
+    name: Nghiệm thu trên thiết bị
+    order: 30
+integration_policy: separate_data_auth_and_release

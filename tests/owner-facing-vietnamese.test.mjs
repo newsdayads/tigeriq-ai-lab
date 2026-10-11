@@ -210,7 +210,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       currentStep: 'Chờ anh Sơn duyệt',
     });
     expect(row.status).toBe('CHỜ ANH SƠN DUYỆT');
-    expect(row.statusIcon).toBe('🔒');
+    expect(row.statusIcon).toBe('');
     expect(containsBareEnglishOwnerStatus(JSON.stringify(row))).toBe(false);
     expect(containsBareEnglishOwnerStatus('OWNER_GATE')).toBe(true);
   });
@@ -223,7 +223,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       progress: { passed: 4, total: 5, verified: true },
     });
     expect(row.stage).toBe('HOÀN TẤT');
-    expect(row.icon).toBe('✅');
+    expect(row.icon).toBe('');
     expect(row.progressPresentation.text).toBe('████████░░ 80%');
     expect(row.blocker).toContain('phương án dự phòng ĐẠT');
     expect(row.nextAction).toContain('rà soát cuối HOÀN TẤT');
@@ -235,7 +235,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       status: 'working',
       progress: { passed: 4, total: 5, verified: true },
     });
-    expect(verified.icon).toBe('⚙️');
+    expect(verified.icon).toBe('');
     expect(verified.progressPresentation.text).toBe('████████░░ 80%');
 
     const stale = ownerFacingHandoffLifecycle({
@@ -257,13 +257,48 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(source).toContain("@{src='apps\\tigeriq-core\\owner-facing-vietnamese.mjs';dst='owner-facing-vietnamese.mjs'}");
     expect(source).toContain("$_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs'");
   });
+
+
+  it('guards generated Owner-facing sources against legacy emoji returning', () => {
+    const outboundSourcePaths = [
+      '../apps/tigeriq-core/owner-facing-vietnamese.mjs',
+      '../apps/tigeriq-core/github-coding-intake.mjs',
+      '../apps/tigeriq-core/github-intake.mjs',
+      '../apps/tigeriq-core/work-handoff.mjs',
+      '../apps/tigeriq-core/web-control-server.mjs',
+      '../apps/tigeriq-core/web-control-unified.js',
+      '../apps/tigeriq-core/web-control.html',
+    ];
+    for (const sourcePath of outboundSourcePaths) {
+      const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
+      expect(source, sourcePath).not.toMatch(/\p{Extended_Pictographic}/u);
+    }
+    const liveSource = readFileSync(new URL('../api/live-status.mjs', import.meta.url), 'utf8');
+    // Historical emoji may remain in legacy parsing regex, never as new result output.
+    expect(liveSource).not.toContain('`✅ [KẾT QUẢ THỰC TẾ]');
+    expect(liveSource).toContain(String.raw`(?:✅\s*)?\[KẾT QUẢ THỰC TẾ\]`);
+  });
+
+  it('uses vector names only as metadata, with emoji-free text fallback', () => {
+    const source = ownerFacingPresentation({ status: 'DONE', result: 'Hoàn tất' });
+    expect(source.icon).toBe('');
+    expect(source.iconName).toBe('circle-check');
+    expect(source.result).toBe('Hoàn tất');
+    expect(containsUnapprovedOwnerIcon(source.result)).toBe(false);
+    const row = ownerFacingWorkRow({ status: 'BLOCKED', title: 'Cần xử lý' });
+    expect(row.statusIcon).toBe('');
+    expect(row.statusIconName).toBe('alert-triangle');
+    expect(validateOwnerFacingOutput({ text: '✅ Đã xong' }).defects).toContain('UNAPPROVED_ICON');
+    expect(validateOwnerFacingOutput({ text: '⏳ Đang chờ' }).defects).toContain('UNAPPROVED_ICON');
+  });
+
   it('enforces the shared compact presentation contract', () => {
     expect(OWNER_SURFACE_REGISTRY).toHaveLength(8);
-    expect(ownerStatusIcon('DONE')).toBe('✅');
-    expect(ownerStatusIcon('WORKING')).toBe('⚙️');
-    expect(ownerStatusIcon('BLOCKED')).toBe('⚠️');
-    expect(ownerStatusIcon('OWNER_GATE')).toBe('🔒');
-    expect(ownerStatusIcon('OWNER_APPROVAL_REQUIRED')).toBe('🔒');
+    expect(ownerStatusIcon('DONE')).toBe('');
+    expect(ownerStatusIcon('WORKING')).toBe('');
+    expect(ownerStatusIcon('BLOCKED')).toBe('');
+    expect(ownerStatusIcon('OWNER_GATE')).toBe('');
+    expect(ownerStatusIcon('OWNER_APPROVAL_REQUIRED')).toBe('');
 
     const progress = verifiedOwnerProgress({ passed: 7, total: 10, verified: true });
     expect(progress).toMatchObject({ percent: 70, text: '███████░░░ 70%', verified: true });
@@ -279,7 +314,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       nextAction: 'routing READY',
       progress: { passed: 2, total: 4, verified: true },
     });
-    expect(presentation.icon).toBe('⚙️');
+    expect(presentation.icon).toBe('');
     expect(presentation.progress.text).toBe('█████░░░░░ 50%');
     expect(presentation.result).toContain('rà soát cuối ĐẠT');
     expect(presentation.blocker).toContain('phương án dự phòng ĐANG CHỜ');
@@ -288,13 +323,13 @@ describe('Owner-facing Vietnamese output gate', () => {
   });
 
   it('covers localized Live/Web states with the same icon contract', () => {
-    expect(ownerStatusIcon('ĐANG LÀM')).toBe('⚙️');
-    expect(ownerStatusIcon('CHỜ')).toBe('⏳');
-    expect(ownerStatusIcon('RẢNH')).toBe('⏳');
-    expect(ownerStatusIcon('TẠM NGƯNG')).toBe('⚠️');
-    expect(ownerStatusIcon('CHƯA XÁC MINH')).toBe('⚠️');
-    expect(ownerStatusIcon('HOÀN THÀNH')).toBe('✅');
-    expect(ownerStatusIcon('CHỜ ANH SƠN')).toBe('🔒');
+    expect(ownerStatusIcon('ĐANG LÀM')).toBe('');
+    expect(ownerStatusIcon('CHỜ')).toBe('');
+    expect(ownerStatusIcon('RẢNH')).toBe('');
+    expect(ownerStatusIcon('TẠM NGƯNG')).toBe('');
+    expect(ownerStatusIcon('CHƯA XÁC MINH')).toBe('');
+    expect(ownerStatusIcon('HOÀN THÀNH')).toBe('');
+    expect(ownerStatusIcon('CHỜ ANH SƠN')).toBe('');
   });
 
   it('routes TigerIQ Live and Web Control rows through the shared contract', () => {
@@ -331,7 +366,7 @@ describe('Owner-facing Vietnamese output gate', () => {
       progress: { passed: 3, total: 5, verified: true },
       currentStep: 'final review READY',
     });
-    expect(row.statusIcon).toBe('⚙️');
+    expect(row.statusIcon).toBe('');
     expect(row.progressPresentation.text).toBe('██████░░░░ 60%');
 
     const stale = ownerFacingWorkRow({
@@ -342,15 +377,15 @@ describe('Owner-facing Vietnamese output gate', () => {
   });
 
   it('routes Coding Lane Owner comments through the shared presentation gate', () => {
-    expect(ownerCodingComment('[CLAIM] job READY')).toBe('⚙️ [TIẾP NHẬN] job SẴN SÀNG');
-    expect(ownerCodingComment('[RESULT] job DONE')).toBe('✅ [KẾT QUẢ] job HOÀN TẤT');
-    expect(ownerCodingComment('[BLOCKED_FINAL] job ERROR')).toBe('⚠️ [BỊ CHẶN] job LỖI');
+    expect(ownerCodingComment('[CLAIM] job READY')).toBe('[TIẾP NHẬN] job SẴN SÀNG');
+    expect(ownerCodingComment('[RESULT] job DONE')).toBe('[KẾT QUẢ] job HOÀN TẤT');
+    expect(ownerCodingComment('[BLOCKED_FINAL] job ERROR')).toBe('[BỊ CHẶN] job LỖI');
   });
 
   it('rejects non-canonical icons and hard-loads the direct-chat icon guard', () => {
-    expect(OWNER_ALLOWED_ICONS).toEqual(['✅', '⚙️', '⏳', '⚠️', '🔒', '💡', '📌', '➡️']);
-    expect(containsUnapprovedOwnerIcon('⚙️ ĐANG XỬ LÝ')).toBe(false);
-    expect(containsUnapprovedOwnerIcon('📌 Điểm chính ➡️ Bước tiếp theo')).toBe(false);
+    expect(OWNER_ALLOWED_ICONS).toEqual(['circle-check', 'loader-circle', 'clock-3', 'alert-triangle', 'lock-keyhole', 'lightbulb', 'pin', 'arrow-right']);
+    expect(containsUnapprovedOwnerIcon('⚙️ ĐANG XỬ LÝ')).toBe(true);
+    expect(containsUnapprovedOwnerIcon('📌 Điểm chính ➡️ Bước tiếp theo')).toBe(true);
     expect(containsUnapprovedOwnerIcon('🔴 P1 đang xử lý')).toBe(true);
     expect(containsUnapprovedOwnerIcon('🟠 P2 đang chờ')).toBe(true);
     expect(containsUnapprovedOwnerIcon('⚪ P4')).toBe(true);
@@ -358,9 +393,9 @@ describe('Owner-facing Vietnamese output gate', () => {
       .toContain('UNAPPROVED_ICON');
 
     const loader = readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md', import.meta.url), 'utf8');
-    expect(loader).toContain('DIRECT CHAT PRE-SEND ICON GUARD V1');
-    expect(loader).toContain('✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️');
-    expect(loader).toContain('🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫');
+    expect(loader).toContain('DIRECT CHAT PRE-SEND ICON GUARD V5');
+    expect(loader).toContain('ICON_MODE=VECTOR_OR_TEXT_NO_EMOJI');
+    expect(loader).toContain('Không sinh emoji');
   });
 
   it('fails closed on English operational prose and bare work references across direct chat', () => {
@@ -492,7 +527,7 @@ describe('Owner-facing Vietnamese output gate', () => {
     expect(validateOwnerFacingOutput({ text: '✅ HOÀN TẤT', canonicalRefsResolved: false }).defects)
       .toContain('UNRESOLVED_WORK_REFERENCE');
     expect(validateOwnerFacingOutput({
-      text: '✅ HOÀN TẤT ██████████ 100%',
+      text: 'HOÀN TẤT ██████████ 100%',
       progress: { passed: 4, total: 4, verified: true },
     })).toMatchObject({ ok: true, defects: [] });
   });

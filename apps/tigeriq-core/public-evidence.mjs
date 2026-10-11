@@ -14,6 +14,9 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
   'employeeId',
   'online',
   'lastSeenAt',
+  'ok',
+  'lastCycleAt',
+  'error',
   'expected',
   'taskCount',
   'completed',
@@ -81,6 +84,9 @@ const SUPPORTED_PUBLIC_EVIDENCE_KEYS=Object.freeze([
 ]);
 
 const SUPPORTED_SET=new Set(SUPPORTED_PUBLIC_EVIDENCE_KEYS);
+// Health keys are authorized only from a successfully parsed local file-read receipt.
+// They must never be inferred from a transport wrapper's ok/error fields.
+const FILE_READ_HEALTH_KEYS=new Set(['ok','lastCycleAt','error']);
 const GATE_C_V021_PUBLIC_EVIDENCE_KEYS=new Set([
   'status','version','employeeId','online','lastSeenAt','expected','taskCount','completed','failed','queued','leased','pending','invalid','attemptCount','pass',
   'sendCount','duplicateSendCount','recoveryCount','created','existing','count',
@@ -127,6 +133,18 @@ function sanitizeScalar(value){
 }
 
 function sanitizePublicEvidenceForKey(key,value){
+  if(key==='ok')return typeof value==='boolean'?value:'[INVALID_BOOLEAN]';
+  if(key==='lastCycleAt'){
+    if(value==null)return null;
+    return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)&&!Number.isNaN(Date.parse(value))
+      ?value.slice(0,40):'[INVALID_TIMESTAMP]';
+  }
+  if(key==='error'){
+    if(value==null)return null;
+    // Error details can embed passwords or request headers; publish codes only.
+    return typeof value==='string'&&/^[A-Z][A-Z0-9_-]{0,79}$/.test(value)
+      ?value:'[REDACTED_ERROR]';
+  }
   if(key==='chunkBase64'){
     if(typeof value!=='string'||value.length>MAX_EXPORT_CHUNK_BASE64_CHARS||!/^[A-Za-z0-9+/]*={0,2}$/.test(value))return '[INVALID_CHUNK_BASE64]';
     return value;
@@ -183,6 +201,16 @@ function collectTrustedFileReadJsonSources(node,depth=0,seen=new Set(),out=[]){
   return out;
 }
 
+// Restrict this receipt path to authenticated tigeriq_pc bridge calls.
+// Never trust a nested JSON object that merely imitates a file_read receipt.
+function trustedFileReadHealthSources(bridgeCalls){
+  const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
+  return calls
+    .filter((call)=>String(call?.tool||'')==='tigeriq_pc')
+    .map((call)=>parseTrustedFileReadJsonReceipt(call?.result))
+    .filter(Boolean);
+}
+
 function hasGateCV021BridgeAction(bridgeCalls){
   const calls=Array.isArray(bridgeCalls)?bridgeCalls:[bridgeCalls];
   return calls.some(call=>GATE_C_V021_ACTIONS.has(String(call?.result?.action||'')));
@@ -234,6 +262,7 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const bridgeCalls=jobResult?.evidence?.bridgeCalls;
   const trustedGateCV021Sources=trustedGateCV021ReceiptSources(bridgeCalls);
   const gateCV021Request=hasGateCV021BridgeAction(bridgeCalls);
+  const fileReadHealthSources=trustedFileReadHealthSources(bridgeCalls);
   const fallbackSources=[
     ...(primary&&typeof primary==='object'?[primary]:[]),
     ...structuredBridgeEvidenceSources(bridgeCalls),
@@ -242,9 +271,11 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   const out={};
   for(const key of requested){
     let raw;
-    const sources=gateCV021Request&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
-      ? trustedGateCV021Sources
-      : fallbackSources;
+    const sources=FILE_READ_HEALTH_KEYS.has(key)
+      ? fileReadHealthSources
+      : gateCV021Request&&GATE_C_V021_PUBLIC_EVIDENCE_KEYS.has(key)
+        ? trustedGateCV021Sources
+        : fallbackSources;
     for(const source of sources){
       raw=findRequestedValue(source,key);
       if(raw!==undefined)break;
