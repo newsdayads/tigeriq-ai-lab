@@ -297,8 +297,36 @@ public final class ChatGptB1RunStore {
             && "PROJECT".equals(live.projectMode);
     }
 
+    /** A delayed manual UI tick must not mark a successor Core lease verifying. */
+    public static synchronized boolean markManualVerifyingIfCurrent(
+        Context context, String runId, int cycle, long startedAt
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || !("REQUESTED".equals(live.state)
+            || "VERIFYING_CONTEXT".equals(live.state))) return false;
+        writeState(context, "VERIFYING_CONTEXT", "");
+        return true;
+    }
+
     public static void markVerifying(Context context) {
         writeState(context, "VERIFYING_CONTEXT", "");
+    }
+
+    /** Preserve manual fill-to-send timing for the observed run only. */
+    public static synchronized boolean markManualInputReadyIfCurrent(
+        Context context, String runId, int cycle, long startedAt
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || !("REQUESTED".equals(live.state)
+            || "VERIFYING_CONTEXT".equals(live.state))) return false;
+        markInputReady(context);
+        return true;
     }
 
     public static void markInputReady(Context context) {
@@ -354,6 +382,19 @@ public final class ChatGptB1RunStore {
             .putBoolean(K_BUSY_SEEN, false)
             .putString(K_LAST_ERROR, "")
             .commit();
+    }
+
+    /** Old manual-chat busy evidence cannot mark a replacement Core task. */
+    public static synchronized boolean markManualBusyIfCurrent(
+        Context context, String runId, int cycle, long startedAt
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || !"WAITING_AI".equals(live.state)) return false;
+        markBusySeen(context);
+        return true;
     }
 
     public static void markBusySeen(Context context) {
@@ -443,6 +484,24 @@ public final class ChatGptB1RunStore {
             live.sentCycle, live.sendCount, live.duplicateSendCount,
             expectedToken(live), live.projectBound, live.projectMode
         )) return false;
+        finishCycleFromSnapshot(context, live, responseText);
+        return true;
+    }
+
+    /** Complete a manual B1 reply only for the original active unleased run. */
+    public static synchronized boolean completeManualReplyIfCurrent(
+        Context context, String runId, int cycle, long startedAt,
+        String observedToken, String responseText
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || !"WAITING_AI".equals(live.state)
+            || live.sentCycle != live.cycle
+            || observedToken == null || observedToken.isEmpty()
+            || !observedToken.equals(expectedToken(live))
+            || responseText == null || !responseText.contains(observedToken)) return false;
         finishCycleFromSnapshot(context, live, responseText);
         return true;
     }
