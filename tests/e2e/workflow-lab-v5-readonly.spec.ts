@@ -268,6 +268,24 @@ test('V5 issue detail discloses whether project assignment is explicit or inferr
 });
 
 
+test('V5 real GitHub issue view never displays legacy offline V2 simulation claims',async({page})=>{
+ const work={...issue(4636,'open','READY_INDEPENDENT_REVIEW'),title:'[P1][WORKFLOW LAB V5] Danh mục việc thật',
+   body:'PROJECT_ID=tigeriq-workflow-lab\nCURRENT_STATE=READY_INDEPENDENT_REVIEW'};
+ await openLab(page,{...payload,issues:[work]});
+ await expect(page.locator('.labbrand')).toContainText('WORKFLOW LAB V5');
+ await page.locator('[data-project="tigeriq-workflow-lab"]').click();
+ await page.locator('#jobCards .jobcard').click();
+ await expect(page.locator('#workflowScreen .page-heading .eyebrow')).toContainText('SƠ ĐỒ BẰNG CHỨNG');
+ await expect(page.locator('#workflowScreen .subtitle')).toContainText('GitHub/Core chỉ đọc');
+ await expect(page.locator('#workflowScreen .graph-head b')).toHaveText('SƠ ĐỒ BẰNG CHỨNG');
+ await expect(page.locator('#workflowScreen .footnote')).toContainText('WORKFLOW LAB V5');
+ await expect(page.locator('#workflowScreen .footnote')).toContainText('Dữ liệu từ GitHub');
+ await expect(page.locator('#workflowScreen .footnote')).not.toContainText('chạy ngoại tuyến');
+ await expect(page.locator('#workflowScreen .footnote')).not.toContainText('Tích hợp Core chỉ sau nghiệm thu');
+ await expect(page.locator('#workflowScreen .subtitle')).not.toContainText('ba nhánh AI');
+ await expect(page.locator('#graph')).toContainText('READY_INDEPENDENT_REVIEW');
+});
+
 test('V5 honors canonical project and status fields extracted beyond 1500-character GitHub body',async({page})=>{
  const dexcam={...issue(4625,'open',''),
    title:'[P1] Generic personal Android work',
