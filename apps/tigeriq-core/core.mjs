@@ -1741,9 +1741,47 @@ async function runJob(j) {
       }
       await event('EXECUTION_ACCEPTANCE_PASS',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision,evidenceIds:executionGate.evidenceIds});
     }
+    let reviewEvidence=null;
+    if(j.kind==='github_review'){
+      try{
+        reviewEvidence=parseGithubCoreReviewEvidence(routed.text,j.prompt);
+      }catch(validationError){
+        const attemptsRow=(await pool.query('select attempts,max_attempts from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
+        const expectedHead=String(validationError?.detail?.expectedHead||'').toLowerCase();
+        const eligible=githubReviewFormatRetryEligible({
+          kind:j.kind,message:String(validationError?.message||''),
+          resource:routed.resource,attempts:attemptsRow.attempts,maxAttempts:attemptsRow.max_attempts,
+          expectedHead,
+        });
+        if(!eligible)throw validationError;
+        const originalResource=routed.resource;
+        await event('GITHUB_CORE_REVIEW_FORMAT_RETRY',{
+          objectiveId:j.objective_id,jobId:j.id,employeeId:originalResource.id,
+          resourceId:originalResource.resourceId,expectedHead,
+          markerPresent:validationError.detail.markerPresent===true,
+          summaryPresent:validationError.detail.summaryPresent===true,
+          findingsPresent:validationError.detail.findingsPresent===true,
+        });
+        const retryPrompt=githubReviewFormatRetryPrompt(routedPrompt,expectedHead);
+        const retry=await invokeRouted(retryPrompt,j.capability,j.id,1,{
+          taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,
+          preferredEmployeeId:originalResource.id,employeeAllowlist:[originalResource.id],
+        });
+        // The correction cannot transfer independent-review authority to a different identity.
+        if(retry.resource.resourceId!==originalResource.resourceId){
+          throw Object.assign(new Error('CORE_REVIEW_RETRY_IDENTITY_CHANGED'),{kind:'invalid_response'});
+        }
+        routed=retry;
+        reviewEvidence=parseGithubCoreReviewEvidence(routed.text,j.prompt);
+        await event('GITHUB_CORE_REVIEW_FORMAT_RECOVERED',{
+          objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,
+          resourceId:routed.resource.resourceId,decision:reviewEvidence.decision,
+          targetHead:reviewEvidence.targetHead,
+        });
+      }
+    }
     const skillRoutingChain=finalizeSkillRoutingPreflight(skillRoutingPreflight,{resource:routed.resource,routingDecision:routed.routingDecision,failures:routed.failures});
     await event('SKILL_ROUTING_CHAIN',{objectiveId:j.objective_id,...skillRoutingChain});
-    const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
     await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,executionGate,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
@@ -1918,6 +1956,34 @@ export function githubCoreReviewDisposition(job){
   if(status==='failed')return {action:'block',status};
   if(['queued','running','waiting_resource'].includes(status))return {action:'wait',status};
   return {action:'block',status:status||'unknown'};
+}
+
+export function githubReviewFormatRetryEligible({kind='',message='',resource={},attempts=0,maxAttempts=0,expectedHead=''}={}){
+  const tier=String(resource?.costTier||'').toUpperCase();
+  const used=Number(attempts),limit=Number(maxAttempts);
+  return kind==='github_review'&&message==='CORE_REVIEW_EVIDENCE_INVALID'
+    &&resource?.zeroOutOfPocket===true&&['FREE','LOCAL'].includes(tier)
+    &&Number.isInteger(used)&&Number.isInteger(limit)&&used>=0&&used<limit
+    &&/^[a-f0-9]{40}$/.test(String(expectedHead||''));
+}
+export function githubReviewFormatRetryPrompt(original='',expectedHead=''){
+  const head=String(expectedHead||'').toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(head))throw new Error('CORE_REVIEW_RETRY_HEAD_INVALID');
+  return [
+    String(original||''),
+    '',
+    'STRICT REVIEW FORMAT CORRECTION — ONE BOUNDED RETRY.',
+    'Independently evaluate the exact same source evidence. Do not copy a prior model response or invent any facts.',
+    'The previous response was rejected by the schema validator. This does NOT imply your decision should be PASS.',
+    'If any review evidence is missing or insufficient, return CHANGES_REQUIRED with a specific reason.',
+    'Your entire output must be exactly five plain-text lines, with no Markdown fences, prefix or suffix.',
+    'Line 1 is literally [TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'Line 2 begins REVIEW= and ends with exactly PASS or CHANGES_REQUIRED based on your review.',
+    `Line 3 is literally TARGET_HEAD=${head}`,
+    'Line 4 begins SUMMARY= followed by an original, nonempty concrete finding.',
+    'Line 5 begins FINDINGS= followed by verifiable observations or NONE.',
+    'Do not output placeholders or the text PASS|CHANGES_REQUIRED.',
+  ].join('\\n');
 }
 
 export function parseGithubCoreReviewEvidence(text,prompt=''){
