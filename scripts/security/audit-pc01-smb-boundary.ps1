@@ -73,7 +73,7 @@ try {
       if ($ace.AccessControlType -ne 'Allow') { continue }
       if ($ace.AccessRight -notin @('Full','Change')) { continue }
       try {
-        $sid = (New-Object System.Security.Principal.NTAccount([string]$ace.AccountName)).Translate(
+        $sid = ([System.Security.Principal.NTAccount]::new([string]$ace.AccountName)).Translate(
           [System.Security.Principal.SecurityIdentifier]
         ).Value
       } catch {
