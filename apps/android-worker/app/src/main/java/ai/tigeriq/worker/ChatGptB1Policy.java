@@ -296,6 +296,29 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Delayed manual B1 recovery callbacks must never act on a replacement
+     * Core lease (or a different manual run). Task-id must remain empty.
+     * An observed cycle and start timestamp prevent reusing stale identity.
+     */
+    public static boolean canMutateObservedManualRun(
+        String expectedRunId, int expectedCycle, long expectedStartedAt,
+        String liveRunId, String liveTaskId, int liveCycle,
+        long liveStartedAt, String liveState
+    ) {
+        return expectedRunId != null && !expectedRunId.isEmpty()
+            && expectedCycle > 0 && expectedStartedAt > 0L
+            && expectedRunId.equals(liveRunId)
+            && liveTaskId != null && liveTaskId.isEmpty()
+            && expectedCycle == liveCycle
+            && expectedStartedAt == liveStartedAt
+            && ("WAITING_PROJECT".equals(liveState)
+                || "REQUESTED".equals(liveState)
+                || "VERIFYING_CONTEXT".equals(liveState)
+                || "INPUT_READY".equals(liveState)
+                || "WAITING_AI".equals(liveState));
+    }
+
+    /**
      * Once the last recovery launch has had a full grace timer to foreground
      * ChatGPT, report a terminal Core error rather than leaving a leased
      * task active with no further recovery or evidence.
