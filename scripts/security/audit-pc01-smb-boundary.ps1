@@ -30,6 +30,21 @@ function Normalize-LocalPath {
   return $resolved
 }
 
+function Assert-NoRootReparse {
+  param([string]$Path)
+  $cursor = [System.IO.Path]::GetFullPath($Path)
+  for ($step=0; $step -lt 64; $step++) {
+    $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw 'REPARSE_ROOT_NOT_ALLOWED'
+    }
+    $parent = [System.IO.Directory]::GetParent($cursor)
+    if ($null -eq $parent) { return }
+    $cursor = $parent.FullName
+  }
+  throw 'REPARSE_ANCESTOR_DEPTH_EXCEEDED'
+}
+
 function Test-PathScopeOverlap {
   param([string]$Root,[string]$SharePath)
   $r = $Root.TrimEnd('\')
@@ -51,6 +66,7 @@ try {
   if (-not (Test-Path -LiteralPath $root -PathType Container)) {
     throw 'ROOT_NOT_DIRECTORY'
   }
+  Assert-NoRootReparse -Path $root
   $allShares = @(Get-SmbShare -ErrorAction Stop)
   $findings = @()
   $overlapping = 0
@@ -120,7 +136,7 @@ try {
     schema = 'TIGERIQ_SMB_BOUNDARY_AUDIT_V1'
     mode = 'READ_ONLY'
     status = 'AUDIT_ERROR'
-    error_code = if ($_.Exception.Message -match '^(INVALID_PATH|LOCAL_DRIVE_PATH_REQUIRED|ROOT_NOT_DIRECTORY)$') {
+    error_code = if ($_.Exception.Message -match '^(INVALID_PATH|LOCAL_DRIVE_PATH_REQUIRED|ROOT_NOT_DIRECTORY|REPARSE_ROOT_NOT_ALLOWED|REPARSE_ANCESTOR_DEPTH_EXCEEDED)$') {
       $_.Exception.Message
     } else { 'UNCLASSIFIED_READ_ERROR' }
     mutation_performed = $false
