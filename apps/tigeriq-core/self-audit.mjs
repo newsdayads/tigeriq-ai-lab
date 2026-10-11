@@ -147,13 +147,16 @@ export function evaluateSelfAudit(snapshot={},{
     const details={};
     for(const key of [
       'updaterStatePresent','updaterStateFresh','watchdogStatePresent',
-      'watchdogStateFresh','watchdogUpdaterRowPresent','watchdogUpdaterRowHealthy','updaterResultFailed'
+      'watchdogStateFresh','watchdogUpdaterRowPresent','watchdogUpdaterRowHealthy',
+      'updaterTaskRunning','updaterHeartbeatFresh','updaterResultFailed'
     ]){
       if(typeof rawDetails[key]==='boolean')details[key]=rawDetails[key];
     }
-    const age=rawDetails.updaterHeartbeatAgeSec;
-    if(typeof age==='number'&&Number.isFinite(age)&&age>=0){
-      details.updaterHeartbeatAgeSec=Math.min(Math.floor(age),2592000);
+    for(const key of ['updaterStateAgeSec','updaterTaskHeartbeatAgeSec']){
+      const age=rawDetails[key];
+      if(typeof age==='number'&&Number.isFinite(age)&&age>=0){
+        details[key]=Math.min(Math.floor(age),2592000);
+      }
     }
     anomalies.push(anomaly('UPDATER_WATCHDOG_HEALTH','runtime',{
       updaterHealthy:updaterKnown?watchdog.updaterHealthy:null,
