@@ -32,9 +32,9 @@ describe('Canonical Owner backlog order for Core manager',()=>{
   });
   it('limits manager admission to P1-P5 and uses owner rank before priority',()=>{
     expect(core).toContain("and o.priority in ('P1','P2','P3','P4','P5')");
-    expect(core).toContain('array_position($2::int[]');
+    expect(core).toContain('rank:objectiveBacklogRank(objective,ownerOrder)');
     expect(core).toContain('currentOwnerBacklogOrder()');
-    expect(core).toContain('ownerOrder]);');
+    expect(core).toContain('o.created_at limit 500');
     expect(core).toContain('GITHUB_TOKEN');
     expect(core).toContain('not exists(select 1 from tigeriq_jobs');
   });
