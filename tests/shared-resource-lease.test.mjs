@@ -92,6 +92,14 @@ function fakeLeaseDb({employeeId='NV09',resourceId='res:ollama:nv09',healthState
       const {lease_token,...publicLease}=state.lease;
       return {rows:[publicLease],rowCount:1};
     }
+    if(q.startsWith('with orphan as')&&q.includes("core-probe:%")){
+      const work=state.ai.current_job_id;
+      const allowed=String(work||'').startsWith('CORE-PROBE:')&&!state.lease;
+      if(!allowed)return {rows:[],rowCount:0};
+      state.ai.current_job_id=null;
+      state.ai.work_state=sharedLeaseIdleWorkState(state.ai.employee_id,state.ai.health_state);
+      return {rows:[{resource_id:state.ai.resource_id,employee_id:state.ai.employee_id,work_id:work}],rowCount:1};
+    }
     throw new Error('UNHANDLED_FAKE_SQL:'+q);
   };
   return {state,query,connect:async()=>({query,release(){}})};
@@ -138,6 +146,33 @@ test('expired shared lease recovery clears only matching occupancy',async()=>{
   assert.strictEqual(db.state.ai.current_job_id,null);
   assert.strictEqual(db.state.ai.work_state,'IDLE');
   assert.strictEqual((await activeSharedResourceLeases(db)).length,0);
+});
+
+test('missing-lease orphan CORE-PROBE is reclaimed without touching other owner slots',async()=>{
+  const db=fakeLeaseDb({employeeId:'NV08',resourceId:'res:ollama:nv08'});
+  const workId='CORE-PROBE:res:ollama:nv08:orphan';
+  db.state.ai.current_job_id=workId;db.state.ai.work_state='BUSY';
+  db.state.employee.current_job_id=workId;db.state.employee.work_state='BUSY';
+  const expired=await recoverExpiredSharedResourceLeases(db);
+  assert.deepStrictEqual(expired,[]);
+  assert.strictEqual(db.state.ai.current_job_id,null);
+  assert.strictEqual(db.state.employee.current_job_id,null);
+  assert.strictEqual(db.state.ai.work_state,'IDLE');
+  assert.deepStrictEqual(await recoverExpiredSharedResourceLeases(db),[],'replay must not reclaim twice');
+});
+
+test('live shared lease or non-probe owner cannot be reclaimed by orphan sweeper',async()=>{
+  const db=fakeLeaseDb({employeeId:'NV08',resourceId:'res:ollama:nv08'});
+  const claimed=await acquireSharedResourceLease(db,{employeeId:'NV08',workId:'CORE-PROBE:real',role:'probe',lane:'core_probe'});
+  assert.ok(claimed);
+  await recoverExpiredSharedResourceLeases(db);
+  assert.strictEqual(db.state.ai.current_job_id,'CORE-PROBE:real');
+  await releaseSharedResourceLease(db,{resourceId:claimed.resource_id,leaseToken:claimed.lease_token});
+  db.state.ai.current_job_id='MGR-ACTUAL';db.state.ai.work_state='BUSY';
+  db.state.employee.current_job_id='MGR-ACTUAL';db.state.employee.work_state='BUSY';
+  await recoverExpiredSharedResourceLeases(db);
+  assert.strictEqual(db.state.ai.current_job_id,'MGR-ACTUAL');
+  assert.strictEqual(db.state.employee.current_job_id,'MGR-ACTUAL');
 });
 
 test('Coding Lane failover skips a resource whose shared lease cannot be acquired',async()=>{

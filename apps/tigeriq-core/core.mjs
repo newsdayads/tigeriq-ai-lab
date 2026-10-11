@@ -10,12 +10,13 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
+import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
-import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
+import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -29,7 +30,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerCycleGuard, managerProgressSinceLastCycle } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
@@ -102,8 +103,11 @@ const GEMINI_MANAGER_RESPONSE_SCHEMA={
   required:['status','summary','jobs'],
   additionalProperties:true,
 };
-const OLLAMA_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_OLLAMA_TIMEOUT_MS || 30000));
-const CORE_MANAGER_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_CORE_MANAGER_TIMEOUT_MS || 60000));
+// PC01 local CPU needs a finite but realistic budget for evidence-bearing AI packets.
+const OLLAMA_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_OLLAMA_TIMEOUT_MS || 90000));
+// NV08 qwen3:8b is CPU-only on PC01. A cold, schema-valid 121-token Manager reply was measured at 65–68s; a 60s default aborts legitimate work.
+// Keep a bounded budget and preserve the explicit environment override and existing failure/backoff policy.
+const CORE_MANAGER_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_CORE_MANAGER_TIMEOUT_MS || 150000));
 const NV14_FALLBACK_MODEL = process.env.TIGERIQ_NV14_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 const NV16_FAILURE_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.TIGERIQ_NV16_FAILURE_THRESHOLD || 0.5)));
 const NV16_FAILURE_WINDOW = Math.max(10, Number(process.env.TIGERIQ_NV16_FAILURE_WINDOW || 20));
@@ -832,7 +836,7 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt}),latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -1484,11 +1488,18 @@ export function shouldWaitForTargetedReviewResource({job,message='',failures=[]}
     && failures.length===0;
 }
 
-async function busyCapableResourceCount(capability){
+async function busyCapableResourceCount(capability,profile='AUTO'){
+  // A LOCAL-only objective must wait when a configured local model is leased,
+  // cooling down or temporarily unhealthy; never fall back to cloud providers.
+  // Keep the existing non-local busy-resource rule unchanged.
+  const localOnly=profile==='LOCAL';
   const q=await pool.query(`select count(*)::int as count from tigeriq_ai_resources
     where enabled=true and credential_state in ('LOCAL','READY')
-      and health_state in ('READY','ONLINE') and current_job_id is not null
-      and capabilities @> ARRAY[$1]::text[]`,[String(capability||'general')]);
+      and capabilities @> ARRAY[$1]::text[]
+      and (
+        ($2::boolean and provider='ollama')
+        or (not $2::boolean and health_state in ('READY','ONLINE') and current_job_id is not null)
+      )`,[String(capability||'general'),localOnly]);
   return Number(q.rows[0]?.count||0);
 }
 
@@ -1722,9 +1733,11 @@ async function runJob(j) {
       await event('SKILL_CONTEXT_SKIPPED',{objectiveId:j.objective_id,jobId:j.id,skipped:jobSkillContext.skipped.map(x=>({id:x.id,reason:x.reason}))});
     }
     const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
+    const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
+    const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist;
-    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
       const packet=executionPacketFromPrompt(j.prompt);
@@ -1732,7 +1745,7 @@ async function runJob(j) {
       if(!executionGate.pass){
         await event('EXECUTION_ACCEPTANCE_RETRY',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision});
         const retryPrompt=strictExecutionRetryPrompt(routedPrompt,executionGate);
-        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist});
+        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText});
         executionGate=executionResultGate(routed.text,packet);
       }
       if(!executionGate.pass){
@@ -1778,13 +1791,14 @@ async function runJob(j) {
       }
     }
     let resourceWaitExhausted=null;
-    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'&&failures.length===0?await busyCapableResourceCount(j.capability):0;
+    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'?await busyCapableResourceCount(j.capability,j.routing_profile||'AUTO'):0;
+    const transientLocalWait=mayWaitAfterLocalFailure({profile:j.routing_profile||'AUTO',message,failures,configuredLocalCount:busyCount});
     const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
-    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||targetedReviewWait){
+    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||transientLocalWait||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':transientLocalWait?'LOCAL_TRANSIENT_INFERENCE_FAILURE':j.routing_profile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
         const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
         await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
@@ -2196,10 +2210,26 @@ async function managerTick() {
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
   const latestManagerProgress=(await pool.query("select max(completed_at) as latest_terminal_at from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done'",[o.id,currentPhase])).rows[0]?.latest_terminal_at||null;
-  const managerProgressed=managerProgressSinceLastCycle({latestTerminalAt:latestManagerProgress,objectiveUpdatedAt:o.updated_at});
-  const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:managerProgressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
+  const terminalProgress=managerTerminalProgressPlan({
+    latestTerminalAt:latestManagerProgress,
+    observedTerminalAt:o.metadata?.managerLastObservedTerminalAt,
+    managerCycles:o.manager_cycles,
+  });
+  if(terminalProgress.checkpoint){
+    // Atomic compare-and-set: never consume a completion watermark without
+    // also resetting its stale-cycle budget, or overwrite a newer watermark
+    // written by another Core instance. No progress => no updated_at churn.
+    const saved=await pool.query(
+      "update tigeriq_objectives set metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerLastObservedTerminalAt}',to_jsonb($2::text),true),manager_cycles=case when $4::boolean then 0 else manager_cycles end,updated_at=case when $4::boolean then now() else updated_at end where id=$1 and status='active' and (metadata->>'managerLastObservedTerminalAt') is not distinct from $3::text",
+      [o.id,terminalProgress.observedAt,o.metadata?.managerLastObservedTerminalAt??null,terminalProgress.progressed],
+    );
+    // Stale workers must not run an unguarded manager decision after another
+    // instance consumed the same progress or terminalized the objective.
+    if(saved.rowCount!==1)return;
+    o.metadata={...o.metadata,managerLastObservedTerminalAt:terminalProgress.observedAt};
+  }
+  const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:terminalProgress.progressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
   if(managerGuard.reset){
-    await pool.query("update tigeriq_objectives set manager_cycles=0,updated_at=now() where id=$1",[o.id]);
     o.manager_cycles=0;
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
@@ -2225,24 +2255,47 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. Maximum 3 jobs. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
+  // Read before the async Manager call. A GitHub evidence/revision update
+  // during inference must invalidate any later terminal decision or evidence park.
+  const managerCompletionGateSnapshot=JSON.stringify([
+    o.metadata?.sourceRevision??null,
+    o.metadata?.dependencyGateRequired??null,o.metadata?.dependencyGatePass??null,
+    o.metadata?.liveAcceptanceRequired??null,o.metadata?.liveAcceptancePass??null,
+    o.metadata?.liveAcceptanceRevision??null,o.metadata?.finalReviewRequired??null,
+    o.metadata?.finalReviewPass??null,o.metadata?.finalReviewRevision??null,
+  ]);
   try {
     const routed=await callManagerDecision(prompt,o.id);
     if(routed.exhausted===true){
       const retryPlan=managerExhaustionRetryPlan({managerCycles:o.manager_cycles,maxCycles:30});
       const summary=String(routed.decision?.summary||'manager decision exhausted after bounded retry/failover').slice(0,2000);
       if(retryPlan.retry){
-        await pool.query("update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1",[o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs)]);
+        const retryCommitted=await pool.query(
+          "update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $5::text",
+          [o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs),o.metadata?.sourceRevision??null],
+        );
+        if(retryCommitted.rowCount!==1)return;
         await event('MANAGER_EXHAUSTED_RETRY_QUEUED',{objectiveId:o.id,phaseIndex:currentPhase,retryCount:retryPlan.nextCycle,delayMs:retryPlan.delayMs,failureCount:Array.isArray(routed.failures)?routed.failures.length:0});
         return;
       }
-      await pool.query("update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1",[o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted']);
+      const exhaustedCommitted=await pool.query(
+        "update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text",
+        [o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted',o.metadata?.sourceRevision??null],
+      );
+      if(exhaustedCommitted.rowCount!==1)return;
       await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:retryPlan.reason,retryCount:retryPlan.nextCycle});
       return;
     }
     const decision=routed.decision;
-    await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1",[o.id,String(decision.summary||'').slice(0,2000)]);
+    // The manager model may return after GitHub intake has parked, blocked or
+    // superseded this objective. Never write a stale decision over that state.
+    const decisionCommitted=await pool.query(
+      "update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $3::text",
+      [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
+    );
+    if(decisionCommitted.rowCount!==1)return;
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
@@ -2263,7 +2316,7 @@ async function managerTick() {
         acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
         evidenceRequired:['Concrete observations, identifiers, tests, sources, or artifacts that prove the acceptance criterion.'],
       });
-      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_campaign',$6) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase]);
+      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_campaign',$6,$7) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       if(inserted.rowCount===0){
         const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and phase_index=$3',[id,o.id,currentPhase])).rows[0];
         if(existing?.status==='failed'&&Number(existing.attempts)<Number(existing.max_attempts)){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1",[id]);await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});return;}
@@ -2276,7 +2329,14 @@ async function managerTick() {
       return;
     }
     const transition=campaignTransition({status:decision.status,currentPhase,phases});
-    if(transition.action==='blocked'){await pool.query("update tigeriq_objectives set status='blocked',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;}
+    if(transition.action==='blocked'){
+      const blocked=await pool.query(
+        "update tigeriq_objectives set status='blocked',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$2::jsonb",
+        [o.id,managerCompletionGateSnapshot],
+      );
+      if(blocked.rowCount!==1)return;
+      await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase});return;
+    }
     if(transition.action==='complete'){
       if(phases.length){
         const handoff=await persistTerminalHandoff(o,decision,currentPhase);
@@ -2288,11 +2348,38 @@ async function managerTick() {
         const summary=completionGate.reason==='final_review_pending'
           ? 'completion pending trusted independent final review for current source revision'
           : 'completion pending durable LIVE_ACCEPTANCE_PASS for current source revision';
-        await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
-        await event('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:o.metadata?.sourceRevision||null,reason:completionGate.reason,managerCyclesReset:true});
+        const wait=managerAcceptancePausePlan({
+          source:o.metadata?.source,
+          sourceRevision:o.metadata?.sourceRevision,
+          gate:completionGate,
+        });
+        if(wait.park){
+          // Active for evidence reconciliation, but not runnable by AI Manager
+          // until GitHub intake sees accepted proof or a new source revision.
+          const parked=await pool.query(
+            "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$4::jsonb",
+            [o.id,summary,JSON.stringify(wait.revision),managerCompletionGateSnapshot],
+          );
+          if(parked.rowCount!==1)return;
+          await event('OBJECTIVE_COMPLETION_WAITING_EVIDENCE',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:wait.revision,reason:wait.reason});
+        }else{
+          // Non-GitHub/missing-revision objectives have no proven watcher.
+          // The post-decision update already charged one manager cycle.
+          // Delay the next attempt without double-charging that same decision.
+          const delayed=await pool.query(
+            "update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$3::jsonb",
+            [o.id,summary,managerCompletionGateSnapshot],
+          );
+          if(delayed.rowCount!==1)return;
+          await event('OBJECTIVE_COMPLETION_RETRY_BOUNDED',{objectiveId:o.id,phaseIndex:currentPhase,reason:completionGate.reason});
+        }
         return;
       }
-      await pool.query("update tigeriq_objectives set status='completed',updated_at=now() where id=$1",[o.id]);
+      const finished=await pool.query(
+        "update tigeriq_objectives set status='completed',updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$2::jsonb",
+        [o.id,managerCompletionGateSnapshot],
+      );
+      if(finished.rowCount!==1)return;
       await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,phaseIndex:currentPhase,phaseCount:phases.length||1});
       return;
     }
@@ -2301,8 +2388,8 @@ async function managerTick() {
       const advanced=await pool.query(`update tigeriq_objectives
         set metadata=jsonb_set(jsonb_set(metadata,'{campaign,currentPhase}',to_jsonb($2::int),true),'{campaign,checkpoints}',coalesce(metadata#>'{campaign,checkpoints}','[]'::jsonb)||$3::jsonb,true),
             manager_cycles=0,summary=$4,next_check_at=now(),updated_at=now()
-        where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$5`,
-        [o.id,transition.nextPhase,JSON.stringify([checkpoint]),`phase ${currentPhase+1}/${phases.length} complete; continuing to phase ${transition.nextPhase+1}/${phases.length}`,currentPhase]);
+        where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$5 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and jsonb_build_array(metadata->'sourceRevision',metadata->'dependencyGateRequired',metadata->'dependencyGatePass',metadata->'liveAcceptanceRequired',metadata->'liveAcceptancePass',metadata->'liveAcceptanceRevision',metadata->'finalReviewRequired',metadata->'finalReviewPass',metadata->'finalReviewRevision')=$6::jsonb`,
+        [o.id,transition.nextPhase,JSON.stringify([checkpoint]),`phase ${currentPhase+1}/${phases.length} complete; continuing to phase ${transition.nextPhase+1}/${phases.length}`,currentPhase,managerCompletionGateSnapshot]);
       if(advanced.rowCount===1){await event('CAMPAIGN_PHASE_COMPLETED',{objectiveId:o.id,phaseIndex:currentPhase,nextPhaseIndex:transition.nextPhase,checkpoint});await event('CAMPAIGN_PHASE_ADVANCED',{objectiveId:o.id,phaseIndex:transition.nextPhase,phaseCount:phases.length});}
       return;
     }
@@ -2326,6 +2413,10 @@ async function managerTick() {
         acceptance:Array.isArray(spec.acceptance)&&spec.acceptance.length?spec.acceptance:(spec.acceptance?[String(spec.acceptance)]:[`Complete task "${title}" with an observable, evidence-backed result.`]),
         evidenceRequired:Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']),
       }).prompt.slice(0,12000);
+      if(capability==='pc_operator'&&objectiveJobRoutingProfile(o.metadata)==='LOCAL'){
+        await event('MANAGER_LOCAL_OBJECTIVE_PC_OPERATOR_DENIED',{objectiveId:o.id,phaseIndex:currentPhase,title});
+        continue;
+      }
       if(capability==='pc_operator'){
         const inserted=await pool.query('insert into tigeriq_jobs(id,objective_id,title,prompt,capability,phase_index,max_attempts) values($1,$2,$3,$4,$5,$6,2) on conflict(id) do nothing',[id,o.id,title,promptText,capability,currentPhase]);
         if(inserted.rowCount===0){
@@ -2344,7 +2435,7 @@ async function managerTick() {
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
         }
-        await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index) values($1,$2,$3,$4,$5,'compiled_ai',$6)",[id,o.id,title,promptText,capability,currentPhase]);
+        await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_ai',$6,$7)",[id,o.id,title,promptText,capability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
@@ -2665,8 +2756,11 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
         res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
         return res.end(JSON.stringify({ok:false,error:'P0_OWNER_VY_DIRECT_ONLY'}));
       }
+      let profile;
+      try { profile=normalizeObjectiveRoutingProfile(b.routingProfile); }
+      catch { res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'OBJECTIVE_ROUTING_PROFILE_INVALID'})); }
       const phases=normalizeCampaignPhases(b.phases); const id=`OBJ-${randomUUID()}`; const priority=['P1','P2'].includes(b.priority)?b.priority:'P1';
-      const metadata={source:b.source||'api',...(phases.length?{campaign:{phases,currentPhase:0,checkpoints:[]}}:{})};
+      const metadata={source:b.source||'api',...(profile==='LOCAL'?{routingProfile:'LOCAL'}:{}),...(phases.length?{campaign:{phases,currentPhase:0,checkpoints:[]}}:{})};
       await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4)',[id,String(b.objective).slice(0,12000),priority,JSON.stringify(metadata)]);
       await event(phases.length?'CAMPAIGN_CREATED':'OBJECTIVE_CREATED',{objectiveId:id,phaseIndex:0,phaseCount:phases.length||1});
       res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id,campaign:phases.length>0,phaseCount:phases.length||1,currentPhase:0}));

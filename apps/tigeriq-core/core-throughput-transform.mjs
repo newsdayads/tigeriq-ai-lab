@@ -4,8 +4,9 @@ const CORE_SCHEMA_FROM="      maxItems:3,";
 const CORE_SCHEMA_TO="      maxItems:MANAGER_MAX_JOBS,";
 const CORE_POOL_FROM="const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });";
 const CORE_POOL_TO="const pool = new Pool({ connectionString: DATABASE_URL, max: Math.max(4, Math.min(20, Number(process.env.TIGERIQ_CORE_DB_POOL_MAX || 12))) });";
-const CORE_PROMPT_FROM="Maximum 3 jobs.";
-const CORE_PROMPT_TO="Maximum ${MANAGER_MAX_JOBS} jobs.";
+const CORE_PROMPT_FROM="Return at most one job.";
+// Keep the bounded CPU-only Manager prompt intact; still require exactly one canonical anchor.
+const CORE_PROMPT_TO="Return at most one job.";
 const CORE_PARALLEL_FROM=`let stop=false, lastRefresh=0, lastRecover=0, lastOpenClawObjectiveReconcile=0, lastManager=0, lastProbe=0, lastFailureLearning=0, lastApiDoctor=0, apiDoctorScanRunning=false, managerTickRunning=false; const active=new Set();
 function getDynamicMaxParallel() {
   const resList = typeof resources !== 'undefined' ? resources : [];
