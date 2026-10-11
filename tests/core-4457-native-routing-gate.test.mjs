@@ -8,6 +8,15 @@ const close=source.indexOf('async function initDb(',start);
 assert.ok(start>=0&&close>start,'canonical invokeProvider anchor is unique and complete');
 const isolatedFunction=source.slice(start,close).trim();
 
+const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-core.ps1',import.meta.url),'utf8').replaceAll('\r\n','\n');
+test('PC01 launcher explicitly activates LOCAL NV10 allowlisted model and opt-in adapter only',()=>{
+  assert.match(launcher,/\$env:TIGERIQ_OLLAMA_MODEL='gemma3:4b'/);
+  assert.match(launcher,/\$env:TIGERIQ_NV10_NATIVE_STRUCTURED='enabled'/);
+  assert.match(launcher,/Clear-CoreEnvironment[\s\S]*'TIGERIQ_NV10_NATIVE_STRUCTURED'/);
+  assert.match(launcher,/\$env:TIGERIQ_ALLOW_PAID_AI='false'/);
+});
+
+
 function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_version:'EXECUTION_PACKET_V1'},nativeError=null}={}){
   const calls=[];
   const ctx={
