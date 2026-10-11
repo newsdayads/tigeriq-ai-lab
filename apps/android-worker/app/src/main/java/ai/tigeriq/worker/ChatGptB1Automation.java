@@ -78,7 +78,10 @@ public final class ChatGptB1Automation {
                         expectedToken, responseText
                     );
                 } else {
-                    ChatGptB1RunStore.completeCurrentCycle(service, responseText);
+                    ChatGptB1RunStore.completeManualReplyIfCurrent(
+                        service, s.runId, s.cycle, s.startedAt,
+                        expectedToken, responseText
+                    );
                 }
                 return;
             }
@@ -236,7 +239,9 @@ public final class ChatGptB1Automation {
                 service, snapshot.runId, snapshot.taskId, snapshot.cycle
             );
         } else {
-            ChatGptB1RunStore.markVerifying(service);
+            ChatGptB1RunStore.markManualVerifyingIfCurrent(
+                service, snapshot.runId, snapshot.cycle, snapshot.startedAt
+            );
         }
     }
 
@@ -248,7 +253,9 @@ public final class ChatGptB1Automation {
                 service, snapshot.runId, snapshot.taskId, snapshot.cycle
             );
         } else {
-            ChatGptB1RunStore.markInputReady(service);
+            ChatGptB1RunStore.markManualInputReadyIfCurrent(
+                service, snapshot.runId, snapshot.cycle, snapshot.startedAt
+            );
         }
     }
 
@@ -260,7 +267,9 @@ public final class ChatGptB1Automation {
                 service, snapshot.runId, snapshot.taskId, snapshot.cycle
             );
         } else {
-            ChatGptB1RunStore.markBusySeen(service);
+            ChatGptB1RunStore.markManualBusyIfCurrent(
+                service, snapshot.runId, snapshot.cycle, snapshot.startedAt
+            );
         }
     }
 
