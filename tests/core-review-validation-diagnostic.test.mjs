@@ -64,8 +64,8 @@ describe('Core independent-review failure diagnostics for #2788',()=>{
     expect(text).toContain('TARGET_HEAD='+head);
     expect(text).toContain('CHANGES_REQUIRED');
     expect(text).toContain('The previous response was rejected');
-    expect(text).toContain('\\nLine 1 is literally');
-    expect(text).not.toContain('REVIEW=PASS\\n');
+    expect(text).toContain('\nLine 1 is literally');
+    expect(text).not.toContain('REVIEW=PASS\n');
     expect(()=>retryFns.prompt(base,'bad-sha')).toThrow('CORE_REVIEW_RETRY_HEAD_INVALID');
   });
   it('wires review format correction only after validation and keeps resource identity fixed',()=>{
