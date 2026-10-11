@@ -223,6 +223,11 @@ function status(it){
  // State identifiers are tokens, not substrings: UNBLOCKED and NOT_DONE
  // must never become BLOCKED or DONE. Do not trust incomplete completion.
  if(has('BLOCK','BLOCKED','BLOCKING','HOLD','HELD','DENY','DENIED'))return 'blocked';
+ // A review that is only READY, QUEUED, PENDING or WAITING is not an
+ // independently active review. Never inflate live "review" totals from
+ // a GitHub issue merely waiting for reviewer access or SSO authentication.
+ if(has('REVIEW','VERIFY','VERIFICATION')&&
+    has('READY','QUEUE','QUEUED','PENDING','WAIT','WAITING'))return 'wait';
  if(has('REVIEW','VERIFY','VERIFICATION'))return 'review';
  if(has('DONE','COMPLETED')&&!has('NOT','FALSE','PENDING','WAIT','WAITING','UNVERIFIED'))return 'done';
  if(has('WORKING','RUNNING')||(words.has('IN')&&words.has('PROGRESS')))return 'working';
