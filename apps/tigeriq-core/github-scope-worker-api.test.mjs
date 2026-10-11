@@ -59,6 +59,9 @@ test('rejects requests from nonloopback hosts, incorrect token and wrong session
 });
 test('rejects P0, owner hold and unauthorized NV03 review',()=>{
   assert.throws(()=>validateGithubWorkerIssue({...canary,title:'[P0] Forbidden'},'NV03',scope),/P0_OR_PRIORITY_UNVERIFIED/);
+  assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body+'\nOWNER_HOLD=false\nOWNER_HOLD=true'},'NV03',scope),/ISSUE_POLICY_DUPLICATE_OWNER_HOLD/);
+  assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body+'\nPRIORITY=P0'},'NV03',scope),/ISSUE_POLICY_DUPLICATE_PRIORITY/);
+  assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body.replace('PRIORITY=P5','PRIORITY=P0')},'NV03',scope),/ISSUE_PRIORITY_MISMATCH/);
   assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body+'\nOWNER_HOLD=true'},'NV03',scope),/OWNER_OR_SECURITY_HOLD/);
   assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body.replace('NO_PRODUCTION_RELEASE=true','')},'NV03',scope),/ISSUE_HARD_GATE_MISSING/);
   assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body.replace('TARGET_EMPLOYEE=NV03','TARGET_EMPLOYEE=NV04')},'NV03',scope),/TARGET_DENIED/);
