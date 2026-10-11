@@ -280,3 +280,57 @@ export async function activeSharedResourceLeases(db){
 export function indexSharedResourceLeases(rows=[]){
   return new Map((Array.isArray(rows)?rows:[]).map(row=>[String(row.resource_id||row.resourceId||''),row]).filter(([key])=>key));
 }
+
+// Core health probes occupy the resource slot through a shared lease. If Core
+// restarts after the lease was deleted, a CORE-PROBE slot can be left BUSY
+// forever. Reconcile ONLY orphan probe slots with no lease row and no live
+// job, using the same row lock that serializes shared lease acquisition.
+// Never clear a manager, coding, reviewer or external-worker claim.
+export async function recoverOrphanedCoreProbeOccupancies(db) {
+  if (!db) return [];
+  const q = await db.query(
+    `
+    with orphan as (
+      select r.resource_id,r.employee_id,r.current_job_id
+      from tigeriq_ai_resources r
+      where r.current_job_id like 'CORE-PROBE:%'
+        and not exists (
+          select 1 from tigeriq_ai_resource_leases l
+          where l.resource_id=r.resource_id
+        )
+        and not exists (
+          select 1 from tigeriq_jobs j
+          where j.id=r.current_job_id and j.status in ('running','dispatching')
+        )
+      for update of r skip locked
+    )
+    update tigeriq_ai_resources r
+    set current_job_id=null,
+        work_state=case
+          when r.employee_id='NV09' and r.health_state in ('READY','ONLINE') then 'ON_DEMAND'
+          when r.health_state='ONLINE' then 'IDLE'
+          when r.health_state='READY' then 'READY'
+          else r.health_state end,
+        updated_at=now()
+    from orphan o
+    where r.resource_id=o.resource_id and r.current_job_id=o.current_job_id
+    returning o.resource_id,o.employee_id,o.current_job_id as work_id`
+  );
+  const recovered=[];
+  for (const row of q.rows||[]) {
+    await db.query(
+      `
+      update tigeriq_resources set current_job_id=null,
+        work_state=case
+          when employee_id='NV09' and health_state in ('READY','ONLINE') then 'ON_DEMAND'
+          when health_state='ONLINE' then 'IDLE'
+          when health_state='READY' then 'READY'
+          else health_state end,
+        updated_at=now()
+      where employee_id=$1 and current_job_id=$2`,
+      [row.employee_id,row.work_id],
+    );
+    recovered.push({resourceId:row.resource_id,employeeId:row.employee_id,workId:row.work_id,role:'probe',lane:'core_probe'});
+  }
+  return recovered;
+}
