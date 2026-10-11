@@ -1,3 +1,4 @@
+import {scopeHasLiveGithubLease} from './github-scope-lease.mjs';
 import {createHash} from 'node:crypto';
 import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
@@ -316,18 +317,34 @@ function materializedCoreUiIds(spec,prior){
 }
 
 async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
-  const oid=objectiveId;
-  const q=await pool.query(
-    "with locked as materialized (select pg_advisory_xact_lock(hashtext($1)) as guard), inserted as ("+
-    "insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) "+
-    "select $2,$3,$4,'active',$5,$6 from locked "+
-    "where not exists (select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1) "+
-    "on conflict(id) do nothing returning id) select id from inserted",
-    [spec.resourceScope,oid,'Core-selected UI Work Order #'+spec.number+' - '+spec.title,spec.priority,'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title+'; worker='+spec.workerId,JSON.stringify(metadata)]
-  );
-  return q.rowCount>0;
+  const scope=String(spec.resourceScope||'').trim();
+  if(!scope)throw new Error('CORE_UI_RESOURCE_SCOPE_REQUIRED');
+  const client=await pool.connect();let inTx=false;
+  try{
+    await client.query('begin');inTx=true;
+    // All Core/GitHub claimants serialize on the SAME scope before checking
+    // objectives and the lease table. A later statement refreshes the
+    // READ COMMITTED snapshot after any advisory-lock contention.
+    await client.query('select pg_advisory_xact_lock(hashtext($1))',[scope]);
+    const prior=await client.query(
+      "select 1 from tigeriq_objectives where status='active' and metadata->>'resourceScope'=$1 limit 1",
+      [scope]);
+    const githubHeld=await scopeHasLiveGithubLease(client,scope);
+    if(prior.rowCount||githubHeld){
+      await client.query('commit');inTx=false;
+      return false;
+    }
+    const q=await client.query(
+      "insert into tigeriq_objectives(id,objective,priority,status,summary,metadata) values($1,$2,$3,'active',$4,$5) on conflict(id) do nothing returning id",
+      [objectiveId,'Core-selected UI Work Order #'+spec.number+' - '+spec.title,spec.priority,
+       'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title+'; worker='+spec.workerId,JSON.stringify(metadata)]);
+    await client.query('commit');inTx=false;
+    return q.rowCount===1;
+  }catch(error){
+    if(inTx)await client.query('rollback').catch(()=>{});
+    throw error;
+  }finally{client.release();}
 }
-
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
   // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
   if(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced()))return null;
