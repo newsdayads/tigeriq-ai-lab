@@ -83,15 +83,36 @@ export async function releaseNv02WorkOrderAtomic({
   if(lease.workerSessionId!==workerSessionId||Number(issue.number)!==Number(lease.workOrder.slice(1)))
     throw Error('NV02_RELEASE_MISMATCH');
   if(terminal==='DONE'&&evidenceVerified!==true)throw Error('NV02_DONE_EVIDENCE_REQUIRED');
+  if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(terminal))
+    throw Error('NV02_TERMINAL_INVALID');
+  const holder={resourceScope:lease.resourceScope,workerId:'NV02',
+    workerSessionId,leaseId:lease.leaseId};
   if(!same(await ops.read(db,lease.resourceScope),lease.leaseId,workerSessionId,issue.number))
     throw Error('NV02_RELEASE_FENCED');
-  if(await ops.release(db,{resourceScope:lease.resourceScope,workerId:'NV02',
-    workerSessionId,leaseId:lease.leaseId})!==true)throw Error('NV02_RELEASE_FAILED');
-  // GitHub comment is audit-only AFTER successful database release.
+  // Renew BEFORE the GitHub write. Until a durable terminal checkpoint exists,
+  // never free the global scope for another worker to claim.
+  const extended=await ops.renew(db,{...holder,ttlMs:120000});
+  if(!extended||!same(await ops.read(db,lease.resourceScope),lease.leaseId,workerSessionId,issue.number))
+    throw Error('NV02_TERMINAL_CHECKPOINT_LEASE_LOST');
   await postComment(Number(issue.number),[
-    '[TIGERIQ_NV02_ATOMIC_RELEASE_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
+    '[TIGERIQ_NV02_TERMINAL_CHECKPOINT_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
     'RESOURCE_SCOPE='+lease.resourceScope,'LEASE_ID='+lease.leaseId,
-    'STATE='+terminal,'AUTHORITY=CORE_POSTGRES_ATOMIC_RELEASED'
+    'STATE='+terminal,'AUTHORITY=CORE_POSTGRES_ATOMIC_TERMINAL_CHECKPOINT'
   ].join('\n'));
-  return {released:true,resourceScope:lease.resourceScope,terminal};
+  if(!same(await ops.read(db,lease.resourceScope),lease.leaseId,workerSessionId,issue.number))
+    throw Error('NV02_RELEASE_LOST_AFTER_TERMINAL_CHECKPOINT');
+  if(await ops.release(db,holder)!==true)throw Error('NV02_RELEASE_FAILED');
+  // This second comment is audit-only; if it fails, DB ownership was released
+  // but the terminal checkpoint is already durable. Never claim false rollback.
+  try{
+    await postComment(Number(issue.number),[
+      '[TIGERIQ_NV02_ATOMIC_RELEASE_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
+      'RESOURCE_SCOPE='+lease.resourceScope,'LEASE_ID='+lease.leaseId,
+      'STATE='+terminal,'AUTHORITY=CORE_POSTGRES_ATOMIC_RELEASED'
+    ].join('\n'));
+    return {released:true,resourceScope:lease.resourceScope,terminal,releaseAuditRecorded:true};
+  }catch{
+    return {released:true,resourceScope:lease.resourceScope,terminal,
+      releaseAuditRecorded:false,reason:'RELEASE_AUDIT_WRITE_FAILED'};
+  }
 }
