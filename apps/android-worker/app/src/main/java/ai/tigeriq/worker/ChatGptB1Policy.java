@@ -296,6 +296,26 @@ public final class ChatGptB1Policy {
     }
 
     /**
+     * Reacquire a scheduled Core recovery only for the same active run and
+     * while its recovery budget remains. A stale 2.5s callback must not
+     * increment a replacement lease's recovery count or launch its provider.
+     */
+    public static boolean canClaimCoreRecoveryForSnapshot(
+        String scheduledRunId, String scheduledTaskId, int scheduledCycle,
+        String liveRunId, String liveTaskId, int liveCycle,
+        String liveState, int liveRecoveryCount, int maxRecoveries
+    ) {
+        return maxRecoveries > 0 && liveRecoveryCount >= 0
+            && liveRecoveryCount < maxRecoveries
+            && canMutateObservedCoreRun(
+                scheduledRunId, scheduledTaskId, scheduledCycle,
+                liveRunId, liveTaskId, liveCycle, liveState,
+                "WAITING_PROJECT", "REQUESTED", "VERIFYING_CONTEXT",
+                "INPUT_READY", "WAITING_AI"
+            );
+    }
+
+    /**
      * Stable Project-context evidence belongs to one durable Core run only.
      * The final Project-binding commit must still see that exact run waiting.
      */
