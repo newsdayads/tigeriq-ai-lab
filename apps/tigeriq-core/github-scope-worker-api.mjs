@@ -30,14 +30,16 @@ async function bodyJson(req){
   return value;
 }
 export function validateGithubWorkerIssue(issue,workerId,scope){
-  if(!Number.isSafeInteger(Number(issue?.number))||Number(issue.number)<=0||issue?.state!=='open')
+  if(!Number.isSafeInteger(Number(issue?.number))||Number(issue.number)<=0||issue?.state!=='open'||issue?.pull_request)
     throw Error('ISSUE_NOT_OPEN');
   if(!/^\[P[1-5]\]/i.test(String(issue.title||'')))throw Error('P0_OR_PRIORITY_UNVERIFIED');
   const body=String(issue.body||'');
   if(field(body,'TIGERIQ_EXECUTABLE')!=='true'||field(body,'AUTO_QUEUE')!=='INCLUDED')
     throw Error('ISSUE_NOT_EXECUTABLE');
-  if(field(body,'OWNER_HOLD')==='true'||field(body,'NO_SECURITY_BOUNDARY_CHANGE')==='false')
-    throw Error('OWNER_OR_SECURITY_HOLD');
+  const required=['OWNER_POLICY','NO_DIRECT_MAIN','NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE'];
+  if(required.some(key=>field(body,key)!==(key==='OWNER_POLICY'?'AUTO':'true')))
+    throw Error('ISSUE_HARD_GATE_MISSING');
+  if(field(body,'OWNER_HOLD').toLowerCase()==='true')throw Error('OWNER_OR_SECURITY_HOLD');
   if(field(body,'RESOURCE_SCOPE')!==scope)throw Error('SOURCE_SCOPE_MISMATCH');
   if(workerId==='NV02'&&nv02EligibleWorkOrder(issue)?.eligible!==true)
     throw Error('NV02_NOT_ELIGIBLE');
@@ -46,7 +48,7 @@ export function validateGithubWorkerIssue(issue,workerId,scope){
     if(!['review','research','general'].includes(capability))throw Error('NV03_CAPABILITY_DENIED');
     const target=field(body,'TARGET_EMPLOYEE').toUpperCase();
     if(target&&target!=='AUTO'&&target!=='NV03')throw Error('NV03_TARGET_DENIED');
-    if(field(body,'IMPLEMENTER')==='NV03'&&capability==='review')throw Error('NV03_SELF_REVIEW_DENIED');
+    if(field(body,'IMPLEMENTER').toUpperCase()==='NV03'&&capability==='review')throw Error('NV03_SELF_REVIEW_DENIED');
   }
   return true;
 }
