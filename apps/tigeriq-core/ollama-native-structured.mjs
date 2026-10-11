@@ -117,6 +117,11 @@ export async function invokeNativeStructuredExecution({
   }
   const gate = executionResultGate(content, packet);
   if (!gate.pass) throw contractError(gate.code, 'invalid_response');
+  // Reject obviously corrupt summaries even when acceptance evidence is self-referenced.
+  const summary = String(gate.result?.summary ?? '').trim();
+  if (summary.length < 12 || !/\p{L}{3}/u.test(summary)) {
+    throw contractError('LOCAL_RESULT_SUMMARY_INVALID', 'invalid_response');
+  }
   return {
     text: content,
     gate,

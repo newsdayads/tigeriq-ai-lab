@@ -130,6 +130,16 @@ test('response schema and status cannot be spoofed', async () => {
   await assert.rejects(invokeNativeStructuredExecution({ packet, prompt, fetchImpl: mockProvider(invalid).fetchImpl }), /EXECUTION_RESULT_SCHEMA_INVALID/);
 });
 
+test('local structured result rejects non-factual summary even with accepted criteria', async () => {
+  const { packet, prompt } = fixture();
+  const invalid = goodResult(packet);
+  invalid.summary = '\":[{';
+  await assert.rejects(
+    invokeNativeStructuredExecution({ packet, prompt, fetchImpl: mockProvider(invalid).fetchImpl }),
+    /LOCAL_RESULT_SUMMARY_INVALID/,
+  );
+});
+
 test('timeout errors are classified as timeout for bounded router failure policy', async () => {
   const { packet, prompt } = fixture();
   const mockTimedOut = async () => {
