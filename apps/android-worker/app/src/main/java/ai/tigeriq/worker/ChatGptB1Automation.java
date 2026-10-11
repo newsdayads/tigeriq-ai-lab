@@ -134,13 +134,21 @@ public final class ChatGptB1Automation {
             // Narrow this race both before focus and immediately before the
             // native ACTION_SET_TEXT; do not fill a replacement task's composer.
             boolean coreMutation = s.taskId != null && !s.taskId.isEmpty();
-            if (coreMutation && !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
-                service, s.runId, s.taskId, s.cycle, prompt
-            )) return;
+            if (coreMutation
+                ? !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
+                    service, s.runId, s.taskId, s.cycle, prompt
+                )
+                : !ChatGptB1RunStore.isManualComposerMutationStillCurrent(
+                    service, s.runId, s.cycle, s.startedAt, prompt
+                )) return;
             input.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-            if (coreMutation && !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
-                service, s.runId, s.taskId, s.cycle, prompt
-            )) return;
+            if (coreMutation
+                ? !ChatGptB1RunStore.isCoreComposerMutationStillCurrent(
+                    service, s.runId, s.taskId, s.cycle, prompt
+                )
+                : !ChatGptB1RunStore.isManualComposerMutationStillCurrent(
+                    service, s.runId, s.cycle, s.startedAt, prompt
+                )) return;
             Bundle args = new Bundle();
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, prompt);
             boolean set = input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
@@ -193,7 +201,9 @@ public final class ChatGptB1Automation {
             ? ChatGptB1RunStore.markSentExactlyOnce(
                 service, s.runId, s.taskId, s.cycle, prompt
             )
-            : ChatGptB1RunStore.markSentExactlyOnce(service);
+            : ChatGptB1RunStore.markManualSentExactlyOnceIfCurrent(
+                service, s.runId, s.cycle, s.startedAt, prompt
+            );
         if (!sendClaimed) {
             // An old Accessibility callback cannot fail or click a newer run.
             // If the same Core lease remains active, INPUT_READY will time
@@ -205,9 +215,13 @@ public final class ChatGptB1Automation {
         }
         // Owner cancellation or task replacement can race with the durable
         // claim. A second identity check narrows the non-atomic UI-click window.
-        if (coreLeaseAtSend && !ChatGptB1RunStore.isCoreSendClaimStillCurrent(
-            service, s.runId, s.taskId, s.cycle
-        )) return;
+        if (coreLeaseAtSend
+            ? !ChatGptB1RunStore.isCoreSendClaimStillCurrent(
+                service, s.runId, s.taskId, s.cycle
+            )
+            : !ChatGptB1RunStore.isManualSendClaimStillCurrent(
+                service, s.runId, s.cycle, s.startedAt
+            )) return;
         boolean clicked = send.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         if (!clicked) {
             failObservedRun(service, s, "SEND_CLICK_FAILED");
