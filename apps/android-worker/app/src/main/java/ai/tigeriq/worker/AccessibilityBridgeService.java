@@ -46,6 +46,12 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final long INACTIVE_TICK_MS = 2000L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
+    // Handler runs on the main looper. Keep the 2.5s timer armed across 750ms ticks.
+    private boolean recoveryPending = false;
+    private String recoveryScheduledRunId = "";
+    private String recoveryScheduledTaskId = "";
+    private int recoveryScheduledCycle = 0;
+    private long recoveryScheduledStartedAt = 0L;
     private int projectContextSamples = 0;
     private long projectContextFirstSeenAt = 0L;
     private String projectContextCandidateRunId = "";
@@ -58,6 +64,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         public void run() {
             if (WorkerRuntimeControl.isPaused(AccessibilityBridgeService.this)) {
                 recoveryHandler.removeCallbacks(recoveryRunnable);
+                recoveryPending = false;
                 recoveryHandler.postDelayed(this, INACTIVE_TICK_MS);
                 return;
             }
@@ -69,6 +76,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo current = getRootInActiveWindow();
             CharSequence pkg = current == null ? null : current.getPackageName();
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                recoveryHandler.removeCallbacks(recoveryRunnable);
+                recoveryPending = false;
                 driveProjectNavigationIfNeeded(current);
                 maybeBindProjectFromStableContext(current);
                 maybeActivateStandaloneFallback(current);
@@ -81,18 +90,38 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     };
 
     private final Runnable recoveryRunnable = () -> {
+        recoveryPending = false;
+        if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        // A delayed callback may belong to an earlier lease or a restarted
+        // run with reused IDs. Never recover a successor from old UI evidence.
+        if (!ChatGptB1Policy.isSameProjectContextCandidate(
+            recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+            run.runId, run.taskId, run.cycle
+        ) || recoveryScheduledStartedAt != run.startedAt) return;
         AccessibilityNodeInfo current = getRootInActiveWindow();
         CharSequence pkg = current == null ? null : current.getPackageName();
         if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) return;
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
         Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
         if (launch == null) {
-            ChatGptB1RunStore.fail(this, "CHATGPT_NATIVE_APP_NOT_FOUND");
+            if (coreTask) {
+                ChatGptB1RunStore.failCoreIfCurrent(
+                    this, run.runId, run.taskId, run.cycle, "CHATGPT_NATIVE_APP_NOT_FOUND"
+                );
+            } else {
+                ChatGptB1RunStore.fail(this, "CHATGPT_NATIVE_APP_NOT_FOUND");
+            }
             return;
         }
+        // Reserve a recovery slot durably while the original lease is still
+        // current, before a native activity launch with non-atomic side effects.
+        if (coreTask && !ChatGptB1RunStore.markCoreRecoveryIfCurrent(
+            this, run.runId, run.taskId, run.cycle, MAX_B1_RECOVERIES
+        )) return;
+        if (!coreTask) ChatGptB1RunStore.markRecovery(this);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        ChatGptB1RunStore.markRecovery(this);
         startActivity(launch);
     };
 
@@ -135,6 +164,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
+            recoveryPending = false;
             maybeBindRequiredProject(event, root);
             driveProjectNavigationIfNeeded(root);
             maybeBindProjectFromStableContext(root);
@@ -435,7 +465,20 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        // The 750ms ticker must NOT push a pending 2500ms recovery forever.
+        // Only replace the pending timer when the actual run identity changes.
+        if (recoveryPending
+            && recoveryScheduledStartedAt == run.startedAt
+            && ChatGptB1Policy.isSameProjectContextCandidate(
+                recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+                run.runId, run.taskId, run.cycle
+            )) return;
         recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryScheduledRunId = run.runId;
+        recoveryScheduledTaskId = run.taskId;
+        recoveryScheduledCycle = run.cycle;
+        recoveryScheduledStartedAt = run.startedAt;
+        recoveryPending = true;
         recoveryHandler.postDelayed(recoveryRunnable, 2500L);
     }
 
@@ -457,6 +500,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryPending = false;
         recoveryHandler.removeCallbacks(b1TickRunnable);
         b1TickScheduled = false;
     }
