@@ -269,8 +269,8 @@ test('V5 issue detail discloses whether project assignment is explicit or inferr
  await page.locator('#jobCards .jobcard').filter({hasText:'Manager checkpoint'}).click();
  await expect(page.locator('#workflowScreen')).toBeVisible();
  await expect(page.locator('#jobTitle')).toContainText('Manager checkpoint');
+ expect(pageErrors,'No JavaScript exception may interrupt evidence refresh when switching issues').toEqual([]);
  await expect(page.locator('#workflowScreen .source-evidence-note')).toContainText('Phân nhóm dự án suy luận từ tiêu đề');
- expect(pageErrors).toEqual([]);
 });
 
 
