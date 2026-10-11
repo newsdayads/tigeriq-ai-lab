@@ -1225,6 +1225,55 @@ describe('GitHub Core intake guardrails',()=>{
     expect(seenParams).toEqual([[String(target)]]);
   });
 
+  it('does not refetch the same GitHub comments when only the live acceptance gate is required',async()=>{
+    const sourceIssue={
+      number:4691,state:'open',title:'[P1] Stable live-only acceptance',comments:2,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_STABLE_LIVE_GATE_SCAN_TEST',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+        'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+        'LIVE_ACCEPTANCE_REQUIRED=true',
+      ].join('\n'),
+    };
+    expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe('');
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const row={
+      id:'OBJ-GH-4691',status:'active',summary:'waiting for LIVE acceptance',
+      metadata:{
+        source:'github',issueNumber:4691,sourceRevision:revision,
+        liveAcceptanceRequired:true,finalReviewRequired:false,
+        liveAcceptancePass:false,liveAcceptanceCommentCount:2,
+        githubClaimReported:true,githubResultReported:false,
+      },
+    };
+    let commentReads=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))
+        return {rowCount:1,rows:[row]};
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_LIVE_ONLY_GATE_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async(url)=>{
+      if(String(url).includes('/comments'))commentReads++;
+      throw new Error('UNNECESSARY_COMMENT_RESCAN');
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(commentReads).toBe(0);
+    expect(row.metadata.liveAcceptanceCommentCount).toBe(2);
+    expect(row.metadata.liveAcceptanceRequired).toBe(true);
+    expect(row.metadata.finalReviewRequired).toBe(false);
+    expect(row.status).toBe('active');
+  });
+
   it('rearms a parked GitHub objective when editing its source removes the last dependency gate',async()=>{
     const sourceIssue={
       number:4690,state:'open',title:'[P1] Source with dependency gate removed',comments:0,labels:[],
