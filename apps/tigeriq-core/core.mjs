@@ -2892,6 +2892,17 @@ async function collectSelfAuditSnapshot(store=pool){
     ? Boolean((!updaterState||updaterFresh)&&(!updaterService||(bootstrapFresh&&updaterService.healthy===true))&&!updaterFailed)
     : undefined;
   const watchdogHealthy=bootstrapState?bootstrapFresh:undefined;
+  const updaterStampMs=Date.parse(String(updaterState?.updatedAt||updaterState?.updated_at||''));
+  const watchdogHealthDetails={
+    updaterStatePresent:Boolean(updaterState),
+    updaterStateFresh:updaterState?updaterFresh:null,
+    watchdogStatePresent:Boolean(bootstrapState),
+    watchdogStateFresh:bootstrapState?bootstrapFresh:null,
+    watchdogUpdaterRowPresent:Boolean(updaterService),
+    watchdogUpdaterRowHealthy:updaterService?updaterService.healthy===true:null,
+    updaterResultFailed:updaterFailed,
+    updaterHeartbeatAgeSec:Number.isFinite(updaterStampMs)?Math.max(0,Math.floor((now-updaterStampMs)/1000)):null,
+  };
 
   return {
     queue:{
@@ -2915,6 +2926,7 @@ async function collectSelfAuditSnapshot(store=pool){
     watchdog:{
       ...(typeof updaterHealthy==='boolean'?{updaterHealthy}:{}),
       ...(typeof watchdogHealthy==='boolean'?{watchdogHealthy}:{}),
+      healthDetails:watchdogHealthDetails,
     },
   };
 }
