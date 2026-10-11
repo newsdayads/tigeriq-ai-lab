@@ -85,3 +85,12 @@ test('drifting canonical issue rejects atomic claim before opening a lease',asyn
   await assert.rejects(()=>claimNv02WorkOrderAtomic(args(f)),/SOURCE_AUTHORITY_INVALID|SOURCE_REVISION_CHANGED/);
   assert.equal(f.holders.size,0);
 });
+
+test('legacy advisory readers recognize new atomic receipt and release markers',async()=>{
+  const {activeResourceClaims}=await import('./nv02-local-self-pull.mjs');
+  const now=Date.parse('2026-10-11T04:00:00Z');
+  const claim={id:1,body:'[TIGERIQ_NV02_ATOMIC_LEASE_V1]\nLEASE_ID=00000000-0000-4000-8000-000000000001\nWORKER=NV02\nRESOURCE_SCOPE=ATOMIC_SHARED\nLEASE_UNTIL=2026-10-12T00:00:00Z'};
+  const release={id:2,body:'[TIGERIQ_NV02_ATOMIC_RELEASE_V1]\nLEASE_ID=00000000-0000-4000-8000-000000000001\nWORKER=NV02\nRESOURCE_SCOPE=ATOMIC_SHARED'};
+  assert.equal(activeResourceClaims([claim],now).length,1);
+  assert.equal(activeResourceClaims([claim,release],now).length,0);
+});
