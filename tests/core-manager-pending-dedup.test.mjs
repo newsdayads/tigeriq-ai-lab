@@ -35,7 +35,7 @@ test('all terminal jobs reopen manager decision for genuinely new work',()=>{
 
 test('production manager eligibility query uses the shared pending status policy before job creation',()=>{
   const start=source.indexOf('async function managerTick()');
-  const end=source.indexOf('const o=q.rows[0]',start);
+  const end=source.indexOf('const o=ranked[0]?.objective',start);
   assert.ok(start>=0&&end>start,'managerTick eligibility query must exist');
   const query=source.slice(start,end);
   assert.match(query,/j\.status=any\(\$1::text\[\]\)/);

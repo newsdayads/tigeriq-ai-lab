@@ -8,11 +8,11 @@ describe('Core throughput loader compatibility with single canonical prompt',()=
     const compiled=transformCoreSource(core);
     expect(compiled).toContain('MANAGER_MAX_JOBS');
     expect(compiled.split('let liveHealthyResourceCount=3;').length-1).toBe(1);
-    expect(compiled.split('Maximum ${MANAGER_MAX_JOBS} jobs.').length-1).toBe(1);
+    expect(compiled.split('Return at most one job.').length-1).toBe(1);
     expect(compiled).not.toContain('Maximum 3 jobs.');
   });
   it('fails closed when any prompt location disappears',()=>{
-    const once=core.replace('Maximum 3 jobs.','Maximum X jobs.');
+    const once=core.replace('Return at most one job.','Return no jobs.');
     expect(()=>transformCoreSource(once)).toThrow(/CORE_THROUGHPUT_PATCH_MISSING:manager_prompt/);
   });
 });
