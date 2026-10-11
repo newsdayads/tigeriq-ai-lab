@@ -10,7 +10,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
-import { parseOwnerBacklogOrder } from './owner-backlog-order.mjs';
+import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
@@ -2169,9 +2169,11 @@ async function managerTick() {
     and o.priority in ('P1','P2','P3','P4','P5')
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER')
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status=any($1::text[]))
-    order by coalesce(array_position($2::int[],case
-      when (o.metadata->>'issueNumber') ~ '^[0-9]+
-  const o=q.rows[0]; if(!o) return;
+    order by case o.priority when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,
+      case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 500`,[MANAGER_PENDING_JOB_STATUSES]);
+  const ranked=q.rows.map((objective,index)=>({objective,index,rank:objectiveBacklogRank(objective,ownerOrder)}))
+    .sort((a,b)=>a.rank-b.rank||a.index-b.index);
+  const o=ranked[0]?.objective; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
   if(await reconcileGithubCoreReviewObjective(o)) return;
   if(await reconcileStabilityV2Objective(o)) return;
