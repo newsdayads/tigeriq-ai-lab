@@ -691,8 +691,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="action">ƯU TIÊN DUY NHẤT <b id="actionCount">0</b></button>
-    <button class="filter" data-filter="backlog">BACKLOG <b id="backlogCount">0</b></button>
+    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
     <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
     <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
     <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
@@ -700,7 +699,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
   </nav>
-  <div class="bcct-toolbar"><label for="bcctSort">ƯU TIÊN</label><select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select><button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Mỗi lần tập trung 1 việc; backlog vẫn truy cập được · không tự giao việc</span></div><div id="workList" class="work-list"></div>
+  <div class="bcct-toolbar"><label for="bcctSort">ƯU TIÊN</label><select id="bcctSort" aria-label="Sắp xếp công việc"><option value="default">MẶC ĐỊNH</option><option value="priority">P0–P5</option><option value="ready">SẴN SÀNG TRƯỚC</option></select><button type="button" id="bcctRefresh">CẬP NHẬT TRẠNG THÁI</button><span id="bcctNotice">Chỉ sắp xếp và kiểm tra; không tự giao việc</span></div><div id="workList" class="work-list"></div>
 </section>
 </div>
 </details>
@@ -796,23 +795,6 @@ function executionWaitReason(row){
     ?'Chưa có lý do chờ xác minh'
     :'Không có';
 }
-function actionableRows(value){
-  const openRows=Array.isArray(value?.openWork)?value.openWork:[...(value?.activeWork||[]),...(value?.nextQueue||[])];
-  const seen=new Set();
-  return openRows.filter(row=>{
-    const n=Number(row?.number);
-    if(!Number.isSafeInteger(n)||n<=0||seen.has(n)||row?.workKind!=='WORK'||workStatus(row)==='SYSTEM'||workPriority(row)==='P5')return false;
-    seen.add(n);return true;
-  });
-}
-function focusRow(rows){
-  // One visible focus does not imply an AI has claimed the job.
-  // A verified live claim wins. Otherwise honor Owner's single Core master.
-  return rows.find(row=>workStatus(row)==='WORKING'&&row.activeLease===true&&!!row.activeWorker)
-    || rows.find(row=>Number(row.number)===4457)
-    || rows.find(row=>String(row.executionEligibility||'').toUpperCase()==='READY')
-    || rows[0] || null;
-}
 function normalizeRows(value){
   const fallbackOpen=()=>{
     const map=new Map();
@@ -820,16 +802,13 @@ function normalizeRows(value){
     return [...map.values()];
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
-  const actionable=actionableRows(value);
-  const focused=focusRow(actionable);
-  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'})); 
-  if(currentFilter==='backlog')return actionable.filter(x=>x.number!==focused?.number);
+  if(currentFilter==='done') return (Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
   if(currentFilter==='owner') return openRows.filter(x=>workStatus(x)==='OWNER_GATE');
   if(currentFilter==='running') return openRows.filter(x=>workStatus(x)==='WORKING');
   if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return focused?[focused]:[];
+  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -849,9 +828,7 @@ function updateCounts(){
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
   const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
   const visibleActionable=actionable.filter(x=>workPriority(x)!=='P5');
-  const focus=focusRow(visibleActionable);
-  $('actionCount').textContent=focus?1:0;
-  $('backlogCount').textContent=Math.max(0,visibleActionable.length-(focus?1:0));
+  $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
   $('reviewCount').textContent=Number.isFinite(Number(s.review))?s.review:actionable.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x))).length;
@@ -1765,7 +1742,7 @@ function render(){
   const bcctMode=$('bcctSort')?.value||'default';
   if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
-  $('workMeta').textContent=rows.length+(currentFilter==='action'?' việc ưu tiên':currentFilter==='backlog'?' việc trong backlog':' việc');
+  $('workMeta').textContent=rows.length+' việc';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
   if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
