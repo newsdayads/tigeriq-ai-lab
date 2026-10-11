@@ -1766,6 +1766,9 @@ async function runJob(j) {
         const retry=await invokeRouted(retryPrompt,j.capability,j.id,1,{
           taskKind:j.kind||'ai',profile:j.routing_profile||'AUTO',reviewerResourceIds,
           preferredEmployeeId:originalResource.id,employeeAllowlist:[originalResource.id],
+          // Fail closed before any inference: same employee is insufficient when it has multiple models.
+          excludedResourceIds:resources.filter(resource=>resource.resourceId!==originalResource.resourceId)
+            .map(resource=>resource.resourceId),
         });
         // The correction cannot transfer independent-review authority to a different identity.
         if(retry.resource.resourceId!==originalResource.resourceId){
