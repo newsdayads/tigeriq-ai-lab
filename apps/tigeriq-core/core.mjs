@@ -45,6 +45,7 @@ import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOU
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
+import {ensureGithubScopeLeases} from './github-scope-lease.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -3238,6 +3239,7 @@ async function loop(){
 }
 await initDb();
 await ensureSharedResourceLeaseTable(pool);
+await ensureGithubScopeLeases(pool);
 await recoverExpiredSharedResourceLeases(pool);
 await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
