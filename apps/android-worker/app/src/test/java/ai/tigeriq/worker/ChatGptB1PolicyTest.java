@@ -728,9 +728,13 @@ public final class ChatGptB1PolicyTest {
             body.contains("isCoreSendClaimStillCurrent(")
                 && body.indexOf("isCoreSendClaimStillCurrent(")
                     < body.indexOf("boolean clicked = send.performAction("));
-        assertTrue("Manual B1 run keeps its existing independent path",
-            guards.contains("ChatGptB1RunStore.fail(service, code);")
-                && guards.contains("ChatGptB1RunStore.markVerifying(service);"));
+        assertTrue("Manual B1 failure is fenced to its observed unleased run",
+            guards.contains("ChatGptB1RunStore.failManualIfCurrent(")
+                && guards.contains("snapshot.startedAt"));
+        assertFalse("Stale manual UI failure must not fail a successor Core lease",
+            guards.contains("ChatGptB1RunStore.fail(service, code);"));
+        assertTrue("Manual B1 verifying still follows its independent path",
+            guards.contains("ChatGptB1RunStore.markVerifying(service);"));
         String store = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
                 "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
