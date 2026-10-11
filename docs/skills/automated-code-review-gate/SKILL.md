@@ -20,7 +20,7 @@ Pre-merge source review where an independent assessment materially reduces corre
 2. Ensure independent reviewer when required; never approve one's own implementation.
 3. Assess separate axes: **SPEC** (acceptance met by actual changes) and **STANDARDS** (repository correctness, safety and conventions). Distinguish blocking defects from optional style advice.
 4. Map each material completion claim to evidence on the same revision. For UI: screenshots show appearance, not interaction/persistence; require relevant assertions, traces or durable outcome receipts. For non-UI: do not demand screenshots.
-5. Validate allowlisted scope, checks, evidence freshness and untested cases. Return PASS, CHANGES_REQUIRED or BLOCKED with exact axis, criterion and proof.
+5. Validate allowlisted scope, checks, evidence freshness and untested cases. For a Core machine-readable review, output only `REVIEW=PASS` or `REVIEW=CHANGES_REQUIRED` with exact axis, criterion and proof; the Core parser rejects `REVIEW=BLOCKED`. Record `BLOCKED` separately as the Work Order/dispatch status if no eligible reviewer or required evidence is accessible; do not fabricate a completed review.
 6. Re-review on head change; source-level checks never imply successful live release.
 
 ## Tools / Output
@@ -39,7 +39,7 @@ Existing GitHub diff/check/review only; durable target head, SPEC/STANDARDS find
 - Evidence separation: `msitarzewski/agency-agents/testing/testing-evidence-collector.md` and `testing/testing-reality-checker.md` @ `f99f6aa910a442b0197b768ce0ea7751e35e2060` (MIT). External agent profiles not installed; see learning log 2026-10-08.
 
 ## Fallback
-Missing exact head, test proof or eligible independent reviewer => BLOCKED on the precise step, not fictitious PASS; other safe work may continue.
+Missing exact head, test proof or eligible independent reviewer => park the Work Order as BLOCKED; do not emit `REVIEW=BLOCKED` to the Core review parser and do not fabricate PASS. When an eligible reviewer can inspect the evidence but acceptance is not met, return `REVIEW=CHANGES_REQUIRED` with concrete findings. Other safe work may continue.
 
 ## Safety
 No self-review, direct main mutation, automatic release, Codex, RDC, credentials, security change, paid/destructive action or App Chrome mutation.
