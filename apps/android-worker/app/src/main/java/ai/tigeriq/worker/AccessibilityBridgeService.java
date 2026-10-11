@@ -127,7 +127,10 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                     this, run.runId, run.taskId, run.cycle, "CHATGPT_NATIVE_APP_NOT_FOUND"
                 );
             } else {
-                ChatGptB1RunStore.fail(this, "CHATGPT_NATIVE_APP_NOT_FOUND");
+                ChatGptB1RunStore.failManualIfCurrent(
+                    this, run.runId, run.cycle, run.startedAt,
+                    "CHATGPT_NATIVE_APP_NOT_FOUND"
+                );
             }
             return;
         }
@@ -136,7 +139,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (coreTask && !ChatGptB1RunStore.markCoreRecoveryIfCurrent(
             this, run.runId, run.taskId, run.cycle, MAX_B1_RECOVERIES
         )) return;
-        if (!coreTask) ChatGptB1RunStore.markRecovery(this);
+        if (!coreTask && !ChatGptB1RunStore.markManualRecoveryIfCurrent(
+            this, run.runId, run.cycle, run.startedAt, MAX_B1_RECOVERIES
+        )) return;
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(launch);
     };
