@@ -263,6 +263,8 @@ export async function recoverExpiredSharedResourceLeases(db){
       throw error;
     }finally{client.release();}
   }
+  const orphanedProbes=await recoverOrphanedCoreProbeOccupancies(db);
+  for(const probe of orphanedProbes)console.info(JSON.stringify({event:'CORE_ORPHANED_PROBE_RECOVERED',employeeId:probe.employeeId,resourceId:probe.resourceId,workId:probe.workId}));
   return recovered;
 }
 
