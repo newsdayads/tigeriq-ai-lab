@@ -209,7 +209,9 @@ test('a parked objective clears exhausted manager cycle budget without losing it
   const fence="manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz";
   assert.ok(core.includes(fence));
   assert.ok(core.includes("'{managerAwaitingAcceptanceRevision}'"));
-  assert.ok(core.includes("manager_cycles=manager_cycles+1,summary=$2,next_check_at=now()+interval '1 minute'"));
+  assert.ok(core.includes("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1"));
+  assert.ok(core.includes("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1"));
+  assert.ok(!core.includes("manager_cycles=manager_cycles+1,summary=$2,next_check_at=now()+interval '1 minute'"));
   assert.deepEqual(managerAcceptanceWakePlan({
     awaitingRevision:'rev4569',sourceRevision:'rev4569',acceptanceAllowed:false,
   }),{wake:false,reason:'awaiting_evidence'});
