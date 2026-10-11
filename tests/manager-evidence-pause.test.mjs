@@ -204,6 +204,32 @@ test('Core and GitHub intake wire evidence parking and atomic active-only wakeup
   assert.match(intake,/OBJECTIVE_COMPLETION_EVIDENCE_RESUMED/);
 });
 
+test('stale Manager model results never rearm a parked, blocked or revised GitHub objective',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  // A model request is asynchronous. The durable SQL compare-and-set is the
+  // authoritative gate, not an earlier non-atomic SELECT or stale JS snapshot.
+  const attempts=[
+    ['const retryCommitted=await pool.query(', 'if(retryCommitted.rowCount!==1)return;'],
+    ['const exhaustedCommitted=await pool.query(', 'if(exhaustedCommitted.rowCount!==1)return;'],
+    ['const decisionCommitted=await pool.query(', 'if(decisionCommitted.rowCount!==1)return;'],
+  ];
+  for(const [start,guard] of attempts){
+    const first=core.indexOf(start);
+    const last=core.indexOf(guard,first);
+    assert.ok(first>=0&&last>first,`Missing async decision fence ${start}`);
+    const write=core.slice(first,last);
+    assert.ok(write.includes("status='active'"),'Do not update a blocked/completed objective');
+    assert.ok(write.includes("coalesce(metadata->>'managerAwaitingAcceptanceRevision','')=''"),
+      'Do not wake an evidence-parked objective');
+    assert.ok(write.includes("(metadata->>'sourceRevision') is not distinct from"),
+      'Do not use stale model output after the GitHub source changes');
+    assert.ok(write.includes('o.metadata?.sourceRevision??null'),
+      'Use the revision captured before awaiting the model');
+    assert.ok(write.includes('rowCount')===false,
+      'Check write success immediately after the guarded SQL rather than assuming success');
+  }
+});
+
 test('a parked objective clears exhausted manager cycle budget without losing its acceptance fence',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   const fence="manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz";
