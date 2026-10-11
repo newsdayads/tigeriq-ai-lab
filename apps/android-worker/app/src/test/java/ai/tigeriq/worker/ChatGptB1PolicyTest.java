@@ -448,6 +448,57 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void coreRecoveryRejectsStaleLeaseTerminalAndExhaustedBudget() {
+        assertTrue("Only a current active Core run may reserve one recovery",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_PROJECT", 0, 2
+            ));
+        assertTrue(ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+            "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+            "WAITING_AI", 1, 2
+        ));
+        assertFalse("Old run cannot launch a new run",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-B", "TASK-A", 1,
+                "WAITING_PROJECT", 0, 2
+            ));
+        assertFalse("Old task cannot count against successor",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-B", 1,
+                "WAITING_PROJECT", 0, 2
+            ));
+        assertFalse("Old cycle cannot count against successor",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 2,
+                "WAITING_AI", 0, 2
+            ));
+        assertFalse("Completed lease cannot be relaunched",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "COMPLETE", 0, 2
+            ));
+        assertFalse("Cancelled lease cannot be relaunched",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "CANCELLED", 0, 2
+            ));
+        assertFalse("Do not exceed the recovery budget",
+            ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_AI", 2, 2
+            ));
+        assertFalse(ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+            "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_AI", -1, 2
+            ));
+        assertFalse(ChatGptB1Policy.canClaimCoreRecoveryForSnapshot(
+            "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_AI", 0, 0
+            ));
+    }
+
+    @Test
     public void delayedCoreRecoveryCannotResetForeverOrMutateSuccessor() throws Exception {
         String bridge = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
