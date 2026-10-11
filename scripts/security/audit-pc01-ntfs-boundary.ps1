@@ -69,7 +69,7 @@ try {
     throw 'INVALID_TARGET_COUNT'
   }
   $root = [System.IO.Path]::GetFullPath($RootPath).TrimEnd('\')
-  if ($root -match '^[A-Za-z]:$') { $root += '\\' }
+  if ($root -match '^[A-Za-z]:$') { $root += '\' }
   if ([string]::IsNullOrWhiteSpace($root)) { throw 'INVALID_ROOT' }
   if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw 'ROOT_NOT_DIRECTORY' }
 
