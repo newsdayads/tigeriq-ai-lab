@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGithubScopeWorkerApi,validateGithubWorkerIssue} from './github-scope-worker-api.mjs';
 const canary={number:4653,state:'open',title:'[P5][NV03] Canary',
-  body:'TIGERIQ_EXECUTABLE=true\nAUTO_QUEUE=INCLUDED\nPRIORITY=P5\nCAPABILITY=review\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_GITHUB_CLAIM_ACCEPTANCE_20261010'};
+  body:'TIGERIQ_EXECUTABLE=true\nAUTO_QUEUE=INCLUDED\nPRIORITY=P5\nCAPABILITY=review\nTARGET_EMPLOYEE=NV03\nRESOURCE_SCOPE=NV03_GITHUB_CLAIM_ACCEPTANCE_20261010\nOWNER_POLICY=AUTO\nNO_DIRECT_MAIN=true\nNO_PAID_COST=true\nNO_CREDENTIAL_CHANGE=true\nNO_SECURITY_BOUNDARY_CHANGE=true\nNO_DESTRUCTIVE=true\nNO_PRODUCTION_RELEASE=true'};
 const scope='NV03_GITHUB_CLAIM_ACCEPTANCE_20261010',session='NV03-SESSION-CANARY-20261011';
 const secret='S'.repeat(48),secret2='K'.repeat(48);
 const db={query:async()=>({}),connect:async()=>({})};
@@ -60,6 +60,7 @@ test('rejects requests from nonloopback hosts, incorrect token and wrong session
 test('rejects P0, owner hold and unauthorized NV03 review',()=>{
   assert.throws(()=>validateGithubWorkerIssue({...canary,title:'[P0] Forbidden'},'NV03',scope),/P0_OR_PRIORITY_UNVERIFIED/);
   assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body+'\nOWNER_HOLD=true'},'NV03',scope),/OWNER_OR_SECURITY_HOLD/);
+  assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body.replace('NO_PRODUCTION_RELEASE=true','')},'NV03',scope),/ISSUE_HARD_GATE_MISSING/);
   assert.throws(()=>validateGithubWorkerIssue({...canary,body:canary.body.replace('TARGET_EMPLOYEE=NV03','TARGET_EMPLOYEE=NV04')},'NV03',scope),/TARGET_DENIED/);
 });
 test('authenticated claim yields one winner; foreign release fails and real owner can release',async()=>{
