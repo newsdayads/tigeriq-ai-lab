@@ -117,7 +117,8 @@ describe('Task Prompt Compiler V1',()=>{
     expect(stop).toBeGreaterThan(start);
     expect(router).toMatch(/options\.validateText\(text\).*?markResourceSuccess/s);
     expect(source).toContain('const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;');
-    expect(source).toContain('employeeAllowlist,validateText}');
+    expect(source).toContain('employeeAllowlist,validateText,compiledPacket}');
+    expect(source.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);
   });
 
 });
