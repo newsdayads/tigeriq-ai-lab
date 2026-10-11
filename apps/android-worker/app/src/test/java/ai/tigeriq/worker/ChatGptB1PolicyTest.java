@@ -499,6 +499,38 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void delayedManualRecoveryCannotAlterReplacementCoreTask() throws Exception {
+        String bridge = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int begin = bridge.indexOf("private final Runnable recoveryRunnable");
+        int end = bridge.indexOf("@Override", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String runner = bridge.substring(begin, end);
+        assertTrue("Old manual recovery cannot unconditionally fail a new Core run",
+            runner.contains("failManualIfCurrent("));
+        assertTrue("Old manual recovery cannot increment a new Core run's budget",
+            runner.contains("markManualRecoveryIfCurrent("));
+        assertFalse("Recovery callback must not use unscoped manual failure",
+            runner.contains("ChatGptB1RunStore.fail(this,"));
+        assertFalse("Recovery callback must not use unscoped recovery increment",
+            runner.contains("ChatGptB1RunStore.markRecovery(this)"));
+
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        assertTrue("Both manual recovery transitions serialize with startTask",
+            store.contains("public static synchronized boolean failManualIfCurrent(")
+                && store.contains("public static synchronized boolean markManualRecoveryIfCurrent("));
+        assertTrue("Pinned manual transitions must verify durable run identity",
+            store.contains("canMutateObservedManualRun("));
+    }
+
+    @Test
     public void exhaustedCoreRecoveryRejectsOtherRunTerminalAndEarlyBudget() {
         assertTrue("Active same-lease Core task must reach terminal evidence",
             ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
