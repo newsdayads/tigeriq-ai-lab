@@ -64,6 +64,8 @@ test('work cards show evidence progress or an explicit non-quantified indicator 
   await page.setViewportSize({width:390,height:844});await openLive(page);
   const verified=page.locator('.work-row').filter({hasText:'#111'}).first();
   await expect(verified.locator('.progress-text')).toHaveText('70%');
+  // One-focus default intentionally hides the second card until BACKLOG is opened.
+  await page.locator('[data-filter="backlog"]').click();
   const review=page.locator('.work-row').filter({hasText:'#112'}).first();
   await expect(review.locator('.progress-text')).toHaveText('Chưa đủ dữ liệu để tính %');
   await expect(review.locator('.work-quick')).toContainText('Kiểm tra toàn bộ dữ liệu hiện hành trên mobile dọc và mobile ngang trước khi đóng công việc');
