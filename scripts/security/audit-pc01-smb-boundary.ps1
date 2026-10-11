@@ -72,6 +72,7 @@ try {
   $overlapping = 0
   $special = 0
   $unknown = 0
+  $unresolvedSharePaths = 0
   $counter = 0
   foreach ($share in $allShares) {
     # Ignore non-filesystem, nonlocal paths: they cannot be proven to
@@ -79,6 +80,15 @@ try {
     $rawSharePath = [string]$share.Path
     if ($rawSharePath -notmatch '^[A-Za-z]:\\') { continue }
     $sharePath = Normalize-LocalPath -Value $rawSharePath
+    # A share outside RootPath may alias into it via a junction/symlink.
+    # Check every share path and its ancestors BEFORE lexical overlap filtering.
+    # Unresolvable paths remain INCONCLUSIVE, never a false safe result.
+    try {
+      Assert-NoRootReparse -Path $sharePath
+    } catch {
+      $unresolvedSharePaths++
+      continue
+    }
     if (-not (Test-PathScopeOverlap -Root $root -SharePath $sharePath)) { continue }
     $overlapping++
     if ([bool]$share.Special) { $special++; continue }
@@ -110,9 +120,10 @@ try {
     }
   }
   $risk = ($findings.Count -gt 0)
-  $status = if ($risk) { 'BROAD_SMB_WRITE_GRANT' } elseif ($unknown -gt 0) {
-    'INCONCLUSIVE_UNMAPPED_SHARE_ACCOUNT'
-  } else { 'NO_BROAD_NON_SPECIAL_SHARE_WRITE_GRANT' }
+  $status = if ($risk) { 'BROAD_SMB_WRITE_GRANT' } elseif ($unresolvedSharePaths -gt 0) {
+    'INCONCLUSIVE_SHARE_PATH'
+  } elseif ($unknown -gt 0) { 'INCONCLUSIVE_UNMAPPED_SHARE_ACCOUNT' }
+  else { 'NO_BROAD_NON_SPECIAL_SHARE_WRITE_GRANT' }
   [pscustomobject]@{
     schema = 'TIGERIQ_SMB_BOUNDARY_AUDIT_V1'
     mode = 'READ_ONLY'
@@ -123,13 +134,14 @@ try {
     non_special_scopes_checked = $counter
     broad_write_share_count = $findings.Count
     unmapped_write_principal_count = $unknown
+    unresolved_share_path_count = $unresolvedSharePaths
     findings = $findings
     mutation_performed = $false
     effective_access_verified = $false
     remote_reachability_verified = $false
   } | ConvertTo-Json -Depth 5
   if ($risk) { exit 2 }
-  if ($unknown -gt 0) { exit 3 }
+  if ($unresolvedSharePaths -gt 0 -or $unknown -gt 0) { exit 3 }
   exit 0
 } catch {
   [pscustomobject]@{
