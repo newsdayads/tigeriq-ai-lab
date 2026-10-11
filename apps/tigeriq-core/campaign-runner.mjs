@@ -1,3 +1,5 @@
+import { executionPacketFromPrompt, executionResultGate } from './task-prompt-compiler.mjs';
+
 export function normalizeCampaignPhases(input) {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error('CAMPAIGN_PHASES_INVALID');
@@ -184,4 +186,34 @@ export function executeCoreWorkItemLifecycle({ workItem, preflightFn, repairFn, 
     repairCycles: currentCycle,
     item: { ...item, stage: 'failed', blocker: 'Lifecycle execution terminated' }
   };
+}
+
+/**
+ * Re-check durable worker output against the original compiled packet and
+ * one exact phase acceptance. A DONE flag or Manager summary is not evidence.
+ */
+export function verifyCampaignPhaseReceipt(job,{objectiveId,phaseIndex,acceptance}={}){
+  if(!job||job.status!=='done')return {accepted:false,code:'PROOF_JOB_NOT_DONE'};
+  if(job.kind!=='compiled_campaign'||job.id!==campaignEvidenceJobId(objectiveId,phaseIndex))
+    return {accepted:false,code:'PROOF_JOB_ID_OR_KIND_MISMATCH'};
+  if(job.objective_id!==objectiveId||Number(job.phase_index)!==Number(phaseIndex))
+    return {accepted:false,code:'PROOF_PHASE_OR_OBJECTIVE_MISMATCH'};
+  if(!job.employee_id||!job.resource_id||!job.provider||!job.completed_at)
+    return {accepted:false,code:'PROOF_WORKER_RECEIPT_INCOMPLETE'};
+  try{
+    const packet=executionPacketFromPrompt(job.prompt);
+    const expected=String(acceptance||'').trim();
+    if(!expected||packet.objective_id!==objectiveId||packet.task_id!==job.id||
+       packet.acceptance.length!==1||packet.acceptance[0]!==expected)
+      return {accepted:false,code:'PROOF_PACKET_ACCEPTANCE_MISMATCH'};
+    const value=typeof job.result==='string'?JSON.parse(job.result):job.result;
+    if(typeof value?.text!=='string'||!value.text.trim())
+      return {accepted:false,code:'PROOF_RESULT_MISSING'};
+    const gate=executionResultGate(value.text,packet);
+    if(!gate.pass||value?.executionGate?.pass!==true||value?.executionGate?.code!=='EXECUTION_ACCEPTED')
+      return {accepted:false,code:'PROOF_DETERMINISTIC_GATE_FAILED'};
+    return {accepted:true,code:'EXECUTION_ACCEPTED',jobId:job.id};
+  }catch{
+    return {accepted:false,code:'PROOF_PACKET_OR_RESULT_INVALID'};
+  }
 }
