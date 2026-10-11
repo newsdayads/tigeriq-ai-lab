@@ -220,7 +220,11 @@ public final class ChatGptB1Automation {
                 service, snapshot.runId, snapshot.taskId, snapshot.cycle, code
             );
         } else {
-            ChatGptB1RunStore.fail(service, code);
+            // A delayed manual B1 UI failure must not terminate a replacement
+            // Core lease or a newer manual cycle.
+            ChatGptB1RunStore.failManualIfCurrent(
+                service, snapshot.runId, snapshot.cycle, snapshot.startedAt, code
+            );
         }
     }
 
