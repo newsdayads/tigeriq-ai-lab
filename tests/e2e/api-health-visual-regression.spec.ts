@@ -45,6 +45,22 @@ async function openFixture(page:Page,stale=false){
  await expect(page.locator('.work-row')).toHaveCount(3);
 }
 
+// The dashboard replaces employee cards on live-status refresh. A transient
+// detach during pixel capture is not a visual regression: reacquire the
+// locator and restore the requested hover state before retrying.
+async function workerCardSnapshot(page:Page,hover=false){
+ for(let attempt=0;attempt<5;attempt++){
+  const card=page.locator('.employee-card.state-ready').first();
+  await expect(card).toBeVisible();
+  if(hover)await card.hover();
+  try{return await card.screenshot({animations:'disabled',timeout:3000});}
+  catch(error){
+   if(attempt===4||!String(error).includes('Element is not attached'))throw error;
+  }
+ }
+ throw new Error('EMPLOYEE_CARD_SCREENSHOT_UNAVAILABLE');
+}
+
 for(const width of [390,1024,1648]){
  test('API Health visual contract: cards, hover, modal at '+width+'px',async({page},testInfo)=>{
   await page.setViewportSize({width,height:900});
@@ -59,9 +75,9 @@ for(const width of [390,1024,1648]){
   await page.locator('.filter[data-filter=all]').click();
   const employee=page.locator('.employee-card.state-ready').first();
   await expect(employee).toBeVisible();
-  const normal=await employee.screenshot({animations:'disabled'});
+  const normal=await workerCardSnapshot(page);
   await employee.hover();
-  const hover=await employee.screenshot({animations:'disabled'});
+  const hover=await workerCardSnapshot(page,true);
   expect(hover.equals(normal),'Hover must visibly tint the status card').toBe(false);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
