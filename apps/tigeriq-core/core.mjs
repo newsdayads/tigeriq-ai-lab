@@ -2900,8 +2900,12 @@ async function collectSelfAuditSnapshot(store=pool){
     watchdogStateFresh:bootstrapState?bootstrapFresh:null,
     watchdogUpdaterRowPresent:Boolean(updaterService),
     watchdogUpdaterRowHealthy:updaterService?updaterService.healthy===true:null,
+    updaterTaskRunning:updaterService&&typeof updaterService.taskRunning==='boolean'?updaterService.taskRunning:null,
+    updaterHeartbeatFresh:updaterService&&typeof updaterService.heartbeatFresh==='boolean'?updaterService.heartbeatFresh:null,
     updaterResultFailed:updaterFailed,
-    updaterHeartbeatAgeSec:Number.isFinite(updaterStampMs)?Math.max(0,Math.floor((now-updaterStampMs)/1000)):null,
+    // Updater state write age and watchdog task heartbeat age are different clocks.
+    updaterStateAgeSec:Number.isFinite(updaterStampMs)?Math.max(0,Math.floor((now-updaterStampMs)/1000)):null,
+    updaterTaskHeartbeatAgeSec:updaterService&&typeof updaterService.heartbeatAgeSec==='number'?updaterService.heartbeatAgeSec:null,
   };
 
   return {
