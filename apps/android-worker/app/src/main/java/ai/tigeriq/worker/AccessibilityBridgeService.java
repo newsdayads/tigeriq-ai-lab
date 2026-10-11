@@ -32,6 +32,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     public static final String KEY_PROJECT_GATE_MODE = "projectGateMode";
     public static final String KEY_PROJECT_GATE_AT = "projectGateAt";
     public static final String KEY_AUTO_PROJECT_CLICK_AT = "autoProjectClickAt";
+    public static final String KEY_AUTO_PROJECT_CLICK_RUN_ID = "autoProjectClickRunId";
+    public static final String KEY_AUTO_PROJECT_CLICK_TASK_ID = "autoProjectClickTaskId";
+    public static final String KEY_AUTO_PROJECT_CLICK_CYCLE = "autoProjectClickCycle";
     public static final String KEY_AUTO_PROJECT_CLICK_COUNT = "autoProjectClickCount";
     public static final String KEY_STANDALONE_NEW_CHAT_AT = "standaloneNewChatAt";
 
@@ -40,13 +43,20 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private static final String GEMINI_PACKAGE = "com.google.android.apps.bard";
     private static final String GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox";
     private static final int MAX_B1_RECOVERIES = 2;
-    private static final int PROJECT_STABLE_MIN_SAMPLES = 3;
-    private static final long PROJECT_STABLE_MIN_MS = 1200L;
     private static final long INACTIVE_TICK_MS = 2000L;
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private boolean b1TickScheduled = false;
+    // Handler runs on the main looper. Keep the 2.5s timer armed across 750ms ticks.
+    private boolean recoveryPending = false;
+    private String recoveryScheduledRunId = "";
+    private String recoveryScheduledTaskId = "";
+    private int recoveryScheduledCycle = 0;
+    private long recoveryScheduledStartedAt = 0L;
     private int projectContextSamples = 0;
     private long projectContextFirstSeenAt = 0L;
+    private String projectContextCandidateRunId = "";
+    private String projectContextCandidateTaskId = "";
+    private int projectContextCandidateCycle = 0;
     private long projectNavigationNextActionAt = 0L;
 
     private final Runnable b1TickRunnable = new Runnable() {
@@ -54,6 +64,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         public void run() {
             if (WorkerRuntimeControl.isPaused(AccessibilityBridgeService.this)) {
                 recoveryHandler.removeCallbacks(recoveryRunnable);
+                recoveryPending = false;
                 recoveryHandler.postDelayed(this, INACTIVE_TICK_MS);
                 return;
             }
@@ -65,6 +76,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             AccessibilityNodeInfo current = getRootInActiveWindow();
             CharSequence pkg = current == null ? null : current.getPackageName();
             if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) {
+                recoveryHandler.removeCallbacks(recoveryRunnable);
+                recoveryPending = false;
                 driveProjectNavigationIfNeeded(current);
                 maybeBindProjectFromStableContext(current);
                 maybeActivateStandaloneFallback(current);
@@ -77,19 +90,77 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     };
 
     private final Runnable recoveryRunnable = () -> {
+        recoveryPending = false;
+        if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        if (!run.active()) return;
+        // A delayed callback may belong to an earlier lease or a restarted
+        // run with reused IDs. Never recover a successor from old UI evidence.
+        if (!ChatGptB1Policy.isSameProjectContextCandidate(
+            recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+            run.runId, run.taskId, run.cycle
+        ) || recoveryScheduledStartedAt != run.startedAt) return;
         AccessibilityNodeInfo current = getRootInActiveWindow();
         CharSequence pkg = current == null ? null : current.getPackageName();
         if (pkg != null && CHATGPT_PACKAGE.equals(pkg.toString())) return;
-        Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
-        if (launch == null) {
-            ChatGptB1RunStore.fail(this, "CHATGPT_NATIVE_APP_NOT_FOUND");
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        // Allow one full 2.5s grace period after the final launch attempt.
+        // With no foreground ChatGPT at that point, fail only the original
+        // Core task, preserving terminal evidence instead of waiting forever.
+        if (run.recoveryCount >= MAX_B1_RECOVERIES) {
+            if (coreTask && ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+                run.runId, run.taskId, run.cycle, run.state,
+                run.recoveryCount, MAX_B1_RECOVERIES
+            )) {
+                ChatGptB1RunStore.failCoreIfCurrent(
+                    this, run.runId, run.taskId, run.cycle,
+                    "CHATGPT_RECOVERY_EXHAUSTED"
+                );
+            }
             return;
         }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        ChatGptB1RunStore.markRecovery(this);
-        startActivity(launch);
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
+            if (launch == null) {
+                if (coreTask) {
+                    ChatGptB1RunStore.failCoreIfCurrent(
+                        this, run.runId, run.taskId, run.cycle, "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    );
+                } else {
+                    ChatGptB1RunStore.failManualIfCurrent(
+                        this, run.runId, run.cycle, run.startedAt,
+                        "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    );
+                }
+                return;
+            }
+            // Reserve recovery durably before the native activity launch.
+            // Never let an outdated callback launch against its successor.
+            if (coreTask && !ChatGptB1RunStore.markCoreRecoveryIfCurrent(
+                this, run.runId, run.taskId, run.cycle, MAX_B1_RECOVERIES
+            )) return;
+            if (!coreTask && !ChatGptB1RunStore.markManualRecoveryIfCurrent(
+                this, run.runId, run.cycle, run.startedAt, MAX_B1_RECOVERIES
+            )) return;
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(launch);
+        } catch (RuntimeException launchError) {
+            // PackageManager and Android background-activity policy can fail
+            // even with a valid intent. Keep the service alive and record a
+            // constant bounded error without exposing platform diagnostics.
+            if (coreTask) {
+                ChatGptB1RunStore.failCoreIfCurrent(
+                    this, run.runId, run.taskId, run.cycle,
+                    "CHATGPT_NATIVE_LAUNCH_FAILED"
+                );
+            } else {
+                ChatGptB1RunStore.failManualIfCurrent(
+                    this, run.runId, run.cycle, run.startedAt,
+                    "CHATGPT_NATIVE_LAUNCH_FAILED"
+                );
+            }
+        }
     };
 
     @Override
@@ -131,6 +202,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
 
         if (CHATGPT_PACKAGE.equals(value)) {
             recoveryHandler.removeCallbacks(recoveryRunnable);
+            recoveryPending = false;
             maybeBindRequiredProject(event, root);
             driveProjectNavigationIfNeeded(root);
             maybeBindProjectFromStableContext(root);
@@ -194,7 +266,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; lineage=" + compactDiag(ChatGptB1Automation.describeNodeLineage(source, 5))
         );
 
-        if (shouldBind) ChatGptB1RunStore.markProjectBound(this);
+        // A click proves only the navigation attempt. It must NEVER set
+        // projectBound=true before the stable Project-title + composer gate passes.
     }
 
     private void driveProjectNavigationIfNeeded(AccessibilityNodeInfo root) {
@@ -211,10 +284,25 @@ public final class AccessibilityBridgeService extends AccessibilityService {
         if (project != null) {
             boolean clicked = project.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             if (clicked) {
+                // The UI action could race with a Core lease replacement. Do
+                // not write navigation proof for a successor run from this
+                // callback's stale snapshot. Record the click's own identity.
+                boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+                if (coreTask) {
+                    ChatGptB1RunStore.Snapshot live = ChatGptB1RunStore.read(this);
+                    if (!ChatGptB1Policy.canBindObservedCoreProject(
+                        run.runId, run.taskId, run.cycle,
+                        live.runId, live.taskId, live.cycle,
+                        live.state, live.projectBound
+                    )) return;
+                }
                 android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 int count = prefs.getInt(KEY_AUTO_PROJECT_CLICK_COUNT, 0) + 1;
                 prefs.edit()
-                    .putLong(KEY_AUTO_PROJECT_CLICK_AT, now)
+                    .putLong(KEY_AUTO_PROJECT_CLICK_AT, System.currentTimeMillis())
+                    .putString(KEY_AUTO_PROJECT_CLICK_RUN_ID, run.runId)
+                    .putString(KEY_AUTO_PROJECT_CLICK_TASK_ID, run.taskId)
+                    .putInt(KEY_AUTO_PROJECT_CLICK_CYCLE, run.cycle)
                     .putInt(KEY_AUTO_PROJECT_CLICK_COUNT, count)
                     .apply();
                 writeProjectDiag(
@@ -258,10 +346,27 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 3
             );
         boolean composerReady = root != null && ChatGptB1Automation.findComposerInput(root) != null;
-        long autoProjectClickAt = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
-        boolean autoNavigationProof = autoProjectClickAt >= run.startedAt && autoProjectClickAt > 0L;
-        boolean contextProof = projectTitleContext || autoNavigationProof;
+        android.content.SharedPreferences navigationPrefs = getSharedPreferences(
+            PREFS, Context.MODE_PRIVATE
+        );
+        long autoProjectClickAt = navigationPrefs.getLong(KEY_AUTO_PROJECT_CLICK_AT, 0L);
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        boolean autoNavigationProof = coreTask
+            ? ChatGptB1Policy.isCoreProjectClickProofForRun(
+                run.runId, run.taskId, run.cycle, run.startedAt,
+                navigationPrefs.getString(KEY_AUTO_PROJECT_CLICK_RUN_ID, ""),
+                navigationPrefs.getString(KEY_AUTO_PROJECT_CLICK_TASK_ID, ""),
+                navigationPrefs.getInt(KEY_AUTO_PROJECT_CLICK_CYCLE, 0),
+                autoProjectClickAt
+            )
+            : ChatGptB1Policy.projectClickObservedInRun(autoProjectClickAt, run.startedAt);
+        // Core tasks must have a Project navigation click from THIS run.
+        // A lookalike ordinary chat can have the same toolbar title. Manual B1
+        // retains its prior stable-title/composer-only binding behavior.
+        // This click is necessary, not sufficient: live title and composer
+        // still have to remain stable independently.
+        boolean contextProof = projectTitleContext
+            && (!coreTask || autoNavigationProof);
 
         if (!exactProject || !composerReady || !contextProof) {
             if (projectContextSamples > 0 || exactProject) {
@@ -278,8 +383,23 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             return;
         }
 
+        // Context samples are not transferable across newly leased Core tasks.
+        // Two distinct runs viewing the same header must earn independent
+        // stable-time and sample-count proofs before Project binding.
+        if (projectContextSamples > 0
+            && !ChatGptB1Policy.isSameProjectContextCandidate(
+                projectContextCandidateRunId, projectContextCandidateTaskId,
+                projectContextCandidateCycle, run.runId, run.taskId, run.cycle
+            )) {
+            resetProjectContextCandidate();
+        }
         long now = System.currentTimeMillis();
-        if (projectContextSamples == 0) projectContextFirstSeenAt = now;
+        if (projectContextSamples == 0) {
+            projectContextFirstSeenAt = now;
+            projectContextCandidateRunId = run.runId;
+            projectContextCandidateTaskId = run.taskId;
+            projectContextCandidateCycle = run.cycle;
+        }
         projectContextSamples += 1;
         long stableMs = Math.max(0L, now - projectContextFirstSeenAt);
 
@@ -290,15 +410,26 @@ public final class AccessibilityBridgeService extends AccessibilityService {
                 + "; stableMs=" + stableMs
         );
 
-        if (projectContextSamples >= PROJECT_STABLE_MIN_SAMPLES && stableMs >= PROJECT_STABLE_MIN_MS) {
+        if (ChatGptB1Policy.canBindStableProjectContextForTask(
+            run.taskId, exactProject, projectTitleContext, composerReady,
+            autoNavigationProof, projectContextSamples, stableMs
+        )) {
+            boolean bound;
+            if (coreTask) {
+                bound = ChatGptB1RunStore.markCoreProjectBoundIfCurrent(
+                    this, run.runId, run.taskId, run.cycle
+                );
+            } else {
+                ChatGptB1RunStore.markProjectBound(this);
+                bound = true;
+            }
             writeProjectDiag(
-                "STABLE_PROJECT_CONTEXT",
+                bound ? "STABLE_PROJECT_CONTEXT" : "STALE_PROJECT_CONTEXT_IGNORED",
                 "project=" + ChatGptB1RunStore.REQUIRED_PROJECT
                     + "; autoNav=" + autoNavigationProof
                     + "; samples=" + projectContextSamples
                     + "; stableMs=" + stableMs
             );
-            ChatGptB1RunStore.markProjectBound(this);
             resetProjectContextCandidate();
         }
     }
@@ -306,6 +437,8 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void maybeActivateStandaloneFallback(AccessibilityNodeInfo root) {
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
         if (!run.active() || run.projectBound || !"WAITING_PROJECT".equals(run.state) || root == null) return;
+        // Core tasks require the exact pinned Project. A standalone chat is not an accepted fallback.
+        if (!ChatGptB1Policy.canUseStandaloneFallbackForTask(run.taskId)) return;
         if (!ChatGptB1Policy.shouldUseStandaloneFallback(run.startedElapsedAt, SystemClock.elapsedRealtime())) return;
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -341,6 +474,9 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void resetProjectContextCandidate() {
         projectContextSamples = 0;
         projectContextFirstSeenAt = 0L;
+        projectContextCandidateRunId = "";
+        projectContextCandidateTaskId = "";
+        projectContextCandidateCycle = 0;
     }
 
     private void writeProjectDiag(String mode, String detail) {
@@ -366,8 +502,25 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     private void scheduleB1RecoveryIfNeeded() {
         if (WorkerRuntimeControl.isPaused(this)) return;
         ChatGptB1RunStore.Snapshot run = ChatGptB1RunStore.read(this);
-        if (!run.active() || run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        if (!run.active()) return;
+        boolean coreTask = run.taskId != null && !run.taskId.isEmpty();
+        // Keep the manual B1 limit unchanged. Core needs one extra delayed
+        // observation after its final launch attempt to report exhaustion.
+        if (!coreTask && run.recoveryCount >= MAX_B1_RECOVERIES) return;
+        // The 750ms ticker must NOT push a pending 2500ms recovery forever.
+        // Only replace the pending timer when the actual run identity changes.
+        if (recoveryPending
+            && recoveryScheduledStartedAt == run.startedAt
+            && ChatGptB1Policy.isSameProjectContextCandidate(
+                recoveryScheduledRunId, recoveryScheduledTaskId, recoveryScheduledCycle,
+                run.runId, run.taskId, run.cycle
+            )) return;
         recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryScheduledRunId = run.runId;
+        recoveryScheduledTaskId = run.taskId;
+        recoveryScheduledCycle = run.cycle;
+        recoveryScheduledStartedAt = run.startedAt;
+        recoveryPending = true;
         recoveryHandler.postDelayed(recoveryRunnable, 2500L);
     }
 
@@ -389,6 +542,7 @@ public final class AccessibilityBridgeService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         recoveryHandler.removeCallbacks(recoveryRunnable);
+        recoveryPending = false;
         recoveryHandler.removeCallbacks(b1TickRunnable);
         b1TickScheduled = false;
     }

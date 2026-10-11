@@ -35,7 +35,7 @@ public final class MobileTaskStore {
         String runId=required(task.optString("runId",""),"runId");
         String prompt=required(task.optString("prompt",""),"prompt");
         String expectedToken=required(task.optString("expectedToken",""),"expectedToken");
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+        boolean persisted=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
             .clear()
             .putString(K_TASK_ID,taskId)
             .putString(K_LEASE_ID,leaseId)
@@ -43,7 +43,8 @@ public final class MobileTaskStore {
             .putString(K_PROMPT,prompt)
             .putString(K_EXPECTED_TOKEN,expectedToken)
             .putBoolean(K_RESULT_REPORTED,false)
-            .apply();
+            .commit();
+        if (!persisted) throw new IllegalStateException("CORE_TASK_BIND_PERSIST_FAILED");
         return read(context);
     }
 
@@ -51,19 +52,26 @@ public final class MobileTaskStore {
         Snapshot current=read(context);
         String taskId=required(task.optString("taskId",""),"taskId");
         String runId=required(task.optString("runId",""),"runId");
-        if(!current.present()||!current.taskId.equals(taskId)||!current.runId.equals(runId)) {
+        String prompt=required(task.optString("prompt",""),"prompt");
+        String expectedToken=required(task.optString("expectedToken",""),"expectedToken");
+        // A renewed lease may change its leaseId, never the pinned task payload.
+        // Otherwise an old ChatGPT reply can be attributed to a different prompt.
+        if(!current.present()||!current.taskId.equals(taskId)||!current.runId.equals(runId)
+            ||!current.prompt.equals(prompt)||!current.expectedToken.equals(expectedToken)) {
             throw new IllegalStateException("mobile task rebind mismatch");
         }
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+        boolean persisted=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
             .putString(K_LEASE_ID,required(task.optString("leaseId",""),"leaseId"))
-            .apply();
+            .commit();
+        if (!persisted) throw new IllegalStateException("CORE_TASK_REBIND_PERSIST_FAILED");
         return read(context);
     }
 
     public static void markResultReported(Context context) {
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+        boolean persisted=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
             .putBoolean(K_RESULT_REPORTED,true)
-            .apply();
+            .commit();
+        if (!persisted) throw new IllegalStateException("CORE_TASK_REPORT_ACK_PERSIST_FAILED");
     }
 
     public static void clear(Context context) {
