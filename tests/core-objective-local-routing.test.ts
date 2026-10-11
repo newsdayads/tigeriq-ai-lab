@@ -15,9 +15,14 @@ describe('Core P2 objective LOCAL provider boundary',()=>{
   });
   it('requires verified objective metadata before local routing is enforced',()=>{
     expect(objectiveJobRoutingProfile({routingProfile:'LOCAL'})).toBe('LOCAL');
-    expect(objectiveJobRoutingProfile({routingProfile:'AUTO'})).toBeNull();
-    expect(objectiveJobRoutingProfile({})).toBeNull();
-    expect(objectiveJobRoutingProfile({routingProfile:'local'})).toBeNull();
+    expect(objectiveJobRoutingProfile({routingProfile:'AUTO'})).toBe('AUTO');
+    expect(objectiveJobRoutingProfile({})).toBe('AUTO');
+    expect(objectiveJobRoutingProfile({routingProfile:'local'})).toBe('AUTO');
+  });
+  it('retains non-null routing profiles on legacy AUTO and LOCAL campaign jobs',()=>{
+    expect(objectiveJobRoutingProfile(undefined)).toBe('AUTO');
+    expect(objectiveJobRoutingProfile({routingProfile:'LOCAL'})).toBe('LOCAL');
+    expect(objectiveJobRoutingProfile({routingProfile:'AUTO'})).toBe('AUTO');
   });
   it('carries LOCAL from API to both AI and campaign-evidence job records',()=>{
     expect(src).toContain('profile=normalizeObjectiveRoutingProfile(b.routingProfile)');
