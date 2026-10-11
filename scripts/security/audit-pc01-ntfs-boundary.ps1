@@ -63,8 +63,27 @@ function Get-BroadWriteAces {
   return $found
 }
 
+function Assert-NoReparseSegments {
+  param([Parameter(Mandatory=$true)][string]$Path)
+  # Reject junction/symlink traversal even when lexical GetFullPath stays
+  # under RootPath. Walk every existing ancestor, not only the final item.
+  $cursor = [System.IO.Path]::GetFullPath($Path)
+  for ($step=0; $step -lt 64; $step++) {
+    $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw 'REPARSE_PATH_NOT_ALLOWED'
+    }
+    $parent = [System.IO.Directory]::GetParent($cursor)
+    if ($null -eq $parent) { return }
+    if ([string]::Equals($parent.FullName, $cursor, [System.StringComparison]::OrdinalIgnoreCase)) { return }
+    $cursor = $parent.FullName
+  }
+  throw 'REPARSE_ANCESTOR_DEPTH_EXCEEDED'
+}
+
 function Get-ScopedAclRecord {
   param([string]$Path, [string]$Scope)
+  Assert-NoReparseSegments -Path $Path
   $a = Get-Acl -LiteralPath $Path -ErrorAction Stop
   $matches = @(Get-BroadWriteAces -Acl $a)
   return [pscustomobject]@{
@@ -129,7 +148,7 @@ try {
     status = 'AUDIT_ERROR'
     mutation_performed = $false
     authorization_e2e_verified = $false
-    error_code = $(if ($_.Exception.Message -match '^(ACL_IDENTITY_TRANSLATION_FAILED|INVALID_TARGET_COUNT|INVALID_ROOT|ROOT_NOT_DIRECTORY|EMPTY_TARGET|TARGET_OUTSIDE_ROOT|TARGET_NOT_FOUND)$') { $_.Exception.Message } else { 'UNCLASSIFIED_READ_ERROR' })
+    error_code = $(if ($_.Exception.Message -match '^(ACL_IDENTITY_TRANSLATION_FAILED|INVALID_TARGET_COUNT|INVALID_ROOT|ROOT_NOT_DIRECTORY|EMPTY_TARGET|TARGET_OUTSIDE_ROOT|TARGET_NOT_FOUND|REPARSE_PATH_NOT_ALLOWED|REPARSE_ANCESTOR_DEPTH_EXCEEDED)$') { $_.Exception.Message } else { 'UNCLASSIFIED_READ_ERROR' })
   } | ConvertTo-Json -Depth 3
   exit 3
 }
