@@ -1597,7 +1597,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       policyPatch.finalReviewImplementationFingerprint=null;
     }
     if(Object.keys(policyPatch).length){
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(policyPatch)]);
+      // Another intake worker can observe a newer GitHub revision while this
+      // scan is awaiting dependency checks. Never overwrite its newer state.
+      const policyWritten=await pool.query(
+        "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1 and status=$4 and (metadata->>'sourceRevision') is not distinct from $3::text",
+        [row.id,JSON.stringify(policyPatch),row.metadata?.sourceRevision??null,row.status],
+      );
+      if(policyWritten.rowCount!==1)continue;
       row.metadata={...row.metadata,...policyPatch};
     }
 
@@ -1661,7 +1667,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
               }
             }
           }
-          await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(livePatch)]);
+          // Reject a stale comment-page scan after another worker advanced
+          // source revision, comment cursor, or objective lifecycle state.
+          const evidenceWritten=await pool.query(
+            "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1 and status=$4 and (metadata->>'sourceRevision') is not distinct from $3::text and (metadata->>'liveAcceptanceCommentCount') is not distinct from $5::text",
+            [row.id,JSON.stringify(livePatch),row.metadata?.sourceRevision??null,row.status,row.metadata?.liveAcceptanceCommentCount==null?null:String(row.metadata.liveAcceptanceCommentCount)],
+          );
+          if(evidenceWritten.rowCount!==1)continue;
           row.metadata={...row.metadata,...livePatch};
         }
       }catch(error){
