@@ -82,6 +82,10 @@ export function validateNv02CanonicalDoneEvidence(record,issue,lease){
   const expected='https://github.com/newsdayads/tigeriq-ai-lab/issues/'+n+'#issuecomment-'+id;
   if(!Number.isSafeInteger(n)||n<=0||!Number.isSafeInteger(id)||id<=0||
      String(record?.html_url||'')!==expected)throw Error('NV02_DONE_CANONICAL_SOURCE_INVALID');
+  // GitHub metadata must come from the authenticated host's GitHub API readback.
+  // A matching marker/lease in text alone is never an authorship attestation.
+  if(String(record?.user?.login||'').toLowerCase()!=='newsdayads')
+    throw Error('NV02_DONE_PRODUCER_UNVERIFIED');
   const body=String(record?.body||'');
   if(!body.includes('[TIGERIQ_NV02_WORK_EVIDENCE_V1]'))throw Error('NV02_DONE_EVIDENCE_MARKER_MISSING');
   const fields=new Map();
@@ -98,12 +102,12 @@ export function validateNv02CanonicalDoneEvidence(record,issue,lease){
   const ref=String(fields.get('EVIDENCE_REF')||'');
   if(!/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/(pull|issues|commit)\//.test(ref))
     throw Error('NV02_DONE_EVIDENCE_REF_INVALID');
-  return{commentId:id,url:expected,evidenceRef:ref};
+  return{commentId:id,url:expected,evidenceRef:ref,sourceActor:'newsdayads'};
 }
 
 export async function releaseNv02WorkOrderAtomic({
   db,issue,lease,workerSessionId,verifySession,postComment,loadCanonicalTerminalEvidence,
-  terminal='BLOCKED',ops=defaultOps
+  verifyCanonicalAcceptance,terminal='BLOCKED',ops=defaultOps
 }={}){
   if(!db?.query||!issue||!lease?.claimed||typeof postComment!=='function')
     throw Error('NV02_RELEASE_INPUT_REQUIRED');
@@ -121,6 +125,25 @@ export async function releaseNv02WorkOrderAtomic({
       leaseId:lease.leaseId,workerId:'NV02',workerSessionId
     });
     doneEvidence=validateNv02CanonicalDoneEvidence(raw,issue,lease);
+    // Separately verify the REAL outcome target and that the authenticated
+    // session was the authorized evidence producer. This must be a trusted
+    // host-side verifier backed by canonical GitHub + session provenance,
+    // NEVER a model-provided evidenceVerified/accepted boolean or Issue field.
+    if(typeof verifyCanonicalAcceptance!=='function')
+      throw Error('NV02_DONE_TRUSTED_ACCEPTANCE_VERIFIER_REQUIRED');
+    const proof=await verifyCanonicalAcceptance({
+      canonicalComment:raw,commentId:doneEvidence.commentId,
+      evidenceRef:doneEvidence.evidenceRef,issueNumber:Number(issue.number),
+      resourceScope:lease.resourceScope,leaseId:lease.leaseId,
+      workerId:'NV02',workerSessionId,
+    });
+    if(proof?.authority!=='TRUSTED_HOST_GITHUB_AND_WORKER_SESSION'||
+       proof?.verdict!=='PASS'||proof?.commentId!==doneEvidence.commentId||
+       proof?.evidenceRef!==doneEvidence.evidenceRef||
+       proof?.issueNumber!==Number(issue.number)||
+       proof?.resourceScope!==lease.resourceScope||proof?.leaseId!==lease.leaseId||
+       proof?.workerId!=='NV02'||proof?.workerSessionId!==workerSessionId)
+      throw Error('NV02_DONE_SOURCE_ACCEPTANCE_UNVERIFIED');
   }
   if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(terminal))
     throw Error('NV02_TERMINAL_INVALID');
