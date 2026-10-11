@@ -943,6 +943,47 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void manualUiComposerAndSendRejectReplacedCoreLease() throws Exception {
+        String store = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+            "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+        )), java.nio.charset.StandardCharsets.UTF_8);
+        String adapter = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+            "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+        )), java.nio.charset.StandardCharsets.UTF_8);
+        for (String method : new String[] {
+            "isManualComposerMutationStillCurrent(",
+            "markManualSentExactlyOnceIfCurrent(",
+            "isManualSendClaimStillCurrent("
+        }) {
+            assertTrue("Manual guard must serialize against Core startTask: " + method,
+                store.contains("public static synchronized boolean " + method));
+            assertTrue("Manual adapter must use the guarded writer: " + method,
+                adapter.contains("ChatGptB1RunStore." + method));
+        }
+        String composer = store.substring(
+            store.indexOf("public static synchronized boolean isManualComposerMutationStillCurrent("),
+            store.indexOf("/** Revalidate after durable send claim")
+        );
+        assertTrue(composer.contains("canMutateObservedManualRun("));
+        assertTrue(composer.contains("observedPrompt.equals(prompt(live))"));
+        String claim = store.substring(
+            store.indexOf("public static synchronized boolean markManualSentExactlyOnceIfCurrent("),
+            store.indexOf("public static synchronized boolean markSentExactlyOnce(Context context)")
+        );
+        assertTrue(claim.contains("canMutateObservedManualRun("));
+        assertTrue(claim.contains("persistSendClaim(context, live)"));
+        int focus = adapter.indexOf("input.performAction(AccessibilityNodeInfo.ACTION_FOCUS)");
+        int setText = adapter.indexOf("boolean set = input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT");
+        int sendClaim = adapter.indexOf("markManualSentExactlyOnceIfCurrent(", setText);
+        int click = adapter.indexOf("boolean clicked = send.performAction(AccessibilityNodeInfo.ACTION_CLICK)");
+        assertTrue(adapter.lastIndexOf("isManualComposerMutationStillCurrent(", focus) > 0);
+        assertTrue(adapter.indexOf("isManualComposerMutationStillCurrent(", focus) > focus);
+        assertTrue(setText > focus && sendClaim > setText);
+        assertTrue(adapter.lastIndexOf("isManualSendClaimStillCurrent(", click) > sendClaim);
+        assertFalse(adapter.contains("ChatGptB1RunStore.markSentExactlyOnce(service);"));
+    }
+
+    @Test
     public void coreComposerSetTextRechecksCurrentLeaseAfterFocus() throws Exception {
         String store = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
@@ -1027,7 +1068,7 @@ public final class ChatGptB1PolicyTest {
         int inputReady = src.indexOf("if (!\"INPUT_READY\".equals(s.state)) return;");
         int exactGuard = src.indexOf("canSendCorePromptFromLiveComposer(", inputReady);
         int findSend = src.indexOf("findTrustedCoreSendControl(root, input)", exactGuard);
-        int sendClaim = src.indexOf("markSentExactlyOnce(service)", findSend);
+        int sendClaim = src.indexOf("markManualSentExactlyOnceIfCurrent(", findSend);
         int sendClick = src.indexOf("ACTION_CLICK", sendClaim);
         assertTrue("Core live composer verification must precede irreversible send",
             inputReady >= 0 && exactGuard > inputReady && findSend > exactGuard
