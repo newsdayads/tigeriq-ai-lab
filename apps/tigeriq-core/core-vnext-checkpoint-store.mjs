@@ -84,6 +84,38 @@ function checkpointOf(tuple, expectedObjectiveId) {
 // Serialize per objective across adapter instances in this Node process, including
 // the latest-checkpoint read and durable put. This is NOT cross-process or DB CAS;
 // real Postgres activation still requires separately verified durable fencing.
+// Session-safe PostgreSQL advisory transaction fence for all cooperating writers.
+// Both the checkpoint saver and this pool MUST connect to the same PostgreSQL DB.
+// The transaction lock spans the latest-read, put and readback; process death
+// releases it. This does not create tables or activate the isolated adapter.
+export function createPostgresVNextObjectiveFence({ pool } = {}) {
+  if (!pool || typeof pool.connect !== 'function') fail('VNEXT_PG_POOL_REQUIRED');
+  return async function withPostgresObjectiveFence(objectiveId, action) {
+    const id = token(objectiveId, 'VNEXT_OBJECTIVE_ID_INVALID');
+    if (typeof action !== 'function') fail('VNEXT_FENCE_CALLBACK_INVALID');
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      // A deterministic 64-bit key in the vNext namespace. Collisions only
+      // over-serialize unrelated objectives, never permit concurrent writes.
+      await client.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [
+        CORE_VNEXT_CHECKPOINT_NAMESPACE + ':' + id,
+      ]);
+      const result = await action();
+      await client.query('COMMIT');
+      transactionOpen = false;
+      return result;
+    } catch (error) {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+}
+
 const objectiveWriteTails = new Map();
 async function withLocalObjectiveWriteLock(objectiveId, action) {
   const previous = objectiveWriteTails.get(objectiveId);
@@ -101,7 +133,9 @@ async function withLocalObjectiveWriteLock(objectiveId, action) {
 
 // Caller must hold the verified existing one-writer lease. This is NOT an autonomous lease provider.
 export function createCoreVNextCheckpointStore({
-  checkpointer, enabled = false, schemaReady = false, verifyWriterLease = async () => false,
+  checkpointer, enabled = false, schemaReady = false,
+  verifyWriterLease = async () => false,
+  withObjectiveFence = null,
 } = {}) {
   if (!checkpointer || typeof checkpointer.getTuple !== 'function' || typeof checkpointer.put !== 'function')
     fail('VNEXT_CHECKPOINTER_INVALID');
@@ -116,7 +150,8 @@ export function createCoreVNextCheckpointStore({
     if (!enabled || !schemaReady) fail('VNEXT_CHECKPOINT_DISABLED_OR_SCHEMA_NOT_READY');
     const row = normalizedTransition(input);
     if (!Number.isFinite(nowMs)) fail('VNEXT_TIMESTAMP_INVALID');
-    return withLocalObjectiveWriteLock(row.objective_id, async () => {
+    if (typeof withObjectiveFence !== 'function') fail('VNEXT_CROSS_PROCESS_FENCE_REQUIRED');
+    return withLocalObjectiveWriteLock(row.objective_id, () => withObjectiveFence(row.objective_id, async () => {
     const permitted = async () => (await verifyWriterLease({
       objective_id: row.objective_id, resource_scope: 'TIGERIQ_CORE_VNEXT_CHECKPOINT_V1',
     })) === true;
@@ -153,7 +188,7 @@ export function createCoreVNextCheckpointStore({
     const verified = await checkpointer.getTuple(configuration(row.objective_id, checkpointId));
     if (checkpointOf(verified, row.objective_id)?.digest !== stateDigest) fail('VNEXT_WRITE_READBACK_MISMATCH');
     return Object.freeze({ written: true, replay: false, checkpoint_id: checkpointId, state: payload });
-    });
+    }));
   }
 
   return Object.freeze({ read, save });
