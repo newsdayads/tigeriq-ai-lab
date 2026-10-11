@@ -499,6 +499,48 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void exhaustedCoreRecoveryRejectsOtherRunTerminalAndEarlyBudget() {
+        assertTrue("Active same-lease Core task must reach terminal evidence",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_AI", 2, 2
+            ));
+        assertTrue(ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+            "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+            "WAITING_PROJECT", 3, 2
+        ));
+        assertFalse("Do not terminate while the last launch is pending",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "WAITING_AI", 1, 2
+            ));
+        assertFalse("Old callback cannot terminate a replacement run",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-B", "TASK-A", 1,
+                "WAITING_AI", 2, 2
+            ));
+        assertFalse("Old callback cannot terminate a replacement task",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-B", 1,
+                "WAITING_AI", 2, 2
+            ));
+        assertFalse("Old cycle cannot terminate a replacement cycle",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 2,
+                "WAITING_AI", 2, 2
+            ));
+        assertFalse("Never overwrite success evidence",
+            ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+                "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+                "COMPLETE", 2, 2
+            ));
+        assertFalse(ChatGptB1Policy.canFailExhaustedCoreRecoveryForSnapshot(
+            "RUN-A", "TASK-A", 1, "RUN-A", "TASK-A", 1,
+            "WAITING_AI", 2, 0
+        ));
+    }
+
+    @Test
     public void exhaustedCoreRecoveryMustExitWithDurableTerminalEvidence() throws Exception {
         String bridge = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
