@@ -2309,7 +2309,7 @@ async function managerTick() {
         if(wait.park){
           await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$4 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')=''",[o.id,summary,JSON.stringify(wait.revision),currentPhase]);
         }else{
-          await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",[o.id,summary,currentPhase]);
+          await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",[o.id,summary,currentPhase]);
         }
         await event('CAMPAIGN_FINAL_COMPLETION_GATE_PENDING',{objectiveId:o.id,jobId:proofId,reason:finalGate.reason});
         return;
