@@ -10,6 +10,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
+import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
@@ -541,9 +542,9 @@ async function releaseManagerOutputContractFailure(r,jobId,error){
   return {kind:'manager_output_contract',health:'UNCHANGED',policy:{stop:false}};
 }
 async function refreshResources() {
-  const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id not in ($1,$2)",[NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID])).rows;
+  const staleOllama=(await pool.query("select employee_id,current_job_id from tigeriq_resources where provider='ollama' and employee_id not in ($1,$2,$3)",[CORE_MANAGER_EMPLOYEE_ID,NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID])).rows;
   if(staleOllama.some(x=>x.current_job_id))throw new Error('STALE_OLLAMA_IDENTITY_BUSY');
-  for(const stale of staleOllama){await pool.query("delete from tigeriq_resources where employee_id=$1 and provider='ollama'",[stale.employee_id]);await event('RESOURCE_IDENTITY_MIGRATED',{fromEmployeeId:stale.employee_id,allowedEmployeeIds:[NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID],provider:'ollama'});}
+  for(const stale of staleOllama){await pool.query("delete from tigeriq_resources where employee_id=$1 and provider='ollama'",[stale.employee_id]);await event('RESOURCE_IDENTITY_MIGRATED',{fromEmployeeId:stale.employee_id,allowedEmployeeIds:[CORE_MANAGER_EMPLOYEE_ID,NV09_EMPLOYEE_ID,OLLAMA_EMPLOYEE_ID],provider:'ollama'});}
   for (const r of resources) {
     const staleSameEmployee=(await pool.query("select resource_id,current_job_id from tigeriq_ai_resources where employee_id=$1 and resource_id<>$2 and enabled=true",[r.id,r.resourceId])).rows;
     if(staleSameEmployee.some(x=>x.current_job_id))throw new Error(`STALE_RESOURCE_IDENTITY_BUSY:${r.id}`);
@@ -2142,12 +2143,37 @@ async function reconcileFailedSafeAutoworkObjectives(){
   return reconciled;
 }
 
+let ownerBacklogOrderCache={until:0,order:[]};
+async function currentOwnerBacklogOrder(){
+  if(Date.now()<ownerBacklogOrderCache.until)return ownerBacklogOrderCache.order;
+  // Fail closed to existing priority ordering when GitHub cannot be read. Never expose token.
+  let order=[];
+  try{
+    if(GITHUB_TOKEN){
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),2500);
+      try{
+        const response=await fetch(`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/280`,{
+          signal:controller.signal,headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Owner-Backlog'}
+        });
+        if(response.ok){const issue=await response.json();order=parseOwnerBacklogOrder(issue.body);}
+      }finally{clearTimeout(timeout);}
+    }
+  }catch{}
+  ownerBacklogOrderCache={until:Date.now()+60000,order};
+  return order;
+}
 async function managerTick() {
+  const ownerOrder=await currentOwnerBacklogOrder();
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
+    and o.priority in ('P1','P2','P3','P4','P5')
     and coalesce(o.metadata->>'executionSurface','') not in ('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER')
     and not exists(select 1 from tigeriq_jobs j where j.objective_id=o.id and j.status=any($1::text[]))
-    order by case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 1`,[MANAGER_PENDING_JOB_STATUSES]);
-  const o=q.rows[0]; if(!o) return;
+    order by case o.priority when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,
+      case when o.metadata#>>'{handoff,state}'='waiting_children' then 1 else 0 end,o.created_at limit 500`,[MANAGER_PENDING_JOB_STATUSES]);
+  const ranked=q.rows.map((objective,index)=>({objective,index,rank:objectiveBacklogRank(objective,ownerOrder)}))
+    .sort((a,b)=>a.rank-b.rank||a.index-b.index);
+  const o=ranked[0]?.objective; if(!o) return;
   if(await reconcileAutonomousHandoff(o)) return;
   if(await reconcileGithubCoreReviewObjective(o)) return;
   if(await reconcileStabilityV2Objective(o)) return;

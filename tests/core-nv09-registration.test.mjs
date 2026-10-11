@@ -105,7 +105,7 @@ test('Core wires NV09 as isolated on-demand local coder without changing NV10',(
   assert.match(core,/nv09Resource\.capabilities = \['coding_local'\]/);
   assert.match(core,/nv09Resource\.runtimeBinding = 'ollama_on_demand'/);
   assert.match(core,/const resources = \[\s*nv08Resource,\s*nv09Resource,\s*nv10Resource,/);
-  assert.match(core,/employee_id not in \(\$1,\$2\)/);
+  assert.match(core,/employee_id not in \(\$1,\$2,\$3\)/);
   assert.match(core,/if\(row\.runtime_binding==='ollama_on_demand'\)continue/);
   assert.match(core,/url\.pathname==='\/api\/nv09\/canary'/);
   assert.match(core,/event\('NV09_CANARY_PASS'/);
