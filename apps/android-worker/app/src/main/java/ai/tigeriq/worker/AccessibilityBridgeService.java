@@ -120,30 +120,47 @@ public final class AccessibilityBridgeService extends AccessibilityService {
             }
             return;
         }
-        Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
-        if (launch == null) {
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
+            if (launch == null) {
+                if (coreTask) {
+                    ChatGptB1RunStore.failCoreIfCurrent(
+                        this, run.runId, run.taskId, run.cycle, "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    );
+                } else {
+                    ChatGptB1RunStore.failManualIfCurrent(
+                        this, run.runId, run.cycle, run.startedAt,
+                        "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    );
+                }
+                return;
+            }
+            // Reserve recovery durably before the native activity launch.
+            // Never let an outdated callback launch against its successor.
+            if (coreTask && !ChatGptB1RunStore.markCoreRecoveryIfCurrent(
+                this, run.runId, run.taskId, run.cycle, MAX_B1_RECOVERIES
+            )) return;
+            if (!coreTask && !ChatGptB1RunStore.markManualRecoveryIfCurrent(
+                this, run.runId, run.cycle, run.startedAt, MAX_B1_RECOVERIES
+            )) return;
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(launch);
+        } catch (RuntimeException launchError) {
+            // PackageManager and Android background-activity policy can fail
+            // even with a valid intent. Keep the service alive and record a
+            // constant bounded error without exposing platform diagnostics.
             if (coreTask) {
                 ChatGptB1RunStore.failCoreIfCurrent(
-                    this, run.runId, run.taskId, run.cycle, "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    this, run.runId, run.taskId, run.cycle,
+                    "CHATGPT_NATIVE_LAUNCH_FAILED"
                 );
             } else {
                 ChatGptB1RunStore.failManualIfCurrent(
                     this, run.runId, run.cycle, run.startedAt,
-                    "CHATGPT_NATIVE_APP_NOT_FOUND"
+                    "CHATGPT_NATIVE_LAUNCH_FAILED"
                 );
             }
-            return;
         }
-        // Reserve a recovery slot durably while the original lease is still
-        // current, before a native activity launch with non-atomic side effects.
-        if (coreTask && !ChatGptB1RunStore.markCoreRecoveryIfCurrent(
-            this, run.runId, run.taskId, run.cycle, MAX_B1_RECOVERIES
-        )) return;
-        if (!coreTask && !ChatGptB1RunStore.markManualRecoveryIfCurrent(
-            this, run.runId, run.cycle, run.startedAt, MAX_B1_RECOVERIES
-        )) return;
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(launch);
     };
 
     @Override
