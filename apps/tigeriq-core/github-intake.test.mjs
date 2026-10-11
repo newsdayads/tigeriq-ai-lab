@@ -881,12 +881,12 @@ describe('GitHub Core intake guardrails',()=>{
     });
   });
 
-  it('sync prioritizes active and unreported GitHub objectives instead of the oldest 100 rows',()=>{
+  it('sync fairly rotates all pending GitHub objective statuses with active as tie-breaker',()=>{
     const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     expect(source).not.toContain("order by created_at asc limit 100");
     expect(source).toContain("status='active'");
     expect(source).toContain("githubResultReported");
-    expect(source).toContain("order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc");
+    expect(source).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
   });
 
 
@@ -1009,6 +1009,334 @@ describe('GitHub Core intake guardrails',()=>{
     await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
     expect(calls).toEqual(['result-comment','clear-label']);
     expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:false});
+  });
+
+  it('rotates bounded GitHub reconciliation beyond 100 rows and wakes an older parked objective',async()=>{
+    const safeBody=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=MANAGER_FAIR_RECONCILE_TEST','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+      'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+    ].join('\n');
+    const issues=Array.from({length:101},(_,i)=>({
+      number:6000+i,state:'open',title:'[P1] Fair reconciliation',comments:0,
+      labels:[],body:safeBody,
+    }));
+    const parked=issues[100];
+    const oldRevision='old-parked-revision';
+    const rows=issues.map((issue,i)=>({
+      id:'OBJ-GH-'+issue.number,status:'active',summary:'waiting',
+      updatedAt:i+1,
+      metadata:{
+        source:'github',issueNumber:issue.number,
+        sourceRevision:i===100?oldRevision:githubIssueSourceRevision(issue),
+        ...(i===100?{managerAwaitingAcceptanceRevision:oldRevision}:{}),
+        githubClaimReported:true,githubResultReported:false,
+      },
+    }));
+    let clock=101,wakeCount=0,scanCount=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        scanCount++;
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
+        expect(sql).toContain('limit 100');
+        const filtered=params.length?rows.filter(x=>params[0].includes(String(x.metadata.issueNumber))):rows;
+        const page=[...filtered].sort((a,b)=>a.updatedAt-b.updatedAt||a.id.localeCompare(b.id)).slice(0,100);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        const row=rows.find(x=>x.id===params[0]);
+        expect(row.status).toBe('active');
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(params[2]);
+        expect(row.metadata.sourceRevision).toBe(params[3]);
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.updatedAt=++clock;
+        wakeCount++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_FAIR_RECONCILIATION_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async()=>{throw new Error('UNEXPECTED_NETWORK_CALL');};
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(1);
+    expect(rows[100].metadata.managerAwaitingAcceptanceRevision).toBe(oldRevision);
+    expect(wakeCount).toBe(0);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(2);
+    expect(rows[100].metadata.managerAwaitingAcceptanceRevision).toBeUndefined();
+    expect(rows[100].metadata.sourceRevision).toBe(githubIssueSourceRevision(parked));
+    expect(wakeCount).toBe(1);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(wakeCount).toBe(1);
+  });
+
+  it('reports blocked outcomes despite 101 continuously eligible active objectives',async()=>{
+    const body=[
+      'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+      'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=MANAGER_TERMINAL_OUTCOME_FAIR_SCAN',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+      'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+    ].join('\n');
+    const issues=Array.from({length:101},(_,i)=>({
+      number:8100+i,state:'open',title:'[P1] Fair active scan',
+      comments:0,labels:[],body,
+    }));
+    const terminalIssue={number:8299,state:'open',title:'[P1] Blocked result pending',comments:0,labels:[],body};
+    issues.push(terminalIssue);
+    const rows=issues.map((issue,i)=>({
+      id:'OBJ-GH-'+issue.number,status:i===101?'blocked':'active',
+      updatedAt:i+1,summary:i===101?'bounded work blocked':'active',
+      metadata:{
+        source:'github',issueNumber:issue.number,
+        sourceRevision:githubIssueSourceRevision(issue),
+        githubClaimReported:true,githubResultReported:false,
+        ...(i===101?{githubTerminalLabelSynced:true}:{}),
+      },
+    }));
+    let clock=102,postCount=0,scanCount=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        scanCount++;
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
+        const page=[...rows].filter(x=>x.status==='active'||!x.metadata.githubResultReported)
+          .sort((a,b)=>a.updatedAt-b.updatedAt||Number(b.status==='active')-Number(a.status==='active'))
+          .slice(0,100);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      throw Error('UNEXPECTED_TERMINAL_FAIR_SCAN_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/8299/comments')&&init.method==='POST'){
+        postCount++;
+        return new Response(JSON.stringify({id:123}),{status:201,headers:{'content-type':'application/json'}});
+      }
+      throw Error('UNEXPECTED_TERMINAL_FAIR_SCAN_FETCH: '+url);
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(scanCount).toBe(1);
+    expect(postCount).toBe(0);
+    expect(rows[101].metadata.githubResultReported).toBe(false);
+    const second=await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(second.results).toBe(1);
+    expect(rows[101].metadata.githubResultReported).toBe(true);
+    expect(postCount).toBe(1);
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:issues});
+    expect(postCount).toBe(1);
+  });
+
+  it('rotates failed GitHub source lookups rather than starving a newer parked objective',async()=>{
+    // The test database uses a 2-row page to exercise the same cursor contract
+    // as the production LIMIT 100 without issuing 100 noisy network failures.
+    const targetIssue={
+      number:9203,state:'open',title:'[P1] Fair retry target',comments:0,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_RECONCILE_ERROR_FAIRNESS',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+        'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      ].join('\n'),
+    };
+    const rows=[9201,9202,9203].map((number,index)=>({
+      id:'OBJ-GH-'+number,status:'active',updatedAt:index+1,summary:'old',
+      metadata:{
+        source:'github',issueNumber:number,githubClaimReported:true,
+        githubResultReported:false,sourceRevision:'old-revision',
+        ...(number===9203?{managerAwaitingAcceptanceRevision:'old-revision'}:{}),
+      },
+    }));
+    let clock=3,sourceLookupErrors=0,targetWoken=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        expect(sql).toContain("order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc");
+        expect(sql).toContain('limit 100');
+        const page=[...rows].sort((a,b)=>a.updatedAt-b.updatedAt).slice(0,2);
+        return {rowCount:page.length,rows:page};
+      }
+      if(sql==="update tigeriq_objectives set updated_at=now() where id=$1"){
+        rows.find(x=>x.id===params[0]).updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const row=rows.find(x=>x.id===params[0]);
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        row.updatedAt=++clock;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        const row=rows.find(x=>x.id===params[0]);
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(params[2]);
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        targetWoken++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_FAILED_SCAN_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async()=>{sourceLookupErrors++;throw new Error('mock_transient_github_outage');};
+    const originalError=console.error;
+    try{
+      console.error=()=>{};
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[targetIssue]});
+      expect(sourceLookupErrors).toBe(2);
+      expect(targetWoken).toBe(0);
+      await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[targetIssue]});
+      expect(targetWoken).toBe(1);
+    }finally{
+      console.error=originalError;
+    }
+  });
+
+  it('applies explicit issueNumber filter in SQL before LIMIT 100',async()=>{
+    const target=7301;
+    let selectedRows=0,seenParams=null;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives')){
+        expect(sql).toContain("metadata->>'issueNumber'=any($1::text[])");
+        expect(sql).toContain('limit 100');
+        seenParams=params;
+        selectedRows=1;
+        return {rows:[],rowCount:0};
+      }
+      throw new Error('UNEXPECTED_TARGETED_SYNC_SQL');
+    }};
+    await syncGithubOutcomes({pool,token:'fake',issueNumbers:[target]});
+    expect(selectedRows).toBe(1);
+    expect(seenParams).toEqual([[String(target)]]);
+  });
+
+  it('does not refetch the same GitHub comments when only the live acceptance gate is required',async()=>{
+    const sourceIssue={
+      number:4691,state:'open',title:'[P1] Stable live-only acceptance',comments:2,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_STABLE_LIVE_GATE_SCAN_TEST',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+        'NO_PRODUCTION_RELEASE=true','CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+        'LIVE_ACCEPTANCE_REQUIRED=true',
+      ].join('\n'),
+    };
+    expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe('');
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const row={
+      id:'OBJ-GH-4691',status:'active',summary:'waiting for LIVE acceptance',
+      metadata:{
+        source:'github',issueNumber:4691,sourceRevision:revision,
+        liveAcceptanceRequired:true,finalReviewRequired:false,
+        liveAcceptancePass:false,liveAcceptanceCommentCount:2,
+        githubClaimReported:true,githubResultReported:false,
+      },
+    };
+    let commentReads=0;
+    const pool={async query(sql,params=[]){
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))
+        return {rowCount:1,rows:[row]};
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        Object.assign(row.metadata,JSON.parse(params[1]));
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      throw new Error('UNEXPECTED_LIVE_ONLY_GATE_SQL: '+sql.slice(0,100));
+    }};
+    const fetchImpl=async(url)=>{
+      if(String(url).includes('/comments'))commentReads++;
+      throw new Error('UNNECESSARY_COMMENT_RESCAN');
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(commentReads).toBe(0);
+    expect(row.metadata.liveAcceptanceCommentCount).toBe(2);
+    expect(row.metadata.liveAcceptanceRequired).toBe(true);
+    expect(row.metadata.finalReviewRequired).toBe(false);
+    expect(row.status).toBe('active');
+  });
+
+  it('rearms a parked GitHub objective when editing its source removes the last dependency gate',async()=>{
+    const sourceIssue={
+      number:4690,state:'open',title:'[P1] Source with dependency gate removed',comments:0,labels:[],
+      body:[
+        'TIGERIQ_EXECUTABLE=true','PRIORITY=P1','OWNER_POLICY=AUTO',
+        'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning',
+        'RESOURCE_SCOPE=MANAGER_WAIT_DEPENDENCY_REMOVAL_TEST',
+        'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+        'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+        'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+        'CURRENT_STATE=READY_FOR_SYSTEM_EXECUTION',
+      ].join('\n'),
+    };
+    expect(activeGithubObjectiveSourceExclusion(sourceIssue)).toBe('');
+    const revision=githubIssueSourceRevision(sourceIssue);
+    const oldRevision='old-source-with-dependency';
+    const row={
+      id:'OBJ-GH-4690',status:'active',summary:'parked for removed dependency',
+      metadata:{
+        source:'github',issueNumber:4690,sourceRevision:oldRevision,
+        managerAwaitingAcceptanceRevision:oldRevision,
+        dependencyGateRequired:true,dependencyGatePass:false,
+        githubClaimReported:true,githubResultReported:false,
+      },
+    };
+    let wakeCount=0,updatedRevision=null;
+    const queries=[];
+    const pool={async query(sql,params=[]){
+      queries.push(sql);
+      if(sql.includes('select id,status,summary,metadata from tigeriq_objectives'))
+        return {rowCount:1,rows:[row]};
+      if(sql.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
+        const patch=JSON.parse(params[1]);
+        if(Object.hasOwn(patch,'sourceRevision'))updatedRevision=patch.sourceRevision;
+        Object.assign(row.metadata,patch);
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes("metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision'")){
+        expect(params[0]).toBe(row.id);
+        expect(params[2]).toBe(oldRevision);
+        expect(params[3]).toBe(revision);
+        expect(row.metadata.managerAwaitingAcceptanceRevision).toBe(oldRevision);
+        expect(row.status).toBe('active');
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.summary=params[1];
+        wakeCount++;
+        return {rowCount:1,rows:[]};
+      }
+      if(sql.includes('insert into tigeriq_events'))return {rowCount:1,rows:[]};
+      return {rowCount:0,rows:[]};
+    }};
+    const fetchImpl=async()=>{throw new Error('unexpected_GitHub_request');};
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(updatedRevision).toBe(revision);
+    expect(row.metadata.dependencyGateRequired).toBe(false);
+    expect(row.metadata.dependencyGatePass).toBe(true);
+    expect(row.metadata.managerAwaitingAcceptanceRevision).toBeUndefined();
+    expect(row.status).toBe('active');
+    expect(wakeCount).toBe(1);
+    expect(queries.some(sql=>sql.includes('OBJECTIVE_COMPLETION_EVIDENCE_RESUMED'))).toBe(true);
+    // The previous parked marker has been consumed; a second sync cannot wake twice.
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
+    expect(wakeCount).toBe(1);
   });
 
   it('keeps #2652-style source PASS open when live acceptance is still false',async()=>{
@@ -1440,7 +1768,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect((intake.match(/objectiveCompletionGate\(row\.metadata\)/g)||[]).length).toBeGreaterThanOrEqual(2);
     expect(intake).toContain("update tigeriq_objectives set status='active'");
     expect(core).toContain('objectiveCompletionGate(o.metadata||{})');
-    expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
+    expect(core).toContain('OBJECTIVE_COMPLETION_WAITING_EVIDENCE');
   });
 
   it('wires fail-closed live gate hardening and preserves manager retry budget',()=>{
@@ -1457,8 +1785,10 @@ describe('GitHub Core intake guardrails',()=>{
     expect(intake).toContain('liveAcceptanceCommentCount:(spec.liveAcceptanceRequired===true||spec.finalReviewRequired===true)?-1:spec.commentCount');
     expect(core).toContain("employee_id=any($1::text[])");
     expect(core).toContain('finalReviewImplementerEmployeeIds');
-    expect(core).toContain("set manager_cycles=0,summary=$2");
-    expect(core).toContain('OBJECTIVE_COMPLETE_REJECTED_LIVE_ACCEPTANCE_PENDING');
+    expect(core).toContain("manager_cycles=manager_cycles+1,summary=$2");
+    expect(core).toContain("next_check_at='infinity'::timestamptz");
+    expect(core).not.toContain("set manager_cycles=0,summary=$2,next_check_at=now()+interval '1 minute'");
+    expect(core).toContain('OBJECTIVE_COMPLETION_WAITING_EVIDENCE');
   });
 
   it('wires public evidence metadata and both bounded pc_operator reconciliation paths',()=>{
