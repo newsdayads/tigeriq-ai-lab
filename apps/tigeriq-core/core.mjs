@@ -2319,8 +2319,9 @@ async function managerTick() {
           await event('OBJECTIVE_COMPLETION_WAITING_EVIDENCE',{objectiveId:o.id,phaseIndex:currentPhase,sourceRevision:wait.revision,reason:wait.reason});
         }else{
           // Non-GitHub/missing-revision objectives have no proven watcher.
-          // Retain the bounded manager stall budget rather than reset it.
-          await pool.query("update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
+          // The post-decision update already charged one manager cycle.
+          // Delay the next attempt without double-charging that same decision.
+          await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,summary]);
           await event('OBJECTIVE_COMPLETION_RETRY_BOUNDED',{objectiveId:o.id,phaseIndex:currentPhase,reason:completionGate.reason});
         }
         return;
