@@ -25,7 +25,7 @@ import { buildFailureLearningCandidates, failureLearningEventTypes } from './fai
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, shouldQueueContinuousVerify } from './continuous-verify.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -2238,6 +2238,104 @@ async function managerTick() {
     // instance consumed the same progress or terminalized the objective.
     if(saved.rowCount!==1)return;
     o.metadata={...o.metadata,managerLastObservedTerminalAt:terminalProgress.observedAt};
+  }
+  // Deterministic, evidence-bound campaign progression: a valid completed worker
+  // receipt must not depend on the local Manager eventually saying "complete".
+  // This runs before the no-progress manager-cycle guard, with a phase CAS.
+  if(phases.length && latestManagerProgress){
+    const phase=phases[currentPhase];
+    const proofId=campaignEvidenceJobId(o.id,currentPhase);
+    const proof=(await pool.query(
+      "select id,objective_id,phase_index,kind,status,prompt,result,employee_id,resource_id,provider,completed_at,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2",
+      [proofId,o.id],
+    )).rows[0]||null;
+    if(!proof){
+      const proofGoal=`Verify campaign phase ${currentPhase+1}/${phases.length}: ${phase.title}. Task: ${phase.prompt}. Only claim completion when the listed acceptance is evidenced.`;
+      const packet=compileTaskPrompt({
+        taskId:proofId,objectiveId:o.id,
+        sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
+        capability:'reasoning',
+        goal:proofGoal,
+        contextRefs:[`objective:${o.id}`,`campaign-phase:${currentPhase+1}`],
+        allowedScope:['read/analyze the authorized phase only','no repository or production mutation'],
+        steps:[proofGoal],
+        acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
+        evidenceRequired:['An observable source, test or artifact proving the phase acceptance.'],
+      });
+      const inserted=await pool.query(
+        "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,'reasoning','compiled_campaign',$5,$6) on conflict(id) do nothing",
+        [proofId,o.id,`Phase ${currentPhase+1} verification: ${phase.title}`.slice(0,200),packet.prompt.slice(0,12000),currentPhase,objectiveJobRoutingProfile(o.metadata)],
+      );
+      if(inserted.rowCount===1){
+        await event('CAMPAIGN_PHASE_VERIFICATION_QUEUED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length});
+      }
+      return;
+    }
+    if(proof.status==='done'){
+      const verified=verifyCampaignPhaseReceipt(proof,{
+        objectiveId:o.id,phaseIndex:currentPhase,
+        acceptance:phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`,
+      });
+      if(!verified.accepted){
+        const reason=`campaign evidence rejected: ${verified.code}`;
+        const denied=await pool.query(
+          "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",
+          [o.id,reason,currentPhase],
+        );
+        if(denied.rowCount===1)await event('CAMPAIGN_PHASE_VERIFICATION_REJECTED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,reason:verified.code});
+        return;
+      }
+      if(currentPhase<phases.length-1){
+        const checkpoint={...makePhaseCheckpoint({currentPhase,phases,summary:`Verified by ${proofId}`}),jobId:proofId,employeeId:proof.employee_id,resourceId:proof.resource_id};
+        const advanced=await pool.query(
+          `update tigeriq_objectives set metadata=jsonb_set(jsonb_set(metadata,'{campaign,currentPhase}',to_jsonb($2::int),true),'{campaign,checkpoints}',coalesce(metadata#>'{campaign,checkpoints}','[]'::jsonb)||$3::jsonb,true),
+            manager_cycles=0,summary=$4,next_check_at=now(),updated_at=now()
+            where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$5
+            and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')=''
+            and (metadata->>'sourceRevision') is not distinct from $6::text
+            and exists(select 1 from tigeriq_jobs j where j.id=$7 and j.objective_id=$1 and j.status='done')`,
+          [o.id,currentPhase+1,JSON.stringify([checkpoint]),`verified phase ${currentPhase+1}/${phases.length}; continuing automatically`,currentPhase,o.metadata?.sourceRevision??null,proofId],
+        );
+        if(advanced.rowCount===1){
+          await event('CAMPAIGN_PHASE_COMPLETED',{objectiveId:o.id,phaseIndex:currentPhase,nextPhaseIndex:currentPhase+1,checkpoint,verifiedEvidenceJobId:proofId});
+          await event('CAMPAIGN_PHASE_ADVANCED',{objectiveId:o.id,phaseIndex:currentPhase+1,phaseCount:phases.length});
+        }
+        return;
+      }
+      const finalGate=objectiveCompletionGate(o.metadata||{});
+      if(!finalGate.allow){
+        const summary=`final campaign verified but release/acceptance gate pending: ${finalGate.reason}`;
+        const wait=managerAcceptancePausePlan({source:o.metadata?.source,sourceRevision:o.metadata?.sourceRevision,gate:finalGate});
+        if(wait.park){
+          await pool.query("update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$4 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')=''",[o.id,summary,JSON.stringify(wait.revision),currentPhase]);
+        }else{
+          await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",[o.id,summary,currentPhase]);
+        }
+        await event('CAMPAIGN_FINAL_COMPLETION_GATE_PENDING',{objectiveId:o.id,jobId:proofId,reason:finalGate.reason});
+        return;
+      }
+      const finished=await pool.query(
+        "update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text and exists(select 1 from tigeriq_jobs j where j.id=$5 and j.objective_id=$1 and j.status='done')",
+        [o.id,`verified all ${phases.length} campaign phases; final receipt ${proofId}`,currentPhase,o.metadata?.sourceRevision??null,proofId],
+      );
+      if(finished.rowCount===1)await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length,mode:'deterministic_verified_receipt'});
+      return;
+    }
+    if(proof.status==='failed'){
+      if(Number(proof.attempts)<Number(proof.max_attempts)){
+        await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1 and status='failed' and attempts<max_attempts",[proofId]);
+        await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase});
+      }else{
+        const blocked=await pool.query(
+          "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",
+          [o.id,`campaign verification failed after bounded attempts: ${proofId}`,currentPhase],
+        );
+        if(blocked.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:proofId,reason:'campaign_evidence_exhausted'});
+      }
+      return;
+    }
+    // A queued, leased or waiting evidence job is authoritative; no extra work.
+    return;
   }
   const managerGuard=managerCycleGuard({managerCycles:o.manager_cycles,progressed:terminalProgress.progressed,maxCycles:MANAGER_STALL_CYCLE_LIMIT});
   if(managerGuard.reset){
