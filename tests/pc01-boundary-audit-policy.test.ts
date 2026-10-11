@@ -64,6 +64,21 @@ describe('PC01 NTFS and SMB boundary preflight source safety gate (#4661)', () =
     expect(smb).toContain('INCONCLUSIVE_UNMAPPED_SHARE_ACCOUNT');
   });
 
+  it('fails closed on SMB share junction aliases before lexical scope filtering', () => {
+    // A share at C:\\alias can be a junction to D:\\TigerIQ even when the
+    // share path has no lexical overlap with RootPath=D:\\TigerIQ.
+    const inspectShare = smb.indexOf('Assert-NoRootReparse -Path $sharePath');
+    const lexicalFilter = smb.indexOf('if (-not (Test-PathScopeOverlap -Root $root -SharePath $sharePath)) { continue }');
+    expect(inspectShare).toBeGreaterThan(0);
+    expect(lexicalFilter).toBeGreaterThan(inspectShare);
+    expect(smb).toContain('unresolvedSharePaths++');
+    expect(smb).toContain("INCONCLUSIVE_SHARE_PATH");
+    expect(smb).toContain('unresolved_share_path_count = $unresolvedSharePaths');
+    expect(smb).toContain('if ($unresolvedSharePaths -gt 0 -or $unknown -gt 0) { exit 3 }');
+    // Read-only source check: Windows junction behavior requires a separate
+    // real-Windows negative fixture; no cross-project E2E PASS is inferred.
+  });
+
   it('does not claim either audit establishes effective or remote authorization', () => {
     expect(ntfs).toContain('authorization_e2e_verified = $false');
     expect(smb).toContain('effective_access_verified = $false');
