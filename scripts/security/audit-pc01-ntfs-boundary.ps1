@@ -21,6 +21,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:UnmappedAceCount = 0
 
 function Get-BroadWriteAces {
   param([Parameter(Mandatory=$true)]$Acl)
@@ -39,7 +40,15 @@ function Get-BroadWriteAces {
     try {
       $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
     } catch {
-      throw 'ACL_IDENTITY_TRANSLATION_FAILED'
+      # Orphaned/unmapped local SIDs are not evidence of a well-known broad group.
+      # Preserve an incomplete-audit signal instead of a false safe result.
+      $identityValue = [string]$ace.IdentityReference.Value
+      if ($principalMap.ContainsKey($identityValue)) {
+        $sid = $identityValue
+      } else {
+        $script:UnmappedAceCount++
+        continue
+      }
     }
     if (-not $principalMap.ContainsKey($sid)) { continue }
     if (([int64]$ace.FileSystemRights -band $writeMask) -eq 0) { continue }
@@ -100,14 +109,16 @@ try {
   [pscustomobject]@{
     schema = 'TIGERIQ_NTFS_BOUNDARY_AUDIT_V1'
     mode = 'READ_ONLY'
-    status = $(if ($riskCount -gt 0) { 'BROAD_WRITE_RISK' } else { 'NO_BROAD_WRITE_ACE_DETECTED' })
+    status = $(if ($riskCount -gt 0) { 'BROAD_WRITE_RISK' } elseif ($script:UnmappedAceCount -gt 0) { 'INCONCLUSIVE_UNMAPPED_SID' } else { 'NO_BROAD_WRITE_ACE_DETECTED' })
     scopes_checked = $records.Count
     scopes_at_risk = $riskCount
+    unmapped_ace_count = $script:UnmappedAceCount
     mutation_performed = $false
     authorization_e2e_verified = $false
     records = $records
   } | ConvertTo-Json -Depth 6
   if ($riskCount -gt 0) { exit 2 }
+  if ($script:UnmappedAceCount -gt 0) { exit 3 }
   exit 0
 } catch {
   [pscustomobject]@{
