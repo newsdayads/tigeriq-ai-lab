@@ -733,8 +733,14 @@ public final class ChatGptB1PolicyTest {
                 && guards.contains("snapshot.startedAt"));
         assertFalse("Stale manual UI failure must not fail a successor Core lease",
             guards.contains("ChatGptB1RunStore.fail(service, code);"));
-        assertTrue("Manual B1 verifying still follows its independent path",
-            guards.contains("ChatGptB1RunStore.markVerifying(service);"));
+        assertTrue("Manual B1 UI state callbacks must be fenced to their original run",
+            guards.contains("markManualVerifyingIfCurrent(")
+                && guards.contains("markManualInputReadyIfCurrent(")
+                && guards.contains("markManualBusyIfCurrent("));
+        assertFalse("Never use unguarded manual UI state writes",
+            guards.contains("ChatGptB1RunStore.markVerifying(service);")
+                || guards.contains("ChatGptB1RunStore.markInputReady(service);")
+                || guards.contains("ChatGptB1RunStore.markBusySeen(service);"));
         String store = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
                 "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
@@ -857,6 +863,48 @@ public final class ChatGptB1PolicyTest {
                 "RUN-A", "TASK-A", 1, "COMPLETE", 1,
                 1, 0, token, true, "PROJECT"
             ));
+    }
+
+    @Test
+    public void staleManualUiCompletionAndStateWritesCannotAlterCoreReplacement() throws Exception {
+        String store = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1RunStore.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        String adapter = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/ChatGptB1Automation.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        for (String guarded : new String[] {
+            "markManualVerifyingIfCurrent(", "markManualInputReadyIfCurrent(",
+            "markManualBusyIfCurrent(", "completeManualReplyIfCurrent("
+        }) {
+            assertTrue("Manual callback must use synchronized durable identity: " + guarded,
+                store.contains("public static synchronized boolean " + guarded));
+            assertTrue("Manual callback must verify unleased run identity: " + guarded,
+                store.substring(store.indexOf("public static synchronized boolean " + guarded))
+                    .contains("canMutateObservedManualRun("));
+            assertTrue("Manual UI adapter must call guarded method: " + guarded,
+                adapter.contains("ChatGptB1RunStore." + guarded));
+        }
+        int drive = adapter.indexOf("public static void drive(");
+        int wrapper = adapter.indexOf("private static void failObservedRun(", drive);
+        assertTrue(drive >= 0 && wrapper > drive);
+        String ui = adapter.substring(drive, wrapper);
+        assertFalse("Manual UI completion must not finalize whichever task is live",
+            ui.contains("ChatGptB1RunStore.completeCurrentCycle(service, responseText)"));
+        assertTrue("Reply completion needs original cycle, start time and token",
+            ui.contains("s.runId, s.cycle, s.startedAt,")
+                && ui.contains("expectedToken, responseText"));
+        String manualCompletion = store.substring(
+            store.indexOf("public static synchronized boolean completeManualReplyIfCurrent("),
+            store.indexOf("public static void completeCurrentCycle(Context context, String responseText)")
+        );
+        assertTrue(manualCompletion.contains("live.sentCycle != live.cycle"));
+        assertTrue(manualCompletion.contains("observedToken.equals(expectedToken(live))"));
+        assertTrue(manualCompletion.contains("responseText.contains(observedToken)"));
     }
 
     @Test
