@@ -76,12 +76,16 @@ function checkedHolder(input){
 }
 export async function renewGithubScopeLease(db,input){
   const v=checkedHolder(input);
-  const q=await db.query(
-    "update tigeriq_github_scope_leases set lease_until=now()+($5::bigint*interval '1 millisecond'),renewed_at=now() "+
-    'where resource_scope=$1 and lease_id=$2::uuid and worker_id=$3 and worker_session_id=$4 and lease_until>now() '+
-    'returning resource_scope,lease_id,lease_until',
-    [v.scope,v.id,v.worker,v.session,v.ttl]);
-  return q.rows[0]||null;
+  // Reacquire the SAME scope lock before extending a lease, ensuring a
+  // consistent serialization order against expiry/reclaim and Core admission.
+  return transaction(db,v.scope,async client=>{
+    const q=await client.query(
+      "update tigeriq_github_scope_leases set lease_until=now()+($5::bigint*interval '1 millisecond'),renewed_at=now() "+
+      'where resource_scope=$1 and lease_id=$2::uuid and worker_id=$3 and worker_session_id=$4 and lease_until>now() '+
+      'returning resource_scope,lease_id,lease_until',
+      [v.scope,v.id,v.worker,v.session,v.ttl]);
+    return q.rows[0]||null;
+  });
 }
 export async function releaseGithubScopeLease(db,input){
   const v=checkedHolder(input);
