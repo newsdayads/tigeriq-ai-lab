@@ -380,6 +380,42 @@ public final class ChatGptB1RunStore {
             .commit();
     }
 
+    /**
+     * The manual B1 recovery callback observes a snapshot before a potentially
+     * delayed Android operation. Serialize its state transition against both
+     * manual start() and Core startTask(); never count a stale callback against
+     * a newly leased run.
+     */
+    public static synchronized boolean markManualRecoveryIfCurrent(
+        Context context, String runId, int cycle, long startedAt, int maxRecoveries
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        ) || maxRecoveries <= 0 || live.recoveryCount >= maxRecoveries
+            || live.recoveryCount < 0) return false;
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(K_RECOVERY_COUNT, live.recoveryCount + 1)
+            .commit();
+    }
+
+    /** A missing native app may only fail the same observed manual B1 run. */
+    public static synchronized boolean failManualIfCurrent(
+        Context context, String runId, int cycle, long startedAt, String error
+    ) {
+        Snapshot live = read(context);
+        if (!ChatGptB1Policy.canMutateObservedManualRun(
+            runId, cycle, startedAt, live.runId, live.taskId,
+            live.cycle, live.startedAt, live.state
+        )) return false;
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(K_STATE, "ERROR")
+            .putString(K_LAST_ERROR, trim(error, 120))
+            .putInt(K_EVIDENCE_SEQ, live.evidenceSeq + 1)
+            .commit();
+    }
+
     public static void markRecovery(Context context) {
         Snapshot s = read(context);
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
