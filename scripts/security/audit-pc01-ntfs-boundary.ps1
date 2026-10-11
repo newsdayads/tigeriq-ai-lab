@@ -37,6 +37,9 @@ function Get-BroadWriteAces {
   $found = @()
   foreach ($ace in $Acl.Access) {
     if ($ace.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+    # Read-only ACEs cannot grant write; do not let unresolvable read-only
+    # identities poison the audit result for otherwise safe scopes.
+    if (([int64]$ace.FileSystemRights -band $writeMask) -eq 0) { continue }
     try {
       $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
     } catch {
@@ -51,7 +54,6 @@ function Get-BroadWriteAces {
       }
     }
     if (-not $principalMap.ContainsKey($sid)) { continue }
-    if (([int64]$ace.FileSystemRights -band $writeMask) -eq 0) { continue }
     $found += [pscustomobject]@{
       principal = $principalMap[$sid]
       inherited = [bool]$ace.IsInherited
