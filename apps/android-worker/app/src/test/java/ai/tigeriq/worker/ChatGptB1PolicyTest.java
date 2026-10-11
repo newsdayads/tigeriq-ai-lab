@@ -540,6 +540,31 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void nativeRecoveryLaunchExceptionFailsOnlyItsObservedLease() throws Exception {
+        String bridge = new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                "src/main/java/ai/tigeriq/worker/AccessibilityBridgeService.java"
+            )), java.nio.charset.StandardCharsets.UTF_8
+        );
+        int start = bridge.indexOf("private final Runnable recoveryRunnable");
+        int end = bridge.indexOf("@Override", start);
+        assertTrue(start >= 0 && end > start);
+        String runner = bridge.substring(start, end);
+        assertTrue("A denied native activity launch must not crash the service",
+            runner.contains("catch (RuntimeException launchError)"));
+        assertTrue("Native launch failure must produce a bounded error identity",
+            runner.contains("CHATGPT_NATIVE_LAUNCH_FAILED"));
+        assertTrue("Failed Core launch must not poison a replacement lease",
+            runner.contains("ChatGptB1RunStore.failCoreIfCurrent("));
+        assertTrue("Failed manual launch must not poison a replacement Core task",
+            runner.contains("ChatGptB1RunStore.failManualIfCurrent("));
+        assertTrue("A failed launch must not be retried blindly in the same callback",
+            runner.indexOf("startActivity(launch)") >= 0
+                && runner.indexOf("catch (RuntimeException launchError)")
+                    > runner.indexOf("startActivity(launch)"));
+    }
+
+    @Test
     public void delayedManualRecoveryCannotAlterReplacementCoreTask() throws Exception {
         String bridge = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
