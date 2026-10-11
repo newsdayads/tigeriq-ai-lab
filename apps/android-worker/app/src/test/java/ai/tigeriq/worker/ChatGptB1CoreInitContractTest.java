@@ -128,4 +128,22 @@ public final class ChatGptB1CoreInitContractTest {
             version.equals("0.26.0-vn-new-chat"));
     }
 
+
+    @Test
+    public void terminalCoreTaskClearIsDurableBeforeNextLease() throws Exception {
+        String source = new String(
+            Files.readAllBytes(Paths.get("src/main/java/ai/tigeriq/worker/MobileTaskStore.java")),
+            StandardCharsets.UTF_8
+        );
+        int begin = source.indexOf("public static void clear(Context context)");
+        int end = source.indexOf("private static String required(", begin);
+        assertTrue(begin >= 0 && end > begin);
+        String clear = source.substring(begin, end);
+        assertTrue("clearing Core task must flush to disk before next polling cycle",
+            clear.contains(".clear().commit()"));
+        assertTrue("disk failure must not silently advertise task clearance",
+            clear.contains("CORE_TASK_CLEAR_PERSIST_FAILED"));
+        assertFalse("async clear may restore a terminal Core lease after process death",
+            clear.contains(".apply()"));
+    }
 }
