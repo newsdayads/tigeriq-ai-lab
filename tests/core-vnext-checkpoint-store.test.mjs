@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCoreVNextCheckpointStore, CORE_VNEXT_CHECKPOINT_NAMESPACE } from '../apps/tigeriq-core/core-vnext-checkpoint-store.mjs';
+import { createCoreVNextCheckpointStore, createPostgresVNextObjectiveFence, CORE_VNEXT_CHECKPOINT_NAMESPACE } from '../apps/tigeriq-core/core-vnext-checkpoint-store.mjs';
 
 function saver({ failBefore = false, failAfter = false } = {}) {
   const entries = new Map();
@@ -53,6 +53,35 @@ describe('Core vNext durable checkpoint adapter (isolated, not connected to live
     await expect(store(db, { verifyWriterLease: async () => false }).save(transition))
       .rejects.toThrow('VNEXT_WRITER_LEASE_REQUIRED');
     expect(db.writes).toBe(0);
+  });
+
+  it('acquires a database transactional advisory fence and releases connection', async () => {
+    const calls=[];
+    const client={
+      async query(sql,params){calls.push({sql,params});return{rows:[]};},
+      release(){calls.push({sql:'RELEASE'});},
+    };
+    const guard=createPostgresVNextObjectiveFence({pool:{connect:async()=>client}});
+    const output=await guard('OBJ-GH-4457',async()=>{calls.push({sql:'ACTION'});return 'ok';});
+    expect(output).toBe('ok');
+    expect(calls.map(x=>x.sql)).toEqual([
+      'BEGIN',
+      'select pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+      'ACTION','COMMIT','RELEASE',
+    ]);
+    expect(calls[1].params).toEqual([CORE_VNEXT_CHECKPOINT_NAMESPACE+':OBJ-GH-4457']);
+  });
+
+  it('rolls back and releases the PostgreSQL objective lock after callback failure', async () => {
+    const calls=[];const c={
+      async query(sql){calls.push(sql);return{rows:[]};},
+      release(){calls.push('RELEASE');},
+    };
+    const guard=createPostgresVNextObjectiveFence({pool:{connect:async()=>c}});
+    await expect(guard('OBJ-GH-4457',async()=>{throw Error('CHECKPOINT_PUT_FAILED');}))
+      .rejects.toThrow('CHECKPOINT_PUT_FAILED');
+    expect(calls.slice(-2)).toEqual(['ROLLBACK','RELEASE']);
+    await expect(guard('invalid space',async()=>0)).rejects.toThrow('VNEXT_OBJECTIVE_ID_INVALID');
   });
 
   it('rejects enabled saves without a cross-process fence, even when a writer lease is true', async () => {
