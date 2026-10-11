@@ -22,7 +22,7 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
   });
   it('never treats cloud capacity as a substitute for a LOCAL-only objective',()=>{
     expect(capacity).toContain("provider='ollama'");
-    expect(capacity).toContain("and enabled=true".replace('and ','').slice(0,0) || 'where enabled=true');
+    expect(capacity).toContain('where enabled=true');
     expect(core).toContain("profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO')");
   });
 });
