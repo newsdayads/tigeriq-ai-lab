@@ -73,8 +73,36 @@ export async function renewNv02WorkOrderAtomic({
     workerSessionId,Number(lease.workOrder.slice(1))))throw Error('NV02_RENEW_FENCED');
   return {...lease,expiresAt:q.lease_until};
 }
+// A model-supplied evidenceVerified boolean is NOT an acceptance gate.
+// The trusted host must fetch the canonical GitHub comment and pass its raw
+// response through this verifier; this module checks the immutable receipt ID,
+// scope, lease, worker and explicit acceptance evidence.
+export function validateNv02CanonicalDoneEvidence(record,issue,lease){
+  const n=Number(issue?.number),id=Number(record?.id);
+  const expected='https://github.com/newsdayads/tigeriq-ai-lab/issues/'+n+'#issuecomment-'+id;
+  if(!Number.isSafeInteger(n)||n<=0||!Number.isSafeInteger(id)||id<=0||
+     String(record?.html_url||'')!==expected)throw Error('NV02_DONE_CANONICAL_SOURCE_INVALID');
+  const body=String(record?.body||'');
+  if(!body.includes('[TIGERIQ_NV02_WORK_EVIDENCE_V1]'))throw Error('NV02_DONE_EVIDENCE_MARKER_MISSING');
+  const fields=new Map();
+  for(const line of body.split(/\r?\n/)){
+    const m=line.trim().match(/^([A-Z_]+)=(.*)$/);
+    if(!m)continue;
+    if(fields.has(m[1]))throw Error('NV02_DONE_EVIDENCE_DUPLICATE_FIELD');
+    fields.set(m[1],m[2].trim());
+  }
+  const valid=fields.get('WORK_ORDER')==='#'+n&&fields.get('WORKER')==='NV02'&&
+    fields.get('RESOURCE_SCOPE')===lease.resourceScope&&fields.get('LEASE_ID')===lease.leaseId&&
+    fields.get('RESULT')==='PASS';
+  if(!valid)throw Error('NV02_DONE_EVIDENCE_SCOPE_OR_RESULT_INVALID');
+  const ref=String(fields.get('EVIDENCE_REF')||'');
+  if(!/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/(pull|issues|commit)\//.test(ref))
+    throw Error('NV02_DONE_EVIDENCE_REF_INVALID');
+  return{commentId:id,url:expected,evidenceRef:ref};
+}
+
 export async function releaseNv02WorkOrderAtomic({
-  db,issue,lease,workerSessionId,verifySession,postComment,evidenceVerified,
+  db,issue,lease,workerSessionId,verifySession,postComment,loadCanonicalTerminalEvidence,
   terminal='BLOCKED',ops=defaultOps
 }={}){
   if(!db?.query||!issue||!lease?.claimed||typeof postComment!=='function')
@@ -82,7 +110,18 @@ export async function releaseNv02WorkOrderAtomic({
   await attest(verifySession,workerSessionId);
   if(lease.workerSessionId!==workerSessionId||Number(issue.number)!==Number(lease.workOrder.slice(1)))
     throw Error('NV02_RELEASE_MISMATCH');
-  if(terminal==='DONE'&&evidenceVerified!==true)throw Error('NV02_DONE_EVIDENCE_REQUIRED');
+  let doneEvidence=null;
+  if(terminal==='DONE'){
+    // This function must be supplied by the authenticated host (GitHub API
+    // reader), never from a ChatGPT/GitHub Issue payload.
+    if(typeof loadCanonicalTerminalEvidence!=='function')
+      throw Error('NV02_DONE_CANONICAL_EVIDENCE_READER_REQUIRED');
+    const raw=await loadCanonicalTerminalEvidence({
+      issueNumber:Number(issue.number),resourceScope:lease.resourceScope,
+      leaseId:lease.leaseId,workerId:'NV02',workerSessionId
+    });
+    doneEvidence=validateNv02CanonicalDoneEvidence(raw,issue,lease);
+  }
   if(!['DONE','BLOCKED','EXTERNAL_WAIT'].includes(terminal))
     throw Error('NV02_TERMINAL_INVALID');
   const holder={resourceScope:lease.resourceScope,workerId:'NV02',
@@ -97,7 +136,8 @@ export async function releaseNv02WorkOrderAtomic({
   await postComment(Number(issue.number),[
     '[TIGERIQ_NV02_TERMINAL_CHECKPOINT_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
     'RESOURCE_SCOPE='+lease.resourceScope,'LEASE_ID='+lease.leaseId,
-    'STATE='+terminal,'AUTHORITY=CORE_POSTGRES_ATOMIC_TERMINAL_CHECKPOINT'
+    'STATE='+terminal,'AUTHORITY=CORE_POSTGRES_ATOMIC_TERMINAL_CHECKPOINT',
+    ...(doneEvidence?['EVIDENCE_COMMENT_ID='+doneEvidence.commentId,'EVIDENCE_REF='+doneEvidence.evidenceRef]:[])
   ].join('\n'));
   if(!same(await ops.read(db,lease.resourceScope),lease.leaseId,workerSessionId,issue.number))
     throw Error('NV02_RELEASE_LOST_AFTER_TERMINAL_CHECKPOINT');
