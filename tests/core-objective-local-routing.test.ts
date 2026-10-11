@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 // @ts-expect-error Objective routing policy is intentionally a runtime ESM module.
-import {normalizeObjectiveRoutingProfile,objectiveJobRoutingProfile} from '../apps/tigeriq-core/objective-local-routing.mjs';
+import {normalizeObjectiveRoutingProfile,objectiveJobRoutingProfile,mayWaitAfterLocalFailure} from '../apps/tigeriq-core/objective-local-routing.mjs';
 const src=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
 const router=readFileSync(new URL('../apps/tigeriq-core/smart-router.mjs',import.meta.url),'utf8');
 
@@ -31,6 +31,17 @@ describe('Core P2 objective LOCAL provider boundary',()=>{
     expect(src).toMatch(/compiled_ai.*?\$6,\$7/);
     expect(src).toContain('objectiveJobRoutingProfile(o.metadata)');
     expect(src).toContain('MANAGER_LOCAL_OBJECTIVE_PC_OPERATOR_DENIED');
+  });
+  it('retries only transient LOCAL inference failures with a configured Ollama resource',()=>{
+    const request={profile:'LOCAL',message:'NO_AI_RESOURCE_AVAILABLE',configuredLocalCount:1};
+    expect(mayWaitAfterLocalFailure({...request,failures:[{kind:'timeout'}]})).toBe(true);
+    expect(mayWaitAfterLocalFailure({...request,failures:[{kind:'outage'},{kind:'timeout'}]})).toBe(true);
+    expect(mayWaitAfterLocalFailure({...request,failures:[{kind:'auth'}]})).toBe(false);
+    expect(mayWaitAfterLocalFailure({...request,failures:[{kind:'invalid_response'}]})).toBe(false);
+    expect(mayWaitAfterLocalFailure({...request,failures:[{kind:'security'}]})).toBe(false);
+    expect(mayWaitAfterLocalFailure({...request,failures:[]})).toBe(false);
+    expect(mayWaitAfterLocalFailure({...request,configuredLocalCount:0,failures:[{kind:'timeout'}]})).toBe(false);
+    expect(mayWaitAfterLocalFailure({...request,profile:'AUTO',failures:[{kind:'timeout'}]})).toBe(false);
   });
   it('enforces provider locality in the existing router, not in the prompt alone',()=>{
     expect(router).toContain("normalizedProfile==='LOCAL'&&!isLocal(resource)");
