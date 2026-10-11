@@ -54,6 +54,8 @@ function Load-CoreEnvironment {
   $tail=(tailscale ip -4 2>$null | Select-Object -First 1)
   $env:TIGERIQ_CORE_HOST=if($tail){[string]$tail}else{'127.0.0.1'}
   $env:TIGERIQ_CORE_PORT='8795'
+  # Owner direct 2026-10-10: NV03 independently self-pulls GitHub P1-P5; Core may dispatch review/research to NV04 only.
+  $env:TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1'
   $env:TIGERIQ_OLLAMA_MODEL='qwen3:4b'
   $env:TIGERIQ_ALLOW_PAID_AI='false'
   $env:TIGERIQ_GITHUB_RECONCILE_MS='30000'
