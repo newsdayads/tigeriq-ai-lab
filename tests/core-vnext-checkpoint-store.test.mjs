@@ -36,7 +36,11 @@ const transition = {
 };
 const store = (db, overrides = {}) => createCoreVNextCheckpointStore({
   checkpointer: db, enabled: true, schemaReady: true,
-  verifyWriterLease: async () => true, ...overrides,
+  verifyWriterLease: async () => true,
+  // In-memory test saver has no PostgreSQL connection; production save fails
+  // closed without a real DB fence, tested separately below.
+  withObjectiveFence: async (_id, action) => action(),
+  ...overrides,
 });
 
 describe('Core vNext durable checkpoint adapter (isolated, not connected to live Core)', () => {
@@ -49,6 +53,35 @@ describe('Core vNext durable checkpoint adapter (isolated, not connected to live
     await expect(store(db, { verifyWriterLease: async () => false }).save(transition))
       .rejects.toThrow('VNEXT_WRITER_LEASE_REQUIRED');
     expect(db.writes).toBe(0);
+  });
+
+  it('rejects enabled saves without a cross-process fence, even when a writer lease is true', async () => {
+    const db = saver();
+    const instance=createCoreVNextCheckpointStore({checkpointer:db,enabled:true,schemaReady:true,verifyWriterLease:async()=>true});
+    await expect(instance.save(transition)).rejects.toThrow('VNEXT_CROSS_PROCESS_FENCE_REQUIRED');
+    expect(db.writes).toBe(0);
+  });
+
+  it('holds objective fence across durable latest-read, put and readback', async () => {
+    const db=saver();
+    const operations=[];
+    const instrumented={
+      async getTuple(c){operations.push('read');return db.getTuple(c);},
+      async put(...args){operations.push('put');return db.put(...args);},
+    };
+    const fenced=store(instrumented,{
+      withObjectiveFence:async (id,action)=>{
+        expect(id).toBe(transition.objective_id);
+        operations.push('fence_acquire');
+        try{return await action();}
+        finally{operations.push('fence_release');}
+      },
+    });
+    const result=await fenced.save(transition);
+    expect(result.written).toBe(true);
+    expect(operations[0]).toBe('fence_acquire');
+    expect(operations.slice(-2)).toEqual(['read','fence_release']);
+    expect(operations.filter(x=>x==='put')).toHaveLength(1);
   });
 
   it('rejects P0, Owner holds, effects, malformed transitions and bad sequence before writes', async () => {
