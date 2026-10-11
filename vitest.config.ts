@@ -19,6 +19,7 @@ export default defineConfig({
       'tests/github-closed-objective-reconciliation.test.mjs',
       'tests/runtime-updater-source-identity.test.mjs',
       'tests/core-watchdog-failure-evidence.test.mjs',
+      'tests/core-watchdog-snapshot-integration.test.mjs',
       'tests/core-review-validation-diagnostic.test.mjs',
       'tests/nv02-continuity.test.mjs',
       'tests/remote-desktop-guard.test.mjs',
