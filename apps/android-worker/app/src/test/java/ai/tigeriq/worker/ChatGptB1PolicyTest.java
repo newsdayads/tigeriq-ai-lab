@@ -499,6 +499,47 @@ public final class ChatGptB1PolicyTest {
     }
 
     @Test
+    public void manualRecoveryCanOnlyMutateTheSameActiveUnleasedRun() {
+        assertTrue(ChatGptB1Policy.canMutateObservedManualRun(
+            "manual-A", 1, 1000L, "manual-A", "", 1, 1000L, "WAITING_PROJECT"
+        ));
+        assertTrue(ChatGptB1Policy.canMutateObservedManualRun(
+            "manual-A", 2, 1000L, "manual-A", "", 2, 1000L, "WAITING_AI"
+        ));
+        assertFalse("A different manual run is not this callback",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-B", "", 1, 1000L, "WAITING_PROJECT"
+            ));
+        assertFalse("Never touch a Core task installed after manual snapshot",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", "CORE-TASK", 1, 1000L, "WAITING_PROJECT"
+            ));
+        assertFalse("Do not borrow a restarted run with reused identity",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", "", 1, 2000L, "WAITING_PROJECT"
+            ));
+        assertFalse("Do not write a successor cycle",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", "", 2, 1000L, "WAITING_PROJECT"
+            ));
+        assertFalse("Never overwrite successful evidence",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", "", 1, 1000L, "COMPLETE"
+            ));
+        assertFalse("Never overwrite cancelled evidence",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", "", 1, 1000L, "CANCELLED"
+            ));
+        assertFalse("Missing task identity is not proven manual mode",
+            ChatGptB1Policy.canMutateObservedManualRun(
+                "manual-A", 1, 1000L, "manual-A", null, 1, 1000L, "WAITING_AI"
+            ));
+        assertFalse(ChatGptB1Policy.canMutateObservedManualRun(
+            "", 1, 1000L, "", "", 1, 1000L, "WAITING_PROJECT"
+        ));
+    }
+
+    @Test
     public void delayedManualRecoveryCannotAlterReplacementCoreTask() throws Exception {
         String bridge = new String(
             java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
