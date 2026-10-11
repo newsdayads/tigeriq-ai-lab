@@ -1983,7 +1983,7 @@ export function githubReviewFormatRetryPrompt(original='',expectedHead=''){
     'Line 4 begins SUMMARY= followed by an original, nonempty concrete finding.',
     'Line 5 begins FINDINGS= followed by verifiable observations or NONE.',
     'Do not output placeholders or the text PASS|CHANGES_REQUIRED.',
-  ].join('\\n');
+  ].join('\n');
 }
 
 export function parseGithubCoreReviewEvidence(text,prompt=''){
