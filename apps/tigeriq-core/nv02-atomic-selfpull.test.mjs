@@ -41,6 +41,14 @@ function fixture(options={}){
 const args=(f)=>({db,issue,workerSessionId:session,verifySession,
   loadCurrentIssue:f.loadCurrentIssue,postComment:f.postComment,ops:f.ops});
 
+function canonicalDoneEvidence(lease){
+  const id=6101234567;
+  return {id,html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/'+issue.number+'#issuecomment-'+id,
+    body:['[TIGERIQ_NV02_WORK_EVIDENCE_V1]','WORK_ORDER=#'+issue.number,'WORKER=NV02',
+      'RESOURCE_SCOPE='+lease.resourceScope,'LEASE_ID='+lease.leaseId,
+      'RESULT=PASS','EVIDENCE_REF=https://github.com/newsdayads/tigeriq-ai-lab/pull/4660'].join('\n')};
+}
+
 test('requires independent worker session verification before any claim',async()=>{
   const f=fixture();
   await assert.rejects(()=>claimNv02WorkOrderAtomic({...args(f),verifySession:undefined}),/ATTESTATION_REQUIRED/);
@@ -61,9 +69,10 @@ test('release is bound to session; DONE requires verified terminal evidence',asy
   await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,
     workerSessionId:'NV02-foreign-session',verifySession,postComment:f.postComment,ops:f.ops}),/RELEASE_MISMATCH/);
   await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
-    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE'}),/DONE_EVIDENCE_REQUIRED/);
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',evidenceVerified:true}),/DONE_CANONICAL_EVIDENCE_READER_REQUIRED/);
   const result=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
-    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',evidenceVerified:true});
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a)});
   assert.equal(result.released,true);
   assert.equal(result.releaseAuditRecorded,true);
   assert.equal(f.holders.size,0);
@@ -78,7 +87,8 @@ test('terminal checkpoint is committed while still holding the global lease',asy
     return f.postComment(n,body);
   };
   const r=await releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
-    verifySession,postComment:write,ops:f.ops,terminal:'DONE',evidenceVerified:true});
+    verifySession,postComment:write,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>canonicalDoneEvidence(a)});
   assert.equal(r.released,true);
 });
 test('failed terminal checkpoint retains lease, preventing duplicate claim',async()=>{
@@ -101,6 +111,29 @@ test('unrecognized terminal states are rejected without releasing the scope',asy
   const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
   await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
     verifySession,postComment:f.postComment,ops:f.ops,terminal:'APPROVED'}),/NV02_TERMINAL_INVALID/);
+  assert.equal(f.holders.size,1);
+});
+test('caller-supplied DONE boolean cannot bypass canonical GitHub evidence readback',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',evidenceVerified:true}),
+    /DONE_CANONICAL_EVIDENCE_READER_REQUIRED/);
+  const spoof=canonicalDoneEvidence(a);spoof.body=spoof.body.replace('RESOURCE_SCOPE='+a.resourceScope,'RESOURCE_SCOPE=WRONG_SCOPE');
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>spoof}),/DONE_EVIDENCE_SCOPE_OR_RESULT_INVALID/);
+  assert.equal(f.holders.size,1);
+});
+test('DONE evidence requires canonical GitHub ID, unique fields and valid receipt URL',async()=>{
+  const f=fixture();const a=await claimNv02WorkOrderAtomic(args(f));
+  const bad=canonicalDoneEvidence(a);bad.html_url='https://evil.invalid/comment/'+bad.id;
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>bad}),/DONE_CANONICAL_SOURCE_INVALID/);
+  const duplicate=canonicalDoneEvidence(a);duplicate.body+='\nRESULT=PASS';
+  await assert.rejects(()=>releaseNv02WorkOrderAtomic({db,issue,lease:a,workerSessionId:session,
+    verifySession,postComment:f.postComment,ops:f.ops,terminal:'DONE',
+    loadCanonicalTerminalEvidence:async()=>duplicate}),/DONE_EVIDENCE_DUPLICATE_FIELD/);
   assert.equal(f.holders.size,1);
 });
 test('lease renew is fenced by worker session ownership',async()=>{
