@@ -1586,7 +1586,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         policyPatch.finalReviewerResourceId=null;
         policyPatch.finalReviewImplementationFingerprint=null;
       }
-    }else if(hasAcceptanceEvidenceGate&&(row.metadata?.liveAcceptanceRequired!==true||row.metadata?.finalReviewRequired!==true)){
+    }else if((sourceLiveRequired&&row.metadata?.liveAcceptanceRequired!==true)
+      ||(sourceFinalReviewRequired&&row.metadata?.finalReviewRequired!==true)){
       policyPatch.liveAcceptanceCommentCount=-1;
       policyPatch.finalReviewPass=false;
       policyPatch.finalReviewRevision=null;
