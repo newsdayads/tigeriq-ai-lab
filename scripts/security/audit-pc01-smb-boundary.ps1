@@ -75,10 +75,14 @@ try {
   $unresolvedSharePaths = 0
   $counter = 0
   foreach ($share in $allShares) {
-    # Ignore non-filesystem, nonlocal paths: they cannot be proven to
-    # overlap a local-drive root by this checker.
+    # Special shares are not security assertions about non-special exports.
+    # Unknown/non-drive paths on non-special shares may hide volume aliases.
+    # Never silently omit them from the audit and return a false safe result.
     $rawSharePath = [string]$share.Path
-    if ($rawSharePath -notmatch '^[A-Za-z]:\\') { continue }
+    if ($rawSharePath -notmatch '^[A-Za-z]:\\') {
+      if (-not [bool]$share.Special) { $unresolvedSharePaths++ }
+      continue
+    }
     $sharePath = Normalize-LocalPath -Value $rawSharePath
     # A share outside RootPath may alias into it via a junction/symlink.
     # Check every share path and its ancestors BEFORE lexical overlap filtering.
