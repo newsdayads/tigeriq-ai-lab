@@ -35,6 +35,8 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.progress(row)).toMatchObject({verified:true,percent:100});
   expect(wc.rowsFor({openWork:[{workKind:'WORK',status:'WAITING'},{workKind:'WORK',status:'WORKING'}]},'action')).toHaveLength(2);
   expect(wc.rowsFor({recentWork:[{status:'DONE',completionVerified:false},{status:'DONE',completionVerified:true}]},'done')).toHaveLength(1);
+  expect(wc.rowsFor({recentWork:[{status:'CLOSED_UNVERIFIED',number:9,completionVerified:false},{status:'DONE',number:10,completionVerified:true}]},'archived')).toEqual([{status:'CLOSED_UNVERIFIED',number:9,completionVerified:false}]);
+  expect(wc.viewStatus({status:'CLOSED_UNVERIFIED',completionVerified:false})).toBe('CLOSED_UNVERIFIED');
  });
  it('rejects Issue closed and metadata-only completion without independent receipts',()=>{
   expect(completionProof(issue('STATE=DONE')).verified).toBe(false);
