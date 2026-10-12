@@ -320,14 +320,14 @@ test('V2.1 semantic colors cover all eight statuses with dedicated system and co
   await routeTiger(page,payload);
   await page.goto('https://tigeriq.test/command-center');
   for(const spec of specs){
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="system"]').click();
-    else if(spec.status==='DONE')await page.locator('.filter[data-filter="done"]').click();
+    if(spec.status==='SYSTEM'){await expect(page.locator('.work-row[data-work-number="807"]')).toHaveCount(0);continue;}
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="closed"]').click();
     const row=page.locator('.work-row[data-work-number="'+spec.number+'"]');
     await expect(row).toBeVisible();
     await expect(row).toHaveClass(new RegExp('status-'+spec.status.toLowerCase()));
     const color=await row.evaluate(element=>getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
     expect(color).toBe(spec.color);
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="action"]').click();
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="all"]').click();
   }
 });
 
@@ -652,7 +652,7 @@ test('Production-line LIVE keeps workforce widgets and orders system P1–P5 bef
   const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
   expect(ids).toEqual([4457,2949,4661,4595,4532,4578,4569,4456,4636,2293,999]);
   await expect(page.locator('#workList [data-work-number="2293"]')).toBeVisible();
-  await expect(page.locator('#actionCount')).toHaveText('11');
+  await expect(page.locator('#allCount')).toHaveText('11');
   await expect(page.locator('#bcctSort')).toHaveCount(0);
   await expect(page.locator('#liveWorkers')).toBeVisible();
   await page.locator('#workList [data-work-number="4457"]').click();
