@@ -154,7 +154,21 @@ export function buildImprovementWorkOrder(rca={}){
   const scope='AUTO_RCA_'+String(rca.class).replace(/[^A-Z0-9_]/g,'_')+'_'+rca.rcaSignature.slice(0,12);
   const title=`[${priority}][AUTO-RCA][${rca.class}] Repair ${rca.contractId||rca.affectedScope}`;
   const body=[
-    'TIGERIQ_JOB_V1',
+    'TIGERIQ_JOB_V1', // Compatibility marker for existing RCA idempotent materialization.
+    '## ACTIVE WORK ORDER — AUTO-RCA P1–P3, V2 SOURCE CONTRACT',
+    'WORK_ORDER_LIFECYCLE=V2',
+    'PROJECT_ID=tigeriq-platform',
+    'WORKSTREAM_ID=autonomous-rca',
+    'OWNER_POLICY=AUTO',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'CURRENT_STEP=R00 — Đối chiếu nguyên nhân được tự kiểm tra phát hiện',
+    'LAST_COMPLETED_STEP=NOT_VERIFIED',
+    'NEXT_ACTION=Nhận việc qua khóa sở hữu duy nhất rồi kiểm thử và sửa theo bằng chứng, không bỏ qua cổng an toàn',
+    'BLOCKER=NONE_FOR_SOURCE_ONLY_STAGE',
+    'ETA_STATUS=UNVERIFIED',
+    'STARTED_AT=NOT_STARTED',
+    'FINISHED_AT=NOT_FINISHED',
+    'ACTIVE_EXECUTION=false',
     `SOURCE=SELF_AUDIT:${rca.anomalySignature}`,
     'PARENT=#2708 - Tự phân tích nguyên nhân và sinh Improvement Work Order',
     `PRIORITY=${priority}`,
@@ -186,6 +200,19 @@ export function buildImprovementWorkOrder(rca={}){
     `PROVENANCE=${rca.provenance.source}|${rca.provenance.contractId}|${rca.provenance.anomalySignature}`,
     'DONE=false',
     'STATE=READY_P1_P5_AUTONOMOUS_REPAIR',
+    '',
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    '- [ ] R00 — Kiểm chứng lỗi thật, xác định phạm vi và không nhận trùng.',
+    '- [ ] R01 — Sửa trên nhánh riêng trong phạm vi không phát sinh chi phí.',
+    '- [ ] R02 — Kiểm thử, kiểm tra chính xác bản mã và rà soát độc lập.',
+    '- [ ] R03 — Nghiệm thu chạy thực tế, lưu bằng chứng rồi mới kết thúc.',
+    '',
+    '## ACCEPTANCE',
+    `- Phải xác minh chữ ký lỗi ${rca.rcaSignature} và có bằng chứng kiểm thử, rà soát, nghiệm thu thật.`,
+    '- Metadata không đồng nghĩa có nhân sự đã nhận hoặc đủ điều kiện kết thúc.',
+    '',
+    '## STOP_CONDITIONS',
+    '- Ngừng đúng bước đòi chi phí, thông tin xác thực, quyền bảo mật, thay đổi không thể hoàn tác hoặc triển khai chính thức chưa được cho phép.',
   ].join('\n');
   return{title,body,priority,resourceScope:scope};
 }
