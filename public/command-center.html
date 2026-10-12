@@ -31,7 +31,7 @@ a{color:inherit;text-decoration:none}
 .filters::-webkit-scrollbar{display:none}
 .filter{border:1px solid #294661;background:#0b1829;color:#91a4ba;border-radius:999px;padding:6px 9px;font:800 9px/1 inherit;white-space:nowrap;transition:.18s ease}
 .filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
-.filter[data-filter="all"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
+.filter[data-filter="action"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
 .filter[data-filter="owner"].active{border-color:#9a4550;background:#451f27;color:#ffc0c6}
 .filter[data-filter="working"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
 .filter[data-filter="review"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
@@ -455,12 +455,12 @@ body.drawer-open{overflow:hidden}
 .raw-work-details{opacity:1!important;border-color:#154879;background:linear-gradient(145deg,rgba(8,24,44,.94),rgba(9,23,42,.96))}
 .raw-work-details>summary{color:#bca7f3!important;font-size:11px!important;text-transform:uppercase;letter-spacing:.035em}
 .raw-work-details>summary .details-hint{color:#7893b2;font-size:8px;margin-left:5px}
-.filter{cursor:pointer}.filter[data-filter="all"],.filter[data-filter="owner"]{color:#ff747e;border-color:#87434d;background:rgba(255,116,126,.10)}
+.filter{cursor:pointer}.filter[data-filter="action"],.filter[data-filter="owner"]{color:#ff747e;border-color:#87434d;background:rgba(255,116,126,.10)}
 .filter[data-filter="working"]{color:#47db91;border-color:#287453;background:rgba(71,219,145,.10)}
 .filter[data-filter="review"],.filter[data-filter="waitblocked"]{color:#f0b94d;border-color:#8b6426;background:rgba(240,185,77,.10)}
 .filter[data-filter="system"]{color:#8796a6;border-color:#526170;background:rgba(135,150,166,.10)}
 .filter[data-filter="closed"]{color:#55d8c4;border-color:#287468;background:rgba(85,216,196,.10)}
-.filter[data-filter="all"].active,.filter[data-filter="owner"].active{color:#ff9ba3;border-color:#a64f59;background:rgba(255,116,126,.22)}
+.filter[data-filter="action"].active,.filter[data-filter="owner"].active{color:#ff9ba3;border-color:#a64f59;background:rgba(255,116,126,.22)}
 .filter[data-filter="working"].active{color:#7df0b5;border-color:#329466;background:rgba(71,219,145,.23)}
 .filter[data-filter="review"].active,.filter[data-filter="waitblocked"].active{color:#ffd27a;border-color:#a8792c;background:rgba(240,185,77,.23)}
 .filter[data-filter="system"].active{color:#b7c2cc;border-color:#667687;background:rgba(135,150,166,.20)}
@@ -780,7 +780,7 @@ html,body,body{background:#071321!important}
 .drawer[data-status="queued"]{--detail-color:#F59E0B}
 .filter[data-filter]{--filter-accent:#94A3B8;color:var(--filter-accent)!important;border:1px solid color-mix(in srgb,var(--filter-accent) 56%,#071321)!important;background:transparent!important}
 .filter[data-filter].active{color:var(--filter-accent)!important;border-color:var(--filter-accent)!important;background:color-mix(in srgb,var(--filter-accent) 17%,#071321)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--filter-accent) 18%,transparent) inset}
-.filter[data-filter="all"]{--filter-accent:#94A3B8}
+.filter[data-filter="action"]{--filter-accent:#94A3B8}
 .filter[data-filter="owner"]{--filter-accent:#A78BFA}
 .filter[data-filter="working"]{--filter-accent:#10B981}
 .filter[data-filter="review"]{--filter-accent:#3B82F6}
@@ -917,11 +917,11 @@ html,body,body{background:#071321!important}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="all">TẤT CẢ <b id="allCount">0</b></button>
+    <button class="filter active" data-filter="action">CHƯA KẾT THÚC <b id="actionCount">0</b></button>
     <button class="filter" data-filter="working">ĐANG LÀM <b id="workingCount">0</b></button>
     <button class="filter" data-filter="waitblocked">CHỜ / CHẶN <b id="waitblockedCount">0</b></button>
     <button class="filter" data-filter="closed">ĐÃ KẾT THÚC <b id="closedCount">0</b></button>
-  </nav><small class="work-scope-note">Nhóm đã kết thúc chỉ bao gồm lịch sử gần đây có trong nguồn dữ liệu; đóng hồ sơ không đồng nghĩa hoàn tất.</small>
+  </nav><small class="work-scope-note">Mặc định hiển thị việc chưa kết thúc; lịch sử gần đây nằm trong “ĐÃ KẾT THÚC”. Đóng hồ sơ không đồng nghĩa hoàn tất.</small>
   <div id="workList" class="work-list tiq-work-center"></div>
 </section>
 </div>
@@ -954,7 +954,7 @@ const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
-let currentFilter='all';
+let currentFilter='action';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
@@ -1056,7 +1056,7 @@ function hydrate(raw){
   return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
 function updateCounts(){
- const filters=['all','working','waitblocked','closed'];
+ const filters=['action','working','waitblocked','closed'];
  for(const key of filters){
   const node=$(key+'Count');
   if(node)node.textContent=TigerIQWorkCenter.rowsFor(snapshot,key).length;
@@ -2165,7 +2165,7 @@ async function load(){
 }
 TigerIQWorkCenter.mountFloatingReload();
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
-  currentFilter=button.dataset.filter||'all';
+  currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
