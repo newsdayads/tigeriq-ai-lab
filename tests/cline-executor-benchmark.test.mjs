@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { seedLane, scoreLane } from '../benchmarks/cline-executor-eval/harness.mjs';
+import { seedLane, scoreLane, fixtureChildEnvironment } from '../benchmarks/cline-executor-eval/harness.mjs';
 
 test('benchmark harness seeds identical deterministic fixtures and baseline fails acceptance', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tigeriq-cline-bench-'));
@@ -68,4 +68,19 @@ test('immutable manifest prevents forged baseline and TASK tampering from creati
   assert.deepEqual(row.unexpectedFiles, ['.tigeriq-benchmark-baseline.json']);
   assert.equal(row.completed, false);
   assert.equal(score.qualityPass, false);
+});
+
+test('fixture subprocess environment has no credentials or inherited node test flags', () => {
+  const env=fixtureChildEnvironment({
+    PATH:'/mock/bin',
+    HOME:'/mock/home',
+    NODE_TEST_CONTEXT:'child-v8',
+    GITHUB_TOKEN:'top-secret',
+    TIGERIQ_GITHUB_TOKEN:'top-secret',
+    OLLAMA_API_KEY:'top-secret',
+    DATABASE_URL:'top-secret',
+    OPENAI_API_KEY:'top-secret',
+    NODE_OPTIONS:'--require /tmp/inject.cjs',
+  });
+  assert.deepEqual(env,{PATH:'/mock/bin',HOME:'/mock/home'});
 });
