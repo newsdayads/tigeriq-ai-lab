@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {validateWorkOrderLifecycleV2,requiresLifecycleV2,lifecycleTimeSnapshot} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import {safeAutoWorkAdmission} from '../apps/tigeriq-core/github-intake.mjs';
+import {parseOpenWorkIssue} from '../api/live-status.mjs';
 const issue=(body,extra={})=>({
   number:900001,title:'[P2][CORE] Contract V2 test',state:'open',
   created_at:'2026-10-12T01:00:00Z',body,...extra
@@ -53,6 +54,12 @@ describe('Work Order Lifecycle V2 global source contract',()=>{
     expect(requiresLifecycleV2(old)).toBe(false);
     expect(validateWorkOrderLifecycleV2(old).source).toBe('LEGACY_NOT_ENFORCED');
     expect(requiresLifecycleV2(issue(header,{created_at:'2026-07-11T00:00:00Z'}))).toBe(true);
+  });
+  it('projects lifecycle and explicit time fields for each Owner-visible work card without fake timestamps',()=>{
+    const row=parseOpenWorkIssue(issue(header));
+    expect(row.lifecycleContract).toMatchObject({required:true,valid:true,missing:[]});
+    expect(row.lifecycleTiming).toMatchObject({startedAt:null,targetFinishAt:null,finishedAt:null});
+    expect(row.progressTotal).toBe(2);
   });
   it('does not treat an administrative not-planned closure as a completed task',()=>{
     const stopped=issue(header,{state:'closed',state_reason:'not_planned'});
