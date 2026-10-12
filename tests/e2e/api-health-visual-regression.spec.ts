@@ -63,9 +63,18 @@ for(const width of [390,1024,1648]){
   await page.locator('.filter[data-filter=all]').click();
   const employee=page.locator('.employee-card.state-ready').first();
   await expect(employee).toBeVisible();
-  const normal=await employee.screenshot({animations:'disabled'});
+  // API Health refreshes employee cards asynchronously. An element screenshot
+  // waits for fonts/stability and can retain a detached node even after toBeVisible.
+  // Capture its bounded screen region with Page.screenshot instead (no stale handle)
+  // while independently requiring the actual ready card to be hovered.
+  const normalBounds=await employee.boundingBox();
+  expect(normalBounds).not.toBeNull();
+  const normal=await page.screenshot({clip:normalBounds!,animations:'disabled'});
   await employee.hover();
-  const hover=await employee.screenshot({animations:'disabled'});
+  await expect.poll(async()=>page.locator('.employee-card.state-ready').first().evaluate(el=>el.matches(':hover')),{timeout:5000}).toBe(true);
+  const hoverBounds=await employee.boundingBox();
+  expect(hoverBounds).not.toBeNull();
+  const hover=await page.screenshot({clip:hoverBounds!,animations:'disabled'});
   expect(hover.equals(normal),'Hover must visibly tint the status card').toBe(false);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
