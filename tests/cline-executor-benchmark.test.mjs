@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { seedLane, scoreLane, fixtureChildEnvironment } from '../benchmarks/cline-executor-eval/harness.mjs';
@@ -28,7 +28,7 @@ test('benchmark harness seeds identical deterministic fixtures and baseline fail
   assert.equal(otherLane.qualityPass, true);
 });
 
-test('scorer rejects test tampering even when a fixture test process exits successfully', async () => {
+test('scorer rejects tampered test without executing attacker-edited code', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tigeriq-cline-bench-'));
   const seeded = await seedLane({ root, lane: 'tampered' });
   const first = seeded.fixtures[0].root;
@@ -39,7 +39,9 @@ test('scorer rejects test tampering even when a fixture test process exits succe
   );
   const score = await scoreLane({ root, lane: 'tampered' });
   const row = score.fixtures.find((item) => item.fixtureId === 'strict-count-parser');
-  assert.equal(row.testsPass, true);
+  assert.equal(row.testsPass, false);
+  assert.equal(row.testExitCode, null);
+  assert.equal(row.stderrTail, 'BENCHMARK_UNTRUSTED_FIXTURE_REJECTED');
   assert.equal(row.testsMutated, true);
   assert.equal(row.completed, false);
 });
@@ -63,7 +65,9 @@ test('immutable manifest prevents forged baseline and TASK tampering from creati
 
   const score = await scoreLane({ root, lane: 'forged' });
   const row = score.fixtures.find((item) => item.fixtureId === 'strict-count-parser');
-  assert.equal(row.testsPass, true);
+  assert.equal(row.testsPass, false);
+  assert.equal(row.testExitCode, null);
+  assert.equal(row.stderrTail, 'BENCHMARK_UNTRUSTED_FIXTURE_REJECTED');
   assert.equal(row.taskMutated, true);
   assert.deepEqual(row.unexpectedFiles, ['.tigeriq-benchmark-baseline.json']);
   assert.equal(row.completed, false);
@@ -95,4 +99,14 @@ test('seed is fail-closed for force, existing lanes, and traversal paths', async
   await assert.rejects(seedLane({root,lane:'../danger'}),/BENCHMARK_LANE_INVALID/);
   await assert.rejects(scoreLane({root,lane:'../danger'}),/BENCHMARK_LANE_INVALID/);
   assert.equal(await readFile(file,'utf8'),before);
+});
+
+test('scorer rejects symlinks in executor-writable fixtures', {skip: process.platform === 'win32'}, async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),'tigeriq-cline-link-'));
+  const seeded=await seedLane({root,lane:'clinelink'});
+  const fixtureRoot=seeded.fixtures[0].root;
+  const source=path.join(fixtureRoot,'src','parse-count.mjs');
+  await rm(source);
+  await symlink(path.join(root,'missing-external-source'),source);
+  await assert.rejects(scoreLane({root,lane:'clinelink'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
 });
