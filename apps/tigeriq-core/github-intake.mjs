@@ -1485,6 +1485,16 @@ export function activeGithubObjectiveSourceExclusion(issue){
   return '';
 }
 
+// The active GitHub Work Order contract outranks a stale objective metadata copy.
+// A stage-level pc_operator DONE must not auto-close a parent with KEEP_OPEN.
+export function githubKeepOpenOnStepComplete(metadata={},sourceBody=''){
+  const active=currentAutoExecutionHeader(sourceBody);
+  const current=bodyValue(active,'KEEP_OPEN_ON_STEP_COMPLETE').trim().toLowerCase();
+  if(current==='true')return true;
+  if(current==='false')return false;
+  return metadata?.keepOpenOnStepComplete===true;
+}
+
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
@@ -1826,8 +1836,9 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           token
         ));
       }
+      const keepOpenOnStepComplete=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
       if(row.status==='completed'){
-        if(row.metadata?.keepOpenOnStepComplete===true){
+        if(keepOpenOnStepComplete){
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
         }else{
           // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
@@ -1835,7 +1846,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
         }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&row.metadata?.keepOpenOnStepComplete!==true})]);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&!keepOpenOnStepComplete,keepOpenOnStepComplete})]);
       results++;
     }
   }
