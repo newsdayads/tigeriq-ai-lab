@@ -1,4 +1,9 @@
 // Vercel is presentation transport only. All displayed data comes from PC01.
+import { timingSafeEqual } from 'node:crypto';
+function safePassword(received, expected) {
+  const a=Buffer.from(String(received||'')), b=Buffer.from(String(expected||''));
+  return b.length >= 16 && a.length===b.length && timingSafeEqual(a,b);
+}
 const PATHS = new Set([
   '/', '/work-ui.css', '/work-center-visual.css', '/work-center.js',
   '/api/status', '/api/live-status', '/api/health-live-work', '/api/work-history',
@@ -8,6 +13,20 @@ export default async function handler(req, res) {
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('X-Robots-Tag','noindex, nofollow');
   if (req.method !== 'GET') { res.status(405).send('method_not_allowed'); return; }
+  // Browser auth is distinct from the server-to-server PC01 gateway credential.
+  // Production Vercel domains otherwise permit anonymous web visits.
+  const password=String(process.env.TIGERIQ_LIVE_VIEW_PASSWORD||'');
+  if(password.length < 16){ res.status(503).send('VIEW_LOGIN_UNCONFIGURED'); return; }
+  let submitted='';
+  const value=String(req.headers.authorization||'');
+  if(value.startsWith('Basic ')){
+    try{submitted=Buffer.from(value.slice(6),'base64').toString('utf8');}catch{}
+  }
+  if(!safePassword(submitted,'son:'+password)){
+    res.setHeader('WWW-Authenticate','Basic realm="TigerIQ API Health", charset="UTF-8"');
+    res.status(401).send('LOGIN_REQUIRED'); return;
+  }
+
   const pathValue = req.query?.resource;
   const path = '/' + String(Array.isArray(pathValue) ? '' : (pathValue || '')).replace(/^\/+/, '');
   if (!PATHS.has(path)) { res.status(404).send('not_found'); return; }
