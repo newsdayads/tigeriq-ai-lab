@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
-import {backlogOwnerControlled,backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,sortBacklogSpecs} from './github-backlog-policy.mjs';
+import {backlogOwnerControlled,backlogOwnerDirect,chatMutationOwnerPlan,effectiveBacklogPriority,isActiveExecutionSpec,isOwnerOnlyP0,isReviewOnlySpec,sortBacklogSpecs} from './github-backlog-policy.mjs';
 import {classifyWorkOrder} from './work-routing-policy.mjs';
 import {controlPlaneRepairIntent,isAppChromeLocalOnlyPath,isProtectedControlPlanePath} from '../shared/control-plane-lock.mjs';
 import {githubRateLimitCooldownMs} from './github-intake.mjs';
@@ -161,7 +161,13 @@ export function parseCodingIssue(issue){
   if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_SECURITY_BOUNDARY_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
-  if(!isActiveExecutionSpec(body))return null;
+  // Work Order V2 uses READY/WORKING + real leases. Archived V1
+  // ACTIVE_EXECUTION/CANONICAL_SPEC lines must not override a current V2 contract.
+  // Keep V1's full section gate and the REVIEW_ONLY exclusion unchanged.
+  const lifecycleV2=currentCodingValue(body,'WORK_ORDER_LIFECYCLE').toUpperCase()==='V2';
+  if(lifecycleV2){
+    if(isReviewOnlySpec(header))return null;
+  }else if(!isActiveExecutionSpec(body))return null;
   const classification=classifyWorkOrder(header);
   if(classification.route!=='CODING')return null;
   const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(header,'P3');
