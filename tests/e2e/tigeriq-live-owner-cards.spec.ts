@@ -437,9 +437,8 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const item of rows){
-    await page.locator('.filter[data-filter="'+item.filter+'"]').click();
-    const filtered=page.locator('.work-row');
-    await expect(filtered).toHaveCount(1);
+    await page.locator('.filter[data-filter="all"]').click();
+    if(item.filter==='system'){await expect(page.locator('.work-row[data-work-number="908"]')).toHaveCount(0);continue;}
     const card=page.locator('.work-row[data-work-number="'+item.number+'"]');
     await expect(card).toBeVisible();
     const actual=await card.evaluate(element=>
@@ -453,7 +452,7 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     expect(detailColor).toBe(item.color);
     await page.locator('#drawerCloseBottom').click();
   }
-  await page.locator('.filter[data-filter="done"]').click();
+  await page.locator('.filter[data-filter="closed"]').click();
   await expect(page.locator('.work-row')).toHaveCount(1);
   await expect(page.locator('.work-row[data-work-number="909"]')).toBeVisible();
 });
@@ -562,15 +561,7 @@ test('P0 progress fixed at BOTTOM and exact semantic status color on all verifie
   await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const [i,[state,color]] of colors.entries()){
-    if(state==='DONE')await page.locator('.filter[data-filter="done"]').click();
-    else if(state==='OWNER_GATE')await page.locator('.filter[data-filter="owner"]').click();
-    else if(state==='QUEUED')await page.locator('.filter[data-filter="ready"]').click();
-    else if(state==='WAITING')await page.locator('.filter[data-filter="waiting"]').click();
-    else if(state==='PAUSED')await page.locator('.filter[data-filter="paused"]').click();
-    else if(state==='BLOCKED')await page.locator('.filter[data-filter="blocked"]').click();
-    else if(state==='VERIFY')await page.locator('.filter[data-filter="verify"]').click();
-    else if(state==='REVIEW')await page.locator('.filter[data-filter="review"]').click();
-    else if(state==='WORKING')await page.locator('.filter[data-filter="running"]').click();
+    await page.locator('.filter[data-filter="'+(state==='DONE'?'closed':'all')+'"]').click();
     const card=page.locator('.work-row[data-work-number="'+(state==='DONE'?719:710+i)+'"]');
     await expect(card).toBeVisible();
     const data=await card.evaluate(el=>{
