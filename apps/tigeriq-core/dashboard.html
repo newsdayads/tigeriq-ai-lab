@@ -540,7 +540,7 @@ document.getElementById('opsEvidenceClose').addEventListener('click',hideOpsEvid
 opsEvidenceBackdrop.addEventListener('click',e=>{if(e.target===opsEvidenceBackdrop)hideOpsEvidence()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!opsEvidenceBackdrop.hidden)hideOpsEvidence()});
 
-let workProjection=null,workFilter='all',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
+let workProjection=null,workFilter='action',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
 const WO_STATUS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function woStatus(x){return TigerIQWorkCenter.status(x)}
 function woVisualStatus(x){const s=woStatus(x);return ['WAITING','OPEN','QUEUED'].includes(s)&&x?.workKind==='WORK'&&(s==='QUEUED'||x?.executionEligibility==='READY')?'QUEUED':s}
@@ -599,10 +599,10 @@ function healthWorkQuick(row,status){
  return text?'<div class="work-quick '+kind+'">'+icon+'<span>'+esc(text)+'</span></div>':'';
 }
 function renderWork(){
- const defs=[['all','TẤT CẢ'],['working','ĐANG LÀM'],['waitblocked','CHỜ / CHẶN'],['closed','ĐÃ KẾT THÚC']];
+ const defs=[['action','CHƯA KẾT THÚC'],['working','ĐANG LÀM'],['waitblocked','CHỜ / CHẶN'],['closed','ĐÃ KẾT THÚC']];
  const counts=Object.fromEntries(defs.map(([key])=>[key,TigerIQWorkCenter.rowsFor(workProjection,key).length]));
  const button=([key,label])=>'<button type="button" aria-pressed="'+(workFilter===key)+'" class="wo-filter '+key+' '+(workFilter===key?'on':'')+'" data-wo="'+key+'">'+label+' <b>'+counts[key]+'</b></button>';
- woFilters.innerHTML=defs.map(button).join('')+'<small class="work-scope-note">Lịch sử đã kết thúc theo phạm vi dữ liệu gần đây; đóng hồ sơ không đồng nghĩa hoàn tất.</small>';
+ woFilters.innerHTML=defs.map(button).join('')+'<small class="work-scope-note">Mặc định hiển thị việc chưa kết thúc; lịch sử gần đây ở mục ĐÃ KẾT THÚC. Đóng hồ sơ không đồng nghĩa hoàn tất.</small>';
  woFilters.querySelectorAll('[data-wo]').forEach(btn=>btn.onclick=()=>{workFilter=btn.dataset.wo;renderWork()});
  const rows=workRows();
  workDetailRows=rows;
