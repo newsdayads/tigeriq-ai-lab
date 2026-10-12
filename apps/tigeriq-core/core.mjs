@@ -13,7 +13,7 @@ import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
-import { NV09_EMPLOYEE_ID, NV09_MODEL, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
+import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
@@ -856,35 +856,65 @@ function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
     : 'Diagnostic context: basic NV09 response-path health check.\n';
   return `${context}CANARY OUTPUT CONTRACT: return exactly ${marker} and nothing else.`;
 }
-async function runNv09Canary(inputPrompt=''){
+async function runNv09Canary(inputPrompt='',requestedContract='marker'){
   const r=nv09Resource;
   const id=`NV09-CANARY-${randomUUID()}`;
   const marker='NV09_CORE_CANARY_OK';
-  const prompt=buildNv09CanaryPrompt(inputPrompt,marker);
+  const contract=String(requestedContract||'marker').toLowerCase()==='json'?'json':'marker';
+  const prompt=contract==='json'
+    ? 'NV09 JSON CANARY: Reply with exactly one compact JSON object, no Markdown or explanation: {"canary":"NV09_CORE_CANARY_OK","ok":true}'
+    : buildNv09CanaryPrompt(inputPrompt,marker);
   const availability=await nv09ModelAvailability();
   if(!availability.ok)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:availability.reason,availability};
-  const claimed=await pool.query("update tigeriq_ai_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where resource_id=$1 and enabled=true and current_job_id is null returning resource_id",[r.resourceId,id]);
-  if(!claimed.rowCount)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:'NV09_RESOURCE_BUSY'};
-  await pool.query("update tigeriq_resources set current_job_id=$2,work_state='BUSY',updated_at=now() where employee_id=$1",[r.id,id]);
-  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,started_at,attempts,max_attempts) values($1,null,$2,$3,'coding_local','nv09_canary','running',$4,$5,'ollama','NV09_ON_DEMAND',$6,now(),1,1)",[id,'NV09 Core coding-safe live canary',prompt,r.id,r.resourceId,JSON.stringify({authority:'CORE',chosen:{employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model},reason:'EXPLICIT_NV09_CANARY'})]);
-  await event('ROUTING_DECISION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',profile:'NV09_ON_DEMAND',decision:{chosen:{employeeId:r.id,resourceId:r.resourceId,model:r.model},explicit:true}});
-  const started=Date.now();
+  // Cap the inference below the shared lease TTL. An oversized NV09_TIMEOUT_MS
+  // must never allow a second writer to enter while this canary is still running.
+  const canaryTimeoutMs=Math.min(NV09_TIMEOUT_MS,4*60*1000);
+  // The Core probe, Coding Lane and this canary must share the same atomic lease.
+  // Keep the resource occupied until the lease is released, including errors.
+  const sharedLease=await acquireSharedResourceLease(pool,{
+    employeeId:r.id,resourceId:r.resourceId,workId:id,role:'canary',lane:'core_canary',
+    ttlMs:Math.max(5*60*1000,Math.min(15*60*1000,canaryTimeoutMs+60000)),
+    metadata:{provider:r.provider,model:r.model},
+  });
+  if(!sharedLease)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:'NV09_RESOURCE_BUSY'};
   try{
-    const inference=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'10m'});
-    const latency=Date.now()-started;
-    if(!String(inference.text||'').includes(marker)){const e=new Error('NV09_CANARY_MARKER_MISSING');e.kind='invalid_response';throw e;}
-    await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',true,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
-    const result={ok:true,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,size:availability.size||null,latencyMs:latency,text:String(inference.text).slice(0,300),evalCount:inference.evalCount,loadDurationNs:inference.loadDurationNs,evalDurationNs:inference.evalDurationNs};
-    await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(result)]);
-    await event('NV09_CANARY_PASS',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,digest:availability.digest||null});
-    return {jobId:id,...result};
-  }catch(error){
-    const latency=Date.now()-started;
-    await markResourceFailure(r,id,error,'RESOURCE_FAILURE',true,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
-    const failure={message:String(error?.message||error).slice(0,700),kind:String(error?.kind||'outage'),latencyMs:latency};
-    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(failure)]);
-    await event('NV09_CANARY_FAIL',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,message:failure.message,kind:failure.kind});
-    return {ok:false,jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,latencyMs:latency,error:failure.message,kind:failure.kind};
+  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,started_at,attempts,max_attempts) values($1,null,$2,$3,'coding_local','nv09_canary','running',$4,$5,'ollama','NV09_ON_DEMAND',$6,now(),1,1)",[id,'NV09 Core coding-safe live canary',prompt,r.id,r.resourceId,JSON.stringify({authority:'CORE',chosen:{employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model},reason:'EXPLICIT_NV09_CANARY'})]);
+    await event('ROUTING_DECISION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',profile:'NV09_ON_DEMAND',decision:{chosen:{employeeId:r.id,resourceId:r.resourceId,model:r.model},explicit:true}});
+    const started=Date.now();
+    try{
+      // JSON acceptance must exercise the Coding Lane's actual local OpenAI-compatible
+      // chat/completions transport, not the unrelated native /api/generate path.
+      const inference=contract==='json'
+        ? {text:String((await fetchJson(`${NV09_ENDPOINT}/v1/chat/completions`,{
+          method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({model:NV09_MODEL,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:256,stream:false}),
+        },canaryTimeoutMs))?.choices?.[0]?.message?.content||'').trim()}
+        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'});
+      const latency=Date.now()-started;
+      if(contract==='json'){
+        let json;
+        try{json=JSON.parse(String(inference.text||'').trim());}catch{const e=new Error('NV09_CANARY_JSON_NOT_PARSEABLE');e.kind='invalid_response';throw e;}
+        if(!json||Array.isArray(json)||typeof json!=='object'||json.canary!==marker||json.ok!==true){
+          const e=new Error('NV09_CANARY_JSON_CONTRACT_MISMATCH');e.kind='invalid_response';throw e;
+        }
+      }else if(!String(inference.text||'').includes(marker)){
+        const e=new Error('NV09_CANARY_MARKER_MISSING');e.kind='invalid_response';throw e;
+      }
+      await markResourceSuccess(r,id,latency,'RESOURCE_SUCCESS',false,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
+      const result={ok:true,contract,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,size:availability.size||null,latencyMs:latency,text:String(inference.text).slice(0,300),evalCount:inference.evalCount,loadDurationNs:inference.loadDurationNs,evalDurationNs:inference.evalDurationNs};
+      await pool.query("update tigeriq_jobs set status='done',result=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(result)]);
+      await event('NV09_CANARY_PASS',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,digest:availability.digest||null});
+      return {jobId:id,...result};
+    }catch(error){
+      const latency=Date.now()-started;
+      await markResourceFailure(r,id,error,'RESOURCE_FAILURE',false,{taskKind:'coding_canary',profile:'NV09_ON_DEMAND'});
+      const failure={message:String(error?.message||error).slice(0,700),kind:String(error?.kind||'outage'),latencyMs:latency};
+      await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[id,JSON.stringify(failure)]);
+      await event('NV09_CANARY_FAIL',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',latencyMs:latency,model:r.model,message:failure.message,kind:failure.kind});
+      return {ok:false,contract,jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model,digest:availability.digest||null,latencyMs:latency,error:failure.message,kind:failure.kind};
+    }
+  }finally{
+    await releaseSharedResourceLease(pool,{resourceId:r.resourceId,leaseToken:sharedLease.lease_token});
   }
 }
 async function probeResource(resourceOrEmployeeId){
@@ -2834,7 +2864,7 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
     }
     if(req.method==='POST'&&url.pathname==='/api/nv09/canary'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
-      const b=await readBody(req);const result=await runNv09Canary(String(b.prompt||''));
+      const b=await readBody(req);const result=await runNv09Canary(String(b.prompt||''),String(b.contract||'marker'));
       res.writeHead(result.ok?200:503,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(result));
     }
     if(req.method==='POST'&&url.pathname==='/api/research'){
