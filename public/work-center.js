@@ -2,7 +2,7 @@
 (function(root){
 'use strict';
 const LABELS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA XÁC MINH',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'RÀ SOÁT',VERIFY:'XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
-const COLORS={OPEN:'#64748b',UNKNOWN:'#64748b',OWNER_GATE:'#f59e0b',WORKING:'#22c55e',REVIEW:'#3b82f6',VERIFY:'#3b82f6',QUEUED:'#3b82f6',WAITING:'#f59e0b',BLOCKED:'#ef4444',PAUSED:'#64748b',DONE:'#14b8a6',GOAL:'#64748b',SYSTEM:'#64748b'};
+const COLORS={OPEN:'#64748B',UNKNOWN:'#64748B',OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',PAUSED:'#64748B',DONE:'#06B6D4',GOAL:'#64748B',SYSTEM:'#64748B'};
 const ALIASES={'ĐANG XỬ LÝ':'WORKING','ĐANG LÀM':'WORKING','RÀ SOÁT':'REVIEW','ĐANG RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG XÁC MINH':'VERIFY','CHỜ':'WAITING','ĐANG CHỜ':'WAITING','BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','CHƯA LÀM':'OPEN','SẴN SÀNG':'QUEUED','TẠM DỪNG':'PAUSED','CHỜ ANH SƠN':'OWNER_GATE','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','MỞ':'OPEN'};
 const lastSignatures=new Map();
 const activeHistory=new WeakMap();
@@ -56,14 +56,13 @@ function rowsFor(data,filter){
  return o.filter(work);
 }
 function badgeIcon(s){
- const d={DONE:'M20 6 9 17l-5-5',WORKING:'M3 12h4l3-8 4 16 3-8h4',BLOCKED:'M12 9v4m0 4h.01',REVIEW:'M21 21l-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14',WAITING:'M12 7v5l4 2',QUEUED:'M12 7v5l4 2'};return '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="'+(d[s]||'M12 4v16M4 12h16')+'"/></svg>';
+ const d={DONE:'M20 6 9 17l-5-5',WORKING:'M3 12h4l3-8 4 16 3-8h4',BLOCKED:'M12 9v4m0 4h.01',REVIEW:'M21 21l-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14',WAITING:'M12 7v5l4 2',QUEUED:'M12 7v5l4 2'};return '<svg class="live-status-icon" role="img" aria-label="'+esc(LABELS[s]||s)+'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="'+(d[s]||'M12 4v16M4 12h16')+'"/></svg>';
 }
 function renderCards(container,rows,options){
  if(!container)return;
  const opt=options||{},data=Array.isArray(rows)?rows:[];
- container.textContent='';
- if(!data.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Không có công việc được xác minh trong nhóm này.';container.append(empty);return}
- const fragment=document.createDocumentFragment();
+ if(!data.length){if(container.children.length!==1||!container.firstElementChild.classList.contains('empty'))container.innerHTML='<div class="empty">Không có công việc được xác minh trong nhóm này.</div>';return}
+ const fragment=[];
  data.forEach((row,index)=>{
   const s=viewStatus(row),p=priority(row),pr=progress(row,opt),number=Number(row.number)||0;
   const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'');
@@ -72,25 +71,45 @@ function renderCards(container,rows,options){
   const blocker=txt(row.blocker||row.waitReason||'').trim();
   const summary=blocker?'Bị chặn: '+blocker:txt(row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
-  const steps=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count?'<span class="tiq-steps">'+done+'/'+count+' bước</span>':'';
-  const bar=pr.verified?'<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:'+pr.percent+'%"></div></div><span class="progress-text">'+pr.percent+'%</span></div>':'';
+  const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
+  const gate=row.progressSource==='github_gates_verified'?'cổng GitHub':'bước';
+  const steps=checked?(row.progressChecklistVerified===true&&opt.fresh!==false
+    ?'<div class="work-step-summary"><span>'+done+'/'+count+' '+gate+' đã xác minh</span><span class="step-remaining">Còn '+(count-done)+' bước</span></div>'
+    :'<div class="work-step-summary unverified">Có '+count+' bước theo GitHub · chưa xác minh</div>')
+   :Array.isArray(row.executionSteps)&&row.executionSteps.length?'<div class="work-step-summary unverified">Có '+row.executionSteps.length+' bước theo GitHub · chưa xác minh</div>':'';
+  const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(s);
+  const bar=pr.verified?'<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:'+pr.percent+'%"></div></div><span class="progress-text">'+pr.percent+'%</span></div>':activeWithoutPercent
+    ?'<div class="progress indeterminate"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>':'';
   const t=row.lifecycleTiming||{},started=t.startVerified?fmt(t.startedAt):'Chưa xác minh',ended=completion(row)&&t.finishVerified?fmt(t.finishedAt):'Chưa nghiệm thu';
   const isRunning=s==='WORKING'&&row.activeLease===true&&row.heartbeatFresh===true&&opt.fresh!==false;
   if(isRunning)el.classList.add('progress-running');
-  const signature=s+'|'+person(row)+'|'+(pr.percent==null?'unknown':pr.percent)+'|'+summary;
+  const parent=Number(row.parentNumber);
+  const parentLine=Number.isSafeInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
+  const showNext=!blocker&&Boolean(row.nextStep);
+  const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
+  const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
-   +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'
+   +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
-   +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'"><span>'+esc(summary)+'</span></div>':'')
+   +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
   const open=()=>{if(typeof opt.onOpen==='function')opt.onOpen(row,el);else openModal(row,opt)};
   el.addEventListener('click',open);el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open()}});
-  fragment.append(el);
+  const original=container.querySelector('.work-row[data-work-number="'+number+'"]');
+  if(original&&original.dataset.signature===signature){fragment.push(original);continue;}
+  el.dataset.signature=signature;
+  fragment.push(el);
  });
- container.append(fragment);
+ for(let i=0;i<fragment.length;i++){
+  const item=fragment[i],current=container.children[i];
+  if(current===item)continue;
+  container.insertBefore(item,current||null);
+ }
+ while(container.children.length>fragment.length)container.lastElementChild.remove();
 }
 function auditMarkup(row,events){
  const timing=row&&row.lifecycleTiming||{};
