@@ -150,6 +150,25 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     assert.deepStrictEqual(validateManagerJobPaths({status:'continue',job:{paths:canonical}},canonical),canonical);
   });
 
+  await t.test('out-of-scope protected manager output is repaired, never granted mutation authority',async()=>{
+    const protectedPath='apps/tigeriq-core/shared-resource-lease.mjs';
+    const inScope='tests/cline-safe-eval.test.mjs';
+    const canonical=[inScope];
+    const decision=paths=>({status:'continue',job:{paths}});
+    assert.throws(()=>validateManagerJobPaths(decision([protectedPath]),canonical),/MANAGER_SCOPE_MISMATCH/);
+    assert.throws(()=>validateManagerJobPaths(decision([protectedPath]),[protectedPath]),/DENY_CONTROL_PLANE_MUTATION/);
+    const calls=[];
+    const out=await invokeJsonWithFailover(nv11,'manager',{resourcePool:[nv11,nv19],maxResources:2,
+      invokeFn:async res=>{
+        calls.push(res.id);
+        return JSON.stringify(decision([res.id==='NV19'?inScope:protectedPath]));
+      },
+      validateData:value=>validateManagerJobPaths(value,canonical),
+    });
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.deepStrictEqual(calls,['NV11','NV11','NV19']);
+  });
+
   await t.test('default failover can reach the sixth eligible coding provider',async()=>{
     const pool=Array.from({length:6},(_,i)=>({id:`NV${i+11}`,provider:'fake',model:String(i)}));
     const calls=[];
