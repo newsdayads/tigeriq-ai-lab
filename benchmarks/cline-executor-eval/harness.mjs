@@ -57,6 +57,15 @@ function changedLineCount(before, after) {
   return changed;
 }
 
+// Fixture tests must never inherit the coordinator's GitHub/Ollama/API secrets
+// or NODE_TEST_CONTEXT (which silently skips nested tests).
+export function fixtureChildEnvironment(source=process.env){
+  const allowed=['SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA'];
+  return Object.fromEntries(allowed
+    .filter((key)=>typeof source[key]==='string')
+    .map((key)=>[key,source[key]]));
+}
+
 export async function scoreFixture(fixtureRoot) {
   const manifest = await readManifest();
   const fixtureId = path.basename(path.resolve(fixtureRoot));
@@ -96,8 +105,7 @@ export async function scoreFixture(fixtureRoot) {
   // This scorer is also run inside node --test. Never inherit the parent
   // test-runner context: child --test processes otherwise skip fixture tests
   // and can exit 0 without evaluating a single assertion.
-  const fixtureEnv = { ...process.env };
-  delete fixtureEnv.NODE_TEST_CONTEXT;
+  const fixtureEnv = fixtureChildEnvironment();
   const testRun = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...testFiles], {
     cwd: fixtureRoot,
     env: fixtureEnv,
