@@ -917,11 +917,11 @@ html,body,body{background:#071321!important}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="action">CHƯA KẾT THÚC <b id="actionCount">0</b></button>
+    <button class="filter active" data-filter="action">CÒN MỞ <b id="actionCount">0</b></button>
     <button class="filter" data-filter="working">ĐANG LÀM <b id="workingCount">0</b></button>
     <button class="filter" data-filter="waitblocked">CHỜ / CHẶN <b id="waitblockedCount">0</b></button>
     <button class="filter" data-filter="closed">ĐÃ KẾT THÚC <b id="closedCount">0</b></button>
-  </nav><small class="work-scope-note">Mặc định hiển thị việc chưa kết thúc; lịch sử gần đây nằm trong “ĐÃ KẾT THÚC”. Đóng hồ sơ không đồng nghĩa hoàn tất.</small>
+  </nav><label id="liveClosedSortLabel" class="work-scope-note" hidden>Sắp xếp <select id="liveClosedSort" aria-label="Sắp xếp việc đã kết thúc"><option value="finished">VỪA HOÀN TẤT ↓</option><option value="closed">MỚI ĐÓNG HỒ SƠ ↓</option></select></label><small class="work-scope-note">Mặc định chỉ hiện việc còn mở; ĐÃ KẾT THÚC sắp việc hoàn tất có bằng chứng lên đầu, không tính hồ sơ chỉ đóng là hoàn tất.</small>
   <div id="workList" class="work-list tiq-work-center"></div>
 </section>
 </div>
@@ -954,7 +954,7 @@ const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
-let currentFilter='action';
+let currentFilter='action',currentClosedSort='finished';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
@@ -1039,7 +1039,7 @@ function executionWaitReason(row){
     :'Không có';
 }
 function normalizeRows(value){
- return TigerIQWorkCenter.rowsFor(value,currentFilter);
+ return TigerIQWorkCenter.rowsFor(value,currentFilter,currentClosedSort);
 }
 
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
@@ -2128,6 +2128,7 @@ function render(){
   renderNowRunning();
   renderApiWorkforce();
   updateCounts();
+  const closedLabel=$('liveClosedSortLabel');if(closedLabel)closedLabel.hidden=currentFilter!=='closed';
   const rows=normalizeRows(snapshot);
   if(currentFilter==='action'){const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));rows.sort((a,b)=>Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))||systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));}
   $('workMeta').textContent=rows.length+' mục';
@@ -2164,6 +2165,7 @@ async function load(){
   }
 }
 TigerIQWorkCenter.mountFloatingReload();
+const sortClosedPicker=$('liveClosedSort');if(sortClosedPicker)sortClosedPicker.addEventListener('change',()=>{currentClosedSort=sortClosedPicker.value;render()});
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
