@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +17,11 @@ async function readManifest() {
 
 async function walkFiles(root, rel = '') {
   const dir = path.join(root, rel);
+  if ((await lstat(dir)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + rel);
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const child = path.join(rel, entry.name);
+    if (entry.isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + child);
     if (entry.isDirectory()) out.push(...await walkFiles(root, child));
     else out.push(child.split(path.sep).join('/'));
   }
@@ -28,10 +30,15 @@ async function walkFiles(root, rel = '') {
 
 export async function seedLane({ root, lane, force = false } = {}) {
   if (!root || !lane) throw new Error('root_and_lane_required');
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
+  if (force) throw new Error('BENCHMARK_FORCE_DELETE_FORBIDDEN');
   const manifest = await readManifest();
-  const laneRoot = path.resolve(root, lane);
-  if (force) await rm(laneRoot, { recursive: true, force: true });
-  await mkdir(laneRoot, { recursive: true });
+  const benchmarkRoot = path.resolve(root);
+  const laneRoot = path.join(benchmarkRoot, lane);
+  await mkdir(benchmarkRoot, { recursive: true });
+  if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
+  // Atomic create: never erase or overwrite a previous benchmark lane.
+  await mkdir(laneRoot);
 
   const seeded = [];
   for (const fixture of manifest.fixtures) {
@@ -55,6 +62,15 @@ function changedLineCount(before, after) {
   let changed = 0;
   for (let i = 0; i < n; i += 1) if ((a[i] ?? '') !== (b[i] ?? '')) changed += 1;
   return changed;
+}
+
+// Fixture tests must never inherit the coordinator's GitHub/Ollama/API secrets
+// or NODE_TEST_CONTEXT (which silently skips nested tests).
+export function fixtureChildEnvironment(source=process.env){
+  const allowed=['SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA'];
+  return Object.fromEntries(allowed
+    .filter((key)=>typeof source[key]==='string')
+    .map((key)=>[key,source[key]]));
 }
 
 export async function scoreFixture(fixtureRoot) {
@@ -87,16 +103,36 @@ export async function scoreFixture(fixtureRoot) {
   try { currentTask = await readFile(path.join(fixtureRoot, 'TASK.md'), 'utf8'); } catch {}
   const taskMutated = sha256(currentTask) !== sha256(expectedTask);
 
-  const testRun = spawnSync(process.execPath, ['--test', 'tests'], {
+  // Explicit files are mandatory: `node --test tests` can succeed with
+  // zero discovered tests on some Node versions and falsely score 3/3.
+  const testFiles = Object.keys(expectedFiles)
+    .filter((rel) => /^tests\/.+\.test\.[cm]?js$/.test(rel))
+    .sort();
+  if (testFiles.length === 0) throw new Error('FIXTURE_TESTS_MISSING:' + fixtureId);
+  // This scorer is also run inside node --test. Never inherit the parent
+  // test-runner context: child --test processes otherwise skip fixture tests
+  // and can exit 0 without evaluating a single assertion.
+  const fixtureEnv = fixtureChildEnvironment();
+  // Reject tampered acceptance tests/tasks before executing any attacker-edited test.
+  // A permitted outer runner must additionally sandbox untrusted solution code.
+  if (testsMutated || taskMutated || unexpectedFiles.length > 0) {
+    return { fixtureId, completed:false, testsPass:false, testCount:0, testExitCode:null,
+      testsMutated, taskMutated, unexpectedFiles, filesChanged, linesChanged,
+      stdoutTail:'', stderrTail:'BENCHMARK_UNTRUSTED_FIXTURE_REJECTED' };
+  }
+  const testRun = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...testFiles], {
     cwd: fixtureRoot,
+    env: fixtureEnv,
     encoding: 'utf8',
     timeout: 120000,
   });
-  const testsPass = testRun.status === 0;
+  const testCount = Number(String(testRun.stdout || '').match(/^# tests (\d+)\s*$/m)?.[1] || 0);
+  const testsPass = testRun.status === 0 && testCount > 0;
   return {
     fixtureId,
     completed: testsPass && !testsMutated && !taskMutated && unexpectedFiles.length === 0,
     testsPass,
+    testCount,
     testExitCode: testRun.status,
     testsMutated,
     taskMutated,
@@ -110,8 +146,12 @@ export async function scoreFixture(fixtureRoot) {
 
 export async function scoreLane({ root, lane } = {}) {
   if (!root || !lane) throw new Error('root_and_lane_required');
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
   const manifest = await readManifest();
-  const laneRoot = path.resolve(root, lane);
+  const benchmarkRoot = path.resolve(root);
+  if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
+  const laneRoot = path.join(benchmarkRoot, lane);
+  if ((await lstat(laneRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:lane');
   const fixtures = [];
   for (const fixture of manifest.fixtures) {
     fixtures.push(await scoreFixture(path.join(laneRoot, fixture.id)));
@@ -144,7 +184,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ? await scoreLane({ root, lane })
       : null;
   if (!result) {
-    console.error('usage: node harness.mjs <seed|score> --root <dir> --lane <name> [--force]');
+    console.error('usage: node harness.mjs <seed|score> --root <new-isolated-dir> --lane <name>');
     process.exitCode = 2;
   } else {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
