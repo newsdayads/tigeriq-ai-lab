@@ -31,6 +31,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
+import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
 import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
@@ -3248,6 +3249,10 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   if(!current)throw new Error('RCA_CANONICAL_ISSUE_UNAVAILABLE');
   const familyMarker=`RCA_FAMILY_KEY=${rca.rcaFamilyKey}`;
   const priorBody=String(current.body||'');
+  // Never elevate a canonical issue with Owner/P0, manual or review-only restrictions.
+  // Scan all historical lines: a new leading recurrence header cannot bypass older holds.
+  const ownerGate=/^(?:PRIORITY\s*=\s*P0|OWNER_HOLD\s*=\s*(?:true|1)|OWNER_GATE\s*=\s*true|OWNER_APPROVAL_REQUIRED\s*=\s*true|MANUAL_GATE\s*=\s*true|REVIEW_ONLY\s*=\s*true|NO_CODE_CHANGE\s*=\s*true|AUTO_QUEUE\s*=\s*EXCLUDED[^\r\n]*|TIGERIQ_EXECUTABLE\s*=\s*false|CURRENT_STATE\s*=\s*BLOCKED_[^\r\n]*)\s*$/mi;
+  if(ownerGate.test(priorBody))throw new Error('RCA_CANONICAL_OWNER_GATE');
   // Only the leading occurrence of the *current* family/evidence pair is idempotent.
   // A subsequent closed-completed recurrence with fresh evidence must retain
   // its previous header as history, but surface the new evidence at the top.
@@ -3280,7 +3285,39 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   },10000);
 }
 
+// Recover canonical GitHub issues when PostgreSQL event history is incomplete.
+// Never create if the search is unavailable, partial or ambiguous.
+async function githubFindAutonomousRcaCanonical(familyKey){
+  if(!GITHUB_TOKEN)throw new Error('RCA_CANONICAL_SEARCH_TOKEN_MISSING');
+  const marker=`RCA_FAMILY_KEY=${familyKey}`;
+  const q=`repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue in:body "${marker}"`;
+  const url='https://api.github.com/search/issues?q='+encodeURIComponent(q)+'&per_page=100';
+  const found=await fetchJson(url,{
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Autonomous-RCA'},
+  },10000);
+  if(!found||found.incomplete_results===true||!Array.isArray(found.items)
+     ||!Number.isInteger(found.total_count)||found.total_count>100){
+    throw new Error('RCA_CANONICAL_SEARCH_UNVERIFIED');
+  }
+  const matches=[];
+  for(const item of found.items){
+    const candidate=await githubAutonomousRcaIssueLifecycle(item?.number);
+    if(!candidate.issue||candidate.state==='unknown')throw new Error('RCA_CANONICAL_CANDIDATE_UNAVAILABLE');
+    if(String(candidate.issue.body||'').replace(/\r\n/g,'\n').split('\n').some(line=>line.trim()===marker))
+      matches.push(candidate);
+  }
+  if(matches.length>1)throw new Error('RCA_CANONICAL_MULTIPLE_MATCHES');
+  return matches[0]||null;
+}
+
 async function materializeAutonomousRca({store=pool}={}){
+  // Production: hold PG session lease throughout discovery, intent, GitHub mutation and receipt.
+  if(typeof store.connect!=='function')return materializeAutonomousRcaUnlocked({store});
+  const guarded=await withCoreRcaPgLease(store,()=>materializeAutonomousRcaUnlocked({store}));
+  return guarded.admitted?guarded.outcome:
+    {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'ANOTHER_CORE_OWNS_RCA_LOCK'};
+}
+async function materializeAutonomousRcaUnlocked({store=pool}={}){
   const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
     from tigeriq_self_audit_anomalies
     where status='OPEN' and count>=2
@@ -3320,6 +3357,27 @@ async function materializeAutonomousRca({store=pool}={}){
         priorIssueState=selected.lifecycle.state;
         priorStateReason=selected.lifecycle.stateReason;
         priorIssue=selected.lifecycle.issue;
+      }
+      if(!prior){
+        try{
+          const recovered=await githubFindAutonomousRcaCanonical(rca.rcaFamilyKey);
+          if(recovered){
+            prior={type:'AUTONOMOUS_RCA_WORK_ORDER',data:{issueNumber:recovered.issue.number}};
+            priorIssueState=recovered.state;
+            priorStateReason=recovered.stateReason;
+            priorIssue=recovered.issue;
+            await event('AUTONOMOUS_RCA_WORK_ORDER',{
+              rcaFamilyKey:rca.rcaFamilyKey,issueNumber:Number(recovered.issue.number),
+              source:'CANONICAL_RECOVERED_FROM_GITHUB',provenance:rca.provenance,
+            });
+          }
+        }catch(error){
+          blocked++;
+          await event('AUTONOMOUS_RCA_MATERIALIZATION_BLOCKED',{
+            rcaFamilyKey:rca.rcaFamilyKey,reason:String(error?.message||error).slice(0,200),
+          });
+          continue;
+        }
       }
     }else prior=priorRows[0]||null;
     const canonicalAction=autonomousRcaCanonicalAction({mode,priorType:prior?.type,priorIssueState,priorStateReason});
@@ -3365,6 +3423,17 @@ async function materializeAutonomousRca({store=pool}={}){
       observeOnly++;continue;
     }
     try{
+      if(mode==='WORK_ORDER'){
+        const intent=(await store.query(
+          "select 1 from tigeriq_events where type='AUTONOMOUS_RCA_CREATE_INTENT' and data->>'rcaFamilyKey'=$1 limit 1",
+          [rca.rcaFamilyKey],
+        )).rows||[];
+        if(intent.length)throw new Error('RCA_CANONICAL_CREATE_INTENT_UNRESOLVED');
+        // Durable before POST: a crash plus delayed GitHub search indexing cannot create a duplicate.
+        await event('AUTONOMOUS_RCA_CREATE_INTENT',{
+          rcaFamilyKey:rca.rcaFamilyKey,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        });
+      }
       const spec=buildImprovementWorkOrder(rca);
       const issue=await githubCreateAutonomousRcaIssue(spec);
       await event('AUTONOMOUS_RCA_WORK_ORDER',{
