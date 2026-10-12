@@ -26,6 +26,34 @@ describe('#280 B03 fast Core health consumer fail-closed gates',()=>{
     expect(validateCodingFastHealthResponse(projected,{nowMs:now})).toBe(projected);
   });
 
+  it('accepts the actual PC01 Core READY/READY/READY status while keeping the exact eligibility gate',()=>{
+    // Core /api/status on 2026-10-13 exposed NV08 as READY / READY / READY.
+    // Core publicStatus() also intentionally maps that exact state to READY.
+    const standby=resource('NV08',{health_state:'READY',work_state:'READY',status:'READY'});
+    const projected=projectCodingCoreHealth({ok:true,resources:[standby]},
+      {generatedAt:new Date(now).toISOString()});
+    expect(validateCodingFastHealthResponse(projected,{nowMs:now}).resources[0]).toMatchObject({
+      employee_id:'NV08',health_state:'READY',work_state:'READY',status:'READY',
+    });
+    for(const overrides of [
+      {health_state:'UNKNOWN'}, {work_state:'UNKNOWN'}, {status:'UNKNOWN'},
+      {enabled:false}, {quota_state:{usable:false}}, {current_job_id:'lease-1'},
+    ]){
+      expect(()=>validateCodingFastHealthResponse(snapshot([resource('NV08',{
+        health_state:'READY',work_state:'READY',status:'READY',...overrides,
+      })]),{nowMs:now})).toThrow('CODING_CORE_HEALTH_RESOURCE_INVALID');
+    }
+  });
+
+  it('accepts a READY resource with a bound BUSY lease without treating it as idle',()=>{
+    const busy=resource('NV08',{
+      health_state:'READY',work_state:'BUSY',status:'BUSY',current_job_id:'existing-work',
+    });
+    const response=validateCodingFastHealthResponse(snapshot([busy]),{nowMs:now});
+    expect(response.resources[0].current_job_id).toBe('existing-work');
+    expect(response.resources[0].work_state).toBe('BUSY');
+  });
+
   it('accepts BUSY resources only as BUSY, without synthesizing a free AI',()=>{
     const row=resource('NV09',{health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'job-123'});
     expect(validateCodingFastHealthResponse(snapshot([row]),{nowMs:now}).resources[0].work_state).toBe('BUSY');
