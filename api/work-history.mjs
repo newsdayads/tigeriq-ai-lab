@@ -1,5 +1,5 @@
 /* GitHub read-only per-work-order history, no authentication secrets leave server. */
-import {buildWorkHistory} from '../apps/shared/work-center-history.mjs';
+import {buildWorkHistory,recentCommentPages,latestComments} from '../apps/shared/work-center-history.mjs';
 const BASE='https://api.github.com/repos/newsdayads/tigeriq-ai-lab';
 const CACHE=new Map();
 async function gh(path){
@@ -18,7 +18,10 @@ export default async function handler(req,res){
  const number=Number(n),old=CACHE.get(number),now=Date.now();
  if(old&&now-old.at<60000){res.statusCode=200;return res.end(JSON.stringify(old.value))}
  try{
-  const [issue,comments]=await Promise.all([gh('/issues/'+number),gh('/issues/'+number+'/comments?per_page=100&sort=created&direction=desc')]);
+  const issue=await gh('/issues/'+number);
+  const pages=recentCommentPages(issue.comments);
+  const recent=await Promise.all(pages.map(p=>gh('/issues/'+number+'/comments?per_page=100&page='+p)));
+  const comments=latestComments(recent);
   if(issue.pull_request)throw Error('NOT_WORK_ORDER');
   const value=buildWorkHistory(issue,comments);
   if(CACHE.size>100)CACHE.clear();CACHE.set(number,{at:now,value});
