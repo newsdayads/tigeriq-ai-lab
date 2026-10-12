@@ -1538,7 +1538,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
       status='BLOCKED';
     } else if (executionEligibility === 'READY' && ['OPEN','WAITING','UNKNOWN'].includes(status)) {
       status='QUEUED';
-    } else if (executionEligibility === 'PARKED_DEPENDENCY' && status === 'OPEN') {
+    } else if (['PARKED_DEPENDENCY','HARD_GATE','ELIGIBLE_AFTER_RESOURCE'].includes(executionEligibility)
+      && status === 'OPEN') {
       status='WAITING';
     }
   }
