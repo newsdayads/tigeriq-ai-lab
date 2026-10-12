@@ -36,7 +36,7 @@ for (const bucket of ['action','working','waitblocked','closed']) {
 }
 assert.equal((publicView.match(/<button class="filter(?: active)?" data-filter="/g)||[]).length,4);
 assert.match(publicView, /let currentFilter='action'/);
-assert.match(publicView, /data-filter="action">CHƯA KẾT THÚC/);
+assert.match(publicView, /data-filter="action">CÒN MỞ/);
 assert.match(sharedWork, /if\(f==='closed'\)return ended/);
 assert.match(sharedWork, /return o\.filter\(work\)/);
 assert.match(sharedWork, /CLOSED_UNVERIFIED:'ĐÓNG KHÁC'/);
