@@ -367,6 +367,9 @@ const GEMINI_MAX_ATTEMPTS=Math.max(1,Number(process.env.TIGERIQ_GEMINI_MAX_ATTEM
 const geminiRateController=createGeminiRateController({minIntervalMs:GEMINI_MIN_INTERVAL_MS,backoffBaseMs:GEMINI_BACKOFF_BASE_MS,maxAttempts:GEMINI_MAX_ATTEMPTS});
 const OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_NV09_OLLAMA_URL||process.env.TIGERIQ_OLLAMA_URL||'http://127.0.0.1:11435');
 const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(300000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||240000)));
+// Only Coding Manager planning is timeboxed; Worker/review Ollama requests retain their prior limit.
+export function normalizeManagerOllamaTimeout(value){const n=Number(value);return Math.max(15000,Math.min(120000,Number.isFinite(n)&&n>0?n:45000))}
+const MANAGER_OLLAMA_TIMEOUT_MS=normalizeManagerOllamaTimeout(process.env.TIGERIQ_CODING_MANAGER_OLLAMA_TIMEOUT_MS);
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
@@ -559,9 +562,9 @@ export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLL
     return String(text);
   }finally{clearTimeout(timer)}
 }
-async function invoke(r,prompt){
+async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
   const outputTokens=codingOutputTokenLimit(prompt);
-  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens});
+  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS});
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,outputTokens);
@@ -639,6 +642,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{
   invokeFn=invoke,
   shrinkPrompt=shrinkAiPrompt,
   maxResources=null,
+  maxSameResourceAttempts=2,
   validateData=null,
   parseData=parseJsonObject,
   sleepFn=sleep,
@@ -660,7 +664,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{
   const failureLedger=[];let attempts=0,leaseBusy=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
-    for(let same=0;same<2;same++){
+    for(let same=0;same<Math.max(1,Math.min(2,Number(maxSameResourceAttempts)||2));same++){
       if(busyAiResources.has(resource.id))break;
       let sharedLease=null,heartbeatTimer=null;
       if(leaseContext?.workId){
@@ -1001,7 +1005,15 @@ async function managerTick(){
       validateManagerJobTitle(d,o.objective);
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
-    const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision,leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'}});manager=invoked.resource;const d=invoked.data;
+    const invoked=await invokeJsonWithFailover(manager,prompt,{
+      // An overloaded local 27B model must not occupy the single-flight Manager for 240 seconds.
+      // Abort Ollama HTTP on the Manager-only budget, then fail over to a distinct eligible AI.
+      // Per-provider retry defaults and all Worker/reviewer timeouts remain unchanged.
+      invokeFn:(r,managerPrompt)=>invoke(r,managerPrompt,{ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS}),
+      maxSameResourceAttempts:1,
+      validateData:validateManagerDecision,
+      leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'},
+    });manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let resumeBranch=null,resumePr=null,resumeHead=null;
