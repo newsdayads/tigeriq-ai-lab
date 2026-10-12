@@ -927,6 +927,7 @@ html,body,body{background:#071321!important}
     <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
     <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
+    <button class="filter" data-filter="archived">ĐÃ ĐÓNG · CHỜ NGHIỆM THU <b id="archivedCount">0</b></button>
   </nav>
   <div id="workList" class="work-list"></div>
 </section>
@@ -1052,7 +1053,8 @@ function normalizeRows(value){
   };
   const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
   let rows=[];
-  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
+  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).filter(x=>TigerIQWorkCenter.completion(x));
+  else if(currentFilter==='archived')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).filter(x=>x.status==='CLOSED_UNVERIFIED'&&!TigerIQWorkCenter.completion(x));
   else if(currentFilter==='owner')rows=openRows.filter(x=>workStatus(x)==='OWNER_GATE');
   else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
   else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
@@ -1095,7 +1097,8 @@ function updateCounts(){
   $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
   $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
   $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
-  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
+  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).filter(x=>TigerIQWorkCenter.completion(x)).length;
+  $('archivedCount').textContent=Number.isFinite(Number(s.archived))?s.archived:(snapshot?.recentWork||[]).filter(x=>x.status==='CLOSED_UNVERIFIED').length;
 }
 function renderOwnerSummary(){
   const portfolioProgress=snapshot?.portfolioProgress; void portfolioProgress;
