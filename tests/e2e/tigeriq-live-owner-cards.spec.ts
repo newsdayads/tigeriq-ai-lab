@@ -609,3 +609,32 @@ test('LIVE compact owner grid shows five to six cards per row on desktop with re
     await expect(card.locator('.work-title')).toBeVisible();
   }
 });
+
+
+test('Production-line LIVE keeps workforce widgets and orders system P1–P5 before products without hiding P5',async({page})=>{
+  const entries=[
+    {number:2293,priority:'P5',title:'[P5] Apify'},
+    {number:4456,priority:'P2',title:'[P2] News'},
+    {number:4661,priority:'P2',title:'[P2] Isolation'},
+    {number:4578,priority:'P4',title:'[P4] Skills'},
+    {number:4595,priority:'P3',title:'[P3] API Doctor'},
+    {number:2949,priority:'P2',title:'[P2] S10'},
+    {number:4457,priority:'P1',title:'[P1] Core'},
+    {number:4569,priority:'P4',title:'[P4] Communication'},
+    {number:4532,priority:'P4',title:'[P4] Cline'},
+    {number:999,priority:'P0',title:'[P0] Owner-only'},
+    {number:4636,priority:'P3',title:'[P3] Workflow Lab'}
+  ];
+  const openWork=entries.map(x=>({...x,workKind:'WORK',status:'WAITING'}));
+  await routeTiger(page,{...snapshot,openWork,activeWork:[],nextQueue:[],openSummary:{},workers:[]});
+  await page.goto('https://tigeriq.test/command-center');
+  const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
+  expect(ids).toEqual([4457,2949,4661,4595,4532,4578,4569,4456,4636,2293,999]);
+  await expect(page.locator('#workList [data-work-number="2293"]')).toBeVisible();
+  await expect(page.locator('#actionCount')).toHaveText('11');
+  await expect(page.locator('#bcctSort')).toHaveCount(0);
+  await expect(page.locator('#liveWorkers')).toBeVisible();
+  await page.locator('#workList [data-work-number="4457"]').click();
+  await expect(page.locator('#drawerTerminalState')).toContainText('CHƯA KẾT THÚC');
+  await expect(page.locator('#drawerTerminalCriteria')).toContainText('Chỉ kết thúc khi');
+});
