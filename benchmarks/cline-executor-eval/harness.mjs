@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,10 +28,14 @@ async function walkFiles(root, rel = '') {
 
 export async function seedLane({ root, lane, force = false } = {}) {
   if (!root || !lane) throw new Error('root_and_lane_required');
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
+  if (force) throw new Error('BENCHMARK_FORCE_DELETE_FORBIDDEN');
   const manifest = await readManifest();
-  const laneRoot = path.resolve(root, lane);
-  if (force) await rm(laneRoot, { recursive: true, force: true });
-  await mkdir(laneRoot, { recursive: true });
+  const benchmarkRoot = path.resolve(root);
+  const laneRoot = path.join(benchmarkRoot, lane);
+  await mkdir(benchmarkRoot, { recursive: true });
+  // Atomic create: never erase or overwrite a previous benchmark lane.
+  await mkdir(laneRoot);
 
   const seeded = [];
   for (const fixture of manifest.fixtures) {
@@ -166,7 +170,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ? await scoreLane({ root, lane })
       : null;
   if (!result) {
-    console.error('usage: node harness.mjs <seed|score> --root <dir> --lane <name> [--force]');
+    console.error('usage: node harness.mjs <seed|score> --root <new-isolated-dir> --lane <name>');
     process.exitCode = 2;
   } else {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
