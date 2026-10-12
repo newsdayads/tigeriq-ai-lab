@@ -2129,7 +2129,7 @@ function render(){
   renderApiWorkforce();
   updateCounts();
   const rows=normalizeRows(snapshot);
-  if(currentFilter==='all'){const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));rows.sort((a,b)=>Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))||systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));}
+  if(currentFilter==='action'){const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));rows.sort((a,b)=>Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))||systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));}
   $('workMeta').textContent=rows.length+' mục';
   const box=$('workList');
   TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
