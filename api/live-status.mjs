@@ -1081,6 +1081,34 @@ export function classifyOpenIssue(issue) {
   };
 }
 
+// Presentation only: NV02 is an external UI worker that self-pulls GitHub.
+// This marker never enables Core dispatch or bypasses OS/security action gates.
+function nv02LocalSelfPullEligible(issue) {
+  if (!issue || issue.state !== 'open' || issue.pull_request) return false;
+  const title=String(issue.title||'');
+  if (/\[P0\]/i.test(title) || hasTerminalBlockedLabel(issue)) return false;
+  const active=String(issue.body||'').split(/\r?\n(?=#{1,6}\s+\S)/)[0];
+  const v=(key)=>bodyValue(active,key).trim().toUpperCase();
+  if (!/^P[1-5]$/.test(v('PRIORITY'))) return false;
+  if (v('NV02_LOCAL_GITHUB_SELF_PULL')!=='P1_P5_ONLY'
+    || v('ASSIGNED_EXECUTOR')!=='NV02'
+    || v('EXECUTION_SURFACE')!=='UI'
+    || v('OWNER_POLICY')!=='AUTO'
+    || v('TIGERIQ_EXECUTABLE')!=='TRUE'
+    || v('AUTO_QUEUE')!=='INCLUDED'
+    || v('MUTATION_OWNER')!=='NONE'
+    || !v('RESOURCE_SCOPE')
+    || !/^READY_NV02_/.test(v('CURRENT_STATE'))) return false;
+  const restrictions=['NO_RDC','NO_PC01_SHELL','NO_CODEX','NO_DIRECT_MAIN',
+    'NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+    'NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
+  if (!restrictions.every((key)=>v(key)==='TRUE') || v('APP_CHROME_MUTATION')!=='FORBIDDEN') return false;
+  if (['OWNER_HOLD','OWNER_GATE','OWNER_APPROVAL_REQUIRED','OWNER_REVIEW_REQUIRED',
+    'OWNER_ACCEPTANCE_REQUIRED','MANUAL_GATE'].some((key)=>bodyFlag(active,key))) return false;
+  if (v('BLOCKED_BY')&&!['NONE','NO','CLEARED'].includes(v('BLOCKED_BY'))) return false;
+  return true;
+}
+
 export function executionEligibilityForIssue(issue, overlays = {}) {
   if (!issue || issue.pull_request || issue.state !== 'open') return 'TERMINAL';
   const body = String(issue.body || '');
@@ -1128,6 +1156,8 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
 
   if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
   if (overlays.queued?.eligibleNow === true) return 'READY';
+
+  if (nv02LocalSelfPullEligible(issue)) return 'READY';
 
   const admission = safeAutoWorkAdmission(issue);
   if (admission.eligible) return 'READY';
@@ -1525,6 +1555,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
+    // UI-only readiness: it is NOT a Core lease or proof NV02 is executing.
+    localSelfPullReady: executionEligibility === 'READY' && !activeLease && nv02LocalSelfPullEligible(issue),
     executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
     waitReason: waitReason || (executionEligibility === 'READY' ? null : (admission.reason || null)),
     rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
