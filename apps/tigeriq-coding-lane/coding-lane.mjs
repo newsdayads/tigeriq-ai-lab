@@ -1,6 +1,7 @@
 import {createServer} from 'node:http';
 import {createNonblockingManagerTick} from './nonblocking-manager-tick.mjs';
 import {codingChatRequestBody,codingChatContent} from '../shared/nvidia-coding-request.mjs';
+import {validateCodingFastHealthResponse} from '../shared/coding-core-health-response.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
@@ -346,6 +347,9 @@ export function resolveCodingRepository(targetRepository='',{sourceRepository=SO
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
+// The fast endpoint is not yet installed on Core. Keep the legacy path until explicitly enabled.
+const FAST_CORE_HEALTH_ENABLED=process.env.TIGERIQ_CODING_FAST_CORE_HEALTH==='true';
+const FAST_CORE_HEALTH_URL=process.env.TIGERIQ_CORE_FAST_HEALTH_URL?.trim()||new URL('/api/coding-health',CORE_STATUS_URL).href;
 const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
 const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
@@ -484,7 +488,8 @@ async function refreshCoreResourceHealth(){
   const nowMs=Date.now();
   if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
   try{
-    const snapshot=await fetchJson(CORE_STATUS_URL,{},3000);
+    const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},3000);
+    if(FAST_CORE_HEALTH_ENABLED)validateCodingFastHealthResponse(snapshot);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
     return true;
   }catch{
