@@ -1895,3 +1895,14 @@ describe('GitHub Core intake guardrails',()=>{
   });
 
 });
+
+describe('#4532 typed Cline benchmark preflight action',()=>{
+  it('permits only a read-only, parameter-free fixed preflight action',()=>{
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"cline_benchmark_preflight"}',false))
+      .toMatchObject({present:true,valid:true,mutating:false,action:{action:'cline_benchmark_preflight'}});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"cline_benchmark_run"}',true))
+      .toMatchObject({present:true,valid:false,reason:'ACTION_NOT_ALLOWLISTED'});
+    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"shell_exec"}',true))
+      .toMatchObject({present:true,valid:false,reason:'ACTION_FORBIDDEN'});
+  });
+});
