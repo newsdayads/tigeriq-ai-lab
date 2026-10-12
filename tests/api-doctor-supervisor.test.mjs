@@ -46,7 +46,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
       return runNv09Canary;
     `);
     const calls=[];
-    let busy=false, sequence=0, fail=false;
+    let busy=false, sequence=0, fail=false, jsonFailure=false;
     const deps={
       nv09Resource:{id:'NV09',resourceId:'res:ollama:test:default:core',provider:'ollama',model:'test'},
       randomUUID:()=>String(++sequence),
@@ -66,7 +66,11 @@ describe('#1255 NV10 API Doctor policy',()=>{
       pool:{query:async()=>({rowCount:1})},
       event:async()=>{},
       NV09_TIMEOUT_MS:240000,
-      runBoundedInferenceNv09:async()=>fail?{text:'invalid'}:{text:'NV09_CORE_CANARY_OK',evalCount:1},
+      runBoundedInferenceNv09:async(prompt)=>{
+        if(fail)return {text:'invalid'};
+        if(prompt.includes('NV09 JSON CANARY'))return {text:jsonFailure?'not-json':'{"canary":"NV09_CORE_CANARY_OK","ok":true}'};
+        return {text:'NV09_CORE_CANARY_OK',evalCount:1};
+      },
       markResourceSuccess:async(_r,_id,_latency,_kind,releaseJob)=>{calls.push(['success',releaseJob]);},
       markResourceFailure:async(_r,_id,_error,_kind,releaseJob)=>{calls.push(['failure',releaseJob]);},
     };
@@ -86,6 +90,16 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(calls.filter(row=>row[0]==='release')).toHaveLength(2);
     expect(calls).toContainEqual(['success',false]);
     expect(calls).toContainEqual(['failure',false]);
+    fail=false;
+    const structured=await canary('','json');
+    expect(structured.ok).toBe(true);
+    expect(structured.contract).toBe('json');
+    jsonFailure=true;
+    const invalidJson=await canary('','json');
+    expect(invalidJson.ok).toBe(false);
+    expect(invalidJson.error).toBe('NV09_CANARY_JSON_NOT_PARSEABLE');
+    expect(busy).toBe(false);
+    expect(calls.filter(row=>row[0]==='release')).toHaveLength(4);
   });
 
   it('keeps the NV09 canary marker contract even when a caller supplies diagnostic text',()=>{
