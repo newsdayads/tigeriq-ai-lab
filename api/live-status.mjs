@@ -1,4 +1,5 @@
 import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
+import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { parseOwnerBacklogOrder, OWNER_BACKLOG_ISSUE } from '../apps/tigeriq-core/owner-backlog-order.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
@@ -1183,6 +1184,7 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
     'MUTATION_OWNER_CONFLICT',
     'RESOURCE_SCOPE_REQUIRED',
     'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',
+    'LIFECYCLE_V2_CONTRACT_INVALID',
     'SPECIALIST_CONTRACT_REQUIRED',
     'EXPLICIT_EXECUTION_DISABLED',
     'AUTO_QUEUE_EXCLUDED',
@@ -1459,6 +1461,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
   const status = actionableStatus(issue, effectiveOverlays);
   const admission = safeAutoWorkAdmission(issue);
+  const lifecycleContract=validateWorkOrderLifecycleV2(issue);
   const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
   const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
   const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
@@ -1555,6 +1558,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
+    lifecycleContract: {required:lifecycleContract.required,valid:lifecycleContract.valid,missing:lifecycleContract.missing,source:lifecycleContract.source},
+    lifecycleTiming:lifecycleContract.timestamps,
     // UI-only readiness: it is NOT a Core lease or proof NV02 is executing.
     localSelfPullReady: executionEligibility === 'READY' && !activeLease && nv02LocalSelfPullEligible(issue),
     executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
