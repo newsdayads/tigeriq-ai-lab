@@ -10,6 +10,46 @@ const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
 
+import {normalizeManagerOllamaTimeout} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+
+test('#280 Manager-only Ollama time budget has bounded safe default, leaving Worker timeout separate',()=>{
+  assert.strictEqual(normalizeManagerOllamaTimeout(undefined),45000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(''),45000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(3000),15000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(60000),60000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(600000),120000);
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes('ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS'));
+  assert.ok(src.includes('maxSameResourceAttempts:1'));
+  assert.ok(src.includes('timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS'));
+});
+
+test('#280 Manager timeout fails over after one aborted provider request, without retrying it twice',async()=>{
+  const first={id:'NV09',provider:'fake',model:'local-large'};
+  const second={id:'NV20',provider:'fake',model:'cloud-free'};
+  const calls=[];
+  const result=await invokeJsonWithFailover(first,'manager instruction',{
+    resourcePool:[first,second],
+    maxResources:2,
+    maxSameResourceAttempts:1,
+    invokeFn:async(resource)=>{
+      calls.push(resource.id);
+      if(resource.id==='NV09'){
+        const e=new Error('This local model exceeded the manager-specific budget');
+        e.name='AbortError';
+        throw e;
+      }
+      return '{"status":"blocked","summary":"sample"}';
+    },
+  });
+  assert.deepStrictEqual(calls,['NV09','NV20']);
+  assert.strictEqual(result.resource.id,'NV20');
+  assert.strictEqual(result.attempts,2);
+  assert.strictEqual(result.failureLedger[0].class,'timeout');
+});
+
+
+
 test('Vietnamese title guard rejects English manager titles without canonical Work Order',()=>{
   assert.strictEqual(isVietnameseWorkTitle('Sửa lỗi Core'),true);
   assert.strictEqual(isVietnameseWorkTitle('Fix Core bug'),false);
