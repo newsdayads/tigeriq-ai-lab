@@ -8,15 +8,51 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/api/health-view?resource="
+      "destination": "/api/pc01-view?target=dashboard"
     },
     {
       "source": "/command-center",
-      "destination": "/api/health-view?resource="
+      "destination": "/api/pc01-view?target=dashboard"
     },
     {
-      "source": "/pc01/:path*",
-      "destination": "/api/health-view?resource=:path*"
+      "source": "/index",
+      "destination": "/api/pc01-view?target=dashboard"
+    },
+    {
+      "source": "/workforce",
+      "destination": "/api/pc01-view?target=dashboard"
+    },
+    {
+      "source": "/projects",
+      "destination": "/api/pc01-view?target=dashboard"
+    },
+    {
+      "source": "/work-center.js",
+      "destination": "/api/pc01-view?target=workjs"
+    },
+    {
+      "source": "/work-ui.css",
+      "destination": "/api/pc01-view?target=workcss"
+    },
+    {
+      "source": "/work-center-visual.css",
+      "destination": "/api/pc01-view?target=visualcss"
+    },
+    {
+      "source": "/api/status",
+      "destination": "/api/pc01-view?target=status"
+    },
+    {
+      "source": "/api/health-live-work",
+      "destination": "/api/pc01-view?target=work"
+    },
+    {
+      "source": "/api/work-history",
+      "destination": "/api/pc01-view?target=history"
+    },
+    {
+      "source": "/api/live-status",
+      "destination": "/api/pc01-view?target=live"
     }
   ],
   "headers": [
