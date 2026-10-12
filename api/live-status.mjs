@@ -1,4 +1,5 @@
 import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
+import { parseOwnerBacklogOrder, OWNER_BACKLOG_ISSUE } from '../apps/tigeriq-core/owner-backlog-order.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
@@ -1663,6 +1664,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const openPulls = Array.isArray(pulls) ? pulls : [];
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
+    const ownerBacklogOrder = issuesComplete === true && !projectionStale
+      ? parseOwnerBacklogOrder(issueMap.get(OWNER_BACKLOG_ISSUE)?.body || '') : [];
     const lifecycleOverrides = await latestStructuredLifecycleOverrides(openIssues, owner, repo, fetchImpl);
     const activeRows = [];
     const activeNumbers = new Set();
@@ -1916,6 +1919,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         queueLimit: QUEUE_LIMIT,
         nextExecutableIssue: nextExecutable?.number || null,
         openIssueEnumerationComplete: issuesComplete === true && !projectionStale,
+        ownerBacklogOrder,
+        ownerBacklogOrderSource: ownerBacklogOrder.length ? 'github_canonical_issue_280' : 'unverified',
       },
     };
   } catch (error) {

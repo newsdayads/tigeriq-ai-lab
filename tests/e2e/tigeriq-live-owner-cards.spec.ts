@@ -626,7 +626,7 @@ test('Production-line LIVE keeps workforce widgets and orders system P1–P5 bef
     {number:4636,priority:'P3',title:'[P3] Workflow Lab'}
   ];
   const openWork=entries.map(x=>({...x,workKind:'WORK',status:'WAITING'}));
-  await routeTiger(page,{...snapshot,openWork,activeWork:[],nextQueue:[],openSummary:{},workers:[]});
+  await routeTiger(page,{...snapshot,openWork,activeWork:[],nextQueue:[],openSummary:{},workers:[],workProjection:{...snapshot.workProjection,ownerBacklogOrder:[4457,2949,4661,4595,4532,4578,4569,4456,4636,2293],openIssueEnumerationComplete:true}});
   await page.goto('https://tigeriq.test/command-center');
   const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
   expect(ids).toEqual([4457,2949,4661,4595,4532,4578,4569,4456,4636,2293,999]);
@@ -668,4 +668,12 @@ test('Projects keeps seven groups plus custom projects and counts recent/owner-g
   await expect(driver).toContainText('Bị chặn 1');
   await expect(driver).toContainText('Xong 1');
   await expect(driver).toContainText('2 công việc trong nguồn');
+});
+
+test('LIVE uses current GitHub owner order instead of hardcoded issue IDs',async({page})=>{
+  const openWork=[{number:4457,title:'Core',priority:'P1',status:'WAITING',workKind:'WORK'},{number:4456,title:'News',priority:'P2',status:'WAITING',workKind:'WORK'},{number:2293,title:'Apify',priority:'P5',status:'WAITING',workKind:'WORK'}];
+  await routeTiger(page,{...snapshot,openWork,activeWork:[],nextQueue:[],openSummary:{},workers:[],workProjection:{...snapshot.workProjection,ownerBacklogOrder:[4456,2293,4457]}});
+  await page.goto('https://tigeriq.test/command-center');
+  const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
+  expect(ids).toEqual([4456,2293,4457]);
 });

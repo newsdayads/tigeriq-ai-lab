@@ -960,8 +960,13 @@ const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH S�
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
 const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
-const TIGERIQ_SYSTEM_FIRST_ISSUES=[4457,2949,4661,4595,4532,4578,4569];
-function systemFirstRank(row){const index=TIGERIQ_SYSTEM_FIRST_ISSUES.indexOf(Number(row?.number));return index<0?99:index}
+function systemFirstRank(row){
+  const projected=snapshot?.workProjection;
+  const verifiedOrder=!snapshot?.staleAll&&!projected?.stale&&Array.isArray(projected?.ownerBacklogOrder)
+    ? projected.ownerBacklogOrder : [];
+  const index=verifiedOrder.indexOf(Number(row?.number));
+  return index<0?100000:index;
+}
 function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?(Number(m[1])===0?6:Number(m[1])):7}
 function verifiedProgress(row){
   const pct=Number(row?.progressPercent);
