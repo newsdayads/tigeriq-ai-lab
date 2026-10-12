@@ -732,7 +732,9 @@ let drawerReturnFocus=null;
 const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
-function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
+const TIGERIQ_SYSTEM_FIRST_ISSUES=[4457,2949,4661,4595,4532,4578,4569];
+function systemFirstRank(row){const i=TIGERIQ_SYSTEM_FIRST_ISSUES.indexOf(Number(row?.number));return i<0?99:i}
+function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?(Number(m[1])===0?6:Number(m[1])):7}
 function verifiedProgress(row){
   const pct=Number(row?.progressPercent);
   const source=String(row?.progressSource||'');
@@ -809,7 +811,7 @@ function normalizeRows(value){
   if(currentFilter==='review') return openRows.filter(x=>['REVIEW','VERIFY'].includes(workStatus(x)));
   if(currentFilter==='waiting') return openRows.filter(x=>['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(workStatus(x)));
   if(currentFilter==='system') return openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM'&&workPriority(x)!=='P5');
+  return openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
 }
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
 function writeLastGood(v){try{localStorage.setItem(LAST_GOOD_KEY,JSON.stringify({savedAt:Date.now(),value:v}))}catch{}}
@@ -828,7 +830,7 @@ function updateCounts(){
   const s=snapshot?.openSummary||{};
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
   const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  const visibleActionable=actionable.filter(x=>workPriority(x)!=='P5');
+  const visibleActionable=actionable;
   $('actionCount').textContent=visibleActionable.length;
   $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
   $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
@@ -1756,7 +1758,7 @@ function render(){
   updateCounts();
   const rows=normalizeRows(snapshot);
   const bcctMode=$('bcctSort')?.value||'default';
-  if(bcctMode==='priority')rows.sort((a,b)=>priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
+  if(bcctMode==='priority')rows.sort((a,b)=>systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   if(bcctMode==='ready')rows.sort((a,b)=>Number(workStatus(b)==='QUEUED')-Number(workStatus(a)==='QUEUED')||priorityRank(workPriority(a))-priorityRank(workPriority(b)));
   $('workMeta').textContent=rows.length+' việc';
   const box=$('workList');box.innerHTML='';
