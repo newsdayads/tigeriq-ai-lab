@@ -24,6 +24,24 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function owner4595CanaryOnce(){');
+    const end=source.indexOf('\nasync function probeResource(',start);
+    const gate=source.slice(start,end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(gate).toContain("HOST!=='100.97.23.87'");
+    expect(gate).toContain("process.platform!=='win32'");
+    expect(gate).toContain("const jobId='NV09-CANARY-4595-ONCE-20261012'");
+    expect(gate).toContain("select status from tigeriq_jobs where id=$1");
+    expect(gate).toContain("runNv09Canary('','json',{oneShot4595:true})");
+    expect(gate).toContain("NV09_RESOURCE_BUSY");
+    expect(source).toContain("on conflict(id) do nothing returning id");
+    expect(source).toContain("if(!created.rowCount)return {ok:false,alreadyRecorded:true");
+    expect(source).toContain("void owner4595CanaryOnce()");
+    expect(source).toContain("if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}");
+  });
+
   it('requires a cross-lane shared lease before starting NV09 canary inference',async()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf("async function runNv09Canary(");
