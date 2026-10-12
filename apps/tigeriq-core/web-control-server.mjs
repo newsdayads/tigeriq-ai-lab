@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 // Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
-const completionModule=await import('../shared/work-center-history.mjs').catch(()=>null);
+const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
 const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
