@@ -126,4 +126,4 @@ test('TAP scoring rejects skipped-only, todo-only and missing summaries',()=>{
                        summary(0,0),summary(2,1),summary(1,1).replace('# skipped 0','')])
     assert.equal(verifyFixtureTapSummary({status:0,stdout}).testsPass,false);
   assert.equal(verifyFixtureTapSummary({status:1,stdout:summary(2,2)}).testsPass,false);
-}
+});
