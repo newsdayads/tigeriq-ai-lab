@@ -51,6 +51,35 @@ function coreQueueFlags() {
   ];
 }
 
+describe('Canonical open work state vs. display labels', () => {
+  it('keeps blocked device work blocked even when its phase mentions LIVE_ACCEPTANCE', () => {
+    const row=parseOpenWorkIssue({
+      number:2949,state:'open',title:'[P1][ANDROID] Khôi phục S10 5G',
+      updated_at:'2026-10-12T12:48:15Z',body:[
+        'CURRENT_STATE=P1_OPEN_BLOCKED_DEVICE_RELEASE_AND_LIVE_ACCEPTANCE',
+        'BLOCKER=PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED',
+        'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+        'AUTO_QUEUE=EXCLUDED_PENDING_EXISTING_DEVICE_AND_RELEASE_GATES'
+      ].join('\\n')
+    });
+    expect(row?.status).toBe('BLOCKED');
+    expect(row?.blocker).toBe('PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED');
+    expect(row?.activeLease).toBe(false);
+  });
+  it('does not show blocked source work as simply OPEN', () => {
+    const row=parseOpenWorkIssue({
+      number:2293,state:'open',title:'[P2][REVENUE LAB] Website Audit',
+      updated_at:'2026-10-12T13:12:00Z',body:[
+        'CURRENT_STATE=READY_SAFE_SOURCE_AND_COST_EVIDENCE_RECONCILIATION_UNCLAIMED',
+        'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+        'AUTO_QUEUE=EXCLUDED_PENDING_DEPENDENCY'
+      ].join('\\n')
+    });
+    expect(row?.status).toBe('WAITING');
+    expect(row?.activeLease).toBe(false);
+  });
+});
+
 describe('TigerIQ Live Work Order projection', () => {
 
   it('#4464 parses >=2 Owner result comments for #4426 newest-first and ignores admin comments', () => {
