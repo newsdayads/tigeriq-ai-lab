@@ -136,6 +136,7 @@ export async function scoreFixture(fixtureRoot) {
 
 export async function scoreLane({ root, lane } = {}) {
   if (!root || !lane) throw new Error('root_and_lane_required');
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
   const manifest = await readManifest();
   const laneRoot = path.resolve(root, lane);
   const fixtures = [];
