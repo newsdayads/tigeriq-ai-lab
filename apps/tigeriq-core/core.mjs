@@ -2810,50 +2810,22 @@ let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function iss
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
 
 
-/* Owner P0: non-blocking read-only LIVE verification for API Health work-list.
-   Serve local Core work immediately, warm the enriched GitHub gates in the background.
-   Never expose stale progress as verified. */
-const healthLiveWorkCache={at:0,result:null,pending:null,lastAttempt:0};
-function healthLiveResultFresh(result){
-  const age=Date.now()-Date.parse(result?.projection?.generatedAt||'');
-  return result?.ok===true&&result?.source==='LIVE_VERIFIED_GATES'
-    &&Number.isFinite(age)&&age>=0&&age<=90000;
-}
-async function refreshApiHealthLiveWork(){
-  try{
-    const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},14000);
-    const age=Date.now()-Date.parse(upstream?.generatedAt||'');
-    if(upstream?.ok!==true||upstream?.liveConnected!==true||upstream?.staleAll||upstream?.workProjection?.stale
-      ||!Array.isArray(upstream?.openWork)||!Number.isFinite(age)||age<0||age>90000)
-      throw Error('LIVE_VERIFICATION_NOT_FRESH');
-    const previousTime=Date.parse(healthLiveWorkCache.result?.projection?.generatedAt||'');
-    if(Number.isFinite(previousTime)&&Date.parse(upstream.generatedAt)<previousTime)return;
-    healthLiveWorkCache.at=Date.now();
-    healthLiveWorkCache.result={ok:true,projection:{
-      openWork:upstream.openWork,
-      recentWork:Array.isArray(upstream.recentWork)?upstream.recentWork:[],
-      openSummary:upstream.openSummary||{},
-      generatedAt:upstream.generatedAt,
-      verifiedGateSource:true,stale:false
-    },source:'LIVE_VERIFIED_GATES'};
-  }catch{ /* Keep the local projection path available. Never infer verified progress. */ }
-}
+/* Owner P0: API Health is the canonical PC01 view, independent of Vercel.
+   Work projection combines PC01 runtime with GitHub evidence locally.
+   Do not claim verified progress when the local evidence is stale/unavailable. */
 async function apiHealthLiveWorkProjection(){
-  const now=Date.now();
-  if(!healthLiveWorkCache.pending&&now-healthLiveWorkCache.lastAttempt>=8000){
-    healthLiveWorkCache.lastAttempt=now;
-    const pending=Promise.resolve().then(refreshApiHealthLiveWork);
-    healthLiveWorkCache.pending=pending;
-    const finish=()=>{if(healthLiveWorkCache.pending===pending)healthLiveWorkCache.pending=null};
-    void pending.then(finish,finish);
-  }
-  if(healthLiveResultFresh(healthLiveWorkCache.result)&&now-healthLiveWorkCache.at<=45000)
-    return {...healthLiveWorkCache.result,cached:true};
   const local=await apiHealthWorkProjection();
-  return local?.ok&&local?.projection
-    ?{ok:true,projection:{...local.projection,verifiedGateSource:false},source:'PC01_FALLBACK',verificationUnavailable:true}
-    :{ok:false,reason:'WORK_PROJECTION_UNAVAILABLE',projection:null};
+  if(!local?.ok||!local?.projection)
+    return {ok:false,reason:local?.reason||'PC01_WORK_PROJECTION_UNAVAILABLE',projection:null};
+  const p=local.projection;
+  const stale=local.stale===true||p.workProjection?.stale===true;
+  return {ok:true,projection:{
+    ...p,
+    verifiedGateSource:!stale&&Boolean(p.workProjection?.verifiedAt),
+    stale,
+  },source:'PC01_LOCAL_GITHUB',cached:local.cached===true,stale};
 }
+
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
 async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw,'utf8')>maxBytes)throw new Error('BODY_TOO_LARGE');}return raw;}
