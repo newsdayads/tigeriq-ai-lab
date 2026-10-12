@@ -2164,9 +2164,7 @@ function render(){
   const rows=normalizeRows(snapshot);
   if(currentFilter==='action')rows.sort((a,b)=>systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   $('workMeta').textContent=rows.length+' mục';
-  const box=$('workList');box.innerHTML='';
-  refreshOpenDrawer();
-  if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
+  const box=$('workList');
   TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
   refreshOpenDrawer();
 }
