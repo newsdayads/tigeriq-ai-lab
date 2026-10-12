@@ -237,6 +237,33 @@ describe('#1255 NV10 API Doctor policy',()=>{
     ])).toMatchObject({type:'RESOURCE_PROBE_FAIL'});
   });
 
+  it('does not let successful health probes erase an unaccepted real inference timeout',()=>{
+    const timeout={type:'RESOURCE_FAILURE',task_kind:'nv09_canary',ts:'2026-10-12T02:44:11Z',data:{kind:'timeout',message:'aborted'}};
+    const proof=[
+      {type:'RESOURCE_PROBE_OK',task_kind:'probe',ts:'2026-10-12T08:54:23Z',data:{}},
+      timeout,
+    ];
+    expect(apiDoctorCurrentFailure(proof)).toBeNull(); // Legacy caller unchanged.
+    expect(apiDoctorCurrentFailure(proof,{preserveWorkFailure:true})).toEqual(timeout);
+    expect(apiDoctorCurrentFailure([
+      {type:'RESOURCE_SUCCESS',task_kind:'normal_work',data:{}},...proof,
+    ],{preserveWorkFailure:true})).toBeNull();
+    expect(apiDoctorCurrentFailure([
+      {type:'RESOURCE_SUCCESS',task_kind:'api_doctor_validation',data:{}},...proof,
+    ],{preserveWorkFailure:true})).toEqual(timeout);
+  });
+
+  it('requires causal NV09 trace rather than repeatedly probing an online failed inference',()=>{
+    expect(apiDoctorAction({
+      healthState:'ONLINE',credentialState:'LOCAL',latestFailure:{kind:'timeout',message:'This operation was aborted'},
+    })).toMatchObject({action:'investigate',failureClass:'timeout',reason:'real_work_timeout_causal_trace_required'});
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain('apiDoctorCurrentFailure(events,{preserveWorkFailure:true})');
+    expect(source).toContain("if(plan.action==='investigate')");
+    expect(source).toContain("'API_DOCTOR_CAUSAL_TRACE_REQUIRED'");
+    expect(source.indexOf("if(plan.action==='investigate')")).toBeLessThan(source.indexOf('let probeOk=false;',source.indexOf("if(plan.action==='investigate')")));
+  });
+
   it('ignores manager output-contract failures as resource-health evidence',()=>{
     const managerFailure={type:'RESOURCE_FAILURE',task_kind:'manager',data:{kind:'invalid_response',message:'MANAGER_SCHEMA_INVALID'}};
     const providerFailure={type:'RESOURCE_FAILURE',task_kind:'ai',data:{kind:'invalid_response',message:'EMPTY_RESPONSE'}};
