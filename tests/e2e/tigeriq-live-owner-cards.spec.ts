@@ -327,7 +327,7 @@ test('V2.1 semantic colors cover all eight statuses with dedicated system and co
     await expect(row).toHaveClass(new RegExp('status-'+spec.status.toLowerCase()));
     const color=await row.evaluate(element=>getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
     expect(color).toBe(spec.color);
-    if(spec.status==='DONE')await page.locator('.filter[data-filter="all"]').click();
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="action"]').click();
   }
 });
 
@@ -437,7 +437,7 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const item of rows){
-    await page.locator('.filter[data-filter="all"]').click();
+    await page.locator('.filter[data-filter="action"]').click();
     if(item.filter==='system'){await expect(page.locator('.work-row[data-work-number="908"]')).toHaveCount(0);continue;}
     const card=page.locator('.work-row[data-work-number="'+item.number+'"]');
     await expect(card).toBeVisible();
@@ -561,7 +561,7 @@ test('P0 progress fixed at BOTTOM and exact semantic status color on all verifie
   await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const [i,[state,color]] of colors.entries()){
-    await page.locator('.filter[data-filter="'+(state==='DONE'?'closed':'all')+'"]').click();
+    await page.locator('.filter[data-filter="'+(state==='DONE'?'closed':'action')+'"]').click();
     const card=page.locator('.work-row[data-work-number="'+(state==='DONE'?719:710+i)+'"]');
     await expect(card).toBeVisible();
     const data=await card.evaluate(el=>{
@@ -643,7 +643,7 @@ test('Production-line LIVE keeps workforce widgets and orders system P1–P5 bef
   const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
   expect(ids).toEqual([4457,2949,4661,4595,4532,4578,4569,4456,4636,2293,999]);
   await expect(page.locator('#workList [data-work-number="2293"]')).toBeVisible();
-  await expect(page.locator('#allCount')).toHaveText('11');
+  await expect(page.locator('#actionCount')).toHaveText('11');
   await expect(page.locator('#bcctSort')).toHaveCount(0);
   await expect(page.locator('#liveWorkers')).toBeVisible();
   await page.locator('#workList [data-work-number="4457"]').click();
