@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
+import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -427,7 +429,7 @@ export function extractPcOperatorInstruction(body){
   return String(match?.[1]||'').trim();
 }
 
-const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','ollama_status_read','coding_issue_status_read','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
+const PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set(['task_status','task_list','process_list','tcp_probe','file_read','file_list','file_stat','core_status_read','ollama_status_read','coding_issue_status_read','cline_benchmark_preflight','android_worker_gate_c_v020_status','android_worker_gate_c_v021_status','android_worker_live_v022_status','paperclip_lab_preflight','paperclip_lab_health']);
 const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','task_restart','android_worker_release_build','android_worker_sign_current_ci_artifact','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_sign_v021_ci_artifact','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_export_v021_signed_apk_chunk','android_worker_publish_v021_manifest','android_worker_export_current_signed_apk_chunk','android_worker_publish_current_manifest','android_worker_gate_c_v020_enqueue_10','android_worker_gate_c_v021_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 const P1_P5_PRIORITIES=new Set(['P1','P2','P3','P4','P5']);
@@ -632,6 +634,10 @@ export function safeAutoWorkAdmission(issue){
   if(bodyValue(currentSafetyBody,'TIGERIQ_EXECUTABLE').toLowerCase()!=='true')return {eligible:false,reason:'EXECUTION_FLAG_REQUIRED'};
   const priority=bodyValue(currentSafetyBody,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
+  // Newly created work cards must have source-valid lifecycle/steps/timing before auto-intake.
+  // Existing legacy cards are not silently disabled; NV02 external pull requires its own gate.
+  const lifecycleContract=validateWorkOrderLifecycleV2(issue);
+  if(lifecycleContract.required&&!lifecycleContract.valid)return {eligible:false,reason:'LIFECYCLE_V2_CONTRACT_INVALID',missing:lifecycleContract.missing};
   const ownerPolicy=bodyValue(currentSafetyBody,'OWNER_POLICY').toUpperCase();
   if(!ownerPolicy&&bodyValue(body,'OWNER_POLICY'))return {eligible:false,reason:'HISTORICAL_ONLY_OWNER_POLICY'};
   if(ownerPolicy&&!['AUTO','AUTO_AFTER_GATE'].includes(ownerPolicy))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
@@ -1484,9 +1490,25 @@ export function activeGithubObjectiveSourceExclusion(issue){
   return '';
 }
 
+// The active GitHub Work Order contract outranks a stale objective metadata copy.
+// A stage-level pc_operator DONE must not auto-close a parent with KEEP_OPEN.
+export function githubKeepOpenOnStepComplete(metadata={},sourceBody=''){
+  const active=currentAutoExecutionHeader(sourceBody);
+  const current=bodyValue(active,'KEEP_OPEN_ON_STEP_COMPLETE').trim().toLowerCase();
+  if(current==='true')return true;
+  if(current==='false')return false;
+  return metadata?.keepOpenOnStepComplete===true;
+}
+
 export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',openIssues=null,issueNumbers=null}){
   if(!token) return {claims:0,results:0};
   const openIssueIndex=Array.isArray(openIssues)?indexOpenGithubIssues(openIssues):null;
+  const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
+  // Rotate oldest-first across ALL eligible statuses. Active-first ranking can
+  // permanently starve completed/blocked rows awaiting GitHub result reporting
+  // when 100+ active objectives remain eligible. Active is a tie-breaker only.
+  // Keep targeted issueNumber filtering INSIDE SQL; filtering after LIMIT can
+  // silently miss the requested objective once the backlog is large.
   const rows=(await pool.query(`select id,status,summary,metadata from tigeriq_objectives
     where metadata->>'source'='github'
       and (
@@ -1495,17 +1517,23 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
         or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
-    order by case when status='active' then 0 else 1 end, updated_at desc, created_at desc
-    limit 100`)).rows;
-  const issueFilter=Array.isArray(issueNumbers)&&issueNumbers.length?new Set(issueNumbers.map(Number)):null;
+      ${issueFilter?"and metadata->>'issueNumber'=any($1::text[])":""}
+    order by updated_at asc, case when status='active' then 0 else 1 end, created_at asc, id asc
+    limit 100`,issueFilter?[[...issueFilter].map(String)]:[])).rows;
   let claims=0,results=0;
   for(const row of rows){
-    const number=Number(row.metadata?.issueNumber); if(!number) continue;
+    const number=Number(row.metadata?.issueNumber);
+    if(!number){
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
+      continue;
+    }
     if(issueFilter&&!issueFilter.has(number))continue;
     let sourceIssueForGate=null;
     try{
       sourceIssueForGate=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,number,openIssueIndex);
     }catch(error){
+      // A failed GitHub check must not monopolize the oldest-first 100-row page.
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
       if(githubRateLimitCooldownMs(error)>0)throw error;
       console.error(JSON.stringify({event:'GITHUB_LIVE_ACCEPTANCE_POLICY_SYNC_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       continue;
@@ -1535,6 +1563,8 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     try{
       dependencyGate=await githubTerminalDependencyGate(fetchImpl,owner,repo,token,sourceIssueForGate,openIssueIndex);
     }catch(error){
+      // A failed GitHub check must not monopolize the oldest-first 100-row page.
+      await pool.query("update tigeriq_objectives set updated_at=now() where id=$1",[row.id]);
       if(githubRateLimitCooldownMs(error)>0)throw error;
       console.error(JSON.stringify({event:'GITHUB_DEPENDENCY_TERMINAL_GATE_ERROR',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
       continue;
@@ -1552,19 +1582,27 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     // A blocked objective must keep the source revision it actually executed. Otherwise
     // outcome sync can consume a fresh revision before intake sees it and deadlock rearm.
     // Completed objectives intentionally retain legacy backfill/reopen semantics for live/final gates.
-    if((sourceLiveRequired||sourceFinalReviewRequired)&&revisionChanged&&row.status!=='blocked'){
+    const hasAcceptanceEvidenceGate=sourceLiveRequired||sourceFinalReviewRequired;
+    if(managerAcceptanceRevisionRefresh({
+      sourceLiveRequired,sourceFinalReviewRequired,dependencyGateRequired:dependencyGate.required,
+      awaitingRevision:row.metadata?.managerAwaitingAcceptanceRevision,
+      revisionChanged,status:row.status,
+    })){
       policyPatch.sourceRevision=currentSourceRevision;
-      policyPatch.liveAcceptancePass=false;
-      policyPatch.liveAcceptanceRevision=null;
-      policyPatch.liveAcceptanceEvidenceCommentId=null;
-      policyPatch.liveAcceptanceCommentCount=-1;
-      policyPatch.finalReviewPass=false;
-      policyPatch.finalReviewRevision=null;
-      policyPatch.finalReviewJobId=null;
-      policyPatch.finalReviewerEmployeeId=null;
-      policyPatch.finalReviewerResourceId=null;
-      policyPatch.finalReviewImplementationFingerprint=null;
-    }else if((sourceLiveRequired||sourceFinalReviewRequired)&&(row.metadata?.liveAcceptanceRequired!==true||row.metadata?.finalReviewRequired!==true)){
+      if(hasAcceptanceEvidenceGate){
+        policyPatch.liveAcceptancePass=false;
+        policyPatch.liveAcceptanceRevision=null;
+        policyPatch.liveAcceptanceEvidenceCommentId=null;
+        policyPatch.liveAcceptanceCommentCount=-1;
+        policyPatch.finalReviewPass=false;
+        policyPatch.finalReviewRevision=null;
+        policyPatch.finalReviewJobId=null;
+        policyPatch.finalReviewerEmployeeId=null;
+        policyPatch.finalReviewerResourceId=null;
+        policyPatch.finalReviewImplementationFingerprint=null;
+      }
+    }else if((sourceLiveRequired&&row.metadata?.liveAcceptanceRequired!==true)
+      ||(sourceFinalReviewRequired&&row.metadata?.finalReviewRequired!==true)){
       policyPatch.liveAcceptanceCommentCount=-1;
       policyPatch.finalReviewPass=false;
       policyPatch.finalReviewRevision=null;
@@ -1574,7 +1612,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       policyPatch.finalReviewImplementationFingerprint=null;
     }
     if(Object.keys(policyPatch).length){
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(policyPatch)]);
+      // Another intake worker can observe a newer GitHub revision while this
+      // scan is awaiting dependency checks. Never overwrite its newer state.
+      const policyWritten=await pool.query(
+        "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1 and status=$4 and (metadata->>'sourceRevision') is not distinct from $3::text",
+        [row.id,JSON.stringify(policyPatch),row.metadata?.sourceRevision??null,row.status],
+      );
+      if(policyWritten.rowCount!==1)continue;
       row.metadata={...row.metadata,...policyPatch};
     }
 
@@ -1638,7 +1682,13 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
               }
             }
           }
-          await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify(livePatch)]);
+          // Reject a stale comment-page scan after another worker advanced
+          // source revision, comment cursor, or objective lifecycle state.
+          const evidenceWritten=await pool.query(
+            "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1 and status=$4 and (metadata->>'sourceRevision') is not distinct from $3::text and (metadata->>'liveAcceptanceCommentCount') is not distinct from $5::text",
+            [row.id,JSON.stringify(livePatch),row.metadata?.sourceRevision??null,row.status,row.metadata?.liveAcceptanceCommentCount==null?null:String(row.metadata.liveAcceptanceCommentCount)],
+          );
+          if(evidenceWritten.rowCount!==1)continue;
           row.metadata={...row.metadata,...livePatch};
         }
       }catch(error){
@@ -1648,6 +1698,28 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       }
     }
     const completionGate=objectiveCompletionGate(row.metadata);
+    const wake=managerAcceptanceWakePlan({
+      awaitingRevision:row.metadata?.managerAwaitingAcceptanceRevision,
+      sourceRevision:row.metadata?.sourceRevision,
+      acceptanceAllowed:completionGate.allow,
+    });
+    if(row.status==='active'&&wake.wake){
+      const summary=wake.reason==='source_revision_changed'
+        ? 'GitHub source revision changed; reassessing the updated Work Order'
+        : 'Durable acceptance/review gate satisfied; resume bounded manager evaluation';
+      const resumed=await pool.query(
+        "update tigeriq_objectives set next_check_at=now(),summary=$2,metadata=coalesce(metadata,'{}'::jsonb)-'managerAwaitingAcceptanceRevision',updated_at=now() where id=$1 and status='active' and metadata->>'managerAwaitingAcceptanceRevision'=$3 and metadata->>'sourceRevision'=$4",
+        [row.id,summary,row.metadata.managerAwaitingAcceptanceRevision,row.metadata.sourceRevision],
+      );
+      if(resumed.rowCount===1){
+        delete row.metadata.managerAwaitingAcceptanceRevision;
+        row.summary=summary;
+        await pool.query(
+          "insert into tigeriq_events(type,objective_id,data) values('OBJECTIVE_COMPLETION_EVIDENCE_RESUMED',$1,$2::jsonb)",
+          [row.id,JSON.stringify({issueNumber:number,reason:wake.reason,sourceRevision:row.metadata?.sourceRevision||null})],
+        );
+      }
+    }
     if(row.status==='completed'&&!completionGate.allow){
       const summary='completion rejected: durable LIVE_ACCEPTANCE_PASS for current source revision is missing';
       await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
@@ -1769,8 +1841,9 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           token
         ));
       }
+      const keepOpenOnStepComplete=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
       if(row.status==='completed'){
-        if(row.metadata?.keepOpenOnStepComplete===true){
+        if(keepOpenOnStepComplete){
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
         }else{
           // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
@@ -1778,7 +1851,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
         }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&row.metadata?.keepOpenOnStepComplete!==true})]);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&!keepOpenOnStepComplete,keepOpenOnStepComplete})]);
       results++;
     }
   }

@@ -24,6 +24,116 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function owner4595CanaryOnce(){');
+    const end=source.indexOf('\nasync function probeResource(',start);
+    const gate=source.slice(start,end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(gate).toContain("HOST!=='100.97.23.87'");
+    expect(gate).toContain("process.platform!=='win32'");
+    expect(gate).toContain("const jobId='NV09-CANARY-4595-ONCE-20261012'");
+    expect(gate).toContain("select status from tigeriq_jobs where id=$1");
+    expect(gate).toContain("runNv09Canary('','json',{oneShot4595:true})");
+    expect(gate).toContain("NV09_RESOURCE_BUSY");
+    expect(source).toContain("on conflict(id) do nothing returning id");
+    expect(source).toContain("if(!created.rowCount)return {ok:false,alreadyRecorded:true");
+    expect(source).toContain("void owner4595CanaryOnce()");
+    expect(source).toContain("if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}");
+  });
+
+  it('requires a cross-lane shared lease before starting NV09 canary inference',async()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf("async function runNv09Canary(");
+    const end=source.indexOf('\nasync function probeResource(',start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const body=source.slice(start,end);
+    expect(body).toContain('await acquireSharedResourceLease(pool,');
+    expect(body).toContain("lane:'core_canary'");
+    expect(body).toContain('/v1/chat/completions');
+    expect(body).toContain('await releaseSharedResourceLease(pool,');
+    expect(body).toContain("'RESOURCE_SUCCESS',false");
+    expect(body).toContain("'RESOURCE_FAILURE',false");
+    expect(body).not.toContain('update tigeriq_ai_resources set current_job_id=$2');
+
+    const build=new Function('deps',`
+      const { nv09Resource,randomUUID,buildNv09CanaryPrompt,nv09ModelAvailability,
+        acquireSharedResourceLease,releaseSharedResourceLease,pool,event,
+        runBoundedInferenceNv09,NV09_TIMEOUT_MS,NV09_ENDPOINT,NV09_MODEL,fetchJson,markResourceSuccess,markResourceFailure }=deps;
+      ${body}
+      return runNv09Canary;
+    `);
+    const calls=[];
+    let busy=false, sequence=0, fail=false, jsonFailure=false;
+    const deps={
+      nv09Resource:{id:'NV09',resourceId:'res:ollama:test:default:core',provider:'ollama',model:'test'},
+      randomUUID:()=>String(++sequence),
+      buildNv09CanaryPrompt:(_input,marker)=>marker,
+      nv09ModelAvailability:async()=>({ok:true}),
+      acquireSharedResourceLease:async(_db,options)=>{
+        calls.push(['acquire',options.workId,options.role,options.lane]);
+        if(busy)return null;
+        busy=true;
+        return {resource_id:options.resourceId,lease_token:'token-1'};
+      },
+      releaseSharedResourceLease:async(_db,options)=>{
+        calls.push(['release',options.leaseToken]);
+        busy=false;
+        return true;
+      },
+      pool:{query:async()=>({rowCount:1})},
+      event:async()=>{},
+      NV09_TIMEOUT_MS:240000,
+      NV09_ENDPOINT:'http://127.0.0.1:11435',
+      NV09_MODEL:'qwen3.6:27b-coding',
+      runBoundedInferenceNv09:async()=>({text:fail?'invalid':'NV09_CORE_CANARY_OK',evalCount:1}),
+      fetchJson:async(url,init,timeout)=>{
+        const sent=JSON.parse(init.body);
+        calls.push(['transport',url,sent.model,sent.stream,timeout]);
+        expect(init.method).toBe('POST');
+        expect(sent.messages).toEqual([{role:'user',content:sent.messages[0].content}]);
+        expect(sent.temperature).toBe(0);
+        return {choices:[{message:{content:jsonFailure?'not-json':'{"canary":"NV09_CORE_CANARY_OK","ok":true}'}}]};
+      },
+      markResourceSuccess:async(_r,_id,_latency,_kind,releaseJob)=>{calls.push(['success',releaseJob]);},
+      markResourceFailure:async(_r,_id,_error,_kind,releaseJob)=>{calls.push(['failure',releaseJob]);},
+    };
+    const canary=build(deps);
+    busy=true;
+    const declined=await canary();
+    expect(declined.error).toBe('NV09_RESOURCE_BUSY');
+    expect(calls.some(row=>row[0]==='release')).toBe(false);
+    busy=false;
+    const passed=await canary();
+    expect(passed.ok).toBe(true);
+    expect(busy).toBe(false);
+    fail=true;
+    const failed=await canary();
+    expect(failed.ok).toBe(false);
+    expect(busy).toBe(false);
+    expect(calls.filter(row=>row[0]==='release')).toHaveLength(2);
+    expect(calls).toContainEqual(['success',false]);
+    expect(calls).toContainEqual(['failure',false]);
+    fail=false;
+    const structured=await canary('','json');
+    expect(structured.ok).toBe(true);
+    expect(structured.contract).toBe('json');
+    jsonFailure=true;
+    const invalidJson=await canary('','json');
+    expect(invalidJson.ok).toBe(false);
+    expect(invalidJson.error).toBe('NV09_CANARY_JSON_NOT_PARSEABLE');
+    expect(busy).toBe(false);
+    expect(calls.filter(row=>row[0]==='release')).toHaveLength(4);
+    expect(calls.filter(row=>row[0]==='transport')).toHaveLength(2);
+    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.6:27b-coding',false,240000]);
+    const slowerCanary=build({...deps,NV09_TIMEOUT_MS:3600000});
+    const capped=await slowerCanary('','json');
+    expect(capped.ok).toBe(false); // jsonFailure remains true
+    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.6:27b-coding',false,240000]);
+    expect(busy).toBe(false);
+  });
+
   it('keeps the NV09 canary marker contract even when a caller supplies diagnostic text',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=core.indexOf('function buildNv09CanaryPrompt');

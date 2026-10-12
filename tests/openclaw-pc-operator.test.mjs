@@ -13,6 +13,7 @@ import {
   reconcileCancelledCoreUiJob,
   readCoreStatus,
   readOllamaStatus,
+  readClineBenchmarkPreflight,
   readCodingIssueStatus,
   coreRestartReplacementAccepted,
   taskActionSuccessStatus,
@@ -1453,5 +1454,33 @@ describe('TigerIQ Live #3150 typed Vercel production deploy', () => {
     expect(classifyDeployFailure('Please log in to Vercel')).toBe('VERCEL_AUTH_REQUIRED');
     expect(classifyDeployFailure('vercel is not recognized')).toBe('VERCEL_CLI_MISSING');
     expect(classifyDeployFailure('unexpected failure')).toBe('VERCEL_DEPLOY_FAILED');
+  });
+});
+
+describe('#4532 isolated Cline benchmark preflight',()=>{
+  const f=(data)=>({ok:true,status:200,async json(){return data;}});
+  const lstatImpl=async(path)=>{
+    if(String(path).endsWith('cline.cmd'))return {isFile:()=>true,isSymbolicLink:()=>false};
+    throw Object.assign(new Error('not found'),{code:'ENOENT'});
+  };
+  it('reads fixed loopback endpoints, does not execute code or claim benchmark pass',async()=>{
+    const urls=[];
+    const result=await readClineBenchmarkPreflight({
+      lstatImpl,
+      fetchImpl:async(url)=>{urls.push(String(url));if(String(url).endsWith('11434/api/tags'))return f({models:[{name:'qwen3:8b',digest:'sha256-fixture'}]});return f({ok:true,service:'tigeriq-coding-lane'});},
+      env:{},
+    });
+    expect(urls).toEqual(['http://127.0.0.1:11434/api/tags','http://127.0.0.1:8797/health']);
+    expect(result).toMatchObject({clineCliInstalled:true,ollamaAvailable:true,nv09CodingLaneOnline:true,dockerIsolationAttested:false,benchmarkRunAuthorized:false,readyForLiveBenchmark:false,gate:'ISOLATED_EXECUTOR_NOT_ATTESTED',cloudApiCalls:0,sourceMutations:0});
+    expect(JSON.stringify(result)).not.toMatch(/secret|password|access.token/i);
+  });
+  it('fails closed without any installed CLI or Ollama and never fabricates results',async()=>{
+    const result=await readClineBenchmarkPreflight({
+      lstatImpl:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},
+      fetchImpl:async()=>{throw new Error('OFFLINE');},
+      env:{},
+    });
+    expect(result).toMatchObject({clineCliInstalled:false,ollamaAvailable:false,nv09CodingLaneOnline:false,readyForLiveBenchmark:false,gate:'CLINE_CLI_NOT_INSTALLED_OR_UNDETECTED'});
+    expect(result.installedLocalModels).toEqual([]);
   });
 });

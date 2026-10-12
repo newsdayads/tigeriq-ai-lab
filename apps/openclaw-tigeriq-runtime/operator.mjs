@@ -2111,6 +2111,72 @@ export async function reconcileCancelledCoreUiJob(input={},options={}){
   };
 }
 
+
+/**
+ * #4532 diagnostic only. Never starts Cline, installs packages or runs
+ * commands. Presence of binaries is NOT proof of OS/process isolation.
+ */
+export async function readClineBenchmarkPreflight({lstatImpl=fs.lstat,fetchImpl=fetch,env=process.env}={}){
+  const checks=[];
+  const candidates=[
+    'D:\\OpenClaw\\npm-global\\cline.cmd',
+    'D:\\TigerIQ\\Tools\\cline.cmd',
+    ...(typeof env.APPDATA==='string'&&env.APPDATA?[win.join(env.APPDATA,'npm','cline.cmd')]:[]),
+  ];
+  let clineInstalled=false;
+  for(const candidate of candidates){
+    try{const stat=await lstatImpl(candidate);if(stat.isFile()&&!stat.isSymbolicLink()){clineInstalled=true;break;}}catch{}
+  }
+  const dockerCandidates=[
+    'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+    'D:\\TigerIQ\\Tools\\docker.exe',
+  ];
+  let dockerBinaryDetected=false;
+  for(const candidate of dockerCandidates){
+    try{const stat=await lstatImpl(candidate);if(stat.isFile()&&!stat.isSymbolicLink()){dockerBinaryDetected=true;break;}}catch{}
+  }
+  let ollamaAvailable=false,models=[],ollamaCode='OLLAMA_NOT_REACHABLE';
+  try{
+    const response=await fetchImpl('http://127.0.0.1:11434/api/tags',{method:'GET',signal:AbortSignal.timeout(5000)});
+    if(response?.ok){
+      const value=await response.json();
+      models=(Array.isArray(value?.models)?value.models:[]).slice(0,32)
+        .map(x=>({name:String(x?.name||x?.model||'').slice(0,120),digest:String(x?.digest||'').slice(0,128)}));
+      ollamaAvailable=true;ollamaCode='OLLAMA_LOCAL_READY';
+    }else ollamaCode='OLLAMA_HTTP_'+Number(response?.status||0);
+  }catch{}
+  let nv09Available=false;
+  try{
+    const response=await fetchImpl('http://127.0.0.1:8797/health',{method:'GET',signal:AbortSignal.timeout(5000)});
+    if(response?.ok){const data=await response.json();nv09Available=data?.ok===true&&String(data?.service||'')==='tigeriq-coding-lane';}
+  }catch{}
+  checks.push({name:'cline_cli_binary_present',pass:clineInstalled});
+  checks.push({name:'docker_binary_present_not_runtime_attested',pass:dockerBinaryDetected});
+  checks.push({name:'ollama_loopback',pass:ollamaAvailable});
+  checks.push({name:'nv09_coding_lane_loopback',pass:nv09Available});
+  return {
+    status:'CLINE_BENCHMARK_PREFLIGHT_READ',
+    workOrder:4532,
+    diagnosticOnly:true,
+    clineCliInstalled:clineInstalled,
+    dockerBinaryDetected,
+    dockerIsolationAttested:false,
+    ollamaAvailable,
+    ollamaCode,
+    installedLocalModels:models,
+    nv09CodingLaneOnline:nv09Available,
+    checks,
+    benchmarkRunAuthorized:false,
+    readyForLiveBenchmark:false,
+    gate:!clineInstalled?'CLINE_CLI_NOT_INSTALLED_OR_UNDETECTED':
+      !ollamaAvailable?'LOCAL_OLLAMA_UNAVAILABLE':
+      !nv09Available?'NV09_CODING_LANE_UNAVAILABLE':
+      'ISOLATED_EXECUTOR_NOT_ATTESTED',
+    cloudApiCalls:0,
+    sourceMutations:0,
+  };
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -2160,6 +2226,8 @@ export async function executePcAction(input, options = {}) {
     data = await readCoreStatus({ fetchImpl: options?.fetchImpl, httpRequestImpl: options?.httpRequestImpl });
   } else if (action === 'ollama_status_read') {
     data = await readOllamaStatus({ fetchImpl: options?.fetchImpl || fetch });
+  } else if (action === 'cline_benchmark_preflight') {
+    data = await readClineBenchmarkPreflight({ fetchImpl: options?.fetchImpl || fetch });
   } else if (action === 'chrome_ui_reconcile_cancelled_job') {
     data = await reconcileCancelledCoreUiJob(input || {}, { fetchImpl: options?.fetchImpl });
   } else if (action === 'tigeriq_live_3150_production_deploy') {
