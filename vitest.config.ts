@@ -35,6 +35,7 @@ export default defineConfig({
       'tests/core-vnext-shadow.test.mjs',
       'tests/world-model-contract.test.mjs',
       'tests/core-vnext-checkpoint-store.test.mjs',
+      'tests/core-4457-manager-pg-lock.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
     ],
     environment: 'node'
