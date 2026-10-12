@@ -4,6 +4,8 @@ import fs from 'node:fs';
 test.use({ channel: 'chrome' });
 
 const liveHtml = fs.readFileSync(new URL('../../command-center.html', import.meta.url), 'utf8');
+const sharedWorkJs=fs.readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8');
+const sharedWorkCss=fs.readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8');
 const projectsHtml = fs.readFileSync(new URL('../../projects.html', import.meta.url), 'utf8');
 
 const snapshot = {
@@ -31,6 +33,8 @@ async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,work
     if(url.includes('/api/live-status?scope=workforce')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(workforce())});return}
     if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)});return}
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
+    if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
+    if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
     await route.fulfill({status:204,body:''});
   });
@@ -176,6 +180,8 @@ test('P0 5-second workforce refresh does not rebuild unrelated work cards or unc
     if(url.endsWith('/api/live-status')){
       fullCalls++;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...snapshot,generatedAt:at})});return;
     }
+    if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
+    if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
     if(url.endsWith('/command-center')){
       await route.fulfill({status:200,contentType:'text/html',body:liveHtml});return;
     }
@@ -293,7 +299,7 @@ test('V2.1 semantic colors cover all eight statuses with dedicated system and co
     {number:808,status:'DONE',color:'#06B6D4'}
   ];
   const records=specs.map(item=>({...snapshot.openWork[0],number:item.number,title:'[P1] Thử màu '+item.status,
-    status:item.status,workKind:item.status==='SYSTEM'?'SYSTEM':'WORK',progressSource:''}));
+    status:item.status,workKind:item.status==='SYSTEM'?'SYSTEM':'WORK',progressSource:'',completionVerified:item.status==='DONE'}));
   const payload={...snapshot,openWork:records.filter(row=>row.status!=='DONE'),
     recentWork:records.filter(row=>row.status==='DONE'),activeWork:[]};
   await routeTiger(page,payload);
@@ -411,7 +417,7 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     title:'[P1] Phân loại '+item.filter,status:item.status,
     workKind:item.filter==='system'?'SYSTEM':'WORK',progressSource:''}));
   const recentWork=[{...snapshot.openWork[0],number:909,
-    title:'[P1] Công việc đã hoàn tất',status:'HOÀN TẤT',workKind:'WORK',progressSource:'terminal',progressPercent:100}];
+    title:'[P1] Công việc đã hoàn tất',status:'HOÀN TẤT',workKind:'WORK',progressSource:'terminal',progressPercent:100,completionVerified:true}];
   await routeTiger(page,{...snapshot,openWork,recentWork,activeWork:[],
     nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
@@ -537,7 +543,7 @@ test('P0 progress fixed at BOTTOM and exact semantic status color on all verifie
     progressDone:3,progressTotal:6,progressRemaining:3,activeLease:false,heartbeatFresh:false,
     nextStep:'Bước tiếp: Kiểm tra mã nguồn'
   }));
-  const done={...rows[0],number:719,status:'DONE',progressPercent:100,progressSource:'terminal'};
+  const done={...rows[0],number:719,status:'DONE',progressPercent:100,progressSource:'terminal',completionVerified:true};
   await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const [i,[state,color]] of colors.entries()){

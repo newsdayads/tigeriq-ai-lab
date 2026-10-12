@@ -893,7 +893,7 @@ html,body,body{background:#071321!important}
 <main id="appMain" class="wrap">
 <header class="top">
   <div class="brand"><h1><img class="brand-logo" src="/tigeriq-icon.svg" alt="">TigerIQ <b>Live</b></h1></div>
-  <div class="top-actions"><div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div><button id="reloadPage" class="reload-page" type="button" aria-label="Tải lại trang" title="Tải lại trang"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button></div>
+  <div class="top-actions"><div class="live"><span class="live-dot"></span><span id="liveLabel">ĐANG CẬP NHẬT</span></div></div>
 </header>
 <div id="err" class="err"></div>
 <section id="ownerSummary" class="flow-kpis" aria-label="Tổng quan luồng công việc" hidden>
@@ -949,10 +949,11 @@ html,body,body{background:#071321!important}
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
     <section id="drawerTimingSection" class="drawer-section"><h3>THỜI GIAN THỰC HIỆN</h3><div class="drawer-row"><span>Bắt đầu</span><span id="drawerStartAt">Chưa xác minh</span></div><div class="drawer-row"><span>ETA xong</span><span id="drawerTargetAt">Chưa xác định</span></div><div class="drawer-row"><span>Hạn bước</span><span id="drawerCheckpointAt">Chưa xác định</span></div><div class="drawer-row"><span>Xong thật</span><span id="drawerFinishAt">Chưa nghiệm thu</span></div><div class="drawer-row"><span>Đủ chuẩn</span><span id="drawerContractGate">Chưa xác minh</span></div></section>
     <section id="drawerTerminalSection" class="drawer-section"><h3>Kết thúc công việc</h3><div class="drawer-row"><span>Trạng thái cuối</span><strong id="drawerTerminalState">CHƯA HOÀN TẤT</strong></div><div class="drawer-row"><span>Điều kiện hoàn tất</span><span id="drawerTerminalCriteria">Chưa xác minh</span></div></section>
-    <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
+    <section class="drawer-section"><h3>NHẬT KÝ VÀ THỜI GIAN</h3><div id="drawerAudit"></div></section><section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Mở TigerIQ với nội dung trao đổi; có sao chép dự phòng">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
+<script src="/work-center.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
@@ -2123,6 +2124,7 @@ function populateDrawer(row){
   $('drawerWorker').textContent=row?.assignee||workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||(row?.technicalComplete?'Đã có bằng chứng canonical':'Chưa có bằng chứng');
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
+  TigerIQWorkCenter.renderAudit($('drawerAudit'),row,{historyEndpoint:'/api/work-history'});
   renderOwnerResultInbox(row);
   const url=row.url||row.evidenceUrl||'';
   $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;else $('drawerGithub').removeAttribute('href');
@@ -2162,59 +2164,8 @@ function render(){
   const rows=normalizeRows(snapshot);
   if(currentFilter==='action')rows.sort((a,b)=>systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   $('workMeta').textContent=rows.length+' mục';
-  const box=$('workList');box.innerHTML='';
-  refreshOpenDrawer();
-  if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
-  rows.forEach((row,index)=>{
-    const el=document.createElement('article');
-    const status=workStatus(row),label=stateLabel[status]||status;
-    const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
-    el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
-    el.style.setProperty('--status-color',STATUS_COLORS[status]||'#64748B');
-    el.setAttribute('data-work-number',String(row.number));
-    el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
-    const title=displayTitle(row.title);
-    const rank=String(index+1).padStart(2,'0');
-    const {pct,verified:progressVerified}=verifiedProgress(row);
-    const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status);
-    const liveRunning=status==='WORKING'&&row?.activeLease===true&&row?.heartbeatFresh===true
-      &&snapshot?.liveConnected===true&&!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-    if(liveRunning)el.classList.add('progress-running');
-    const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
-      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
-      :activeWithoutPercent
-        ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
-        :'';
-    const stepSummary=verifiedStepSummary(row);
-    const project=String(row?.projectName||'Chưa phân dự án').trim();
-    const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
-    const parent=Number(row?.parentNumber);
-    const parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
-    const hierarchy='<div class="work-hierarchy" title="'+esc(project+' → '+stream)+'">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine;
-    const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
-      ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
-      :(row?.currentStep||(row?.workKind==='SYSTEM'?'Chính sách / nguồn chuẩn — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':''))).trim();
-    const doneText=String(row?.latestCompletedStep||'').trim();
-    const nextText=shortNext(row);
-    const blockerText=effectiveBlocker(row).trim();
-    const executionText=executionLabel(row),activeHolderText=activeHolder(row),waitReasonText=executionWaitReason(row);
-    const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
-    const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
-    const quickKind=blockerText?'blocked':usefulNext?'next':usefulSummary?'current':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):usefulSummary?('Hiện tại: '+usefulSummary):'';
-    const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
-    const progressBottom=progress||stepSummary?'<div class="work-progress-bottom">'+stepSummary+progress+'</div>':'';
-    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText+'|'+(row?.progressDone??'-')+'/'+(row?.progressTotal??'-')+'/'+Boolean(row?.progressChecklistVerified);
-    const previous=lastVisualState.get(Number(row.number));
-    if(previous&&previous!==signature)el.classList.add('recently-updated');
-    lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+quickLine+progressBottom+'</div>';
-    el.addEventListener('click',()=>openDrawer(row,el));
-    el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
-    box.append(el);
-    if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
-  });
+  const box=$('workList');
+  TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
   refreshOpenDrawer();
 }
 function show(value){
@@ -2245,7 +2196,7 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
-$('reloadPage').addEventListener('click',()=>window.location.reload());
+TigerIQWorkCenter.mountFloatingReload();
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));

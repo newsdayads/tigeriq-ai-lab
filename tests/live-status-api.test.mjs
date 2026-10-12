@@ -354,35 +354,21 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
   });
 
-  it('keeps completed history beyond 24 hours and exposes priority + NV metadata', () => {
-    const now = Date.parse('2026-09-25T00:00:00Z');
-    const recent = parseRecentCompletedIssue({
-      number: 1861,
-      title: '[P0][VERCEL][NV12] Việc đã xong',
-      body: 'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
-      state: 'closed',
-      state_reason: 'completed',
-      closed_at: '2026-09-24T23:30:00Z',
-      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1861',
-    }, now);
-    expect(recent).toMatchObject({ number: 1861, status: 'DONE', priority: 'P1', effectivePriority: 'P1', employeeId: 'NV19' });
-
-    const older = parseRecentCompletedIssue({
-      number: 1800,
-      title: '[P2][NV12] Việc cũ',
-      body: 'STATE=DONE',
-      state: 'closed',
-      closed_at: '2026-08-01T00:00:00Z',
-    }, now);
-    expect(older).toMatchObject({ number: 1800, priority: 'P2', employeeId: 'NV12', status: 'DONE' });
-
+  it('does not treat historical closed issues as verified completions without V2 receipts', () => {
+    const now=Date.parse('2026-09-25T00:00:00Z');
     expect(parseRecentCompletedIssue({
-      number: 1801,
-      title: '[P3] Không làm',
-      body: 'STATE=CANCELLED',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toBe(null);
+      number:1861,title:'[P0][VERCEL][NV12] Đã đóng thẻ cũ',
+      body:'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
+      state:'closed',state_reason:'completed',closed_at:'2026-09-24T23:30:00Z'
+    },now)).toBeNull();
+    expect(parseRecentCompletedIssue({
+      number:1800,title:'[P2][NV12] Đã đóng cũ',body:'STATE=DONE',
+      state:'closed',state_reason:'completed',closed_at:'2026-08-01T00:00:00Z'
+    },now)).toBeNull();
+    expect(parseRecentCompletedIssue({
+      number:1801,title:'[P3] Không làm',body:'STATE=CANCELLED',
+      state:'closed',state_reason:'not_planned',closed_at:'2026-09-24T23:30:00Z'
+    },now)).toBeNull();
   });
 
   it('projects all open work even when it is excluded from scheduler queue', () => {
@@ -1079,34 +1065,18 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(excludesGoalAndSystem).toMatchObject({ percent: 80, scopeItems: 1, verifiedItems: 1 });
   });
 
-  it('marks completed history as 100 percent', () => {
-    const row = parseRecentCompletedIssue({
-      number: 3104,
-      title: '[P1] Done',
-      body: 'STATE=DONE',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, Date.parse('2026-09-25T00:00:00Z'));
-    expect(row).toMatchObject({ status: 'DONE', progressPercent: 100, progressDetail: '5/5 gate' });
-  });
-
-  it('does not present a closed new capability as DONE before explicit Owner acceptance', () => {
-    const now = Date.parse('2026-09-25T00:00:00Z');
-    expect(parseRecentCompletedIssue({
-      number: 3105,
-      title: '[P1] New capability pending Owner',
-      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toBe(null);
-
-    expect(parseRecentCompletedIssue({
-      number: 3106,
-      title: '[P1] New capability accepted',
-      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true\nOWNER_ACCEPTED=true',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toMatchObject({ status: 'DONE', number: 3106 });
+  it('does not show 100 percent from a GitHub closure without finish evidence even if Owner accepted', () => {
+    const now=Date.parse('2026-09-25T00:00:00Z');
+    for(const body of [
+      'STATE=DONE',
+      'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true',
+      'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true\nOWNER_ACCEPTED=true'
+    ]){
+      expect(parseRecentCompletedIssue({
+        number:3104,title:'[P1] Closed without work receipt',body,state:'closed',
+        state_reason:'completed',closed_at:'2026-09-24T23:30:00Z'
+      },now)).toBeNull();
+    }
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
@@ -1209,23 +1179,11 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
-  it('preserves workflow relations on recent completed work for graph history', () => {
-    const row = parseRecentCompletedIssue({
-      ...issue(4001, '[P1] Completed child', [
-        'PARENT=#4000',
-        'SOURCE=#4000',
-        'CAPABILITY=coding',
-      ].join('\n')),
-      state: 'closed',
-      state_reason: 'completed',
-      closed_at: '2026-09-24T12:01:00Z',
-    }, Date.parse('2026-09-24T12:02:00Z'));
-    expect(row).toMatchObject({
-      parentNumber: 4000,
-      sourceNumber: 4000,
-      capability: 'coding',
-      status: 'DONE',
-    });
+  it('does not include unverified legacy closure in completed workflow relations', () => {
+    expect(parseRecentCompletedIssue({
+      ...issue(4001,'[P1] Completed child','PARENT=#4000\nSOURCE=#4000\nCAPABILITY=coding'),
+      state:'closed',state_reason:'completed',closed_at:'2026-09-24T12:01:00Z'
+    },Date.parse('2026-09-24T12:02:00Z'))).toBeNull();
   });
 
   it('uses current canonical phase instead of stale historical owner-gate flags', () => {

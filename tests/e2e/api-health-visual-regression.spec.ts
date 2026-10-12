@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 test.use({channel:'chrome'});
 const dashboard=readFileSync(new URL('../../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
 const sharedCss=readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8');
+const workCenterJs=readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8');
 const base='https://api-health.tigeriq.test';
 const recent=(seconds=1)=>new Date(Date.now()-seconds*1000).toISOString();
 const ahead=(seconds=3600)=>new Date(Date.now()+seconds*1000).toISOString();
@@ -36,6 +37,7 @@ async function openFixture(page:Page,stale=false){
   const path=new URL(r.request().url()).pathname;
   if(path==='/')return r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:dashboard});
   if(path==='/work-ui.css')return r.fulfill({status:200,contentType:'text/css',body:sharedCss});
+  if(path==='/work-center.js')return r.fulfill({status:200,contentType:'text/javascript',body:workCenterJs});
   if(path==='/api/status')return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixtureStatus(stale))});
   if(path==='/api/health-live-work')return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(projection(stale))});
   if(path==='/api/live-status')return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,resources:[]})});
