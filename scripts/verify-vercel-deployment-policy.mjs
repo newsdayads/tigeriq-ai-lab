@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const canonicalDeployScript = 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 const policyGuardScript = 'scripts/verify-vercel-deployment-policy.mjs';
