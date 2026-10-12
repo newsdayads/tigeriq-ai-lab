@@ -13,7 +13,7 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
     expect(capacity).toContain("capabilities @> ARRAY[$1]::text[]");
   });
   it('routes LOCAL resource shortages into bounded resource waiting before terminal failure',()=>{
-    expect(run).toContain('const effectiveWaitProfile=effectiveCoreJobRoutingProfile(j);');
+    expect(core).toContain('const effectiveWaitProfile=effectiveCoreJobRoutingProfile(j);');
     expect(run).toContain('busyCapableResourceCount(j.capability,effectiveWaitProfile)');
     expect(run).toContain("LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE");
     expect(run).toContain("status='waiting_resource'");
