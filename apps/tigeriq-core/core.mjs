@@ -1364,7 +1364,7 @@ async function runApiDoctorScan(){
   const actions=[];
   for(const resource of rows){
     const events=apiDoctorHealthEvidenceEvents(await apiDoctorRecentResourceEvents(resource.resource_id));
-    const latestFailure=apiDoctorCurrentFailure(events);
+    const latestFailure=apiDoctorCurrentFailure(events,{preserveWorkFailure:true});
     const workFailures=consecutiveWorkFailureEvidence(events);
     const repeatedSourceFailures=workFailures.filter(x=>classifyApiDoctorFailure({kind:x.data?.kind,message:x.data?.message})==='source_contract').length;
     const plan=apiDoctorAction({healthState:resource.health_state,credentialState:resource.credential_state,cooldownUntil:resource.cooldown_until,latestFailure:latestFailure?{kind:latestFailure.data?.kind,message:latestFailure.data?.message}:null,repeatedWorkFailures:repeatedSourceFailures});
@@ -1489,6 +1489,25 @@ async function runApiDoctorScan(){
       row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;row.repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0)||null;actions.push(row);continue;
     }
     if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
+    if(plan.action==='investigate'){
+      // Do not retry a failed inference via a mere health probe. Require
+      // redacted, causal runner evidence and preserve the existing repair scope.
+      const signature=apiDoctorRepairSignature({
+        employeeId:resource.employee_id,provider:resource.provider,
+        failureClass:plan.failureClass,message:'unresolved_real_work_timeout',
+      });
+      if(!await apiDoctorEventBySignature('API_DOCTOR_CAUSAL_TRACE_REQUIRED',signature)){
+        await event('API_DOCTOR_CAUSAL_TRACE_REQUIRED',{
+          employeeId:resource.employee_id,resourceId:resource.resource_id,
+          provider:resource.provider,taskKind:'api_doctor',
+          signature,failureClass:plan.failureClass,
+          failureAt:latestFailure?.ts||null,reason:plan.reason,
+          remedy:'bounded_redacted_runner_trace_then_authorized_repair',
+        });
+      }
+      row.failureAt=latestFailure?.ts||null;
+      actions.push(row);continue;
+    }
     let probeOk=false;
     try{
       const probe=await probeResource(resource.resource_id);

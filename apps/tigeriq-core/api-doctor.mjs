@@ -80,6 +80,9 @@ export function apiDoctorAction({
   if((health==='RATE_LIMITED'||cls==='rate_limit')&&cooling)return {action:'wait',failureClass:'rate_limit',reason:'cooldown_active'};
   if(health==='RATE_LIMITED'||cls==='rate_limit')return {action:'probe',failureClass:'rate_limit',reason:'cooldown_due'};
   if(cls==='source_contract'&&Number(repeatedWorkFailures)>=2)return {action:'probe_then_handoff',failureClass:cls,reason:'repeated_work_contract_failure'};
+  // A provider ping cannot certify a prior timed-out real inference. Keep an
+  // actionable diagnosis request without launching an unbounded retry.
+  if(cls==='timeout'&&health==='ONLINE')return {action:'investigate',failureClass:cls,reason:'real_work_timeout_causal_trace_required'};
   if(['source_contract','timeout','transient'].includes(cls))return {action:'probe',failureClass:cls,reason:'bounded_reprobe'};
   if(['ERROR','OFFLINE','READY'].includes(health)&&!cooling)return {action:'probe',failureClass:cls,reason:'health_recheck'};
   return {action:'idle',failureClass:cls,reason:'healthy_or_no_action'};
@@ -103,13 +106,26 @@ export function apiDoctorExistingHandoffAction({
   return {action:'wait_repair',reason:'post_repair_validation_budget_exhausted'};
 }
 
-export function apiDoctorCurrentFailure(events=[]){
+export function apiDoctorCurrentFailure(events=[],{preserveWorkFailure=false}={}){
+  // Health pings are not evidence that an actual failed inference recovered.
+  // Legacy callers keep their historical probe semantics unless explicitly opted in.
+  if(!preserveWorkFailure){
+    for(const row of Array.isArray(events)?events:[]){
+      const type=String(row?.type||'');
+      if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK')return null;
+      if(type==='RESOURCE_FAILURE'||type==='RESOURCE_PROBE_FAIL')return row;
+    }
+    return null;
+  }
+  let latestProbeFailure=null;
   for(const row of Array.isArray(events)?events:[]){
     const type=String(row?.type||'');
-    if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK')return null;
-    if(type==='RESOURCE_FAILURE'||type==='RESOURCE_PROBE_FAIL')return row;
+    const taskKind=String(row?.task_kind||row?.data?.taskKind||'').toLowerCase();
+    if(type==='RESOURCE_SUCCESS'&&!['probe','api_doctor','api_doctor_validation'].includes(taskKind))return null;
+    if(type==='RESOURCE_FAILURE'&&!['probe','api_doctor','api_doctor_validation'].includes(taskKind))return row;
+    if(type==='RESOURCE_PROBE_FAIL'&&!latestProbeFailure)latestProbeFailure=row;
   }
-  return null;
+  return latestProbeFailure;
 }
 
 export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass){
