@@ -616,10 +616,11 @@ function renderWork(){
   system:open.filter(x=>x?.workKind==='SYSTEM'||status(x)==='SYSTEM').length,
   unstarted:relevant.filter(x=>status(x)==='OPEN'&&x.executionEligibility!=='READY').length,
   goal:open.filter(x=>x?.workKind==='GOAL'||status(x)==='GOAL').length,
-  done:Number(workProjection?.openSummary?.done||0)
+  done:Number(workProjection?.openSummary?.done||0),
+  archived:Number(workProjection?.openSummary?.archived||0)
  };
  const defs=[['action','TẤT CẢ'],['running','ĐANG LÀM'],['ready','SẴN SÀNG'],['review','RÀ SOÁT'],['waitgroup','CHỜ'],['blocked','BỊ CHẶN'],['done','HOÀN TẤT']];
- const more=[['owner','CHỜ ANH SƠN'],['verify','XÁC MINH'],['waiting','ĐANG CHỜ'],['unstarted','CHƯA LÀM'],['paused','TẠM DỪNG'],['system','HỆ THỐNG'],['goal','MỤC TIÊU']];
+ const more=[['owner','CHỜ ANH SƠN'],['verify','XÁC MINH'],['waiting','ĐANG CHỜ'],['unstarted','CHƯA LÀM'],['paused','TẠM DỪNG'],['system','HỆ THỐNG'],['goal','MỤC TIÊU'],['archived','ĐÃ ĐÓNG · CHỜ NGHIỆM THU']];
  const button=([k,label])=>'<button type="button" aria-pressed="'+(workFilter===k)+'" title="'+(k==='action'?'Tất cả công việc đang mở (không gồm hoàn tất)':label)+'" class="wo-filter '+k+' '+(workFilter===k?'on':'')+'" data-wo="'+k+'">'+label+' <b>'+Number(stat[k]||0)+'</b></button>';
  const wasAdvancedOpen=woFilters.querySelector('.wo-more')?.open===true;
  const activeAdvanced=more.find(([k])=>k===workFilter);
