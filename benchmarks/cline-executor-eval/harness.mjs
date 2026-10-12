@@ -73,6 +73,144 @@ export function fixtureChildEnvironment(source=process.env){
     .map((key)=>[key,source[key]]));
 }
 
+/**
+ * Node TAP exit=0 is insufficient: skipped/todo-only suites exit successfully
+ * but prove no fixture acceptance. The summary must be complete and all tests
+ * actually pass. Exact lines are matched, not arbitrary fixture output text.
+ */
+export function verifyFixtureTapSummary({status,stdout}={}){
+  const source=String(stdout||'');
+  const read=(field)=>{
+    const found=source.match(new RegExp('^# '+field+' (\\\\d+)\\\\s*
+  const manifest = await readManifest();
+  const fixtureId = path.basename(path.resolve(fixtureRoot));
+  const fixture = manifest.fixtures.find((item) => item.id === fixtureId);
+  if (!fixture) throw new Error('unknown_fixture:' + fixtureId);
+
+  const expectedFiles = fixture.files;
+  const expectedPaths = new Set(Object.keys(expectedFiles));
+  const allowedPaths = new Set([...expectedPaths, 'TASK.md']);
+  const allFiles = await walkFiles(fixtureRoot);
+  const unexpectedFiles = allFiles.filter((rel) => !allowedPaths.has(rel));
+  let filesChanged = 0;
+  let linesChanged = 0;
+  let testsMutated = false;
+
+  for (const [rel, originalContent] of Object.entries(expectedFiles)) {
+    let current = '';
+    try { current = await readFile(path.join(fixtureRoot, rel), 'utf8'); } catch {}
+    if (sha256(current) !== sha256(originalContent)) {
+      filesChanged += 1;
+      linesChanged += changedLineCount(originalContent, current);
+      if (rel.startsWith('tests/')) testsMutated = true;
+    }
+  }
+
+  const expectedTask = fixture.prompt + '\n';
+  let currentTask = '';
+  try { currentTask = await readFile(path.join(fixtureRoot, 'TASK.md'), 'utf8'); } catch {}
+  const taskMutated = sha256(currentTask) !== sha256(expectedTask);
+
+  // Explicit files are mandatory: `node --test tests` can succeed with
+  // zero discovered tests on some Node versions and falsely score 3/3.
+  const testFiles = Object.keys(expectedFiles)
+    .filter((rel) => /^tests\/.+\.test\.[cm]?js$/.test(rel))
+    .sort();
+  if (testFiles.length === 0) throw new Error('FIXTURE_TESTS_MISSING:' + fixtureId);
+  // This scorer is also run inside node --test. Never inherit the parent
+  // test-runner context: child --test processes otherwise skip fixture tests
+  // and can exit 0 without evaluating a single assertion.
+  const fixtureEnv = fixtureChildEnvironment();
+  // Reject tampered acceptance tests/tasks before executing any attacker-edited test.
+  // A permitted outer runner must additionally sandbox untrusted solution code.
+  if (testsMutated || taskMutated || unexpectedFiles.length > 0) {
+    return { fixtureId, completed:false, testsPass:false, testCount:0, testExitCode:null,
+      testsMutated, taskMutated, unexpectedFiles, filesChanged, linesChanged,
+      stdoutTail:'', stderrTail:'BENCHMARK_UNTRUSTED_FIXTURE_REJECTED' };
+  }
+  const testRun = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...testFiles], {
+    cwd: fixtureRoot,
+    env: fixtureEnv,
+    encoding: 'utf8',
+    timeout: 120000,
+  });
+  const {testCount,testsPass} = verifyFixtureTapSummary(testRun);
+  return {
+    fixtureId,
+    completed: testsPass && !testsMutated && !taskMutated && unexpectedFiles.length === 0,
+    testsPass,
+    testCount,
+    testExitCode: testRun.status,
+    testsMutated,
+    taskMutated,
+    unexpectedFiles,
+    filesChanged,
+    linesChanged,
+    stdoutTail: String(testRun.stdout || '').slice(-1200),
+    stderrTail: String(testRun.stderr || '').slice(-1200),
+  };
+}
+
+export async function scoreLane({ root, lane } = {}) {
+  if (!root || !lane) throw new Error('root_and_lane_required');
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
+  const manifest = await readManifest();
+  const benchmarkRoot = path.resolve(root);
+  if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
+  const laneRoot = path.join(benchmarkRoot, lane);
+  if ((await lstat(laneRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:lane');
+  const fixtures = [];
+  for (const fixture of manifest.fixtures) {
+    fixtures.push(await scoreFixture(path.join(laneRoot, fixture.id)));
+  }
+  const completed = fixtures.filter((item) => item.completed).length;
+  return {
+    version: manifest.version,
+    lane,
+    completed,
+    total: fixtures.length,
+    completionRate: fixtures.length ? completed / fixtures.length : 0,
+    qualityPass: fixtures.every((item) => !item.testsMutated && !item.taskMutated && item.unexpectedFiles.length === 0),
+    fixtures,
+  };
+}
+
+function arg(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : null;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const command = process.argv[2];
+  const root = arg('--root');
+  const lane = arg('--lane');
+  const force = process.argv.includes('--force');
+  const result = command === 'seed'
+    ? await seedLane({ root, lane, force })
+    : command === 'score'
+      ? await scoreLane({ root, lane })
+      : null;
+  if (!result) {
+    console.error('usage: node harness.mjs <seed|score> --root <new-isolated-dir> --lane <name>');
+    process.exitCode = 2;
+  } else {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  }
+}
+,'m'));
+    return found?Number(found[1]):null;
+  };
+  const testCount=read('tests');
+  const passed=read('pass');
+  const failed=read('fail');
+  const skipped=read('skipped');
+  const todo=read('todo');
+  const cancelled=read('cancelled');
+  const complete=[testCount,passed,failed,skipped,todo,cancelled].every(Number.isSafeInteger);
+  const testsPass=complete&&status===0&&testCount>0&&passed===testCount&&failed===0&&skipped===0&&todo===0&&cancelled===0;
+  return {testCount:testCount||0,passed:passed||0,skipped:skipped||0,testsPass};
+}
+
 export async function scoreFixture(fixtureRoot) {
   const manifest = await readManifest();
   const fixtureId = path.basename(path.resolve(fixtureRoot));
