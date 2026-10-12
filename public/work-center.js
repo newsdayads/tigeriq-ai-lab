@@ -1,8 +1,8 @@
 /* TigerIQ Work Center V1 — one read-only UI/semantic module for LIVE, API Health and Web Control. */
 (function(root){
 'use strict';
-const LABELS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA XÁC MINH',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'RÀ SOÁT',VERIFY:'XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
-const COLORS={OPEN:'#64748B',UNKNOWN:'#64748B',OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',PAUSED:'#64748B',DONE:'#06B6D4',GOAL:'#64748B',SYSTEM:'#64748B'};
+const LABELS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA XÁC MINH',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'RÀ SOÁT',VERIFY:'XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT',CLOSED_UNVERIFIED:'ĐÃ ĐÓNG · CHƯA NGHIỆM THU'};
+const COLORS={OPEN:'#64748B',UNKNOWN:'#64748B',OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',PAUSED:'#64748B',DONE:'#06B6D4',GOAL:'#64748B',SYSTEM:'#64748B',CLOSED_UNVERIFIED:'#94A3B8'};
 const ALIASES={'ĐANG XỬ LÝ':'WORKING','ĐANG LÀM':'WORKING','RÀ SOÁT':'REVIEW','ĐANG RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG XÁC MINH':'VERIFY','CHỜ':'WAITING','ĐANG CHỜ':'WAITING','BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','CHƯA LÀM':'OPEN','SẴN SÀNG':'QUEUED','TẠM DỪNG':'PAUSED','CHỜ ANH SƠN':'OWNER_GATE','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','MỞ':'OPEN'};
 const lastSignatures=new Map();
 const activeHistory=new WeakMap();
@@ -41,6 +41,7 @@ function rowsFor(data,filter){
  const ready=x=>['OPEN','WAITING','QUEUED'].includes(status(x))&&(status(x)==='QUEUED'||x.executionEligibility==='READY');
  const f=filter||'action';
  if(f==='done')return done.filter(completion);
+ if(f==='archived')return done.filter(x=>status(x)==='CLOSED_UNVERIFIED'&&!completion(x));
  if(f==='owner')return o.filter(x=>status(x)==='OWNER_GATE');
  if(f==='running')return o.filter(x=>status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
  if(f==='review')return o.filter(x=>['REVIEW','VERIFY'].includes(status(x)));
