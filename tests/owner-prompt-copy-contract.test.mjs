@@ -38,6 +38,6 @@ describe('Owner one-line Copy prompt contract V1', () => {
     expect(emit).not.toHaveBeenCalled();
     expect(publishOwnerPromptCopy(oneLine, null)).toEqual({ published: false, errors: ['EMITTER_REQUIRED'] });
     expect(publishOwnerPromptCopy(oneLine, emit).published).toBe(true);
-    expect(emit).toHaveBeenCalledExactlyOnceWith(oneLine);
+    expect(emit).toHaveBeenCalledTimes(1);\n    expect(emit).toHaveBeenCalledWith(oneLine);
   });
 });
