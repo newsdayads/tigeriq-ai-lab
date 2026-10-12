@@ -81,7 +81,8 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.body).toContain('ACCEPTANCE=');
     expect(wo.body).toContain('REQUIRED_TESTS=');
     expect(wo.body).toContain('PROVENANCE=SELF_AUDIT|DEGRADED_RESOURCE_ROUTING|route');
-    expect(wo.body.startsWith('TIGERIQ_JOB_V1')).toBe(true);
+    expect(wo.body.startsWith('## ACTIVE WORK ORDER')).toBe(true);
+    expect(wo.body).toContain('TIGERIQ_JOB_V1');
     const issued={number:990000,title:wo.title,body:wo.body,state:'open',created_at:'2026-10-13T01:00:00Z'};
     expect(validateWorkOrderLifecycleV2(issued)).toMatchObject({required:true,valid:true,missing:[]});
     expect(wo.body).toContain('RCA_FAMILY_KEY='+rca.rcaFamilyKey);
