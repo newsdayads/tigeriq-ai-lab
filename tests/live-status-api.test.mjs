@@ -25,6 +25,7 @@ import {
   optionalBodyNumber,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
+  parseRecentClosedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
 } from '../api/live-status.mjs';
@@ -352,6 +353,15 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(normalizeRuntimeWorkerActivity(base, now).state).toBe('working');
     expect(normalizeRuntimeWorkerActivity({ ...base, currentJobId: null }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
     expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
+  });
+
+  it('preserves a closed GitHub Issue as archived, not verified 100%', () => {
+    const now=Date.parse('2026-10-12T14:00:00Z');
+    const legacy={number:4500,title:'[P2] Việc đã đóng cũ',body:'STATE=DONE\\nPRIORITY=P2',state:'closed',state_reason:'completed',closed_at:'2026-10-12T13:00:00Z',updated_at:'2026-10-12T13:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4500'};
+    const archived=parseRecentClosedIssue(legacy,now);
+    expect(archived).toMatchObject({number:4500,status:'CLOSED_UNVERIFIED',completionVerified:false,progressPercent:null,closedAt:'2026-10-12T13:00:00Z'});
+    expect(parseRecentCompletedIssue(legacy,now)).toBeNull();
+    expect(parseRecentClosedIssue({...legacy,state_reason:'not_planned'},now)).toBeNull();
   });
 
   it('does not treat historical closed issues as verified completions without V2 receipts', () => {
