@@ -51,11 +51,14 @@ export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth=
   if(!decision?.job||raw.length<1||raw.length>8||raw.some(p=>!safeRepoPath(p))){
     const e=new Error('MANAGER_PATHS_INVALID');e.code='MANAGER_PATHS_INVALID';throw e;
   }
-  assertExecutionPlaneMutationPaths(raw,mutationAuth);
+  // Reject a hallucinated out-of-scope path as a correctable manager output
+  // before evaluating protected-area mutation authority. Both checks still run
+  // for every in-scope proposal; the control-plane deny is never bypassed.
   try{validateSourceScope(raw,canonicalPaths)}catch(error){
     const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
     const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
   }
+  assertExecutionPlaneMutationPaths(raw,mutationAuth);
   return raw;
 }
 
