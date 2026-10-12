@@ -917,19 +917,11 @@ html,body,body{background:#071321!important}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
-    <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
-    <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
-    <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
-    <button class="filter" data-filter="verify">XÁC MINH <b id="verifyCount">0</b></button>
-    <button class="filter" data-filter="ready">SẴN SÀNG <b id="readyCount">0</b></button>
-    <button class="filter" data-filter="waiting">ĐANG CHỜ <b id="waitingCount">0</b></button>
-    <button class="filter" data-filter="blocked">BỊ CHẶN <b id="blockedCount">0</b></button>
-    <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
-    <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
-    <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
-    <button class="filter" data-filter="archived">ĐÃ ĐÓNG · CHỜ NGHIỆM THU <b id="archivedCount">0</b></button>
-  </nav>
+    <button class="filter active" data-filter="all">TẤT CẢ <b id="allCount">0</b></button>
+    <button class="filter" data-filter="working">ĐANG LÀM <b id="workingCount">0</b></button>
+    <button class="filter" data-filter="waitblocked">CHỜ / CHẶN <b id="waitblockedCount">0</b></button>
+    <button class="filter" data-filter="closed">ĐÃ KẾT THÚC <b id="closedCount">0</b></button>
+  </nav><small class="work-scope-note">Nhóm đã kết thúc chỉ bao gồm lịch sử gần đây có trong nguồn dữ liệu; đóng hồ sơ không đồng nghĩa hoàn tất.</small>
   <div id="workList" class="work-list tiq-work-center"></div>
 </section>
 </div>
@@ -962,12 +954,12 @@ const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
-let currentFilter='action';
+let currentFilter='all';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
 let drawerReturnFocus=null;
-const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT',CLOSED_UNVERIFIED:'ĐÓNG KHÁC'};
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
 const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
@@ -1047,27 +1039,7 @@ function executionWaitReason(row){
     :'Không có';
 }
 function normalizeRows(value){
-  const fallbackOpen=()=>{
-    const map=new Map();
-    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])])if(Number(row?.number))map.set(Number(row.number),row);
-    return [...map.values()];
-  };
-  const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
-  let rows=[];
-  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).filter(x=>TigerIQWorkCenter.completion(x));
-  else if(currentFilter==='archived')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).filter(x=>x.status==='CLOSED_UNVERIFIED'&&!TigerIQWorkCenter.completion(x));
-  else if(currentFilter==='owner')rows=openRows.filter(x=>workStatus(x)==='OWNER_GATE');
-  else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
-  else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
-  else if(currentFilter==='verify')rows=openRows.filter(x=>workStatus(x)==='VERIFY');
-  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
-  else if(currentFilter==='waiting')rows=openRows.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY');
-  else if(currentFilter==='blocked')rows=openRows.filter(x=>workStatus(x)==='BLOCKED');
-  else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
-  else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
-  else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  return rows;
+ return TigerIQWorkCenter.rowsFor(value,currentFilter);
 }
 
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
@@ -1084,23 +1056,13 @@ function hydrate(raw){
   return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
 function updateCounts(){
-  const s=snapshot?.openSummary||{};
-  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  const visibleActionable=actionable;
-  $('actionCount').textContent=visibleActionable.length;
-  $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
-  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
-  $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
-  $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
-  $('readyCount').textContent=actionable.filter(x=>['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY')).length;
-  $('waitingCount').textContent=actionable.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY').length;
-  $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
-  $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
-  $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
-  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).filter(x=>TigerIQWorkCenter.completion(x)).length;
-  $('archivedCount').textContent=Number.isFinite(Number(s.archived))?s.archived:(snapshot?.recentWork||[]).filter(x=>x.status==='CLOSED_UNVERIFIED').length;
+ const filters=['all','working','waitblocked','closed'];
+ for(const key of filters){
+  const node=$(key+'Count');
+  if(node)node.textContent=TigerIQWorkCenter.rowsFor(snapshot,key).length;
+ }
 }
+
 function renderOwnerSummary(){
   const portfolioProgress=snapshot?.portfolioProgress; void portfolioProgress;
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
@@ -2094,6 +2056,7 @@ function jobCloseoutState(row){
   const state=workStatus(row),stale=Boolean(snapshot?.staleAll||snapshot?.workProjection?.stale);
   if(stale)return {label:'CHƯA XÁC MINH KẾT THÚC',detail:'Dữ liệu đang cũ; cần đồng bộ nguồn trước khi xác nhận.'};
   if(state==='DONE')return {label:'HOÀN TẤT · ĐÃ KẾT THÚC',detail:'Nguồn ghi hoàn tất; đối chiếu bằng chứng thực thi, rà soát và phát hành tại GitHub.'};
+  if(state==='CLOSED_UNVERIFIED')return {label:'ĐÃ ĐÓNG · CHƯA XÁC MINH KẾT QUẢ',detail:'Hồ sơ GitHub đã đóng nhưng chưa đủ bằng chứng kết luận hoàn tất; không tính 100%.'};
   if(state==='OWNER_GATE'&&row?.technicalComplete===true)return {label:'XONG KỸ THUẬT · CHƯA KẾT THÚC',detail:'Chờ nghiệm thu cuối; không tự đóng công việc.'};
   if(state==='BLOCKED')return {label:'CHƯA KẾT THÚC · BỊ CHẶN',detail:'Chờ xử lý trở ngại có bằng chứng, không tự lặp lại vô hạn.'};
   if(state==='REVIEW'||state==='VERIFY')return {label:'CHƯA KẾT THÚC · CHỜ NGHIỆM THU',detail:'Chờ rà soát hoặc xác minh kết quả thực tế.'};
@@ -2202,7 +2165,7 @@ async function load(){
 }
 TigerIQWorkCenter.mountFloatingReload();
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
-  currentFilter=button.dataset.filter||'action';
+  currentFilter=button.dataset.filter||'all';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
   render();
 }));
