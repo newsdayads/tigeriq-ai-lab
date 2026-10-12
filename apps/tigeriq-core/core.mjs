@@ -856,9 +856,11 @@ function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
     : 'Diagnostic context: basic NV09 response-path health check.\n';
   return `${context}CANARY OUTPUT CONTRACT: return exactly ${marker} and nothing else.`;
 }
-async function runNv09Canary(inputPrompt='',requestedContract='marker'){
+async function runNv09Canary(inputPrompt='',requestedContract='marker',options={}){
   const r=nv09Resource;
-  const id=`NV09-CANARY-${randomUUID()}`;
+  // One Owner-authorized, durable, zero-cost PC01 diagnostic; never duplicate an objective.
+  const once4595=options?.oneShot4595===true;
+  const id=once4595?'NV09-CANARY-4595-ONCE-20261012':`NV09-CANARY-${randomUUID()}`;
   const marker='NV09_CORE_CANARY_OK';
   const contract=String(requestedContract||'marker').toLowerCase()==='json'?'json':'marker';
   const prompt=contract==='json'
@@ -878,7 +880,8 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker'){
   });
   if(!sharedLease)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:'NV09_RESOURCE_BUSY'};
   try{
-  await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,started_at,attempts,max_attempts) values($1,null,$2,$3,'coding_local','nv09_canary','running',$4,$5,'ollama','NV09_ON_DEMAND',$6,now(),1,1)",[id,'NV09 Core coding-safe live canary',prompt,r.id,r.resourceId,JSON.stringify({authority:'CORE',chosen:{employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model},reason:'EXPLICIT_NV09_CANARY'})]);
+  const created=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,started_at,attempts,max_attempts) values($1,null,$2,$3,'coding_local','nv09_canary','running',$4,$5,'ollama','NV09_ON_DEMAND',$6,now(),1,1) on conflict(id) do nothing returning id",[id,'NV09 Core coding-safe live canary',prompt,r.id,r.resourceId,JSON.stringify({authority:'CORE',chosen:{employeeId:r.id,resourceId:r.resourceId,provider:r.provider,model:r.model},reason:'EXPLICIT_NV09_CANARY'})]);
+    if(!created.rowCount)return {ok:false,alreadyRecorded:true,jobId:id,error:'NV09_CANARY_ALREADY_RECORDED'};
     await event('ROUTING_DECISION',{jobId:id,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'coding_canary',profile:'NV09_ON_DEMAND',decision:{chosen:{employeeId:r.id,resourceId:r.resourceId,model:r.model},explicit:true}});
     const started=Date.now();
     try{
@@ -916,6 +919,27 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker'){
   }finally{
     await releaseSharedResourceLease(pool,{resourceId:r.resourceId,leaseToken:sharedLease.lease_token});
   }
+}
+// Owner scoped precondition to #4595: one real JSON transport receipt without PC01 shell.
+let owner4595CanaryRunning=false;
+async function owner4595CanaryOnce(){
+  // No paid provider and no action outside this explicitly verified PC01 runtime.
+  if(HOST!=='100.97.23.87'||PORT!==8795||process.platform!=='win32'||owner4595CanaryRunning)return;
+  owner4595CanaryRunning=true;
+  const jobId='NV09-CANARY-4595-ONCE-20261012';
+  try{
+    const prior=await pool.query('select status from tigeriq_jobs where id=$1',[jobId]);
+    if(prior.rowCount)return;
+    const result=await runNv09Canary('','json',{oneShot4595:true});
+    if(result.error==='NV09_RESOURCE_BUSY')return; // Retry admission only, never the inference.
+    await event('NV09_4595_ONESHOT_CANARY_RECEIPT',{
+      jobId,ok:result.ok===true,contract:'json',
+      kind:result.kind||null,error:String(result.error||'').slice(0,120),
+      latencyMs:result.latencyMs||null,alreadyRecorded:Boolean(result.alreadyRecorded),
+    });
+  }catch(error){
+    console.error(JSON.stringify({event:'NV09_4595_ONESHOT_ADMISSION_ERROR',kind:String(error?.kind||'outage'),message:String(error?.message||error).slice(0,160)}));
+  }finally{owner4595CanaryRunning=false;}
 }
 async function probeResource(resourceOrEmployeeId){
   const r=resources.find(x=>x.resourceId===resourceOrEmployeeId||x.id===resourceOrEmployeeId);
@@ -3404,7 +3428,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
-      if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
+      if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       const runtimeTrigger=observeRuntimeContinuousVerify();
@@ -3479,6 +3503,7 @@ const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('requ
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
 void probeReadyResources();
+void owner4595CanaryOnce();
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,loopbackHost:'127.0.0.1',loopbackListener:Boolean(loopbackServer),port:PORT,pid:process.pid,resources:resources.length}));
 const closeCoreServers=()=>{stop=true;server.close();loopbackServer?.close();};
 process.on('SIGINT',closeCoreServers);process.on('SIGTERM',closeCoreServers);
