@@ -24,6 +24,70 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('requires a cross-lane shared lease before starting NV09 canary inference',async()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf("async function runNv09Canary(inputPrompt='')");
+    const end=source.indexOf('\nasync function probeResource(',start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const body=source.slice(start,end);
+    expect(body).toContain('await acquireSharedResourceLease(pool,');
+    expect(body).toContain("lane:'core_canary'");
+    expect(body).toContain('await releaseSharedResourceLease(pool,');
+    expect(body).toContain("'RESOURCE_SUCCESS',false");
+    expect(body).toContain("'RESOURCE_FAILURE',false");
+    expect(body).not.toContain('update tigeriq_ai_resources set current_job_id=$2');
+
+    const build=new Function('deps',`
+      const { nv09Resource,randomUUID,buildNv09CanaryPrompt,nv09ModelAvailability,
+        acquireSharedResourceLease,releaseSharedResourceLease,pool,event,
+        runBoundedInferenceNv09,NV09_TIMEOUT_MS,markResourceSuccess,markResourceFailure }=deps;
+      ${body}
+      return runNv09Canary;
+    `);
+    const calls=[];
+    let busy=false, sequence=0, fail=false;
+    const deps={
+      nv09Resource:{id:'NV09',resourceId:'res:ollama:test:default:core',provider:'ollama',model:'test'},
+      randomUUID:()=>String(++sequence),
+      buildNv09CanaryPrompt:(_input,marker)=>marker,
+      nv09ModelAvailability:async()=>({ok:true}),
+      acquireSharedResourceLease:async(_db,options)=>{
+        calls.push(['acquire',options.workId,options.role,options.lane]);
+        if(busy)return null;
+        busy=true;
+        return {resource_id:options.resourceId,lease_token:'token-1'};
+      },
+      releaseSharedResourceLease:async(_db,options)=>{
+        calls.push(['release',options.leaseToken]);
+        busy=false;
+        return true;
+      },
+      pool:{query:async()=>({rowCount:1})},
+      event:async()=>{},
+      NV09_TIMEOUT_MS:240000,
+      runBoundedInferenceNv09:async()=>fail?{text:'invalid'}:{text:'NV09_CORE_CANARY_OK',evalCount:1},
+      markResourceSuccess:async(_r,_id,_latency,_kind,releaseJob)=>{calls.push(['success',releaseJob]);},
+      markResourceFailure:async(_r,_id,_error,_kind,releaseJob)=>{calls.push(['failure',releaseJob]);},
+    };
+    const canary=build(deps);
+    busy=true;
+    const declined=await canary();
+    expect(declined.error).toBe('NV09_RESOURCE_BUSY');
+    expect(calls.some(row=>row[0]==='release')).toBe(false);
+    busy=false;
+    const passed=await canary();
+    expect(passed.ok).toBe(true);
+    expect(busy).toBe(false);
+    fail=true;
+    const failed=await canary();
+    expect(failed.ok).toBe(false);
+    expect(busy).toBe(false);
+    expect(calls.filter(row=>row[0]==='release')).toHaveLength(2);
+    expect(calls).toContainEqual(['success',false]);
+    expect(calls).toContainEqual(['failure',false]);
+  });
+
   it('keeps the NV09 canary marker contract even when a caller supplies diagnostic text',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=core.indexOf('function buildNv09CanaryPrompt');
