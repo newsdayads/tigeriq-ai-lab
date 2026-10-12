@@ -5,6 +5,17 @@ const SYSTEM_TITLE=/\[(?:CENTRAL|QUẢN TRỊ|REGISTRY|STATE|TÀI NGUYÊN|POLICY
 const TIME_PATTERN=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 const WAIT_PATTERN=/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT|OWNER_GATE)/;
 const ACTIVE_PATTERN=/(?:^|_)(?:WORKING|RUNNING|IN_PROGRESS|REVIEW|VERIFY|CODING_LANE_ACTIVE|DONE|COMPLETED)(?:_|$)/;
+export function lifecycleStage(state=''){
+  const s=String(state||'').toUpperCase();
+  if(/^(?:READY|QUEUED|PREPARED|SOURCE_READY)(?:_|$)/.test(s))return 'READY';
+  if(/^(?:WORKING|RUNNING|IN_PROGRESS|EXECUTING|CODING_LANE_ACTIVE)(?:_|$)/.test(s))return 'WORKING';
+  if(/^(?:REVIEW|REVIEWING)(?:_|$)/.test(s))return 'REVIEW';
+  if(/^(?:VERIFY|VERIFYING)(?:_|$)/.test(s))return 'VERIFY';
+  if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT|OWNER_GATE)(?:_|$)/.test(s))return 'WAIT';
+  if(/^(?:DONE|COMPLETED)(?:_|$)/.test(s))return 'DONE';
+  if(/^(?:NOT_PLANNED|CANCELLED|CANCELED|SUPERSEDED)(?:_|$)/.test(s))return 'STOPPED';
+  return 'UNKNOWN';
+}
 
 function activeText(value=''){
   const all=String(value||'');
@@ -99,6 +110,8 @@ export function validateWorkOrderLifecycleV2(issue={}){
   if(steps.length<2||steps.length>64)missing.push('CHECKLIST_2_TO_64');
   if(steps.some(s=>s.checked&&!s.evidence))missing.push('CHECKED_STEP_WITHOUT_EVIDENCE_URL');
   const state=f('CURRENT_STATE').toUpperCase(),start=f('STARTED_AT'),finish=f('FINISHED_AT');
+  const stage=lifecycleStage(state);
+  if(stage==='UNKNOWN')missing.push('UNRECOGNIZED_LIFECYCLE_STATE');
   const eta=f('ETA_STATUS').toUpperCase();
   if(!['UNVERIFIED','NOT_COMMITTED','ESTIMATED','COMMITTED','NOT_APPLICABLE'].includes(eta))
     missing.push('ETA_STATUS_INVALID');
@@ -121,5 +134,5 @@ export function validateWorkOrderLifecycleV2(issue={}){
     if(steps.length<2||steps.some(s=>!s.checked||!s.evidence))missing.push('COMPLETED_WITHOUT_ALL_RECEIPTS');
   }
   // Metadata may never make a task DONE or grant permission by itself.
-  return {required:true,valid:missing.length===0,missing,steps,timestamps,source:'SOURCE_SCHEMA_ONLY_NOT_LIVE_EVIDENCE'};
+  return {required:true,valid:missing.length===0,missing,steps,timestamps,stage,source:'SOURCE_SCHEMA_ONLY_NOT_LIVE_EVIDENCE'};
 }
