@@ -6,6 +6,7 @@ test.use({ channel: 'chrome' });
 const liveHtml = fs.readFileSync(new URL('../../command-center.html', import.meta.url), 'utf8');
 const sharedWorkJs=fs.readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8');
 const sharedWorkCss=fs.readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8');
+const workCenterVisualCss=fs.readFileSync(new URL('../../public/work-center-visual.css',import.meta.url),'utf8');
 const projectsHtml = fs.readFileSync(new URL('../../projects.html', import.meta.url), 'utf8');
 
 const snapshot = {
@@ -35,6 +36,7 @@ async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,work
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
     if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
     if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
+    if(url.endsWith('/work-center-visual.css')){await route.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
     await route.fulfill({status:204,body:''});
   });
@@ -198,6 +200,7 @@ test('P0 5-second workforce refresh does not rebuild unrelated work cards or unc
     }
     if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
     if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
+    if(url.endsWith('/work-center-visual.css')){await route.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});return}
     if(url.endsWith('/command-center')){
       await route.fulfill({status:200,contentType:'text/html',body:liveHtml});return;
     }
