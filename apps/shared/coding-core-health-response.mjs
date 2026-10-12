@@ -33,8 +33,8 @@ export function validateCodingFastHealthResponse(payload,{nowMs=Date.now(),maxAg
     const readyStandby=health==='READY'&&work==='READY'&&status==='READY';
     const readyOnDemand=(health==='ONLINE'&&work==='ON_DEMAND'&&status==='ON_DEMAND')||
                         (health==='READY'&&work==='ON_DEMAND'&&status==='READY');
-    const busyOnline=health==='ONLINE'&&work==='BUSY'&&status==='BUSY';
-    if((status==='READY'||status==='IDLE'||health==='ONLINE')&&
+    const busyOnline=(health==='ONLINE'||health==='READY')&&work==='BUSY'&&status==='BUSY';
+    if((status==='READY'||status==='IDLE'||health==='ONLINE'||health==='READY')&&
        !(readyOnline||readyStandby||readyOnDemand||busyOnline))
       reject('CODING_CORE_HEALTH_RESOURCE_INVALID');
     if((readyOnline||readyStandby||readyOnDemand)&&(!r.enabled||!r.quota_state.usable||r.current_job_id))
