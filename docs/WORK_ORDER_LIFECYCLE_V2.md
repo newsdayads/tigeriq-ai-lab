@@ -51,3 +51,8 @@ M01–M02 evidence pass, no fake closure.
 ## STOP_CONDITIONS
 Stop before cost/credentials/security/production/irreversible action.
 ```
+
+## Không vượt cổng bằng tiêu đề
+- Issue mới có PRIORITY trong active header, EXECUTABLE=true hoặc OWNER_POLICY=AUTO đều phải qua V2, kể cả thiếu nhãn [P1–P5] ở tiêu đề hoặc cố đặt nhãn [CENTRAL]/[STATE]. Trường hợp quản trị/reference không thực thi được loại trừ.
+- Không được dùng nhãn hợp lệ ở phần lịch sử để vượt cổng. Checklist trong code fence không được tính như bước công việc thật.
+- Mỗi bước đánh dấu hoàn thành cần link nguồn có thể đối chiếu; chỉ kiểm tra cú pháp URL không phải chứng minh biên nhận nội dung là thật.
