@@ -8,7 +8,15 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/command-center"
+      "destination": "/api/health-view?resource="
+    },
+    {
+      "source": "/command-center",
+      "destination": "/api/health-view?resource="
+    },
+    {
+      "source": "/pc01/:path*",
+      "destination": "/api/health-view?resource=:path*"
     }
   ],
   "headers": [
