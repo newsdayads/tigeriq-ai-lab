@@ -60,7 +60,7 @@ describe('Canonical open work state vs. display labels', () => {
         'BLOCKER=PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED',
         'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
         'AUTO_QUEUE=EXCLUDED_PENDING_EXISTING_DEVICE_AND_RELEASE_GATES'
-      ].join('\\n')
+      ].join('\n')
     });
     expect(row?.status).toBe('BLOCKED');
     expect(row?.blocker).toBe('PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED');
@@ -73,7 +73,7 @@ describe('Canonical open work state vs. display labels', () => {
         'CURRENT_STATE=READY_SAFE_SOURCE_AND_COST_EVIDENCE_RECONCILIATION_UNCLAIMED',
         'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
         'AUTO_QUEUE=EXCLUDED_PENDING_DEPENDENCY'
-      ].join('\\n')
+      ].join('\n')
     });
     expect(row?.status).toBe('WAITING');
     expect(row?.activeLease).toBe(false);
