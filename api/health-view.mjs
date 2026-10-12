@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   if (!PATHS.has(path)) { res.status(404).send('not_found'); return; }
   const origin = process.env.TIGERIQ_HEALTH_VIEW_ORIGIN;
   const key = process.env.TIGERIQ_HEALTH_VIEW_KEY;
-  if (!origin || !/^https:\/\/[a-z0-9.-]+(?::443)?\/?$/i.test(origin) || !key || key.length < 32) {
+  if (!origin || !/^https:\/\/[a-z0-9.-]+\.ts\.net(?::443)?\/?$/i.test(origin) || !key || key.length < 32) {
     res.status(503).send('HEALTH_VIEW_NOT_CONFIGURED'); return;
   }
   const target = new URL(path, origin);
