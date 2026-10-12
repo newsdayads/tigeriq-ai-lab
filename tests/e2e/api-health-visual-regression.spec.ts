@@ -107,6 +107,63 @@ for(const width of [390,1024,1648]){
  });
 }
 
+test('same Work Center card skin in LIVE and API Health; Health never shrinks to 5 microcards',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await openFixture(page);
+ const evidence=async()=>page.locator('#workList .tiq-work-card[data-work-number="3278"]').evaluate((el)=>{
+   const main=el.querySelector('.work-main');
+   const number=el.querySelector('.work-id');
+   const pri=el.querySelector('.priority');
+   const title=el.querySelector('.work-title');
+   const hierarchy=el.querySelector('.work-hierarchy');
+   if(!main||!number||!pri||!title||!hierarchy)throw Error('INCOMPLETE_CARD');
+   const a=el.getBoundingClientRect(),b=number.getBoundingClientRect();
+   return {
+    width:Math.round(a.width),height:Math.round(a.height),
+    mainBg:getComputedStyle(main).backgroundColor,
+    mainBorder:getComputedStyle(main).borderColor,
+    titleFont:getComputedStyle(title).fontSize,
+    titleColor:getComputedStyle(title).color,
+    idPosition:getComputedStyle(number).position,
+    idTopDelta:Math.round(b.top-a.top),
+    priorityColor:getComputedStyle(pri).backgroundColor,
+    hierarchyDisplay:getComputedStyle(hierarchy).display,
+   };
+ });
+ const healthCard=await evidence();
+ expect(healthCard.width).toBeGreaterThanOrEqual(260);
+ expect(healthCard.height).toBeGreaterThanOrEqual(180);
+ expect(healthCard.idPosition).toBe('absolute');
+ expect(Math.abs(healthCard.idTopDelta)).toBeLessThanOrEqual(3);
+ expect(healthCard.hierarchyDisplay).not.toBe('none');
+ expect(healthCard.mainBorder).toBe('rgb(59, 130, 246)');
+ await page.route('https://tigeriq.test/**',async r=>{
+   const url=new URL(r.request().url());
+   const liveHtml=readFileSync(new URL('../../command-center.html',import.meta.url),'utf8');
+   if(url.pathname==='/command-center')return r.fulfill({status:200,contentType:'text/html',body:liveHtml});
+   if(url.pathname==='/work-center.js')return r.fulfill({status:200,contentType:'text/javascript',body:workCenterJs});
+   if(url.pathname==='/work-ui.css')return r.fulfill({status:200,contentType:'text/css',body:sharedCss});
+   if(url.pathname==='/work-center-visual.css')return r.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});
+   if(url.pathname==='/api/live-status')return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+     ok:true,liveConnected:true,generatedAt:recent(),
+     workProjection:{mode:'verified',stale:false,verifiedAt:recent()},
+     openSummary:{actionable:3,open:3,review:1,blocked:1,waiting:1,running:0,done:0},
+     openWork:work,activeWork:[],nextQueue:[],recentWork:[],workers:[]
+   })});
+   return r.fulfill({status:204,body:''});
+ });
+ await page.goto('https://tigeriq.test/command-center');
+ await expect(page.locator('#workList .tiq-work-card[data-work-number="3278"]')).toBeVisible();
+ const liveCard=await evidence();
+ expect(healthCard.mainBg).toBe(liveCard.mainBg);
+ expect(healthCard.mainBorder).toBe(liveCard.mainBorder);
+ expect(healthCard.titleFont).toBe(liveCard.titleFont);
+ expect(healthCard.titleColor).toBe(liveCard.titleColor);
+ expect(healthCard.priorityColor).toBe(liveCard.priorityColor);
+ expect(liveCard.hierarchyDisplay).not.toBe('none');
+ expect(Math.abs(liveCard.idTopDelta)).toBeLessThanOrEqual(3);
+});
+
 test('Ops monitoring: verified source-age, active severity, event history and evidence',async({page})=>{
  await openFixture(page,true);
  await expect(page.locator('#opsFreshnessSummary')).toContainText(/Dữ liệu cũ|Nguồn mất kết nối/);
