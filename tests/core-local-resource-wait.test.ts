@@ -13,7 +13,8 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
     expect(capacity).toContain("capabilities @> ARRAY[$1]::text[]");
   });
   it('routes LOCAL resource shortages into bounded resource waiting before terminal failure',()=>{
-    expect(run).toContain("busyCapableResourceCount(j.capability,j.routing_profile||'AUTO')");
+    expect(run).toContain('const effectiveWaitProfile=effectiveCoreJobRoutingProfile(j);');
+    expect(run).toContain('busyCapableResourceCount(j.capability,effectiveWaitProfile)');
     expect(run).toContain("LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE");
     expect(run).toContain("status='waiting_resource'");
     expect(run).toContain('RESOURCE_WAIT_QUEUED');
@@ -30,6 +31,8 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
   it('never treats cloud capacity as a substitute for a LOCAL-only objective',()=>{
     expect(capacity).toContain("provider='ollama'");
     expect(capacity).toContain('where enabled=true');
-    expect(core).toContain("profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO')");
+    expect(core).toContain("profile:effectiveCoreJobRoutingProfile(j)");
+    const localProfile=readFileSync(new URL('../apps/tigeriq-core/objective-local-routing.mjs',import.meta.url),'utf8');
+    expect(localProfile).toContain("job?.kind==='github_api_autowork'?'LOCAL'");
   });
 });
