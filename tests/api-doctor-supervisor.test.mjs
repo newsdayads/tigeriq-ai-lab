@@ -33,6 +33,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const body=source.slice(start,end);
     expect(body).toContain('await acquireSharedResourceLease(pool,');
     expect(body).toContain("lane:'core_canary'");
+    expect(body).toContain('/v1/chat/completions');
     expect(body).toContain('await releaseSharedResourceLease(pool,');
     expect(body).toContain("'RESOURCE_SUCCESS',false");
     expect(body).toContain("'RESOURCE_FAILURE',false");
@@ -41,7 +42,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const build=new Function('deps',`
       const { nv09Resource,randomUUID,buildNv09CanaryPrompt,nv09ModelAvailability,
         acquireSharedResourceLease,releaseSharedResourceLease,pool,event,
-        runBoundedInferenceNv09,NV09_TIMEOUT_MS,markResourceSuccess,markResourceFailure }=deps;
+        runBoundedInferenceNv09,NV09_TIMEOUT_MS,NV09_ENDPOINT,NV09_MODEL,fetchJson,markResourceSuccess,markResourceFailure }=deps;
       ${body}
       return runNv09Canary;
     `);
@@ -66,10 +67,16 @@ describe('#1255 NV10 API Doctor policy',()=>{
       pool:{query:async()=>({rowCount:1})},
       event:async()=>{},
       NV09_TIMEOUT_MS:240000,
-      runBoundedInferenceNv09:async(prompt)=>{
-        if(fail)return {text:'invalid'};
-        if(prompt.includes('NV09 JSON CANARY'))return {text:jsonFailure?'not-json':'{"canary":"NV09_CORE_CANARY_OK","ok":true}'};
-        return {text:'NV09_CORE_CANARY_OK',evalCount:1};
+      NV09_ENDPOINT:'http://127.0.0.1:11435',
+      NV09_MODEL:'qwen3.6:27b-coding',
+      runBoundedInferenceNv09:async()=>({text:fail?'invalid':'NV09_CORE_CANARY_OK',evalCount:1}),
+      fetchJson:async(url,init,timeout)=>{
+        const sent=JSON.parse(init.body);
+        calls.push(['transport',url,sent.model,sent.stream,timeout]);
+        expect(init.method).toBe('POST');
+        expect(sent.messages).toEqual([{role:'user',content:sent.messages[0].content}]);
+        expect(sent.temperature).toBe(0);
+        return {choices:[{message:{content:jsonFailure?'not-json':'{"canary":"NV09_CORE_CANARY_OK","ok":true}'}}]};
       },
       markResourceSuccess:async(_r,_id,_latency,_kind,releaseJob)=>{calls.push(['success',releaseJob]);},
       markResourceFailure:async(_r,_id,_error,_kind,releaseJob)=>{calls.push(['failure',releaseJob]);},
@@ -100,6 +107,8 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(invalidJson.error).toBe('NV09_CANARY_JSON_NOT_PARSEABLE');
     expect(busy).toBe(false);
     expect(calls.filter(row=>row[0]==='release')).toHaveLength(4);
+    expect(calls.filter(row=>row[0]==='transport')).toHaveLength(2);
+    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.6:27b-coding',false,240000]);
   });
 
   it('keeps the NV09 canary marker contract even when a caller supplies diagnostic text',()=>{
