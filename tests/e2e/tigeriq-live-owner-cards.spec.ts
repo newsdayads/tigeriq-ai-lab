@@ -44,20 +44,19 @@ async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,work
 
 async function openLive(page:Page){await routeTiger(page);await page.goto('https://tigeriq.test/command-center');await expect(page.locator('#workList')).toBeVisible()}
 
-test('archived closed work remains visible but never counts as completed',async({page})=>{
+test('a single ended filter preserves both closeout outcomes',async({page})=>{
  const archived={number:4691,title:'[P2] Nút tải lại cũ',priority:'P2',status:'CLOSED_UNVERIFIED',workKind:'WORK',completionVerified:false,progressPercent:null,progressSource:'closed_unverified'};
  const verified={number:4690,title:'[P2] Đã nghiệm thu',priority:'P2',status:'DONE',workKind:'WORK',completionVerified:true,progressPercent:100,progressSource:'terminal'};
  await routeTiger(page,{...snapshot,recentWork:[archived,verified],openSummary:{...snapshot.openSummary,done:1,archived:1}});
  await page.goto('https://tigeriq.test/command-center');
- await expect(page.locator('#archivedCount')).toHaveText('1');
- await page.locator('.filter[data-filter="archived"]').click();
+ await expect(page.locator('.filters .filter')).toHaveCount(4);
+ await page.locator('.filter[data-filter="closed"]').click();
+ await expect(page.locator('#closedCount')).toHaveText('2');
+ await expect(page.locator('.work-row')).toHaveCount(2);
  const row=page.locator('.work-row[data-work-number="4691"]');
- await expect(row).toBeVisible();
- await expect(row).toContainText('ĐÃ ĐÓNG · CHƯA NGHIỆM THU');
+ await expect(row).toContainText('ĐÓNG KHÁC');
  await expect(row.locator('.progress-text')).toHaveCount(0);
- await page.locator('.filter[data-filter="done"]').click();
- await expect(page.locator('.work-row[data-work-number="4691"]')).toHaveCount(0);
- await expect(page.locator('.work-row[data-work-number="4690"]')).toBeVisible();
+ await expect(page.locator('.work-row[data-work-number="4690"]')).toContainText('HOÀN TẤT');
 });
 
 test('LIVE shows the work list immediately and keeps project surfaces out of layout',async({page})=>{
@@ -110,13 +109,10 @@ test('P0 removes the Owner dropdown strip but keeps status filters and all P0–
   await expect(page.locator('#workProjectFilter, #workStatusFilter, #workPriorityFilter, #bcctSort, #bcctRefresh')).toHaveCount(0);
   await expect(page.locator('.work-row')).toHaveCount(4);
   await expect(page.locator('.work-row[data-work-number="500"]')).toBeVisible();
-  await page.locator('.filter[data-filter="ready"]').click();
-  await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
-  await expect(page.locator('.work-row')).toHaveCount(1);
-  await page.locator('.filter[data-filter="waiting"]').click();
+  await page.locator('.filter[data-filter="waitblocked"]').click();
   await expect(page.locator('.work-row[data-work-number="112"]')).toBeVisible();
-  await page.locator('.filter[data-filter="blocked"]').click();
   await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
+  await expect(page.locator('.work-row[data-work-number="111"]')).toHaveCount(0);
 });
 
 test('P0 LIVE cards show only employees with a fresh PC01 heartbeat and assigned running JOB',async({page})=>{
