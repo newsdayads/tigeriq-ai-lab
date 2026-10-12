@@ -22,6 +22,10 @@ test('benchmark harness seeds identical deterministic fixtures and baseline fail
   assert.equal(score.total, 3);
   assert.equal(score.completed, 0);
   assert.equal(score.qualityPass, true);
+  assert.ok(score.fixtures.every((row) => row.testCount >= 1 && row.testsPass === false));
+  const otherLane = await scoreLane({ root, lane: 'b' });
+  assert.equal(otherLane.completed, 0);
+  assert.equal(otherLane.qualityPass, true);
 });
 
 test('scorer rejects test tampering even when a fixture test process exits successfully', async () => {
