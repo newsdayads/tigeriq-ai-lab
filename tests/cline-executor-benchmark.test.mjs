@@ -109,4 +109,7 @@ test('scorer rejects symlinks in executor-writable fixtures', {skip: process.pla
   await rm(source);
   await symlink(path.join(root,'missing-external-source'),source);
   await assert.rejects(scoreLane({root,lane:'clinelink'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
+  const alias=path.join(root,'symlink-root');
+  await symlink(root,alias,'dir');
+  await assert.rejects(seedLane({root:alias,lane:'otherlane'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
 });
