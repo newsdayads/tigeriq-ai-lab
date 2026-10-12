@@ -101,7 +101,9 @@ export function parseCodingRouteMetadata(body){
   if(!repository.valid)return {valid:false,reason:repository.reason,targetEmployee:null,currentPr:null,targetHead:null,targetRepository:null};
 
   let targetEmployee=null;
-  if(targetRaw){
+  // Work Order V2 uses TARGET_EMPLOYEE=NONE for unassigned dynamic selection.
+  // This is not an employee identity or permission to bypass capability/lease gates.
+  if(targetRaw&&!/^(?:NONE|NULL)$/i.test(targetRaw)){
     if(!/^NV\d{2,3}$/i.test(targetRaw))return {valid:false,reason:'TARGET_EMPLOYEE_INVALID',targetEmployee:null,currentPr:null,targetHead:null,targetRepository:repository.targetRepository};
     targetEmployee=targetRaw.toUpperCase();
   }
