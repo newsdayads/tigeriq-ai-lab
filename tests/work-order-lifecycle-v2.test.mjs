@@ -61,6 +61,19 @@ describe('Work Order Lifecycle V2 global source contract',()=>{
     expect(row.lifecycleTiming).toMatchObject({startedAt:null,targetFinishAt:null,finishedAt:null});
     expect(row.progressTotal).toBe(2);
   });
+  it('parks a malformed NV02-local card even if UI markers pretend it is READY',()=>{
+    const local=[
+      'NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY','ASSIGNED_EXECUTOR=NV02',
+      'EXECUTION_SURFACE=UI','NO_RDC=true','NO_PC01_SHELL=true','NO_CODEX=true',
+      'APP_CHROME_MUTATION=FORBIDDEN'
+    ].join('\n');
+    const invalid=issue(header.replace('## ACTIVE CONTRACT','## ACTIVE CONTRACT\n'+local)
+      .replace('CURRENT_STEP=M02','CURRENT_STEP='),{title:'[P1][NV02][CLINE] Worker self-pull'});
+    const row=parseOpenWorkIssue(invalid);
+    expect(row.executionEligibility).toBe('PARKED_DEPENDENCY');
+    expect(row.localSelfPullReady).toBe(false);
+    expect(row.lifecycleContract).toMatchObject({required:true,valid:false});
+  });
   it('does not treat an administrative not-planned closure as a completed task',()=>{
     const stopped=issue(header,{state:'closed',state_reason:'not_planned'});
     expect(validateWorkOrderLifecycleV2(stopped).timestamps.finishedAt).toBe(null);
