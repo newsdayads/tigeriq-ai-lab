@@ -1,5 +1,6 @@
 import {createServer} from 'node:http';
 import {createNonblockingManagerTick} from './nonblocking-manager-tick.mjs';
+import {codingChatRequestBody,codingChatContent} from '../shared/nvidia-coding-request.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
@@ -537,7 +538,7 @@ export function codingOutputTokenLimit(prompt,defaultMax=8000){
   if(p.includes('"changes":[{"path"'))return 2600;
   return Math.max(1,Number(defaultMax)||8000);
 }
-async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt)){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
+async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt),providerPayload=null){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(providerPayload||{model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=providerPayload?codingChatContent(b):b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
 export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLLAMA_BASE_URL,timeoutMs=OLLAMA_TIMEOUT_MS,maxTokens=codingOutputTokenLimit(prompt)}={}){
   const origin=normalizeLocalOllamaBaseUrl(baseUrl);
   const controller=new AbortController();
@@ -569,7 +570,7 @@ async function invoke(r,prompt){
   if(r.provider==='inception')return openAi('https://api.inceptionlabs.ai/v1/chat/completions',process.env.INCEPTION_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='gemini')return geminiRateController.run(async()=>{const b=await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:codingOutputTokenLimit(prompt,8192)}})});const text=b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)});
   if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:outputTokens})});const text=b?.message?.content?.map(x=>x.text||'').join('');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
-  if(r.provider==='nvidia')return openAi('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,outputTokens);
+  if(r.provider==='nvidia')return openAi('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,outputTokens,codingChatRequestBody({model:r.model,prompt,maxTokens:outputTokens}));
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
