@@ -93,7 +93,7 @@ export async function scoreFixture(fixtureRoot) {
     .filter((rel) => /^tests\/.+\.test\.[cm]?js$/.test(rel))
     .sort();
   if (testFiles.length === 0) throw new Error('FIXTURE_TESTS_MISSING:' + fixtureId);
-  const testRun = spawnSync(process.execPath, ['--test', ...testFiles], {
+  const testRun = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...testFiles], {
     cwd: fixtureRoot,
     encoding: 'utf8',
     timeout: 120000,
