@@ -2890,6 +2890,7 @@ async function runNvInferenceRequest(input={}){
 }
 function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}
 function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
+function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
 async function workCenterHistory(number){
   const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
@@ -2914,6 +2915,7 @@ const server=createServer(async(req,res)=>{
     if(await mobileWorkerApi(req,res,url))return;
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
     if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});return res.end(workCenterJs());}
+    if(req.method==='GET'&&url.pathname==='/work-center-visual.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workCenterVisualCss());}
     if(req.method==='GET'&&url.pathname==='/api/work-history'){
       const number=url.searchParams.get('number')||'';
       res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
