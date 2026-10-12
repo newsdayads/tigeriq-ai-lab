@@ -84,3 +84,14 @@ test('fixture subprocess environment has no credentials or inherited node test f
   });
   assert.deepEqual(env,{PATH:'/mock/bin',HOME:'/mock/home'});
 });
+
+test('seed is fail-closed for force, existing lanes, and traversal paths', async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),'tigeriq-cline-safe-'));
+  const seeded=await seedLane({root,lane:'cline-local-ollama'});
+  const file=path.join(seeded.fixtures[0].root,'TASK.md');
+  const before=await readFile(file,'utf8');
+  await assert.rejects(seedLane({root,lane:'cline-local-ollama',force:true}),/BENCHMARK_FORCE_DELETE_FORBIDDEN/);
+  await assert.rejects(seedLane({root,lane:'cline-local-ollama'}),/EEXIST/);
+  await assert.rejects(seedLane({root,lane:'../danger'}),/BENCHMARK_LANE_INVALID/);
+  assert.equal(await readFile(file,'utf8'),before);
+});
