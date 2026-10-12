@@ -559,9 +559,11 @@ export function parseClearedBlockerLifecycleComment(comment = {}) {
 function statusFromLifecycleState(state = '') {
   const value = String(state || '').toUpperCase();
   if (!value) return null;
+  // A composite state like OPEN_BLOCKED_*_LIVE_ACCEPTANCE remains blocked,
+  // not verified/pending just because it names a future acceptance stage.
+  if (/(?:^|_)(?:BLOCKED|ERROR|FAILED)(?:_|$)/.test(value)) return 'BLOCKED';
   if (/REBOOT_NEXT|WAIT|PENDING|HOLD/.test(value)) return 'WAITING';
   if (/REVIEW|VERIFY/.test(value)) return 'REVIEW';
-  if (/BLOCKED|ERROR|FAILED/.test(value)) return 'BLOCKED';
   if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING|CODING_LANE_ACTIVE|(?:^|_)ACTIVE(?:_|$)/.test(value)) return 'WORKING';
   if (/READY|QUEUED/.test(value)) return 'QUEUED';
   return 'OPEN';
@@ -1269,10 +1271,10 @@ function actionableStatus(issue, overlays = {}) {
   if (terminalBlocked) return 'BLOCKED';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
+  // A canonical BLOCKED phase takes precedence over a future LIVE_ACCEPTANCE
+  // word in the same phase; the current source must not be labeled VERIFY.
+  if (/(?:^|_)BLOCKED(?:_|$)/.test(phase)) return 'BLOCKED';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
-  if (/BLOCKED/.test(phase)) {
-    return (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON')) ? 'BLOCKED' : 'UNKNOWN';
-  }
   if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
   if (/(?:REVIEW|VERIFY)/.test(phase)) return overlays.hasPull ? 'REVIEW' : 'UNKNOWN';
   if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'UNKNOWN';
@@ -1504,7 +1506,7 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const classification = classifyOpenIssue(issue);
   const canonicalPhase = issueCanonicalState(issue);
   const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
-  const status = actionableStatus(issue, effectiveOverlays);
+  let status = actionableStatus(issue, effectiveOverlays);
   const admission = safeAutoWorkAdmission(issue);
   const lifecycleContract=validateWorkOrderLifecycleV2(issue);
   const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
@@ -1525,6 +1527,21 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
     ? 'READY'
     : rawExecutionEligibility;
+
+  // Source-first presentation: eligibility is NOT a worker lease or proof
+  // of execution. Never render a blocked device as VERIFY, or an unclaimed
+  // ready job as generic WAITING. Parked source work must not show as OPEN.
+  if (classification.workKind === 'WORK' && !classification.ownerGate && active?.live !== true) {
+    const explicitlyBlocked=/(?:^|_)BLOCKED(?:_|$)/.test(canonicalPhase)
+      && !(currentLifecycle?.blockerCleared === true);
+    if (explicitlyBlocked && (!active || issueAt >= (Date.parse(active?.updatedAt || '') || 0))) {
+      status='BLOCKED';
+    } else if (executionEligibility === 'READY' && ['OPEN','WAITING','UNKNOWN'].includes(status)) {
+      status='QUEUED';
+    } else if (executionEligibility === 'PARKED_DEPENDENCY' && status === 'OPEN') {
+      status='WAITING';
+    }
+  }
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
