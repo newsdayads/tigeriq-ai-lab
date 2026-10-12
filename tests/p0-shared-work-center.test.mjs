@@ -35,6 +35,21 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor({openWork:[{workKind:'WORK',status:'WAITING'},{workKind:'WORK',status:'WORKING'}]},'action')).toHaveLength(2);
   expect(wc.rowsFor({recentWork:[{status:'DONE',completionVerified:false},{status:'DONE',completionVerified:true}]},'done')).toHaveLength(1);
  });
+ it('puts recently verified completion first; keeps closed-only records clearly separate',()=>{
+  const recent=[
+   {number:21,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false,closedAt:'2026-10-13T12:00:00Z',updatedAt:'2026-10-13T15:00:00Z'},
+   {number:22,workKind:'WORK',status:'DONE',completionVerified:true,completedAt:'2026-10-13T10:00:00Z',lifecycleTiming:{finishVerified:true,finishedAt:'2026-10-11T10:00:00Z'}},
+   {number:23,workKind:'WORK',status:'HOÀN TẤT',completionVerified:true,completedAt:'2026-10-12T11:00:00Z',lifecycleTiming:{finishVerified:true,finishedAt:'2026-10-12T10:59:00Z'}},
+   {number:24,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false,closedAt:'2026-10-10T09:00:00Z'}
+  ];
+  const data={openWork:[{number:1,workKind:'WORK',status:'OPEN'}],recentWork:recent};
+  expect(wc.rowsFor(data,'closed').map(x=>x.number)).toEqual([23,22,21,24]);
+  expect(wc.rowsFor(data,'closed','finished').map(x=>x.number)).toEqual([23,22,21,24]);
+  expect(wc.rowsFor(data,'closed','closed').map(x=>x.number)).toEqual([21,22,23,24]);
+  expect(wc.rowsFor(data,'done').map(x=>x.number)).toEqual([23,22]);
+  expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([1]);
+  expect(recent.map(x=>x.number)).toEqual([21,22,23,24]); // no source mutation
+ });
  it('keeps four summary views and never counts a closed-only issue as done',()=>{
   const open=[{number:1,workKind:'WORK',status:'WORKING',activeLease:true,heartbeatFresh:true},{number:2,workKind:'WORK',status:'REVIEW'},{number:3,workKind:'WORK',status:'BLOCKED'}];
   const recent=[{number:4,workKind:'WORK',status:'DONE',completionVerified:true},{number:5,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false}];
@@ -54,13 +69,14 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   const web=readFileSync(new URL('../apps/tigeriq-core/web-control.html',import.meta.url),'utf8');
   expect(live).toBe(mirror);
   expect(live).toContain("let currentFilter='action'");
-  expect(live).toContain('data-filter="action">CHƯA KẾT THÚC');
+  expect(live).toContain('data-filter="action">CÒN MỞ');
   expect(live).toContain("const filters=['action','working','waitblocked','closed']");
   expect(health).toContain("workFilter='action'");
-  expect(health).toContain("['action','CHƯA KẾT THÚC']");
+  expect(health).toContain("['action','CÒN MỞ']");
   expect(web).toContain("let workCenterWebFilter='action'");
-  expect(web).toContain('data-work-center-filter="action">CHƯA KẾT THÚC');
+  expect(web).toContain('data-work-center-filter="action">CÒN MỞ');
   for(const source of [live,health,web])expect(source).toContain('ĐÃ KẾT THÚC');
+  for(const source of [live,health,web])expect(source).toContain('VỪA HOÀN TẤT ↓');
  });
  it('bundles the three shared Work Center assets for PC01 Web Control',()=>{
   const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
