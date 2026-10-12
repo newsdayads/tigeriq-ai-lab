@@ -1026,7 +1026,7 @@ const executionLabelMap={
   HARD_GATE:'CẦN ANH SƠN',
   TERMINAL:'ĐÃ KẾT THÚC'
 };
-function executionLabel(row){const key=String(row?.executionEligibility||'').trim().toUpperCase();return executionLabelMap[key]||'CHƯA XÁC MINH'}
+function executionLabel(row){const key=String(row?.executionEligibility||'').trim().toUpperCase();if(key==='READY'&&row?.localSelfPullReady===true)return 'NV02 TỰ NHẬN QUA GITHUB';return executionLabelMap[key]||'CHƯA XÁC MINH'}
 function activeHolder(row){const value=String(row?.activeWorker||'').trim().toUpperCase();return /^(?:NV\d{2}|CODEX|AUTO)$/.test(value)?value:'chưa giữ AI'}
 function executionWaitReason(row){
   const value=String(row?.waitReason||'').trim();
@@ -2089,7 +2089,7 @@ function jobCloseoutState(row){
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
-  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
+  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(row?.localSelfPullReady===true&&workStatus(row)==='OPEN'?'SẴN SÀNG NV02 NHẬN':(stateLabel[workStatus(row)]||workStatus(row)))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('workDrawer').dataset.status=workStatus(row).toLowerCase();
   $('workDrawer').style.setProperty('--detail-color',STATUS_COLORS[workStatus(row)]||'#64748B');
