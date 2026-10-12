@@ -221,3 +221,10 @@ body.api-health #workList.tiq-work-center {
   :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card,
   :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-main{animation:none!important;transition:none!important}
 }
+
+/* Compact, four-state owner-facing work filters shared by Health and Web Control. */
+.work-scope-note{display:block;color:#98AEC4;font-size:10px;line-height:1.4;margin:6px 0 8px}
+#workCenterWebFilters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+#workCenterWebFilters button{border:1px solid #34536D;border-radius:999px;background:#112A40;color:#B6D3EC;padding:7px 9px;font:700 11px/1.2 inherit;cursor:pointer}
+#workCenterWebFilters button[aria-pressed="true"]{border-color:#61B8E9;color:#EDF8FF;background:#194C71}
+#workCenterWebFilters button:focus-visible{outline:2px solid #A8DEFF;outline-offset:2px}

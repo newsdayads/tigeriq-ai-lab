@@ -44,20 +44,19 @@ async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,work
 
 async function openLive(page:Page){await routeTiger(page);await page.goto('https://tigeriq.test/command-center');await expect(page.locator('#workList')).toBeVisible()}
 
-test('archived closed work remains visible but never counts as completed',async({page})=>{
+test('a single ended filter preserves both closeout outcomes',async({page})=>{
  const archived={number:4691,title:'[P2] Nút tải lại cũ',priority:'P2',status:'CLOSED_UNVERIFIED',workKind:'WORK',completionVerified:false,progressPercent:null,progressSource:'closed_unverified'};
  const verified={number:4690,title:'[P2] Đã nghiệm thu',priority:'P2',status:'DONE',workKind:'WORK',completionVerified:true,progressPercent:100,progressSource:'terminal'};
  await routeTiger(page,{...snapshot,recentWork:[archived,verified],openSummary:{...snapshot.openSummary,done:1,archived:1}});
  await page.goto('https://tigeriq.test/command-center');
- await expect(page.locator('#archivedCount')).toHaveText('1');
- await page.locator('.filter[data-filter="archived"]').click();
+ await expect(page.locator('.filters .filter')).toHaveCount(4);
+ await page.locator('.filter[data-filter="closed"]').click();
+ await expect(page.locator('#closedCount')).toHaveText('2');
+ await expect(page.locator('.work-row')).toHaveCount(2);
  const row=page.locator('.work-row[data-work-number="4691"]');
- await expect(row).toBeVisible();
- await expect(row).toContainText('ĐÃ ĐÓNG · CHƯA NGHIỆM THU');
+ await expect(row).toContainText('ĐÓNG KHÁC');
  await expect(row.locator('.progress-text')).toHaveCount(0);
- await page.locator('.filter[data-filter="done"]').click();
- await expect(page.locator('.work-row[data-work-number="4691"]')).toHaveCount(0);
- await expect(page.locator('.work-row[data-work-number="4690"]')).toBeVisible();
+ await expect(page.locator('.work-row[data-work-number="4690"]')).toContainText('HOÀN TẤT');
 });
 
 test('LIVE shows the work list immediately and keeps project surfaces out of layout',async({page})=>{
@@ -110,13 +109,10 @@ test('P0 removes the Owner dropdown strip but keeps status filters and all P0–
   await expect(page.locator('#workProjectFilter, #workStatusFilter, #workPriorityFilter, #bcctSort, #bcctRefresh')).toHaveCount(0);
   await expect(page.locator('.work-row')).toHaveCount(4);
   await expect(page.locator('.work-row[data-work-number="500"]')).toBeVisible();
-  await page.locator('.filter[data-filter="ready"]').click();
-  await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
-  await expect(page.locator('.work-row')).toHaveCount(1);
-  await page.locator('.filter[data-filter="waiting"]').click();
+  await page.locator('.filter[data-filter="waitblocked"]').click();
   await expect(page.locator('.work-row[data-work-number="112"]')).toBeVisible();
-  await page.locator('.filter[data-filter="blocked"]').click();
   await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
+  await expect(page.locator('.work-row[data-work-number="111"]')).toHaveCount(0);
 });
 
 test('P0 LIVE cards show only employees with a fresh PC01 heartbeat and assigned running JOB',async({page})=>{
@@ -324,14 +320,14 @@ test('V2.1 semantic colors cover all eight statuses with dedicated system and co
   await routeTiger(page,payload);
   await page.goto('https://tigeriq.test/command-center');
   for(const spec of specs){
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="system"]').click();
-    else if(spec.status==='DONE')await page.locator('.filter[data-filter="done"]').click();
+    if(spec.status==='SYSTEM'){await expect(page.locator('.work-row[data-work-number="807"]')).toHaveCount(0);continue;}
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="closed"]').click();
     const row=page.locator('.work-row[data-work-number="'+spec.number+'"]');
     await expect(row).toBeVisible();
     await expect(row).toHaveClass(new RegExp('status-'+spec.status.toLowerCase()));
     const color=await row.evaluate(element=>getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
     expect(color).toBe(spec.color);
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="action"]').click();
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="all"]').click();
   }
 });
 
@@ -441,9 +437,8 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const item of rows){
-    await page.locator('.filter[data-filter="'+item.filter+'"]').click();
-    const filtered=page.locator('.work-row');
-    await expect(filtered).toHaveCount(1);
+    await page.locator('.filter[data-filter="all"]').click();
+    if(item.filter==='system'){await expect(page.locator('.work-row[data-work-number="908"]')).toHaveCount(0);continue;}
     const card=page.locator('.work-row[data-work-number="'+item.number+'"]');
     await expect(card).toBeVisible();
     const actual=await card.evaluate(element=>
@@ -457,7 +452,7 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     expect(detailColor).toBe(item.color);
     await page.locator('#drawerCloseBottom').click();
   }
-  await page.locator('.filter[data-filter="done"]').click();
+  await page.locator('.filter[data-filter="closed"]').click();
   await expect(page.locator('.work-row')).toHaveCount(1);
   await expect(page.locator('.work-row[data-work-number="909"]')).toBeVisible();
 });
@@ -566,15 +561,7 @@ test('P0 progress fixed at BOTTOM and exact semantic status color on all verifie
   await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const [i,[state,color]] of colors.entries()){
-    if(state==='DONE')await page.locator('.filter[data-filter="done"]').click();
-    else if(state==='OWNER_GATE')await page.locator('.filter[data-filter="owner"]').click();
-    else if(state==='QUEUED')await page.locator('.filter[data-filter="ready"]').click();
-    else if(state==='WAITING')await page.locator('.filter[data-filter="waiting"]').click();
-    else if(state==='PAUSED')await page.locator('.filter[data-filter="paused"]').click();
-    else if(state==='BLOCKED')await page.locator('.filter[data-filter="blocked"]').click();
-    else if(state==='VERIFY')await page.locator('.filter[data-filter="verify"]').click();
-    else if(state==='REVIEW')await page.locator('.filter[data-filter="review"]').click();
-    else if(state==='WORKING')await page.locator('.filter[data-filter="running"]').click();
+    await page.locator('.filter[data-filter="'+(state==='DONE'?'closed':'all')+'"]').click();
     const card=page.locator('.work-row[data-work-number="'+(state==='DONE'?719:710+i)+'"]');
     await expect(card).toBeVisible();
     const data=await card.evaluate(el=>{
@@ -656,7 +643,7 @@ test('Production-line LIVE keeps workforce widgets and orders system P1–P5 bef
   const ids=await page.locator('#workList [data-work-number]').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-work-number'))));
   expect(ids).toEqual([4457,2949,4661,4595,4532,4578,4569,4456,4636,2293,999]);
   await expect(page.locator('#workList [data-work-number="2293"]')).toBeVisible();
-  await expect(page.locator('#actionCount')).toHaveText('11');
+  await expect(page.locator('#allCount')).toHaveText('11');
   await expect(page.locator('#bcctSort')).toHaveCount(0);
   await expect(page.locator('#liveWorkers')).toBeVisible();
   await page.locator('#workList [data-work-number="4457"]').click();
