@@ -681,6 +681,35 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   };
 }
 
+export function parseRecentClosedIssue(issue, now = Date.now()) {
+  const verified = parseRecentCompletedIssue(issue, now);
+  if (verified) return verified;
+  if (!issue || issue.pull_request || issue.state !== 'closed') return null;
+  const reason = String(issue.state_reason || '').toLowerCase();
+  if (reason === 'not_planned' || reason === 'duplicate') return null;
+  const body = String(issue.body || '');
+  if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
+      /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
+  const closedAt = issue.closed_at || issue.updated_at || null;
+  const ms = Date.parse(closedAt || '');
+  if (!Number.isFinite(ms) || ms > now) return null;
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind !== 'WORK') return null;
+  const priority = issuePriority(issue);
+  return {
+    number: Number(issue.number), title: String(issue.title || ''),
+    priority, effectivePriority: priority, sourcePriority: priority,
+    employeeId: issueEmployeeId(issue),
+    status: 'CLOSED_UNVERIFIED', workKind: 'WORK',
+    ...workflowRelationsForIssue(issue),
+    progressPercent: null, progressSource: 'closed_unverified',
+    progressDetail: 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    completionVerified: false,
+    lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
+    closedAt, updatedAt: closedAt, url: issue.html_url || null,
+  };
+}
+
 async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
   const now = Date.now();
   if (recentWorkCache.data && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
@@ -689,14 +718,15 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
   try {
     const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 10);
     const candidates = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
-      .map((issue) => parseRecentCompletedIssue(issue, now))
+      .map((issue) => parseRecentClosedIssue(issue, now))
       .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
-      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+      .sort((a, b) => Date.parse(b.closedAt || b.completedAt || 0) - Date.parse(a.closedAt || a.completedAt || 0));
     const rows = candidates.slice(0, RECENT_WORK_LIMIT);
     const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
     const value = {
       rows,
-      completedCount: rows.length,
+      completedCount: rows.filter((row)=>row.completionVerified===true).length,
+      archivedCount: rows.filter((row)=>row.status==='CLOSED_UNVERIFIED').length,
       complete: boundedScopeComplete,
       stale: false,
       scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
@@ -705,7 +735,7 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
     return value;
   } catch {
     if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
-    return { rows: [], completedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
+    return { rows: [], completedCount: 0, archivedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
   }
 }
 
@@ -1907,7 +1937,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       unknown: actionable.filter((row) => row.status === 'UNKNOWN').length,
       waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
-      done: recentWork.length,
+      done: recentWork.filter((row)=>row.completionVerified===true).length,
+      archived: recentWork.filter((row)=>row.status==='CLOSED_UNVERIFIED').length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
     const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
