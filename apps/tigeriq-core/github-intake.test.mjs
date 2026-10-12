@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -1904,5 +1904,23 @@ describe('#4532 typed Cline benchmark preflight action',()=>{
       .toMatchObject({present:true,valid:false,reason:'ACTION_NOT_ALLOWLISTED'});
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"shell_exec"}',true))
       .toMatchObject({present:true,valid:false,reason:'ACTION_FORBIDDEN'});
+  });
+});
+
+describe('#4532 Core GitHub stage-completion close guard',()=>{
+  const active=(value)=>'## CURRENT CONTRACT\nKEEP_OPEN_ON_STEP_COMPLETE='+value+'\nCURRENT_STATE=WAIT_PC01_ISOLATED_TWO_LANE_EXECUTOR\nDONE=false\n\n--- HISTORICAL ONLY ---\nKEEP_OPEN_ON_STEP_COMPLETE=false\n';
+  it('current KEEP_OPEN true prevents closure even when objective metadata was false',()=>{
+    expect(githubKeepOpenOnStepComplete({keepOpenOnStepComplete:false},active('true'))).toBe(true);
+    expect(githubKeepOpenOnStepComplete({},active('true'))).toBe(true);
+  });
+  it('explicit current false overrides stale true in objective metadata',()=>{
+    expect(githubKeepOpenOnStepComplete({keepOpenOnStepComplete:true},active('false'))).toBe(false);
+  });
+  it('historical-only KEEP_OPEN cannot grant a new open-state override',()=>{
+    const body='## CURRENT CONTRACT\nCURRENT_STATE=READY\n\n--- HISTORICAL ONLY ---\nKEEP_OPEN_ON_STEP_COMPLETE=true\n';
+    expect(githubKeepOpenOnStepComplete({},body)).toBe(false);
+  });
+  it('legacy objective metadata stays effective only when current contract does not specify the flag',()=>{
+    expect(githubKeepOpenOnStepComplete({keepOpenOnStepComplete:true},'## CURRENT CONTRACT\nDONE=false')).toBe(true);
   });
 });
