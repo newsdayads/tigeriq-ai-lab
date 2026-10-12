@@ -65,8 +65,23 @@ export function projectCodingCoreHealth(coreStatus,{generatedAt=null}={}){
     error.code='CODING_CORE_HEALTH_SOURCE_INVALID';
     throw error;
   }
-  const resources=coreStatus.resources.slice(0,MAX_RESOURCES).map(projectionResource)
-    .filter(r=>r.employee_id&&r.resource_id);
+  // Resource rows are security/lease eligibility gates, not best-effort telemetry.
+  // Never accept a partial list: a later row can invalidate an earlier employee or lease.
+  if(coreStatus.resources.length>MAX_RESOURCES){
+    const error=new Error('CODING_CORE_HEALTH_RESOURCE_OVERFLOW');
+    error.code=error.message;
+    throw error;
+  }
+  const resources=coreStatus.resources.map(projectionResource);
+  const employeeIds=new Set(),resourceIds=new Set();
+  for(const r of resources){
+    if(!r.employee_id||!r.resource_id||employeeIds.has(r.employee_id)||resourceIds.has(r.resource_id)){
+      const error=new Error('CODING_CORE_HEALTH_RESOURCE_ID_INVALID');
+      error.code=error.message;
+      throw error;
+    }
+    employeeIds.add(r.employee_id);resourceIds.add(r.resource_id);
+  }
   const events=(Array.isArray(coreStatus?.events)?coreStatus.events:[])
     .map(projectionEvent).filter(Boolean).slice(0,MAX_EVENTS);
   const performanceByTask=(Array.isArray(coreStatus?.routing?.performanceByTask)?coreStatus.routing.performanceByTask:[])
