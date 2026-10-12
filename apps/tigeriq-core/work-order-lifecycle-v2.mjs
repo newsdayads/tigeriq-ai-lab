@@ -35,7 +35,7 @@ export function lifecycleSteps(body=''){
   let fenced=false;
   for(const line of from){
     if(/^##\s+\S|^ {0,3}---+\s*$/.test(line))break;
-    if(/^\s*(?:~~~|&#96;&#96;&#96;)/.test(line)){fenced=!fenced;continue;}
+    if(/^\s*(?:~~~|`{3,})/.test(line)){fenced=!fenced;continue;}
     if(fenced)continue;
     const match=line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/);
     if(!match)continue;
@@ -46,10 +46,17 @@ export function lifecycleSteps(body=''){
   return steps;
 }
 export function requiresLifecycleV2(issue={}){
-  if(issue?.pull_request||SYSTEM_TITLE.test(String(issue.title||'')))return false;
-  const title=String(issue.title||'');
-  if(!/\[P[0-5]\]/i.test(title))return false;
-  if(field(activeHeader(issue.body),'WORK_ORDER_LIFECYCLE')==='V2')return true;
+  if(issue?.pull_request)return false;
+  const title=String(issue.title||''),header=activeHeader(issue.body);
+  // Explicit opt-in is binding even on legacy tickets; archived flags cannot opt in.
+  if(field(header,'WORK_ORDER_LIFECYCLE')==='V2')return true;
+  // Title-only exclusions must not let an executable ticket masquerade as metadata.
+  const priority=field(header,'PRIORITY').toUpperCase();
+  const executable=field(header,'TIGERIQ_EXECUTABLE').toLowerCase()==='true';
+  const auto=field(header,'OWNER_POLICY').toUpperCase()==='AUTO';
+  const workCandidate=/\[P[0-5]\]/i.test(title)||/^(?:P[0-5])$/.test(priority)||executable||auto;
+  if(!workCandidate)return false;
+  if(SYSTEM_TITLE.test(title)&&!executable&&!auto)return false;
   const created=Date.parse(String(issue.created_at||''));
   return Number.isFinite(created)&&created>=Date.parse(LIFECYCLE_V2_NEW_WORK_CUTOFF);
 }
