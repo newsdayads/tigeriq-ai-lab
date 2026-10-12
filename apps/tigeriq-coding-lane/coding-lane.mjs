@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {createNonblockingManagerTick} from './nonblocking-manager-tick.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
@@ -355,6 +356,8 @@ const STALE_RUNNING_RUNTIME_CANARY_SOURCE_ISSUE=2068;
 const STALE_RUNNING_RUNTIME_CANARY_TIMEOUT_MS=Math.max(45000,STALE_RUNNING_SCAN_INTERVAL_MS*3);
 export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
 const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
+// Opt-in until exact deployed source and real worker canary are verified.
+const DECOUPLED_MANAGER=process.env.TIGERIQ_CODING_MANAGER_DECOUPLED==='true';
 const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:8}):null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const GEMINI_MIN_INTERVAL_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS||4500));
@@ -1660,6 +1663,18 @@ if(process.env.NODE_ENV!=='test'){
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
   let githubApiBackoffUntil=0;
+  const managerPump=createNonblockingManagerTick(managerTick,{
+    onError:(error)=>{
+      const rateLimitUntil=githubApiRateLimitBackoffUntil(error,Date.now());
+      // Only the manager has a bounded cooldown; do not stop queued worker jobs.
+      console.error(JSON.stringify({event:'CODING_MANAGER_NONBLOCKING_ERROR',
+        rateLimitUntil:rateLimitUntil>Date.now()?new Date(rateLimitUntil).toISOString():null,
+        error:String(error?.code||error?.message||error).slice(0,240)}));
+    },
+    onStall:({elapsedMs})=>console.warn(JSON.stringify({
+      event:'CODING_MANAGER_SLOW_SINGLE_FLIGHT',elapsedMs,pid:process.pid,
+    })),
+  });
   const active=new Set();
   let lastStaleRecoveryScanAt=0;
   let staleRuntimeCanaryDone=false;
@@ -1702,7 +1717,8 @@ if(process.env.NODE_ENV!=='test'){
           console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:'TIMEOUT',status:canary.status||null,detail:canary.reason||null,pid:process.pid}));
         }
       }
-      await managerTick();
+      if(DECOUPLED_MANAGER)managerPump.launch();
+      else await managerTick();
       while(active.size<MAX_PARALLEL){
         const j=await claimJob();
         if(!j)break;
