@@ -178,7 +178,7 @@ describe('Web Control runtime', () => {
     expect(body.workOrders.find((x:any)=>x.issue_number===1900)).toMatchObject({ bucket:'HỆ THỐNG', owner:'OWNER' });
     expect(body.workOrders.find((x:any)=>x.issue_number===1456)).toMatchObject({ bucket:'HỆ THỐNG' });
     expect(body.workOrdersRecent).toHaveLength(1);
-    expect(body.workOrdersRecent[0]).toMatchObject({ issue_number:1700, bucket:'HOÀN THÀNH', closed:true });
+    expect(body.workOrdersRecent[0]).toMatchObject({ issue_number:1700, bucket:'CHỜ NGHIỆM THU', closed:true, completionVerified:false });
     expect(body.workOrdersMeta).toMatchObject({ ok:true, source:'github', stale:false });
   });
 
