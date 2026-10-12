@@ -26,6 +26,7 @@ export default defineConfig({
       'tests/work-routing-policy.test.mjs',
       'tests/nv02-local-self-pull.test.mjs',
       'tests/control-plane-mutation-guard.test.mjs',
+      'tests/shared-resource-lease.test.mjs',
       'tests/coding-autonomy-supervisor.test.mjs',
       'tests/autonomy-supervisor.test.mjs',
       'tests/routing-fault-recovery.test.mjs',
