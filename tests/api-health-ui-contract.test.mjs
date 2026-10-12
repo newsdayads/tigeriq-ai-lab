@@ -7,7 +7,18 @@ describe('#3918 API Health shared Work UI contract',()=>{
   const live=readFileSync(new URL('../command-center.html',import.meta.url),'utf8');
   const livePublic=readFileSync(new URL('../public/command-center.html',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../public/work-ui.css',import.meta.url),'utf8');
+  const visual=readFileSync(new URL('../public/work-center-visual.css',import.meta.url),'utf8');
   const workCenter=readFileSync(new URL('../public/work-center.js',import.meta.url),'utf8');
+
+  it('links the same approved card CSS last on Live, Health, Web Control',()=>{
+    expect(dashboard).toContain('href="/work-center-visual.css"');
+    expect(live).toContain('href="/work-center-visual.css"');
+    expect(livePublic).toContain('href="/work-center-visual.css"');
+    expect(core).toContain("url.pathname==='/work-center-visual.css'");
+    expect(dashboard).toContain('TigerIQWorkCenter.renderCards(workList,rows,{compact:false,');
+    expect(visual).toContain('grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr))');
+    expect(visual).toContain('.tiq-work-card.status-done{--status-color:#06B6D4!important}');
+  });
 
   it('uses one shared Work UI stylesheet on Live and API Health',()=>{
     expect(dashboard).toContain('href="/work-ui.css"');
@@ -29,7 +40,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('max-height:calc(var(--employee-row-h) * 2 + var(--employee-gap) + 20px)');
     expect(shared).toContain('overflow-y:auto!important');
     expect(shared).toContain('.api-health .wo-list,.api-health .work-list{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))');
-    expect(dashboard).toContain('id="workList" class="wo-list work-list"');
+    expect(dashboard).toContain('id="workList" class="wo-list work-list tiq-work-center"');
     expect(dashboard).toContain('TigerIQWorkCenter.renderCards(workList,rows');
     expect(workCenter).toContain('class="work-top"');
     expect(workCenter).toContain('class="work-title"');
