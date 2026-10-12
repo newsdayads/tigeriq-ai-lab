@@ -1,0 +1,214 @@
+/* TigerIQ Work Center — OWNER-approved LIVE visual contract V1.
+ * One canonical WorkCard theme for Live / API Health / Web Control.
+ * Load AFTER page-specific CSS. Do not fork card styles per surface.
+ * Per-surface space/scroll may differ; card geometry, colors, typography and progress may not.
+ */
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center {
+  display:grid!important;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))!important;
+  grid-auto-rows:auto!important;
+  align-items:stretch!important;
+  gap:14px 13px!important;
+  min-width:0!important;
+  padding:9px 4px 11px!important;
+  max-width:100%!important;
+}
+/* API Health has a much narrower content rail than LIVE. Columns must respect
+   container width, not screen width; remove legacy forced 4–5 microcards. */
+body.api-health #workList.tiq-work-center {
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr))!important;
+  align-content:start!important;
+  max-height:min(68vh,840px)!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card {
+  display:block!important;
+  position:relative!important;
+  isolation:isolate;
+  min-width:0!important;
+  min-height:188px!important;
+  height:auto!important;
+  align-self:stretch!important;
+  margin:0!important;
+  padding:0!important;
+  background:transparent!important;
+  background-image:none!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+  text-shadow:none!important;
+  transform:none;
+  cursor:pointer;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card::before,
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card::after {
+  content:none!important;
+  display:none!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card > .work-main {
+  position:static!important; /* id and priority tabs are anchored to outer card */
+  box-sizing:border-box;
+  display:flex!important;
+  flex-direction:column!important;
+  margin-top:27px!important;
+  min-height:160px!important;
+  height:calc(100% - 27px)!important;
+  width:100%!important;
+  padding:10px 11px 12px!important;
+  border:1px solid var(--status-color,#64748B)!important;
+  border-radius:0 0 13px 13px!important;
+  background:#10243A!important;
+  background-image:none!important;
+  box-shadow:0 8px 24px rgba(0,0,0,.16)!important;
+  color:#EDF5FE!important;
+  transform:none!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card:is(:hover,:focus-visible) > .work-main {
+  box-shadow:0 13px 28px rgba(0,0,0,.32)!important;
+  border-color:var(--status-color,#64748B)!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card :is(.work-id,.priority) {
+  position:absolute!important;
+  top:0!important;
+  z-index:3!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  height:27px!important;
+  min-height:27px!important;
+  padding:0 10px!important;
+  border:0!important;
+  border-radius:9px 9px 0 0!important;
+  font-size:16px!important;
+  font-weight:900!important;
+  line-height:1!important;
+  white-space:nowrap;
+  text-shadow:none!important;
+  box-shadow:none!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-id {
+  left:0!important;
+  right:auto!important;
+  color:#fff!important;
+  background:var(--status-color,#64748B)!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority {
+  right:0!important;
+  left:auto!important;
+  color:white!important;
+  background:#64748B!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p0{background:#EF4444!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p1{background:#F97316!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p2{background:#F59E0B!important;color:#071321!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p3{background:#3B82F6!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p4{background:#8B5CF6!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .priority.p5{background:#64748B!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-top {
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:5px!important;
+  min-width:0;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .rank{
+  width:25px;height:24px;flex:none;
+  font-size:11px!important;font-weight:900;
+  color:#EAF6FF!important;background:#234460!important;
+  border:1px solid #4B7497!important;border-radius:5px;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-nv{
+  font-size:10px!important;color:#A4B9CE!important;
+  max-width:80px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-top .state{
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:5px!important;
+  flex:none;max-width:145px;min-width:0;
+  margin-left:auto!important;
+  padding:2px 0!important;
+  color:var(--status-color,#64748B)!important;
+  border:0!important;background:transparent!important;
+  font-size:10px!important;font-weight:800!important;
+  box-shadow:none!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .state .live-status-icon{
+  width:15px;height:15px;flex:none;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-hierarchy{
+  display:block!important;
+  margin-top:7px!important;
+  font-size:11px!important;font-weight:750!important;
+  color:#97C8E2!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-hierarchy span{color:#CBD5E1!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-title{
+  margin:7px 0 0!important;
+  min-height:2.68em!important;
+  font-size:14px!important;line-height:1.34!important;font-weight:800!important;
+  color:#F3F7FC!important;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
+  overflow:hidden;overflow-wrap:anywhere;letter-spacing:0;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-quick{
+  margin-top:8px!important;
+  font-size:11px!important;line-height:1.42!important;
+  color:#A9D4F8!important;
+  overflow-wrap:anywhere;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-quick span{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-progress-bottom{
+  margin-top:auto!important;padding-top:10px!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-step-summary{
+  display:flex;justify-content:space-between;gap:6px;
+  font-size:10px!important;line-height:1.4!important;
+  color:#B5D6EB!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-step-summary .step-remaining{
+  color:#F2C879!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .progress{
+  margin:6px 0 0!important;color:var(--status-color,#64748B)!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .progress-track{
+  height:6px!important;background:#1A3148!important;border-radius:999px!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .progress-fill{
+  background:var(--status-color,#64748B)!important;
+  background-image:none!important;
+  box-shadow:none!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .progress-text{
+  color:var(--status-color,#64748B)!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card:not(.progress-running) .progress-fill::after{content:none!important;animation:none!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card:not(.progress-running) .progress.indeterminate .progress-fill{display:none!important;animation:none!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .tiq-work-times{
+  margin-top:auto!important;padding-top:9px!important;
+  font-size:10px!important;color:#9CB0C5!important;
+}
+/* Honor the same approved status palette across all host themes. */
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-working{--status-color:#10B981!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-done{--status-color:#06B6D4!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-owner_gate{--status-color:#A78BFA!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-review{--status-color:#3B82F6!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-verify{--status-color:#14B8A6!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-waiting{--status-color:#F59E0B!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-blocked{--status-color:#F43F5E!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-queued{--status-color:#F59E0B!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card.status-closed_unverified{--status-color:#94A3B8!important}
+@media(max-width:599px){
+  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center{grid-template-columns:minmax(0,1fr)!important}
+  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-title{font-size:14px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card,
+  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center > .tiq-work-card .work-main{animation:none!important;transition:none!important}
+}
