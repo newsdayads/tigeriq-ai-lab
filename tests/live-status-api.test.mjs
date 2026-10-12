@@ -432,6 +432,35 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(executionEligibilityForIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody))).toBe('READY');
   });
 
+  it('shows NV02 GitHub-local P1 readiness without treating it as a Core/Owner action or a live worker', () => {
+    const safe = [
+      '## ACTIVE CONTRACT',
+      'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+      'NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY','ASSIGNED_EXECUTOR=NV02',
+      'EXECUTION_SURFACE=UI','CAPABILITY=coding','RESOURCE_SCOPE=TIGERIQ_CLINE_NV02_SOURCE_AND_EVAL_V1',
+      'MUTATION_OWNER=NONE','CURRENT_STATE=READY_NV02_SOURCE_RECONCILIATION',
+      'NO_RDC=true','NO_PC01_SHELL=true','NO_CODEX=true','NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
+      'PROGRESS_SOURCE=VERIFIED_CHECKLIST','PROGRESS_VERIFIED=true',
+      '## CHECKLIST',
+      '- [x] Harness merged — [PR](https://github.com/newsdayads/tigeriq-ai-lab/pull/4542)',
+      '- [x] Decision-gate merged — [PR](https://github.com/newsdayads/tigeriq-ai-lab/pull/4685)',
+      ...Array.from({length:10},(_,idx)=>'- [ ] M'+(idx+3)+' stage not accepted'),
+    ].join('\n');
+    const row=parseOpenWorkIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',safe));
+    expect(row).toMatchObject({
+      status:'OPEN',executionEligibility:'READY',localSelfPullReady:true,
+      activeLease:false,activeWorker:null,progressDone:2,progressTotal:12,
+      progressPercent:17,progressSource:'checklist_verified'
+    });
+    expect(executionEligibilityForIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',
+      safe.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')))).toBe('HARD_GATE');
+    const blocked=safe.replace('CURRENT_STATE=READY_NV02_SOURCE_RECONCILIATION','CURRENT_STATE=WAIT_OWNER_AUTH_ACTION_SPECIFIC');
+    expect(executionEligibilityForIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',blocked))).toBe('HARD_GATE');
+    expect(executionEligibilityForIssue(issue(4532,'[P0][NV02][CLINE] Cline trial',safe))).toBe('HARD_GATE');
+  });
+
   it('classifies resource, dependency, owner and terminal gates independently from display state', () => {
     expect(parseOpenWorkIssue(issue(3004, '[P1] Review resource unavailable', [
       'PRIORITY=P1',
