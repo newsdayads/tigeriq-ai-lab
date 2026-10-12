@@ -26,7 +26,7 @@ import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.m
 describe('#1255 NV10 API Doctor policy',()=>{
   it('requires a cross-lane shared lease before starting NV09 canary inference',async()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-    const start=source.indexOf("async function runNv09Canary(inputPrompt='')");
+    const start=source.indexOf("async function runNv09Canary(");
     const end=source.indexOf('\nasync function probeResource(',start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
