@@ -116,6 +116,32 @@ for(const width of [390,1024,1648]){
  });
 }
 
+test('API Health mobile sorts newly verified finishes first and lets Owner switch to closure time',async({page})=>{
+ await page.setViewportSize({width:390,height:880});
+ await openFixture(page);
+ const history=[
+  {number:601,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false,closedAt:'2026-10-13T12:00:00Z',priority:'P1',title:'Just closed, unverified'},
+  {number:602,workKind:'WORK',status:'DONE',completionVerified:true,completedAt:'2026-10-13T10:00:00Z',lifecycleTiming:{finishVerified:true,finishedAt:'2026-10-11T10:00:00Z'},priority:'P1',title:'Older verified finish'},
+  {number:603,workKind:'WORK',status:'DONE',completionVerified:true,completedAt:'2026-10-12T11:00:00Z',lifecycleTiming:{finishVerified:true,finishedAt:'2026-10-12T10:59:00Z'},priority:'P1',title:'Latest verified finish'}
+ ];
+ await page.route(base+'/api/health-live-work',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({ok:true,projection:{...projection().projection,recentWork:history}})
+ }));
+ await page.reload();
+ await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
+ await expect(page.locator('#workList .work-row')).toHaveCount(3);
+ await page.locator('.wo-filter.closed').click();
+ await expect(page.locator('#workClosedSort')).toBeVisible();
+ const order=async()=>page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>Number((n as HTMLElement).dataset.workNumber)));
+ await expect.poll(order).toEqual([603,602,601]);
+ await page.locator('#workClosedSort').selectOption('closed');
+ await expect.poll(order).toEqual([601,602,603]);
+ await page.locator('.wo-filter.action').click();
+ await expect(page.locator('#workClosedSort')).toHaveCount(0);
+ await expect.poll(order).toEqual([3278,4574,2054]);
+});
+
 test('same Work Center card skin in LIVE and API Health; Health never shrinks to 5 microcards',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  await openFixture(page);
