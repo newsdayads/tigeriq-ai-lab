@@ -940,6 +940,7 @@ html,body,body{background:#071321!important}
       <div id="drawerChecklistHint" class="drawer-checklist-hint"></div>
     </section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
+    <section id="drawerTerminalSection" class="drawer-section"><h3>Kết thúc công việc</h3><div class="drawer-row"><span>Trạng thái cuối</span><strong id="drawerTerminalState">CHƯA HOÀN TẤT</strong></div><div class="drawer-row"><span>Điều kiện hoàn tất</span><span id="drawerTerminalCriteria">Chưa xác minh</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Mở TigerIQ với nội dung trao đổi; có sao chép dự phòng">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
@@ -959,7 +960,9 @@ const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH S�
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
 const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
-function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?Number(m[1]):9}
+const TIGERIQ_SYSTEM_FIRST_ISSUES=[4457,2949,4661,4595,4532,4578,4569];
+function systemFirstRank(row){const index=TIGERIQ_SYSTEM_FIRST_ISSUES.indexOf(Number(row?.number));return index<0?99:index}
+function priorityRank(v){const m=String(v||'').toUpperCase().match(/^P([0-5])$/);return m?(Number(m[1])===0?6:Number(m[1])):7}
 function verifiedProgress(row){
   const pct=Number(row?.progressPercent);
   const source=String(row?.progressSource||'');
@@ -2069,6 +2072,15 @@ function liveStateIcon(status){
  const paths={WORKING:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',DONE:'<path d="M20 6 9 17l-5-5"/><path d="m20 12-8 8-4-4"/>',OWNER_GATE:'<circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/>',WAITING:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',QUEUED:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',BLOCKED:'<path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',REVIEW:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',VERIFY:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="m9 13 2 2 4-4"/>',SYSTEM:'<rect x="3" y="3" width="18" height="18" rx="3"/>',OPEN:'<circle cx="12" cy="12" r="9"/>',UNKNOWN:'<circle cx="12" cy="12" r="9"/><path d="M12 17h.01"/>',GOAL:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>'};
  return '<svg class="live-status-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(paths[status]||paths.OPEN)+'</svg>';
 }
+function jobCloseoutState(row){
+  const state=workStatus(row),stale=Boolean(snapshot?.staleAll||snapshot?.workProjection?.stale);
+  if(stale)return {label:'CHƯA XÁC MINH KẾT THÚC',detail:'Dữ liệu đang cũ; cần đồng bộ nguồn trước khi xác nhận.'};
+  if(state==='DONE')return {label:'HOÀN TẤT · ĐÃ KẾT THÚC',detail:'Nguồn ghi hoàn tất; đối chiếu bằng chứng thực thi, rà soát và phát hành tại GitHub.'};
+  if(state==='OWNER_GATE'&&row?.technicalComplete===true)return {label:'XONG KỸ THUẬT · CHƯA KẾT THÚC',detail:'Chờ nghiệm thu cuối; không tự đóng công việc.'};
+  if(state==='BLOCKED')return {label:'CHƯA KẾT THÚC · BỊ CHẶN',detail:'Chờ xử lý trở ngại có bằng chứng, không tự lặp lại vô hạn.'};
+  if(state==='REVIEW'||state==='VERIFY')return {label:'CHƯA KẾT THÚC · CHỜ NGHIỆM THU',detail:'Chờ rà soát hoặc xác minh kết quả thực tế.'};
+  return {label:'CHƯA KẾT THÚC',detail:'Chỉ kết thúc khi nguồn xác nhận hoàn thành và có nghiệm thu thực tế.'};
+}
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
@@ -2083,6 +2095,7 @@ function populateDrawer(row){
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
+  const closeout=jobCloseoutState(row);$('drawerTerminalState').textContent=closeout.label;$('drawerTerminalCriteria').textContent=closeout.detail;
   $('drawerProject').textContent=row?.projectName||'Chưa phân dự án';
   $('drawerWorkstream').textContent=row?.workstreamName||row?.workPackageName||'Chưa phân nhánh';
   $('drawerJob').textContent=row?.jobId||('GH-'+row.number);
@@ -2126,6 +2139,7 @@ function render(){
   renderApiWorkforce();
   updateCounts();
   const rows=normalizeRows(snapshot);
+  if(currentFilter==='action')rows.sort((a,b)=>systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
   $('workMeta').textContent=rows.length+' mục';
   const box=$('workList');box.innerHTML='';
   refreshOpenDrawer();
