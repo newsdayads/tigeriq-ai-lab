@@ -34,7 +34,24 @@ function progress(row,opt){
  if(s!=='DONE'&&percent<100&&verifiedSource&&o.sourceGate!==false&&row&&row.progressChecklistVerified!==false)return{verified:true,percent:Math.round(percent)};
  return{verified:false,percent:null};
 }
-function rowsFor(data,filter){
+/* Closed views are presentation-only. Verified completions must appear before
+   records merely closed in GitHub; neither group alters Core dispatch priority.
+   Use verified FINISHED_AT for completed work, GitHub closed_at for closure history. */
+function closedStamp(row,mode){
+ const t=row&&row.lifecycleTiming||{};
+ if(mode!=='closed'&&completion(row)&&t.finishVerified===true){
+  const finished=time(t.finishedAt);
+  if(finished!==null)return finished;
+ }
+ return time(row&&(row.closedAt||row.completedAt||row.updatedAt))??-Infinity;
+}
+function sortClosed(rows,mode){
+ const kind=mode==='closed'?'closed':'finished';
+ return [...rows].sort((a,b)=>(kind==='finished'?Number(completion(b))-Number(completion(a)):0)
+   ||closedStamp(b,kind)-closedStamp(a,kind)
+   ||Number(b.number||0)-Number(a.number||0));
+}
+function rowsFor(data,filter,closedOrder){
  const o=Array.isArray(data&&data.openWork)?data.openWork:[].concat(data&&data.activeWork||[],data&&data.nextQueue||[]);
  const done=Array.isArray(data&&data.recentWork)?data.recentWork:[];
  const work=x=>x&&x.workKind==='WORK'&&status(x)!=='SYSTEM';
@@ -43,13 +60,13 @@ function rowsFor(data,filter){
  const ended=done.filter(x=>work(x)&&(completion(x)||status(x)==='CLOSED_UNVERIFIED'));
  if(f==='all'){
   const seen=new Set(o.filter(work).map(x=>Number(x.number)).filter(n=>Number.isInteger(n)&&n>0));
-  return o.filter(work).concat(ended.filter(x=>!seen.has(Number(x.number))));
+  return o.filter(work).concat(sortClosed(ended.filter(x=>!seen.has(Number(x.number))),'finished'));
  }
  if(f==='working')return o.filter(x=>work(x)&&status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
  if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(status(x))&&!(status(x)==='WAITING'&&x.executionEligibility==='READY'));
- if(f==='closed')return ended;
- if(f==='done')return done.filter(completion);
- if(f==='archived')return done.filter(x=>status(x)==='CLOSED_UNVERIFIED'&&!completion(x));
+ if(f==='closed')return sortClosed(ended,closedOrder);
+ if(f==='done')return sortClosed(done.filter(completion),'finished');
+ if(f==='archived')return sortClosed(done.filter(x=>status(x)==='CLOSED_UNVERIFIED'&&!completion(x)),'closed');
  if(f==='owner')return o.filter(x=>status(x)==='OWNER_GATE');
  if(f==='running')return o.filter(x=>status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
  if(f==='review')return o.filter(x=>['REVIEW','VERIFY'].includes(status(x)));
