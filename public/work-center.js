@@ -46,7 +46,7 @@ function rowsFor(data,filter){
   return o.filter(work).concat(ended.filter(x=>!seen.has(Number(x.number))));
  }
  if(f==='working')return o.filter(x=>work(x)&&status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
- if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(status(x)));
+ if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(status(x))&&!(status(x)==='WAITING'&&x.executionEligibility==='READY'));
  if(f==='closed')return ended;
  if(f==='done')return done.filter(completion);
  if(f==='archived')return done.filter(x=>status(x)==='CLOSED_UNVERIFIED'&&!completion(x));
