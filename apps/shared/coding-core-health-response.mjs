@@ -28,13 +28,16 @@ export function validateCodingFastHealthResponse(payload,{nowMs=Date.now(),maxAg
     // Only coherent ready/idle/on-demand pairs may be eligible downstream.
     // Keep valid BUSY or ERROR records: downstream must still reject them.
     const readyOnline=health==='ONLINE'&&work==='IDLE'&&status==='IDLE';
+    // Core's publicStatus returns READY for a healthy READY/READY resource.
+    // Do not reject this canonical idle state or promote UNKNOWN to READY.
+    const readyStandby=health==='READY'&&work==='READY'&&status==='READY';
     const readyOnDemand=(health==='ONLINE'&&work==='ON_DEMAND'&&status==='ON_DEMAND')||
                         (health==='READY'&&work==='ON_DEMAND'&&status==='READY');
     const busyOnline=health==='ONLINE'&&work==='BUSY'&&status==='BUSY';
     if((status==='READY'||status==='IDLE'||health==='ONLINE')&&
-       !(readyOnline||readyOnDemand||busyOnline))
+       !(readyOnline||readyStandby||readyOnDemand||busyOnline))
       reject('CODING_CORE_HEALTH_RESOURCE_INVALID');
-    if((readyOnline||readyOnDemand)&&(!r.enabled||!r.quota_state.usable||r.current_job_id))
+    if((readyOnline||readyStandby||readyOnDemand)&&(!r.enabled||!r.quota_state.usable||r.current_job_id))
       reject('CODING_CORE_HEALTH_RESOURCE_INVALID');
   }
   return payload;
