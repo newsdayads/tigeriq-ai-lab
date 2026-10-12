@@ -93,5 +93,6 @@ test('seed is fail-closed for force, existing lanes, and traversal paths', async
   await assert.rejects(seedLane({root,lane:'cline-local-ollama',force:true}),/BENCHMARK_FORCE_DELETE_FORBIDDEN/);
   await assert.rejects(seedLane({root,lane:'cline-local-ollama'}),/EEXIST/);
   await assert.rejects(seedLane({root,lane:'../danger'}),/BENCHMARK_LANE_INVALID/);
+  await assert.rejects(scoreLane({root,lane:'../danger'}),/BENCHMARK_LANE_INVALID/);
   assert.equal(await readFile(file,'utf8'),before);
 });
