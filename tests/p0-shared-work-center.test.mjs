@@ -40,10 +40,27 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   const recent=[{number:4,workKind:'WORK',status:'DONE',completionVerified:true},{number:5,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false}];
   const data={openWork:open,recentWork:recent};
   expect(wc.rowsFor(data,'all').map(x=>x.number)).toEqual([1,2,3,4,5]);
+  expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([1,2,3]);
+  expect(wc.rowsFor(data,'action').every(x=>!x.closed)).toBe(true);
   expect(wc.rowsFor(data,'working').map(x=>x.number)).toEqual([1]);
   expect(wc.rowsFor(data,'waitblocked').map(x=>x.number)).toEqual([2,3]);
   expect(wc.rowsFor(data,'closed').map(x=>x.number)).toEqual([4,5]);
   expect(wc.progress(recent[1]).verified).toBe(false);
+ });
+ it('defaults to unfinished work on all three surfaces and preserves ended history as a separate tab',()=>{
+  const live=readFileSync(new URL('../command-center.html',import.meta.url),'utf8');
+  const mirror=readFileSync(new URL('../public/command-center.html',import.meta.url),'utf8');
+  const health=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
+  const web=readFileSync(new URL('../apps/tigeriq-core/web-control.html',import.meta.url),'utf8');
+  expect(live).toBe(mirror);
+  expect(live).toContain("let currentFilter='action'");
+  expect(live).toContain('data-filter="action">CHƯA KẾT THÚC');
+  expect(live).toContain("const filters=['action','working','waitblocked','closed']");
+  expect(health).toContain("workFilter='action'");
+  expect(health).toContain("['action','CHƯA KẾT THÚC']");
+  expect(web).toContain("let workCenterWebFilter='action'");
+  expect(web).toContain('data-work-center-filter="action">CHƯA KẾT THÚC');
+  for(const source of [live,health,web])expect(source).toContain('ĐÃ KẾT THÚC');
  });
  it('bundles the three shared Work Center assets for PC01 Web Control',()=>{
   const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
