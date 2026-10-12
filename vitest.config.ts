@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: [
       'tests/**/*.test.ts',
+      'tests/core-autonomous-rca-lifecycle-integration.test.mjs',
       'tests/coding-lane-ai-json-transport.test.mjs',
       'tests/api-doctor-supervisor.test.mjs',
       'tests/android-stable-signing.test.mjs',
