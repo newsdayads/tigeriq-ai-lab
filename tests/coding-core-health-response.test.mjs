@@ -45,6 +45,15 @@ describe('#280 B03 fast Core health consumer fail-closed gates',()=>{
     }
   });
 
+  it('accepts a READY resource with a bound BUSY lease without treating it as idle',()=>{
+    const busy=resource('NV08',{
+      health_state:'READY',work_state:'BUSY',status:'BUSY',current_job_id:'existing-work',
+    });
+    const response=validateCodingFastHealthResponse(snapshot([busy]),{nowMs:now});
+    expect(response.resources[0].current_job_id).toBe('existing-work');
+    expect(response.resources[0].work_state).toBe('BUSY');
+  });
+
   it('accepts BUSY resources only as BUSY, without synthesizing a free AI',()=>{
     const row=resource('NV09',{health_state:'ONLINE',work_state:'BUSY',status:'BUSY',current_job_id:'job-123'});
     expect(validateCodingFastHealthResponse(snapshot([row]),{nowMs:now}).resources[0].work_state).toBe('BUSY');
