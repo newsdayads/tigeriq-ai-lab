@@ -31,7 +31,7 @@ Kiến trúc kế thừa: [Skill Registry](../registry.yaml), [Skill System](../
 1. **Mã nguồn / lỗi:** Tại `spec-first-tdd` ACTIVE, yêu cầu tái hiện lỗi với điều kiện dương/âm cụ thể khi có thể; lưu lệnh/đầu ra, rút gọn kịch bản và thử giả thuyết. Không ép tạo RED giả cho việc tài liệu/config.
 2. **Rà soát:** Tại `automated-code-review-gate` ACTIVE, tách hai trục `SPEC` / `STANDARDS`, lập bảng yêu cầu ↔ bằng chứng và nêu phạm vi chưa được thử. Ảnh không chứng minh dữ liệu được lưu hoặc thao tác có hiệu lực; bằng chứng có thể là kiểm thử, bản ghi hoặc kết quả thực.
 3. **Nhân sự:** Không sửa danh bạ AI, không lập thêm review agent, không nhân bản NV03/NV04. Vai trò trong The Agency là tài liệu tham chiếu cho nhân sự hiện hữu.
-4. **Trạng thái:** Giữ nguyên 17 ID hiện có (16 ACTIVE, 1 CANDIDATE) và trạng thái; chỉ tăng phiên bản 2 kỹ năng ACTIVE `1.0.0 → 1.1.0`. Không khai rằng phiên bản mới đã được kiểm chứng trên máy thật chỉ bởi thay đổi tài liệu.
+4. **Trạng thái (đối chiếu lại `main` 2026-10-12):** Giữ đủ 18 ID (16 ACTIVE, 2 CANDIDATE), bao gồm `vy-owner-collaboration` CANDIDATE vừa có trên `main`; không tạo ID hay thay đổi trạng thái. Chỉ nâng phiên bản hai skill ACTIVE `spec-first-tdd` và `automated-code-review-gate` từ `1.0.0 → 1.1.0`. Đề xuất gốc 2026-10-08 có 17 ID; chênh lệch do baseline sau đó thêm skill Vy, không được bỏ khi hợp nhất. Không khai phiên bản mới đã vận hành chỉ vì tài liệu thay đổi.
 5. **Ranh giới:** Không dùng Codex, Remote Desktop Commander, cài đặt bên ngoài, đổi quyền, chạy Production, sửa App Chrome, cấu hình bảo mật hay tạo bộ điều phối riêng.
 
 ## 4. Nghiệm thu và chống nâng cấp ảo
@@ -50,3 +50,9 @@ Kiến trúc kế thừa: [Skill Registry](../registry.yaml), [Skill System](../
 **LOẠI:** cài `npx skills@latest` hoặc ứng dụng Agency Agents; nạp toàn bộ vai trò; đề nghị Owner phỏng vấn lặp; người rà soát tự phê duyệt; ngầm định FAIL dù có bằng chứng đủ; yêu cầu ảnh màn hình cho tất cả loại công việc; báo DONE nếu chưa đủ bằng chứng.
 
 **Theo dõi:** đo tỷ lệ lỗi được tái hiện thật, lỗi tái xuất hiện, thiếu bằng chứng và thời gian xử lý trong các công việc tiếp theo. Chưa có số liệu thực nên không công bố phần trăm cải thiện.
+
+## 6. Bổ sung đối soát phiên bản — 2026-10-12
+
+- Main hiện hành: **18 ID duy nhất / 16 ACTIVE / 2 CANDIDATE**; skill `vy-owner-collaboration` là CANDIDATE, không bị tự nâng ACTIVE. Nhánh PR cũ có 17 ID; cập nhật **chính PR #4579**, bảo toàn toàn bộ metadata từ main và hai điều chỉnh phiên bản 1.1.0 đã đề xuất.
+- Đối soát hiện tại là bằng chứng về **cấu trúc và phạm vi mã nguồn**. Kết quả CI tại SHA trước, review COMMENTED của tác giả và mô tả hướng dẫn không chứng minh hiệu quả trong vận hành. Sau mỗi HEAD mới phải kiểm tra lại ba cổng CI/Queue/Vercel.
+- **Cổng còn thiếu:** người đánh giá độc lập khác tác giả PR (nếu Work Order tiếp tục yêu cầu), nhập main đúng cổng hợp lệ, kiểm tra 18 ID sau merge, và áp dụng vào một tình huống debug và một PR thực tế có kết quả đo được. Không cài upstream, không thêm worker, không tự kích hoạt toàn bộ kỹ năng.
