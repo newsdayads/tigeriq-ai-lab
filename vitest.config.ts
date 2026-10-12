@@ -25,6 +25,7 @@ export default defineConfig({
       'tests/nv02-continuity.test.mjs',
       'tests/remote-desktop-guard.test.mjs',
       'tests/coding-core-health-contract.test.mjs',
+      'tests/coding-core-health-response.test.mjs',
       'tests/coding-lane-foundation.test.mjs',
       'tests/coding-lane-policy.test.mjs',
       'tests/coding-lane-scope.test.mjs',
