@@ -26,6 +26,7 @@ export default defineConfig({
       'tests/remote-desktop-guard.test.mjs',
       'tests/coding-core-health-contract.test.mjs',
       'tests/coding-core-health-response.test.mjs',
+      'tests/coding-core-health-postgres.test.mjs',
       'tests/coding-lane-foundation.test.mjs',
       'tests/coding-lane-policy.test.mjs',
       'tests/coding-lane-scope.test.mjs',

@@ -32,7 +32,7 @@ export function validateCodingFastHealthResponse(payload,{nowMs=Date.now(),maxAg
     // Do not reject this canonical idle state or promote UNKNOWN to READY.
     const readyStandby=health==='READY'&&work==='READY'&&status==='READY';
     const readyOnDemand=(health==='ONLINE'&&work==='ON_DEMAND'&&status==='ON_DEMAND')||
-                        (health==='READY'&&work==='ON_DEMAND'&&status==='READY');
+                        (health==='READY'&&work==='ON_DEMAND'&&(status==='READY'||status==='ON_DEMAND'));
     const busyOnline=(health==='ONLINE'||health==='READY')&&work==='BUSY'&&status==='BUSY';
     if((status==='READY'||status==='IDLE'||health==='ONLINE'||health==='READY')&&
        !(readyOnline||readyStandby||readyOnDemand||busyOnline))
