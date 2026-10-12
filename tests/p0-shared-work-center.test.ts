@@ -1,3 +1,4 @@
+// @ts-nocheck — companion ESM tests run with Vitest; JS-only modules have no declaration files.
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import '../public/work-center.js';
