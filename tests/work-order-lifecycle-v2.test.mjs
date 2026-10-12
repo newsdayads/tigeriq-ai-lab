@@ -49,6 +49,19 @@ describe('Work Order Lifecycle V2 global source contract',()=>{
     expect(safeAutoWorkAdmission(i).reason).toBe('LIFECYCLE_V2_CONTRACT_INVALID');
     expect(safeAutoWorkAdmission(issue(header,{title:'[P0][CORE] Owner'})).eligible).toBe(false);
   });
+  it('rejects a new runnable issue without priority bracket or with a misleading system-looking title',()=>{
+    const noTitlePriority=issue(header.replace('WORK_ORDER_LIFECYCLE=V2\n',''),{title:'Core task without priority bracket'});
+    expect(requiresLifecycleV2(noTitlePriority)).toBe(true);
+    expect(safeAutoWorkAdmission(noTitlePriority).reason).toBe('LIFECYCLE_V2_CONTRACT_INVALID');
+    const disguised=issue(header.replace('WORK_ORDER_LIFECYCLE=V2\n',''),{title:'[P2][CENTRAL] looks like reference'});
+    expect(requiresLifecycleV2(disguised)).toBe(true);
+    expect(safeAutoWorkAdmission(disguised).eligible).toBe(false);
+  });
+  it('ignores checklist-looking text inside a fenced code example',()=>{
+    const body=header.replace('- [ ] M02 real task receipt pending',
+      '```\n- [x] NOT REAL\n```\n- [ ] M02 real task receipt pending');
+    expect(validateWorkOrderLifecycleV2(issue(body)).steps).toHaveLength(2);
+  });
   it('grandfathers old issues without V2 but still validates any card explicitly opting in',()=>{
     const old=issue('PRIORITY=P2\nTIGERIQ_EXECUTABLE=true',{created_at:'2026-07-11T00:00:00Z'});
     expect(requiresLifecycleV2(old)).toBe(false);
