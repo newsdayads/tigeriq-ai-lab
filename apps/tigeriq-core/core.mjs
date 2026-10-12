@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import {buildWorkHistory} from '../shared/work-center-history.mjs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
@@ -2887,11 +2888,37 @@ async function runNvInferenceRequest(input={}){
     throw error;
   }
 }
-function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}
+function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
+function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
+async function workCenterHistory(number){
+  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4500);
+  const base='https://api.github.com/repos/'+encodeURIComponent(GITHUB_OWNER)+'/'+encodeURIComponent(GITHUB_REPO);
+  try{
+    const paths=['/issues/'+number,'/issues/'+number+'/comments?per_page=100'];
+    const result=await Promise.all(paths.map(async path=>{
+      const response=await fetch(base+path,{headers,cache:'no-store',signal:controller.signal});
+      if(!response.ok)throw Error('GITHUB_HTTP_'+response.status);
+      return response.json();
+    }));
+    if(result[0]?.pull_request)throw Error('NOT_WORK_ORDER');
+    return buildWorkHistory(result[0],result[1]);
+  }finally{clearTimeout(timer)}
+}
+const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
     if(await mobileWorkerApi(req,res,url))return;
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
+    if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});return res.end(workCenterJs());}
+    if(req.method==='GET'&&url.pathname==='/api/work-history'){
+      const number=url.searchParams.get('number')||'';
+      res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
+      if(!/^[1-9]\\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
+      try{const value=await workCenterHistory(Number(number));res.writeHead(200);return res.end(JSON.stringify(value))}
+      catch{res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_UNAVAILABLE'}))}
+    }
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/public-evidence'){
       const jobId=String(url.searchParams.get('jobId')||'').trim();
