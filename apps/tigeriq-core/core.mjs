@@ -866,11 +866,14 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker'){
     : buildNv09CanaryPrompt(inputPrompt,marker);
   const availability=await nv09ModelAvailability();
   if(!availability.ok)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:availability.reason,availability};
+  // Cap the inference below the shared lease TTL. An oversized NV09_TIMEOUT_MS
+  // must never allow a second writer to enter while this canary is still running.
+  const canaryTimeoutMs=Math.min(NV09_TIMEOUT_MS,4*60*1000);
   // The Core probe, Coding Lane and this canary must share the same atomic lease.
   // Keep the resource occupied until the lease is released, including errors.
   const sharedLease=await acquireSharedResourceLease(pool,{
     employeeId:r.id,resourceId:r.resourceId,workId:id,role:'canary',lane:'core_canary',
-    ttlMs:Math.max(5*60*1000,Math.min(15*60*1000,NV09_TIMEOUT_MS+60000)),
+    ttlMs:Math.max(5*60*1000,Math.min(15*60*1000,canaryTimeoutMs+60000)),
     metadata:{provider:r.provider,model:r.model},
   });
   if(!sharedLease)return {ok:false,employeeId:r.id,resourceId:r.resourceId,model:r.model,error:'NV09_RESOURCE_BUSY'};
@@ -885,8 +888,8 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker'){
         ? {text:String((await fetchJson(`${NV09_ENDPOINT}/v1/chat/completions`,{
           method:'POST',headers:{'content-type':'application/json'},
           body:JSON.stringify({model:NV09_MODEL,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:256,stream:false}),
-        },NV09_TIMEOUT_MS))?.choices?.[0]?.message?.content||'').trim()}
-        : await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'10m'});
+        },canaryTimeoutMs))?.choices?.[0]?.message?.content||'').trim()}
+        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'});
       const latency=Date.now()-started;
       if(contract==='json'){
         let json;
