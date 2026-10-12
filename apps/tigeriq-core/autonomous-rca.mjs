@@ -154,8 +154,8 @@ export function buildImprovementWorkOrder(rca={}){
   const scope='AUTO_RCA_'+String(rca.class).replace(/[^A-Z0-9_]/g,'_')+'_'+rca.rcaSignature.slice(0,12);
   const title=`[${priority}][AUTO-RCA][${rca.class}] Repair ${rca.contractId||rca.affectedScope}`;
   const body=[
-    'TIGERIQ_JOB_V1', // Compatibility marker for existing RCA idempotent materialization.
     '## ACTIVE WORK ORDER — AUTO-RCA P1–P3, V2 SOURCE CONTRACT',
+    'TIGERIQ_JOB_V1', // Keep legacy marker inside the active header, not before it.
     'WORK_ORDER_LIFECYCLE=V2',
     'PROJECT_ID=tigeriq-platform',
     'WORKSTREAM_ID=autonomous-rca',
