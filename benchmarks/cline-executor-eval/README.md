@@ -34,3 +34,19 @@ node benchmarks/cline-executor-eval/harness.mjs score --root <NEW-EMPTY-ISOLATED
 ```
 
 A fixture is complete only when its acceptance tests pass, tests and TASK.md were not modified, and no unexpected files were added. The scorer derives its baseline only from the repository-owned fixture-manifest.json; it never trusts baseline metadata inside an executor-writable lane. The external benchmark runner adds wall-clock, attempts, command failures, model/provider and usage metrics before the final KEEP/CANARY/REJECT decision.
+
+## Gate for a real measured Cline–NV09 decision
+
+Use `decision-gate.mjs` only after the authorized isolated PC01 runner has produced
+**two genuine lane scores and original execution traces** for all three canonical fixtures.
+`evaluateBenchmarkComparison({cline,nv09,verifyTrustedReceipt})` fails closed unless
+both lane receipts match the same local Ollama model digest and manifest, contain
+the complete raw scorer output and nonzero wall-clock / resource / attempt metrics,
+and a **trusted runtime verifier** validates immutable source, logs, and
+filesystem/process/network/resource/credential containment evidence.
+
+Neither a GitHub comment, a preflight `DONE`, nor `verified:true` in JSON is a
+trusted proof. The returned `KEEP` / `CANARY` / `REJECT` is only a candidate
+decision; it does not grant merge, Core routing or Production authorization.
+Tests of this decision function use synthetic fixtures solely to prove its
+fail-closed behavior; they are **not the actual PC01 benchmark**.
