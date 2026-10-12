@@ -4,6 +4,12 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+## PREBOOT PROMPT COPY — MỘT KHUNG, MỘT DÒNG (OWNER 2026-10-12)
+- Với yêu cầu xuất câu lệnh sao chép (`prompt`, `đưa prompt`, `qua Work`, `giao NV`): **CHỈ 01 code block native ngôn ngữ text**, bên trong **CHỈ 01 dòng vật lý**, bắt đầu chính xác `LÀM — NO YAPPING.`; **không lời dẫn hoặc kết ngoài khung**.
+- Đây là hợp đồng hiển thị, không đồng nghĩa rút ngắn bỏ nhiệm vụ, an toàn hoặc bằng chứng. Chi tiết: `docs/OWNER_PROMPT_COPY_V1.md` + Workflow §11–12 + Issue #504.
+- Bề mặt TigerIQ có quyền kiểm soát đầu ra phải gắn `validateOwnerPromptCopy` / `publishOwnerPromptCopy` ở đường phát câu trả lời (mã `apps/shared/owner-prompt-copy-contract.mjs`), kiểm thử và fail closed; **đã viết module chưa nghĩa là đã tích hợp runtime**.
+- Không thể điều khiển nút Copy hoặc cưỡng chế giao diện ChatGPT native từ GitHub; kiểm tra thật từng chat/tài khoản trước khi báo đạt.
+
 ## PREBOOT BCCT — BẮT BUỘC NGAY LẦN GỌI ĐẦU
 - Khi Owner gửi `BCCT`, `báo cáo chi tiết` hoặc `bc chi tiết`, trước nội dung trả lời phải đọc GitHub `main`: `docs/OWNER_CHAT_REPORT_VISUAL_V3.md` (nội dung V4), `docs/OWNER_BCCT_VISUAL_PRESENTATION_V2.md`, và trạng thái nguồn động liên quan.
 - Một lệnh duy nhất phải tạo báo cáo 6 phần, biểu tượng vector/chữ thuần (không emoji trạng thái), bộ lọc/nút thực sự hoạt động nếu giao diện hỗ trợ, và mục RDC 5 tài khoản chỉ-đọc khi kết nối khả dụng.
