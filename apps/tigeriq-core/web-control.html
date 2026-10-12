@@ -15,15 +15,15 @@
 <body class="layout-sidebar-v2">
 <div class="shell container-fluid responsive-layout" role="region" aria-label="TigerIQ Web Control Dashboard">
 <aside class="sidebar" aria-label="Sidebar Navigation" role="navigation">
-  <div class="brand"><span class="mark">🐯</span><span>TigerIQ</span></div>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg></span><span>TigerIQ</span></div>
   <nav class="nav" id="nav">
     <button class="on" data-page="overview">⌂ <span class="txt">Tổng quan</span></button>
-    <button data-page="people">♙ <span class="txt">Nhân sự AI</span></button>
+    <button data-page="people"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> <span class="txt">Nhân sự AI</span></button>
     <button data-page="jobs">▣ <span class="txt">Công việc</span></button>
     <button data-page="objectives">◎ <span class="txt">Mục tiêu</span></button>
     <button data-page="history">◷ <span class="txt">Lịch sử</span></button>
     <button data-page="system">▧ <span class="txt">Giám sát hệ thống</span></button>
-    <button data-page="settings">⚙ <span class="txt">Cài đặt</span></button>
+    <button data-page="settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-1.9 1.9-.06-.06A1.65 1.65 0 0 0 16 18.4a1.65 1.65 0 0 0-1 .1V21h-3v-2.5a1.65 1.65 0 0 0-1-.1 1.65 1.65 0 0 0-1.82.33l-.06.06-1.9-1.9.06-.06A1.65 1.65 0 0 0 7.6 15c0-.33-.03-.67-.1-1H5v-3h2.5c.07-.33.1-.67.1-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06 1.9-1.9.06.06A1.65 1.65 0 0 0 11 6.6c.33 0 .67.03 1 .1V4h3v2.7c.33-.07.67-.1 1-.1a1.65 1.65 0 0 0 1.82-.33l.06-.06 1.9 1.9-.06.06A1.65 1.65 0 0 0 19.4 10c0 .33.03.67.1 1H22v3h-2.5c-.07.33-.1.67-.1 1Z"/></svg> <span class="txt">Cài đặt</span></button>
   </nav>
   <div class="side-bottom">
     <div class="mini-state"><b id="sideHealthLabel">● ĐANG KIỂM TRA</b><span id="sideHealth">Đang đồng bộ health…</span></div>
@@ -42,13 +42,13 @@
   <div class="metrics" id="metrics"></div>
   <div class="grid-top">
     <div class="stack">
-      <section class="panel"><div class="ph"><div><h2>⚙ Sơ đồ nhân sự AI</h2><small>Kiến trúc hệ thống và phân cấp điều hành</small></div><span id="syncText">—</span></div><div class="org"><div class="org-tree"><div class="org-line"><div class="node"><strong>Anh Sơn</strong><small>Quản lý hệ thống</small></div><div class="node vy"><strong>Vy (ChatGPT)</strong><small>Cố vấn / điều phối</small></div></div><div class="org-line"><div class="node manager"><strong>♛ AI Tổng quản lý PC01</strong><small>Điều phối & giám sát toàn bộ hệ thống</small></div></div><div class="core-row"><div class="core-node">TigerIQ Core<br><small>Xử lý trung tâm</small></div><div class="core-node">AI Manager<br><small>Quản lý nhân sự AI</small></div><div class="core-node">Queue / Job Engine<br><small>Phân phối công việc</small></div><div class="core-node">PostgreSQL<br><small>Lưu trữ dữ liệu</small></div><div class="core-node">GitHub Sync<br><small>Đồng bộ mã nguồn</small></div><div class="core-node">Web Control<br><small>Giao diện điều hành</small></div></div><div class="resources-strip" id="resourceStrip"></div></div></div></section>
-      <section class="panel board"><div class="ph"><div><h2>⚙ Bảng nhân sự AI</h2><small>Trạng thái thật của từng tài nguyên</small></div><div class="board-controls"><select id="providerFilter"><option value="all">Tất cả nhóm</option><option value="local">Local</option><option value="cloud">Cloud API</option></select><select id="stateFilter"><option value="all">Tất cả trạng thái</option><option value="working">Đang làm</option><option value="active">Đang làm / sẵn sàng</option><option value="problem">Có vấn đề</option></select><input id="searchPeople" placeholder="Tìm nhân sự…"></div></div><div class="workers" id="workers"></div></section>
+      <section class="panel"><div class="ph"><div><h2>Sơ đồ nhân sự AI</h2><small>Kiến trúc hệ thống và phân cấp điều hành</small></div><span id="syncText">—</span></div><div class="org"><div class="org-tree"><div class="org-line"><div class="node"><strong>Anh Sơn</strong><small>Quản lý hệ thống</small></div><div class="node vy"><strong>Vy (ChatGPT)</strong><small>Cố vấn / điều phối</small></div></div><div class="org-line"><div class="node manager"><strong>AI Tổng quản lý PC01</strong><small>Điều phối & giám sát toàn bộ hệ thống</small></div></div><div class="core-row"><div class="core-node">TigerIQ Core<br><small>Xử lý trung tâm</small></div><div class="core-node">AI Manager<br><small>Quản lý nhân sự AI</small></div><div class="core-node">Queue / Job Engine<br><small>Phân phối công việc</small></div><div class="core-node">PostgreSQL<br><small>Lưu trữ dữ liệu</small></div><div class="core-node">GitHub Sync<br><small>Đồng bộ mã nguồn</small></div><div class="core-node">Web Control<br><small>Giao diện điều hành</small></div></div><div class="resources-strip" id="resourceStrip"></div></div></div></section>
+      <section class="panel board"><div class="ph"><div><h2>Bảng nhân sự AI</h2><small>Trạng thái thật của từng tài nguyên</small></div><div class="board-controls"><select id="providerFilter"><option value="all">Tất cả nhóm</option><option value="local">Local</option><option value="cloud">Cloud API</option></select><select id="stateFilter"><option value="all">Tất cả trạng thái</option><option value="working">Đang làm</option><option value="active">Đang làm / sẵn sàng</option><option value="problem">Có vấn đề</option></select><input id="searchPeople" placeholder="Tìm nhân sự…"></div></div><div class="workers" id="workers"></div></section>
     </div>
     <aside class="stack">
-      <section class="panel"><div class="ph"><div><h2>⚙ Job Pipeline</h2><small>Luồng xử lý công việc thật</small></div></div><div class="body"><div class="pipeline" id="pipeline"></div></div></section>
+      <section class="panel"><div class="ph"><div><h2>Luồng công việc</h2><small>Luồng xử lý công việc thật</small></div></div><div class="body"><div class="pipeline" id="pipeline"></div></div></section>
       <section class="panel"><div class="ph"><div><h2>◎ Objective / Công việc chính</h2><small>Mục tiêu gần nhất</small></div></div><div id="objectivePreview"></div></section>
-      <section class="panel"><div class="ph"><div><h2>⚠ Cảnh báo & Sự kiện gần đây</h2><small>Biến động mới nhất</small></div></div><div class="events" id="eventsPreview"></div></section>
+      <section class="panel"><div class="ph"><div><h2>Cảnh báo &amp; sự kiện gần đây</h2><small>Biến động mới nhất</small></div></div><div class="events" id="eventsPreview"></div></section>
     </aside>
   </div>
 </section>

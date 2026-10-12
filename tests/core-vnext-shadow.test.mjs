@@ -155,4 +155,52 @@ describe('Core vNext shadow integration', () => {
       reason: 'event_does_not_require_reconcile',
     });
   });
+
+  it('never proposes tasks under owner hold or hard gate after normalization', () => {
+    const gatedTasks = [
+      { ...task, id: 'TASK-HOLD', resource_scope: 'SCOPE-HOLD', owner_hold: true },
+      { ...task, id: 'TASK-HARD', resource_scope: 'SCOPE-HARD', hard_gate: true },
+    ];
+    const run = rows => evaluateCoreVNextShadowCycle({
+      env: { TIGERIQ_CORE_VNEXT_LANGGRAPH_SHADOW: 'true' },
+      pool: {},
+      objective,
+      tasks: rows,
+      resources: [resource],
+      event: { type: 'new_work' },
+      nowMs,
+      maxDispatches: 3,
+    });
+    expect(run(gatedTasks).schedule).toMatchObject({ dispatches: [], idle: true });
+    const safe = run([...gatedTasks, { ...task, id: 'TASK-SAFE', resource_scope: 'SCOPE-SAFE' }]);
+    expect(safe.schedule.dispatches).toHaveLength(1);
+    expect(safe.schedule.dispatches[0].taskId).toBe('TASK-SAFE');
+    expect(safe.tasks[0]).toMatchObject({ owner_hold: true, hard_gate: false });
+    expect(safe.tasks[1]).toMatchObject({ owner_hold: false, hard_gate: true });
+  });
+
+  it('blocks all dispatch proposals for gated objectives and P0 objectives', () => {
+    const run = guardedObjective => evaluateCoreVNextShadowCycle({
+      env: { TIGERIQ_CORE_VNEXT_LANGGRAPH_SHADOW: 'true' },
+      pool: {},
+      objective: guardedObjective,
+      tasks: [task],
+      resources: [resource],
+      event: { type: 'new_work' },
+      nowMs,
+    });
+    for (const guardedObjective of [
+      { ...objective, owner_gate: 'OWNER_HOLD' },
+      { ...objective, priority: 'P0' },
+    ]) {
+      const result = run(guardedObjective);
+      expect(result.enabled).toBe(true);
+      expect(result.schedule).toEqual({
+        dispatches: [],
+        idle: true,
+        reason: 'objective_owner_gate',
+      });
+    }
+  });
+
 });

@@ -105,6 +105,22 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
+
+  it('accepts new emoji-free result inbox records and legacy records in the same projection', () => {
+    const result = parseOwnerResultComment({
+      id: 315, created_at: '2026-10-08T11:00:00Z',
+      body: [
+        '[KẾT QUẢ THỰC TẾ] #4569 - Chuẩn biểu tượng',
+        '[KẾT QUẢ] Đã xác minh kết quả.',
+        'Trạng thái: HOÀN TẤT',
+        'Verification=PASS',
+      ].join('\n'),
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ workOrderNumber: 4569, verification: 'ĐẠT' });
+    expect(result[0].result).toContain('Đã xác minh');
+  });
+
   it('#4464 keeps a valid empty Owner result inbox explicit', () => {
     const inbox = issue(4426, '[RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem', 'RESULT_INBOX=true');
     expect(projectOwnerResultInbox(inbox, [

@@ -4,7 +4,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
-import { annotatePortfolioRows, buildProjectPortfolio } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
 
@@ -438,7 +438,7 @@ function firstHttpsUrl(value = '') {
 
 export function parseOwnerResultComment(comment = {}) {
   const body = String(comment?.body || '');
-  const marker = /✅\s*\[KẾT QUẢ THỰC TẾ\]\s*/giu;
+  const marker = /(?:✅\s*)?\[KẾT QUẢ THỰC TẾ\]\s*/giu;
   const matches = [...body.matchAll(marker)];
   if (!matches.length) return [];
   const rows = [];
@@ -453,8 +453,8 @@ export function parseOwnerResultComment(comment = {}) {
     if (!identity) continue;
 
     const resultField = ownerResultField(block, ['RESULT']);
-    const narrativeLine = lines.find((line) => /✅\s*\[KẾT QUẢ\]/iu.test(line)) || '';
-    const narrative = narrativeLine.replace(/^.*?✅\s*\[KẾT QUẢ\]\s*/iu, '').trim();
+    const narrativeLine = lines.find((line) => /(?:✅\s*)?\[KẾT QUẢ\]/iu.test(line)) || '';
+    const narrative = narrativeLine.replace(/^.*?(?:✅\s*)?\[KẾT QUẢ\]\s*/iu, '').trim();
     const result = localizeOwnerFacingText(cleanText(resultField || narrative || 'Đã hoàn tất', 420));
 
     const explicitVerification = ownerResultField(block, ['VERIFICATION', 'VERIFY', 'XÁC MINH']);
@@ -1884,6 +1884,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       issueNumber: stabilityIssue ? 2891 : null,
     };
 
+    const displayPortfolio = buildProjectPortfolio(mergePortfolioWorkRows(
+      openWork, annotatePortfolioRows(activeRows, openIssues), recentWork,
+    ));
+
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
@@ -1892,7 +1896,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       portfolioProgress,
       completionProgress,
       apiWorkforceSummary,
-      projectPortfolio: buildProjectPortfolio(openWork),
+      projectPortfolio: displayPortfolio,
+      portfolioGroups: buildPortfolioGroups(displayPortfolio),
       activeWork: activeRows.sort((a, b) => compareQueueRows(
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
@@ -1924,6 +1929,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
@@ -2109,6 +2115,7 @@ export default async function handler(req, res) {
       nextQueueTotal: 0,
       recentWork: [],
       projectPortfolio: [],
+      portfolioGroups: [],
       workProjection: {
         mode: 'unavailable',
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',

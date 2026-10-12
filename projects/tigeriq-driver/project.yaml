@@ -1,0 +1,24 @@
+schema: tigeriq.project.v2
+id: tigeriq-driver
+name: TigerIQ Driver
+kind: project
+order: 90
+external_repositories:
+  - newsdayads/drivetrack
+source_mode: external_repository_owner_controls
+included_components:
+  - app.tigeriq.drivetrack
+  - app.tigeriq.dexshot
+excluded_components:
+  - dexcam-personal
+workstreams:
+  - id: driver-and-dexshot
+    name: Ứng dụng Driver và DeX Shot
+    order: 10
+  - id: finance
+    name: Cuốc xe và quyết toán
+    order: 20
+  - id: release
+    name: Phát hành và nghiệm thu thiết bị
+    order: 30
+integration_policy: no_cross_project_business_data_or_secrets

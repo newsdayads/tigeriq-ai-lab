@@ -196,6 +196,18 @@ export function executionResultGate(raw, packetInput) {
   return { pass:true, code:'EXECUTION_ACCEPTED', result, missing:[], evidenceIds:[...evidenceIds] };
 }
 
+// Validate before a provider is marked successful by the Core router.
+// A syntactically or evidentially invalid compiled response must use the
+// existing invalid_response failover policy instead of rewarding the provider.
+export function assertExecutionResultAccepted(raw,packet) {
+  const gate=executionResultGate(raw,packet);
+  if(!gate.pass){
+    const error=Object.assign(new Error(gate.code),{kind:'invalid_response',executionGate:gate});
+    throw error;
+  }
+  return gate;
+}
+
 export function strictExecutionRetryPrompt(compiledPrompt, gate) {
   const code = text(gate?.code, 'EXECUTION_RESULT_INVALID');
   return `${String(compiledPrompt || '').trim()}\n\nSTRICT RETRY: the previous output failed the deterministic acceptance gate with ${code}. Return one corrected ${EXECUTION_RESULT_VERSION} JSON object only. Do not claim complete unless every acceptance criterion is proven by evidence_refs.`;

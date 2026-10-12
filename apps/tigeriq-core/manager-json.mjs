@@ -22,7 +22,7 @@ export function managerLocalRequestBody(model,prompt){
     stream:false,
     think:false,
     format:'json',
-    options:{temperature:0,num_ctx:4096,num_predict:512},
+    options:{temperature:0,num_ctx:4096,num_predict:256},
   };
 }
 

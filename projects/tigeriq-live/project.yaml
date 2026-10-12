@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: tigeriq-live
 name: TigerIQ Live
 kind: project
+portfolio_group_id: tigeriq-ai
 order: 40
 source_roots:
   - command-center.html
