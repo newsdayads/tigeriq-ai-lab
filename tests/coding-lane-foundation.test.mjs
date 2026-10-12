@@ -10,7 +10,7 @@ const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
 
-import {normalizeManagerOllamaTimeout} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 test('#280 Manager-only Ollama time budget has bounded safe default, leaving Worker timeout separate',()=>{
   assert.strictEqual(normalizeManagerOllamaTimeout(undefined),45000);
@@ -46,6 +46,32 @@ test('#280 Manager timeout fails over after one aborted provider request, withou
   assert.strictEqual(result.resource.id,'NV20');
   assert.strictEqual(result.attempts,2);
   assert.strictEqual(result.failureLedger[0].class,'timeout');
+});
+
+
+test('#280 Ollama HTTP deadline aborts one pending request rather than leaving inference in flight',async()=>{
+  let requests=0;
+  let aborted=0;
+  const fetchImpl=(_url,{signal}={})=>{
+    requests++;
+    assert.ok(signal instanceof AbortSignal);
+    return new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>{
+        aborted++;
+        const error=new Error('The manager HTTP request was aborted');
+        error.name='AbortError';
+        reject(error);
+      },{once:true});
+    });
+  };
+  const started=Date.now();
+  await assert.rejects(
+    ()=>invokeOllamaChat('local-test','manager prompt',{fetchImpl,baseUrl:'http://127.0.0.1:11435',timeoutMs:1}),
+    error=>error?.name==='AbortError',
+  );
+  assert.ok(Date.now()-started<4000,'Ollama HTTP abort must be bounded by the supplied deadline');
+  assert.strictEqual(requests,1,'one HTTP request only');
+  assert.strictEqual(aborted,1,'the pending HTTP request must receive exactly one abort');
 });
 
 
