@@ -36,6 +36,7 @@ export async function seedLane({ root, lane, force = false } = {}) {
   const benchmarkRoot = path.resolve(root);
   const laneRoot = path.join(benchmarkRoot, lane);
   await mkdir(benchmarkRoot, { recursive: true });
+  if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
   // Atomic create: never erase or overwrite a previous benchmark lane.
   await mkdir(laneRoot);
 
