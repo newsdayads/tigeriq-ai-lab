@@ -1,6 +1,15 @@
 /* Shared read-only work-order audit: declarations are not execution receipts. */
 import {validateWorkOrderLifecycleV2} from '../tigeriq-core/work-order-lifecycle-v2.mjs';
 const MAX_EVENTS=60;
+export function recentCommentPages(total){
+ const n=Number(total);
+ if(!Number.isSafeInteger(n)||n<0)return [1];
+ const last=Math.max(1,Math.ceil(n/100));
+ return last>1?[last-1,last]:[1];
+}
+export function latestComments(pages){
+ return (Array.isArray(pages)?pages:[]).flatMap(p=>Array.isArray(p)?p:[]).slice(-100);
+}
 function val(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)$','m'));return m?m[1].trim():''}
 function safeText(v,max=220){return String(v||'').replace(/[\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max)}
 function url(v){const t=String(v||'');return /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/(?:issues|pull|commit)\/[a-zA-Z0-9_.#/-]+(?:\?.*)?$/.test(t)?t:null}
