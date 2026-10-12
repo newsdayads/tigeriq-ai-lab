@@ -671,7 +671,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).toContain("row.action='wait_repair'");
     expect(core).toContain("apiDoctorLatestResourceHandoff(resourceId)");
     expect(core).toContain("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)");
-    expect(core).toContain("apiDoctorCurrentFailure(events)");
+    expect(core).toContain("apiDoctorCurrentFailure(events,{preserveWorkFailure:true})");
     expect(core).toContain("apiDoctorHandoffMatchesFailureClass(handoffCandidate,plan.failureClass)");
     expect(core).toContain("row.handoff=canonicalRepairIssueNumber>0?'deferred_for_current_failure_class':'ignored_stale_failure_class'");
     expect(core.indexOf("if(handoffPlan.action==='recovered')")).toBeLessThan(core.indexOf("const existingHandoff=freshRecurrence?.fresh?null:("));
