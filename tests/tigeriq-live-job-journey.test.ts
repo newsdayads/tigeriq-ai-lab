@@ -18,7 +18,7 @@ describe('TigerIQ LIVE fast-glance responsive #4471', () => {
     expect(live).not.toContain('<nav class="v2-global-nav"');
     expect(live).not.toContain('<nav class="v2-mobile-nav"');
     expect(live).toContain('id="workListHeading">DANH SÁCH CÔNG VIỆC');
-    expect(live).toContain('id="workList" class="work-list"');
+    expect(live).toContain('id="workList" class="work-list tiq-work-center"');
   });
 
   it('moves project/workstream/job details off cards while preserving them in the detail drawer', () => {

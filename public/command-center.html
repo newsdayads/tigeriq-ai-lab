@@ -888,6 +888,7 @@ html,body,body{background:#071321!important}
 @media(max-width:1099px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}}
 @media(max-width:599px){.live-workers-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.live-worker-card{padding:6px 5px;border-radius:8px}.live-worker-top{align-items:flex-start;flex-direction:column;gap:2px}.live-worker-id{font-size:10px}.live-worker-state{font-size:8px}.live-worker-name{font-size:10px;margin:3px 0 2px}.live-worker-job{font-size:9px;line-height:1.25;min-height:23px}.live-worker-footer{font-size:8px;gap:2px;align-items:flex-start;flex-direction:column;margin-top:4px;padding-top:4px}.live-worker-code{max-width:100%}.live-worker-updated{font-size:8px}}
 </style>
+<link rel="stylesheet" href="/work-center-visual.css">
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -929,7 +930,7 @@ html,body,body{background:#071321!important}
     <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
     <button class="filter" data-filter="archived">ĐÃ ĐÓNG · CHỜ NGHIỆM THU <b id="archivedCount">0</b></button>
   </nav>
-  <div id="workList" class="work-list"></div>
+  <div id="workList" class="work-list tiq-work-center"></div>
 </section>
 </div>
 </details>

@@ -22,6 +22,7 @@ let sharedWorkCenterJs='';
 try{sharedWorkCenterJs=readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8')}catch{}
 let sharedWorkUiCss='';
 try{sharedWorkUiCss=readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8')}catch{}
+const sharedWorkCenterVisualCss=readFileSync(new URL('../../public/work-center-visual.css',import.meta.url),'utf8');
 const healthModelJs = readFileSync(new URL('./web-control-health-model.js', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
@@ -32,7 +33,7 @@ const mobileCss = readFileSync(new URL('./web-control-mobile.css', import.meta.u
 const workforceCss = readFileSync(new URL('./web-control-workforce.css', import.meta.url), 'utf8');
 const routingCss = readFileSync(new URL('./web-control-routing.css', import.meta.url), 'utf8');
 const html = baseHtml
-  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"><link rel="stylesheet" href="/web-control-routing.css"><link rel="stylesheet" href="/work-ui.css"><script src="/work-center.js"></script></head>')
+  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"><link rel="stylesheet" href="/web-control-routing.css"><link rel="stylesheet" href="/work-ui.css"><link rel="stylesheet" href="/work-center-visual.css"><script src="/work-center.js"></script></head>')
   .replace('</body>', '<script src="/web-control-health-model.js"></script><script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script><script src="/web-control-workforce.js"></script><script src="/web-control-routing.js"></script></body>');
 
 const securityHeaders = {
@@ -164,6 +165,7 @@ const server = createServer(async (req, res) => {
     }
     if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(sharedWorkCenterJs?200:503,{'content-type':'text/javascript; charset=utf-8'});return res.end(sharedWorkCenterJs)}
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(sharedWorkUiCss?200:503,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkUiCss)}
+    if(req.method==='GET'&&url.pathname==='/work-center-visual.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkCenterVisualCss)}
     if(req.method==='GET'&&url.pathname==='/api/work-history'){
       const number=url.searchParams.get('number')||'';
       if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
