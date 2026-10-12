@@ -1107,6 +1107,8 @@ function nv02LocalSelfPullEligible(issue) {
   if (['OWNER_HOLD','OWNER_GATE','OWNER_APPROVAL_REQUIRED','OWNER_REVIEW_REQUIRED',
     'OWNER_ACCEPTANCE_REQUIRED','MANUAL_GATE'].some((key)=>bodyFlag(active,key))) return false;
   if (v('BLOCKED_BY')&&!['NONE','NO','CLEARED'].includes(v('BLOCKED_BY'))) return false;
+  const contract=validateWorkOrderLifecycleV2(issue);
+  if(contract.required&&!contract.valid)return false;
   return true;
 }
 
@@ -1154,6 +1156,10 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
   if (/(?:NO_AI_RESOURCE_AVAILABLE|REVIEW_RESOURCE|REVIEWER|RESOURCE_STATE|PROVIDER|COOLDOWN|RATE_LIMIT|RESOURCE_UNAVAILABLE)/.test(waitText)) {
     return 'ELIGIBLE_AFTER_RESOURCE';
   }
+
+  // Invalid V2 cards remain parked even if a stale queue projection says READY.
+  const lifecycleGate=validateWorkOrderLifecycleV2(issue);
+  if(lifecycleGate.required&&!lifecycleGate.valid)return 'PARKED_DEPENDENCY';
 
   if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
   if (overlays.queued?.eligibleNow === true) return 'READY';
