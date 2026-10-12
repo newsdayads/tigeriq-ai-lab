@@ -1587,7 +1587,7 @@ describe('terminal lifecycle label regression in CI discovery',()=>{
 describe('V2 historical contract must not veto coding intake',()=>{
   const current='## ACTIVE WORK ORDER — V2\nWORK_ORDER_LIFECYCLE=V2\n'+SAFE
     +'\nCAPABILITY=coding\nEXECUTION_SURFACE=CODING\nRESOURCE_SCOPE=TIGERIQ_CLINE_SAFE_SOURCE_ONLY'
-    +'\nMUTATION_OWNER=NONE\nACTIVE_EXECUTION=false\nCURRENT_STATE=READY_SOURCE_RECONCILIATION'
+    +'\nMUTATION_OWNER=NONE\nTARGET_EMPLOYEE=NONE\nACTIVE_EXECUTION=false\nCURRENT_STATE=READY_SOURCE_RECONCILIATION'
     +'\nALLOW_PATH_PREFIX=benchmarks/cline-executor-eval,tests';
   const archived='\n## HISTORICAL CONTRACT\nEXECUTION_POLICY=#1456\nACTIVE_EXECUTION=true\nCANONICAL_SPEC=#1456'
     +'\nNO_SECURITY_BOUNDARY_CHANGE=false\nOWNER_HOLD=true';
@@ -1596,6 +1596,10 @@ describe('V2 historical contract must not veto coding intake',()=>{
     expect(parsed).not.toBeNull();
     expect(parsed.scopeLease.resourceScope).toBe('TIGERIQ_CLINE_SAFE_SOURCE_ONLY');
     expect(parsed.scopeLease.paths).toContain('benchmarks/cline-executor-eval');
+    expect(parsed.routing.targetEmployee).toBeNull();
+    expect(parseCodingRouteMetadata('TARGET_EMPLOYEE=NONE').targetEmployee).toBeNull();
+    expect(parseCodingRouteMetadata('TARGET_EMPLOYEE=NOPE').valid).toBe(false);
+    expect(parseCodingRouteMetadata('TARGET_EMPLOYEE=NV09').targetEmployee).toBe('NV09');
   });
   it('preserves current safety and QA role denials',()=>{
     expect(parseCodingIssue(issue(current.replace('ZERO_COST=true','ZERO_COST=false')+archived))).toBeNull();
