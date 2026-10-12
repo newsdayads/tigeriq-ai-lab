@@ -2,7 +2,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import '../public/work-center.js';
-import {completionProof,buildWorkHistory} from '../apps/shared/work-center-history.mjs';
+import {completionProof,buildWorkHistory,recentCommentPages,latestComments} from '../apps/shared/work-center-history.mjs';
 import {parseRecentCompletedIssue} from '../api/live-status.mjs';
 
 const wc=globalThis.TigerIQWorkCenter;
@@ -49,6 +49,18 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   const row=parseRecentCompletedIssue(issue(),Date.parse('2026-10-12T12:00:00Z'));
   expect(row).toMatchObject({status:'DONE',completionVerified:true,progressPercent:100,progressSource:'terminal',progressTotal:2});
   expect(row.lifecycleTiming.finishVerified).toBe(true);
+ });
+ it('loads last two comment pages only and returns the most recent 100 comments',()=>{
+  expect(recentCommentPages(0)).toEqual([1]);
+  expect(recentCommentPages(100)).toEqual([1]);
+  expect(recentCommentPages(101)).toEqual([1,2]);
+  expect(recentCommentPages(520)).toEqual([5,6]);
+  const first=Array.from({length:100},(_,i)=>({id:i+1}));
+  const second=Array.from({length:20},(_,i)=>({id:i+101}));
+  const recent=latestComments([first,second]);
+  expect(recent).toHaveLength(100);
+  expect(recent[0].id).toBe(21);
+  expect(recent[99].id).toBe(120);
  });
  it('separates comment author from AI executor and never invents start time',()=>{
   const history=buildWorkHistory(issue(),[
