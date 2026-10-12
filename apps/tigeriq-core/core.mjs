@@ -2915,7 +2915,7 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/work-history'){
       const number=url.searchParams.get('number')||'';
       res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
-      if(!/^[1-9]\\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
+      if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
       try{const value=await workCenterHistory(Number(number));res.writeHead(200);return res.end(JSON.stringify(value))}
       catch{res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_UNAVAILABLE'}))}
     }
