@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import {completionProof} from '../shared/work-center-history.mjs';
+// Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
+const completionModule=await import('../shared/work-center-history.mjs').catch(()=>null);
+const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
@@ -16,8 +18,10 @@ const GITHUB_WORK_ORDERS_DISABLED = process.env.TIGERIQ_GITHUB_WORK_ORDERS_DISAB
 const WORK_ORDER_CACHE_MS = 30000;
 let workOrderCache = { at: 0, workOrders: [], workOrdersRecent: [], meta: { ok: false, source: 'github', stale: true } };
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
-const sharedWorkCenterJs = readFileSync(new URL('./work-center.js', import.meta.url), 'utf8');
-const sharedWorkUiCss = readFileSync(new URL('./work-ui.css', import.meta.url), 'utf8');
+let sharedWorkCenterJs='';
+try{sharedWorkCenterJs=readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8')}catch{}
+let sharedWorkUiCss='';
+try{sharedWorkUiCss=readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8')}catch{}
 const healthModelJs = readFileSync(new URL('./web-control-health-model.js', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
@@ -158,8 +162,8 @@ const server = createServer(async (req, res) => {
       res.writeHead(204, { 'cache-control': 'public, max-age=86400' });
       return res.end();
     }
-    if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(200,{'content-type':'text/javascript; charset=utf-8'});return res.end(sharedWorkCenterJs)}
-    if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkUiCss)}
+    if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(sharedWorkCenterJs?200:503,{'content-type':'text/javascript; charset=utf-8'});return res.end(sharedWorkCenterJs)}
+    if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(sharedWorkUiCss?200:503,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkUiCss)}
     if(req.method==='GET'&&url.pathname==='/api/work-history'){
       const number=url.searchParams.get('number')||'';
       if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
