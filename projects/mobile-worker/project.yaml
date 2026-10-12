@@ -2,6 +2,7 @@ schema: tigeriq.project.v2
 id: tigeriq-mobile-worker
 name: TigerIQ Mobile Worker
 kind: project
+portfolio_group_id: tigeriq-ai
 order: 20
 source_roots:
   - apps/android-worker

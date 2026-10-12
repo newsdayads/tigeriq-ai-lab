@@ -9,7 +9,8 @@ const UI_CONTROLLER='http://127.0.0.1:8798/api/state';
 const UI_HEARTBEAT_STALE_MS=15000;
 const labels={
   NV02:'ChatGPT Plus',NV03:'ChatGPT Go',NV04:'Gemini Pro',
-  NV10:'Ollama',NV11:'Groq',NV12:'Gemini',NV13:'OpenRouter',NV14:'Mistral',
+  NV06:'PC Operator · OpenClaw',NV08:'Core AI Manager · Ollama Qwen3 8B',
+  NV09:'Core AI Coder · Ollama Qwen3.6 27B',NV10:'Core API Doctor · Ollama Qwen3 4B',NV11:'Groq',NV12:'Gemini',NV13:'OpenRouter',NV14:'Mistral',
   NV15:'Cloudflare Workers AI',NV16:'Hugging Face',NV17:'Inception / Mercury 2.5',
   NV18:'IBM watsonx.ai Lite',NV19:'Cohere',NV20:'NVIDIA NIM'
 };

@@ -1,8 +1,8 @@
 # TIGERIQ — WORKFLOW
-Version: 4.1
+Version: 4.2
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 ## 1. Ngôn ngữ và cách xưng hô
 - Mọi nội dung hiển thị trực tiếp cho anh Sơn phải dùng **TIẾNG VIỆT**.
@@ -84,6 +84,15 @@ Chứa trạng thái thay đổi thường xuyên: `docs/CURRENT_STATE.md`, CENT
 - Khi không còn bước an toàn nào khác, Work Order giữ đúng blocker thật và tự rearm khi dependency/event thay đổi; không bắt anh Sơn giao lại.
 - Việc có bề mặt LIVE/real-world chỉ được coi là hoàn tất sau khi kết quả thật được xác minh. Sau đó ghi một bản tóm tắt vào `#4426 - [RESULTS][OWNER] Kết quả thực tế chờ anh Sơn xem`; hộp kết quả chỉ để review sau kết quả, không phải approval gate.
 
+### 5.1.1. KHÓA CỨNG P0 VÀ QUYỀN LỆNH TRỰC TIẾP — mọi chat / mọi nhân sự AI
+- `P0_OWNER_VY_EXCLUSIVE=true`: chỉ anh Sơn và Vy điều hành P0. CORE, nhân sự AI, bộ điều phối và hàng đợi tự động KHÔNG tự nhận, điều phối, sửa, phát hành hoặc đóng P0. Mọi hỗ trợ có hành động vào P0 chỉ thực hiện khi đã có ủy quyền đúng phạm vi từ anh Sơn/Vy; không tự mở rộng quyền.
+- `OWNER_DIRECT_COMMAND_IS_AUTHORIZATION=true`: lệnh trực tiếp hiện hành của anh Sơn đứng đầu thứ tự quyết định trong TigerIQ. Lệnh có mục tiêu rõ ràng đủ để tự thực hiện các bước an toàn, có thể hoàn tác, không phát sinh chi phí trong phạm vi; **cấm yêu cầu anh xác nhận lại cùng quyền** chỉ vì nhãn hàng đợi, trạng thái nhân sự AI hay quy trình nội bộ.
+- `AI_QUEUE_REVIEW_CANNOT_VETO_OWNER=true`: nhân sự AI, người rà soát, trạng thái `AUTO_QUEUE` và nhãn `TIGERIQ_EXECUTABLE` là điều phối hoặc bằng chứng kỹ thuật, KHÔNG là cấp duyệt cao hơn anh Sơn. Nếu một bước thiếu người rà soát thì tự chuyển sang nguồn lực độc lập phù hợp; không yêu cầu Owner làm nhân viên rà soát.
+- `REVIEW_IS_NOT_OWNER_APPROVAL=true`: vẫn chạy các cổng kiểm thử, rà soát độc lập, bảo vệ nhánh và ghi bằng chứng cần thiết. Khi chưa đạt thì ghi rõ `CHỜ KIỂM THỬ / CHỜ RÀ SOÁT`, không nói Owner chưa cấp quyền. Nếu anh Sơn **phê duyệt miễn rà soát cho đúng phạm vi** và cổng tương ứng cho phép, lưu `OWNER_WAIVER`, tuyệt đối không khai `REVIEW_PASS`.
+- `REAL_HARD_GATES=PAID_FINANCIAL|CREDENTIAL_SECRET|SECURITY_PERMISSION_BOUNDARY|DESTRUCTIVE_IRREVERSIBLE|PHYSICAL_LEGAL`: hỏi anh **một lần theo thao tác và phạm vi cụ thể** nếu chưa có ủy quyền; không suy rộng ủy quyền sang việc khác. Các giới hạn pháp luật, dịch vụ/công cụ và bảo mật vẫn có hiệu lực. Cổng điều khiển máy tính từ xa chỉ mở theo từng lệnh đã được cấp quyền; Codex chỉ khi anh nêu rõ tên Codex và phạm vi.
+- `EXECUTE_WITH_EVIDENCE=true`: không có quyền tự nhận đạt, giả mạo kết quả, vượt rào kỹ thuật hoặc làm mất dữ liệu. Bước vướng thực sự được ghi và nhả khóa, tiếp tục các bước an toàn độc lập; chỉ báo HOÀN TẤT khi đã xác minh.
+- `SCOPE=ALL_TIGERIQ_CHATS_AND_AGENTS`: các tài khoản nạp Loader canonical phải thực thi cùng quy tắc theo Constitution, Workflow, Registry và chính sách #504; không sao chép bộ quyền riêng trái nguồn chuẩn. Cập nhật tài liệu không tự chứng minh môi trường chạy hiện hữu đã được nâng cấp.
+
 ## 6. Quy tắc chống mất việc khi đổi chat
 - Mọi việc chưa hoàn tất phải có state đủ để NEW CHAT tiếp tục mà không cần mở chat cũ.
 - Trước khi phiên đóng/chuyển chu kỳ, ghi tối thiểu: việc đã làm, kết quả, evidence, trạng thái, bước tiếp theo, blocker/wait/authorization nếu có.
@@ -122,7 +131,7 @@ Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, kh�
 ### Trình bày thống nhất trong mọi phản hồi
 - Mặc định 1–3 dòng khi câu hỏi đơn giản. Theo thứ tự **Kết quả → Điểm bị chặn thật (nếu có) → Bước tiếp theo**.
 - Khi nền tảng có thành phần giao diện tương tác: **ưu tiên icon vector cùng phong cách, thẻ màu, nhãn trạng thái, thanh tiến độ, biểu đồ thực**, không trộn emoji và dấu đầu dòng cổ điển trong cùng thẻ. Bản chữ dự phòng được dùng khi không hỗ trợ thành phần tương tác.
-- Bộ 8 emoji canonical `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` vẫn hợp lệ cho thông báo chữ thuần và các thông báo từ hệ thống; **không bắt buộc đặt emoji làm tiền tố của mọi mục** khi đã có icon vector/thẻ trạng thái. Các emoji cũ `📊 🚦 🔴 🔄 👥 🎯 🧾` không còn là tiêu đề bắt buộc.
+- **CẤM tạo emoji trạng thái/đầu mục/tiêu đề**, kể cả văn bản dự phòng; không còn ngoại lệ 8 emoji lịch sử. Có hỗ trợ thật thì dùng icon vector; không có thì dùng chữ trạng thái tiếng Việt. Giữ nguyên emoji thuộc dữ liệu người dùng/trích dẫn. Không ép giao diện gốc ChatGPT từ GitHub.
 - Ánh xạ màu nhất quán: xanh lá=hoàn tất có bằng chứng; xanh dương=đang xử lý có bằng chứng; vàng=chờ; đỏ=lỗi/bị chặn thật; tím=đang rà soát/xác minh; xám=không xác minh. Luôn có chữ, không dùng màu đơn độc.
 - Không tự bịa tỉ lệ: % chỉ từ checklist/tử số-mẫu số có kiểm chứng; không hiển thị 100% trước DONE; trạng thái dịch vụ/PC01 khác tiến độ hoàn tất công việc.
 
@@ -134,6 +143,15 @@ Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, kh�
 5. **Nhân sự AI** — trạng thái có chứng cứ hoặc ghi chưa xác minh.
 6. **Mốc kế tiếp** — hành động và điều kiện nghiệm thu.
 
+### BCCT CHUẨN CHỐT V5 — ƯU TIÊN CAO HƠN V4 VỀ BỐ CỤC
+- Dùng `docs/OWNER_BCCT_FINAL_V5.md` làm mẫu BCCT chính xác. Bắt buộc tiêu đề/nhãn/nút IN HOA.
+- RDC thanh mỏng ngay sau Header, mở rộng bằng thao tác; không chiếm diện tích mặc định.
+- Một hàng chỉ số nhỏ, danh sách công việc ưu tiên chiếm diện tích chính; bộ lọc; bấm từng công việc sẽ xem tiến trình/điểm chặn/bằng chứng; giữ nút HỒ SƠ/KIỂM TRA.
+- Mục hoàn tất thu gọn; P0, nhân sự AI, mốc kế tiếp ở cuối. Sáu nhóm BCCT vẫn giữ; không ép mẫu bảng dài hoặc thẻ lớn.
+- Chỉ % đã kiểm chứng, phân biệt công việc đang mở với thực thi thời gian thực; RDC chỉ đọc.
+- Quy định V5 chỉ áp dụng khi phiên thực sự nạp nguồn; không khẳng định can thiệp được trình kết xuất gốc ChatGPT.
+STATE=OWNER_BCCT_V5_WORKFLOW_ROUTED
+
 ### Báo cáo `bcct / báo cáo chi tiết`
 - Giữ 6 phần trên và mở rộng chi tiết kỹ thuật: tài nguyên, bằng chứng, lỗi, thay đổi, mã công việc và PR đầy đủ tên chuẩn.
 - Thêm **RDC 5 tài khoản**: chỉ đọc `who_am_i` và `list_devices` trên cả năm kết nối; hiển thị thanh % lượt gọi còn lại do nhà cung cấp trả, PC01 trực tuyến/ngoại tuyến, tài khoản ưu tiên. Không suy ra số lượt tuyệt đối từ %.
@@ -141,7 +159,7 @@ Quy định này thay thế các ví dụ báo cáo/icon cũ trong mục 10, kh�
 - Nếu thiếu dữ liệu hoặc giao diện không có biểu đồ, hiển thị bảng chữ ngắn, ghi rõ phần chưa xác minh.
 
 ### Kiểm tra trước khi trả lời
-- Tiếng Việt; 8 emoji status được giữ đúng nghĩa nếu có; không dùng icon hỗn hợp cũ/mới.
+- Tiếng Việt; không sinh emoji trạng thái; icon vector chỉ khi giao diện thật hỗ trợ, trường hợp khác hiển thị chữ thuần. Kiểm tra kết quả mới trên đúng bề mặt trước khi nhận hoàn tất.
 - Thống nhất kiểu thẻ, màu và độ rộng trên di động; không chèn số liệu demo vào báo cáo thực.
 - Tài liệu GitHub chỉ ràng buộc các phiên nạp nguồn; **không thể tự thay đổi giao diện gốc ChatGPT hoặc tự cập nhật toàn bộ chat đang mở**.
 
@@ -261,13 +279,15 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Xác minh Loader đọc được 5 Bootstrap canonical và nguồn động hiện hành.
 
 
-## 20. Ranh giới Core ↔ NV02/NV03/NV04
-- `NV02`, `NV03`, `NV04` là các UI/subscription worker nằm **ngoài quyền phân việc của Core**.
-- Core KHÔNG được assign, dispatch, route, claim hộ, revoke, reassign, heartbeat-gate, tạo `READY_UNASSIGNED` như một quyền điều khiển, hoặc chọn backlog cho ba worker này.
-- Ba worker này KHÔNG dùng Core role-fallback để tự scan/self-pull GitHub backlog; Owner-authorized NV02 local self-pull is a separate bounded lane.
-- Core tiếp tục tự động điều phối P1–P5 cho các resource chuyên dụng thuộc Core: API workers/Coding Lane, `NV06/OpenClaw`, và các resource khác đúng capability/health.
-- App Chrome là continuity transport cục bộ riêng cho `NV02/NV03/NV04`; không được dùng Core assignment hoặc GitHub backlog scan làm điều kiện gửi continue.
-- P0 Owner-only, one-resource-one-writer và các hard gate khác giữ nguyên.
+## 20. Ranh giới Core ↔ NV02/NV03/NV04 — phân quyền tách biệt
+- **NV02 (ChatGPT Plus)** là UI/subscription worker **ngoài quyền giao việc của Core**. Core KHÔNG được assign, dispatch, route, claim hộ, thu hồi, chuyển việc, heartbeat-gate hoặc tạo `READY_UNASSIGNED` để điều khiển NV02. NV02 chỉ tự nhận việc P1–P5 qua luồng local self-pull đã được Owner ủy quyền riêng; không được tự nhận P0.
+- **NV03 (ChatGPT Go)**: theo lệnh trực tiếp Owner 2026-10-10, được **ủy quyền chuẩn bị chế độ tự chọn/nhận và thực thi P1–P5 đúng năng lực** từ nguồn GitHub khi không có nhiệm vụ/lease Core còn hiệu lực; vẫn ưu tiên rà soát độc lập/QA. Việc tự nhận thật chỉ bật sau khi cổng chuyển chế độ Core↔self-pull, khóa chống tranh việc và kiểm chứng quyền GitHub của NV03 đạt. Trong nhiệm vụ `REVIEW_ONLY` tuyệt đối không sửa mã; khi NV03 thực thi mã phải chuyển kiểm duyệt cho người khác độc lập.
+- **NV04 (Gemini Pro)** tiếp tục nghiên cứu sâu, phản biện/kiểm duyệt độc lập, được Core giao P1–P5 phù hợp. Tự lấy việc qua GitHub là **phương án chưa kích hoạt**, cần đường đọc/claim GitHub đáng tin cậy cho Gemini và kiểm chứng lease tương tự trước khi bật; không tự mở quyền sửa mã.
+- Core ưu tiên NV03 cho rà soát độc lập, NV04 cho nghiên cứu/second opinion hoặc rà soát thay thế khi phù hợp. Người rà soát phải độc lập với người thực thi, đúng phiên bản mã được kiểm tra, có bằng chứng và kết quả rõ ràng; thiếu tài nguyên phù hợp chỉ chặn đúng bước rà soát, không dừng toàn bộ hàng đợi.
+- Quyền Core giao NV03/NV04 **không mở rộng sang NV02, không cấp quyền sửa App Chrome**, không cho NV03/NV04 tự ý thay đổi mã nguồn hoặc điều hành P0. Mọi hỗ trợ rà soát P0 chỉ theo giao việc có phạm vi rõ của anh Sơn/Vy; Core không tự nhận/giao/đóng P0.
+- Core tiếp tục điều phối các tài nguyên API, Coding Lane, `NV06/OpenClaw`, và tài nguyên chuyên dụng khác theo năng lực/trạng thái; giữ một người thực thi ghi trên mỗi RESOURCE_SCOPE, chống giao trùng, chuyển việc có kiểm soát và ghi bằng chứng khi hoàn tất.
+- App Chrome chỉ duy trì giao diện/tiếp tục phiên cục bộ cho `NV02/NV03/NV04`; **không là bên giao việc**, không quét GitHub, không tự chọn công việc, không thay đổi source/runtime theo lệnh Core. NV03 có thể nhận *lệnh nhắc tự lấy việc* trên Chrome cục bộ, nhưng chính worker phải kiểm chứng GitHub, claim và lease trong hệ điều phối hợp lệ; nhắc tự lấy việc không chứng minh đã nhận công việc. CORE_UI assignment là luồng Core có định danh Work Order/lease rõ ràng, không phải quyền điều khiển App Chrome.
+- P0 chỉ anh Sơn/Vy điều hành; các giới hạn chi phí, thông tin xác thực, bảo mật, hành động không thể hoàn tác và Codex giữ nguyên.
 
 
 ## 20.1. App Chrome LOCAL-only — ranh giới cứng
@@ -278,3 +298,18 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - GitHub vẫn là authority cho **công việc/quyền/role của NV02, NV03, NV04 và phần TigerIQ ngoài App Chrome**; GitHub không còn là source/deploy authority cho bản thân App Chrome.
 - Source App Chrome còn nằm trong repository chỉ là **frozen historical mirror**, không được dùng làm nguồn deploy hay căn cứ tự động mutation.
 - Ngoại lệ này không nới quyền cho bất kỳ actor nào khác: system chỉ được READ/OBSERVE App Chrome nếu cần dashboard; mutation App Chrome từ system luôn bị cấm.
+
+## 20.2. Cổng bật NV03 tự lấy việc P1–P5 — Owner 2026-10-10
+- `NV03_SELF_PULL_AUTHORIZED=true` chỉ là phê duyệt thay đổi; **không coi là đã triển khai hoặc tự nhận việc thành công**.
+- Phải chứng minh Core không còn đồng thời giao việc cho NV03 ở chế độ tự lấy; mọi nhiệm vụ `QUEUED|DISPATCHING|SUBMITTED|WORKING|WAITING_EVIDENCE|VERIFY` cùng worker/resource phải được xét trước khi mở quyền tự lấy.
+- Claim phải nguyên tử hoặc có một cơ chế lease toàn hệ thống tương đương; bỏ qua P0, OWNER_HOLD, lease còn hiệu lực, trùng scope, hard gates và bước chưa executable; ghi durable checkpoint và nhả lease khi DONE/BLOCKED/EXTERNAL_WAIT.
+- Chỉ tự làm P1–P5 có khả năng hoàn tất, không sửa App Chrome hoặc tự tạo/sửa Core trong lane chưa được phép. NV03 thực thi không thể tự rà soát độc lập chính kết quả đó; NV04 hoặc reviewer độc lập khác kiểm đúng HEAD và bằng chứng.
+- Kiểm thử quyết định, triển khai local-only qua Owner→Vy→PC01, xác minh quyền GitHub thật, 1 vòng nhận việc→tiến hành→kết thúc→đổi việc và giao trùng = 0. Thiếu bất kỳ cổng nào: `NV03_SELF_PULL_ACTIVE=false`, báo tình trạng thật.
+- NV04: chỉ đề xuất tự lấy `research|analysis|review`; **chưa phê duyệt kích hoạt**; giữ Core typed assignment khi chưa có đường đọc/claim GitHub tin cậy và bằng chứng kiểm thử.
+
+## 20.3. Owner yêu cầu NV03 độc lập Core — 2026-10-10
+- Owner chỉ đạo NV03 tự lấy việc GitHub P1–P5 giống NV02; Core không còn giao/đẩy việc mới tới NV03 khi cổng vận hành TIGERIQ_NV03_CORE_DISPATCH_DISABLED=1 được bật trên Core runtime PC01. Không tự đặt giá trị này trong mã hoặc giả runtime đã bật.
+- Đối với công việc Core đã có: chỉ rời việc sau khi được checkpoint/terminal có bằng chứng, không xóa nhiệm vụ chạy dở và không tuyên bố DONE nếu bị BLOCKED.
+- App Chrome PC01 LOCAL-only nhắc NV03 tự kiểm tra nguồn GitHub và tự nhận công việc trên tài khoản NV03; không phải dịch vụ claim GitHub. Chỉ được mutation sau khi chính NV03 xác minh GitHub hợp lệ và claim/lease không trùng. Không xung đột RESOURCE_SCOPE, không P0/hard gates, không tự review mã do chính mình làm.
+- NV04 vẫn do Core điều phối review/research, có thể nhận review thay NV03 khi đủ năng lực. Việc giao NV04 chưa bị Owner thay đổi.
+- NV03_SELF_PULL_ACTIVE là trạng thái phải chứng minh bằng bằng chứng trên PC01 và GitHub, không suy ra từ PR merge, cấu hình hoặc việc Chrome đã gửi prompt.

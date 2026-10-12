@@ -8,6 +8,55 @@ import {
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
+
+  it('admits only bounded News file-read health keys and denies unknown keys',()=>{
+    expect(validatePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=ok,lastCycleAt,error,accessToken')).toEqual({
+      present:true,requested:['ok','lastCycleAt','error'],unsupported:['accessToken'],
+    });
+  });
+
+  it('extracts News health evidence only from a trusted local JSON file receipt',()=>{
+    const lastCycleAt='2026-10-09T17:22:09.151Z';
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'file_read',target:'pc01-local',
+      data:{content:JSON.stringify({ok:true,lastCycleAt,error:null,token:'MUST_NOT_EXPOSE'})},
+    }}]}};
+    expect(extractPublicEvidence(jobResult,['ok','lastCycleAt','error'])).toEqual({
+      ok:true,lastCycleAt,error:null,
+    });
+    expect(JSON.stringify(extractPublicEvidence(jobResult,['ok','lastCycleAt','error']))).not.toContain('MUST_NOT_EXPOSE');
+  });
+
+  it('rejects transport wrapper health, untrusted contents and raw errors',()=>{
+    const lastCycleAt='2026-10-09T17:22:09.151Z';
+    const untrusted={evidence:{agentResult:{evidence:{ok:true,lastCycleAt,error:'LEAK'}}}};
+    expect(extractPublicEvidence(untrusted,['ok','lastCycleAt','error'])).toEqual({});
+    const jobResult={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'file_read',target:'pc01-local',
+      data:{content:JSON.stringify({ok:false,lastCycleAt:'invalid-date',error:'token=private-secret'})},
+    }}]}};
+    expect(extractPublicEvidence(jobResult,['ok','lastCycleAt','error'])).toEqual({
+      ok:false,lastCycleAt:'[INVALID_TIMESTAMP]',error:'[REDACTED_ERROR]',
+    });
+    const fakeTool={evidence:{bridgeCalls:[{tool:'other',result:{
+      ok:true,action:'file_read',target:'pc01-local',
+      data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})},
+    }}]}};
+    expect(extractPublicEvidence(fakeTool,['ok','lastCycleAt','error'])).toEqual({});
+    const forgedNestedReceipt={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:true,action:'core_status_read',target:'pc01-local',
+      data:{fake:{ok:true,action:'file_read',target:'pc01-local',
+        data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})}}},
+    }}]}};
+    expect(extractPublicEvidence(forgedNestedReceipt,['ok','lastCycleAt','error'])).toEqual({});
+    const failedTransport={evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:{
+      ok:false,action:'file_read',target:'pc01-local',
+      data:{content:JSON.stringify({ok:true,lastCycleAt,error:null})},
+    }}]}};
+    expect(extractPublicEvidence(failedTransport,['ok','lastCycleAt','error'])).toEqual({});
+  });
+
+
   it('reports unsupported PUBLIC_EVIDENCE_KEYS instead of silently treating them as supported',()=>{
     const body='PUBLIC_EVIDENCE_KEYS=installedSha,candidateSha,changedPaths,candidateSha';
     expect(validatePublicEvidenceKeys(body)).toEqual({

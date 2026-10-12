@@ -1,7 +1,7 @@
 # TIGERIQ — BASELINE DECISIONS
-Version: 2.5
+Version: 2.6
 Status: Bootstrap Baseline
-Updated: 2026-09-24
+Updated: 2026-10-08
 
 ## Mục đích
 File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHAT cần biết sau khi nạp `bootstrap/00_TIGERIQ_LOADER.md`. Không dùng file này để lưu P0 hiện tại, lỗi runtime, model/API đang dùng, command→employee mapping, danh sách employee, Work Order, issue hoặc kế hoạch triển khai tạm thời.
@@ -25,11 +25,12 @@ File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHA
 - Drive chỉ là mirror/tài liệu tham khảo hoặc fallback giao diện khi bắt buộc; không phải authority độc lập nếu xung đột với GitHub canonical.
 - Thêm command/employee/mapping/role/capability trong authority envelope hiện hữu là thay đổi động; không yêu cầu sửa Loader.
 - Chỉ thay Loader khi source locator, generic loading, fail-closed contract hoặc danh sách Bootstrap canonical thay đổi.
-- Production, paid service, financial commitment, credential/security boundary và irreversible action luôn đi qua gate/quyền phù hợp.
+- P0 chỉ do anh Sơn và Vy điều hành trực tiếp; CORE/NV không được tự nhận, điều phối, sửa hoặc phát hành P0. Lệnh trực tiếp của anh là ủy quyền theo đúng phạm vi, không phải xin AI, người rà soát hay hàng đợi cấp phép lại; trạng thái kỹ thuật không phải cấp quyền Owner.
+- P1–P5 đã được anh giao thì phát hành chính thức an toàn/có thể hoàn tác/không phát sinh chi phí trong phạm vi được phép sau khi qua cổng kỹ thuật. Trả phí/tài chính, thông tin xác thực, thay đổi quyền/bảo mật và thao tác phá hủy/không thể hoàn tác đòi hỏi ủy quyền cụ thể; không suy rộng. Codex chỉ khi anh nêu đích danh và phạm vi. Rà soát độc lập là nghĩa vụ của hệ thống, không phải cửa xin phép anh lần nữa.
 - Không giả vờ AI/NV đang chạy nền hoặc song song nếu runtime không thực sự hỗ trợ.
 - Một Work Order/resource scope chỉ có một active owner; takeover phải idempotent và theo policy động hợp lệ, không bypass Owner hold hay authorization gate.
 - `CMD` = **Remote Desktop Commander / Remote MCP**; `SHELL` = **cmd.exe / PowerShell / terminal**. Routing xuyên chat: GitHub connector → direct app/API/HTTPS bridge → Vercel/read-only cloud view → CMD → SHELL. CMD chỉ device-bound/break-glass, không làm data bus/hot path; status-only vượt 2–3 CMD calls là observability gap phải sửa API/bridge. Tuyệt đối không code repository bằng CMD hoặc SHELL trên PC01; source engineering chỉ GitHub branch → PR → checks → review → merge.
-- Một mục tiêu đã được anh Sơn giao là standing authorization cho mọi bước safe/reversible/zero-cost trong cùng scope: tự chạy branch → PR → checks → review → merge → bước kế tiếp khi đủ gate; không xin duyệt từng bước. Chỉ dừng ở Production/runtime release, paid/financial, credential/security boundary, destructive/irreversible, physical action, intent xung đột, blocker thật hoặc external wait.
+- Một mục tiêu đã được anh Sơn giao là standing authorization cho mọi bước an toàn, có thể hoàn tác, không phát sinh chi phí trong cùng phạm vi: tự chạy nhánh → PR → kiểm thử → rà soát → hợp nhất → phát hành khi đủ điều kiện; không xin duyệt từng bước. Chỉ dừng ở đúng cổng quyền chưa được cấp, ý định xung đột, lỗi kỹ thuật thật hoặc chờ bên ngoài; không giả `ĐẠT` khi chưa có bằng chứng.
 
 ## Những gì CỐ Ý không lưu ở đây
 Các nội dung sau phải lấy từ dynamic state và có thể thay đổi mà KHÔNG cập nhật Loader:

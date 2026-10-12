@@ -45,7 +45,7 @@ describe('manager JSON parsing',()=>{
       stream:false,
       think:false,
       format:'json',
-      options:{temperature:0,num_ctx:4096,num_predict:512},
+      options:{temperature:0,num_ctx:4096,num_predict:256},
     });
   });
   it('reserves the final manager stage for local fallback',()=>{

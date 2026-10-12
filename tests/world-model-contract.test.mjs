@@ -169,4 +169,15 @@ describe('Core vNext world model contract', () => {
     expect(sideEffectIdempotencyKey({ ...base, source_revision: 'main@def456' })).not.toBe(first);
     expect(sideEffectIdempotencyKey({ ...base, effect: 'publish-live' })).not.toBe(first);
   });
+
+  it('preserves owner-hold and hard-gate flags and rejects malformed flag types', () => {
+    expect(normalizeTask(task)).toMatchObject({ owner_hold: false, hard_gate: false });
+    expect(normalizeTask({ ...task, owner_hold: true, hard_gate: true }))
+      .toMatchObject({ owner_hold: true, hard_gate: true });
+    expect(() => normalizeTask({ ...task, owner_hold: 'true' }))
+      .toThrow('WORLD_MODEL_TASK_OWNER_HOLD_INVALID');
+    expect(() => normalizeTask({ ...task, hard_gate: 'false' }))
+      .toThrow('WORLD_MODEL_TASK_HARD_GATE_INVALID');
+  });
+
 });

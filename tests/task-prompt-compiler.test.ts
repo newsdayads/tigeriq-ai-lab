@@ -1,9 +1,11 @@
 // @ts-nocheck
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   buildExecutionPacket,
   compileTaskPrompt,
   executionResultGate,
+  assertExecutionResultAccepted,
   parseExecutionResult,
   strictExecutionRetryPrompt,
 } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
@@ -98,4 +100,25 @@ describe('Task Prompt Compiler V1',()=>{
     expect(retry).toContain('EXECUTION_ACCEPTANCE_MISSING');
     expect(retry).toContain('Return one corrected EXECUTION_RESULT_V1 JSON object only');
   });
+  it('11 rejects invalid provider text before resource success and permits verified alternative',()=>{
+    const {packet}=compileTaskPrompt(base);
+    const wrong=()=>assertExecutionResultAccepted('not-json',packet);
+    expect(wrong).toThrow('EXECUTION_RESULT_JSON_INVALID');
+    try{ wrong(); }catch(error){expect(error.kind).toBe('invalid_response');}
+    expect(assertExecutionResultAccepted(accepted(packet),packet).pass).toBe(true);
+  });
+
+  it('12 Core router performs compiled acceptance before marking the provider healthy',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function invokeRouted(');
+    const stop=source.indexOf('function buildNv09CanaryPrompt(',start);
+    const router=source.slice(start,stop);
+    expect(start).toBeGreaterThan(-1);
+    expect(stop).toBeGreaterThan(start);
+    expect(router).toMatch(/options\.validateText\(text\).*?markResourceSuccess/s);
+    expect(source).toContain('const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;');
+    expect(source).toContain('employeeAllowlist,validateText,compiledPacket}');
+    expect(source.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);
+  });
+
 });

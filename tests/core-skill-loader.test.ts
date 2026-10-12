@@ -142,8 +142,8 @@ test('Core manager invokes loader and appends matched skill context', () => {
 test('all ACTIVE registry skills have canonical contract files and fields', () => {
   const registryPath = join(process.cwd(), 'docs/skills/registry.yaml');
   const registry = parseSkillRegistry(readFileSync(registryPath, 'utf8'));
-  assert.equal(registry.skills.length, 17);
-  assert.equal(new Set(registry.skills.map((skill: Entry) => skill.id)).size, 17);
+  assert.equal(registry.skills.length, 18);
+  assert.equal(new Set(registry.skills.map((skill: Entry) => skill.id)).size, registry.skills.length);
 
   for (const skill of registry.skills) {
     assert.ok(skill.version, `${skill.id} must have version`);
