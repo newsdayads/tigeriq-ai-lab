@@ -7,6 +7,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
   const live=readFileSync(new URL('../command-center.html',import.meta.url),'utf8');
   const livePublic=readFileSync(new URL('../public/command-center.html',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../public/work-ui.css',import.meta.url),'utf8');
+  const workCenter=readFileSync(new URL('../public/work-center.js',import.meta.url),'utf8');
 
   it('uses one shared Work UI stylesheet on Live and API Health',()=>{
     expect(dashboard).toContain('href="/work-ui.css"');
@@ -29,19 +30,19 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('overflow-y:auto!important');
     expect(shared).toContain('.api-health .wo-list,.api-health .work-list{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))');
     expect(dashboard).toContain('id="workList" class="wo-list work-list"');
-    expect(dashboard).toContain('class="work-row health-live-work-card status-');
-    expect(dashboard).toContain('class="work-top"');
-    expect(dashboard).toContain('class="work-title"');
-    expect(dashboard).toContain('class="work-hierarchy"');
+    expect(dashboard).toContain('TigerIQWorkCenter.renderCards(workList,rows');
+    expect(workCenter).toContain('class="work-top"');
+    expect(workCenter).toContain('class="work-title"');
+    expect(workCenter).toContain('class="work-hierarchy"');
     expect(dashboard).not.toContain('.wo-card{');
     expect(dashboard).not.toContain('class="wo-card');
     expect(dashboard).toContain('function healthWorkProof(row,status)');
     expect(dashboard).toContain('function healthWorkQuick(row,status)');
     expect(dashboard).not.toContain('<div class="work-facts"><div><b>Vừa xong:</b>');
     expect(dashboard).toContain("while(/^\\[[^\\]]+\\]\\s*/.test(t))");
-    expect(dashboard).toContain("'RÀ SOÁT':'REVIEW'");
-    expect(dashboard).toContain("'ĐANG XỬ LÝ':'WORKING'");
-    expect(dashboard).toContain("'ĐANG CHỜ':'WAITING'");
+    expect(workCenter).toContain("'RÀ SOÁT':'REVIEW'");
+    expect(workCenter).toContain("'ĐANG XỬ LÝ':'WORKING'");
+    expect(workCenter).toContain("'ĐANG CHỜ':'WAITING'");
     expect(shared).toContain('/* #3918 visual parity R2');
     expect(shared).toContain('.work-row.status-review,.work-row.status-waiting,.work-row.status-verify');
     expect(shared).toContain('.work-row .state.review,.work-row .state.waiting,.work-row .state.verify');
@@ -52,7 +53,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('/* #3918 three-card work grid */');
     expect(shared).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
     expect(dashboard).toContain('function woProgress(x,s)');
-    expect(dashboard).toContain('Chưa đủ dữ liệu để tính %');
+    expect(workCenter).toContain('sourceGate!==false');
     expect(dashboard).toContain("kind:'checks'");
     expect(dashboard).toContain("kind:'stage'");
   });
@@ -97,7 +98,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('id="workDetailBackdrop"');
     expect(dashboard).toContain('id="workDetailGithub"');
     expect(dashboard).toContain('function openWorkDetail(row,trigger)');
-    expect(dashboard).toContain('data-work-number=');
+    expect(workCenter).toContain('data-work-number');
     expect(dashboard).not.toContain('target="_blank" rel="noopener"><div class="work-main"');
     expect(shared).toContain('/* #3918 live-system activity pass */');
     expect(shared).toContain('.api-health .workforce-panel .panel-h h2');
@@ -152,7 +153,7 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.api-health .work-row.status-open{');
     expect(shared).toContain('animation:none;');
     expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
-    expect(dashboard).toContain("prog.pct===null?");
+    expect(dashboard).toContain("p.pct===null?");
     expect(dashboard).toContain("class=\"progress stage stage-");
     expect(dashboard).toContain("style=\"width:${prog.pct}%\"");
     expect(dashboard).toContain("mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE'");
@@ -207,8 +208,8 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain("row?.progressChecklistVerified===true");
     expect(dashboard).toContain('class="work-step-summary"');
     expect(dashboard).toContain('class="work-progress-bottom"');
-    expect(dashboard).toContain('class="work-id"');
-    expect(dashboard).toContain('class="work-hierarchy"');
+    expect(workCenter).toContain('class="work-id"');
+    expect(workCenter).toContain('class="work-hierarchy"');
     expect(dashboard).toContain('function healthWorkQuick(row,status)');
     expect(dashboard).toContain('function healthWorkIcon(status)');
     expect(dashboard).toContain('function openWorkDetail(row,trigger)');
