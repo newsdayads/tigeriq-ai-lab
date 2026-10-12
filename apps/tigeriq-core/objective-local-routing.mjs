@@ -22,3 +22,10 @@ export function mayWaitAfterLocalFailure({profile='AUTO',message='',failures=[],
     && failures.length>0
     && failures.every(item=>RETRYABLE_LOCAL_RESOURCE_FAILURES.has(String(item?.kind||'')));
 }
+
+// The live router forces GitHub coordination auto-work to LOCAL even if its
+// persisted job metadata retains AUTO. Retries must use that same effective
+// profile; otherwise transient NV10 unavailability becomes a terminal failure.
+export function effectiveCoreJobRoutingProfile(job={}) {
+  return job?.kind==='github_api_autowork'?'LOCAL':String(job?.routing_profile||'AUTO');
+}
