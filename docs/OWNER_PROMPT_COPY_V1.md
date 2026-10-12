@@ -12,7 +12,7 @@ Khi anh Sơn yêu cầu `prompt`, `đưa prompt`, `qua Work`, `giao NV` hoặc y
 - **ĐÚNG 01 dòng vật lý** chứa toàn bộ câu lệnh (không ngắt dòng, không Markdown list, không bảng, không WritingBlock, không nhiều prompt).
 - Bắt đầu ngay bằng chuỗi chính xác **`LÀM — NO YAPPING.`**.
 - Nội dung sau tiền tố đầy đủ MỤC TIÊU, NGUỒN, THỰC HIỆN, GIỚI HẠN, NGHIỆM THU, BÁO CÁO khi tác vụ cần; có thể dùng dấu chấm phẩy để phân tách trên cùng một dòng.
-- Không rút mất điều kiện an toàn, bằng chứng, thẩm quyền hoặc cách nghiệm thu để rút ngắn một dòng; nếu dài, cho phép cuộn ngang khi nền tảng hỗ trợ.
+- Không rút mất điều kiện an toàn, bằng chứng, thẩm quyền hoặc cách nghiệm thu để rút ngắn một dòng. **Trên giao diện TigerIQ tự sở hữu:** bảo đảm CSS `white-space: pre; overflow-x: auto` (không ngắt dòng mềm), khung cao một hàng và cuộn ngang khi dài. Trên ChatGPT native, cách ngắt dòng hình ảnh phụ thuộc trình kết xuất gốc và không thể khóa bằng GitHub.
 - Cú pháp bắt buộc phải xuống dòng (ví dụ mã lệnh phụ thuộc newline) là **ngoại lệ theo yêu cầu Owner riêng**, không lén thay đổi luật một-dòng chung.
 - Câu hỏi về quy định, thảo luận định dạng hoặc giải thích nội dung prompt **không tự động là yêu cầu xuất prompt**.
 
