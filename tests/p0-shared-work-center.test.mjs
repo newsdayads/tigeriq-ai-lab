@@ -35,6 +35,16 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor({openWork:[{workKind:'WORK',status:'WAITING'},{workKind:'WORK',status:'WORKING'}]},'action')).toHaveLength(2);
   expect(wc.rowsFor({recentWork:[{status:'DONE',completionVerified:false},{status:'DONE',completionVerified:true}]},'done')).toHaveLength(1);
  });
+ it('keeps four summary views and never counts a closed-only issue as done',()=>{
+  const open=[{number:1,workKind:'WORK',status:'WORKING',activeLease:true,heartbeatFresh:true},{number:2,workKind:'WORK',status:'REVIEW'},{number:3,workKind:'WORK',status:'BLOCKED'}];
+  const recent=[{number:4,workKind:'WORK',status:'DONE',completionVerified:true},{number:5,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false}];
+  const data={openWork:open,recentWork:recent};
+  expect(wc.rowsFor(data,'all').map(x=>x.number)).toEqual([1,2,3,4,5]);
+  expect(wc.rowsFor(data,'working').map(x=>x.number)).toEqual([1]);
+  expect(wc.rowsFor(data,'waitblocked').map(x=>x.number)).toEqual([2,3]);
+  expect(wc.rowsFor(data,'closed').map(x=>x.number)).toEqual([4,5]);
+  expect(wc.progress(recent[1]).verified).toBe(false);
+ });
  it('rejects Issue closed and metadata-only completion without independent receipts',()=>{
   expect(completionProof(issue('STATE=DONE')).verified).toBe(false);
   expect(parseRecentCompletedIssue(issue('STATE=DONE'))).toBeNull();
