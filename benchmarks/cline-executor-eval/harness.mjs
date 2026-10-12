@@ -87,16 +87,24 @@ export async function scoreFixture(fixtureRoot) {
   try { currentTask = await readFile(path.join(fixtureRoot, 'TASK.md'), 'utf8'); } catch {}
   const taskMutated = sha256(currentTask) !== sha256(expectedTask);
 
-  const testRun = spawnSync(process.execPath, ['--test', 'tests'], {
+  // Explicit files are mandatory: `node --test tests` can succeed with
+  // zero discovered tests on some Node versions and falsely score 3/3.
+  const testFiles = Object.keys(expectedFiles)
+    .filter((rel) => /^tests\/.+\.test\.[cm]?js$/.test(rel))
+    .sort();
+  if (testFiles.length === 0) throw new Error('FIXTURE_TESTS_MISSING:' + fixtureId);
+  const testRun = spawnSync(process.execPath, ['--test', ...testFiles], {
     cwd: fixtureRoot,
     encoding: 'utf8',
     timeout: 120000,
   });
-  const testsPass = testRun.status === 0;
+  const testCount = Number(String(testRun.stdout || '').match(/^# tests (\d+)\s*$/m)?.[1] || 0);
+  const testsPass = testRun.status === 0 && testCount > 0;
   return {
     fixtureId,
     completed: testsPass && !testsMutated && !taskMutated && unexpectedFiles.length === 0,
     testsPass,
+    testCount,
     testExitCode: testRun.status,
     testsMutated,
     taskMutated,
