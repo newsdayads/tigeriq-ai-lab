@@ -50,3 +50,5 @@ trusted proof. The returned `KEEP` / `CANARY` / `REJECT` is only a candidate
 decision; it does not grant merge, Core routing or Production authorization.
 Tests of this decision function use synthetic fixtures solely to prove its
 fail-closed behavior; they are **not the actual PC01 benchmark**.
+
+Additional raw-scoring gate: require every fixture's original `testExitCode`, `filesChanged`, `linesChanged`, bounded TAP `stdoutTail` and `stderrTail`, plus canonical score version and completion rate. Tests claiming PASS must show a complete TAP trailer with every test passed and exit 0; missing, skipped-only, forged exit/status, or all-zero-success lanes are blocked rather than assigned a meaningful KEEP decision. This source-only gate does not itself prove who produced the receipt; external trusted isolated execution attestation remains mandatory.
