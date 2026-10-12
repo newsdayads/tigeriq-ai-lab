@@ -73,6 +73,24 @@ export function fixtureChildEnvironment(source=process.env){
     .map((key)=>[key,source[key]]));
 }
 
+/** TAP must show every discovered acceptance test genuinely passed. */
+export function verifyFixtureTapSummary({status,stdout}={}){
+  const lines=String(stdout||'').split(/\r?\n/);
+  const read=(field)=>{
+    const prefix='# '+field+' ';
+    const rows=lines.filter(line=>line.startsWith(prefix));
+    if(rows.length!==1)return null;
+    const text=rows[0].slice(prefix.length).trim();
+    if(!/^\d+$/.test(text))return null;
+    return Number(text);
+  };
+  const testCount=read('tests'),passed=read('pass');
+  const failed=read('fail'),skipped=read('skipped'),todo=read('todo'),cancelled=read('cancelled');
+  const complete=[testCount,passed,failed,skipped,todo,cancelled].every(Number.isSafeInteger);
+  const testsPass=complete&&status===0&&testCount>0&&passed===testCount&&failed===0&&skipped===0&&todo===0&&cancelled===0;
+  return {testCount:testCount||0,passed:passed||0,skipped:skipped||0,testsPass};
+}
+
 export async function scoreFixture(fixtureRoot) {
   const manifest = await readManifest();
   const fixtureId = path.basename(path.resolve(fixtureRoot));
@@ -126,8 +144,7 @@ export async function scoreFixture(fixtureRoot) {
     encoding: 'utf8',
     timeout: 120000,
   });
-  const testCount = Number(String(testRun.stdout || '').match(/^# tests (\d+)\s*$/m)?.[1] || 0);
-  const testsPass = testRun.status === 0 && testCount > 0;
+  const {testCount,testsPass} = verifyFixtureTapSummary(testRun);
   return {
     fixtureId,
     completed: testsPass && !testsMutated && !taskMutated && unexpectedFiles.length === 0,

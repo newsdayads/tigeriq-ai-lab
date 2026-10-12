@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { seedLane, scoreLane, fixtureChildEnvironment } from '../benchmarks/cline-executor-eval/harness.mjs';
+import { seedLane, scoreLane, fixtureChildEnvironment, verifyFixtureTapSummary } from '../benchmarks/cline-executor-eval/harness.mjs';
 
 test('benchmark harness seeds identical deterministic fixtures and baseline fails acceptance', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tigeriq-cline-bench-'));
@@ -112,4 +112,18 @@ test('scorer rejects symlinks in executor-writable fixtures', {skip: process.pla
   const alias=path.join(root,'symlink-root');
   await symlink(root,alias,'dir');
   await assert.rejects(seedLane({root:alias,lane:'otherlane'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
+});
+
+test('TAP scoring rejects skipped-only, todo-only and missing summaries',()=>{
+  const n=String.fromCharCode(10);
+  const summary=(tests,pass,skip=0,todo=0,cancel=0,fail=0)=>[
+    'TAP version 13','# tests '+tests,'# pass '+pass,'# fail '+fail,
+    '# cancelled '+cancel,'# skipped '+skip,'# todo '+todo
+  ].join(n)+n;
+  assert.deepEqual(verifyFixtureTapSummary({status:0,stdout:summary(2,2)}),
+    {testCount:2,passed:2,skipped:0,testsPass:true});
+  for(const stdout of [summary(1,0,1),summary(1,0,0,1),summary(1,0,0,0,1),
+                       summary(0,0),summary(2,1),summary(1,1).replace('# skipped 0','')])
+    assert.equal(verifyFixtureTapSummary({status:0,stdout}).testsPass,false);
+  assert.equal(verifyFixtureTapSummary({status:1,stdout:summary(2,2)}).testsPass,false);
 });
