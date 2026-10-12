@@ -3,6 +3,7 @@ import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './m
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
+import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -633,6 +634,10 @@ export function safeAutoWorkAdmission(issue){
   if(bodyValue(currentSafetyBody,'TIGERIQ_EXECUTABLE').toLowerCase()!=='true')return {eligible:false,reason:'EXECUTION_FLAG_REQUIRED'};
   const priority=bodyValue(currentSafetyBody,'PRIORITY').toUpperCase();
   if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
+  // Newly created work cards must have source-valid lifecycle/steps/timing before auto-intake.
+  // Existing legacy cards are not silently disabled; NV02 external pull requires its own gate.
+  const lifecycleContract=validateWorkOrderLifecycleV2(issue);
+  if(lifecycleContract.required&&!lifecycleContract.valid)return {eligible:false,reason:'LIFECYCLE_V2_CONTRACT_INVALID',missing:lifecycleContract.missing};
   const ownerPolicy=bodyValue(currentSafetyBody,'OWNER_POLICY').toUpperCase();
   if(!ownerPolicy&&bodyValue(body,'OWNER_POLICY'))return {eligible:false,reason:'HISTORICAL_ONLY_OWNER_POLICY'};
   if(ownerPolicy&&!['AUTO','AUTO_AFTER_GATE'].includes(ownerPolicy))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};

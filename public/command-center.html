@@ -940,6 +940,7 @@ html,body,body{background:#071321!important}
       <div id="drawerChecklistHint" class="drawer-checklist-hint"></div>
     </section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
+    <section id="drawerTimingSection" class="drawer-section"><h3>THỜI GIAN THỰC HIỆN</h3><div class="drawer-row"><span>Bắt đầu</span><span id="drawerStartAt">Chưa xác minh</span></div><div class="drawer-row"><span>ETA xong</span><span id="drawerTargetAt">Chưa xác định</span></div><div class="drawer-row"><span>Hạn bước</span><span id="drawerCheckpointAt">Chưa xác định</span></div><div class="drawer-row"><span>Xong thật</span><span id="drawerFinishAt">Chưa nghiệm thu</span></div><div class="drawer-row"><span>Đủ chuẩn</span><span id="drawerContractGate">Chưa xác minh</span></div></section>
     <section id="drawerTerminalSection" class="drawer-section"><h3>Kết thúc công việc</h3><div class="drawer-row"><span>Trạng thái cuối</span><strong id="drawerTerminalState">CHƯA HOÀN TẤT</strong></div><div class="drawer-row"><span>Điều kiện hoàn tất</span><span id="drawerTerminalCriteria">Chưa xác minh</span></div></section>
     <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
@@ -1026,7 +1027,7 @@ const executionLabelMap={
   HARD_GATE:'CẦN ANH SƠN',
   TERMINAL:'ĐÃ KẾT THÚC'
 };
-function executionLabel(row){const key=String(row?.executionEligibility||'').trim().toUpperCase();return executionLabelMap[key]||'CHƯA XÁC MINH'}
+function executionLabel(row){if(row?.executionEligibilityReason==='LIFECYCLE_V2_CONTRACT_INVALID')return 'CHỜ CHUẨN HÓA THẺ';const key=String(row?.executionEligibility||'').trim().toUpperCase();if(key==='READY'&&row?.localSelfPullReady===true)return 'NV02 TỰ NHẬN QUA GITHUB';return executionLabelMap[key]||'CHƯA XÁC MINH'}
 function activeHolder(row){const value=String(row?.activeWorker||'').trim().toUpperCase();return /^(?:NV\d{2}|CODEX|AUTO)$/.test(value)?value:'chưa giữ AI'}
 function executionWaitReason(row){
   const value=String(row?.waitReason||'').trim();
@@ -2089,7 +2090,7 @@ function jobCloseoutState(row){
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
-  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
+  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(row?.localSelfPullReady===true&&workStatus(row)==='OPEN'?'SẴN SÀNG NV02 NHẬN':(stateLabel[workStatus(row)]||workStatus(row)))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('workDrawer').dataset.status=workStatus(row).toLowerCase();
   $('workDrawer').style.setProperty('--detail-color',STATUS_COLORS[workStatus(row)]||'#64748B');
@@ -2100,6 +2101,14 @@ function populateDrawer(row){
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
+  const timing=row?.lifecycleTiming||{};
+  const displayDate=(value)=>{if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toLocaleString('vi-VN',{hour12:false,timeZone:'Asia/Ho_Chi_Minh'})};
+  $('drawerStartAt').textContent=timing?.startedAt?(displayDate(timing.startedAt)+(timing.startVerified?' · CÓ BIÊN NHẬN':' · CHỜ ĐỐI CHIẾU')):'CHƯA CÓ BIÊN NHẬN BẮT ĐẦU';
+  $('drawerTargetAt').textContent=timing?.targetFinishAt?(displayDate(timing.targetFinishAt)+' · '+(timing.etaStatus||'ESTIMATED')):'CHƯA CÓ ETA ĐƯỢC XÁC NHẬN';
+  $('drawerCheckpointAt').textContent=displayDate(timing?.checkpointDueAt)||'CHƯA ẤN ĐỊNH';
+  $('drawerFinishAt').textContent=timing?.finishedAt?(displayDate(timing.finishedAt)+(timing.finishVerified?' · CÓ BIÊN NHẬN':' · CHỜ ĐỐI CHIẾU')):'CHƯA NGHIỆM THU';
+  const c=row?.lifecycleContract;
+  $('drawerContractGate').textContent=c?.required?(c.valid?'ĐỦ CẤU TRÚC V2 · CHỜ NGHIỆM THU THỰC TẾ':('THIẾU '+(c.missing?.length||0)+' ĐIỀU KIỆN · '+(c.missing||[]).slice(0,2).join(', '))):'THẺ CŨ · ĐANG CHUYỂN ĐỔI';
   const closeout=jobCloseoutState(row);$('drawerTerminalState').textContent=closeout.label;$('drawerTerminalCriteria').textContent=closeout.detail;
   $('drawerProject').textContent=row?.projectName||'Chưa phân dự án';
   $('drawerWorkstream').textContent=row?.workstreamName||row?.workPackageName||'Chưa phân nhánh';
