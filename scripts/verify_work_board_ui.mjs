@@ -36,11 +36,11 @@ for (const bucket of ['action','working','waitblocked','closed']) {
 }
 assert.equal((publicView.match(/<button class="filter(?: active)?" data-filter="/g)||[]).length,4);
 assert.match(publicView, /let currentFilter='action'/);
-assert.match(publicView, /data-filter="action">CHƯA KẾT THÚC/);
-assert.match(sharedWork, /if\(f==='closed'\)return ended/);
+assert.match(publicView, /data-filter="action">CÒN MỞ/);
+assert.match(sharedWork, /if\(f==='closed'\)return sortClosed\(ended,closedOrder\)/);
 assert.match(sharedWork, /return o\.filter\(work\)/);
 assert.match(sharedWork, /CLOSED_UNVERIFIED:'ĐÓNG KHÁC'/);
-assert.match(sharedWork, /if\(f==='closed'\)return ended/);
+assert.match(sharedWork, /if\(f==='closed'\)return sortClosed\(ended,closedOrder\)/);
 for (const [status,color] of Object.entries({
   OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',
   VERIFY:'#14B8A6',WAITING:'#F59E0B',BLOCKED:'#F43F5E',
