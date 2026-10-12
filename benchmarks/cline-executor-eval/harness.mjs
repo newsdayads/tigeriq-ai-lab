@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +17,11 @@ async function readManifest() {
 
 async function walkFiles(root, rel = '') {
   const dir = path.join(root, rel);
+  if ((await lstat(dir)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + rel);
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const child = path.join(rel, entry.name);
+    if (entry.isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + child);
     if (entry.isDirectory()) out.push(...await walkFiles(root, child));
     else out.push(child.split(path.sep).join('/'));
   }
@@ -110,6 +112,13 @@ export async function scoreFixture(fixtureRoot) {
   // test-runner context: child --test processes otherwise skip fixture tests
   // and can exit 0 without evaluating a single assertion.
   const fixtureEnv = fixtureChildEnvironment();
+  // Reject tampered acceptance tests/tasks before executing any attacker-edited test.
+  // A permitted outer runner must additionally sandbox untrusted solution code.
+  if (testsMutated || taskMutated || unexpectedFiles.length > 0) {
+    return { fixtureId, completed:false, testsPass:false, testCount:0, testExitCode:null,
+      testsMutated, taskMutated, unexpectedFiles, filesChanged, linesChanged,
+      stdoutTail:'', stderrTail:'BENCHMARK_UNTRUSTED_FIXTURE_REJECTED' };
+  }
   const testRun = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...testFiles], {
     cwd: fixtureRoot,
     env: fixtureEnv,
@@ -138,7 +147,10 @@ export async function scoreLane({ root, lane } = {}) {
   if (!root || !lane) throw new Error('root_and_lane_required');
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
   const manifest = await readManifest();
-  const laneRoot = path.resolve(root, lane);
+  const benchmarkRoot = path.resolve(root);
+  if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
+  const laneRoot = path.join(benchmarkRoot, lane);
+  if ((await lstat(laneRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:lane');
   const fixtures = [];
   for (const fixture of manifest.fixtures) {
     fixtures.push(await scoreFixture(path.join(laneRoot, fixture.id)));
