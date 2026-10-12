@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 // Use the actual production parser without booting the Core HTTP server or DB.
-const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const match=source.match(/export function parseGithubCoreReviewEvidence\(text,prompt=''\)\{([\s\S]*?)\n\}\n\nasync function reconcileGithubCoreReviewObjective/);
 if(!match)throw new Error('CORE_REVIEW_PRODUCTION_PARSER_NOT_FOUND');
 const parse=runInNewContext("(function(text,prompt){"+match[1]+"\n})");

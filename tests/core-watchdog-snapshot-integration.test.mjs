@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { evaluateSelfAudit } from '../apps/tigeriq-core/self-audit.mjs';
 
-const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const start=source.indexOf('async function collectSelfAuditSnapshot(store=pool){');
 if(start<0)throw new Error('COLLECT_SELF_AUDIT_SNAPSHOT_SOURCE_MISSING');
 const end=source.indexOf('\n}\n',start);
