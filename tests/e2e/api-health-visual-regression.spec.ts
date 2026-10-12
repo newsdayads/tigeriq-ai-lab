@@ -65,11 +65,25 @@ for(const width of [390,1024,1648]){
   expect(hover.equals(normal),'Hover must visibly tint the status card').toBe(false);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
-  expect(await popup.evaluate(e=>getComputedStyle(e).borderColor)).toBe(await employee.evaluate(e=>getComputedStyle(e).borderColor));
+  await expect.poll(async()=>page.evaluate(()=>{
+    const surface=document.querySelector('#techPopover');
+    const employee=document.querySelector('.employee-card.state-ready');
+    if(!surface||!employee)return false;
+    const surfaceBorder=getComputedStyle(surface).borderColor;
+    const employeeBorder=getComputedStyle(employee).borderColor;
+    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
+  }),{timeout:5000}).toBe(true);
   await testInfo.attach('api-health-worker-hover-'+width+'.png',{body:hover,contentType:'image/png'});
   await employee.click();
   await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
-  expect(await page.locator('#detailModal').evaluate(e=>getComputedStyle(e).borderColor)).toBe(await employee.evaluate(e=>getComputedStyle(e).borderColor));
+  await expect.poll(async()=>page.evaluate(()=>{
+    const surface=document.querySelector('#detailModal');
+    const employee=document.querySelector('.employee-card.state-ready');
+    if(!surface||!employee)return false;
+    const surfaceBorder=getComputedStyle(surface).borderColor;
+    const employeeBorder=getComputedStyle(employee).borderColor;
+    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
+  }),{timeout:5000}).toBe(true);
   await testInfo.attach('api-health-employee-modal-'+width+'.png',{body:await page.locator('#detailModal').screenshot({animations:'disabled'}),contentType:'image/png'});
   await page.locator('#detailClose').click();
   const card=page.locator('.work-row').filter({hasText:'#3278'}).first();
