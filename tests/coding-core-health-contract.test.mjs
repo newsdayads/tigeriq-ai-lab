@@ -51,7 +51,7 @@ describe('#280 bounded Core -> Coding health contract (source-only stage)',()=>{
     const r=resource('NV20',{last_error:'very private key',myApiSecret:'do-not-leak'});
     const expanded={
       ok:true,core:{time:'2026-10-12T14:38:00Z'},
-      resources:Array.from({length:140},()=>r),
+      resources:Array.from({length:64},(_,i)=>resource(`NV${i}`)),
       events:Array.from({length:550},()=>({type:'RESOURCE_SUCCESS',resource_id:r.resource_id,ts:'2026-10-12T14:38:00Z',data:{secret:'hidden'}})),
       routing:{performanceByTask:Array.from({length:330},()=>({resource_id:r.resource_id,task_kind:'coding',success:7}))},
       jobs:Array.from({length:40},()=>({prompt:'X'.repeat(18000)})),
@@ -70,6 +70,30 @@ describe('#280 bounded Core -> Coding health contract (source-only stage)',()=>{
     expect(projected).not.toHaveProperty('jobs');
     expect(projected).not.toHaveProperty('telemetry');
     expect(projected).not.toHaveProperty('integrations');
+  });
+
+  it('rejects overflow instead of quietly dropping row 65, including a late conflicting lease identity',()=>{
+    const rows=Array.from({length:64},(_,i)=>resource(`NV${i}`));
+    const base={ok:true,resources:rows};
+    expect(projectCodingCoreHealth(base).resources).toHaveLength(CODING_CORE_HEALTH_BOUNDS.resources);
+    expect(()=>projectCodingCoreHealth({ok:true,resources:[...rows,resource('NV64')]}))
+      .toThrow('CODING_CORE_HEALTH_RESOURCE_OVERFLOW');
+    expect(()=>projectCodingCoreHealth({ok:true,resources:[...rows,resource('NV0',{current_job_id:'another-lease'})]}))
+      .toThrow('CODING_CORE_HEALTH_RESOURCE_OVERFLOW');
+  });
+
+  it('rejects duplicate employee/resource identity and malformed rows rather than silently filtering',()=>{
+    const first=resource('NV20');
+    const invalid=[
+      [first,resource('NV20',{resource_id:'res:other:duplicate'})],
+      [first,resource('NV19',{resource_id:first.resource_id})],
+      [first,resource('NV19',{employee_id:''})],
+      [first,resource('NV19',{resource_id:''})],
+    ];
+    for(const resources of invalid){
+      expect(()=>projectCodingCoreHealth({ok:true,resources}))
+        .toThrow('CODING_CORE_HEALTH_RESOURCE_ID_INVALID');
+    }
   });
 
   it('fails closed when authoritative Core response is unavailable or malformed',()=>{
