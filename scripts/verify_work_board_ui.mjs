@@ -28,13 +28,13 @@ assert.match(publicView, /HOÀN TẤT/);
 assert.match(publicView, /setInterval\(.*10000/);
 assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
-assert.match(publicView, /CẦN XỬ LÝ/);
-assert.match(publicView, /CHỜ ANH SƠN/);
-// Owner V2.3: waiting and blocked are separate, truthful filter buckets.
-for (const bucket of ['waiting','blocked','review','verify','paused']) {
-  assert.match(publicView, new RegExp('data-filter="'+bucket+'"'));
+// Owner P0: four concise filters; detailed states stay on the work cards.
+for (const bucket of ['all','working','waitblocked','closed']) {
+  assert.match(publicView,new RegExp('data-filter="'+bucket+'"'));
 }
-assert.doesNotMatch(publicView, /CHỜ \/ BỊ CHẶN <b/);
+assert.equal((publicView.match(/<button class="filter(?: active)?" data-filter="/g)||[]).length,4);
+assert.match(sharedWork, /CLOSED_UNVERIFIED:'ĐÓNG KHÁC'/);
+assert.match(sharedWork, /if\(f==='closed'\)return ended/);
 for (const [status,color] of Object.entries({
   OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',
   VERIFY:'#14B8A6',WAITING:'#F59E0B',BLOCKED:'#F43F5E',
@@ -44,16 +44,13 @@ for (const [status,color] of Object.entries({
 }
 assert.match(sharedWork, /el\.style\.setProperty\('--status-color',COLORS\[s\]/);
 assert.match(publicView, /style\.setProperty\('--detail-color',STATUS_COLORS\[workStatus\(row\)\]/);
-assert.match(publicView, /data-filter="owner"/);
-assert.match(publicView, /data-filter="review"/);
-assert.match(publicView, /data-filter="system"/);
-assert.match(publicView, /data-filter="done"/);
+assert.match(publicView, /data-filter="closed"/);
 assert.match(publicView, /progressPercent/);
 assert.match(publicView, /tigeriq-live-open-progress-v2/);
 assert.match(publicView, /tự cập nhật 10 giây/);
 assert.match(publicView, /priority\.p0/);
 assert.match(publicView, /priority\.p1/);
-assert.match(publicView, /filter\[data-filter="running"\]\.active/);
+assert.match(publicView, /filter\[data-filter="working"\]\.active/);
 assert.match(publicView, /work-row\.status-working::before/);
 assert.match(publicView, /work-row\.status-blocked::before/);
 assert.match(publicView, /status-owner_gate/);
