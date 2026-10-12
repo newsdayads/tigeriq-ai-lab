@@ -14,9 +14,11 @@ Each fixture starts with failing acceptance tests. Executors receive only `TASK.
 ## Seed
 
 ```bash
-node benchmarks/cline-executor-eval/harness.mjs seed --root <temp-root> --lane cline-local-ollama --force
-node benchmarks/cline-executor-eval/harness.mjs seed --root <temp-root> --lane current-coding-lane --force
+node benchmarks/cline-executor-eval/harness.mjs seed --root <NEW-EMPTY-ISOLATED-ROOT> --lane cline-local-ollama
+node benchmarks/cline-executor-eval/harness.mjs seed --root <NEW-EMPTY-ISOLATED-ROOT> --lane current-coding-lane
 ```
+
+Never point `--root` at an existing TigerIQ workspace, Production, or any non-disposable directory. `--force` is forbidden: seeding refuses to overwrite an existing lane. Fixture subprocesses receive no credentials. Live PC01 benchmarking still requires its own authorized isolated executor.
 
 ## Execute
 
@@ -27,8 +29,8 @@ Do not give either lane permission to mutate TigerIQ main, policy, credentials, 
 ## Score
 
 ```bash
-node benchmarks/cline-executor-eval/harness.mjs score --root <temp-root> --lane cline-local-ollama
-node benchmarks/cline-executor-eval/harness.mjs score --root <temp-root> --lane current-coding-lane
+node benchmarks/cline-executor-eval/harness.mjs score --root <NEW-EMPTY-ISOLATED-ROOT> --lane cline-local-ollama
+node benchmarks/cline-executor-eval/harness.mjs score --root <NEW-EMPTY-ISOLATED-ROOT> --lane current-coding-lane
 ```
 
 A fixture is complete only when its acceptance tests pass, tests and TASK.md were not modified, and no unexpected files were added. The scorer derives its baseline only from the repository-owned fixture-manifest.json; it never trusts baseline metadata inside an executor-writable lane. The external benchmark runner adds wall-clock, attempts, command failures, model/provider and usage metrics before the final KEEP/CANARY/REJECT decision.

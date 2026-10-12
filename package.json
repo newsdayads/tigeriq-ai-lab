@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && node --test tests/core-ui-assignment.test.mjs tests/core-nv09-registration.test.mjs tests/coding-lane-nv09.test.mjs tests/github-projects-automation.test.mjs",
+    "test": "vitest run && node --test tests/core-ui-assignment.test.mjs tests/core-nv09-registration.test.mjs tests/coding-lane-nv09.test.mjs tests/github-projects-automation.test.mjs tests/core-4457-native-routing-gate.test.mjs tests/core-4457-ollama-native-structured.test.mjs tests/core-4457-campaign-receipt.test.mjs tests/cline-executor-benchmark.test.mjs",
     "test:e2e": "playwright test",
     "test:chief": "node scripts/test-chief-router.mjs",
     "test:vercel-policy": "node scripts/verify-vercel-deployment-policy.mjs",
