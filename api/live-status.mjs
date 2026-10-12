@@ -1,5 +1,6 @@
 import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
 import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
+import {completionProof} from '../apps/shared/work-center-history.mjs';
 import { parseOwnerBacklogOrder, OWNER_BACKLOG_ISSUE } from '../apps/tigeriq-core/owner-backlog-order.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
@@ -639,7 +640,9 @@ export function workflowRelationsForIssue(issue) {
 
 export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
-  if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
+  if (String(issue.state_reason || '').toLowerCase() !== 'completed') return null;
+  const proof=completionProof(issue);
+  if (!proof.verified) return null;
   const body = String(issue.body || '');
   const acceptance = ownerAcceptancePolicy(body);
   if (acceptance.required && !acceptance.accepted) return null;
@@ -665,7 +668,13 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     ...relations,
     progressPercent: 100,
     progressSource: 'terminal',
-    progressDetail: '5/5 gate',
+    progressDetail: 'Đã nghiệm thu đủ các bước và biên nhận V2',
+    progressChecklistVerified: true,
+    progressDone: proof.checkedSteps,
+    progressTotal: proof.checkedSteps,
+    lifecycleTiming: proof.timing,
+    lifecycleContract: proof.contract,
+    completionVerified: true,
     completedAt,
     updatedAt: completedAt,
     url: issue.html_url || null,
