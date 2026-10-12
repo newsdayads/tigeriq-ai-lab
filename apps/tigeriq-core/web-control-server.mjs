@@ -18,11 +18,17 @@ const GITHUB_WORK_ORDERS_DISABLED = process.env.TIGERIQ_GITHUB_WORK_ORDERS_DISAB
 const WORK_ORDER_CACHE_MS = 30000;
 let workOrderCache = { at: 0, workOrders: [], workOrdersRecent: [], meta: { ok: false, source: 'github', stale: true } };
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
-let sharedWorkCenterJs='';
-try{sharedWorkCenterJs=readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8')}catch{}
-let sharedWorkUiCss='';
-try{sharedWorkUiCss=readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8')}catch{}
-const sharedWorkCenterVisualCss=readFileSync(new URL('../../public/work-center-visual.css',import.meta.url),'utf8');
+// Read from the source tree for normal execution, from the atomic bundle for PC01.
+function sharedWorkAsset(name,required=false){
+ try{return readFileSync(new URL('../../public/'+name,import.meta.url),'utf8')}
+ catch(sourceError){
+  try{return readFileSync(new URL('./'+name,import.meta.url),'utf8')}
+  catch{if(required)throw sourceError;return ''}
+ }
+}
+const sharedWorkCenterJs=sharedWorkAsset('work-center.js');
+const sharedWorkUiCss=sharedWorkAsset('work-ui.css');
+const sharedWorkCenterVisualCss=sharedWorkAsset('work-center-visual.css',true);
 const healthModelJs = readFileSync(new URL('./web-control-health-model.js', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
