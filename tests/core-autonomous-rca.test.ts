@@ -1,3 +1,4 @@
+// @ts-expect-error — source-only ESM validator intentionally has no .d.ts
 import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
