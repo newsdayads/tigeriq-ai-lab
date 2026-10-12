@@ -1,3 +1,4 @@
+import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { readFileSync } from 'node:fs';
 import { describe,it,expect } from 'vitest';
 // @ts-expect-error runtime module intentionally has no TS declaration file.
@@ -79,6 +80,12 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.body).toContain('ACCEPTANCE=');
     expect(wo.body).toContain('REQUIRED_TESTS=');
     expect(wo.body).toContain('PROVENANCE=SELF_AUDIT|DEGRADED_RESOURCE_ROUTING|route');
+    expect(wo.body.startsWith('TIGERIQ_JOB_V1')).toBe(true);
+    const issued={number:990000,title:wo.title,body:wo.body,state:'open',created_at:'2026-10-13T01:00:00Z'};
+    expect(validateWorkOrderLifecycleV2(issued)).toMatchObject({required:true,valid:true,missing:[]});
+    expect(wo.body).toContain('RCA_FAMILY_KEY='+rca.rcaFamilyKey);
+    expect(wo.body).toContain('## STRUCTURED_PROGRESS_CHECKLIST');
+    expect(wo.body).toContain('NO_PRODUCTION_RELEASE=true');
   });
 
   it('bounded synthetic canary produces one safe WO action + one Owner exception without mutation',()=>{
