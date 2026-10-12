@@ -55,7 +55,7 @@ for(const width of [390,1024,1648]){
   const jsErrors:string[]=[];page.on('pageerror',e=>jsErrors.push(e.message));
   await openFixture(page);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  await expect(page.locator('.wo-filter.action')).toContainText('CHƯA KẾT THÚC');
+  await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
   await expect(page.locator('.wo-filter.action')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#opsFreshnessRows .ops-age')).toHaveCount(4);
   const css=await page.locator('body').evaluate(el=>{const s=getComputedStyle(el);return {surface:s.getPropertyValue('--tiq-surface').trim(),ready:s.getPropertyValue('--tiq-ready').trim(),working:s.getPropertyValue('--tiq-working').trim()}});
