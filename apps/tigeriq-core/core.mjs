@@ -31,6 +31,7 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
+import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
@@ -2245,6 +2246,7 @@ async function currentOwnerBacklogOrder(){
   return order;
 }
 async function managerTick() {
+  return withCoreManagerPgLock(pool, async () => {
   const ownerOrder=await currentOwnerBacklogOrder();
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and o.priority in ('P1','P2','P3','P4','P5')
@@ -2605,7 +2607,9 @@ async function managerTick() {
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
   } catch(error){await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,`manager error: ${String(error?.message||error).slice(0,500)}`]);await event('MANAGER_ERROR',{objectiveId:o.id,phaseIndex:currentPhase});}
-}function publicStatus(r){
+  });
+}
+function publicStatus(r){
   if(!r.enabled) return 'DISABLED';
   if(r.credential_state==='WAIT_KEY') return 'WAIT_KEY';
   if(r.current_job_id||r.work_state==='BUSY') return 'BUSY';
