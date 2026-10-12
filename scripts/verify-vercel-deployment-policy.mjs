@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const canonicalDeployScript = 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 const policyGuardScript = 'scripts/verify-vercel-deployment-policy.mjs';
@@ -18,8 +19,19 @@ if (config?.cleanUrls !== true) {
 
 const rewrites = Array.isArray(config?.rewrites) ? config.rewrites : [];
 const rootRewrite = rewrites.find((route) => route?.source === '/');
-if (rootRewrite?.destination !== '/command-center') {
-  throw new Error('TigerIQ Vercel routing violation: / must rewrite to extensionless /command-center.');
+if (rootRewrite?.destination !== '/api/health-view?resource=') {
+  throw new Error('TigerIQ Vercel routing violation: / must proxy PC01 display via /api/health-view.');
+}
+const proxyRoute = rewrites.find(route=>route?.source==='/pc01/:path*');
+if(proxyRoute?.destination!=='/api/health-view?resource=:path*')
+  throw new Error('TigerIQ Vercel routing violation: PC01 read-only resource proxy missing.');
+const facade=readFileSync(new URL('../api/health-view.mjs',import.meta.url),'utf8');
+const gateway=readFileSync(new URL('../apps/tigeriq-core/api-health-view-gateway.mjs',import.meta.url),'utf8');
+for(const required of ['TIGERIQ_HEALTH_VIEW_ORIGIN','TIGERIQ_HEALTH_VIEW_KEY','method !== \'GET\'','PATHS.has(path)']){
+  if(!facade.includes(required))throw Error('TigerIQ Vercel PC01 display guard missing '+required);
+}
+for(const required of ['DISPLAY_PATHS','timingSafeEqual','method !== \'GET\'','TIGERIQ_HEALTH_VIEW_KEY']){
+  if(!gateway.includes(required))throw Error('TigerIQ PC01 read-only ingress guard missing '+required);
 }
 
 const htmlRewrite = rewrites.find((route) => String(route?.destination || '').endsWith('.html'));
