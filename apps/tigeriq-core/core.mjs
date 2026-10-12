@@ -922,16 +922,18 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker',options={
 }
 // Owner scoped precondition to #4595: one real JSON transport receipt without PC01 shell.
 let owner4595CanaryRunning=false;
+let owner4595CanaryFinished=false;
 async function owner4595CanaryOnce(){
   // No paid provider and no action outside this explicitly verified PC01 runtime.
-  if(HOST!=='100.97.23.87'||PORT!==8795||process.platform!=='win32'||owner4595CanaryRunning)return;
+  if(HOST!=='100.97.23.87'||PORT!==8795||process.platform!=='win32'||owner4595CanaryRunning||owner4595CanaryFinished)return;
   owner4595CanaryRunning=true;
   const jobId='NV09-CANARY-4595-ONCE-20261012';
   try{
     const prior=await pool.query('select status from tigeriq_jobs where id=$1',[jobId]);
-    if(prior.rowCount)return;
+    if(prior.rowCount){owner4595CanaryFinished=true;return;}
     const result=await runNv09Canary('','json',{oneShot4595:true});
     if(result.error==='NV09_RESOURCE_BUSY')return; // Retry admission only, never the inference.
+    if(result.jobId===jobId||result.alreadyRecorded)owner4595CanaryFinished=true;
     await event('NV09_4595_ONESHOT_CANARY_RECEIPT',{
       jobId,ok:result.ok===true,contract:'json',
       kind:result.kind||null,error:String(result.error||'').slice(0,120),
