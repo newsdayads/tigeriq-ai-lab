@@ -45,6 +45,16 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor(data,'closed').map(x=>x.number)).toEqual([4,5]);
   expect(wc.progress(recent[1]).verified).toBe(false);
  });
+ it('bundles the three shared Work Center assets for PC01 Web Control',()=>{
+  const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
+  const server=readFileSync(new URL('../apps/tigeriq-core/web-control-server.mjs',import.meta.url),'utf8');
+  for(const file of ['work-center.js','work-ui.css','work-center-visual.css']){
+   expect(launcher).toContain("'"+file+"'");
+   expect(server).toContain("sharedWorkAsset('"+file+"'");
+  }
+  expect(launcher).toContain('WEB_CONTROL_SHARED_ASSET_MISSING');
+  expect(server).toContain("new URL('./'+name,import.meta.url)");
+ });
  it('rejects Issue closed and metadata-only completion without independent receipts',()=>{
   expect(completionProof(issue('STATE=DONE')).verified).toBe(false);
   expect(parseRecentCompletedIssue(issue('STATE=DONE'))).toBeNull();
