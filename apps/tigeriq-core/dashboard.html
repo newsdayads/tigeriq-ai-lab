@@ -540,7 +540,7 @@ document.getElementById('opsEvidenceClose').addEventListener('click',hideOpsEvid
 opsEvidenceBackdrop.addEventListener('click',e=>{if(e.target===opsEvidenceBackdrop)hideOpsEvidence()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!opsEvidenceBackdrop.hidden)hideOpsEvidence()});
 
-let workProjection=null,workFilter='action',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
+let workProjection=null,workFilter='all',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
 const WO_STATUS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function woStatus(x){return TigerIQWorkCenter.status(x)}
 function woVisualStatus(x){const s=woStatus(x);return ['WAITING','OPEN','QUEUED'].includes(s)&&x?.workKind==='WORK'&&(s==='QUEUED'||x?.executionEligibility==='READY')?'QUEUED':s}
@@ -599,39 +599,16 @@ function healthWorkQuick(row,status){
  return text?'<div class="work-quick '+kind+'">'+icon+'<span>'+esc(text)+'</span></div>':'';
 }
 function renderWork(){
- const open=Array.isArray(workProjection?.openWork)?workProjection.openWork:[];
- const relevant=open.filter(x=>x?.workKind==='WORK'&&woStatus(x)!=='SYSTEM');
- const status=x=>woStatus(x);
- const stat={
-  action:relevant.length,
-  owner:relevant.filter(x=>status(x)==='OWNER_GATE').length,
-  running:relevant.filter(x=>status(x)==='WORKING').length,
-  review:relevant.filter(x=>['REVIEW','VERIFY'].includes(status(x))).length,
-  waitgroup:relevant.filter(x=>['WAITING','OWNER_GATE'].includes(status(x))&&!(status(x)==='WAITING'&&x.executionEligibility==='READY')).length,
-  verify:relevant.filter(x=>status(x)==='VERIFY').length,
-  ready:relevant.filter(x=>['QUEUED','WAITING','OPEN'].includes(status(x))&&(status(x)==='QUEUED'||x.executionEligibility==='READY')).length,
-  waiting:relevant.filter(x=>status(x)==='WAITING'&&x.executionEligibility!=='READY').length,
-  blocked:relevant.filter(x=>status(x)==='BLOCKED').length,
-  paused:relevant.filter(x=>status(x)==='PAUSED').length,
-  system:open.filter(x=>x?.workKind==='SYSTEM'||status(x)==='SYSTEM').length,
-  unstarted:relevant.filter(x=>status(x)==='OPEN'&&x.executionEligibility!=='READY').length,
-  goal:open.filter(x=>x?.workKind==='GOAL'||status(x)==='GOAL').length,
-  done:Number(workProjection?.openSummary?.done||0),
-  archived:Number(workProjection?.openSummary?.archived||0)
- };
- const defs=[['action','TẤT CẢ'],['running','ĐANG LÀM'],['ready','SẴN SÀNG'],['review','RÀ SOÁT'],['waitgroup','CHỜ'],['blocked','BỊ CHẶN'],['done','HOÀN TẤT']];
- const more=[['owner','CHỜ ANH SƠN'],['verify','XÁC MINH'],['waiting','ĐANG CHỜ'],['unstarted','CHƯA LÀM'],['paused','TẠM DỪNG'],['system','HỆ THỐNG'],['goal','MỤC TIÊU'],['archived','ĐÃ ĐÓNG · CHỜ NGHIỆM THU']];
- const button=([k,label])=>'<button type="button" aria-pressed="'+(workFilter===k)+'" title="'+(k==='action'?'Tất cả công việc đang mở (không gồm hoàn tất)':label)+'" class="wo-filter '+k+' '+(workFilter===k?'on':'')+'" data-wo="'+k+'">'+label+' <b>'+Number(stat[k]||0)+'</b></button>';
- const wasAdvancedOpen=woFilters.querySelector('.wo-more')?.open===true;
- const activeAdvanced=more.find(([k])=>k===workFilter);
- const activeAdvancedLabel=activeAdvanced?activeAdvanced[1]+' '+Number(stat[activeAdvanced[0]]||0):'BỘ LỌC NÂNG CAO';
- woFilters.innerHTML=defs.map(button).join('')+'<details class="wo-more '+(activeAdvanced?'active':'')+'"><summary aria-label="Bộ lọc nâng cao">'+activeAdvancedLabel+'</summary><div class="wo-more-items">'+more.map(button).join('')+'</div></details>';
- if(wasAdvancedOpen)woFilters.querySelector('.wo-more').open=true;
- woFilters.querySelectorAll('[data-wo]').forEach(b=>b.onclick=()=>{workFilter=b.dataset.wo;const menu=woFilters.querySelector('.wo-more');if(menu)menu.open=false;renderWork()});
+ const defs=[['all','TẤT CẢ'],['working','ĐANG LÀM'],['waitblocked','CHỜ / CHẶN'],['closed','ĐÃ KẾT THÚC']];
+ const counts=Object.fromEntries(defs.map(([key])=>[key,TigerIQWorkCenter.rowsFor(workProjection,key).length]));
+ const button=([key,label])=>'<button type="button" aria-pressed="'+(workFilter===key)+'" class="wo-filter '+key+' '+(workFilter===key?'on':'')+'" data-wo="'+key+'">'+label+' <b>'+counts[key]+'</b></button>';
+ woFilters.innerHTML=defs.map(button).join('')+'<small class="work-scope-note">Lịch sử đã kết thúc theo phạm vi dữ liệu gần đây; đóng hồ sơ không đồng nghĩa hoàn tất.</small>';
+ woFilters.querySelectorAll('[data-wo]').forEach(btn=>btn.onclick=()=>{workFilter=btn.dataset.wo;renderWork()});
  const rows=workRows();
  workDetailRows=rows;
  TigerIQWorkCenter.renderCards(workList,rows,{compact:false,fresh:!(workProjection?.stale||workProjection?.workProjection?.stale),sourceGate:workProjection?.verifiedGateSource===true,onOpen:(row,el)=>openWorkDetail(row,el)});
 }
+
 workDetailClose.onclick=closeWorkDetail;workDetailCloseBottom.onclick=closeWorkDetail;workDetailBackdrop.addEventListener('click',e=>{if(e.target===workDetailBackdrop)closeWorkDetail()});document.addEventListener('keydown',e=>{if(!workDetailBackdrop.classList.contains('open'))return;if(e.key==='Escape'){closeWorkDetail();return}if(e.key!=='Tab')return;const focusable=[...workDetailModal.querySelectorAll('button:not([disabled]),a[href]:not([disabled])')].filter(el=>!el.hidden&&getComputedStyle(el).display!=='none');if(!focusable.length)return;const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&(document.activeElement===first||!workDetailModal.contains(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&(document.activeElement===last||!workDetailModal.contains(document.activeElement))){e.preventDefault();first.focus()}});workDetailAskVy.onclick=()=>openWorkDetailChat(TIGERIQ_OWNER_CHATGPT_PROJECT_URL);workDetailFallback.onclick=()=>openWorkDetailChat('https://chatgpt.com/');
 navWork.onclick=()=>workPanel.scrollIntoView({behavior:'smooth',block:'start'});navHealth.onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
 function refreshLiveUi(){const age=lastCoreSuccessAt?Math.floor((Date.now()-lastCoreSuccessAt)/1000):999,busy=allResources.filter(x=>visibleResource(x)&&simpleState(x).group==='working').length,openWo=Number(workProjection?.openSummary?.open||0);let mode=age<=5?'LIVE':age<=10?'DEGRADED':'OFFLINE';topLive.classList.toggle('offline',mode==='OFFLINE');topLive.classList.toggle('degraded',mode==='DEGRADED');topLive.querySelector('b').textContent=mode;topLiveMeta.textContent=mode==='LIVE'?`Core ${age}s · ${busy} AI · ${openWo} việc`:mode==='DEGRADED'?`Core ${age}s · dữ liệu chậm`:`Core >10s · mất heartbeat`;const visible=allResources.filter(visibleResource),count=g=>visible.filter(x=>simpleState(x).group===g).length;workforceMeta.textContent=`● ${busy} đang làm · ${count('ready')} rảnh · ${count('ondemand')} on-demand · ${count('waiting')} chờ · ${count('unknown')} chưa xác minh · ${count('attention')} lỗi`;const s=workProjection?.openSummary||{};workMeta.textContent=`● ${Number(s.open||0)} mở · ${Number(s.review||0)} review · ${Number(s.waiting||0)} chờ`;if(lastEventAt&&activityMeta)activityMeta.textContent=`● ${lastEventRate} event/phút · event cuối ${ago(lastEventAt)}`;refreshOpsFreshness();}
