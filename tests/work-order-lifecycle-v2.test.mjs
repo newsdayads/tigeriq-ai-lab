@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {validateWorkOrderLifecycleV2,requiresLifecycleV2,lifecycleTimeSnapshot} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
+import {validateWorkOrderLifecycleV2,requiresLifecycleV2,lifecycleTimeSnapshot,lifecycleStage} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import {safeAutoWorkAdmission} from '../apps/tigeriq-core/github-intake.mjs';
 import {parseOpenWorkIssue} from '../api/live-status.mjs';
 const issue=(body,extra={})=>({
@@ -21,6 +21,13 @@ const header=[
   '## ACCEPTANCE','Requires real receipt','## STOP_CONDITIONS','No production or secrets'
 ].join('\n');
 describe('Work Order Lifecycle V2 global source contract',()=>{
+  it('maps stage transitions and rejects unrecognized states',()=>{
+    expect(['READY','WORKING','REVIEW','VERIFY','WAIT','DONE','STOPPED'].map(
+      state=>lifecycleStage(state))).toEqual(['READY','WORKING','REVIEW','VERIFY','WAIT','DONE','STOPPED']);
+    expect(lifecycleStage('BLOCKED_NV09_TIMEOUT')).toBe('WAIT');
+    expect(validateWorkOrderLifecycleV2(issue(header.replace('CURRENT_STATE=READY','CURRENT_STATE=FOO_BAR'))).missing)
+      .toContain('UNRECOGNIZED_LIFECYCLE_STATE');
+  });
   it('accepts a safe READY card and never invents a start time or ETA',()=>{
     const i=issue(header),audit=validateWorkOrderLifecycleV2(i);
     expect(audit).toMatchObject({required:true,valid:true,missing:[]});
