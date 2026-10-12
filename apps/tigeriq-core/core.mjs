@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import {buildWorkHistory} from '../shared/work-center-history.mjs';
+import {buildWorkHistory,recentCommentPages,latestComments} from '../shared/work-center-history.mjs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
@@ -2893,17 +2893,19 @@ function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', imp
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
 async function workCenterHistory(number){
   const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4500);
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6500);
   const base='https://api.github.com/repos/'+encodeURIComponent(GITHUB_OWNER)+'/'+encodeURIComponent(GITHUB_REPO);
   try{
-    const paths=['/issues/'+number,'/issues/'+number+'/comments?per_page=100'];
-    const result=await Promise.all(paths.map(async path=>{
+    async function get(path){
       const response=await fetch(base+path,{headers,cache:'no-store',signal:controller.signal});
       if(!response.ok)throw Error('GITHUB_HTTP_'+response.status);
       return response.json();
-    }));
-    if(result[0]?.pull_request)throw Error('NOT_WORK_ORDER');
-    return buildWorkHistory(result[0],result[1]);
+    }
+    const issue=await get('/issues/'+number);
+    if(issue?.pull_request)throw Error('NOT_WORK_ORDER');
+    const pages=recentCommentPages(issue.comments);
+    const comments=latestComments(await Promise.all(pages.map(p=>get('/issues/'+number+'/comments?per_page=100&page='+p))));
+    return buildWorkHistory(issue,comments);
   }finally{clearTimeout(timer)}
 }
 const server=createServer(async(req,res)=>{
