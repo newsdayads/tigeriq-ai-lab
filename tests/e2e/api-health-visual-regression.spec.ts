@@ -421,7 +421,7 @@ test('P0 iPhone audit 60 events stays inside modal scroller and above fixed acti
    const box=(s:string)=>document.querySelector(s)!.getBoundingClientRect();
    const body=document.querySelector('.work-detail-body')! as HTMLElement;
    const a=box('.work-detail-actions'),d=box('.work-detail-body'),outer=box('.work-detail-modal');
-   const sections=[...document.querySelectorAll('.work-detail-section')].map(el=>el.getBoundingClientRect());
+   const sections=[...document.querySelectorAll('.work-detail-section')].filter(el=>getComputedStyle(el).display!=='none').map(el=>el.getBoundingClientRect());
    return {outer,d,a,overflowY:getComputedStyle(body).overflowY,scrollH:body.scrollHeight,clientH:body.clientHeight,
     overlap:a.top<d.bottom-1,spill:sections.some(s=>s.left<outer.left-1||s.right>outer.right+1),
     horizontal:document.documentElement.scrollWidth>document.documentElement.clientWidth};
