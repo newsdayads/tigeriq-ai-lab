@@ -102,5 +102,12 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/command-center",
+      "destination": "/",
+      "permanent": false
+    }
   ]
 }
