@@ -139,7 +139,7 @@ function renderCards(container,rows,options){
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
   const activityAt=['github_issue_comment','github_issue_created'].includes(row.lastActivitySource)?time(row.lastActivityAt):null;
   const activityLine=activityAt!==null?'<div class="work-activity" title="'+esc(String(row.lastActivitySummary||'').slice(0,300))+'">'
-   +'<span>Nhật ký '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
+   +'<span>Nhật ký '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
   const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
