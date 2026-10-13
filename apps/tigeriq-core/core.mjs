@@ -42,6 +42,7 @@ import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoc
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { objectiveCompletionGate } from './github-intake.mjs';
@@ -2957,6 +2958,22 @@ const server=createServer(async(req,res)=>{
       const raw=await readRawBody(req,512*1024);
       let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      // Exact manual Owner comment is a separate GitHub-authenticated release action.
+      // It is never inferred from merge, PR/issue text, CI or a worker result.
+      if(eventName==='issue_comment'&&String(payload?.comment?.body||'').trim().startsWith('TIGERIQ_PC01_RELEASE_APPROVE_V1')){
+        try{
+          const approval=await acceptPc01OwnerApprovalEvent({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...approval}));
+        }catch(error){
+          const reason=String(error?.message||'PC01_RELEASE_FAILED');
+          const status=/OWNER_|COMMENT_|IMPACT_|FILE_|SHA_|MAIN_|ANCESTRY_|REPLAY_|BASELINE_/.test(reason)?403:503;
+          res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:reason.slice(0,120)}));
+        }
+      }
       const client=await pool.connect();
       let duplicate=false;
       try{
