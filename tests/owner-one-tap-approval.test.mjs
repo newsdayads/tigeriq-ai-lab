@@ -155,6 +155,7 @@ describe('Web Control Owner approval handoff source invariants',()=>{
     expect(html).toContain("r.status==='OWNER_GATE'");
     expect(html).toContain('MỞ HỒ SƠ DUYỆT');
     expect(html).toContain('SAO CHÉP CÂU LỆNH');
+    expect(html).toContain("'LÀM — NO YAPPING. '+a.approvalText");
     expect(html).toContain('CHƯA PHÊ DUYỆT');
     expect(html).toContain('renderOwnerApprovalCards(d);');
     expect(html).not.toContain("copy.textContent='DUYỆT'");
