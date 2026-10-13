@@ -1008,7 +1008,7 @@ async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl
   const candidates = (Array.isArray(issues) ? issues : [])
     .filter((issue) => issue && !issue.pull_request && issue.state === 'open'
       && /^P[0-5]$/.test(String(issuePriority(issue) || ''))
-      && classifyOpenIssue(issue).workKind === 'WORK')
+)
     .sort((a, b) => Date.parse(b?.updated_at || 0) - Date.parse(a?.updated_at || 0))
     .slice(0, Math.max(QUEUE_LIMIT, 40));
   const pairs = await Promise.all(candidates.map(async (issue) => {
@@ -1043,7 +1043,7 @@ async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl
           ...(structured || {}),
           lastActivityAt: latest.created_at,
           lastActivitySource: 'github_issue_comment',
-          lastActivitySummary: String(latest.body || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
+          lastActivitySummary: String(latest.body || '').replace(/\s+/g, ' ').trim().slice(0, 180),
           lastActivityAuthor: String(latest.user?.login || '').slice(0, 65),
           lastActivityUrl: /^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-\d+$/.test(String(latest.html_url || ''))
             ? latest.html_url : null,
