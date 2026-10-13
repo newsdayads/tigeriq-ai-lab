@@ -10,7 +10,7 @@ $rollbackCanaryMode=[bool]($RollbackCanaryRuntimeRepo -and $RollbackCanaryPrevio
 $controlRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Workspace\tigeriq-ai-lab'}
 $runtimeRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Runtime\CoreSource'}
 $runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'D:\TigerIQ\State\core-runtime-source.json'}
-$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'}
+$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'}
 $launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'D:\TigerIQ\Runtime\CoreLaunchers'}
 $state=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater-state.json'}else{'D:\TigerIQ\State\core-runtime-updater.json'}
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
@@ -27,6 +27,8 @@ $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
+# A merged main commit is NOT an authorized PC01 runtime release.
+$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -44,7 +46,7 @@ $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'
-$bootstrapWatchdogRuntime='D:\TigerIQ\Runtime\BootstrapWatchdog\bootstrap-watchdog.ps1'
+$bootstrapWatchdogRuntime='C:\ProgramData\TigerIQCoreRelease\BootstrapWatchdog\bootstrap-watchdog.ps1'
 $webRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-web-control'}else{'D:\TigerIQ\Runtime\WebControl24x7'}
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
@@ -185,16 +187,27 @@ function Ensure-WebTaskRuntimeTarget(){
     return @{action=if($retarget){'retargeted_started'}else{'verified_started'};task=$webTask;target=$launcher}
   }catch{return @{action='blocked';reason=('WEB_TASK_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}}
 }
-function Ensure-BootstrapWatchdogTask(){
+function Ensure-BootstrapWatchdogTask([switch]$AllowSourceRefresh){
   try{
-    $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
-    if(-not(Test-Path -LiteralPath $source)){return @{action='skip';reason='SOURCE_MISSING'}}
-    New-Item -ItemType Directory -Path (Split-Path -Parent $bootstrapWatchdogRuntime) -Force|Out-Null
-    $needsCopy=$true
-    if(Test-Path -LiteralPath $bootstrapWatchdogRuntime){
-      try{$needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)}catch{$needsCopy=$true}
+    # Existing protected bootstrap executable is the authority until an exact
+    # candidate has passed both CI and the separate local release gate.
+    $needsCopy=$false
+    if($AllowSourceRefresh){
+      $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
+      if(-not(Test-Path -LiteralPath $source)){return @{action='blocked';reason='WATCHDOG_SOURCE_MISSING'}}
+      if(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+        $needsCopy=$true
+      }else{
+        $needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)
+      }
+      if($needsCopy){
+        $tmp=$bootstrapWatchdogRuntime+'.tmp'
+        Copy-Item -LiteralPath $source -Destination $tmp -Force
+        Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force
+      }
+    }elseif(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+      return @{action='blocked';reason='PROTECTED_WATCHDOG_BOOTSTRAP_MISSING'}
     }
-    if($needsCopy){$tmp=$bootstrapWatchdogRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force}
     $task=Get-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction SilentlyContinue
     $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
     $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$bootstrapWatchdogRuntime`" -IntervalSeconds 60 -FailureThreshold 2 -CooldownSeconds 300"
@@ -802,7 +815,20 @@ while($true){
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
     $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    if(-not(Test-Path -LiteralPath $releaseGuardScript)){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason='RELEASE_GUARD_SCRIPT_MISSING';runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    . $releaseGuardScript
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed
+    if(-not $releaseApproval.approved){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
     $previousRuntimeSha=$local
     try{
       Ensure-RuntimeSource $remote
@@ -812,7 +838,7 @@ while($true){
       $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
       Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
       Sync-Launchers
-      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
       if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
       $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
@@ -832,10 +858,12 @@ while($true){
     }catch{
       $failure=$_.Exception.Message
       $null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact
+      Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'ROLLED_BACK'
       throw ('ROLLED_BACK:'+ $failure)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
     Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}

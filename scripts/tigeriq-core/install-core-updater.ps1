@@ -9,7 +9,7 @@ if($legacyTask){
   if([string]$legacyTask.State -eq 'Running'){Stop-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction SilentlyContinue}
   Disable-ScheduledTask -TaskName $legacyAutonomySupervisorTask -ErrorAction Stop|Out-Null
 }
-$runtimeScript='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$runtimeScript='C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'
 if(-not(Test-Path -LiteralPath $sourceScript)){throw 'UPDATER_SCRIPT_MISSING'}
 New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeScript) -Force|Out-Null
 $tmp=$runtimeScript+'.tmp'

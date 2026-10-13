@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $statePath='D:\TigerIQ\State\bootstrap-watchdog.json'
 $updaterStatePath='D:\TigerIQ\State\core-runtime-updater.json'
-$updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$updaterRuntime='C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'
 $updaterTask='TigerIQ Core Runtime Updater'
 $appChromeTask='TigerIQ APP Chrome Unified'
 $appChromeTaskBlueprint='D:\TigerIQ\State\app-chrome-unified-task.xml'
