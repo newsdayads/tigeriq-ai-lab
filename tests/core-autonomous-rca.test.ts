@@ -85,6 +85,10 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.body).toContain('TIGERIQ_JOB_V1');
     const issued={number:990000,title:wo.title,body:wo.body,state:'open',created_at:'2026-10-13T01:00:00Z'};
     expect(validateWorkOrderLifecycleV2(issued)).toMatchObject({required:true,valid:true,missing:[]});
+    const futureIssue={...issued,created_at:'2026-10-14T01:00:00Z'};
+    expect(validateWorkOrderLifecycleV2(futureIssue)).toMatchObject({required:true,valid:true,missing:[]});
+    expect(wo.body).toContain('SAME_FAILURE_RETRY_MAX=2');
+    expect(wo.body).toContain('VERIFICATION_MAX_PER_HEAD=2');
     expect(wo.body).toContain('RCA_FAMILY_KEY='+rca.rcaFamilyKey);
     expect(wo.body).toContain('## STRUCTURED_PROGRESS_CHECKLIST');
     expect(wo.body).toContain('NO_PRODUCTION_RELEASE=true');
