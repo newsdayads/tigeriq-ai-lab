@@ -18,6 +18,10 @@ const SOURCE_ONLY = new Set([
   'tests/pc01-updater-release-gate.test.mjs',
   // Exact, code-adjacent UI validation files; unknown scripts/tests still deny.
   'scripts/verify_work_board_ui.mjs', 'tests/web-control.test.ts',
+  // Exact existing GitHub template and regression checks between PC01 and main.
+  '.github/ISSUE_TEMPLATE/work_order_v2.md',
+  'tests/core-autonomous-rca.test.ts', 'tests/github-intake.test.mjs',
+  'tests/tigeriq-live-owner-refinement.test.mjs', 'tests/work-order-lifecycle-v2.test.mjs',
 ]);
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
