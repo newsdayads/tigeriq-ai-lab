@@ -142,6 +142,56 @@ test('API Health mobile sorts newly verified finishes first and lets Owner switc
  await expect.poll(order).toEqual([3278,4574,2054]);
 });
 
+
+test('TigerIQ System Control: landscape 4 workforce / 3 work and compact 2+1 monitoring panels',async({page})=>{
+ for(const [width,height] of [[844,390],[852,393],[932,430]]){
+   await page.setViewportSize({width,height});
+   await openFixture(page);
+   const structure=await page.evaluate(()=>{
+     const tracks=(selector:string)=>getComputedStyle(document.querySelector(selector)!).gridTemplateColumns.split(' ').filter(Boolean).length;
+     const bounds=(selector:string)=>Math.ceil(document.querySelector(selector)!.getBoundingClientRect().height);
+     return {workers:tracks('#workers'),work:tracks('#workList'),side:tracks('.side'),
+       cardHeight:bounds('#workList .work-row'),employeeHeight:bounds('#workers .employee-card'),
+       alertGridColumn:getComputedStyle(document.querySelector('.side>.alert-panel')!).gridColumnStart,
+       viewportWidth:document.documentElement.clientWidth,
+       docWidth:document.documentElement.scrollWidth};
+   });
+   expect(structure.workers,'landscape '+width+' workforce').toBe(4);
+   expect(structure.work,'landscape '+width+' work items').toBe(3);
+   expect(structure.side,'landscape '+width+' side cards').toBe(2);
+   expect(structure.cardHeight,'landscape '+width+' card height').toBeLessThan(280);
+   expect(structure.employeeHeight,'landscape '+width+' employee height').toBeLessThan(160);
+   expect(structure.docWidth,'landscape '+width+' overflow').toBeLessThanOrEqual(structure.viewportWidth);
+ }
+});
+
+test('System Control grows card count, never card scale, across FHD, QHD and 4K',async({page})=>{
+ const observations=[];
+ for(const [width,height] of [[1920,1080],[2560,1440],[3840,2160]]){
+   await page.setViewportSize({width,height});
+   await openFixture(page);
+   const a=await page.evaluate(()=>{
+     const cols=(selector:string)=>getComputedStyle(document.querySelector(selector)!).gridTemplateColumns.split(' ').filter(Boolean).length;
+     const cardWidth=(selector:string)=>Math.round(document.querySelector(selector)!.getBoundingClientRect().width);
+     return {people:cols('#workers'),work:cols('#workList'),
+       peopleCard:cardWidth('#workers .employee-card'),workCard:cardWidth('#workList .work-row'),
+       viewportWidth:document.documentElement.clientWidth,docWidth:document.documentElement.scrollWidth};
+   });
+   expect(a.docWidth,'desktop '+width+' overflow').toBeLessThanOrEqual(a.viewportWidth);
+   expect(a.peopleCard,'desktop '+width+' people card').toBeLessThan(310);
+   expect(a.workCard,'desktop '+width+' work card').toBeLessThan(370);
+   observations.push(a);
+ }
+ for(let i=1;i<observations.length;i++){
+   expect(observations[i].people).toBeGreaterThan(observations[i-1].people);
+   expect(observations[i].work).toBeGreaterThan(observations[i-1].work);
+ }
+ await expect(page.locator('[data-system-control-root=true]')).toBeVisible();
+ expect(await page.locator('[data-module-id]').count()).toBe(5);
+ await expect(page.locator('.workforce-panel .panel-h h2')).toHaveCSS('color','rgb(96, 165, 250)');
+ await expect(page.locator('.work-panel .panel-h h2')).toHaveCSS('color','rgb(45, 212, 191)');
+});
+
 test('same Work Center card skin in LIVE and API Health; Health never shrinks to 5 microcards',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  await openFixture(page);
