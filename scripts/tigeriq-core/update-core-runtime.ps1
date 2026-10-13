@@ -28,8 +28,7 @@ $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
 # A merged main commit is NOT an authorized PC01 runtime release.
-$releaseApprovalPath='D:\TigerIQ\State\core-runtime-release-approval.json'
-$releaseAttemptPath='D:\TigerIQ\State\core-runtime-release-attempt.json'
+$releaseGuardScript=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -570,40 +569,6 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
-function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact){
-  # The local file is an operational approval record, not cryptographic proof
-  # of Owner identity. An independently authorized local procedure MUST provision it.
-  if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
-  if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
-  try{
-    $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
-    if([string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
-    if([string]$a.scope -ne 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCOPE_INVALID'}}
-    if([string]$a.targetSha -cne $targetSha){return @{approved=$false;reason='RELEASE_TARGET_MISMATCH'}}
-    if([string]$a.expectedInstalledSha -cne $installedSha -or [string]$a.rollbackSha -cne $installedSha){return @{approved=$false;reason='RELEASE_BASELINE_MISMATCH'}}
-    if([string]$a.requestId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$'){return @{approved=$false;reason='RELEASE_REQUEST_ID_INVALID'}}
-    if($a.approved -cne $true){return @{approved=$false;reason='RELEASE_NOT_APPROVED'}}
-    $expiry=[DateTime]::Parse([string]$a.expiresAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
-    $now=(Get-Date).ToUniversalTime()
-    if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
-    if($impact.web -or $impact.coding -or $impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
-    if(-not($impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
-    $wanted=@(@('core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
-    $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
-    if(($provided -join ',') -cne ($wanted -join ',')){return @{approved=$false;reason='RELEASE_COMPONENTS_MISMATCH'}}
-    if(Test-Path -LiteralPath $releaseAttemptPath){
-      $previous=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
-      if([string]$previous.requestId -ceq [string]$a.requestId -or [string]$previous.targetSha -ceq $targetSha){return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}}
-    }
-    return @{approved=$true;reason='LOCAL_RELEASE_APPROVAL_PRESENT';requestId=[string]$a.requestId}
-  }catch{return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_INVALID'}}
-}
-function Save-ReleaseAttempt([string]$requestId,[string]$targetSha,[string]$previousSha,[string]$result){
-  $d=[ordered]@{schema='TIGERIQ_PC01_RELEASE_ATTEMPT_V1';requestId=$requestId;targetSha=$targetSha;previousSha=$previousSha;result=$result;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
-  $tmp=$releaseAttemptPath+'.tmp'
-  [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
-  Move-Item -Force -LiteralPath $tmp -Destination $releaseAttemptPath
-}
 function Gates-Pass([string]$sha){
   $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
   $need=@('CI','WO-014 Queue Hygiene')
@@ -839,6 +804,12 @@ while($true){
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
     $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    if(-not(Test-Path -LiteralPath $releaseGuardScript)){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason='RELEASE_GUARD_SCRIPT_MISSING';runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    . $releaseGuardScript
     $releaseApproval=Get-ReleaseApproval $remote $local $impact
     if(-not $releaseApproval.approved){
       Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
@@ -846,8 +817,8 @@ while($true){
       continue
     }
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
     $previousRuntimeSha=$local
-    Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'STARTED'
     try{
       Ensure-RuntimeSource $remote
       Ensure-NodeModules $runtimeRepo
