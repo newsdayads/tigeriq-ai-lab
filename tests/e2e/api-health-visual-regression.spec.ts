@@ -36,7 +36,7 @@ async function openFixture(page:Page,stale=false){
  await page.route('https://fonts.gstatic.com/**',r=>r.fulfill({status:204,body:''}));
  await page.route(base+'/**',async(r:Route)=>{
   const path=new URL(r.request().url()).pathname;
-  if(path==='/')return r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:dashboard});
+  if(path==='/')return r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:dashboard.replace('@@TIGERIQ_LAB_VERSION@@','LAB131026-0931')});
   if(path==='/work-ui.css')return r.fulfill({status:200,contentType:'text/css',body:sharedCss});
   if(path==='/work-center.js')return r.fulfill({status:200,contentType:'text/javascript',body:workCenterJs});
   if(path==='/work-center-visual.css')return r.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});
@@ -366,4 +366,72 @@ test('Ops monitoring: verified source-age, active severity, event history and ev
  await expect(page.locator('#opsEvidenceGithub')).toHaveAttribute('href',/issues\/3278/);
  await page.locator('#opsEvidenceClose').click();
  await expect(page.locator('#opsEvidenceBackdrop')).toBeHidden();
+});
+
+test('P0 mobile 5-point acceptance: TigerIQ AI single line, compact workers, long journal modal and installed release footer',async({page})=>{
+ for(const [width,height] of [[390,844],[393,852],[430,932],[844,390],[852,393],[932,430],[820,1180],[1920,1080],[2560,1440],[3840,2160]]){
+  await page.setViewportSize({width,height});
+  await openFixture(page);
+  await expect(page.locator('.brand-health')).toContainText('TigerIQ AI');
+  await expect(page.locator('.brand-product')).toHaveCount(0);
+  await expect(page.locator('#labRelease')).toHaveText('LAB131026-0931');
+  const fit=await page.evaluate(()=>{
+   const box=(s:string)=>document.querySelector(s)!.getBoundingClientRect();
+   const cards=[...document.querySelectorAll('#workers .employee-card')];
+   const card=cards[0] as HTMLElement, live=card.querySelector('.employee-live-line') as HTMLElement;
+   const r=card.getBoundingClientRect(),last=live.getBoundingClientRect();
+   return {
+    logo:box('.brand-health'),
+    header:box('.topbar'),
+    docOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,
+    height:Math.round(r.height),
+    bottomSlack:Math.round(r.bottom-last.bottom),
+    offCard:cards.some(c=>{
+     const k=c.getBoundingClientRect();
+     return [...c.querySelectorAll('.employee-name,.employee-task,.employee-live-line')].some(t=>{
+       const v=t.getBoundingClientRect();
+       return v.left<k.left-1||v.right>k.right+1||v.bottom>k.bottom+1;
+     });
+    })
+   };
+  });
+  expect(fit.logo.height,'single line wordmark '+width).toBeLessThan(58);
+  expect(fit.docOverflow,'page overflow '+width).toBe(false);
+  expect(fit.offCard,'employee text escapes card '+width).toBe(false);
+  expect(fit.bottomSlack,'employee wasted tail '+width).toBeLessThanOrEqual(23);
+  expect(fit.height,'employee card compact '+width).toBeLessThan(162);
+ }
+});
+
+test('P0 iPhone audit 60 events stays inside modal scroller and above fixed actions',async({page})=>{
+ for(const [width,height] of [[390,844],[844,390],[1920,1080]]){
+  await page.setViewportSize({width,height});
+  await openFixture(page);
+  await page.route(base+'/api/work-history?*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+   ok:true,issueNumber:3278,timing:{startVerified:false,finishVerified:false},completionVerified:false,
+   events:Array.from({length:60},(_,i)=>({
+    at:new Date(Date.now()-i*60000).toISOString(),action:'TIẾN ĐỘ',
+    detail:'CODEOBJ-'+i+'-'.repeat(180)+' SOURCE_BOUNDED_GATE_RUNNING_NO_ACCEPTANCE',
+    author:'newsdayads',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/3278'
+   }))
+  })}));
+  await page.locator('#workList .work-row').first().click();
+  await expect(page.locator('#workDetailAudit .tiq-audit-timeline li')).toHaveCount(60);
+  const geometry=await page.evaluate(()=>{
+   const box=(s:string)=>document.querySelector(s)!.getBoundingClientRect();
+   const body=document.querySelector('.work-detail-body')! as HTMLElement;
+   const a=box('.work-detail-actions'),d=box('.work-detail-body'),outer=box('.work-detail-modal');
+   const sections=[...document.querySelectorAll('.work-detail-section')].map(el=>el.getBoundingClientRect());
+   return {outer,d,a,overflowY:getComputedStyle(body).overflowY,scrollH:body.scrollHeight,clientH:body.clientHeight,
+    overlap:a.top<d.bottom-1,spill:sections.some(s=>s.left<outer.left-1||s.right>outer.right+1),
+    horizontal:document.documentElement.scrollWidth>document.documentElement.clientWidth};
+  });
+  expect(geometry.overlap,'actions must not overlap audit scroller at '+width).toBe(false);
+  expect(geometry.spill,'audit sections must stay in modal at '+width).toBe(false);
+  expect(geometry.overflowY).toBe('auto');
+  expect(geometry.scrollH).toBeGreaterThan(geometry.clientH);
+  expect(geometry.horizontal).toBe(false);
+  await page.locator('#workDetailClose').click();
+  await expect(page.locator('#workDetailBackdrop')).not.toHaveClass(/open/);
+ }
 });
