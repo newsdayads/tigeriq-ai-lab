@@ -46,7 +46,7 @@ $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'
-$bootstrapWatchdogRuntime='D:\TigerIQ\Runtime\BootstrapWatchdog\bootstrap-watchdog.ps1'
+$bootstrapWatchdogRuntime='C:\ProgramData\TigerIQCoreRelease\BootstrapWatchdog\bootstrap-watchdog.ps1'
 $webRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-web-control'}else{'D:\TigerIQ\Runtime\WebControl24x7'}
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
@@ -187,16 +187,27 @@ function Ensure-WebTaskRuntimeTarget(){
     return @{action=if($retarget){'retargeted_started'}else{'verified_started'};task=$webTask;target=$launcher}
   }catch{return @{action='blocked';reason=('WEB_TASK_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}}
 }
-function Ensure-BootstrapWatchdogTask(){
+function Ensure-BootstrapWatchdogTask([switch]$AllowSourceRefresh){
   try{
-    $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
-    if(-not(Test-Path -LiteralPath $source)){return @{action='skip';reason='SOURCE_MISSING'}}
-    New-Item -ItemType Directory -Path (Split-Path -Parent $bootstrapWatchdogRuntime) -Force|Out-Null
-    $needsCopy=$true
-    if(Test-Path -LiteralPath $bootstrapWatchdogRuntime){
-      try{$needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)}catch{$needsCopy=$true}
+    # Existing protected bootstrap executable is the authority until an exact
+    # candidate has passed both CI and the separate local release gate.
+    $needsCopy=$false
+    if($AllowSourceRefresh){
+      $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
+      if(-not(Test-Path -LiteralPath $source)){return @{action='blocked';reason='WATCHDOG_SOURCE_MISSING'}}
+      if(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+        $needsCopy=$true
+      }else{
+        $needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)
+      }
+      if($needsCopy){
+        $tmp=$bootstrapWatchdogRuntime+'.tmp'
+        Copy-Item -LiteralPath $source -Destination $tmp -Force
+        Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force
+      }
+    }elseif(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+      return @{action='blocked';reason='PROTECTED_WATCHDOG_BOOTSTRAP_MISSING'}
     }
-    if($needsCopy){$tmp=$bootstrapWatchdogRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force}
     $task=Get-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction SilentlyContinue
     $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
     $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$bootstrapWatchdogRuntime`" -IntervalSeconds 60 -FailureThreshold 2 -CooldownSeconds 300"
@@ -827,7 +838,7 @@ while($true){
       $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
       Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
       Sync-Launchers
-      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
       if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
       $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
