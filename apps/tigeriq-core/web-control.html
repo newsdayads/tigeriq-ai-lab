@@ -174,7 +174,7 @@ function renderOwnerApprovalCards(d){
     copy.onclick=async()=>{
       try{
         if(!navigator.clipboard?.writeText)throw Error('NO_CLIPBOARD');
-        await navigator.clipboard.writeText(a.approvalText);
+        await navigator.clipboard.writeText('LÀM — NO YAPPING. '+a.approvalText);
         note.textContent='ĐÃ SAO CHÉP. CHƯA PHÊ DUYỆT — CẦN XÁC NHẬN QUA KÊNH HỢP LỆ.';
       }catch{note.textContent='KHÔNG SAO CHÉP ĐƯỢC. MỞ HỒ SƠ ĐỂ XÁC NHẬN.';}
     };
