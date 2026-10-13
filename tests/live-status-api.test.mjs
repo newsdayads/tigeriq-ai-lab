@@ -18,6 +18,7 @@ import {
   parseOwnerResultComment,
   projectOwnerResultInbox,
   progressForIssue,
+  checklistForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
   verifiedCompletionProgress,
@@ -1348,4 +1349,63 @@ describe('TigerIQ Live Work Order projection', () => {
   });
 
 
+});
+
+
+describe('Canonical checklist display across active and historical work', () => {
+  it('does not double count an old archived checklist (#4532)', () => {
+    const card = issue(4532, '[P1] Cline', [
+      '## ACTIVE WORK ORDER',
+      'PROGRESS_SOURCE=VERIFIED_CHECKLIST',
+      'PROGRESS_VERIFIED=true',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] M01 — Đã kiểm chứng [Bằng chứng](https://github.com/newsdayads/tigeriq-ai-lab/pull/1)',
+      '- [ ] M02 — Đang chờ',
+      '## ACCEPTANCE',
+      'Evidence required',
+      '---',
+      '## HISTORICAL',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] X01 — Đã xong trước đây',
+      '- [x] X02 — Đã xong trước đây',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 1, total: 2, remaining: 1, verified: true});
+    expect(checklistForIssue(card).steps.map(s => s.title)).toHaveLength(2);
+  });
+
+  it('finds the current V2 checklist after an introductory checkpoint divider (#4709)', () => {
+    const card = issue(4709, '[P1] Repair', [
+      '## TÓM TẮT LẦN SỬA',
+      'Phần nguồn đã hợp nhất, môi trường chạy chưa đạt.',
+      '---',
+      '## ACTIVE WORK ORDER',
+      'WORK_ORDER_LIFECYCLE=V2',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [ ] R00 — Rà nguồn',
+      '- [ ] R01 — Sửa nguồn',
+      '## ACCEPTANCE',
+      'Requires real result',
+      '---',
+      '## HISTORICAL',
+      '- [x] X00 — Không được tính',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 0, total: 2, remaining: 2});
+  });
+
+  it('preserves a bounded legacy checklist and excludes historical ticks (#2949)', () => {
+    const card = issue(2949, '[P1] NV102', [
+      'PROGRESS_VERIFIED=false',
+      '- [ ] 01 — Kiểm tra thiết bị',
+      '- [ ] 02 — Kiểm tra bản cài',
+      '---',
+      '## LỊCH SỬ',
+      '- [x] OLD — Một lần chạy trước',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 0, total: 2, verified: false});
+  });
+
+  it('does not invent progress for policy-only issues without checkboxes', () => {
+    expect(checklistForIssue(issue(1456, '[P0] Governance', 'SOURCE_ONLY=true')))
+      .toMatchObject({done: 0, total: 0, verified: false});
+  });
 });
