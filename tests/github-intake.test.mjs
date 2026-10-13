@@ -473,6 +473,45 @@ test('stability v2 safe intake creates objective without generic API auto-work h
   assert.strictEqual(pool.jobs.length,0,'deterministic stability planner must own job materialization; no generic helper auto-work');
 });
 
+test('active contract is not blocked by superseded owner holds, dependency, or terminal history',()=>{
+  const active=[
+    SAFE_AUTO_POLICY_BASE,
+    'TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','OWNER_POLICY=AUTO',
+    'CURRENT_STATE=READY_AUTO_EXECUTION','MUTATION_OWNER=CORE_DYNAMIC_LEASE'
+  ].join('\n');
+  const archived=[
+    '---',
+    '## HISTORICAL ONLY',
+    'OWNER_HOLD=true','OWNER_CONTROLLED=true','OWNER_ACCEPTANCE_REQUIRED=true',
+    'OWNER_REVIEW_REQUIRED=true','MANUAL_GATE=true',
+    'BLOCKED_BY=#9999','DEPENDENCY_STATUS=WAIT',
+    'CURRENT_STATE=BLOCKED_HISTORY','SUPERSEDED_BY=#9998',
+    'PRIORITY=P0'
+  ].join('\n');
+  const issue={number:4800,state:'open',title:'[P1][CORE] valid current authorization',
+    body:active+'\n'+archived,labels:[],html_url:'https://example/4800'};
+  const admission=safeAutoWorkAdmission(issue);
+  assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason},
+    {eligible:true,reason:'SAFE_P1_P5_POLICY'});
+  assert.ok(parseExecutableIssue(issue),'the real Core intake path must also accept current authorization');
+
+  const currentHold={...issue,body:active+'\nOWNER_HOLD=true\n'+archived};
+  assert.deepStrictEqual(
+    {eligible:safeAutoWorkAdmission(currentHold).eligible,reason:safeAutoWorkAdmission(currentHold).reason},
+    {eligible:false,reason:'OWNER_OR_HOLD_GATE'});
+  assert.strictEqual(parseExecutableIssue(currentHold),null);
+
+  const currentDependency={...issue,body:active+'\nBLOCKED_BY=#9999\n'+archived};
+  assert.deepStrictEqual(
+    {eligible:safeAutoWorkAdmission(currentDependency).eligible,reason:safeAutoWorkAdmission(currentDependency).reason},
+    {eligible:false,reason:'DEPENDENCY_BLOCKED'});
+
+  const currentP0={...issue,title:'[P0][CORE] owner-only'};
+  assert.deepStrictEqual(
+    {eligible:safeAutoWorkAdmission(currentP0).eligible,reason:safeAutoWorkAdmission(currentP0).reason},
+    {eligible:false,reason:'P0_OR_INVALID_PRIORITY'});
+});
+
 test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, UI owner, hard gate, active owner, and terminal-blocked',()=>{
   const base={number:2500,state:'open',title:'[P1][CORE] candidate',body:SAFE_AUTO_POLICY_BASE,labels:[]};
   const cases=[
