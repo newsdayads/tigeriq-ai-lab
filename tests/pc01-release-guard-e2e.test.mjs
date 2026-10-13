@@ -82,6 +82,10 @@ it.skipIf(!pwshPresent)('classifies exact approved test/template paths only and 
   expect(run({approval:template(),paths:['.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/core-manager-stop-next.test.mjs','apps/tigeriq-core/core.mjs']}).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
   expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','tests/core-manager-stop-next.test.ts']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
+it.skipIf(!pwshPresent)('allows exact workflow document but denies near-miss',()=>{
+  expect(run({approval:template(),paths:['bootstrap/02_TIGERIQ_WORKFLOW.md','apps/tigeriq-core/core.mjs']}).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({approval:template(),paths:['bootstrap/02_TIGERIQ_WORKFLOW_V2.md','apps/tigeriq-core/core.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
 it.skipIf(!pwshPresent)('blocks unapproved Vercel/API files even when Updater is in approved components',()=>{
   expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','api/live-device-auth.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
@@ -276,6 +280,8 @@ it('cannot widen scope via component list, comment fields, or arbitrary paths',(
   // Exact paths only: executable Core-owned API module is not source-only.
   expect(impactForPc01ReleaseFiles([{filename:'api/live-status.mjs'}])).toEqual(['core']);
   expect(()=>impactForPc01ReleaseFiles([{filename:'api/live-device-auth.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
+  expect(impactForPc01ReleaseFiles([{filename:'bootstrap/02_TIGERIQ_WORKFLOW.md'},{filename:'apps/tigeriq-core/core.mjs'}])).toEqual(['core']);
+  expect(()=>impactForPc01ReleaseFiles([{filename:'bootstrap/02_TIGERIQ_WORKFLOW_V2.md'}])).toThrow('FILE_OUT_OF_SCOPE');
   const previousMainDiff=[".github/ISSUE_TEMPLATE/work_order_v2.md","scripts/verify_work_board_ui.mjs","tests/continuous-capability-verify.test.mjs","tests/core-autonomous-rca.test.ts","tests/core-manager-stop-next.test.mjs","tests/github-intake.test.mjs","tests/live-status-api.test.mjs","tests/tigeriq-live-owner-refinement.test.mjs","tests/web-control.test.ts","tests/work-order-lifecycle-v2.test.mjs"];
   expect(impactForPc01ReleaseFiles([...previousMainDiff.map(filename=>({filename})),{filename:'apps/tigeriq-core/core.mjs'},{filename:'api/live-status.mjs'},{filename:'scripts/tigeriq-core/pc01-release-guard.ps1'}])).toEqual(['core','updater']);
   expect(()=>impactForPc01ReleaseFiles([{filename:'tests/pc01-unknown.test.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');

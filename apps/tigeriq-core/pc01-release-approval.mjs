@@ -25,7 +25,8 @@ const SOURCE_ONLY = new Set([
   'tests/live-status-api.test.mjs',
   'tests/tigeriq-live-owner-refinement.test.mjs',
   'tests/web-control.test.ts',
-  'tests/work-order-lifecycle-v2.test.mjs'
+  'tests/work-order-lifecycle-v2.test.mjs',
+  'bootstrap/02_TIGERIQ_WORKFLOW.md'
 ]);
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
