@@ -203,3 +203,123 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
     expect(onlineMismatch.reason).toBe('ARTIFACT_HASH_MISMATCH');
   });
 });
+
+import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+
+const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
+const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
+  '\nEXPECTED_INSTALLED_SHA='+approvalBaseline+'\nCOMPONENTS=core';
+const ownerFixture=(time=Date.now())=>{
+  const stamp=new Date(time-20_000).toISOString();
+  const comment={id:4725123,user:{login:'newsdayads'},body:ownerCommentText(),
+    created_at:stamp,updated_at:stamp,issue_url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/4725'};
+  return {
+    identity:{actor:'newsdayads',runId:'1234567891',claims:{actor:'newsdayads',event_name:'issue_comment',run_attempt:'1'}},
+    eventName:'issue_comment',
+    payload:{action:'created',repository:{full_name:'newsdayads/tigeriq-ai-lab'},
+      issue:{number:4725},sender:{login:'newsdayads'},comment},
+    verifiedComment:structuredClone(comment),
+    installedSha:approvalBaseline,mainSha:approvalTarget,
+    compare:{status:'ahead',ahead_by:1,behind_by:0,total_commits:1,
+      files:[{filename:'apps/tigeriq-core/core.mjs'},
+        {filename:'apps/tigeriq-core/pc01-release-approval.mjs'},
+        {filename:'tests/pc01-release-guard-e2e.test.mjs'}]},
+    nowMs:time,
+  };
+};
+it('Owner-only signed event verifies exact SHA, permitted paths and ten-minute one-shot ticket',()=>{
+  const fixture=ownerFixture();
+  const approval=validatePc01ApprovalEvidence(fixture);
+  expect(approval).toMatchObject({schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V1',
+    scope:'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1',targetSha:approvalTarget,
+    rollbackSha:approvalBaseline,components:['core'],approved:true});
+  expect(Date.parse(approval.expiresAtUtc)-fixture.nowMs).toBe(600_000);
+  expect(approval.requestId).toBe('GH-1234567891-4725123');
+});
+it('rejects forged actor, fake comment, mismatched sha, stale timestamp and rerun',()=>{
+  const mutators=[
+    f=>{f.identity.actor='not-owner';},
+    f=>{f.identity.claims.event_name='push';},
+    f=>{f.identity.claims.run_attempt='2';},
+    f=>{f.payload.sender.login='attacker';},
+    f=>{f.verifiedComment.body+='FAKE';},
+    f=>{f.verifiedComment.updated_at=new Date(f.nowMs).toISOString();},
+    f=>{f.verifiedComment.created_at=new Date(f.nowMs-3_600_000).toISOString();},
+    f=>{f.mainSha='3'.repeat(40);},
+    f=>{f.installedSha='4'.repeat(40);},
+    f=>{f.compare.behind_by=1;},
+    f=>{f.compare.files.push({filename:'api/live-device-auth.mjs'});},
+    f=>{f.compare.files.push({filename:'apps/appchrome/runtime.mjs'});},
+  ];
+  for(const mutate of mutators){
+    const fixture=ownerFixture();mutate(fixture);
+    expect(()=>validatePc01ApprovalEvidence(fixture)).toThrow('PC01_RELEASE_');
+  }
+});
+it('cannot widen scope via component list, comment fields, or arbitrary paths',()=>{
+  expect(parsePc01OwnerApproval(ownerCommentText()).components).toEqual(['core']);
+  expect(()=>parsePc01OwnerApproval(ownerCommentText()+'\nFILE=C:\\evil')).toThrow();
+  expect(()=>parsePc01OwnerApproval(ownerCommentText().replace('COMPONENTS=core','COMPONENTS=core,web'))).toThrow();
+  expect(()=>impactForPc01ReleaseFiles([{filename:'.github/workflows/tigeriq-core-event-dispatch.yml'}])).toThrow('FILE_OUT_OF_SCOPE');
+  expect(()=>impactForPc01ReleaseFiles([{filename:'apps/tigeriq-core/web-control-index.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
+  expect(impactForPc01ReleaseFiles([{filename:'apps/openclaw-tigeriq-runtime/operator.mjs'}])).toEqual(['core','openclaw']);
+});
+it('end-to-end mock writes only exclusive protected approval after authenticated GH reads',async()=>{
+  const fixture=ownerFixture(),raw=JSON.stringify({currentSha:approvalBaseline});
+  const urls=[],written=[],openCalls=[];
+  const io={
+    async readFile(p){
+      if(p===PC01_INSTALLED_STATE)return raw;
+      const e=Error('missing');e.code='ENOENT';throw e;
+    },
+    async lstat(){return{isDirectory:()=>true,isSymbolicLink:()=>false};},
+    async realpath(p){return p;},
+    async open(p,flags,mode){
+      openCalls.push({p,flags,mode});
+      return{async writeFile(t){written.push(JSON.parse(t));},async sync(){},async close(){}};
+    },
+  };
+  const fetchImpl=async url=>{
+    urls.push(url);
+    return{ok:true,json:async()=>{
+      if(url.includes('/issues/comments/'))return fixture.verifiedComment;
+      if(url.includes('/git/ref/heads/main'))return{object:{sha:approvalTarget}};
+      if(url.includes('/compare/'))return fixture.compare;
+      throw Error('unexpected mock fetch');
+    }};
+  };
+  const result=await acceptPc01OwnerApprovalEvent({
+    identity:fixture.identity,eventName:fixture.eventName,payload:fixture.payload,
+    githubToken:'TEST_ONLY',fetchImpl,io,nowMs:fixture.nowMs,platform:'win32',
+  });
+  expect(result).toMatchObject({accepted:true,owner:'newsdayads',ticketWritten:true});
+  expect(urls).toHaveLength(3);
+  expect(openCalls).toEqual([{p:PC01_APPROVAL_PATH,flags:'wx',mode:384}]);
+  expect(written).toHaveLength(1);
+  expect(written[0].targetSha).toBe(approvalTarget);
+  expect(JSON.stringify(result)).not.toContain('TEST_ONLY');
+});
+it('end-to-end mock blocks replay, no general mutation, and absent GitHub token',async()=>{
+  const fixture=ownerFixture();let writes=0;
+  const io={
+    async readFile(p){
+      if(p===PC01_INSTALLED_STATE)return JSON.stringify({currentSha:approvalBaseline});
+      return JSON.stringify({targetSha:approvalTarget,requestId:'OLD'});
+    },
+    async lstat(){return{isDirectory:()=>true,isSymbolicLink:()=>false};},
+    async realpath(p){return p;},
+    async open(){writes++;throw Error('should never write');},
+  };
+  const fetchImpl=async url=>({ok:true,json:async()=>url.includes('/issues/comments/')?fixture.verifiedComment:
+    url.includes('/git/ref/heads/main')?{object:{sha:approvalTarget}}:fixture.compare});
+  await expect(acceptPc01OwnerApprovalEvent({
+    identity:fixture.identity,eventName:fixture.eventName,payload:fixture.payload,
+    githubToken:'TEST_ONLY',fetchImpl,io,nowMs:fixture.nowMs,platform:'win32',
+  })).rejects.toThrow('PC01_RELEASE_REPLAY_REJECTED');
+  await expect(acceptPc01OwnerApprovalEvent({
+    identity:fixture.identity,eventName:fixture.eventName,payload:fixture.payload,
+    githubToken:'',fetchImpl,io,nowMs:fixture.nowMs,platform:'win32',
+  })).rejects.toThrow('PC01_RELEASE_GITHUB_READ_AUTH_MISSING');
+  expect(writes).toBe(0);
+});
