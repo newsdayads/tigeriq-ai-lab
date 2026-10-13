@@ -1,6 +1,6 @@
 # Operational gate sourced only from installed runtime, never candidate or GitHub metadata.
-$releaseApprovalPath='D:\TigerIQ\State\core-runtime-release-approval.json'
-$releaseAttemptPath='D:\TigerIQ\State\core-runtime-release-attempt.json'
+$releaseApprovalPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-approval.json'
+$releaseAttemptPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'
 function Test-ReleaseApprovalAcl {
   # The parent directory matters: an untrusted directory writer can replace
   # a correctly ACL-protected child with a forged approval file.
