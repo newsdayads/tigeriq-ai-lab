@@ -5,7 +5,7 @@ export const PC01_RELEASE_STATE='D:\\TigerIQ\\State\\core-runtime-source.json';
 export function formatInstalledLabVersion(state){
  if(!state || !/^[0-9a-f]{40}$/i.test(String(state.currentSha||'')))return null;
  const value=String(state.updatedAt||'');
- if(!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}/.test(value))return null;
+ if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value))return null;
  const when=new Date(value);
  if(!Number.isFinite(when.getTime()))return null;
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{
