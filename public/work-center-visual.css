@@ -348,3 +348,43 @@ body.api-health .work-panel #woFilters.wo-filters .wo-filter.on{
   color:#F8FAFC!important;
   box-shadow:inset 0 0 0 1px var(--wc-tab,#94A3B8)!important;
 }
+
+/* Owner 2026-10-13: TigerIQ AI is the product brand; API Health is a module. */
+body.api-health .brand-ai{font-style:normal;font-size:.7em;font-weight:800;color:#7DD3FC;white-space:nowrap;letter-spacing:.015em}
+body.api-health .workforce-panel>.panel-h{
+ display:grid!important;grid-template-columns:minmax(210px,max-content) minmax(0,1fr)!important;
+ align-items:center!important;column-gap:12px!important;row-gap:5px!important;
+}
+body.api-health .workforce-panel>.panel-h>div:first-child{min-width:0}
+body.api-health .workforce-panel>.panel-h .filters{
+ display:flex!important;flex-wrap:wrap!important;justify-content:flex-end!important;
+ min-width:0!important;max-width:100%!important;align-items:center!important;
+}
+body.api-health .workforce-panel>.panel-h h2{max-width:100%;overflow-wrap:anywhere!important}
+@media(max-width:1199px){
+ body.api-health .workforce-panel>.panel-h{grid-template-columns:minmax(0,1fr)!important}
+ body.api-health .workforce-panel>.panel-h .filters{justify-content:flex-start!important}
+}
+/* Do not create a nested scroller, and ensure each card in a CSS grid row
+   shares the row height. Other rows may legitimately have another height. */
+body.api-health #workList.wo-list.work-list.tiq-work-center{
+ max-height:none!important;height:auto!important;overflow-y:visible!important;
+ grid-auto-rows:auto!important;align-items:stretch!important;align-content:start!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card{
+ height:100%!important;align-self:stretch!important;display:flex!important;
+ flex-direction:column!important;min-height:0!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
+ height:100%!important;flex:1 1 auto!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center .work-activity{
+ margin-top:5px;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;
+ font-size:10px;line-height:1.25;color:#B9DEF8;min-width:0;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center .work-activity span:first-child{
+ font-weight:700;color:#93C5FD;white-space:nowrap;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center .work-activity span:last-child{
+ overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;max-width:100%;
+}
