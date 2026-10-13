@@ -333,3 +333,18 @@ body.api-health #workList.tiq-work-center>.tiq-work-card .tiq-work-times{padding
   body.api-health .layout{grid-template-columns:minmax(0,1fr)!important}
   body.api-health .side{grid-template-columns:minmax(0,1fr)!important}
 }
+
+/* OWNER P0 semantic filter FIX: legacy Health inline CSS used a more
+   specific background:transparent!important shorthand. The scoped #woFilters
+   contract is intentionally stronger and loaded after the legacy stylesheet. */
+body.api-health .work-panel #woFilters.wo-filters .wo-filter{
+  background:#111C2E!important;
+  border-color:var(--wc-tab,#94A3B8)!important;
+  color:var(--wc-tab,#94A3B8)!important;
+}
+body.api-health .work-panel #woFilters.wo-filters .wo-filter.on{
+  background:color-mix(in srgb,var(--wc-tab,#94A3B8) 24%,#111C2E)!important;
+  border-color:var(--wc-tab,#94A3B8)!important;
+  color:#F8FAFC!important;
+  box-shadow:inset 0 0 0 1px var(--wc-tab,#94A3B8)!important;
+}
