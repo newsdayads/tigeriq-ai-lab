@@ -1,3 +1,4 @@
+import { authorizedDevice } from './live-device-auth.mjs';
 import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
 import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import {completionProof} from '../apps/shared/work-center-history.mjs';
@@ -2147,6 +2148,10 @@ export async function fetchPc01Live(fetchImpl = fetch) {
 }
 
 export default async function handler(req, res) {
+  const deviceKey=String(process.env.TIGERIQ_LIVE_DEVICE_KEY||'');
+  res.setHeader('Cache-Control','private, no-store');
+  if(deviceKey.length<48)return json(res,503,{error:'DEVICE_AUTH_NOT_CONFIGURED'});
+  if(!authorizedDevice(String(req.headers?.cookie||''),deviceKey))return json(res,403,{error:'DEVICE_NOT_ENROLLED'});
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
   const now = Date.now();
   const requestUrl = new URL(req.url || '/', 'http://localhost');
