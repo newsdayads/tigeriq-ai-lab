@@ -51,7 +51,23 @@ function sortClosed(rows,mode){
    ||closedStamp(b,kind)-closedStamp(a,kind)
    ||Number(b.number||0)-Number(a.number||0));
 }
-function rowsFor(data,filter,closedOrder){
+/* Open-list sorting is presentation-only.
+   A structured GitHub lifecycle state attestation (not issue.updatedAt)
+   is the only accepted status-event timestamp. Missing evidence stays below
+   attested rows in the existing Owner/priority order. */
+function sortOpen(rows,mode){
+ const kind=String(mode||'priority');
+ if(kind==='number_asc')return [...rows].sort((a,b)=>Number(a.number||0)-Number(b.number||0));
+ if(kind==='number_desc')return [...rows].sort((a,b)=>Number(b.number||0)-Number(a.number||0));
+ if(kind!=='status_latest')return rows;
+ return [...rows].sort((a,b)=>{
+  const aa=a&&a.statusEvidenceSource==='github_structured_lifecycle_comment'?time(a.statusEvidenceAt):null;
+  const bb=b&&b.statusEvidenceSource==='github_structured_lifecycle_comment'?time(b.statusEvidenceAt):null;
+  return Number(bb!==null)-Number(aa!==null)
+    ||(aa!==null&&bb!==null?bb-aa:0);
+ });
+}
+function rowsFor(data,filter,closedOrder,openOrder){
  const o=Array.isArray(data&&data.openWork)?data.openWork:[].concat(data&&data.activeWork||[],data&&data.nextQueue||[]);
  const done=Array.isArray(data&&data.recentWork)?data.recentWork:[];
  const work=x=>x&&x.workKind==='WORK'&&status(x)!=='SYSTEM';
@@ -79,7 +95,7 @@ function rowsFor(data,filter,closedOrder){
  if(f==='unstarted')return o.filter(x=>work(x)&&status(x)==='OPEN'&&!ready(x));
  if(f==='system')return o.filter(x=>x.workKind==='SYSTEM'||status(x)==='SYSTEM');
  if(f==='goal')return o.filter(x=>x.workKind==='GOAL'||status(x)==='GOAL');
- return o.filter(work);
+ return sortOpen(o.filter(work),openOrder);
 }
 function badgeIcon(s){
  const d={DONE:'M20 6 9 17l-5-5',WORKING:'M3 12h4l3-8 4 16 3-8h4',BLOCKED:'M12 9v4m0 4h.01',REVIEW:'M21 21l-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14',WAITING:'M12 7v5l4 2',QUEUED:'M12 7v5l4 2'};return '<svg class="live-status-icon" role="img" aria-label="'+esc(LABELS[s]||s)+'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="'+(d[s]||'M12 4v16M4 12h16')+'"/></svg>';

@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import '../public/work-center.js';
 import {completionProof,buildWorkHistory} from '../apps/shared/work-center-history.mjs';
-import {parseRecentCompletedIssue} from '../api/live-status.mjs';
+import {parseRecentCompletedIssue,parseOpenWorkIssue} from '../api/live-status.mjs';
 
 const wc=globalThis.TigerIQWorkCenter;
 const url='https://github.com/newsdayads/tigeriq-ai-lab/issues/990001';
@@ -35,6 +35,20 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor({openWork:[{workKind:'WORK',status:'WAITING'},{workKind:'WORK',status:'WORKING'}]},'action')).toHaveLength(2);
   expect(wc.rowsFor({recentWork:[{status:'DONE',completionVerified:false},{status:'DONE',completionVerified:true}]},'done')).toHaveLength(1);
  });
+ it('records only a fresh matching structured lifecycle status attestation',()=>{
+   const sample=issue(validBody,{state:'open',state_reason:null,closed_at:null,updated_at:'2026-10-12T11:00:00Z'});
+   const comment={state:'WAIT_DEPENDENCY',createdAt:'2026-10-12T11:45:00Z',blocker:'Wait for upstream'};
+   const row=parseOpenWorkIssue(sample,{lifecycle:comment});
+   expect(row).not.toBeNull();
+   expect(row.status).toBe('WAITING');
+   expect(row.statusEvidenceAt).toBe('2026-10-12T11:45:00Z');
+   expect(row.statusEvidenceSource).toBe('github_structured_lifecycle_comment');
+   const noComment=parseOpenWorkIssue(sample);
+   expect(noComment.statusEvidenceAt).toBeNull();
+   expect(noComment.statusEvidenceSource).toBeNull();
+   const oldComment=parseOpenWorkIssue(sample,{lifecycle:{...comment,createdAt:'2026-10-10T11:45:00Z'}});
+   expect(oldComment.statusEvidenceAt).toBeNull();
+ });
  it('puts recently verified completion first; keeps closed-only records clearly separate',()=>{
   const recent=[
    {number:21,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false,closedAt:'2026-10-13T12:00:00Z',updatedAt:'2026-10-13T15:00:00Z'},
@@ -49,6 +63,23 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor(data,'done').map(x=>x.number)).toEqual([23,22]);
   expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([1]);
   expect(recent.map(x=>x.number)).toEqual([21,22,23,24]); // no source mutation
+ });
+ it('keeps Owner priority untouched; sorts open work by attested status or STT without invented issue edit times',()=>{
+  const rows=[
+   {number:430,workKind:'WORK',status:'WAITING',priority:'P1',updatedAt:'2026-10-13T19:00:00Z'},
+   {number:410,workKind:'WORK',status:'REVIEW',priority:'P2',statusEvidenceAt:'2026-10-12T10:00:00Z',statusEvidenceSource:'github_structured_lifecycle_comment'},
+   {number:420,workKind:'WORK',status:'WAITING',priority:'P3',statusEvidenceAt:'2026-10-13T09:00:00Z',statusEvidenceSource:'github_structured_lifecycle_comment'},
+   {number:405,workKind:'WORK',status:'BLOCKED',priority:'P4',statusEvidenceAt:'2026-10-14T08:00:00Z',statusEvidenceSource:'not_verified'},
+  ];
+  const data={openWork:rows};
+  expect(wc.rowsFor(data,'action',undefined,'priority').map(x=>x.number)).toEqual([430,410,420,405]);
+  expect(wc.rowsFor(data,'action',undefined,'status_latest').map(x=>x.number)).toEqual([420,410,430,405]);
+  expect(wc.rowsFor(data,'action',undefined,'number_asc').map(x=>x.number)).toEqual([405,410,420,430]);
+  expect(wc.rowsFor(data,'action',undefined,'number_desc').map(x=>x.number)).toEqual([430,420,410,405]);
+  expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([430,410,420,405]);
+  expect(rows.map(x=>x.number)).toEqual([430,410,420,405]);
+  // A simple GitHub edit (updatedAt) is not a verified status change.
+  expect(wc.rowsFor(data,'action',undefined,'status_latest')[0].updatedAt).toBeUndefined();
  });
  it('keeps four summary views and never counts a closed-only issue as done',()=>{
   const open=[{number:1,workKind:'WORK',status:'WORKING',activeLease:true,heartbeatFresh:true},{number:2,workKind:'WORK',status:'REVIEW'},{number:3,workKind:'WORK',status:'BLOCKED'}];

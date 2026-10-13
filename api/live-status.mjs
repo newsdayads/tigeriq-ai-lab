@@ -1623,6 +1623,17 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     executionEligibility,
     lifecycleContract: {required:lifecycleContract.required,valid:lifecycleContract.valid,missing:lifecycleContract.missing,source:lifecycleContract.source},
     lifecycleTiming:lifecycleContract.timestamps,
+    // Timestamp of the latest structured GitHub comment explicitly reporting
+    // the SAME effective display status; never infer from issue.updated_at.
+    // It is an observed status attestation, not necessarily a transition event.
+    statusEvidenceAt: currentLifecycle?.state
+      && lifecycleDisplayStatus===status
+      && Number.isFinite(Date.parse(currentLifecycle.createdAt||''))
+        ? currentLifecycle.createdAt : null,
+    statusEvidenceSource: currentLifecycle?.state
+      && lifecycleDisplayStatus===status
+      && Number.isFinite(Date.parse(currentLifecycle.createdAt||''))
+        ? 'github_structured_lifecycle_comment' : null,
     // UI-only readiness: it is NOT a Core lease or proof NV02 is executing.
     localSelfPullReady: executionEligibility === 'READY' && !activeLease && nv02LocalSelfPullEligible(issue),
     executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
