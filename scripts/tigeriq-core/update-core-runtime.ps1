@@ -810,7 +810,7 @@ while($true){
       continue
     }
     . $releaseGuardScript
-    $releaseApproval=Get-ReleaseApproval $remote $local $impact
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed
     if(-not $releaseApproval.approved){
       Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
       Start-Sleep -Seconds $IntervalSeconds
