@@ -50,6 +50,23 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([1]);
   expect(recent.map(x=>x.number)).toEqual([21,22,23,24]); // no source mutation
  });
+ it('keeps Owner priority untouched; sorts open work by attested status or STT without invented issue edit times',()=>{
+  const rows=[
+   {number:430,workKind:'WORK',status:'WAITING',priority:'P1',updatedAt:'2026-10-13T19:00:00Z'},
+   {number:410,workKind:'WORK',status:'REVIEW',priority:'P2',statusEvidenceAt:'2026-10-12T10:00:00Z',statusEvidenceSource:'github_structured_lifecycle_comment'},
+   {number:420,workKind:'WORK',status:'WAITING',priority:'P3',statusEvidenceAt:'2026-10-13T09:00:00Z',statusEvidenceSource:'github_structured_lifecycle_comment'},
+   {number:405,workKind:'WORK',status:'BLOCKED',priority:'P4',statusEvidenceAt:'2026-10-14T08:00:00Z',statusEvidenceSource:'not_verified'},
+  ];
+  const data={openWork:rows};
+  expect(wc.rowsFor(data,'action',undefined,'priority').map(x=>x.number)).toEqual([430,410,420,405]);
+  expect(wc.rowsFor(data,'action',undefined,'status_latest').map(x=>x.number)).toEqual([420,410,430,405]);
+  expect(wc.rowsFor(data,'action',undefined,'number_asc').map(x=>x.number)).toEqual([405,410,420,430]);
+  expect(wc.rowsFor(data,'action',undefined,'number_desc').map(x=>x.number)).toEqual([430,420,410,405]);
+  expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([430,410,420,405]);
+  expect(rows.map(x=>x.number)).toEqual([430,410,420,405]);
+  // A simple GitHub edit (updatedAt) is not a verified status change.
+  expect(wc.rowsFor(data,'action',undefined,'status_latest')[0].updatedAt).toBeUndefined();
+ });
  it('keeps four summary views and never counts a closed-only issue as done',()=>{
   const open=[{number:1,workKind:'WORK',status:'WORKING',activeLease:true,heartbeatFresh:true},{number:2,workKind:'WORK',status:'REVIEW'},{number:3,workKind:'WORK',status:'BLOCKED'}];
   const recent=[{number:4,workKind:'WORK',status:'DONE',completionVerified:true},{number:5,workKind:'WORK',status:'CLOSED_UNVERIFIED',completionVerified:false}];
