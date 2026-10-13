@@ -108,6 +108,15 @@ Khi NEW CHAT trong Project chỉ nhận **một số nguyên `N`**:
 5. Trước mọi mutation: đọc authority envelope của employee + CURRENT_STATE + queue + ownership/lease/idempotency/resource lock.
 6. Thực thi theo mode/policy đã resolve; mọi kết quả/evidence/state phải được ghi authoritative.
 
+### 7.1. Lệnh có tên `ÁP DỤNG TOÀN HỆ THỐNG` — Owner Global Application
+- Cú pháp chuẩn: `ÁP DỤNG TOÀN HỆ THỐNG` đứng riêng một tin nhắn, so khớp sau khi bỏ khoảng trắng đầu/cuối và không phân biệt hoa/thường. Nhận diện **trước** lệnh chung `áp dụng`/`apdung`; đây không phải lệnh số hoặc ánh xạ nhân sự AI. Danh bạ động: Issue #335; chính sách tương tác: Issue #504.
+- **Đích:** thay đổi hoặc quyết định mới nhất đã được anh Sơn chốt rõ trong hội thoại hiện tại, hoặc Work Order/nguồn chuẩn anh đã chỉ định. Không hiểu thành yêu cầu sửa tất cả thành phần vô can. Nếu có nhiều đích mâu thuẫn hoặc không xác định được đích duy nhất từ nguồn, chỉ báo `TARGET_UNRESOLVED` và không thực hiện thay đổi phỏng đoán.
+- **Luồng bắt buộc:** khôi phục quyết định từ nguồn hiện hành → lập danh sách thành phần và tài khoản *thực sự bị ảnh hưởng* → kiểm tra phạm vi/quyền và một bên ghi cho mỗi tài nguyên → tận dụng việc hiện có, tránh trùng → thay đổi nguồn đúng tầng GitHub bằng nhánh/PR và các cổng kỹ thuật bắt buộc → cập nhật nơi triển khai/bản phản chiếu tương ứng nếu cần → kiểm tra thật từng bề mặt → ghi bằng chứng, trạng thái và bước còn lại.
+- **Phạm vi có thể gồm:** chính sách chung, quy trình, tài liệu, phần mềm TigerIQ, Core/AI worker, kênh hiển thị Owner và các tài khoản ChatGPT Plus/Go, Gemini Pro *có thể truy cập*. Phải phân biệt `SOURCE_UPDATED`, `MERGED`, `ROLLED_OUT` và `LIVE_VERIFIED`; không suy diễn tài khoản/chat cũ đã tự tải luật mới chỉ vì GitHub được cập nhật.
+- **Không phải ủy quyền toàn cục:** vẫn giữ nguyên cổng cho Codex (cần Owner nêu tên và phạm vi), Remote Desktop Commander (ủy quyền đúng lệnh/từng lần), tài chính/chi phí, thông tin xác thực, ranh giới bảo mật/quyền, hành động phá hủy/không hoàn tác, hành động vật lý/pháp lý, và phạm vi Production P0. Không tự vượt cổng bảo vệ nhánh, tự cấp quyền hay tự duyệt thay Owner.
+- **Báo cáo nghiệm thu:** chỉ đánh dấu `ĐÃ ÁP DỤNG` cho bề mặt có bằng chứng; phần chưa triển khai hoặc chưa xác minh phải liệt kê là `CHƯA XÁC MINH`/`BỊ CHẶN` kèm lý do. Nếu còn công việc, lưu checkpoint để tiếp tục; không tuyên bố toàn hệ thống hoàn tất bằng một cập nhật nguồn đơn lẻ.
+- **Đồng bộ Loader:** chỉ sửa Loader/bản Drive phản chiếu khi thay đổi tác động chính cơ chế khởi động/điểm trỏ. Thêm lệnh có tên tại Workflow + Registry/Interaction hiện hành không đòi tạo Loader hay bản Bootstrap cạnh tranh.
+
 ## 8. Ownership / Lease / Failover contract chung
 - Một Work Order/resource scope chỉ có một active owner tại một thời điểm.
 - Mỗi active owner phải có state đủ để xác định ownership, ví dụ: `employee_id/worker_id`, `lease_id`, `claimed_at`, `heartbeat_at`, `phase`, `last_evidence_ref`, và hold/mutation state khi có.
