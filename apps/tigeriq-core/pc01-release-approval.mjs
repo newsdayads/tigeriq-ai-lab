@@ -179,6 +179,26 @@ export async function acceptPc01OwnerApprovalEvent({
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
+  // Rotate only a *consumed* ticket whose exact target and requestId were
+  // committed or rolled back by the protected updater. An unconsumed ticket
+  // remains an exclusive blocker; no worker or comment can replace it.
+  let existingTicket;
+  try { existingTicket = readJson(await io.readFile(ticket, 'utf8'), 'ACTIVE_APPROVAL_INVALID'); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (existingTicket) {
+    let prior;
+    try { prior = readJson(await io.readFile(attempt, 'utf8'), 'ATTEMPT_INVALID'); }
+    catch (error) { if (error?.code === 'ENOENT') deny('ACTIVE_APPROVAL_UNCONSUMED'); throw error; }
+    if (existingTicket.schema !== 'TIGERIQ_PC01_RELEASE_APPROVAL_V1' ||
+        prior.requestId !== existingTicket.requestId ||
+        prior.targetSha !== existingTicket.targetSha ||
+        !['COMMITTED','ROLLED_BACK'].includes(prior.result) ||
+        !SHA.test(String(existingTicket.targetSha || ''))) deny('ACTIVE_APPROVAL_UNCONSUMED');
+    const archive = path.win32.join(root, 'Backup', 'release-ticket-' + existingTicket.targetSha + '-' + prior.result + '.json');
+    try { await io.lstat(archive); deny('APPROVAL_ARCHIVE_COLLISION'); }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    await io.rename(ticket, archive);
+  }
   // Exclusive creation, no overwrites. A separate updater checks precise impacts
   // and CI; a GitHub merge or an LLM job cannot author this ticket.
   const handle = await io.open(ticket, 'wx', 0o600);

@@ -323,3 +323,54 @@ it('end-to-end mock blocks replay, no general mutation, and absent GitHub token'
   })).rejects.toThrow('PC01_RELEASE_GITHUB_READ_AUTH_MISSING');
   expect(writes).toBe(0);
 });
+
+it('archives only a consumed prior Owner ticket, then exclusive-writes the next approval without RDC',async()=>{
+  const fixture=ownerFixture();
+  const priorSha='a'.repeat(40), archived=[],writes=[];
+  const oldTicket={schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V1',requestId:'GH-OLD-4725',targetSha:priorSha};
+  const receipt={requestId:'GH-OLD-4725',targetSha:priorSha,result:'COMMITTED'};
+  const io={
+    async readFile(p){
+      if(p===PC01_INSTALLED_STATE)return JSON.stringify({currentSha:approvalBaseline});
+      if(p.endsWith('core-runtime-release-attempt.json'))return JSON.stringify(receipt);
+      if(p===PC01_APPROVAL_PATH)return JSON.stringify(oldTicket);
+      throw Error('unexpected mock file');
+    },
+    async lstat(p){if(p.includes('release-ticket-')){const e=Error('no archive');e.code='ENOENT';throw e;}return{isDirectory:()=>true,isSymbolicLink:()=>false};},
+    async realpath(p){return p;},
+    async rename(from,to){archived.push({from,to});},
+    async open(p,flags){expect(p).toBe(PC01_APPROVAL_PATH);expect(flags).toBe('wx');return{async writeFile(t){writes.push(JSON.parse(t));},async sync(){},async close(){}};},
+  };
+  const fetchImpl=async url=>({ok:true,json:async()=>url.includes('/issues/comments/')?fixture.verifiedComment:
+    url.includes('/git/ref/heads/main')?{object:{sha:approvalTarget}}:fixture.compare});
+  const result=await acceptPc01OwnerApprovalEvent({identity:fixture.identity,eventName:fixture.eventName,
+    payload:fixture.payload,githubToken:'TEST_ONLY',fetchImpl,io,platform:'win32',nowMs:fixture.nowMs});
+  expect(result.ticketWritten).toBe(true);
+  expect(archived).toHaveLength(1);
+  expect(archived[0].from).toBe(PC01_APPROVAL_PATH);
+  expect(archived[0].to).toContain('release-ticket-'+priorSha+'-COMMITTED.json');
+  expect(writes).toHaveLength(1);
+  expect(writes[0].targetSha).toBe(approvalTarget);
+});
+it('refuses to replace an unconsumed or replayed Owner ticket',async()=>{
+  const fixture=ownerFixture();let writes=0,renames=0;
+  const io={
+    async readFile(p){
+      if(p===PC01_INSTALLED_STATE)return JSON.stringify({currentSha:approvalBaseline});
+      if(p.endsWith('core-runtime-release-attempt.json'))return JSON.stringify({requestId:'OTHER',targetSha:'a'.repeat(40),result:'STARTED'});
+      if(p===PC01_APPROVAL_PATH)return JSON.stringify({schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V1',requestId:'GH-PENDING',targetSha:'b'.repeat(40)});
+      throw Error('unexpected file');
+    },
+    async lstat(){return{isDirectory:()=>true,isSymbolicLink:()=>false};},
+    async realpath(p){return p;},
+    async rename(){renames++;},
+    async open(){writes++;},
+  };
+  const fetchImpl=async url=>({ok:true,json:async()=>url.includes('/issues/comments/')?fixture.verifiedComment:
+    url.includes('/git/ref/heads/main')?{object:{sha:approvalTarget}}:fixture.compare});
+  await expect(acceptPc01OwnerApprovalEvent({identity:fixture.identity,eventName:fixture.eventName,
+    payload:fixture.payload,githubToken:'TEST_ONLY',fetchImpl,io,platform:'win32',nowMs:fixture.nowMs}))
+    .rejects.toThrow('PC01_RELEASE_ACTIVE_APPROVAL_UNCONSUMED');
+  expect(writes).toBe(0);
+  expect(renames).toBe(0);
+});
