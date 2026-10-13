@@ -22,7 +22,16 @@ export function lifecycleStage(state=''){
 function activeText(value=''){
   const all=String(value||'');
   const divider=all.search(/^ {0,3}(?:---+|\*\*\*+|___+)(?:\s+HISTORICAL[^\n]*)?\s*$/m);
-  return divider<0?all:all.slice(0,divider);
+  const current=divider<0?all:all.slice(0,divider);
+  if (/^WORK_ORDER_LIFECYCLE=V2\s*$/m.test(current)) return current;
+  // A current V2 contract can follow a short checkpoint and a separator
+  // (GH-4709); choose its first ACTIVE WORK ORDER block, not the preface.
+  const heading=all.match(/^##\s+ACTIVE WORK ORDER[^\r\n]*$/mi);
+  if (!heading) return current;
+  const candidate=all.slice(heading.index);
+  const nextDivider=candidate.search(/^ {0,3}(?:---+|\*\*\*+|___+)\s*$/m);
+  const active=nextDivider<0?candidate:candidate.slice(0,nextDivider);
+  return /^WORK_ORDER_LIFECYCLE=V2\s*$/m.test(active)?active:current;
 }
 function activeHeader(value=''){
   const text=activeText(value),lines=text.split(/\r?\n/);
