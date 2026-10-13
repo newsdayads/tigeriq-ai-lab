@@ -11,11 +11,13 @@ export const PC01_RELEASE_ISSUE = 4725;
 const REPOSITORY = 'newsdayads/tigeriq-ai-lab';
 const OWNER = 'newsdayads';
 const SHA = /^[a-f0-9]{40}$/;
-const COMPONENTS = new Set(['core', 'openclaw', 'updater']);
+const COMPONENTS = new Set(['coding', 'core', 'openclaw', 'updater']);
 const SOURCE_ONLY = new Set([
   'docs/PC01_GATED_RELEASE_PHASE1.md', 'vitest.config.ts',
   'tests/pc01-release-guard-e2e.test.mjs', 'tests/pc01-release-preflight.test.mjs',
   'tests/pc01-updater-release-gate.test.mjs',
+  'tests/pc01-coding-release-gate.test.mjs',
+  'tests/coding-lane-foundation.test.mjs',
 ]);
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
@@ -27,6 +29,10 @@ const UPDATER_FILES = new Set([
 const CORE_FILES = new Set([
   'scripts/tigeriq-core/run-core.ps1',
   'scripts/tigeriq-core/install-core-task.ps1',
+]);
+const CODING_FILES = new Set([
+  'scripts/tigeriq-core/run-coding-lane.ps1',
+  'scripts/tigeriq-core/install-coding-lane.ps1',
 ]);
 
 function deny(reason) { throw new Error('PC01_RELEASE_' + reason); }
@@ -61,6 +67,9 @@ export function impactForPc01ReleaseFiles(files) {
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
+    if (filename.startsWith('apps/tigeriq-coding-lane/')) {
+      impact.add('coding'); continue;
+    }
     if (filename.startsWith('apps/openclaw-tigeriq-runtime/')) {
       impact.add('core'); impact.add('openclaw'); continue;
     }
@@ -69,6 +78,7 @@ export function impactForPc01ReleaseFiles(files) {
       impact.add('core'); continue;
     }
     if (CORE_FILES.has(filename)) { impact.add('core'); continue; }
+    if (CODING_FILES.has(filename)) { impact.add('coding'); continue; }
     if (UPDATER_FILES.has(filename)) { impact.add('updater'); continue; }
     deny('FILE_OUT_OF_SCOPE');
   }
