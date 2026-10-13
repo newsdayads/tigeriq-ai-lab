@@ -30,7 +30,8 @@ function fixture() {
     repository: { full_name: 'newsdayads/tigeriq-ai-lab' },
     issue: { number: 4725 }, sender: { login: 'newsdayads' },
     comment: { id: comment.id, user: { login: 'newsdayads' }, body: ownerComment } };
-  const compare = { status: 'ahead', behind_by: 0, ahead_by: 1, total_commits: 1, files };
+  const compare = { status: 'ahead', behind_by: 0, ahead_by: 1, total_commits: 1,
+    files: files.map(entry => ({ ...entry })) };
   return { identity, eventName: 'issue_comment', payload,
     verifiedComment: comment, installedSha: installed,
     mainSha: target, compare, nowMs: Date.parse(at) + 1000 };
