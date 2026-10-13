@@ -351,6 +351,14 @@ const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${pro
 const FAST_CORE_HEALTH_ENABLED=process.env.TIGERIQ_CODING_FAST_CORE_HEALTH==='true';
 const FAST_CORE_HEALTH_URL=process.env.TIGERIQ_CORE_FAST_HEALTH_URL?.trim()||new URL('/api/coding-health',CORE_STATUS_URL).href;
 const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
+// The full Core status payload is ~920 KB on PC01; 3s occasionally timed out.
+// Keep the fast health endpoint at 3s once safely enabled. The legacy full
+// snapshot has a bounded 8s budget and fails closed on actual Core outages.
+export function normalizeCodingCoreStatusTimeout(value=8000){
+  const n=Number(value);
+  return Math.max(3000,Math.min(12000,Number.isFinite(n)&&n>0?Math.floor(n):8000));
+}
+const CORE_STATUS_TIMEOUT_MS=normalizeCodingCoreStatusTimeout(process.env.TIGERIQ_CODING_CORE_STATUS_TIMEOUT_MS);
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
 const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
 const STALE_RUNNING_SCAN_INTERVAL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_SCAN_INTERVAL_MS||15000));
@@ -488,7 +496,7 @@ async function refreshCoreResourceHealth(){
   const nowMs=Date.now();
   if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
   try{
-    const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},3000);
+    const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},FAST_CORE_HEALTH_ENABLED?3000:CORE_STATUS_TIMEOUT_MS);
     if(FAST_CORE_HEALTH_ENABLED)validateCodingFastHealthResponse(snapshot);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
     return true;
