@@ -1,9 +1,5 @@
 // Vercel is presentation transport only. All displayed data comes from PC01.
-import { timingSafeEqual } from 'node:crypto';
-function safePassword(received, expected) {
-  const a=Buffer.from(String(received||'')), b=Buffer.from(String(expected||''));
-  return b.length >= 16 && a.length===b.length && timingSafeEqual(a,b);
-}
+import { authorizedDevice } from './live-device-auth.mjs';
 const PATHS = new Set([
   '/', '/work-ui.css', '/work-center-visual.css', '/work-center.js',
   '/api/status', '/api/live-status', '/api/health-live-work', '/api/work-history',
@@ -13,18 +9,14 @@ export default async function handler(req, res) {
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('X-Robots-Tag','noindex, nofollow');
   if (req.method !== 'GET') { res.status(405).send('method_not_allowed'); return; }
-  // Browser auth is distinct from the server-to-server PC01 gateway credential.
-  // Production Vercel domains otherwise permit anonymous web visits.
-  const password=String(process.env.TIGERIQ_LIVE_VIEW_PASSWORD||'');
-  if(password.length < 16){ res.status(503).send('VIEW_LOGIN_UNCONFIGURED'); return; }
-  let submitted='';
-  const value=String(req.headers.authorization||'');
-  if(value.startsWith('Basic ')){
-    try{submitted=Buffer.from(value.slice(6),'base64').toString('utf8');}catch{}
-  }
-  if(!safePassword(submitted,'son:'+password)){
-    res.setHeader('WWW-Authenticate','Basic realm="TigerIQ API Health", charset="UTF-8"');
-    res.status(401).send('LOGIN_REQUIRED'); return;
+  // Device enrollment is explicit, HMAC-signed and bound to this HTTPS host.
+  // Do not emit WWW-Authenticate: on iPhone it opens a native password dialog.
+  const deviceKey=String(process.env.TIGERIQ_LIVE_DEVICE_KEY||'');
+  if(deviceKey.length<48){res.status(503).send('VIEW_DEVICE_AUTH_NOT_CONFIGURED');return;}
+  if(!authorizedDevice(String(req.headers?.cookie||''),deviceKey)){
+    res.setHeader('Content-Type','text/html; charset=utf-8');
+    res.status(403).send('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thiết bị chưa kết nối</title><body style="font:16px system-ui;padding:24px;background:#0d1b2e;color:#e8f4ff"><h2>TigerIQ LIVE</h2><p>Thiết bị chưa được xác thực. Hãy mở liên kết kích hoạt riêng đã được cấp để truy cập mà không cần mật khẩu.</p></body></html>');
+    return;
   }
 
   const pathValue = req.query?.resource;
