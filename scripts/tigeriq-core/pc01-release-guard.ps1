@@ -1,11 +1,41 @@
 # Operational gate sourced only from installed runtime, never candidate or GitHub metadata.
 $releaseApprovalPath='D:\TigerIQ\State\core-runtime-release-approval.json'
 $releaseAttemptPath='D:\TigerIQ\State\core-runtime-release-attempt.json'
+function Test-ReleaseApprovalAcl {
+  # The parent directory matters: an untrusted directory writer can replace
+  # a correctly ACL-protected child with a forged approval file.
+  $trusted=@('S-1-5-18','S-1-5-32-544') # SYSTEM and BUILTIN\Administrators only
+  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
+             [System.Security.AccessControl.FileSystemRights]::Modify -bor
+             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
+             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+  try{
+    if(-not [Environment]::OSVersion.Platform.ToString().Equals('Win32NT')){return $false}
+    if(-not(Test-Path -LiteralPath $releaseApprovalPath -PathType Leaf)){return $false}
+    $parent=Split-Path -Parent $releaseApprovalPath
+    foreach($path in @($parent,$releaseApprovalPath)){
+      $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
+      $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+      $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+      if($owner -notin $trusted){return $false}
+      foreach($ace in @($acl.Access)){
+        if([string]$ace.AccessControlType -ne 'Allow'){continue}
+        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
+      }
+    }
+    return $true
+  }catch{return $false}
+}
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact){
   # The local file is an operational approval record, not cryptographic proof
   # of Owner identity. An independently authorized local procedure MUST provision it.
   if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
   if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
+  if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
   try{
     $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
     if([string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
