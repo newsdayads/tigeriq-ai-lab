@@ -181,9 +181,10 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
 });
 
 test('System Control whole-page breakpoints: iPhone, tablet, FHD, QHD, UHD stay usable',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await openFixture(page);
  for(const [width,height] of [[390,844],[393,852],[430,932],[768,1024],[820,1180],[1024,1366],[844,390],[852,393],[932,430],[1920,1080],[2560,1440],[3840,2160]]){
   await page.setViewportSize({width,height});
-  await openFixture(page);
   const metrics=await page.evaluate(()=>{
    const workCard=document.querySelector('#workList .work-row')!.getBoundingClientRect();
    const worker=document.querySelector('#workers .employee-card')!.getBoundingClientRect();
