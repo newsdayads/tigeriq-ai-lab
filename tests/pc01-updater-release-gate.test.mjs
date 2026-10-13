@@ -16,6 +16,17 @@ it('preserves single updater loop and small isolated release gate',()=>{
   expect(guard.match(/function Save-ReleaseAttempt/g)).toHaveLength(1);
   expect(source.length).toBeLessThan(60000);
 });
+it('classifies protected release-controller files as updater impacts, not unrelated Core files',()=>{
+  for(const file of ['scripts/tigeriq-core/update-core-runtime.ps1',
+    'scripts/tigeriq-core/pc01-release-guard.ps1',
+    'scripts/tigeriq-core/pc01-release-preflight.mjs',
+    'scripts/tigeriq-core/bootstrap-watchdog.ps1',
+    'scripts/tigeriq-core/install-core-updater.ps1']){
+    expect(source).toContain("'"+file+"'");
+  }
+  expect(source).toContain('Where-Object{$_ -in $updaterFiles}');
+});
+
 it('fails closed when local release guard or approval is missing',()=>{
   const guardLoad=source.indexOf('. $releaseGuardScript');
   const gate=source.indexOf('$releaseApproval=Get-ReleaseApproval $remote $local $impact');

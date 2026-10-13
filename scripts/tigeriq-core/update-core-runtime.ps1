@@ -747,7 +747,9 @@ function Get-Impact([string[]]$paths){
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
   $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
   $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -eq 'api/live-status.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw)
-  $updater=[bool](@($paths|Where-Object{$_ -eq 'scripts/tigeriq-core/update-core-runtime.ps1'}).Count)
+  # Keep installed updater impact aligned with the signed GitHub release classifier.
+  $updaterFiles=@('scripts/tigeriq-core/update-core-runtime.ps1','scripts/tigeriq-core/pc01-release-guard.ps1','scripts/tigeriq-core/pc01-release-preflight.mjs','scripts/tigeriq-core/bootstrap-watchdog.ps1','scripts/tigeriq-core/install-core-updater.ps1')
+  $updater=[bool](@($paths|Where-Object{$_ -in $updaterFiles}).Count)
   $liveBridge=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-live-bridge/'}).Count)
   return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater;liveBridge=$liveBridge}
 }

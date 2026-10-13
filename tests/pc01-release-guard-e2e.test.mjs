@@ -71,6 +71,13 @@ it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed
   expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
 });
 
+it.skipIf(!pwshPresent)('accepts exactly the branding UI validation files as source-only with a core change',()=>{
+  const paths=['apps/tigeriq-core/dashboard.html','scripts/verify_work_board_ui.mjs','tests/web-control.test.ts'];
+  expect(run({approval:template(),paths}).approved).toBe(true);
+  expect(run({approval:template(),paths:[...paths,'tests/web-control-extra.test.ts']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+  expect(run({approval:template(),paths:[...paths,'scripts/not-approved.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
+
 it.skipIf(!pwshPresent)('blocks unapproved Vercel/API files even when Updater is in approved components',()=>{
   expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','api/live-device-auth.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
@@ -257,6 +264,16 @@ it('rejects forged actor, fake comment, mismatched sha, stale timestamp and reru
     expect(()=>validatePc01ApprovalEvidence(fixture)).toThrow('PC01_RELEASE_');
   }
 });
+it('permits exactly the two UI source-only checks alongside an approved Core change',()=>{
+  const files=[{filename:'apps/tigeriq-core/dashboard.html'},
+    {filename:'scripts/verify_work_board_ui.mjs'},{filename:'tests/web-control.test.ts'}];
+  expect(impactForPc01ReleaseFiles(files)).toEqual(['core']);
+  for(const bad of ['tests/web-control-extra.test.ts','scripts/not-approved.mjs',
+    '.github/workflows/tigeriq-core-event-dispatch.yml','api/live-device-auth.mjs']){
+    expect(()=>impactForPc01ReleaseFiles([...files,{filename:bad}])).toThrow('FILE_OUT_OF_SCOPE');
+  }
+});
+
 it('cannot widen scope via component list, comment fields, or arbitrary paths',()=>{
   expect(parsePc01OwnerApproval(ownerCommentText()).components).toEqual(['core']);
   expect(()=>parsePc01OwnerApproval(ownerCommentText()+'\nFILE=C:\\evil')).toThrow();

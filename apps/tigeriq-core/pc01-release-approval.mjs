@@ -16,6 +16,8 @@ const SOURCE_ONLY = new Set([
   'docs/PC01_GATED_RELEASE_PHASE1.md', 'vitest.config.ts',
   'tests/pc01-release-guard-e2e.test.mjs', 'tests/pc01-release-preflight.test.mjs',
   'tests/pc01-updater-release-gate.test.mjs',
+  // Exact, code-adjacent UI validation files; unknown scripts/tests still deny.
+  'scripts/verify_work_board_ui.mjs', 'tests/web-control.test.ts',
 ]);
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
