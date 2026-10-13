@@ -82,3 +82,38 @@ export function publishOwnerApprovalCard(request, {source, emit, sendMessage} = 
   });
   return {published:true, errors:[]}; // Published UI, NOT Owner approval or target execution.
 }
+
+
+// Adapter: a fresh authenticated GitHub read by a server is necessary.
+// An issue alone, a chat quotation, and a client-supplied flag are never enough to grant permission.
+function field(body, key) {
+  const lines = String(body || '').split(/\r?\n/).filter(s=>s.startsWith(key + '='));
+  return lines.length === 1 ? lines[0].slice(key.length + 1).trim() : '';
+}
+export function projectOwnerApprovalIssue(issue, source = {}) {
+  if (!issue || issue.state !== 'open' ||
+      issue.user?.login !== 'newsdayads' ||
+      !Number.isSafeInteger(issue.number) || issue.number < 1 ||
+      !/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+$/.test(issue.html_url || '') ||
+      !Number.isFinite(Date.parse(issue.updated_at || ''))) return {ok:false,errors:['TRUSTED_OWNER_ISSUE_REQUIRED']};
+  const body=String(issue.body || '');
+  if (!['OWNER_GATE','WAIT_OWNER'].includes(field(body,'CURRENT_STATE')||field(body,'STATE')) ||
+      field(body,'APPROVAL_STATE') !== 'PENDING_OWNER')
+    return {ok:false,errors:['EXPLICIT_PENDING_OWNER_GATE_REQUIRED']};
+  const request={
+    requestId:'GH-'+issue.number+'-'+Date.parse(issue.updated_at),
+    status:'OWNER_GATE', requiresNewAuthorization:true, alreadyAuthorized:false,
+    gate:field(body,'APPROVAL_GATE'),
+    title:String(issue.title||'').slice(0,400),
+    action:field(body,'APPROVAL_ACTION'),
+    scope:field(body,'APPROVAL_SCOPE'),
+    impact:field(body,'APPROVAL_IMPACT'),
+    risk:field(body,'APPROVAL_RISK'),
+    cost:field(body,'APPROVAL_COST'),
+    reversibility:field(body,'APPROVAL_REVERSIBILITY'),
+    sourceLabel:'Issue #'+issue.number+' - GitHub Owner',
+  };
+  const result=buildOwnerApprovalCard(request,source);
+  if (!result.ok) return result;
+  return {ok:true,errors:[],card:{...result.card,issueUrl:issue.html_url}};
+}
