@@ -30,7 +30,33 @@ function Test-ReleaseApprovalAcl {
     return $true
   }catch{return $false}
 }
-function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact){
+function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact){
+  if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
+  $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs')
+  foreach($path in $changedPaths){
+    if(-not $path -or $path -match '(?i)(app.?chrome|android|secrets|credentials|\.env|vercel\.json|^api/)'){return 'RELEASE_PATH_OUT_OF_SCOPE'}
+    if($path -in $sourceOnly){continue}
+    if($path -in @('scripts/tigeriq-core/update-core-runtime.ps1','scripts/tigeriq-core/pc01-release-guard.ps1','scripts/tigeriq-core/pc01-release-preflight.mjs','scripts/tigeriq-core/bootstrap-watchdog.ps1','scripts/tigeriq-core/install-core-updater.ps1')){
+      if(-not $impact.updater){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      continue
+    }
+    if($path -match '^apps/openclaw-tigeriq-runtime/'){
+      if(-not $impact.openclaw){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      continue
+    }
+    if($path -match '^apps/tigeriq-core/' -and $path -notmatch '^apps/tigeriq-core/(web-control|owner-facing-vietnamese)'){
+      if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      continue
+    }
+    if($path -in @('scripts/tigeriq-core/run-core.ps1','scripts/tigeriq-core/install-core-task.ps1')){
+      if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      continue
+    }
+    return 'RELEASE_PATH_OUT_OF_SCOPE'
+  }
+  return $null
+}
+function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){
   # The local file is an operational approval record, not cryptographic proof
   # of Owner identity. An independently authorized local procedure MUST provision it.
   if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
@@ -48,6 +74,8 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     $now=(Get-Date).ToUniversalTime()
     if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
     if($impact.web -or $impact.coding -or $impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact
+    if($pathDenial){return @{approved=$false;reason=$pathDenial}}
     if(-not($impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
     $wanted=@(@('core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
     $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
