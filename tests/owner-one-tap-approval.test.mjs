@@ -108,6 +108,7 @@ describe('Verified GitHub pending Owner approval projection',()=>{
     body:[
       'CURRENT_STATE=OWNER_GATE',
       'APPROVAL_STATE=PENDING_OWNER',
+      'APPROVAL_REQUEST_ID=GH-504-OWNER-001',
       'APPROVAL_GATE=INSTALL_PERMISSION',
       'APPROVAL_ACTION=Cài bản thử nghiệm',
       'APPROVAL_SCOPE=Chỉ môi trường kiểm thử A',
@@ -120,7 +121,7 @@ describe('Verified GitHub pending Owner approval projection',()=>{
   it('turns one fresh Owner issue into a scoped, non-granting card',()=>{
     const card=projectOwnerApprovalIssue(issue(),source);
     expect(card.ok).toBe(true);
-    expect(card.card.requestId).toMatch(/^GH-504-\d+$/);
+    expect(card.card.requestId).toBe('GH-504-OWNER-001');
     expect(card.card.scope).toBe('Chỉ môi trường kiểm thử A');
     expect(card.card.submissionIsGrant).toBe(false);
     expect(card.card.issueUrl).toMatch(/\/issues\/504$/);
@@ -132,6 +133,7 @@ describe('Verified GitHub pending Owner approval projection',()=>{
     [{updated_at:'invalid'},'TRUSTED_OWNER_ISSUE_REQUIRED'],
     [{number:0},'TRUSTED_OWNER_ISSUE_REQUIRED'],
     [{body:issue().body.replace('PENDING_OWNER','APPROVED')},'EXPLICIT_PENDING_OWNER_GATE_REQUIRED'],
+    [{body:issue().body.replace('APPROVAL_REQUEST_ID=GH-504-OWNER-001','APPROVAL_REQUEST_ID=GH-123-OTHER')},'STABLE_REQUEST_ID_REQUIRED'],
     [{body:issue().body.replace('CURRENT_STATE=OWNER_GATE','CURRENT_STATE=WORKING')},'EXPLICIT_PENDING_OWNER_GATE_REQUIRED'],
     [{body:issue().body+'\nAPPROVAL_GATE=PRODUCTION'},'GATE_REQUIRED'],
   ])('refuses forged, stale, or ambiguous issue %o',(patch,code)=>{
