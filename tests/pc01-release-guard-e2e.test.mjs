@@ -280,13 +280,25 @@ it('rejects forged actor, fake comment, mismatched sha, stale timestamp and reru
     expect(()=>validatePc01ApprovalEvidence(fixture)).toThrow('PC01_RELEASE_');
   }
 });
-it('permits exactly the two UI source-only checks alongside an approved Core change',()=>{
-  const files=[{filename:'apps/tigeriq-core/dashboard.html'},
-    {filename:'scripts/verify_work_board_ui.mjs'},{filename:'tests/web-control.test.ts'}];
-  expect(impactForPc01ReleaseFiles(files)).toEqual(['core']);
-  for(const bad of ['tests/web-control-extra.test.ts','scripts/not-approved.mjs',
-    '.github/workflows/tigeriq-core-event-dispatch.yml','api/live-device-auth.mjs']){
-    expect(()=>impactForPc01ReleaseFiles([...files,{filename:bad}])).toThrow('FILE_OUT_OF_SCOPE');
+it('matches the current installed-to-main non-runtime source paths without broad wildcard admission',()=>{
+  const approved=[
+    'apps/tigeriq-core/github-intake.mjs',
+    '.github/ISSUE_TEMPLATE/work_order_v2.md',
+    'scripts/verify_work_board_ui.mjs',
+    'tests/core-autonomous-rca.test.ts',
+    'tests/github-intake.test.mjs',
+    'tests/tigeriq-live-owner-refinement.test.mjs',
+    'tests/web-control.test.ts',
+    'tests/work-order-lifecycle-v2.test.mjs'
+  ].map(filename=>({filename}));
+  expect(impactForPc01ReleaseFiles(approved)).toEqual(['core']);
+  for(const invalid of [
+    'tests/web-control-extra.test.ts','tests/new-core-regression.test.mjs',
+    'scripts/not-approved.mjs','.github/workflows/tigeriq-core-event-dispatch.yml',
+    '.github/ISSUE_TEMPLATE/work_order_v2.yml',
+    'api/live-device-auth.mjs','apps/app-chrome/runtime.mjs'
+  ]){
+    expect(()=>impactForPc01ReleaseFiles([...approved,{filename:invalid}])).toThrow('FILE_OUT_OF_SCOPE');
   }
 });
 
