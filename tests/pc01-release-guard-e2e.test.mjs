@@ -16,7 +16,7 @@ const template=()=>({
   approved:true,components:['core'],
   expiresAtUtc:new Date(Date.now()+3600_000).toISOString(),
 });
-function run({approval=null,attempt=null,aclMock=true,impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
+function run({approval=null,attempt=null,aclMock=true,paths=['scripts/tigeriq-core/update-core-runtime.ps1'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
   const dir=mkdtempSync(join(tmpdir(),'tigeriq-guard-e2e-'));
   try{
     const approver=join(dir,'approval.json'),marker=join(dir,'attempt.json');
@@ -28,7 +28,8 @@ function run({approval=null,attempt=null,aclMock=true,impact='@{core=$true;web=$
       "$releaseAttemptPath='"+esc(marker)+"'",
       ...(aclMock?["function Test-ReleaseApprovalAcl { return $true }"]:[]),
       "$impact="+impact,
-      "$result=Get-ReleaseApproval '"+sha+"' '"+previous+"' $impact",
+      '$changed='+JSON.stringify(paths).replace(/^\[/,'@(').replace(/\]$/,')').replaceAll('"',"'"),
+      "$result=Get-ReleaseApproval '"+sha+"' '"+previous+"' $impact $changed",
       '$result|ConvertTo-Json -Compress -Depth 4',
     ].join('\n');
     const script=join(dir,'guard-harness.ps1');
@@ -63,4 +64,14 @@ it.skipIf(!pwshPresent)('rejects approval after expiry',()=>{
 
 it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed',()=>{
   expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
+});
+
+it.skipIf(!pwshPresent)('blocks unapproved Vercel/API files even when Updater is in approved components',()=>{
+  expect(run({approval:template(),paths:['scripts/tigeriq-core/update-core-runtime.ps1','api/live-device-auth.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
+it.skipIf(!pwshPresent)('blocks App Chrome paths regardless of approved component',()=>{
+  expect(run({approval:template(),paths:['scripts/tigeriq-core/update-core-runtime.ps1','apps/appchrome-unified/runtime.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
+it.skipIf(!pwshPresent)('rejects candidate with no changed path evidence',()=>{
+  expect(run({approval:template(),paths:[]}).reason).toBe('RELEASE_CHANGED_PATHS_MISSING');
 });
