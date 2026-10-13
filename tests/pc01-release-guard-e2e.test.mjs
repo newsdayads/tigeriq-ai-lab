@@ -219,7 +219,7 @@ const ownerFixture=(time=Date.now())=>{
     eventName:'issue_comment',
     payload:{action:'created',repository:{full_name:'newsdayads/tigeriq-ai-lab'},
       issue:{number:4725},sender:{login:'newsdayads'},comment},
-    verifiedComment:comment,
+    verifiedComment:structuredClone(comment),
     installedSha:approvalBaseline,mainSha:approvalTarget,
     compare:{status:'ahead',ahead_by:1,behind_by:0,total_commits:1,
       files:[{filename:'apps/tigeriq-core/core.mjs'},
