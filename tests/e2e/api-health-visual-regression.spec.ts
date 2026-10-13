@@ -143,6 +143,61 @@ test('API Health mobile sorts newly verified finishes first and lets Owner switc
 });
 
 
+test('five-point Owner acceptance: all open sort choices, labels and semantic tabs on iPhone',async({page})=>{
+ await page.setViewportSize({width:393,height:852});
+ await openFixture(page);
+ const statuses=[
+  {...work[0],number:330,updatedAt:'2026-10-13T20:00:00Z'},
+  {...work[1],number:310,statusEvidenceSource:'github_structured_lifecycle_comment',statusEvidenceAt:'2026-10-12T12:00:00Z'},
+  {...work[2],number:320,statusEvidenceSource:'github_structured_lifecycle_comment',statusEvidenceAt:'2026-10-13T12:00:00Z'},
+ ];
+ await page.route(base+'/api/health-live-work',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({ok:true,projection:{...projection().projection,openWork:statuses}})
+ }));
+ await page.reload();
+ const order=()=>page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>Number((n as HTMLElement).dataset.workNumber)));
+ await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
+ await expect(page.locator('#workOpenSort')).toHaveValue('priority');
+ await expect.poll(order).toEqual([330,310,320]);
+ await page.locator('#workOpenSort').selectOption('status_latest');
+ await expect.poll(order).toEqual([320,310,330]);
+ await expect(page.locator('#woFilters')).toContainText('Có mốc trạng thái: 2/3');
+ await page.locator('#workOpenSort').selectOption('number_asc');
+ await expect.poll(order).toEqual([310,320,330]);
+ await page.locator('#workOpenSort').selectOption('number_desc');
+ await expect.poll(order).toEqual([330,320,310]);
+ await page.locator('#workOpenSort').selectOption('priority');
+ await expect.poll(order).toEqual([330,310,320]);
+ const semantic=await page.locator('.wo-filter').evaluateAll(buttons=>buttons.map(el=>{
+   const style=getComputedStyle(el);return {label:el.textContent?.trim(),selected:el.getAttribute('aria-pressed'),text:style.color,border:style.borderColor,background:style.backgroundColor};
+ }));
+ expect(semantic.map(x=>x.selected)).toEqual(['true','false','false','false']);
+ expect(new Set(semantic.map(x=>x.text)).size).toBeGreaterThan(2);
+ expect(semantic[0].background).not.toBe(semantic[1].background);
+ const header=await page.locator('.work-panel .panel-h h2').evaluate(el=>getComputedStyle(el).color);
+ expect(header).toBe('rgb(45, 212, 191)');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(393);
+});
+
+test('System Control whole-page breakpoints: iPhone, tablet, FHD, QHD, UHD stay usable',async({page})=>{
+ for(const [width,height] of [[390,844],[393,852],[430,932],[768,1024],[820,1180],[1024,1366],[844,390],[852,393],[932,430],[1920,1080],[2560,1440],[3840,2160]]){
+  await page.setViewportSize({width,height});
+  await openFixture(page);
+  const metrics=await page.evaluate(()=>{
+   const workCard=document.querySelector('#workList .work-row')!.getBoundingClientRect();
+   const worker=document.querySelector('#workers .employee-card')!.getBoundingClientRect();
+   return {overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,
+      workWidth:Math.round(workCard.width),workerWidth:Math.round(worker.width),
+      filterVisible:!!document.querySelector('#workOpenSort')};
+  });
+  expect(metrics.overflow,'viewport '+width+'x'+height).toBe(false);
+  expect(metrics.filterVisible,'viewport '+width+'x'+height).toBe(true);
+  expect(metrics.workWidth,'viewport '+width+'x'+height).toBeGreaterThan(75);
+  expect(metrics.workerWidth,'viewport '+width+'x'+height).toBeGreaterThan(75);
+ }
+});
+
 test('TigerIQ System Control: landscape 4 workforce / 3 work and compact 2+1 monitoring panels',async({page})=>{
  for(const [width,height] of [[844,390],[852,393],[932,430]]){
    await page.setViewportSize({width,height});
