@@ -100,8 +100,10 @@ export function projectOwnerApprovalIssue(issue, source = {}) {
   if (!['OWNER_GATE','WAIT_OWNER'].includes(field(body,'CURRENT_STATE')||field(body,'STATE')) ||
       field(body,'APPROVAL_STATE') !== 'PENDING_OWNER')
     return {ok:false,errors:['EXPLICIT_PENDING_OWNER_GATE_REQUIRED']};
+  const requestId=field(body,'APPROVAL_REQUEST_ID');
+  if(!requestId.startsWith('GH-'+issue.number+'-'))return {ok:false,errors:['STABLE_REQUEST_ID_REQUIRED']};
   const request={
-    requestId:'GH-'+issue.number+'-'+Date.parse(issue.updated_at),
+    requestId,
     status:'OWNER_GATE', requiresNewAuthorization:true, alreadyAuthorized:false,
     gate:field(body,'APPROVAL_GATE'),
     title:String(issue.title||'').slice(0,400),
@@ -111,7 +113,7 @@ export function projectOwnerApprovalIssue(issue, source = {}) {
     risk:field(body,'APPROVAL_RISK'),
     cost:field(body,'APPROVAL_COST'),
     reversibility:field(body,'APPROVAL_REVERSIBILITY'),
-    sourceLabel:'Issue #'+issue.number+' - GitHub Owner',
+    sourceLabel:'Issue #'+issue.number+' - tác giả gốc Owner, chưa cấp quyền',
   };
   const result=buildOwnerApprovalCard(request,source);
   if (!result.ok) return result;
