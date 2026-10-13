@@ -68,3 +68,11 @@ it('never imports an unapproved watchdog source into protected execution before 
   expect(refresh).toBeGreaterThan(approved);
   expect(source).toContain('if($AllowSourceRefresh){');
 });
+
+it('maps all five explicit release-maintenance script paths to Updater impact',()=>{
+  const impact=source.match(/\$updater=\[bool\]\(@\(\$paths\|Where-Object\{[^\n]+/);
+  expect(impact?.[0]||'').toContain('scripts/tigeriq-core/pc01-release-guard.ps1');
+  for(const pathname of ['scripts/tigeriq-core/update-core-runtime.ps1','scripts/tigeriq-core/pc01-release-preflight.mjs','scripts/tigeriq-core/bootstrap-watchdog.ps1','scripts/tigeriq-core/install-core-updater.ps1']){
+    expect(impact?.[0]||'').toContain(pathname);
+  }
+});
