@@ -35,7 +35,7 @@ import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
 import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
@@ -2515,6 +2515,34 @@ async function managerTick() {
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
   if(managerGuard.blocked){await pool.query("update tigeriq_objectives set status='blocked',summary='manager cycle safety limit reached',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'manager_cycle_limit',mode:'consecutive_no_progress',maxCycles:managerGuard.maxCycles});return;}
+  // Two unchanged Manager decisions without a worker receipt end this
+  // attempt. If a child is still queued/leased/running, do not pre-empt it.
+  // A blocked objective leaves other eligible objectives to the normal queue.
+  if(managerGuard.effectiveCycles>=2){
+    const activeChildrenRow=(await pool.query(
+      "select count(*)::int as n from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status not in ('done','failed')",
+      [o.id,currentPhase],
+    )).rows[0]||{};
+    const activeChildren=Number(activeChildrenRow.n)||0;
+    const idlePlan=managerIdleStepStopPlan({
+      consecutiveNoProgressDecisions:managerGuard.effectiveCycles,activeChildren,limit:2,
+    });
+    if(idlePlan.action==='wait'){
+      await pool.query(
+        "update tigeriq_objectives set next_check_at=now()+interval '30 seconds' where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $2::text",
+        [o.id,o.metadata?.sourceRevision??null],
+      );
+      return;
+    }
+    if(idlePlan.action==='block'){
+      const stopped=await pool.query(
+        "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text and not exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$4 and j.status not in ('done','failed'))",
+        [o.id,'Manager attempt stopped: two decisions without accepted child progress; awaiting material change',o.metadata?.sourceRevision??null,currentPhase],
+      );
+      if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'no_progress_decision_budget_exhausted',maxCycles:2});
+      return;
+    }
+  }
   const history=(await pool.query("select title,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
   let historyContext={text:'[]',metrics:{itemsIn:0,itemsOut:0,bytesBefore:0,bytesAfter:2,budgetBytes:8000,headroomBytes:2000,effectiveBudgetBytes:6000,droppedCount:0,truncatedCount:0,reductionBytes:0}};
@@ -2715,6 +2743,14 @@ async function managerTick() {
         if(disposition.action==='dedupe'){
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
+        }
+        if(disposition.action==='block'){
+          const stopped=await pool.query(
+            "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text",
+            [o.id,'Same logical job has already failed; no new random job on unchanged work',o.metadata?.sourceRevision??null],
+          );
+          if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,reason:disposition.reason});
+          return;
         }
         await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_ai',$6,$7)",[id,o.id,title,promptText,capability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       }
