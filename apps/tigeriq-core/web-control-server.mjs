@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
 const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
 // Optional source-only adapter. Missing PC bundle asset must fail closed without breaking Web Control.
-const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(()=>import('../../apps/shared/owner-one-tap-approval.mjs').catch(()=>null));
+const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(()=>import('../../apps/shared/owner-one-tap-approval.mjs').catch(()=>import('./owner-one-tap-approval.mjs').catch(()=>null)));
 const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
