@@ -27,6 +27,21 @@ it('classifies protected release-controller files as updater impacts, not unrela
   expect(source).toContain('Where-Object{$_ -in $updaterFiles}');
 });
 
+it('keeps signed JS and protected PowerShell release allowlists in exact parity',()=>{
+  const approval=readFileSync(new URL('../apps/tigeriq-core/pc01-release-approval.mjs',import.meta.url),'utf8');
+  const list=(body,pattern)=>{
+    const capture=body.match(pattern)?.[1];
+    expect(capture,'release allowlist literal must remain inspectable').toBeTruthy();
+    return [...capture.matchAll(/'([^']+)'/g)].map(match=>match[1]).sort();
+  };
+  const jsSourceOnly=list(approval,/const SOURCE_ONLY = new Set\(\[([\s\S]*?)\]\);/);
+  const psSourceOnly=list(guard,/\$sourceOnly=@\(([^\r\n)]*)\)/);
+  expect(psSourceOnly).toEqual(jsSourceOnly);
+  const jsUpdater=list(approval,/const UPDATER_FILES = new Set\(\[([\s\S]*?)\]\);/);
+  const psUpdater=list(source,/\$updaterFiles=@\(([^\r\n)]*)\)/);
+  expect(psUpdater).toEqual(jsUpdater);
+});
+
 it('fails closed when local release guard or approval is missing',()=>{
   const guardLoad=source.indexOf('. $releaseGuardScript');
   const gate=source.indexOf('$releaseApproval=Get-ReleaseApproval $remote $local $impact');
