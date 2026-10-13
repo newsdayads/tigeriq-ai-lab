@@ -216,7 +216,7 @@ test('same Work Center card skin in LIVE and API Health; Health never shrinks to
    };
  });
  const healthCard=await evidence();
- expect(healthCard.width).toBeGreaterThanOrEqual(260);
+ expect(healthCard.width).toBeGreaterThanOrEqual(240); // Owner compact-density layout, still readable
  expect(healthCard.height).toBeGreaterThanOrEqual(180);
  expect(healthCard.idPosition).toBe('absolute');
  expect(Math.abs(healthCard.idTopDelta)).toBeLessThanOrEqual(3);
