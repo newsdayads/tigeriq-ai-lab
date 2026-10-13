@@ -71,6 +71,17 @@ it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed
   expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
 });
 
+it.skipIf(!pwshPresent)('allows exactly the Core-owned live-status API with a real Core component',()=>{
+  expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','api/live-status.mjs']}).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','api/live-device-auth.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
+it.skipIf(!pwshPresent)('rejects live-status API when Core component absent',()=>{
+  expect(run({approval:template(),paths:['api/live-status.mjs'],impact:'@{core=$false;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}'}).reason).toBe('RELEASE_PATH_COMPONENT_MISMATCH');
+});
+it.skipIf(!pwshPresent)('classifies exact approved test/template paths only and denies near-miss',()=>{
+  expect(run({approval:template(),paths:['.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/core-manager-stop-next.test.mjs','apps/tigeriq-core/core.mjs']}).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','tests/core-manager-stop-next.test.ts']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+});
 it.skipIf(!pwshPresent)('blocks unapproved Vercel/API files even when Updater is in approved components',()=>{
   expect(run({approval:template(),paths:['apps/tigeriq-core/core.mjs','api/live-device-auth.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
@@ -262,6 +273,12 @@ it('cannot widen scope via component list, comment fields, or arbitrary paths',(
   expect(()=>parsePc01OwnerApproval(ownerCommentText()+'\nFILE=C:\\evil')).toThrow();
   expect(()=>parsePc01OwnerApproval(ownerCommentText().replace('COMPONENTS=core','COMPONENTS=core,web'))).toThrow();
   expect(()=>impactForPc01ReleaseFiles([{filename:'.github/workflows/tigeriq-core-event-dispatch.yml'}])).toThrow('FILE_OUT_OF_SCOPE');
+  // Exact paths only: executable Core-owned API module is not source-only.
+  expect(impactForPc01ReleaseFiles([{filename:'api/live-status.mjs'}])).toEqual(['core']);
+  expect(()=>impactForPc01ReleaseFiles([{filename:'api/live-device-auth.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
+  const previousMainDiff=[".github/ISSUE_TEMPLATE/work_order_v2.md","scripts/verify_work_board_ui.mjs","tests/continuous-capability-verify.test.mjs","tests/core-autonomous-rca.test.ts","tests/core-manager-stop-next.test.mjs","tests/github-intake.test.mjs","tests/live-status-api.test.mjs","tests/tigeriq-live-owner-refinement.test.mjs","tests/web-control.test.ts","tests/work-order-lifecycle-v2.test.mjs"];
+  expect(impactForPc01ReleaseFiles([...previousMainDiff.map(filename=>({filename})),{filename:'apps/tigeriq-core/core.mjs'},{filename:'api/live-status.mjs'},{filename:'scripts/tigeriq-core/pc01-release-guard.ps1'}])).toEqual(['core','updater']);
+  expect(()=>impactForPc01ReleaseFiles([{filename:'tests/pc01-unknown.test.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
   expect(()=>impactForPc01ReleaseFiles([{filename:'apps/tigeriq-core/web-control-index.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
   expect(impactForPc01ReleaseFiles([{filename:'apps/openclaw-tigeriq-runtime/operator.mjs'}])).toEqual(['core','openclaw']);
 });
