@@ -16,7 +16,7 @@ const template=()=>({
   approved:true,components:['core'],
   expiresAtUtc:new Date(Date.now()+3600_000).toISOString(),
 });
-function run({approval=null,attempt=null,impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
+function run({approval=null,attempt=null,aclMock=true,impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
   const dir=mkdtempSync(join(tmpdir(),'tigeriq-guard-e2e-'));
   try{
     const approver=join(dir,'approval.json'),marker=join(dir,'attempt.json');
@@ -26,6 +26,7 @@ function run({approval=null,attempt=null,impact='@{core=$true;web=$false;coding=
       ". '"+esc(guardPath)+"'",
       "$releaseApprovalPath='"+esc(approver)+"'",
       "$releaseAttemptPath='"+esc(marker)+"'",
+      ...(aclMock?["function Test-ReleaseApprovalAcl { return $true }"]:[]),
       "$impact="+impact,
       "$result=Get-ReleaseApproval '"+sha+"' '"+previous+"' $impact",
       '$result|ConvertTo-Json -Compress -Depth 4',
@@ -58,4 +59,8 @@ it.skipIf(!pwshPresent)('rejects replayed release attempt even with valid ticket
 it.skipIf(!pwshPresent)('rejects approval after expiry',()=>{
   const approval=template();approval.expiresAtUtc=new Date(Date.now()-3600_000).toISOString();
   expect(run({approval}).reason).toBe('RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG');
+});
+
+it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed',()=>{
+  expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
 });
