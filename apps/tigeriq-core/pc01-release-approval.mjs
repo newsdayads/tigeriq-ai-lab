@@ -136,10 +136,10 @@ async function githubJson(relative, { githubToken, fetchImpl = fetch }) {
   if (!response.ok) deny('GITHUB_READ_HTTP_' + response.status);
   return response.json();
 }
-async function ensureProtectedDirectory(io, root) {
+async function ensureProtectedDirectory(io, root, platform = process.platform) {
   // The existing PowerShell updater separately checks parent+file ACL before applying.
   // Core never creates, fixes permissions for, or writes outside this one protected root.
-  if (process.platform !== 'win32') deny('WINDOWS_SYSTEM_RUNTIME_REQUIRED');
+  if (platform !== 'win32') deny('WINDOWS_SYSTEM_RUNTIME_REQUIRED');
   const stat = await io.lstat(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) deny('RELEASE_ROOT_UNTRUSTED');
   const real = await io.realpath(root);
@@ -150,7 +150,7 @@ async function ensureProtectedDirectory(io, root) {
 export async function acceptPc01OwnerApprovalEvent({
   identity, eventName, payload, githubToken, fetchImpl = fetch, io = fs,
   nowMs = Date.now(),
-  root = PC01_RELEASE_ROOT,
+  root = PC01_RELEASE_ROOT, platform = process.platform,
 } = {}) {
   // Production entry always uses constant root; tests can inject a sandbox FS.
   if (root !== PC01_RELEASE_ROOT) deny('RELEASE_ROOT_OVERRIDE_DENIED');
@@ -169,7 +169,7 @@ export async function acceptPc01OwnerApprovalEvent({
   const approval = validatePc01ApprovalEvidence({
     identity, eventName, payload, verifiedComment, installedSha, mainSha, compare, nowMs,
   });
-  await ensureProtectedDirectory(io, root);
+  await ensureProtectedDirectory(io, root, platform);
   const ticket = path.win32.join(root, 'core-runtime-release-approval.json');
   const attempt = path.win32.join(root, 'core-runtime-release-attempt.json');
   try {
