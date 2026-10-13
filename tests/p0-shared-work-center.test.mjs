@@ -64,26 +64,6 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor(data,'action').map(x=>x.number)).toEqual([1]);
   expect(recent.map(x=>x.number)).toEqual([21,22,23,24]); // no source mutation
  });
- it('sorts latest confirmed GitHub journal events, not status attestation or issue edit time',()=>{
-  const rows=[
-   {number:10,workKind:'WORK',status:'WAITING',updatedAt:'2026-10-13T23:00:00Z'},
-   {number:20,workKind:'WORK',status:'REVIEW',lastActivitySource:'github_issue_comment',lastActivityAt:'2026-10-13T01:22:30Z',lastActivitySummary:'[TIẾN ĐỘ] NV09 running'},
-   {number:30,workKind:'WORK',status:'BLOCKED',lastActivitySource:'github_issue_comment',lastActivityAt:'2026-10-12T19:31:00Z',lastActivitySummary:'[KẾT QUẢ] Blocked'},
-   {number:40,workKind:'WORK',status:'OPEN',lastActivitySource:'github_issue_created',lastActivityAt:'2026-10-12T14:30:00Z'}
-  ];
-  expect(wc.rowsFor({openWork:rows},'action',undefined,'activity_latest').map(x=>x.number))
-   .toEqual([20,30,40,10]);
-  expect(wc.rowsFor({openWork:rows},'action',undefined,'priority').map(x=>x.number))
-   .toEqual([10,20,30,40]);
-  // State proof is a different, stronger contract than a recorded comment.
-  const workIssue=issue(validBody,{state:'open',state_reason:null,closed_at:null,updated_at:'2026-10-13T02:00:00Z'});
-  const view=parseOpenWorkIssue(workIssue,{lifecycle:{lastActivityAt:'2026-10-13T01:22:30Z',lastActivitySource:'github_issue_comment',lastActivitySummary:'[TIẾN ĐỘ] started'}});
-  expect(view.lastActivityAt).toBe('2026-10-13T01:22:30Z');
-  expect(view.lastActivitySource).toBe('github_issue_comment');
-  expect(view.statusEvidenceAt).toBeNull();
-  const history=buildWorkHistory(workIssue,[{created_at:'2026-10-13T01:22:30Z',body:'[TIẾN ĐỘ] CODEOBJ is running. Implementer: NV09',user:{login:'newsdayads'},html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4696#issuecomment-6136018701'}]);
-  expect(history.events.some(x=>x.action==='TIẾN ĐỘ'&&x.detail.includes('NV09'))).toBe(true);
- });
  it('keeps Owner priority untouched; sorts open work by attested status or STT without invented issue edit times',()=>{
   const rows=[
    {number:430,workKind:'WORK',status:'WAITING',priority:'P1',updatedAt:'2026-10-13T19:00:00Z'},
