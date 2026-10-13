@@ -27,6 +27,12 @@ FINISH_RECEIPT_URL=NOT_AVAILABLE
 TARGET_FINISH_AT=UNVERIFIED
 CHECKPOINT_DUE_AT=UNVERIFIED
 DONE=false
+SAME_FAILURE_RETRY_COUNT=0
+SAME_FAILURE_RETRY_MAX=2
+VERIFICATION_COUNT_CURRENT_HEAD=0
+VERIFICATION_MAX_PER_HEAD=2
+LAST_FAILURE_SIGNATURE=NONE
+RETRY_RESUME_TRIGGER=NEW_REVISION_OR_NEW_EVIDENCE_OR_DEPENDENCY_CHANGE
 NO_PC01_SHELL=true
 NO_DIRECT_MAIN=true
 NO_PRODUCTION_RELEASE=true
@@ -49,6 +55,11 @@ APP_CHROME_MUTATION=FORBIDDEN
 - Chỉ CLOSED/completed khi DONE=true, FINISHED_AT + FINISH_RECEIPT_URL thật; NOT_PLANNED không phải DONE.
 
 ## STOP_CONDITIONS
+- Mỗi lỗi có chữ ký nguyên nhân riêng: chỉ thử lại cùng lỗi tối đa 2 lần. Hết lượt hoặc không có thay đổi nguồn/bằng chứng/phụ thuộc: checkpoint, chuyển sang WAIT/BLOCKED, nhả khóa; KHÔNG tạo thẻ/PR/canary tương đương để thử lại.
+- Mỗi đầu mã nguồn có tối đa 2 lượt kiểm chứng chủ đích; đạt thì ghi biên nhận và chuyển nghiệm thu, không chạy lặp để tăng tỷ lệ. Không đạt thì ghi nguyên nhân, chờ thay đổi vật chất trước lượt mới. Kiểm thử CI bắt buộc vẫn theo hệ thống bảo vệ nhánh.
+- Sau DONE có biên nhận hoặc WAIT/BLOCKED/EXTERNAL_WAIT/OWNER_GATE được ghi bền vững: chọn ngay việc độc lập tiếp theo đủ điều kiện ở hàng đợi Core; không bám việc đã chặn để kiểm tra lặp.
+- Không đặt trạng thái RUNNING khi thiếu khóa ghi, biên nhận bắt đầu và nhịp hoạt động thực tế. Không đóng DONE nếu checklist/cổng vận hành chưa đủ.
+
 - Dừng trước thay đổi Main/Production, credential, chi phí, quyền bảo mật, thiết bị hoặc tác vụ không thể đảo ngược nếu thiếu phê duyệt từng hành động.
 - Không tự mở quyền chỉ vì ưu tiên cao; không claim P0 tự động; không chiếm lease của worker khác.
 
@@ -57,3 +68,4 @@ APP_CHROME_MUTATION=FORBIDDEN
 - STARTED_AT chỉ ghi ngày giờ ISO 8601 có múi giờ sau khi đã nhận việc thật, kèm URL biên nhận.
 - ETA nếu chưa đủ dữ liệu cứ để `UNVERIFIED`; nếu ấn định cần `ETA_STATUS=ESTIMATED` và `TARGET_FINISH_AT=YYYY-MM-DDTHH:mm:ss+07:00`.
 - Với mỗi bước đã qua, cập nhật `- [x]` và link PR/receipt ngay trên cùng dòng. Không đổi trạng thái DONE bằng tay khi thiếu acceptance.
+- Bộ đếm retry/kiểm chứng áp dụng theo chữ ký lỗi và đầu mã nguồn; không tự đặt lại khi không có `NEW_REVISION_OR_NEW_EVIDENCE_OR_DEPENDENCY_CHANGE` cùng biên nhận. Mẫu nguồn không tự cưỡng chế tiến trình máy đang chạy.
