@@ -71,11 +71,27 @@ it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed
   expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
 });
 
-it.skipIf(!pwshPresent)('accepts exactly the branding UI validation files as source-only with a core change',()=>{
-  const paths=['apps/tigeriq-core/dashboard.html','scripts/verify_work_board_ui.mjs','tests/web-control.test.ts'];
+it.skipIf(!pwshPresent)('accepts the exact non-runtime V1 source files while rejecting lookalikes',()=>{
+  const paths=[
+    'apps/tigeriq-core/dashboard.html',
+    '.github/ISSUE_TEMPLATE/work_order_v2.md',
+    'scripts/verify_work_board_ui.mjs',
+    'tests/core-autonomous-rca.test.ts',
+    'tests/github-intake.test.mjs',
+    'tests/tigeriq-live-owner-refinement.test.mjs',
+    'tests/web-control.test.ts',
+    'tests/work-order-lifecycle-v2.test.mjs'
+  ];
   expect(run({approval:template(),paths}).approved).toBe(true);
-  expect(run({approval:template(),paths:[...paths,'tests/web-control-extra.test.ts']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
-  expect(run({approval:template(),paths:[...paths,'scripts/not-approved.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+  for(const invalid of [
+    'tests/web-control-extra.test.ts','tests/github-intake.test.ts',
+    'tests/new-core-regression.test.mjs','scripts/not-approved.mjs',
+    '.github/workflows/tigeriq-core-event-dispatch.yml',
+    '.github/ISSUE_TEMPLATE/work_order_v2.yml',
+    'api/live-device-auth.mjs','apps/app-chrome/runtime.mjs'
+  ]){
+    expect(run({approval:template(),paths:[...paths,invalid]}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+  }
 });
 
 it.skipIf(!pwshPresent)('blocks unapproved Vercel/API files even when Updater is in approved components',()=>{
