@@ -49,6 +49,7 @@ import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
+import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
@@ -2905,6 +2906,18 @@ const server=createServer(async(req,res)=>{
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(evidence));
     }
     if(req.method==='GET'&&url.pathname==='/api/live-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await liveStatusSnapshot()));}
+    // B03: dedicated, bounded read-only Coding health projection. The full
+    // /api/status includes slow integration probes and large job/telemetry
+    // history; it is not appropriate for the Coding Lane's 3-second health TTL.
+    if(req.method==='GET'&&url.pathname==='/api/coding-health'){
+      const health=await createCodingCoreHealthSnapshot({
+        pool,nowIso,refreshWorkforce:refreshRegistryWorkforce,
+        activeLeases:activeSharedResourceLeases,indexLeases:indexSharedResourceLeases,
+        normalizeResources:normalizeRuntimeResources,normalizeQuota,publicStatus,
+      });
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(health));
+    }
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/api-doctor-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},apiDoctor:await apiDoctorTelemetry()}));}
     if(req.method==='GET'&&url.pathname==='/api/self-audit'){
