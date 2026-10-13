@@ -1307,8 +1307,23 @@ export function checklistForIssue(issue) {
   const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
     || source === 'VERIFIED' || source === 'VERIFIED_CHECKLIST';
   const items = [];
+  // Use only the first canonical checklist section, not historical duplicates.
+  // Legacy cards without that heading retain only checkboxes before the first
+  // history separator. A later current V2 section is permitted (GH-4709).
+  const lines = body.split(/\r?\n/);
+  const sectionStart = lines.findIndex((line) => /^##\s+STRUCTURED_PROGRESS_CHECKLIST\b/i.test(line));
+  const firstDivider = lines.findIndex((line) => /^ {0,3}---+\s*$/.test(line));
+  let checklistLines;
+  if (sectionStart >= 0) {
+    let sectionEnd = lines.findIndex((line, index) =>
+      index > sectionStart && (/^##\s+\S/.test(line) || /^ {0,3}---+\s*$/.test(line)));
+    if (sectionEnd < 0) sectionEnd = lines.length;
+    checklistLines = lines.slice(sectionStart + 1, sectionEnd);
+  } else {
+    checklistLines = lines.slice(0, firstDivider < 0 ? lines.length : firstDivider);
+  }
   let fenced = false;
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of checklistLines) {
     if (/^\s*(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
     if (fenced) continue;
     const match = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/);
