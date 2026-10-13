@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import handler from '../api/health-view.mjs';
-import {createDeviceSession,DEVICE_COOKIE} from '../api/live-device-auth.mjs';
+import {createDeviceSession,createPairLinkToken,verifyPairLinkToken,authorizedDevice,DEVICE_COOKIE} from '../api/live-device-auth.mjs';
+import pairHandler from '../api/live-device.mjs';
 
 function mockRes() {
   return { headers:{}, statusCode:200, body:null,
@@ -55,4 +56,30 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
       if (prev[k]===undefined) delete process.env[k]; else process.env[k]=prev[k];
     }
   }
+});
+
+test('owner invitation requires same-origin HTTPS and grants a signed device cookie',async()=>{
+ const key='x'.repeat(64),old=process.env.TIGERIQ_LIVE_DEVICE_KEY;
+ process.env.TIGERIQ_LIVE_DEVICE_KEY=key;
+ try{
+  const now=Date.now(),token=createPairLinkToken(key,now,100);
+  assert.ok(verifyPairLinkToken(token,key,now));
+  assert.equal(verifyPairLinkToken(token,key,now+101000),null);
+  const request=(origin)=>({method:'POST',headers:{host:'tigeriq-ai-lab.vercel.app',origin},body:{token}});
+  let response=mockRes();
+  await pairHandler(request('https://different.example'),response);
+  assert.equal(response.statusCode,403);
+  response=mockRes();
+  await pairHandler(request('https://tigeriq-ai-lab.vercel.app'),response);
+  assert.equal(response.statusCode,200);
+  assert.ok(authorizedDevice(response.headers['set-cookie'].split(';')[0],key));
+  assert.match(response.headers['set-cookie'],/HttpOnly; Secure; SameSite=Lax/);
+  response=mockRes();
+  await pairHandler({method:'GET',headers:{}},response);
+  assert.equal(response.statusCode,200);
+  assert.match(response.body,/history.replaceState/);
+ }finally{
+  if(old===undefined)delete process.env.TIGERIQ_LIVE_DEVICE_KEY;
+  else process.env.TIGERIQ_LIVE_DEVICE_KEY=old;
+ }
 });
