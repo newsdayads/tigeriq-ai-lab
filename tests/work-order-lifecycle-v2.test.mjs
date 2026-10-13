@@ -131,3 +131,37 @@ describe('Work Order Lifecycle V2 global source contract',()=>{
     expect(validateWorkOrderLifecycleV2(stopped).timestamps.finishedAt).toBe(null);
   });
 });
+
+
+describe('V2 checklist beneath a current checkpoint header',()=>{
+  it('validates the active checklist instead of losing steps behind a separator (#4709)',()=>{
+    const body=[
+      '## Owner checkpoint — source merged, runtime still waiting',
+      'No live acceptance is claimed.',
+      '---',
+      '## ACTIVE WORK ORDER — repair auto dispatch',
+      'WORK_ORDER_LIFECYCLE=V2',
+      'PROJECT_ID=tigeriq-platform',
+      'WORKSTREAM_ID=queue',
+      'CURRENT_STATE=WAITING_RUNTIME_RELEASE',
+      'CURRENT_STEP=R00',
+      'NEXT_ACTION=Obtain a real install receipt',
+      'LAST_COMPLETED_STEP=NONE',
+      'BLOCKER=EXACT_INSTALL_RECEIPT_NOT_VERIFIED',
+      'RESOURCE_SCOPE=QUEUE_4709',
+      'MUTATION_OWNER=NONE',
+      'ETA_STATUS=UNVERIFIED',
+      'STARTED_AT=NOT_STARTED',
+      'FINISHED_AT=NOT_FINISHED',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [ ] R00 — Verify source',
+      '- [ ] R01 — Verify runtime',
+      '## ACCEPTANCE','Real runtime evidence required.',
+      '## STOP_CONDITIONS','No unauthorized runtime mutation.',
+    ].join('\n');
+    const result=validateWorkOrderLifecycleV2(issue(body));
+    expect(result.steps).toHaveLength(2);
+    expect(result.missing).not.toContain('CHECKLIST_2_TO_64');
+    expect(result.missing).not.toContain('WORK_ORDER_LIFECYCLE=V2');
+  });
+});
