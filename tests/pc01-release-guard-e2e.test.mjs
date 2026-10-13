@@ -58,6 +58,13 @@ it.skipIf(!pwshPresent)('rejects target mismatch without applying anything',()=>
 it.skipIf(!pwshPresent)('rejects web/coding impact outside Phase A scope',()=>{
   expect(run({approval:template(),impact:'@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}).reason).toBe('RELEASE_IMPACT_OUT_OF_SCOPE');
 });
+it.skipIf(!pwshPresent)('protected PowerShell gate still rejects coding-only release even with a matching Owner-format ticket',()=>{
+  const approval={...template(),components:['coding']};
+  const result=run({approval,paths:['apps/tigeriq-coding-lane/coding-lane.mjs'],
+    impact:'@{core=$false;web=$false;coding=$true;openclaw=$false;updater=$false;liveBridge=$false}'});
+  expect(result.approved).toBe(false);
+  expect(result.reason).toBe('RELEASE_IMPACT_OUT_OF_SCOPE');
+});
 it.skipIf(!pwshPresent)('rejects replayed release attempt even with valid ticket',()=>{
   const attempt={requestId:'PC01-RELEASE-4725-A',targetSha:sha,result:'ROLLED_BACK'};
   expect(run({approval:template(),attempt}).reason).toBe('RELEASE_ATTEMPT_ALREADY_RECORDED');
