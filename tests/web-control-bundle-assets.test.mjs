@@ -6,8 +6,8 @@ const launcherUrl=new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',i
 describe('Web Control runtime bundle',()=>{
   it('copies transitive workforce registry dependency',async()=>{
     const source=await readFile(launcherUrl,'utf8');
-    expect(source).toContain("$.Name -eq 'workforce-registry.mjs'");
-    expect(source).toContain("$.Name -eq 'github-shared-client.mjs'");
+    expect(source).toContain("$_.Name -eq 'workforce-registry.mjs'");
+    expect(source).toContain("$_.Name -eq 'github-shared-client.mjs'");
   });
 
   it('bundles optional fail-closed Owner approval validator for PC runtime',async()=>{
