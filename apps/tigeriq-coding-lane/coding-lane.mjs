@@ -398,6 +398,33 @@ const resources=[
 ].filter(x=>x.ready());
 const busyAiResources=new Set();
 let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
+// B03: diagnostic-only counters, never affect worker eligibility or leases.
+let coreHealthReadback={attemptedAt:0,succeededAt:0,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
+export function codingCoreHealthFailureKind(error){
+  const code=String(error?.code||'').toUpperCase();
+  const name=String(error?.name||'');
+  if(name==='AbortError'||name==='TimeoutError'||code.includes('TIMEOUT')||code==='ABORT_ERR')return 'TIMEOUT';
+  if(code==='CODING_CORE_HEALTH_RESPONSE_STALE')return 'STALE_RESPONSE';
+  if(code.startsWith('CODING_CORE_HEALTH_'))return 'INVALID_RESPONSE';
+  const status=Number(error?.status||error?.statusCode||0);
+  if(status>=500&&status<600)return 'CORE_HTTP_5XX';
+  if(status>=400&&status<500)return 'CORE_HTTP_4XX';
+  return 'FETCH_OR_TRANSPORT_ERROR';
+}
+export function codingCoreHealthReadback(health,diagnostics,{nowMs=Date.now(),ttlMs=10000}={}){
+  const at=Number(health?.fetchedAt)||0;
+  const age=at?Math.max(0,nowMs-at):null;
+  const ageOf=stamp=>stamp?Math.max(0,nowMs-stamp):null;
+  return {
+    fresh:Boolean(at&&nowMs-at<=ttlMs),
+    ageMs:age,ttlMs,
+    lastAttemptAgeMs:ageOf(diagnostics?.attemptedAt),
+    lastSuccessAgeMs:ageOf(diagnostics?.succeededAt),
+    lastFailureAgeMs:ageOf(diagnostics?.failedAt),
+    lastFailureKind:diagnostics?.lastFailureKind||null,
+    consecutiveFailures:Math.max(0,Number(diagnostics?.consecutiveFailures)||0),
+  };
+}
 
 export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(!state||typeof state!=='object')return false;
@@ -495,12 +522,19 @@ export function rankCodingManagerResources(candidates=[],{nowMs=Date.now()}={}){
 async function refreshCoreResourceHealth(){
   const nowMs=Date.now();
   if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
+  coreHealthReadback.attemptedAt=nowMs;
   try{
     const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},FAST_CORE_HEALTH_ENABLED?3000:CORE_STATUS_TIMEOUT_MS);
     if(FAST_CORE_HEALTH_ENABLED)validateCodingFastHealthResponse(snapshot);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
+    coreHealthReadback.succeededAt=Date.now();
+    coreHealthReadback.consecutiveFailures=0;
     return true;
-  }catch{
+  }catch(error){
+    coreHealthReadback.failedAt=Date.now();
+    coreHealthReadback.lastFailureKind=codingCoreHealthFailureKind(error);
+    coreHealthReadback.consecutiveFailures++;
+    // Keep existing fail-closed semantics; do not retain an eligible AI on failure.
     coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
     return false;
   }
@@ -1677,7 +1711,7 @@ export async function codingIssueStatusSnapshot(db,issueNumber){
   };
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
+async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
