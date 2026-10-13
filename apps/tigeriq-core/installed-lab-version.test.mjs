@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {formatInstalledLabVersion,installedLabVersion} from '../apps/tigeriq-core/installed-lab-version.mjs';
+import {formatInstalledLabVersion,installedLabVersion} from './installed-lab-version.mjs';
 const sha='6a415faac74af917bbe2d2a45c3b6492818b194f';
 test('LAB stamp is the installed PC01 release timestamp in Vietnam, not browser reload clock',()=>{
  const state={currentSha:sha,updatedAt:'2026-10-13T02:31:00.000Z'};

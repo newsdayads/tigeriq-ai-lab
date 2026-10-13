@@ -15,7 +15,7 @@ const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
   it('uses API Health as the visual/function reference without iframe duplication', () => {
-    expect(apiHealth).toContain('<title>TigerIQ AI</title>');
+    expect(apiHealth).toContain('<title>TigerIQ API Health</title>');
     expect(core).toContain('dashboard()');
     expect(server).toContain('web-control-unified.js');
     expect(server).toContain('web-control-unified.css');

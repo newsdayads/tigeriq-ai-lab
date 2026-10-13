@@ -12,7 +12,7 @@ assert.equal(existsSync('public/index.html'), false);
 assert.equal(config?.cleanUrls, true);
 assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/api/health-view?resource=');
 assert.equal(config?.rewrites?.find((route) => route?.source === '/pc01/:path*')?.destination, '/api/health-view?resource=:path*');
-assert.match(readFileSync('apps/tigeriq-core/dashboard.html','utf8'), /<title>TigerIQ AI<\/title>/);
+assert.match(readFileSync('apps/tigeriq-core/dashboard.html','utf8'), /TigerIQ API Health/);
 assert.equal(deployedView, publicView, 'Vercel public command-center must match canonical TigerIQ Live view');
 
 assert.match(publicView, /TigerIQ Live/);

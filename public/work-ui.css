@@ -79,7 +79,7 @@
 .api-health .workers{
   --employee-row-h:156px;
   --employee-gap:9px;
-  grid-auto-rows:max-content!important;
+  grid-auto-rows:minmax(var(--employee-row-h),auto)!important;
   max-height:calc(var(--employee-row-h) * 2 + var(--employee-gap) + 20px);
   overflow-y:auto!important;
   overflow-x:hidden!important;
@@ -90,7 +90,7 @@
 .api-health .workers::-webkit-scrollbar{width:9px}
 .api-health .workers::-webkit-scrollbar-track{background:#07182b;border-radius:999px}
 .api-health .workers::-webkit-scrollbar-thumb{background:#286a9d;border-radius:999px;border:2px solid #07182b}
-.api-health .worker.employee-card{height:auto!important;min-height:0!important;overflow:hidden!important;display:flex!important;flex-direction:column}
+.api-health .worker.employee-card{height:auto!important;min-height:var(--employee-row-h)!important;overflow:hidden!important;display:flex!important;flex-direction:column}
 .api-health .employee-task{display:block;white-space:normal;overflow:visible;overflow-wrap:anywhere;line-height:1.35}
 .api-health .worker.state-working{animation:tiq-worker-live 2.7s ease-in-out infinite}
 .api-health .metric{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
@@ -422,13 +422,13 @@
 .work-detail-kicker{font-size:11px;color:#91a4ba;font-weight:850}
 .work-detail-title{font-size:18px;line-height:1.3;font-weight:850;margin-top:6px;color:#f2f7fd}
 .work-detail-close{border:1px solid #34516e;background:#102139;color:#dce8f4;border-radius:9px;width:34px;height:34px;font-size:20px;cursor:pointer}
-.work-detail-body{padding:14px 16px;flex:1 1 auto;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.work-detail-section{border:1px solid #1d3b59;background:#0b1829;border-radius:12px;padding:11px 12px;flex:0 0 auto;min-width:0;width:100%;overflow-wrap:anywhere}
+.work-detail-body{padding:14px 16px;overflow:auto;display:grid;gap:12px}
+.work-detail-section{border:1px solid #1d3b59;background:#0b1829;border-radius:12px;padding:11px 12px}
 .work-detail-section h3{font-size:11px;margin:0 0 8px;color:#8fc8ff;text-transform:uppercase;letter-spacing:.04em}
 .work-detail-row{display:grid;grid-template-columns:90px 1fr;gap:8px;font-size:11px;line-height:1.5;margin-top:5px}
 .work-detail-row span:first-child{color:#839ab2}
 .work-detail-row span:last-child{color:#d9e6f2;overflow-wrap:anywhere}
-.work-detail-actions{margin-top:0;flex:0 0 auto;padding:12px 16px max(12px,env(safe-area-inset-bottom));border-top:1px solid #203953;display:grid;grid-template-columns:1.35fr 1fr 1fr .8fr;gap:8px}
+.work-detail-actions{margin-top:auto;padding:12px 16px max(12px,env(safe-area-inset-bottom));border-top:1px solid #203953;display:grid;grid-template-columns:1.35fr 1fr 1fr .8fr;gap:8px}
 .work-detail-btn{display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:10px;border:1px solid #315578;background:#0d2037;color:#dcecff;font:800 12px/1 inherit;cursor:pointer;text-decoration:none}
 .work-detail-btn.primary{background:#136ac8;border-color:#2f8feb;color:white}
 .work-detail-btn.ask-vy{background:#3a235d;border-color:#7654a9;color:#eadcff}
@@ -536,7 +536,7 @@ body.work-detail-open{overflow:hidden}
   animation:tiq-avatar-orbit 2.4s linear infinite;
 }
 .api-health .employee-live-line{
-  margin-top:6px;
+  margin-top:auto;
   padding-top:7px;
   border-top:1px solid rgba(73,111,145,.34);
   display:flex;
@@ -1249,27 +1249,3 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 .tiq-work-center .tiq-work-card{margin:8px 0}
 @media(max-width:430px){.tiq-floating-reload{right:16px;bottom:calc(18px + env(safe-area-inset-bottom))}.tiq-audit-grid{gap:6px}.tiq-work-card .work-nv{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.tiq-floating-reload,.tiq-work-card{animation:none!important;transition:none!important}}
-
-/* P0 owner mobile defect: invariant bounded text and independent audit scroller. */
-.api-health #workers.workers{align-items:stretch}
-.api-health #workers .employee-card-head,.api-health #workers .employee-identity{min-width:0;max-width:100%}
-.api-health #workers .employee-name,.api-health #workers .employee-task{
- min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word
-}
-.api-health #workers .employee-live-line{min-width:0;max-width:100%;flex-shrink:0}
-.api-health #workers .employee-live-line span:last-child{
- min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
-}
-.api-health #workDetailBackdrop{isolation:isolate}
-.api-health #workDetailModal{min-width:0;max-width:calc(100vw - 24px)}
-.api-health #workDetailModal .work-detail-head{flex:0 0 auto;min-width:0}
-.api-health #workDetailModal .work-detail-head-main,.api-health #workDetailModal .work-detail-title{min-width:0;overflow-wrap:anywhere}
-.api-health #workDetailModal .work-detail-body{
- display:flex!important;flex:1 1 auto!important;flex-direction:column!important;
- min-width:0!important;min-height:0!important;overflow-x:hidden!important;overflow-y:auto!important
-}
-.api-health #workDetailModal .work-detail-section,
-.api-health #workDetailModal #workDetailAudit,
-.api-health #workDetailModal .tiq-audit-grid,
-.api-health #workDetailModal .tiq-audit-timeline{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.api-health #workDetailModal .work-detail-actions{margin-top:0!important;flex:0 0 auto!important}
