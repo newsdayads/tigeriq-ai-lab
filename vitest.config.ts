@@ -12,6 +12,7 @@ export default defineConfig({
       'tests/project-portfolio.test.mjs',
       'tests/github-projects-sync.test.mjs',
       'tests/owner-facing-vietnamese.test.mjs',
+      'tests/owner-one-tap-approval.test.mjs',
       'tests/pc01-release-preflight.test.mjs',
       'tests/pc01-updater-release-gate.test.mjs',
       'tests/pc01-release-guard-e2e.test.mjs',
