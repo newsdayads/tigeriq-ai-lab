@@ -1006,9 +1006,11 @@ function issueCanonicalState(issue) {
 
 async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
   const candidates = (Array.isArray(issues) ? issues : [])
-    .filter((issue) => issue && !issue.pull_request && issue.state === 'open' && /^P[1-5]$/.test(String(issuePriority(issue) || '')))
+    .filter((issue) => issue && !issue.pull_request && issue.state === 'open'
+      && /^P[0-5]$/.test(String(issuePriority(issue) || ''))
+      && classifyOpenIssue(issue).workKind === 'WORK')
     .sort((a, b) => Date.parse(b?.updated_at || 0) - Date.parse(a?.updated_at || 0))
-    .slice(0, Math.max(QUEUE_LIMIT, 24));
+    .slice(0, Math.max(QUEUE_LIMIT, 40));
   const pairs = await Promise.all(candidates.map(async (issue) => {
     const number = Number(issue.number);
     const now = Date.now();
@@ -1019,17 +1021,34 @@ async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl
     let value = null;
     try {
       const commentsCount = Math.max(0, Number(issue?.comments || 0));
-      const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
-      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
-      const rows = Array.isArray(comments) ? comments : [];
-      const issueAt = Date.parse(issue?.updated_at || '') || 0;
-      for (let i = rows.length - 1; i >= 0; i -= 1) {
-        const parsed = parseStructuredLifecycleComment(rows[i]);
-        if (!parsed) continue;
-        const commentAt = Date.parse(parsed.createdAt || '') || 0;
-        if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
-        value = parsed;
-        break;
+      if (commentsCount > 0) {
+        const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
+        const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
+        const rows = Array.isArray(comments) ? comments : [];
+        const latest = rows.filter((comment) => Number.isFinite(Date.parse(comment?.created_at || '')))
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+        const issueAt = Date.parse(issue?.updated_at || '') || 0;
+        let structured = null;
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const parsed = parseStructuredLifecycleComment(rows[i]);
+          if (!parsed) continue;
+          const commentAt = Date.parse(parsed.createdAt || '') || 0;
+          if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
+          structured = parsed;
+          break;
+        }
+        // Recorded GitHub comment != verified AI execution/transition. It is
+        // still a real timestamped activity entry in the Owner audit journal.
+        if (latest) value = {
+          ...(structured || {}),
+          lastActivityAt: latest.created_at,
+          lastActivitySource: 'github_issue_comment',
+          lastActivitySummary: String(latest.body || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
+          lastActivityAuthor: String(latest.user?.login || '').slice(0, 65),
+          lastActivityUrl: /^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-\d+$/.test(String(latest.html_url || ''))
+            ? latest.html_url : null,
+        };
+        else value = structured;
       }
     } catch {
       // Keep canonical body truth if comment readback is unavailable.
@@ -1624,6 +1643,14 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     executionEligibility,
     lifecycleContract: {required:lifecycleContract.required,valid:lifecycleContract.valid,missing:lifecycleContract.missing,source:lifecycleContract.source},
     lifecycleTiming:lifecycleContract.timestamps,
+    // Latest recorded event, not a proof of execution or a status transition.
+    // issue.updated_at is intentionally never used as a surrogate event time.
+    lastActivityAt: Number.isFinite(Date.parse(lifecycle?.lastActivityAt || ''))
+      ? lifecycle.lastActivityAt : (Number.isFinite(Date.parse(issue?.created_at || '')) ? issue.created_at : null),
+    lastActivitySource: lifecycle?.lastActivitySource || 'github_issue_created',
+    lastActivitySummary: lifecycle?.lastActivitySummary || 'Tạo hồ sơ',
+    lastActivityAuthor: lifecycle?.lastActivityAuthor || String(issue?.user?.login || ''),
+    lastActivityUrl: lifecycle?.lastActivityUrl || issue.html_url || null,
     // Timestamp of the latest structured GitHub comment explicitly reporting
     // the SAME effective display status; never infer from issue.updated_at.
     // It is an observed status attestation, not necessarily a transition event.
