@@ -39,6 +39,10 @@ function Load-Environment {
   # Owner P0 2026-10-13: manager tick may not hold existing ready workers.
   # Rollback: set this flag to 'false' in a guarded PR and let the existing runtime updater restart Coding Lane only.
   $env:TIGERIQ_CODING_MANAGER_DECOUPLED='true'
+  # #280/B03: Core offers a bounded, read-only health endpoint.
+  # If the fast Core route becomes unavailable, Coding Lane fails closed.
+  # Rollback to legacy /api/status via a guarded PR setting this to false.
+  $env:TIGERIQ_CODING_FAST_CORE_HEALTH='true'
   $groqProof=Get-Content -Raw 'D:\TigerIQ\Secrets\groq-free-tier-proof.json'|ConvertFrom-Json
   $geminiProof=Get-Content -Raw 'D:\TigerIQ\Secrets\gemini-free-tier-proof.json'|ConvertFrom-Json
   if($groqProof.plan -eq 'Free' -and $groqProof.priceUsd -eq 0 -and $groqProof.ownerConfirmed -and -not $groqProof.paidFallbackAllowed -and [DateTime]::Parse($groqProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GROQ_API_KEY' 'groq-api-key' 'TigerIQ-Groq-PC01-v1';$env:TIGERIQ_GROQ_FREE_TIER_VERIFIED='true'}
