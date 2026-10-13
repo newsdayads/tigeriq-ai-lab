@@ -32,9 +32,9 @@ function commentEvent(comment){
  // GitHub progress/retry/results comments are legitimate recorded activity
  // even when they lack CURRENT_STATE=... fields. Do not treat author text
  // as proof that an AI executed or completed the corresponding task.
- const prefix=body.match(/^\\s*\\[([^\\]\\r\\n]{2,55})\\]/);
+ const prefix=body.match(/^\s*\[([^\]\r\n]{2,55})\]/);
  const observedAction=prefix?safeText(prefix[1],70):'Bình luận GitHub';
- const observedDetail=safeText(body.replace(/^\\s*\\[[^\\]\\r\\n]+\\]\\s*/,''),300);
+ const observedDetail=safeText(body.replace(/^\s*\[[^\]\r\n]+\]\s*/,''),300);
  const actor=safeText(comment?.user?.login||'Chưa xác minh',70);
  const executor=val(body,'EXECUTOR_ID');
  const executorReceipt=url(val(body,'EXECUTOR_RECEIPT_URL')||val(body,'START_RECEIPT_URL'));
