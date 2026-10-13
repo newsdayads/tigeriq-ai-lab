@@ -1,3 +1,4 @@
+import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -2862,7 +2863,7 @@ async function runNvInferenceRequest(input={}){
     throw error;
   }
 }
-function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8').replace('@@TIGERIQ_LAB_VERSION@@',installedLabVersion());}
 function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
 function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
