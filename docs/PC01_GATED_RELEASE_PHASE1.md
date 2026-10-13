@@ -12,8 +12,8 @@
 ## Thiết kế an toàn (nhánh #4727)
 - Mã sơ kiểm không thực hiện cài: `scripts/tigeriq-core/pc01-release-preflight.mjs`.
 - Bộ chặn có kiểu của updater nằm trong `scripts/tigeriq-core/pc01-release-guard.ps1`, được nạp từ **installed runtime source**, không nạp từ bản candidate chưa duyệt.
-- File local approval được đặt tại `D:\TigerIQ\State\core-runtime-release-approval.json`. Chỉ một kênh **cục bộ và đã cấp quyền** được tạo/đổi nó. Updater KHÔNG tự tạo approval từ CI, merge, PR, issue/comment hoặc mệnh lệnh do Worker tự viết.
-- File một-lượt cập nhật `D:\TigerIQ\State\core-runtime-release-attempt.json` giữ trạng thái STARTED/COMMITTED/ROLLED_BACK. Không lặp lại cùng requestId hoặc targetSha nếu đã từng thử, kể cả sau lỗi.
+- File local approval được đặt tại `C:\ProgramData\TigerIQCoreRelease\core-runtime-release-approval.json`. Chỉ một kênh **cục bộ và đã cấp quyền** được tạo/đổi nó. Updater KHÔNG tự tạo approval từ CI, merge, PR, issue/comment hoặc mệnh lệnh do Worker tự viết.
+- File một-lượt cập nhật `C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json` giữ trạng thái STARTED/COMMITTED/ROLLED_BACK. Không lặp lại cùng requestId hoặc targetSha nếu đã từng thử, kể cả sau lỗi.
 - Cổng từ chối mọi target/baseline không phải SHA 40 ký tự, phiếu thiếu/hết hạn, sai resource scope, sai danh sách component, thay đổi Web/Coding/LiveBridge không thuộc pilot, hoặc target đã thử.
 - `approved=true` trong file **không phải chứng minh danh tính** người duyệt. Nguồn tín nhiệm phụ thuộc quy trình ghi local độc lập, người thao tác có quyền thực, kiểm tra ACL/thẩm quyền và biên nhận. Khi chưa xác minh được thì **CHƯA ĐỦ CỔNG TIN CẬY**, không phát hành.
 
@@ -32,6 +32,11 @@
 }
 ```
 File ví dụ luôn hết hạn nên không thể áp dụng. Khi chạy thật lấy đúng target SHA/installed SHA từ live và phiếu quyền được xác thực. Không tạo khóa mới hay cấp quyền hệ thống chỉ để vượt cổng.
+
+## Vùng thực thi được bảo vệ
+- Cấu phần Updater và bộ kiểm chứng phiếu chạy từ `C:\\ProgramData\\TigerIQCoreRelease`. Vùng này chỉ cho **SYSTEM** và **Administrators** ghi, không sửa D:\\TigerIQ\\State hay App Chrome.
+- Đường làm việc mã nguồn trên PC01 và hệ thống watchdog là các phụ thuộc phải kiểm chứng. `main` không tự phát hành và không là phiếu duyệt.
+- Cổng cài bootstrap phải kiểm chứng cả SHA-256 tệp updater và guard do nhánh đã qua CI trước khi thay đổi Scheduled Task; nếu thiếu biên nhận thì hoàn nguyên mà không ghi nhận DONE.
 
 ## Cổng triển khai lần đầu — KHÔNG ĐƯỢC BỎ QUA
 1. Đọc installed SHA, task ownership, updater file path, cấu hình và bản rollback known-good trên PC01 bằng kênh typed/status; RDC chỉ khi đã được cho phép và đường trực tiếp không đủ.
