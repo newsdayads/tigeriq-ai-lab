@@ -59,6 +59,13 @@ function sortOpen(rows,mode){
  const kind=String(mode||'priority');
  if(kind==='number_asc')return [...rows].sort((a,b)=>Number(a.number||0)-Number(b.number||0));
  if(kind==='number_desc')return [...rows].sort((a,b)=>Number(b.number||0)-Number(a.number||0));
+ if(kind==='activity_latest')return [...rows].sort((a,b)=>{
+  const accepted=new Set(['github_issue_comment','github_issue_created']);
+  const aa=accepted.has(a?.lastActivitySource)?time(a.lastActivityAt):null;
+  const bb=accepted.has(b?.lastActivitySource)?time(b.lastActivityAt):null;
+  return Number(bb!==null)-Number(aa!==null)
+    ||(aa!==null&&bb!==null?bb-aa:0);
+ });
  if(kind!=='status_latest')return rows;
  return [...rows].sort((a,b)=>{
   const aa=a&&a.statusEvidenceSource==='github_structured_lifecycle_comment'?time(a.statusEvidenceAt):null;
@@ -130,12 +137,16 @@ function renderCards(container,rows,options){
   const showNext=!blocker&&Boolean(row.nextStep);
   const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,opt.compact]);
+  const activityAt=['github_issue_comment','github_issue_created'].includes(row.lastActivitySource)?time(row.lastActivityAt):null;
+  const activityLine=activityAt!==null?'<div class="work-activity" title="'+esc(String(row.lastActivitySummary||'').slice(0,300))+'">'
+   +'<span>Nhật ký '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
+   +activityLine
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
