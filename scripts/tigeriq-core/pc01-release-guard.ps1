@@ -32,7 +32,7 @@ function Test-ReleaseApprovalAcl {
 }
 function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact){
   if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
-  $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','scripts/verify_work_board_ui.mjs','tests/web-control.test.ts')
+  $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','scripts/verify_work_board_ui.mjs','tests/web-control.test.ts','.github/ISSUE_TEMPLATE/work_order_v2.md','tests/core-autonomous-rca.test.ts','tests/github-intake.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/work-order-lifecycle-v2.test.mjs')
   foreach($path in $changedPaths){
     if(-not $path -or $path -match '(?i)(app.?chrome|android|secrets|credentials|\.env|vercel\.json|^api/)'){return 'RELEASE_PATH_OUT_OF_SCOPE'}
     if($path -in $sourceOnly){continue}
