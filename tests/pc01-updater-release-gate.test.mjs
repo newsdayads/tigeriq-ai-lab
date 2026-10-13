@@ -56,3 +56,15 @@ it('PowerShell parses both installed and helper files on supported CI runners',(
     expect(parsed.status,parsed.stderr||parsed.stdout).toBe(0);
   }
 });
+
+it('never imports an unapproved watchdog source into protected execution before local approval',()=>{
+  expect(source).toContain("$bootstrapWatchdogRuntime='C:\\ProgramData\\TigerIQCoreRelease\\BootstrapWatchdog\\bootstrap-watchdog.ps1'");
+  expect(source).toContain("reason='PROTECTED_WATCHDOG_BOOTSTRAP_MISSING'");
+  const startup=source.indexOf('$bootstrapWatchdog=if(Test-Path -LiteralPath $runtimeRepo){Ensure-BootstrapWatchdogTask}');
+  const approved=source.indexOf('$releaseApproval=Get-ReleaseApproval');
+  const refresh=source.indexOf('Ensure-BootstrapWatchdogTask -AllowSourceRefresh');
+  expect(startup).toBeGreaterThan(0);
+  expect(approved).toBeGreaterThan(startup);
+  expect(refresh).toBeGreaterThan(approved);
+  expect(source).toContain('if($AllowSourceRefresh){');
+});
