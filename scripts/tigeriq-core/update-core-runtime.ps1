@@ -10,7 +10,7 @@ $rollbackCanaryMode=[bool]($RollbackCanaryRuntimeRepo -and $RollbackCanaryPrevio
 $controlRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Workspace\tigeriq-ai-lab'}
 $runtimeRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Runtime\CoreSource'}
 $runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'D:\TigerIQ\State\core-runtime-source.json'}
-$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'}
+$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'}
 $launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'D:\TigerIQ\Runtime\CoreLaunchers'}
 $state=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater-state.json'}else{'D:\TigerIQ\State\core-runtime-updater.json'}
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
@@ -28,7 +28,7 @@ $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
 # A merged main commit is NOT an authorized PC01 runtime release.
-$releaseGuardScript=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
+$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
