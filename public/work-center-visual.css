@@ -260,7 +260,7 @@ body.api-health .work-panel .wo-filter:focus-visible{outline:2px solid var(--wc-
 
 /* Compact cards use clipped summaries only; full source detail stays available on click. */
 body.api-health #workers.workers{align-content:start;gap:7px!important;padding:8px!important}
-body.api-health #workers.workers>.worker.employee-card{padding:8px!important;min-width:0!important;min-height:104px!important}
+body.api-health #workers.workers>.worker.employee-card{padding:8px!important;min-width:0!important;min-height:0!important}
 body.api-health .employee-card-head{gap:4px!important;margin-bottom:4px!important}
 body.api-health .employee-identity{gap:6px!important;min-width:0}
 body.api-health .employee-avatar{width:33px!important;height:33px!important;border-radius:9px!important}
@@ -388,3 +388,15 @@ body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
 :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center .work-activity span:last-child{
  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;max-width:100%;
 }
+
+/* Owner P0: natural compact workforce rows, never resize a card to a tall fixed track. */
+body.api-health #workers.workers{
+ grid-auto-rows:max-content!important;align-items:stretch!important;
+}
+body.api-health #workers.workers>.worker.employee-card{height:auto!important;align-self:stretch!important}
+body.api-health #workers .employee-name,body.api-health #workers .employee-task{
+ max-width:100%!important;min-width:0!important;overflow:hidden!important;
+ overflow-wrap:anywhere!important;word-break:break-word!important;
+}
+body.api-health #workers .employee-state{max-width:calc(100% - 46px);overflow:hidden;text-overflow:ellipsis}
+body.api-health #workers .employee-live-line{margin-top:6px!important}
