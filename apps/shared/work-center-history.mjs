@@ -29,19 +29,14 @@ function commentEvent(comment){
  const result=val(body,'RESULT')||val(body,'VERIFICATION');
  const state=val(body,'CURRENT_STATE')||val(body,'STATE');
  const evidence=url(val(body,'EVIDENCE_URL')||val(body,'EVIDENCE'))||url(comment?.html_url);
- // GitHub progress/retry/results comments are legitimate recorded activity
- // even when they lack CURRENT_STATE=... fields. Do not treat author text
- // as proof that an AI executed or completed the corresponding task.
- const prefix=body.match(/^\s*\[([^\]\r\n]{2,55})\]/);
- const observedAction=prefix?safeText(prefix[1],70):'Bình luận GitHub';
- const observedDetail=safeText(body.replace(/^\s*\[[^\]\r\n]+\]\s*/,''),300);
+ if(!step&&!result&&!state)return null;
  const actor=safeText(comment?.user?.login||'Chưa xác minh',70);
  const executor=val(body,'EXECUTOR_ID');
  const executorReceipt=url(val(body,'EXECUTOR_RECEIPT_URL')||val(body,'START_RECEIPT_URL'));
  return {
   at:comment?.created_at||null,
-  action:safeText(state||observedAction,72),
-  detail:safeText(step||result||observedDetail||'Không có mô tả',300),
+  action:safeText(state||'Cập nhật bước',72),
+  detail:safeText(step||result||'Không có mô tả',300),
   author:actor+' (người ghi nhật ký)',
   executor:/^NV\d{2}$/.test(executor)&&executorReceipt?executor:null,
   url:evidence
