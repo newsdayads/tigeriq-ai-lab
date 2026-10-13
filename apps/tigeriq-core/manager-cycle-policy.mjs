@@ -81,3 +81,18 @@ export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision=''
     reason:gateSatisfied?'acceptance_satisfied':revisionChanged?'source_revision_changed':'awaiting_evidence',
   };
 }
+
+/**
+ * A manager decision without an accepted worker result is not progress.
+ * The current phase may keep waiting for a genuinely active child, but may not
+ * spend unlimited decisions creating local candidates/checkpoint versions.
+ * This is advisory until enforced by the Core manager's guarded SQL transition.
+ */
+export function managerIdleStepStopPlan({consecutiveNoProgressDecisions=0,activeChildren=0,limit=2}={}){
+  const cycles=Math.max(0,Math.trunc(Number(consecutiveNoProgressDecisions)||0));
+  const active=Math.max(0,Math.trunc(Number(activeChildren)||0));
+  const cap=Math.max(1,Math.min(2,Math.trunc(Number(limit)||2)));
+  if(cycles<cap)return {action:'continue',reason:'bounded_decision_budget_available',cycles,limit:cap};
+  if(active>0)return {action:'wait',reason:'await_existing_child_receipt',cycles,limit:cap};
+  return {action:'block',reason:'no_progress_decision_budget_exhausted',cycles,limit:cap};
+}
