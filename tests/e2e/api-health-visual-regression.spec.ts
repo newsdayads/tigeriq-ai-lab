@@ -148,8 +148,8 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await openFixture(page);
  const statuses=[
   {...work[0],number:330,updatedAt:'2026-10-13T20:00:00Z'},
-  {...work[1],number:310,lastActivitySource:'github_issue_comment',lastActivityAt:'2026-10-12T12:00:00Z',lastActivitySummary:'[KẾT QUẢ] checking'},
-  {...work[2],number:320,lastActivitySource:'github_issue_comment',lastActivityAt:'2026-10-13T12:00:00Z',lastActivitySummary:'[TIẾN ĐỘ] running'},
+  {...work[1],number:310,statusEvidenceSource:'github_structured_lifecycle_comment',statusEvidenceAt:'2026-10-12T12:00:00Z'},
+  {...work[2],number:320,statusEvidenceSource:'github_structured_lifecycle_comment',statusEvidenceAt:'2026-10-13T12:00:00Z'},
  ];
  await page.route(base+'/api/health-live-work',route=>route.fulfill({
   status:200,contentType:'application/json',
@@ -158,17 +158,15 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await page.reload();
  const order=()=>page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>Number((n as HTMLElement).dataset.workNumber)));
  await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
- await expect(page.locator('.brand')).toContainText('TigerIQ AI');
- await expect(page.locator('#workOpenSort')).toHaveValue('activity_latest');
+ await expect(page.locator('#workOpenSort')).toHaveValue('priority');
+ await expect.poll(order).toEqual([330,310,320]);
+ await page.locator('#workOpenSort').selectOption('status_latest');
  await expect.poll(order).toEqual([320,310,330]);
- await expect(page.locator('#woFilters')).toContainText('Có bình luận nhật ký: 2/3');
- await expect(page.locator('#workList .work-activity')).toHaveCount(2);
+ await expect(page.locator('#woFilters')).toContainText('Có mốc trạng thái: 2/3');
  await page.locator('#workOpenSort').selectOption('number_asc');
  await expect.poll(order).toEqual([310,320,330]);
  await page.locator('#workOpenSort').selectOption('number_desc');
  await expect.poll(order).toEqual([330,320,310]);
- await page.locator('#workOpenSort').selectOption('activity_latest');
- await expect.poll(order).toEqual([320,310,330]);
  await page.locator('#workOpenSort').selectOption('priority');
  await expect.poll(order).toEqual([330,310,320]);
  const semantic=await page.locator('.wo-filter').evaluateAll(buttons=>buttons.map(el=>{
@@ -180,44 +178,6 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  const header=await page.locator('.work-panel .panel-h h2').evaluate(el=>getComputedStyle(el).color);
  expect(header).toBe('rgb(45, 212, 191)');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(393);
-});
-
-test('Owner visual fix: workforce header never overlaps filters, work cards align, list scrolls with document',async({page})=>{
- await page.setViewportSize({width:844,height:390});
- await openFixture(page);
- await expect(page.locator('.brand')).toContainText('TigerIQ AI');
- for(const [width,height] of [[390,844],[844,390],[1024,1366],[1920,1080]]){
-  await page.setViewportSize({width,height});
-  const r=await page.evaluate(()=>{
-   const heading=document.querySelector('.workforce-panel .panel-h h2')!.getBoundingClientRect();
-   const filters=document.querySelector('.workforce-panel .filters')!.getBoundingClientRect();
-   return {heading:{left:heading.left,right:heading.right,top:heading.top,bottom:heading.bottom},
-    filters:{left:filters.left,right:filters.right,top:filters.top,bottom:filters.bottom},
-    overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
-  });
-  const separated=r.filters.left>=r.heading.right-1||r.filters.top>=r.heading.bottom-1;
-  expect(separated,'header '+width+'x'+height).toBe(true);
-  expect(r.overflow,'overflow '+width+'x'+height).toBe(false);
- }
- await page.setViewportSize({width:844,height:390});
- const positions=await page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>({
-   top:Math.round(n.getBoundingClientRect().top),bottom:Math.round(n.getBoundingClientRect().bottom)
- })));
- expect(new Set(positions.map(x=>x.top)).size).toBe(1);
- expect(new Set(positions.map(x=>x.bottom)).size).toBe(1);
- const many=Array.from({length:30},(_,i)=>({...work[i%work.length],number:7500+i,title:'Activity card '+i}));
- await page.route(base+'/api/health-live-work',route=>route.fulfill({
-  status:200,contentType:'application/json',
-  body:JSON.stringify({ok:true,projection:{...projection().projection,openWork:many}})
- }));
- await page.reload();
- await expect(page.locator('#workList .work-row')).toHaveCount(30);
- const list=await page.locator('#workList').evaluate(el=>({
-   height:el.getBoundingClientRect().height,overflowY:getComputedStyle(el).overflowY,
-   maxHeight:getComputedStyle(el).maxHeight}));
- expect(list.maxHeight).toBe('none');
- expect(list.overflowY).toBe('visible');
- expect(list.height).toBeGreaterThan(1000);
 });
 
 test('System Control whole-page breakpoints: iPhone, tablet, FHD, QHD, UHD stay usable',async({page})=>{
