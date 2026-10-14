@@ -323,6 +323,25 @@ export async function readVerifiedNv07CanaryCoreLease(db,{jobId,sourceSha,resour
   });
 }
 
+// Opt-in Core-side host callback bound to a trusted pinned Work Order.
+// The job payload may supply neither sourceSha nor identity to this callback;
+// keep the pinned source SHA and job ID inside the trusted Core closure.
+// This is the lease-reader callback ONLY, not device/session authority, a
+// lease claim, a CLI launch, or a durable reservation.
+export function bindNv07CanaryCoreLeaseCallback(db,{jobId,sourceSha}={}){
+  const valid=Boolean(db&&typeof db.query==='function'
+    &&typeof jobId==='string'&&/^[a-z0-9:_-]{6,128}$/i.test(jobId)
+    &&typeof sourceSha==='string'&&/^[a-f0-9]{40}$/i.test(sourceSha));
+  return async ({resourceScope,jobId:requestedJobId}={})=>{
+    if(!valid||requestedJobId!==jobId||resourceScope!==NV07_CANARY_CORE_SCOPE)return null;
+    // Read the canonical DB on each invocation: the bootstrap host rechecks
+    // lease freshness immediately before a single bounded CLI invocation.
+    return readVerifiedNv07CanaryCoreLease(db,{
+      jobId,sourceSha,resourceScope,nowMs:Date.now(),
+    });
+  };
+}
+
 export function indexSharedResourceLeases(rows=[]){
   return new Map((Array.isArray(rows)?rows:[]).map(row=>[String(row.resource_id||row.resourceId||''),row]).filter(([key])=>key));
 }
