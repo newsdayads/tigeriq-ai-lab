@@ -367,3 +367,41 @@ test('Ops monitoring: verified source-age, active severity, event history and ev
  await page.locator('#opsEvidenceClose').click();
  await expect(page.locator('#opsEvidenceBackdrop')).toBeHidden();
 });
+
+
+for(const width of [320,390,599]){
+ test('P0 #4750: mobile API Health header displays every status without horizontal clipping at '+width+'px',async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await openFixture(page);
+  const layout=await page.locator('.topbar').evaluate(bar=>{
+   const frame=bar.getBoundingClientRect();
+   return {
+    width:bar.clientWidth,scroll:bar.scrollWidth,height:frame.height,
+    visible:[...bar.children]
+     .filter(el=>getComputedStyle(el).display!=='none')
+     .map(el=>({id:el.id||el.className,left:el.getBoundingClientRect().left,
+       top:el.getBoundingClientRect().top,right:el.getBoundingClientRect().right}))
+   };
+  });
+  expect(layout.scroll).toBeLessThanOrEqual(layout.width+1);
+  expect(layout.height).toBeGreaterThan(58);
+  expect(layout.visible.length).toBe(5);
+  for(const part of layout.visible){
+   expect(part.left).toBeGreaterThanOrEqual(-1);
+   expect(part.right).toBeLessThanOrEqual(width+1);
+  }
+  for(let i=0;i<layout.visible.length;i++){
+   for(let j=i+1;j<layout.visible.length;j++){
+    const a=layout.visible[i],b=layout.visible[j];
+    if(Math.abs(a.top-b.top)<2){
+      expect(Math.min(a.right,b.right)).toBeLessThanOrEqual(Math.max(a.left,b.left)+1);
+    }
+   }
+  }
+  await page.locator('#opsFreshnessSummary').click();
+  const popup=await page.locator('.ops-freshness-details').boundingBox();
+  expect(popup).not.toBeNull();
+  expect(popup!.x).toBeGreaterThanOrEqual(-1);
+  expect(popup!.x+popup!.width).toBeLessThanOrEqual(width+1);
+ });
+}
