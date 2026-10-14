@@ -235,18 +235,18 @@ describe('coding lane AI JSON transport',()=>{
       'TIGERIQ_EXECUTABLE=false',
       'STATE=SUPERSEDED',
       'SUPERSEDED_BY=#0001',
-    ].join('\\n')};
+    ].join('\n')};
     expect(assertSourceWorkOrderExecutable(issue,2293)).toBe(true);
   });
 
   it('preserves fail-closed current contract, contradictory current values, and unavailable authorization',()=>{
-    const current=(...lines)=>({number:2293,state:'open',body:['## ACTIVE CONTRACT',...lines,'## HISTORICAL','TIGERIQ_EXECUTABLE=true'].join('\\n')});
+    const current=(...lines)=>({number:2293,state:'open',body:['## ACTIVE CONTRACT',...lines,'## HISTORICAL','TIGERIQ_EXECUTABLE=true'].join('\n')});
     expect(()=>assertSourceWorkOrderExecutable(current('TIGERIQ_EXECUTABLE=false'))).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     expect(()=>assertSourceWorkOrderExecutable(current('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'))).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     expect(()=>assertSourceWorkOrderExecutable(current('CURRENT_STATE=READY'))).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     expect(()=>assertSourceWorkOrderExecutable(current('TIGERIQ_EXECUTABLE=true','SUPERSEDED_BY=#123'))).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
-    expect(()=>assertSourceWorkOrderExecutable({number:2293,state:'open',body:'## HISTORICAL WORK ORDER\\nTIGERIQ_EXECUTABLE=true'})).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
-    expect(()=>assertSourceWorkOrderExecutable({number:2293,state:'closed',body:'## ACTIVE\\nTIGERIQ_EXECUTABLE=true'})).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({number:2293,state:'open',body:'## HISTORICAL WORK ORDER\nTIGERIQ_EXECUTABLE=true'})).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
+    expect(()=>assertSourceWorkOrderExecutable({number:2293,state:'closed',body:'## ACTIVE\nTIGERIQ_EXECUTABLE=true'})).toThrow('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
   });
 
   it('fails closed when canonical source lookup is unavailable',async()=>{
