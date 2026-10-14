@@ -3,12 +3,37 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
+
+test('#280/B03 reports a stale Coding health snapshot without fabricating Core transport failure',()=>{
+  const at=Date.parse('2026-10-13T01:00:00Z');
+  const diagnostic={attemptedAt:at,succeededAt:at,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
+  const healthy=codingCoreHealthReadback({fetchedAt:at},diagnostic,{nowMs:at+9999,ttlMs:10000});
+  assert.strictEqual(healthy.fresh,true);
+  assert.strictEqual(healthy.lastFailureKind,null);
+  const expired=codingCoreHealthReadback({fetchedAt:at},diagnostic,{nowMs:at+10001,ttlMs:10000});
+  assert.strictEqual(expired.fresh,false);
+  assert.strictEqual(expired.ageMs,10001);
+  assert.strictEqual(expired.lastFailureAgeMs,null);
+});
+test('#280/B03 classifies bounded health fetch failures without leaking messages',()=>{
+  assert.strictEqual(codingCoreHealthFailureKind(Object.assign(new Error('private details'),{name:'AbortError'})),'TIMEOUT');
+  assert.strictEqual(codingCoreHealthFailureKind({code:'CODING_CORE_HEALTH_RESPONSE_STALE'}),'STALE_RESPONSE');
+  assert.strictEqual(codingCoreHealthFailureKind({code:'CODING_CORE_HEALTH_RESOURCE_INVALID'}),'INVALID_RESPONSE');
+  assert.strictEqual(codingCoreHealthFailureKind({status:503}),'CORE_HTTP_5XX');
+  assert.strictEqual(codingCoreHealthFailureKind(new Error('private details')),'FETCH_OR_TRANSPORT_ERROR');
+  const at=Date.parse('2026-10-13T01:00:00Z');
+  const failed=codingCoreHealthReadback({fetchedAt:0},{attemptedAt:at-500,failedAt:at,lastFailureKind:'TIMEOUT',consecutiveFailures:1},{nowMs:at+100,ttlMs:10000});
+  assert.strictEqual(failed.fresh,false);
+  assert.strictEqual(failed.lastFailureAgeMs,100);
+  assert.strictEqual(failed.consecutiveFailures,1);
+});
+
 
 import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
