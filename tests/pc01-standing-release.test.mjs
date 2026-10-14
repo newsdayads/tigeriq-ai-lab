@@ -109,7 +109,10 @@ it('source integration cannot treat merge or current GH owner connection as acti
   expect(source).toContain('TIGERIQ_PC01_STANDING_ENABLE_V1');
   expect(source).toContain('if(!policy)deny(');
   expect(source).toContain('ANOTHER_WRITER_OR_STALE_LOCK');
-  expect(workflow).toContain('workflow_run:');
+  // Preserve the independently signed issue/comment bridge already installed on PC01.
+  expect(workflow).toContain('  issue_comment:');
+  expect(workflow).toContain('  issues:');
+  expect(workflow).not.toContain('  workflow_run:');
   expect(core).toContain('acceptPc01StandingWorkflowRelease');
   expect(core).toContain('enablePc01StandingRelease');
 });
