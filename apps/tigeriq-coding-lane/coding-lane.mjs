@@ -396,10 +396,9 @@ const resources=[
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
   R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
-// Existing Core-only LOCAL employees are manager failover, NOT Coding Lane
-// workers/reviewers. Both use the already provisioned local Ollama host.
+// Owner 2026-10-14: NV08 is the sole Core-local manager fallback.
+// NV09 implements code; NV10 diagnoses APIs. Neither may be Coding Manager.
 const managerLocalBackupResources=[
-  R('NV10','ollama','gemma3:4b',()=>true),
   R('NV08','ollama','qwen3:8b',()=>true),
 ];
 const busyAiResources=new Set();
@@ -532,14 +531,15 @@ export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
   const present=new Set(primary.map(x=>String(x?.id||'')));
   return [...primary,...backups.filter(x=>{
     const id=String(x?.id||'');
-    if(!id||excluded.has(id)||present.has(id))return false;
+    if(id!=='NV08'||excluded.has(id)||present.has(id))return false;
     if(!coreResourceStateEligible(healthByEmployee.get(id),nowMs))return false;
     present.add(id);
     return true;
   })];
 }
 function selectableManagerResources(exclude=[]){
-  const primary=selectableResources(exclude);
+  // Keep the designated coding implementer NV09 out of manager planning.
+  const primary=selectableResources([...exclude,'NV09']);
   const nowMs=Date.now();
   if(!coreResourceHealth.fetchedAt||nowMs-coreResourceHealth.fetchedAt>CORE_RESOURCE_HEALTH_TTL_MS)return primary;
   return appendEligibleCodingManagerBackups(primary,managerLocalBackupResources,{
@@ -547,10 +547,10 @@ function selectableManagerResources(exclude=[]){
   });
 }
 function pickManagerResource(exclude=[]){
-  const primary=pickResource(exclude);
+  const primary=pickResource([...exclude,'NV09']);
   if(primary)return primary;
-  // Fast Core-local 4B first, Core-local 8B second; both are bounded and
-  // protected by the same cross-lane DB lease as all other employees.
+  // Use only the designated 8B manager as a bounded fallback; do not
+  // borrow NV10 API Doctor or NV09 Coding worker for manager decisions.
   return selectableManagerResources(exclude).find(x=>managerLocalBackupResources.some(y=>y.id===x.id))||null;
 }
 function pickResource(exclude=[]){
