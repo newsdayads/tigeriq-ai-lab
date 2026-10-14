@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
+import {sortBacklogSpecs} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
 function issue(body,extra={}){
@@ -1665,5 +1666,37 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(newRevision);
+  });
+});
+
+
+describe('Owner queue rank labels — safe coding order',()=>{
+  const ranked=(number,priority,rank,extra={})=>issue(SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`),{
+    number,title:`Issue ${number}`,labels:rank==null?[]:[{name:`tigeriq:queue:${rank}`}],...extra,
+  });
+  it('sorts same-priority eligible repairs by Owner label, not old issue number',()=>{
+    const specs=[
+      ranked(4532,'P1','05'),ranked(4625,'P1','06'),
+      ranked(4696,'P1','01'),ranked(4756,'P1','02'),
+    ].map(parseCodingIssue);
+    expect(specs.every(Boolean)).toBe(true);
+    expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4756,4532,4625]);
+  });
+  it('preserves P1 priority before ranked P2 and holds Owner P0',()=>{
+    const specs=[
+      ranked(2293,'P2','01'),ranked(4625,'P1','06'),
+      ranked(4595,'P0','01'),ranked(4696,'P1','01'),
+    ].map(parseCodingIssue).filter(Boolean);
+    expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4625,2293]);
+  });
+  it('rejects ambiguous ranks, falls back to original ordering and never changes execution gates',()=>{
+    const duplicated=ranked(4756,'P1','01',{
+      labels:[{name:'tigeriq:queue:01'},{name:'tigeriq:queue:02'}],
+    });
+    expect(parseCodingIssue(duplicated)?.queueRank).toBeNull();
+    expect(parseCodingIssue(ranked(4756,'P1',null))?.queueRank).toBeNull();
+    expect(parseCodingIssue(ranked(4756,'P1','01',{body:SAFE.replace('ZERO_COST=true','ZERO_COST=false')}))).toBeNull();
+    expect(sortBacklogSpecs([ranked(4756,'P1',null),ranked(4696,'P1',null)]
+      .map(parseCodingIssue)).map(item=>item.number)).toEqual([4696,4756]);
   });
 });
