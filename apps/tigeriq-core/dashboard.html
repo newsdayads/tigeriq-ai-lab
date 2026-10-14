@@ -694,7 +694,17 @@ function openWorkDetail(row,trigger){workDetailReturnFocus=trigger||document.act
 function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
 function workDetailPrompt(row){return 'LÀM — NO YAPPING.\nXử lý Work Order #'+row.number+' — '+woTitle(row.title)+'\nTrạng thái: '+(WO_STATUS[woStatus(row)]||woStatus(row))+'\nĐang: '+(row.currentStep||row.currentState||'Chưa xác minh')+'\nBước tới: '+woNext(row)}
 function copyWorkDetailPrompt(prompt){const before=document.activeElement,field=document.createElement('textarea');field.value=prompt;field.readOnly=true;field.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';document.body.appendChild(field);field.focus({preventScroll:true});field.select();let copied=false;try{copied=document.execCommand('copy')===true}catch{}field.remove();if(before?.isConnected&&typeof before.focus==='function')before.focus({preventScroll:true});return copied}
-async function openWorkDetailChat(url){if(!workDetailRow)return;const prompt=workDetailPrompt(workDetailRow);let copied=copyWorkDetailPrompt(prompt);window.open(url,'_blank','noopener');if(!copied&&navigator.clipboard?.writeText){try{await navigator.clipboard.writeText(prompt);copied=true}catch{}}workDetailAskVy.title=copied?'Đã sao chép yêu cầu':'Không sao chép được yêu cầu; hãy sao chép thủ công';workDetailAskVy.dataset.copyStatus=copied?'copied':'failed'}
+function openWorkDetailChat(url){
+ if(!workDetailRow)return;
+ const prompt=workDetailPrompt(workDetailRow);
+ const copied=copyWorkDetailPrompt(prompt);
+ if(!copied&&navigator.clipboard?.writeText)navigator.clipboard.writeText(prompt).catch(()=>{});
+ workDetailAskVy.title=copied?'Đã sao chép yêu cầu':'Đang thử sao chép yêu cầu';
+ workDetailAskVy.dataset.copyStatus=copied?'copied':'fallback';
+ // A new window can leave a blank browser sheet in ChatGPT on iOS.
+ const link=document.createElement('a');link.href=url;link.target='_self';link.rel='noopener noreferrer';
+ document.body.appendChild(link);link.click();link.remove();
+}
 /* Health inherits LIVE work-card semantic layout while keeping local detail modal. */
 const healthWorkVisualState=new Map();
 const HEALTH_WO_STATUS_COLORS={OWNER_GATE:'var(--tiq-waiting)',WORKING:'var(--tiq-working)',REVIEW:'var(--tiq-review)',VERIFY:'var(--tiq-review)',QUEUED:'var(--tiq-ready)',WAITING:'var(--tiq-waiting)',BLOCKED:'var(--tiq-blocked)',DONE:'var(--tiq-done)',PAUSED:'var(--tiq-neutral)',SYSTEM:'var(--tiq-neutral)',GOAL:'var(--tiq-neutral)',OPEN:'var(--tiq-neutral)',UNKNOWN:'var(--tiq-neutral)'};
