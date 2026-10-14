@@ -77,6 +77,13 @@ export const OWNER_V6_APPROVED_BLOBS = Object.freeze({
   'tests/owner-v6-work-center-colors.test.mjs': 'c1ce618ab1c84c14d1c913658856ee0a2000cf26',
 });
 
+// Owner-approved #4767 manager no-progress fix: content-bound Core plus test pair.
+// It does not authorize generic Coding Lane, Github intake, or test-directory writes.
+export const OWNER_CODING_INTAKE_APPROVED_BLOBS = Object.freeze({
+  'apps/tigeriq-core/github-coding-intake.mjs': 'dc8a77944308b9faf5a921fbae861960ef4e0f8d',
+  'tests/github-coding-intake.test.mjs': '0888f4d577e3de8718ca7420c3ecd3c288af0fa3',
+});
+
 const OWNER_ONE_TAP_RUNTIME = new Set([
   'apps/shared/owner-one-tap-approval.mjs',
   'apps/tigeriq-core/web-control-server.mjs',
@@ -129,6 +136,8 @@ export function impactForPc01ReleaseFiles(files) {
   const seenApiHealthFiles = new Set();
   const codingContractChange = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-coding-lane/coding-lane.mjs');
   const seenCodingContractFiles = new Set();
+  const codingIntakeChanged = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-core/github-coding-intake.mjs');
+  const seenCodingIntakeFiles = new Set();
   const ownerV6Changed = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-interaction-v6.mjs');
   const seenOwnerV6Files = new Set();
   for (const entry of files) {
@@ -166,6 +175,15 @@ export function impactForPc01ReleaseFiles(files) {
       if (filename === 'apps/tigeriq-coding-lane/coding-lane.mjs') impact.add('coding');
       continue;
     }
+    if (codingIntakeChanged && Object.hasOwn(OWNER_CODING_INTAKE_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_CODING_INTAKE_APPROVED_BLOBS[filename])
+        deny('CODING_INTAKE_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('CODING_INTAKE_FILE_STATE_DENIED');
+      seenCodingIntakeFiles.add(filename);
+      if (filename === 'apps/tigeriq-core/github-coding-intake.mjs') impact.add('core');
+      continue;
+    }
     if (ownerV6Changed && Object.hasOwn(OWNER_V6_APPROVED_BLOBS, filename)) {
       if (typeof entry !== 'object' || entry?.sha !== OWNER_V6_APPROVED_BLOBS[filename])
         deny('OWNER_V6_CONTENT_UNVERIFIED');
@@ -195,6 +213,8 @@ export function impactForPc01ReleaseFiles(files) {
   if (codingContractChange &&
       seenCodingContractFiles.size !== Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS).length)
     deny('CODING_CONTRACT_BUNDLE_INCOMPLETE');
+  if (codingIntakeChanged && seenCodingIntakeFiles.size !== Object.keys(OWNER_CODING_INTAKE_APPROVED_BLOBS).length)
+    deny('CODING_INTAKE_BUNDLE_INCOMPLETE');
   if (ownerV6Changed && seenOwnerV6Files.size !== Object.keys(OWNER_V6_APPROVED_BLOBS).length)
     deny('OWNER_V6_BUNDLE_INCOMPLETE');
   if (!impact.size) deny('NO_COMPONENT_IMPACT');
