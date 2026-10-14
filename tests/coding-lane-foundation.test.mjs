@@ -1265,7 +1265,7 @@ test('coding issue status snapshot returns one bounded objective and latest job'
 });
 
 
-import {codingOwnerReviewWaiver,formatCodingOwnerReviewPolicy,formatOwnerReviewWaiverArtifact,runOwnerWaivedAcceptance,assertCodingReviewAcceptance} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {validateJobScope,codingOwnerReviewWaiver,formatCodingOwnerReviewPolicy,formatOwnerReviewWaiverArtifact,runOwnerWaivedAcceptance,assertCodingReviewAcceptance} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 const waiverRepo={owner:'newsdayads',repo:'tigeriq-ai-lab',fullName:'newsdayads/tigeriq-ai-lab',isSource:true};
 const waiverSha='a'.repeat(40);
 const waiverReceiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/pull/9001#issuecomment-123';
@@ -1375,7 +1375,7 @@ async function runOwnerWaiverWiringCase({foreign=false,ciError=false,staleHead=f
     runReviewReworkLifecycle,ghRepo:async()=>({state:'open',draft:false,merged:false}),assertPrOpenState,
     ghTextRepo:async()=>'',reviewPr:async()=>{throw Error('independent review called');},
     persistIndependentReviewArtifact:async()=>{throw Error('independent artifact called');},
-    assertCodingReviewAcceptance,headSha:async()=>{if(revoke)process.env.TIGERIQ_CODING_REVIEW_POLICY='required';return staleHead?'b'.repeat(40):waiverSha;},
+    assertCodingReviewAcceptance,assertIndependentReviewApproval,headSha:async()=>{if(revoke)process.env.TIGERIQ_CODING_REVIEW_POLICY='required';return staleHead?'b'.repeat(40):waiverSha;},
     AUTO_MERGE:true,mergePr:async(_n,sha)=>{calls.push({kind:'merge',sha});return {merged:true};},
     reconcileExistingPrBranch:async()=>({branch:'unit/owner-waiver',number:9001,headSha:waiverSha}),contextFor:async()=>[],
   };

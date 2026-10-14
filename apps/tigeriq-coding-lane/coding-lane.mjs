@@ -1818,7 +1818,7 @@ async function runJob(j){
         // generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)
         const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext,targetRepository);
         worker=repaired.worker;gen=repaired.payload;
-        if(!ownerWaiver&&reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
       },
       maxRepairCycles:3,
@@ -1838,7 +1838,7 @@ async function runJob(j){
   }):await runReviewReworkLifecycle({
     maxCycles:3,waitGatesFn,onGatesPassed,
     reviewFn:async({gates:cycleGates})=>{
-      if(!ownerWaiver&&reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+      if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
       const reviewGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,reviewGithubContext);j.liveGithubContext=reviewGithubContext;
       const diff=await ghTextRepo(targetRepository,`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
       const reviewed=await reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext);reviewer=reviewed.resource;
@@ -1864,7 +1864,8 @@ async function runJob(j){
   assertPrOpenState(await ghRepo(targetRepository,`/pulls/${pr.number}`));
   const mergeGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,mergeGithubContext);
   const finalSha=await headSha(branch,targetRepository);
-  assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
+  if(ownerWaiver)assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
+  else assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
   if(AUTO_MERGE){
     try{
