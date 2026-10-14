@@ -68,14 +68,14 @@ function uiWorker(id,controller,serviceOk){
     else if(phase==='READY'||hb?.uiReady===true||String(w?.status||'').toUpperCase()==='READY'){state='idle';status='RẢNH'}
   }
   let job=activeJob?.title||activeJob?.jobId||null;
-  if(!job&&state==='working'&&controller?.autopilot?.lastDispatchedWorkerId===id)job=controller?.autopilot?.lastDispatchedJobId||null;
+  // Historical autopilot pointers are not proof of a current GitHub assignment.
   if(!job)job=state==='working'?'Đang xử lý trong chat hiện tại':state==='waiting'?'Đang chờ/khôi phục giao diện':state==='blocked'?(w?.lastError||hb?.securityBlock||'Giao diện bị chặn'):state==='paused'?'Đang tạm ngưng':'Không có việc đang chạy';
   const meta=[phase||null,hb?.modelName||null,hb?.reasoningEffort||null].filter(Boolean).join(' · ');
   return {
     employeeId:id,label:labels[id],kind:'ui',state,status,job:String(job).slice(0,220),
     detail:fresh?(meta||'Heartbeat giao diện hợp lệ'):(serviceOk?'Heartbeat riêng đã cũ hoặc chưa có':'UI controller không online'),
     updatedAt:heartbeatAt||w?.windowEventAt||new Date().toISOString(),heartbeatAt,
-    currentJobId:activeJob?.jobId||((state==='working'&&controller?.autopilot?.lastDispatchedWorkerId===id)?controller?.autopilot?.lastDispatchedJobId:null),
+    currentJobId:activeJob?.jobId||null,
     prNumber:null,provider:null,model:hb?.modelName||null,cooldownUntil:null,lastError:w?.lastError||hb?.securityBlock||null,source:'PC01 Chrome Controller'
   };
 }
