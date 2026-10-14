@@ -409,3 +409,44 @@ body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
   flex:0 0 auto!important;height:auto!important;min-height:max-content!important;
  }
 }
+
+/* Owner P0 mobile: preserve all title text without horizontal clipping.
+   Real PC01 Chrome 390px evidence: header chips and live work cards exceeded
+   the viewport despite the previous desktop-height CSS fix. Do not mask body
+   overflow: constrain the elements at the source. */
+@media (max-width:599px){
+ body.api-health .topbar{
+  height:auto!important;min-height:58px!important;
+  flex-wrap:wrap!important;align-content:center!important;
+  gap:6px!important;padding-block:8px!important;
+ }
+ body.api-health .topbar>*{min-width:0;max-width:100%;flex-shrink:1}
+ body.api-health .topbar .brand{white-space:normal!important;overflow-wrap:anywhere!important}
+ body.api-health .topbar .top-indicator{
+  min-width:0!important;max-width:100%!important;
+  white-space:normal!important;overflow-wrap:anywhere!important;
+ }
+ body.api-health .work-panel,
+ body.api-health .work-panel #workList.wo-list.work-list.tiq-work-center{
+  min-width:0!important;max-width:100%!important;width:100%!important;
+ }
+ body.api-health .work-panel #workList.wo-list.work-list.tiq-work-center{
+  grid-template-columns:minmax(0,1fr)!important;
+ }
+ body.api-health #workList.tiq-work-center>.tiq-work-card,
+ body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
+  min-width:0!important;max-width:100%!important;width:100%!important;
+  box-sizing:border-box!important;
+ }
+ body.api-health #workList.tiq-work-center>.tiq-work-card .work-title,
+ body.api-health #workList.tiq-work-center>.tiq-work-card .work-hierarchy,
+ body.api-health #workList.tiq-work-center>.tiq-work-card .work-quick{
+  min-width:0!important;max-width:100%!important;
+  white-space:normal!important;overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters{
+  min-width:0!important;max-width:100%!important;
+  flex-wrap:wrap!important;
+ }
+}
