@@ -1670,33 +1670,40 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
 });
 
 
-describe('Owner queue rank labels — safe coding order',()=>{
-  const ranked=(number,priority,rank,extra={})=>issue(SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`),{
-    number,title:`Issue ${number}`,labels:rank==null?[]:[{name:`tigeriq:queue:${rank}`}],...extra,
-  });
-  it('sorts same-priority eligible repairs by Owner label, not old issue number',()=>{
+
+describe('Owner 2026-10-14 source-repair-first coding queue',()=>{
+  const scoped=(number,priority,resourceScope,extra={})=>issue(
+    SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)+`\nRESOURCE_SCOPE=${resourceScope}`,
+    {number,title:`Work ${number}`,...extra},
+  );
+  it('orders existing API repair work before Cline and DeXCam within P1',()=>{
     const specs=[
-      ranked(4532,'P1','05'),ranked(4625,'P1','06'),
-      ranked(4696,'P1','01'),ranked(4756,'P1','02'),
+      scoped(4532,'P1','TIGERIQ_CLINE_NV02_SOURCE_AND_EVAL_V1'),
+      scoped(4625,'P1','DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD'),
+      scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA'),
+      scoped(4756,'P1','API_DOCTOR_SOURCE_REPAIR_NV19_COHERE'),
     ].map(parseCodingIssue);
     expect(specs.every(Boolean)).toBe(true);
     expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4756,4532,4625]);
   });
-  it('preserves P1 priority before ranked P2 and holds Owner P0',()=>{
+  it('never lets P2 or Owner P0 bypass the priority/authority contract',()=>{
     const specs=[
-      ranked(2293,'P2','01'),ranked(4625,'P1','06'),
-      ranked(4595,'P0','01'),ranked(4696,'P1','01'),
+      scoped(2293,'P2','API_DOCTOR_SOURCE_REPAIR_TEST'),
+      scoped(4625,'P1','DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD'),
+      scoped(4595,'P0','API_DOCTOR_SOURCE_REPAIR_NV13'),
+      scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA'),
     ].map(parseCodingIssue).filter(Boolean);
     expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4625,2293]);
   });
-  it('rejects ambiguous ranks, falls back to original ordering and never changes execution gates',()=>{
-    const duplicated=ranked(4756,'P1','01',{
-      labels:[{name:'tigeriq:queue:01'},{name:'tigeriq:queue:02'}],
-    });
-    expect(parseCodingIssue(duplicated)?.queueRank).toBeNull();
-    expect(parseCodingIssue(ranked(4756,'P1',null))?.queueRank).toBeNull();
-    expect(parseCodingIssue(ranked(4756,'P1','01',{body:SAFE.replace('ZERO_COST=true','ZERO_COST=false')}))).toBeNull();
-    expect(sortBacklogSpecs([ranked(4756,'P1',null),ranked(4696,'P1',null)]
-      .map(parseCodingIssue)).map(item=>item.number)).toEqual([4696,4756]);
+  it('keeps original deterministic fallback, gates and revision stable on label edits',()=>{
+    const a=scoped(4756,'P1','GENERIC_SOURCE',{labels:[{name:'tigeriq:queue:01'}]});
+    const b=scoped(4756,'P1','GENERIC_SOURCE',{labels:[{name:'tigeriq:queue:99'}]});
+    expect(codingSourceTruthRevision(a)).toBe(codingSourceTruthRevision(b));
+    expect(parseCodingIssue(scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA',{
+      body:SAFE.replace('ZERO_COST=true','ZERO_COST=false')+'\nRESOURCE_SCOPE=API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA',
+    }))).toBeNull();
+    expect(sortBacklogSpecs([
+      scoped(4756,'P1','GENERIC_SOURCE'),scoped(4696,'P1','GENERIC_SOURCE'),
+    ].map(parseCodingIssue)).map(item=>item.number)).toEqual([4696,4756]);
   });
 });
