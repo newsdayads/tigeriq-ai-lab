@@ -575,6 +575,10 @@ export function buildNv02LocalSelfPullPrompt(issue, lease) {
     'Reviewer unavailable/rate-limited/offline/timeout chỉ là execution attempt của Work Order review canonical. Retry bounded trên cùng Work Order; hết budget thì park EXTERNAL_WAIT/REVIEW_RESOURCE_WAIT, release lease và self-pull việc hợp lệ kế tiếp.',
     'Không đổi RESOURCE_SCOPE, title suffix, version hoặc reviewer để né dedupe. Chỉ tạo review Work Order mới khi TARGET_HEAD thay đổi hoặc acceptance/review scope thay đổi thực chất.',
     'Nếu review trả CHANGES_REQUIRED thì quay lại implementation trên cùng canonical parent/PR; nếu PASS thì tiếp tục gate kế tiếp. Không sinh review-on-review.',
+    'Đọc checklist STRUCTURED_PROGRESS_CHECKLIST theo thứ tự. Mỗi bước phải có biên nhận nguồn thật, đối chiếu lại và chỉ sửa [ ] thành [x] trên GitHub khi đã xác minh bản ghi và lease duy nhất. Sau mỗi cập nhật, đọc lại Issue để xác nhận bước đã được ghi; không lấy comment/chat làm % tự động.',
+    'Còn bước hợp pháp → thực thi bước kế. Bị chặn một bước nhưng có bước độc lập → ghi WAIT cho bước bị chặn và làm tiếp bước độc lập; hết bước khả thi → ghi [TIGERIQ_NV02_STEP_CHECKPOINT_V1] với WORK_ORDER, LEASE_ID, RESOURCE_SCOPE, STATE=BLOCKED hoặc EXTERNAL_WAIT, BLOCKER, EVIDENCE_URL và EVIDENCE_READBACK_VERIFIED=true chỉ khi thật đã đối chiếu.',
+    'Chỉ ghi DONE=true, FINISHED_AT, FINISH_RECEIPT_URL và đóng GitHub completed sau khi tất cả checklist có biên nhận thật, CI đúng HEAD, rà soát độc lập/miễn đúng phạm vi, nghiệm thu runtime khi áp dụng và readback đóng thẻ. Không tự đánh dấu DONE từ câu trả lời/chat hoặc một bình luận STATE=DONE.',
+    'Giới hạn 2 lượt thử cùng lỗi và HEAD; không kiểm thử lặp vô hạn. Sau DONE hoặc BLOCKED/EXTERNAL_WAIT đã có biên nhận → nhả lease an toàn, tự chọn một Work Order P1–P5 khác không trùng scope; không chờ Core giao việc.',
     'Ghi evidence vào GitHub trước khi release lease; terminal xong mới tự lấy việc P1-P5 kế tiếp.', String(issue.body || ''),
   ].join('\n');
 }
@@ -698,6 +702,9 @@ export async function releaseNv02WorkOrder({ issue, issueNumber, leaseId, resour
   if (!issue || !workOrder || Number(issue.number) !== number) throw new Error('NV02_RELEASE_WORK_ORDER_REQUIRED');
   const authority = nv02LeaseAuthority(issue, { workOrder, resourceScope });
   if (!authority.valid) throw new Error(`NV02_RELEASE_AUTHORITY_INVALID:${authority.reason}`);
+  // Keep the local mutex until GitHub has accepted the durable release marker.
+  // A failed post must not make the resource appear free in this process.
+  const receipt=await postComment(number, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${authority.workOrder}\nLEASE_ID=${leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${authority.resourceScope}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
   await releaseLocalClaimLock(authority.resourceScope);
-  return postComment(number, `${NV02_RELEASE_MARKER}\nWORK_ORDER=${authority.workOrder}\nLEASE_ID=${leaseId}\nWORKER=NV02\nRESOURCE_SCOPE=${authority.resourceScope}\nSTATE=${state}\nRELEASED_AT=${new Date().toISOString()}`);
+  return receipt;
 }
