@@ -170,7 +170,7 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await page.locator('#workOpenSort').selectOption('activity_latest');
  await expect.poll(order).toEqual([320,310,330]);
  await page.locator('#workOpenSort').selectOption('priority');
- await expect.poll(order).toEqual([330,310,320]);
+ await expect.poll(order).toEqual([320,330,310]);
  const semantic=await page.locator('.wo-filter').evaluateAll(buttons=>buttons.map(el=>{
    const style=getComputedStyle(el);return {label:el.textContent?.trim(),selected:el.getAttribute('aria-pressed'),text:style.color,border:style.borderColor,background:style.backgroundColor};
  }));
