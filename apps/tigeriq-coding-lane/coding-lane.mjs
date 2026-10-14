@@ -916,11 +916,11 @@ export function sourceWorkOrderNumber(objective=''){
 // never revoke a later, explicit Owner-issued current authorization.
 export function currentSourceWorkOrderContract(body=''){
   const source=String(body||'');
-  const headings=[...source.matchAll(/^ {0,3}#{1,6}[ \\t]+\\S[^\\r\\n]*/gm)];
+  const headings=[...source.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
   const first=headings[0];
-  if(first?.index===0&&/(?:\\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\\b|LỊCH SỬ)/i.test(first[0]))return '';
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
   const sectionEnd=first?.index===0?(headings[1]?.index??source.length):(first?.index??source.length);
-  const separator=source.match(/^ {0,3}(?:-{3,}|\\*{3,}|_{3,})(?:[ \\t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\\r\\n]*)?[ \\t]*$/mi);
+  const separator=source.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
   return source.slice(0,Math.min(sectionEnd,separator?.index??source.length));
 }
 
