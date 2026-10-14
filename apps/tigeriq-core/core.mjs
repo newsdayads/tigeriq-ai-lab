@@ -43,6 +43,7 @@ import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
+import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { objectiveCompletionGate } from './github-intake.mjs';
@@ -3007,6 +3008,37 @@ const server=createServer(async(req,res)=>{
       const raw=await readRawBody(req,512*1024);
       let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      // Delegation is default-OFF. Only a newly authenticated Owner GitHub/OIDC
+      // comment can arm the fixed bounded local policy; a code merge never can.
+      if(eventName==='issue_comment'&&
+         /^TIGERIQ_PC01_STANDING_ENABLE_V1(?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
+        try{
+          const activation=await enablePc01StandingRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...activation}));
+        }catch(error){
+          res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:String(error?.message||error).slice(0,160)}));
+        }
+      }
+      // GitHub's signed workflow_run is a candidate, not standing authorization.
+      // The protected Owner-activated policy + exact main checks and bounded quota
+      // decide independently. No fake release after a failed/absent grant.
+      if(eventName==='workflow_run'&&payload?.action==='completed'){
+        try{
+          const receipt=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...receipt}));
+        }catch(error){
+          const code=String(error?.message||error).slice(0,160);
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,accepted:false,reason:code,releaseIssued:false}));
+        }
+      }
       // Exact manual Owner comment is a separate GitHub-authenticated release action.
       // It is never inferred from merge, PR/issue text, CI or a worker result.
       if(eventName==='issue_comment'&&/^TIGERIQ_PC01_RELEASE_APPROVE_V[12](?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
