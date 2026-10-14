@@ -13,7 +13,7 @@ const nv13={id:'NV13',provider:'fake',model:'c'};
 import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 test('#280 Owner 2026-10-14: Coding Manager does not borrow NV09 programmer or NV10 API Doctor',()=>{
-  const primary=[{id:'NV11',provider:'groq'}];
+  const primary=[{id:'NV09',provider:'ollama'},{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV11',provider:'groq'}];
   const backups=[{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV08',provider:'ollama',model:'qwen3:8b'}];
   const healthByEmployee=new Map([
     ['NV10',{employee_id:'NV10',enabled:true,health_state:'READY',work_state:'IDLE',status:'READY',quota_state:{usable:true}}],
@@ -26,8 +26,8 @@ test('#280 Owner 2026-10-14: Coding Manager does not borrow NV09 programmer or N
   healthByEmployee.set('NV08',{health_state:'ONLINE',work_state:'BUSY',current_job_id:'CORE-REAL-LEASE'});
   assert.deepStrictEqual(run(),['NV11']);
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-  assert.ok(src.includes("const primary=selectableResources([...exclude,'NV09']);"),'NV09 cannot be a Coding Manager');
-  assert.ok(src.includes("const primary=pickResource([...exclude,'NV09']);"),'NV09 cannot be preferred as manager');
+  assert.ok(src.includes("const primary=selectableResources([...exclude,'NV09','NV10']);"),'NV09 cannot be a Coding Manager');
+  assert.ok(src.includes("const primary=pickResource([...exclude,'NV09','NV10']);"),'NV09 cannot be preferred as manager');
   assert.ok(!src.includes("R('NV10','ollama','gemma3:4b',()=>true)"),'NV10 cannot be manager fallback');
   assert.ok(src.includes("R('NV08','ollama','qwen3:8b',()=>true)"),'NV08 manager fallback preserved');
   assert.ok(src.includes('resourcePool:selectableManagerResources([])'));
