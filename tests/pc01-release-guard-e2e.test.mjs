@@ -306,7 +306,7 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   }
 });
 
-it('the immutable Owner V6 eleven-blob package combines safely with Coding Lane two blobs for one signed main release',()=>{
+it('the immutable Owner V6 thirteen-blob package including Loader and sorting tests combines safely with Coding Lane two blobs for one signed main release',()=>{
   const ui=Object.entries(OWNER_V6_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
   const coding=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
   const protectedMaintenance=[
@@ -314,8 +314,10 @@ it('the immutable Owner V6 eleven-blob package combines safely with Coding Lane 
     {filename:'scripts/tigeriq-core/pc01-release-guard.ps1',status:'modified'},
     {filename:'tests/pc01-release-guard-e2e.test.mjs',status:'modified'},
   ];
-  expect(ui).toHaveLength(11);
+  expect(ui).toHaveLength(13);
   expect(coding).toHaveLength(2);
+  expect(ui.map(x=>x.filename)).toContain('bootstrap/00_TIGERIQ_LOADER.md');
+  expect(ui.map(x=>x.filename)).toContain('tests/e2e/api-health-visual-regression.spec.ts');
   expect(impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance])).toEqual(['coding','core','updater']);
   expect(()=>impactForPc01ReleaseFiles([...ui.slice(0,-1),...coding,...protectedMaintenance])).toThrow('OWNER_V6_BUNDLE_INCOMPLETE');
   for(const name of Object.keys(OWNER_V6_APPROVED_BLOBS)){
@@ -324,6 +326,8 @@ it('the immutable Owner V6 eleven-blob package combines safely with Coding Lane 
     expect(()=>impactForPc01ReleaseFiles([...changed,...coding,...protectedMaintenance])).toThrow('OWNER_V6_CONTENT_UNVERIFIED');
   }
   expect(()=>impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance,{filename:'public/work-ui-unapproved.css'}])).toThrow('FILE_OUT_OF_SCOPE');
+  expect(()=>impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance,{filename:'bootstrap/00_TIGERIQ_LOADER_COPY.md'}])).toThrow('FILE_OUT_OF_SCOPE');
+  expect(()=>impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance,{filename:'tests/e2e/api-health-visual-regression-copy.spec.ts'}])).toThrow('FILE_OUT_OF_SCOPE');
 });
 
 it.skipIf(!pwshPresent)('PowerShell owner V6 plus Coding batch only accepts exact immutable Git content with both complete bundles',()=>{
