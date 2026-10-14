@@ -1,3 +1,4 @@
+import {completionProof} from '../shared/work-center-history.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { open, stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -83,17 +84,25 @@ function nv02RearmEpochMs(issue) {
 }
 
 export function nv02HasTerminalEvidence(issue, comments = []) {
-  if (issue?.state === 'closed' && issue?.state_reason === 'completed') return true;
-  const epochMs = nv02RearmEpochMs(issue);
-  return (Array.isArray(comments) ? comments : [])
-    .filter((comment) => {
-      const body = String(comment?.body || '');
-      return body.includes(NV02_LEASE_MARKER) || body.includes(NV02_RELEASE_MARKER) || /WORKER=NV02/i.test(body);
-    })
-    .filter((comment) => !epochMs || commentAtMs(comment) >= epochMs)
-    .some((comment) => /^(?:STATE|CURRENT_STATE)=(?:DONE|BLOCKED)$/mi.test(String(comment?.body || '')));
+  // A release comment claiming DONE is not a completion receipt. Require
+  // GitHub's closed/completed state plus V2 checked steps and finish evidence.
+  if (completionProof(issue).verified) return true;
+  const epochMs=nv02RearmEpochMs(issue);
+  return (Array.isArray(comments)?comments:[])
+    .filter(c=>!epochMs||commentAtMs(c)>=epochMs)
+    .some(c=>{
+      const text=String(c?.body||'');
+      if(!text.startsWith('[TIGERIQ_NV02_STEP_CHECKPOINT_V1]'))return false;
+      const val=k=>String(text.match(new RegExp('^'+k+'=([^\\r\\n]+)$','m'))?.[1]||'').trim();
+      return ['BLOCKED','EXTERNAL_WAIT'].includes(val('STATE'))
+        &&val('WORK_ORDER')==='#'+Number(issue?.number)
+        &&val('RESOURCE_SCOPE')===String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE||'').trim()
+        &&/^NV02-\d+-[0-9a-f-]+$/i.test(val('LEASE_ID'))
+        &&val('EVIDENCE_READBACK_VERIFIED')==='true'
+        &&/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull|commit)\/[\w#/.?-]+$/i.test(val('EVIDENCE_URL'))
+        &&val('BLOCKER').length>3;
+    });
 }
-
 function workOrderRef(issueOrNumber) {
   const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
   return Number.isInteger(number) && number > 0 ? `#${number}` : '';
