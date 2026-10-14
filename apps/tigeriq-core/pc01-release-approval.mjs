@@ -88,11 +88,14 @@ export function parsePc01OwnerApproval(body) {
 export function impactForPc01ReleaseFiles(files) {
   if (!Array.isArray(files) || !files.length || files.length >= 300) deny('FILE_LIST_UNVERIFIED');
   const impact = new Set();
+  const ownerOneTapBundle = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-one-tap-approval.mjs');
   for (const entry of files) {
     const filename = typeof entry === 'string' ? entry : entry?.filename;
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
     // The one Core-owned API entry is executable and must be classified
     // as a Core component, never waived as a harmless test/source-only file.
+    // Preserve the pre-existing source-only status of vitest.config.ts on unrelated releases.
+    if (filename === 'vitest.config.ts' && !ownerOneTapBundle) continue;
     if (Object.hasOwn(OWNER_ONE_TAP_APPROVED_BLOBS, filename)) {
       // GitHub's verified compare.files SHA must match exact authorized content.
       if (typeof entry !== 'object' || entry?.sha !== OWNER_ONE_TAP_APPROVED_BLOBS[filename])
