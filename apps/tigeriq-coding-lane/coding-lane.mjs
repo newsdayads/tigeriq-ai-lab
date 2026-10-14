@@ -525,9 +525,43 @@ export function rankCodingManagerResources(candidates=[],{nowMs=Date.now()}={}){
     ownerCodexApproved:false,
   });
 }
-async function refreshCoreResourceHealth(){
+export function createCodingCoreHealthPump(refresh,{intervalMs=2500,setTimer=setTimeout,clearTimer=clearTimeout}={}){
+  let active=false,timer=null,inFlight=null;
+  const run=()=>{
+    if(inFlight)return inFlight;
+    const job=Promise.resolve().then(refresh);
+    inFlight=job;
+    const release=()=>{if(inFlight===job)inFlight=null;};
+    job.then(release,release);
+    return job;
+  };
+  const arm=()=>{
+    if(!active||timer!==null)return;
+    timer=setTimer(()=>{
+      timer=null;
+      if(!active)return;
+      return run().catch(()=>{}).finally(arm);
+    },intervalMs);
+    timer?.unref?.();
+  };
+  return {
+    refresh:run,
+    start(){
+      if(active)return inFlight||Promise.resolve();
+      active=true;
+      return run().finally(arm);
+    },
+    stop(){
+      active=false;
+      if(timer!==null){clearTimer(timer);timer=null;}
+    },
+  };
+}
+
+async function fetchCoreResourceHealth(){
   const nowMs=Date.now();
-  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
+  // Refresh before expiry; freshness/eligibility still uses the original full TTL.
+  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS/2)return true;
   coreHealthReadback.attemptedAt=nowMs;
   try{
     const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},FAST_CORE_HEALTH_ENABLED?3000:CORE_STATUS_TIMEOUT_MS);
@@ -545,6 +579,12 @@ async function refreshCoreResourceHealth(){
     return false;
   }
 }
+
+// One bounded local reader, independent of Manager latency and GitHub cooldown.
+const coreHealthPump=createCodingCoreHealthPump(fetchCoreResourceHealth,{
+  intervalMs:Math.max(1000,Math.floor(CORE_RESOURCE_HEALTH_TTL_MS/4)),
+});
+async function refreshCoreResourceHealth(){return coreHealthPump.refresh();}
 
 function coreResourceEligible(resource,nowMs=Date.now()){
   if(process.env.NODE_ENV==='test'&&coreResourceHealth.byEmployee.size===0)return true;
@@ -1772,6 +1812,7 @@ if(process.env.NODE_ENV!=='test'){
   installAiJsonTransport({maxAttempts:1,baseDelayMs:350,attemptTimeoutMs:45000});
   await initDb();
   await recoverAfterCodingRestart();
+  void coreHealthPump.start().catch(()=>{});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
@@ -1806,8 +1847,8 @@ if(process.env.NODE_ENV!=='test'){
     await cleanupStaleRunningRuntimeCanary().catch(()=>{});
     console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:String(error?.code||error?.message||error).slice(0,160),pid:process.pid}));
   }
-  process.on('SIGINT',()=>{stop=true;server.close()});
-  process.on('SIGTERM',()=>{stop=true;server.close()});
+  process.on('SIGINT',()=>{stop=true;coreHealthPump.stop();server.close()});
+  process.on('SIGTERM',()=>{stop=true;coreHealthPump.stop();server.close()});
   while(!stop){
     const nowLoop=Date.now();
     if(githubApiBackoffUntil>nowLoop){
@@ -1849,5 +1890,6 @@ if(process.env.NODE_ENV!=='test'){
     }
     await sleep(1500);
   }
+  coreHealthPump.stop();
   if(pool)await pool.end();
 }

@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -34,6 +34,79 @@ test('#280/B03 classifies bounded health fetch failures without leaking messages
   assert.strictEqual(failed.consecutiveFailures,1);
 });
 
+
+function b03FakeHealthTimers(){
+  let now=0,nextId=0;
+  const timers=new Map();
+  return {
+    timers,
+    setTimer(fn,ms){const id=++nextId;timers.set(id,{fn,at:now+ms});return id;},
+    clearTimer(id){timers.delete(id);},
+    async advance(ms){
+      const target=now+ms;
+      for(;;){
+        const due=[...timers].filter(([,v])=>v.at<=target).sort((a,b)=>a[1].at-b[1].at)[0];
+        if(!due)break;
+        const [id,v]=due;timers.delete(id);now=v.at;await v.fn();
+      }
+      now=target;
+    },
+  };
+}
+test('#280/B03 shares one in-flight Core health read between the timer and main loop',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0,release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const pump=createCodingCoreHealthPump(()=>{calls++;return pending;},clock);
+  const started=pump.start();
+  await Promise.resolve();
+  const first=pump.refresh(),second=pump.refresh();
+  assert.strictEqual(first,second);
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,0);
+  release(true);await started;await first;
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();assert.strictEqual(clock.timers.size,0);
+});
+test('#280/B03 local Core health heartbeat continues while Manager or GitHub work is awaiting',async()=>{
+  const clock=b03FakeHealthTimers();
+  let healthReads=0,releaseManager,managerDone=false;
+  const manager=new Promise(resolve=>{releaseManager=resolve;}).then(()=>{managerDone=true;});
+  const pump=createCodingCoreHealthPump(async()=>{healthReads++;return true;},clock);
+  await pump.start();await pump.start();
+  await clock.advance(20000);
+  assert.strictEqual(managerDone,false);
+  assert.strictEqual(healthReads,9);
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();releaseManager();await manager;
+});
+test('#280/B03 a failed health read re-arms exactly one bounded timer without immediate retry',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0;
+  const pump=createCodingCoreHealthPump(async()=>{
+    calls++;
+    if(calls===1)throw Object.assign(new Error('private transport details'),{name:'AbortError'});
+    return true;
+  },clock);
+  await assert.rejects(pump.start(),{name:'AbortError'});
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,1);
+  await clock.advance(2499);assert.strictEqual(calls,1);
+  await clock.advance(1);assert.strictEqual(calls,2);
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();await clock.advance(20000);assert.strictEqual(calls,2);
+});
+test('#280/B03 stopping during an in-flight read prevents a late completion from restarting the timer',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0,release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const pump=createCodingCoreHealthPump(()=>{calls++;return pending;},clock);
+  const started=pump.start();await Promise.resolve();
+  pump.stop();release(true);await started;
+  await clock.advance(20000);
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,0);
+});
 
 import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
