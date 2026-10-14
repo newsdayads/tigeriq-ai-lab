@@ -377,21 +377,31 @@ function Get-RemoteDesktopExternalPool(){
   $launcher=Join-Path $remoteDesktopRuntime 'start-desktop-commander-remote.ps1'
   $supervisor=Join-Path $remoteDesktopRuntime 'rdc-pool-supervisor.ps1'
   $worker=Join-Path $remoteDesktopRuntime 'rdc-pool-worker.ps1'
-  if(-not((Test-Path -LiteralPath $launcher -PathType Leaf) -and
-           (Test-Path -LiteralPath $supervisor -PathType Leaf) -and
-           (Test-Path -LiteralPath $worker -PathType Leaf))){return $null}
+  # The five independent 0.2.52 tasks replace the disabled legacy pool.
+  # Incomplete/drifted external topology must not invoke the 0.2.51 installer.
+  $taskNames=@('TigerIQ RDC01 Remote','TigerIQ RDC02 Remote','TigerIQ RDC03 Remote','TigerIQ RDC04 Remote','TigerIQ RDC05 Remote')
+  $existing=@($taskNames|Where-Object{Task-Exists $_})
+  $present=@(@($launcher,$supervisor,$worker)|Where-Object{Test-Path -LiteralPath $_ -PathType Leaf})
+  if($existing.Count -eq 0 -and $present.Count -eq 0){return $null}
+  if($existing.Count -ne 5 -or $present.Count -ne 3){
+    return @{action='blocked';reason='RDC_EXTERNAL_POOL_INCOMPLETE';tasksFound=$existing.Count;filesFound=$present.Count}
+  }
   try {
     $launcherBody=(Get-Content -Raw -LiteralPath $launcher).Trim()
     $workerBody=Get-Content -Raw -LiteralPath $worker
     $supervisorBody=Get-Content -Raw -LiteralPath $supervisor
-    if($launcherBody -cnotmatch '(?s)^\$ErrorActionPreference\s*=\s*"Stop"\s*&\s*"D:\\TigerIQ\\Runtime\\desktop-commander-remote\\rdc-pool-supervisor\.ps1"\s*exit\s+\$LASTEXITCODE$'){return $null}
+    if($launcherBody -cnotmatch '(?s)^\$ErrorActionPreference\s*=\s*"Stop"\s*&\s*"D:\\TigerIQ\\Runtime\\desktop-commander-remote\\rdc-pool-supervisor\.ps1"\s*exit\s+\$LASTEXITCODE$'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_LAUNCHER_DRIFT'}}
     if($workerBody -cnotmatch '@wonderwhy-er/desktop-commander@0\.2\.52' -or
        $workerBody -cnotmatch '\^RDC0\[1-5\]\$' -or
-       $supervisorBody -cnotmatch 'RDC01.*RDC02.*RDC03.*RDC04.*RDC05'){return $null}
-    $task=Get-ScheduledTask -TaskName $remoteDesktopTask -ErrorAction Stop
-    if([string]$task.State -ne 'Running'){return $null}
-    return @{action='external';reason='RDC_PINNED_FIVE_PROFILE_POOL';topology='FIVE_PROFILE_0_2_52';guardVerification='NOT_APPLICABLE_TO_EXTERNAL_POOL';taskState=[string]$task.State;changes=@()}
-  }catch{return $null}
+       $supervisorBody -cnotmatch 'RDC01.*RDC02.*RDC03.*RDC04.*RDC05'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_SOURCE_DRIFT'}}
+    $states=@()
+    foreach($name in $taskNames){
+      $task=Get-ScheduledTask -TaskName $name -ErrorAction Stop
+      $states+=([string]$task.State)
+      if([string]$task.State -ne 'Running'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_TASK_NOT_RUNNING';task=$name;taskState=[string]$task.State}}
+    }
+    return @{action='external';reason='RDC_PINNED_FIVE_PROFILE_POOL';topology='FIVE_PROFILE_0_2_52';guardVerification='NOT_APPLICABLE_TO_EXTERNAL_POOL';taskStates=$states;changes=@()}
+  }catch{return @{action='blocked';reason='RDC_EXTERNAL_POOL_READ_ERROR';detail=[string]$_.Exception.GetType().Name}}
 }
 function Reconcile-RemoteDesktopGuard(){
   $externalPool=Get-RemoteDesktopExternalPool
