@@ -403,8 +403,8 @@ describe('NV02 local GitHub self-pull contract', () => {
       authoritativeComments: [],
     })).toMatchObject({
       state: 'REFRESH_REQUIRED',
-      reason: 'AUTHORITATIVE_TERMINAL',
-      archiveAllowed: true,
+      reason: 'SOURCE_REVISION_MISMATCH',
+      archiveAllowed: false,
       next: 'SELF_PULL',
     });
     expect(resolveNv02Command02State({ currentWorkOrder: null })).toMatchObject({ state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL });
