@@ -702,7 +702,8 @@ function openWorkDetailChat(url){
  workDetailAskVy.title=copied?'Đã sao chép yêu cầu':'Đang thử sao chép yêu cầu';
  workDetailAskVy.dataset.copyStatus=copied?'copied':'fallback';
  // A new window can leave a blank browser sheet in ChatGPT on iOS.
- const link=document.createElement('a');link.href=url;link.target='_self';link.rel='noopener noreferrer';
+ const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ const link=document.createElement('a');link.href=url;link.target=ios?'_self':'_blank';link.rel='noopener noreferrer';
  document.body.appendChild(link);link.click();link.remove();
 }
 /* Health inherits LIVE work-card semantic layout while keeping local detail modal. */
