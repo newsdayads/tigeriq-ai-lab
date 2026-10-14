@@ -96,17 +96,35 @@ export function classifyStandingReleaseFiles(files){
   if(!components.size)deny('NO_RUNTIME_CHANGE');
   return [...components].sort();
 }
-export function validateStandingReleaseEvidence({identity,eventName,payload,verifiedRun,checks,policy,
+export function validateStandingReleaseEvidence({identity,eventName,payload,verifiedRun,verifiedIssue,checks,policy,
   installedSha,mainSha,compare,nowMs=Date.now()}){
   const c=identity?.claims||{};
-  if(eventName!=='workflow_run'||c.event_name!=='workflow_run'||c.ref!=='refs/heads/main'||
+  // Both triggers use the already pinned, signed GitHub Actions OIDC workflow.
+  // Ordinary issue/comment metadata cannot authorize a release without the
+  // independent Owner-created standing policy, exact CI checks and safe diff.
+  const workflowEvent=eventName==='workflow_run';
+  const issueEvent=eventName==='issues'||eventName==='issue_comment';
+  if((!workflowEvent&&!issueEvent)||c.event_name!==eventName||c.ref!=='refs/heads/main'||
      !/^\d{3,20}$/.test(String(identity?.runId||''))||String(c.run_attempt)!=='1')deny('WORKFLOW_OIDC_REQUIRED');
-  if(payload?.action!=='completed'||payload?.repository?.full_name!==REPO)deny('WORKFLOW_EVENT_INVALID');
-  const event=payload.workflow_run,run=verifiedRun;
-  if(!event||!run||run.id!==event.id||!Number.isSafeInteger(run.id)||
-     run.name!==event.name||!['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'].includes(run.name)||
-     run.status!=='completed'||run.conclusion!=='success'||run.event!=='push'||run.head_branch!=='main'||
-     run.head_sha!==event.head_sha||run.head_sha!==mainSha||!SHA.test(mainSha))deny('WORKFLOW_READBACK_INVALID');
+  if(payload?.repository?.full_name!==REPO)deny('WORKFLOW_EVENT_INVALID');
+  if(workflowEvent){
+    if(payload.action!=='completed')deny('WORKFLOW_EVENT_INVALID');
+    const event=payload.workflow_run,run=verifiedRun;
+    if(!event||!run||run.id!==event.id||!Number.isSafeInteger(run.id)||
+       run.name!==event.name||!['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'].includes(run.name)||
+       run.status!=='completed'||run.conclusion!=='success'||run.event!=='push'||run.head_branch!=='main'||
+       run.head_sha!==event.head_sha||run.head_sha!==mainSha||!SHA.test(mainSha))deny('WORKFLOW_READBACK_INVALID');
+  }else{
+    // Reuse the event bridge installed on PC01; do not broaden its workflow.
+    // Issue #280 is an existing central audit queue, not a release signature.
+    const issue=payload.issue;
+    if(!issue||issue.number!==280||!Number.isSafeInteger(issue.id)||!verifiedIssue||
+       verifiedIssue.number!==280||verifiedIssue.id!==issue.id||
+       String(verifiedIssue.url||'')!=='https://api.github.com/repos/'+REPO+'/issues/280'||
+       (eventName==='issues'&&!['edited','labeled','unlabeled','reopened'].includes(payload.action))||
+       (eventName==='issue_comment'&&(payload.action!=='created'||!Number.isSafeInteger(payload.comment?.id))))
+       deny('ISSUE_TRIGGER_NOT_VERIFIED');
+  }
   if(!Array.isArray(checks)||!REQUIRED_CHECKS.every(name=>checks.some(x=>x.name===name&&
      x.head_sha===mainSha&&x.status==='completed'&&x.conclusion==='success'&&x.app?.slug==='github-actions')))
        deny('THREE_CI_CHECKS_REQUIRED');
@@ -182,13 +200,15 @@ export async function acceptPc01StandingWorkflowRelease({identity,eventName,payl
   const main=await gh('/git/ref/heads/main',{token:githubToken,fetchImpl});
   const mainSha=String(main.object?.sha||'');
   const runId=payload?.workflow_run?.id;
-  if(!Number.isSafeInteger(runId)||runId<=0)deny('WORKFLOW_ID_INVALID');
-  const [run,checksData,compare]=await Promise.all([
-    gh('/actions/runs/'+runId,{token:githubToken,fetchImpl}),
+  const issueTrigger=eventName==='issues'||eventName==='issue_comment';
+  if(!issueTrigger&&(!Number.isSafeInteger(runId)||runId<=0))deny('WORKFLOW_ID_INVALID');
+  const [run,verifiedIssue,checksData,compare]=await Promise.all([
+    issueTrigger?Promise.resolve(null):gh('/actions/runs/'+runId,{token:githubToken,fetchImpl}),
+    issueTrigger?gh('/issues/280',{token:githubToken,fetchImpl}):Promise.resolve(null),
     gh('/commits/'+mainSha+'/check-runs?per_page=100',{token:githubToken,fetchImpl}),
     gh('/compare/'+installed.currentSha+'...'+mainSha,{token:githubToken,fetchImpl}),
   ]);
-  const ticket=validateStandingReleaseEvidence({identity,eventName,payload,verifiedRun:run,
+  const ticket=validateStandingReleaseEvidence({identity,eventName,payload,verifiedRun:run,verifiedIssue,
     checks:checksData.check_runs,policy,installedSha:installed.currentSha,mainSha,compare,nowMs});
   await assertRoot(io,root,platform);
   return withLock(io,async()=>{
