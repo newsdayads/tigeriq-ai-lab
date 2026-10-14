@@ -60,3 +60,21 @@ File ví dụ luôn hết hạn nên không thể áp dụng. Khi chạy thật 
 - `DONE`: các nghiệm thu cuối cùng đạt, có links/receipt và không có blocker.
 
 Chưa đạt cổng nào thì giữ `OPEN`, không tuyên bố bản mã trên `main` tự chứng minh PC01 đã cài.
+
+## P0 14/10/2026 — thiết kế chống tự khóa lần sau (V2, chưa cài PC01)
+
+- V1 ghim cứng Git blob vẫn chạy nguyên trạng cho các phiếu V1 cũ. Đây là lý do máy chạy SHA \`28ffe98c\` không chấp nhận toàn bộ thay đổi của \`5a04b8bf\`.
+- V2 chỉ dùng sau khi cả Core sự kiện Owner và cổng PowerShell **đã được cài qua đường khôi phục tin cậy riêng**, không thể tự sửa bộ phát hành đang cài bằng cách ghép tệp từ bản chưa được phê duyệt.
+- V2 lấy **đúng GitHub main SHA**, so sánh từ SHA cài, kiểm tra SHA từng blob, tình trạng tệp, đường dẫn/phạm vi được phép, cổng CI, OIDC từ **bình luận mới đúng chủ tài khoản** và phiếu 10 phút trong thư mục SYSTEM/Admin, chống phát hành lại và giữ rollback.
+- Bình luận GitHub của Owner cho bản V2 (chỉ khi bộ V2 đã được cài và nguồn+phạm vi đã xác minh) phải đúng 5 dòng dưới đây, trên issue phát hành #4725; KHÔNG tạo thay Owner bằng AI:
+
+\`\`\`text
+TIGERIQ_PC01_RELEASE_APPROVE_V2
+TARGET_SHA=<exact-main-40-hex>
+EXPECTED_INSTALLED_SHA=<live-installed-40-hex>
+COMPONENTS=<coding,core,openclaw,updater - chỉ các component thực sự thay đổi, sắp A-Z>
+RELEASE_POLICY=SCOPED_SNAPSHOT_V2
+\`\`\`
+
+- Cổng V2 giữ các hàng rào bảo vệ: App Chrome, Android, Vercel production, thông tin xác thực, đường dẫn API ngoài \`api/live-status.mjs\`, cấu hình bí mật, mã chạy shell ngoài danh sách chuẩn. Không thay đổi quyền Windows, không chạy PowerShell từ bình luận, không ký thay Owner.
+- Nghiệm thu kế tiếp: bộ nâng cấp cổng bảo vệ phải có nguồn triển khai riêng đã được ký chính chủ; sau đó CI/test và PC01 readback xác nhận đúng SHA, một người ghi, watchdog, rollback. **Mã nguồn V2 hợp nhất không đồng nghĩa đã nâng cấp PC01.**

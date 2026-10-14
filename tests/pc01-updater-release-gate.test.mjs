@@ -76,3 +76,12 @@ it('maps all five explicit release-maintenance script paths to Updater impact',(
     expect(impact?.[0]||'').toContain(pathname);
   }
 });
+
+it('V2 maps Owner display-only and Web Control changes to Core without weakening legacy gates',()=>{
+  const fn=source.slice(source.indexOf('function Get-Impact('),source.indexOf('function Restart-UpdaterAfterExit('));
+  expect(fn).toContain("-or $web");
+  expect(fn).toContain("apps/shared/owner-(interaction-v6|one-tap-approval)");
+  expect(fn).toContain("apps/dashboard/src/bcct.mjs");
+  expect(fn).toContain("public/(work-center(-visual)?|work-ui)");
+  expect(fn).toContain("scripts/package-bcct-runtime.mjs");
+});

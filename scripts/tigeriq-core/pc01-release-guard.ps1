@@ -184,6 +184,45 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   if($ownerV6Changed -and $ownerV6Seen -ne $ownerV6Blobs.Count){return 'RELEASE_OWNER_V6_BUNDLE_INCOMPLETE'}
   return $null
 }
+# Signed V2: bounded path-class policy, no repeated manual blob pins.
+# Legacy V1 remains unchanged. The separately verified OIDC ticket remains required.
+function Assert-ReleaseChangedPathsV2([string[]]$changedPaths,[hashtable]$impact,[string]$targetSha){
+  if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
+  if(-not $controlRepo){return 'RELEASE_V2_PROVENANCE_MISSING'}
+  $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+  foreach($name in $changedPaths){
+    if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
+       @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or
+       -not $seen.Add($name)){return 'RELEASE_V2_PATH_INVALID'}
+    if($name -match '(?i)(app.?chrome|android|credential|secret|\.env|vercel\.json|^\.github/|^api/(?!live-status\.mjs$))'){
+      return 'RELEASE_V2_FORBIDDEN_SURFACE'
+    }
+    $gitObject=(& git -C $controlRepo rev-parse ($targetSha+':'+$name) 2>$null|Out-String).Trim()
+    if($LASTEXITCODE -ne 0 -or $gitObject -cnotmatch '^[a-f0-9]{40}$'){return 'RELEASE_V2_SOURCE_PROVENANCE_INVALID'}
+    if($name -match '^(docs/[A-Za-z0-9_./-]+\.md|bootstrap/[A-Za-z0-9_./-]+\.md|tests/[A-Za-z0-9_./-]+\.(mjs|js|ts|tsx))$'){continue}
+    if($name -match '^apps/tigeriq-coding-lane/[A-Za-z0-9_./-]+\.(mjs|js|json|html)$' -or
+       $name -match '^scripts/tigeriq-core/(run-coding-lane|install-coding-lane)\.ps1$'){
+      if(-not $impact.coding){return 'RELEASE_PATH_COMPONENT_MISMATCH'};continue
+    }
+    if($name -match '^apps/openclaw-tigeriq-runtime/[A-Za-z0-9_./-]+\.(mjs|js|json)$'){
+      if(-not ($impact.openclaw -and $impact.core)){return 'RELEASE_PATH_COMPONENT_MISMATCH'};continue
+    }
+    if($name -match '^scripts/tigeriq-core/(update-core-runtime|pc01-release-guard|pc01-release-preflight|bootstrap-watchdog|install-core-updater)\.(ps1|mjs)$'){
+      if(-not $impact.updater){return 'RELEASE_PATH_COMPONENT_MISMATCH'};continue
+    }
+    if($name -match '^apps/tigeriq-core/[A-Za-z0-9_./-]+\.(mjs|js|html|css)$' -or
+       $name -match '^apps/shared/owner-(interaction-v6|one-tap-approval)\.mjs$' -or
+       $name -eq 'apps/dashboard/src/bcct.mjs' -or
+       $name -match '^public/(work-center(-visual)?|work-ui)(\.js|\.css)$' -or
+       $name -eq 'scripts/package-bcct-runtime.mjs' -or
+       $name -eq 'api/live-status.mjs' -or
+       $name -match '^scripts/tigeriq-core/(run-core|install-core-task|run-web-control-bundle)\.ps1$'){
+      if(-not ($impact.core -or $impact.web)){return 'RELEASE_PATH_COMPONENT_MISMATCH'};continue
+    }
+    return 'RELEASE_V2_PATH_OUT_OF_SCOPE'
+  }
+  return $null
+}
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){
   # The local file is an operational approval record, not cryptographic proof
   # of Owner identity. An independently authorized local procedure MUST provision it.
@@ -192,7 +231,9 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
   if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
   try{
     $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
-    if([string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
+    $snapshotV2=([string]$a.schema -ceq 'TIGERIQ_PC01_RELEASE_APPROVAL_V2')
+    if(-not $snapshotV2 -and [string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
+    if($snapshotV2 -and [string]$a.releasePolicy -cne 'SCOPED_SNAPSHOT_V2'){return @{approved=$false;reason='RELEASE_V2_POLICY_INVALID'}}
     if([string]$a.scope -ne 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCOPE_INVALID'}}
     if([string]$a.targetSha -cne $targetSha){return @{approved=$false;reason='RELEASE_TARGET_MISMATCH'}}
     if([string]$a.expectedInstalledSha -cne $installedSha -or [string]$a.rollbackSha -cne $installedSha){return @{approved=$false;reason='RELEASE_BASELINE_MISMATCH'}}
@@ -202,12 +243,12 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     $now=(Get-Date).ToUniversalTime()
     if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
     if($impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
-    if($impact.coding){
+    if(-not $snapshotV2 -and $impact.coding){
       foreach($wanted in $ownerCodingContractBlobs.Keys){
         if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}}
       }
     }
-    if($impact.web){
+    if(-not $snapshotV2 -and $impact.web){
       # Exception applies only to the FULL eight-file PR #4746 bundle and protected
       # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
       if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
@@ -219,7 +260,7 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
         if(@($ownerOneTapWebPaths|Where-Object{$_ -ceq $webPath}).Count -ne 1){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
       }
     }
-    $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact $targetSha
+    $pathDenial=if($snapshotV2){Assert-ReleaseChangedPathsV2 $changedPaths $impact $targetSha}else{Assert-ReleaseChangedPaths $changedPaths $impact $targetSha}
     if($pathDenial){return @{approved=$false;reason=$pathDenial}}
     if(-not($impact.coding -or $impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
     $wanted=@(@('coding','core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
