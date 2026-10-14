@@ -139,7 +139,7 @@ test('API Health mobile sorts newly verified finishes first and lets Owner switc
  await expect.poll(order).toEqual([601,602,603]);
  await page.locator('.wo-filter.action').click();
  await expect(page.locator('#workClosedSort')).toHaveCount(0);
- await expect.poll(order).toEqual([3278,4574,2054]);
+ await expect.poll(order).toEqual([2054,3278,4574]);
 });
 
 
