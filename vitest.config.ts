@@ -40,6 +40,7 @@ export default defineConfig({
       'tests/control-plane-mutation-guard.test.mjs',
       'tests/nv07-proposal-preflight.test.mjs',
       'tests/nv07-workforce-registry.test.mjs',
+      'tests/nv07-headless-proposal-adapter.test.mjs',
       'tests/shared-resource-lease.test.mjs',
       'tests/coding-autonomy-supervisor.test.mjs',
       'tests/autonomy-supervisor.test.mjs',
