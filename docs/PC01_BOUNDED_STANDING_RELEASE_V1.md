@@ -39,8 +39,11 @@ Nghiệm thu cuối: (1) ký hợp lệ phát hành phiên bản chứa cơ ch�
 
 **CURRENT_STATE=SOURCE_ONLY|STANDING_AUTH_NOT_ACTIVATED|PC01_SIGNED_BOOTSTRAP_REQUIRED|FULL_AUTO_NOT_PROVEN.**
 
-## Phụ lục chặn chuyển đổi 14/10/2026
+## Gói chuyển đổi tương thích — 14/10/2026
 
-- PR #4777 là **nháp**; phục hồi chính xác Git blob workflow đang cài và bổ sung kiểm thử sự kiện đã ký. Đoạn gọi phát hành từ luồng nhận issue thực tế trong `apps/tigeriq-core/core.mjs` bị cổng công cụ chặn, **chưa tích hợp**, không đủ điều kiện hợp nhất hay phát hành.
-- Không tự dùng quyền RDC hoặc sửa `pc01-release-guard.ps1` để bỏ qua cổng. Chỉ tiếp tục khi có đường thực thi an toàn được phép.
-- Nghiệm thu đứng cuối: có biên nhận PC01 cài SHA, Owner kích hoạt chính sách riêng, 1 bản tự phát hành đúng danh mục, 2 công việc Core thật DONE, tự nhận việc khác.
+- Luồng Core nhận tín hiệu điều phối đã được sửa qua GitHub trên PR #4777. Xác thực OIDC, xử lý sự kiện thông thường và chống lặp vẫn giữ nguyên; tín hiệu chỉ kiểm tra quyền thường trực đã kích hoạt độc lập.
+- Gói chuyển đổi khôi phục đúng blob workflow, cầu nối và cấu hình Vitest đang cài trên PC01. Phần cải tiến cầu nối của PR #4775 được giữ trong lịch sử nguồn để phát hành riêng sau khi có chuyển đổi phạm vi hợp lệ; không lấy những tệp ngoài phạm vi ghép vào phiếu V2.
+- Bộ kiểm thử thường trực được nhập từ bộ kiểm thử guard đã được đăng ký. Tất cả kiểm thử vẫn chạy trong CI mà không thay blob cấu hình Vitest đã ghim.
+- Chỉ xét cổng ký khi CI, Queue Hygiene, Vercel Verify cùng phiên bản mã đạt và toàn bộ chênh lệch từ PC01 nằm trong danh mục V2 đang cài. Không sửa bộ guard/ACL/bí mật trên máy, không ký thay Owner.
+- Ủy quyền thường trực vẫn CHƯA KÍCH HOẠT. Tín hiệu issue không bảo đảm phát sinh sau CI cuối cùng; không khẳng định tự phát hành theo CI đã được nghiệm thu. Cần giải quyết tín hiệu hoàn tất xác thực hoặc bộ đối chiếu có giới hạn bằng một bước riêng được kiểm chứng.
+- Sau bản ký chuyển đổi: xác minh SHA đã cài, sức khỏe và biên nhận; rồi Owner kích hoạt chính sách qua hành động xác thực riêng. Chỉ nghiệm thu đầu cuối khi có bản phát hành thật và hai công việc Core hoàn tất có biên nhận.

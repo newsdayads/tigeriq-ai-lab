@@ -1,3 +1,6 @@
+// Keep the installed Vitest configuration byte-exact; this registered suite
+// imports the complete standing-release regression suite (including live route mocks).
+import './pc01-standing-release.test.mjs';
 import { describe } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
