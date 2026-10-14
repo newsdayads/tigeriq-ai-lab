@@ -6,6 +6,8 @@ import {
   activeSharedResourceLeases,
   recoverExpiredSharedResourceLeases,
   releaseSharedResourceLease,
+  readVerifiedNv07CanaryCoreLease,
+  NV07_CANARY_CORE_SCOPE,
   sharedLeaseIdleWorkState,
 } from '../apps/tigeriq-core/shared-resource-lease.mjs';
 import {invokeJsonWithFailover} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
@@ -219,4 +221,66 @@ test('source integration covers manager implementer reviewer, Core status and re
   assert.ok(leaseSource.includes("where resource_id=$1 for update"));
   assert.ok(leaseSource.includes("where resource_id=$1 and lease_until<=now() for update"));
   assert.ok(!leaseSource.includes('select resource_id,employee_id,lane,work_id,role,lease_token,lease_until,heartbeat_at,metadata'));
+});
+
+const NV07_SOURCE_SHA='a'.repeat(40);
+const NV07_JOB_ID='NV07-4783-CANARY';
+const NV07_NOW=Date.now();
+function nv07LeaseFixture(overrides={}){
+  const metadata={
+    workOrderId:4783,resourceScope:NV07_CANARY_CORE_SCOPE,sourceSha:NV07_SOURCE_SHA,
+    action:'READ_METADATA',idempotencyKey:'nv07-4783-one-shot-key',
+    ...(overrides.metadata||{}),
+  };
+  const row={
+    resource_id:'nv07:pc01',employee_id:'NV07',resource_employee_id:'NV07',
+    work_id:NV07_JOB_ID,current_job_id:NV07_JOB_ID,enabled:true,
+    lane:'nv07_bootstrap',role:'canary',
+    lease_token:'NEVER_LEAK_THIS_CORE_TOKEN',
+    lease_until:new Date(NV07_NOW+300000).toISOString(),metadata,
+    ...Object.fromEntries(Object.entries(overrides).filter(([key])=>key!=='metadata')),
+  };
+  const calls=[];
+  const db={query:async (sql,args)=>{calls.push({sql,args});return{rows:[row]}}};
+  return{row,db,calls};
+}
+
+test('NV07 verified Core receipt maps DB lease without exposing lease bearer token',async()=>{
+  const {db,calls}=nv07LeaseFixture();
+  const got=await readVerifiedNv07CanaryCoreLease(db,{
+    jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,nowMs:NV07_NOW,
+  });
+  assert.deepStrictEqual(got,{
+    verifiedByCore:true,job_id:NV07_JOB_ID,employee_id:'NV07',
+    resource_scope:NV07_CANARY_CORE_SCOPE,state:'ACTIVE',
+    idempotency_key:'nv07-4783-one-shot-key',expires_at:new Date(NV07_NOW+300000).toISOString(),
+  });
+  assert.strictEqual(Object.isFrozen(got),true);
+  assert.ok(!JSON.stringify(got).includes('NEVER_LEAK_THIS_CORE_TOKEN'));
+  assert.strictEqual(calls.length,1);
+  assert.deepStrictEqual(calls[0].args,['NV07',NV07_JOB_ID]);
+  assert.ok(calls[0].sql.includes('join tigeriq_ai_resources'));
+  assert.ok(calls[0].sql.includes('l.lease_until>now()'));
+  assert.ok(calls[0].sql.includes('r.current_job_id=l.work_id'));
+});
+
+test('NV07 Core lease reader fails closed for missing, wrong and expired DB authority',async()=>{
+  const options={jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,nowMs:NV07_NOW};
+  for(const override of [
+    {enabled:false},{employee_id:'NV09'},{resource_employee_id:'NV08'},
+    {current_job_id:'OTHER-WORK'},{lane:'coding_lane'},{role:'implementer'},
+    {lease_until:new Date(NV07_NOW-1).toISOString()},
+    {metadata:{workOrderId:1111}},{metadata:{resourceScope:'ANOTHER_SCOPE'}},
+    {metadata:{sourceSha:'b'.repeat(40)}},{metadata:{action:'WRITE_SOURCE'}},
+    {metadata:{idempotencyKey:'short'}},
+  ]){
+    const{db}=nv07LeaseFixture(override);
+    assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,options),null,JSON.stringify(override));
+  }
+  const{db}=nv07LeaseFixture();
+  assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,resourceScope:'OTHER'}),null);
+  assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,sourceSha:'latest'}),null);
+  assert.strictEqual(await readVerifiedNv07CanaryCoreLease(null,options),null);
+  assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[]})},options),null);
+  assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[{},{}]})},options),null);
 });
