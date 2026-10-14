@@ -170,6 +170,11 @@ export function backlogQueueLane(spec={}){
   return 1;
 }
 
+function backlogQueueRank(spec={}){
+  const value=Number(spec?.queueRank);
+  return Number.isInteger(value)&&value>=1&&value<=99?value:Number.MAX_SAFE_INTEGER;
+}
+
 function backlogBooleanRank(value){
   return value===false?1:0;
 }
@@ -186,6 +191,10 @@ export function compareBacklogSpecs(a,b){
   const capabilityA=backlogBooleanRank(a?.capabilityMatch);
   const capabilityB=backlogBooleanRank(b?.capabilityMatch);
   if(capabilityA!==capabilityB)return capabilityA-capabilityB;
+  // Owner-ordered queue labels only break ties among already-eligible work.
+  // Never override P0 ownership, P1-P5 priority, lease, dependencies or capability.
+  const qa=backlogQueueRank(a),qb=backlogQueueRank(b);
+  if(qa!==qb)return qa-qb;
   const ta=backlogTimeRank(a),tb=backlogTimeRank(b);
   if(ta!==tb)return ta-tb;
   return Number(a?.number||0)-Number(b?.number||0);
