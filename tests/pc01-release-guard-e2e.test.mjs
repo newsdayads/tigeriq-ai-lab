@@ -306,6 +306,18 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   }
 });
 
+it.skipIf(!pwshPresent)('PC01 PowerShell release gate accepts the exact eight-blob signed-scope bundle in a disposable harness',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const approvedPaths=Object.keys(OWNER_ONE_TAP_APPROVED_BLOBS);
+  const files=[...approvedPaths,'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1','tests/pc01-release-guard-e2e.test.mjs'];
+  const approval={...template(),targetSha,components:['core','updater']};
+  const impact='@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
+  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).approved).toBe(true);
+  expect(run({approval,paths:files.slice(1),impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_ONE_TAP_BUNDLE_INCOMPLETE');
+  expect(run({approval,paths:[...files,'apps/tigeriq-core/web-control-admin.js'],impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_IMPACT_OUT_OF_SCOPE');
+});
+
 it('end-to-end mock writes only exclusive protected approval after authenticated GH reads',async()=>{
   const fixture=ownerFixture(),raw=JSON.stringify({currentSha:approvalBaseline});
   const urls=[],written=[],openCalls=[];
