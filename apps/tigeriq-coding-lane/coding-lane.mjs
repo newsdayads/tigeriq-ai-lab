@@ -1922,7 +1922,34 @@ export async function codingIssueStatusSnapshot(db,issueNumber){
   };
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),reviewPolicy:codingOwnerReviewWaiver()||{kind:'independent'},resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
+// Recent history must not hide an unfinished canonical dispatch from Core.
+// Keep blocked objectives until Core records a terminal result for that exact
+// issue/objective pair; an older attempt's final is not this attempt's final.
+export async function codingSnapshotObjectives(db){
+  const [recent,retained]=await Promise.all([
+    db.query('select * from tigeriq_coding_objectives order by created_at desc limit 20'),
+    db.query(`with latest_dispatch as (
+      select distinct on (data->>'issueNumber') data
+      from tigeriq_events
+      where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber'
+      order by data->>'issueNumber',seq desc
+    )
+    select o.* from latest_dispatch d
+    join tigeriq_coding_objectives o on o.id=d.data->>'codingObjectiveId'
+    where o.status='blocked' and not exists (
+      select 1 from tigeriq_events e
+      where e.type in ('GITHUB_CODING_BLOCKED_FINAL','GITHUB_CODING_RESULT_REPORTED')
+        and e.data->>'issueNumber'=d.data->>'issueNumber'
+        and e.data->>'codingObjectiveId'=o.id
+    )
+    union select * from tigeriq_coding_objectives where status='active'`)
+  ]);
+  const byId=new Map();
+  for(const row of [...retained.rows,...recent.rows])byId.set(row.id,row);
+  return [...byId.values()].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)||String(a.id).localeCompare(String(b.id)));
+}
+
+async function snapshot(){const objectives=await codingSnapshotObjectives(pool);const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),reviewPolicy:codingOwnerReviewWaiver()||{kind:'independent'},resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 

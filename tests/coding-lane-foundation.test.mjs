@@ -1,4 +1,4 @@
-import { codingMicroContext, formatMicroContextTelemetry, codingIssueStatusSnapshot } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import { codingMicroContext, formatMicroContextTelemetry, codingIssueStatusSnapshot, codingSnapshotObjectives } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
@@ -1424,4 +1424,55 @@ test('Actual runJob resumes an existing open PR without requiring a reviewer or 
     assert.ok(!out.calls.some(x=>['pickReviewer','generate','branch','write'].includes(x.kind)));
     assert.ok(out.calls.some(x=>x.kind==='waiver'));
   }finally{if(prior===undefined)delete process.env.TIGERIQ_CODING_REVIEW_POLICY;else process.env.TIGERIQ_CODING_REVIEW_POLICY=prior;}
+});
+
+test('snapshot retains canonical unfinished objectives older than the recent history',async()=>{
+  const recent=Array.from({length:20},(_,i)=>({id:'recent-'+i,status:'blocked',created_at:new Date(200000-i*1000).toISOString()}));
+  const archived={id:'canonical-old',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED',created_at:new Date(1000).toISOString()};
+  const statements=[];
+  const db={query:async(sql)=>{
+    statements.push(sql);
+    return {rows:sql.includes('limit 20')?recent:[archived]};
+  }};
+  const snapshot=await codingSnapshotObjectives(db);
+  assert.equal(snapshot.length,21);
+  assert.deepStrictEqual(snapshot.at(-1),archived);
+  assert.equal(statements.length,2);
+  assert.ok(statements.every(sql=>!/^\s*(insert|update|delete)/i.test(sql)));
+  assert.match(statements[1],/distinct on \(data->>'issueNumber'\)/);
+  assert.match(statements[1],/e\.data->>'codingObjectiveId'=o\.id/);
+  assert.match(statements[1],/e\.data->>'issueNumber'=d\.data->>'issueNumber'/);
+});
+
+test('snapshot deduplicates retained current objectives and preserves recent row truth',async()=>{
+  const recent={id:'current',status:'blocked',summary:'fresh reason',created_at:'2026-10-14T23:40:00Z'};
+  const retained={...recent,summary:'earlier read'};
+  const db={query:async(sql)=>({rows:sql.includes('limit 20')?[recent]:[retained]})};
+  assert.deepStrictEqual(await codingSnapshotObjectives(db),[recent]);
+});
+
+test('snapshot keeps active ownership even outside recent history without a dispatch marker',async()=>{
+  const active={id:'owner-direct-active',status:'active',created_at:'2026-10-12T01:00:00Z'};
+  const db={query:async(sql)=>{
+    if(sql.includes('limit 20'))return {rows:[]};
+    assert.match(sql,/union select \* from tigeriq_coding_objectives where status='active'/);
+    return {rows:[active]};
+  }};
+  assert.deepStrictEqual(await codingSnapshotObjectives(db),[active]);
+});
+
+test('snapshot preserves real blocked reasons and never rewrites them into success',async()=>{
+  const hard={id:'hard-canonical',status:'blocked',summary:'SECURITY POLICY_BLOCK',created_at:'2026-10-12T01:00:00Z'};
+  const db={query:async(sql)=>({rows:sql.includes('limit 20')?[]:[hard]})};
+  const snapshot=await codingSnapshotObjectives(db);
+  assert.deepStrictEqual(snapshot,[hard]);
+  assert.equal(snapshot[0].status,'blocked');
+});
+
+test('snapshot fails closed if the canonical dispatch read is unavailable',async()=>{
+  const db={query:async(sql)=>{
+    if(sql.includes('limit 20'))return {rows:[{id:'recent'}]};
+    throw new Error('canonical query failed');
+  }};
+  await assert.rejects(()=>codingSnapshotObjectives(db),/canonical query failed/);
 });
