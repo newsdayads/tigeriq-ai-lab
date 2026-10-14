@@ -112,11 +112,11 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     if($impact.web){
       # Exception applies only to the FULL eight-file PR #4746 bundle and protected
       # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
-      if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_ONE_TAP_COMPONENTS_REQUIRED'}}
+      if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
       foreach($wanted in $ownerOneTapBlobs.Keys){
         if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_ONE_TAP_BUNDLE_INCOMPLETE'}}
       }
-      $webChanged=@($changedPaths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'})
+      $webChanged=@($changedPaths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'})
       foreach($webPath in $webChanged){
         if(@($ownerOneTapWebPaths|Where-Object{$_ -ceq $webPath}).Count -ne 1){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
       }
