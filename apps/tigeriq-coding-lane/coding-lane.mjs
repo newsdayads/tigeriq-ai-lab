@@ -911,17 +911,31 @@ export function sourceWorkOrderNumber(objective=''){
   return null;
 }
 
+// The GitHub Coding Intake accepts ONLY the first current contract section.
+// Historical snapshots commonly contain TIGERIQ_EXECUTABLE=false and must
+// never revoke a later, explicit Owner-issued current authorization.
+export function currentSourceWorkOrderContract(body=''){
+  const source=String(body||'');
+  const headings=[...source.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const sectionEnd=first?.index===0?(headings[1]?.index??source.length):(first?.index??source.length);
+  const separator=source.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return source.slice(0,Math.min(sectionEnd,separator?.index??source.length));
+}
+
 export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
-  const body=String(issue?.body||'');
+  const body=currentSourceWorkOrderContract(issue?.body);
   const state=String(issue?.state||'').trim().toLowerCase();
   const stateReason=String(issue?.state_reason||'').trim().toLowerCase();
+  const executableTrue=/^\s*TIGERIQ_EXECUTABLE\s*=\s*true\s*$/im.test(body);
   const executableFalse=/^\s*TIGERIQ_EXECUTABLE\s*=\s*false\s*$/im.test(body);
   const terminalState=/^\s*STATE\s*=\s*(?:SUPERSEDED|CANCELLED)\s*$/im.test(body);
   const supersededBy=/^\s*SUPERSEDED_BY\s*=\s*\S+/im.test(body);
-  if(state!=='open'||executableFalse||terminalState||supersededBy){
+  if(state!=='open'||!executableTrue||executableFalse||terminalState||supersededBy){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
-    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableFalse,terminalState,supersededBy};
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy};
     throw error;
   }
   return true;
