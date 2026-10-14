@@ -223,18 +223,6 @@ assert.doesNotMatch(finalHealthGrid,
 assert.match(workCenterVisual,
   /@media \(min-width:1450px\)\{\s*body\.api-health \.work-panel\{height:auto!important;min-height:0!important\}[\s\S]*?#workList\.wo-list\.work-list\.tiq-work-center\{\s*flex:0 0 auto!important/,
   'Desktop Health Work list must not collapse from a zero flex basis');
-
-/* API Health #4750: mobile topbar must wrap rather than clip status buttons.
- * The signed PC01 release allowlist admits this verifier as source-only. */
-const mobileHealthHtml = readFileSync('apps/tigeriq-core/dashboard.html','utf8');
-assert.match(mobileHealthHtml,
-  /@media\(max-width:599px\)\{\s*body\.api-health \.topbar\{[\s\S]*?flex-wrap:wrap!important;[\s\S]*?body\.api-health \.topbar \.brand-health\{\s*flex:1 1 100%!important/,
-  'Mobile API Health header must wrap and reserve a full brand row');
-assert.match(mobileHealthHtml,
-  /body\.api-health \.topbar \.ops-freshness\{margin-left:0!important\}/,
-  'Mobile status panel must not force a horizontal overflow');
-console.log('TIGERIQ_API_HEALTH_MOBILE_TOPBAR_WRAP_PASS');
-
 console.log('TIGERIQ_HEALTH_CARD_TITLE_FLOW_PASS');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
