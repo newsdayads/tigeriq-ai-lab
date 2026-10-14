@@ -41,6 +41,16 @@ export const OWNER_ONE_TAP_APPROVED_BLOBS = Object.freeze({
   'tests/web-control-bundle-assets.test.mjs': 'b16bb88ac0614c8848876549e815d87a9fbb8065',
   'vitest.config.ts': '8d4d66e9aeeac9e54545b38165fe4e46cc5743f2',
 });
+
+// Owner 2026-10-14: exact source-bundle maintenance for API Health work cards.
+// These pins are NOT a broad public/ or test-directory release exemption.
+// A separately authenticated, one-shot Owner GitHub/OIDC release remains required.
+export const OWNER_API_HEALTH_APPROVED_BLOBS = Object.freeze({
+  'public/work-center-visual.css': 'd55a81c101b7f995cb71d6cbc3b3eb772c06e4f5',
+  'scripts/verify_work_board_ui.mjs': '90ec17f4a021aa2d20942932916af138c095e2fc',
+  'tests/e2e/api-health-work-card-layout.spec.ts': 'a4c126d8b2dec8515332ca0366de5eb048f9e613',
+});
+
 const OWNER_ONE_TAP_RUNTIME = new Set([
   'apps/shared/owner-one-tap-approval.mjs',
   'apps/tigeriq-core/web-control-server.mjs',
@@ -89,6 +99,8 @@ export function impactForPc01ReleaseFiles(files) {
   if (!Array.isArray(files) || !files.length || files.length >= 300) deny('FILE_LIST_UNVERIFIED');
   const impact = new Set();
   const ownerOneTapBundle = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-one-tap-approval.mjs');
+  const apiHealthCssChanged = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'public/work-center-visual.css');
+  const seenApiHealthFiles = new Set();
   for (const entry of files) {
     const filename = typeof entry === 'string' ? entry : entry?.filename;
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
@@ -105,6 +117,16 @@ export function impactForPc01ReleaseFiles(files) {
       if (OWNER_ONE_TAP_RUNTIME.has(filename)) impact.add('core');
       continue;
     }
+    if (apiHealthCssChanged && Object.hasOwn(OWNER_API_HEALTH_APPROVED_BLOBS, filename)) {
+      // Exact Git blob matching rejects later edits and newly invented files.
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_API_HEALTH_APPROVED_BLOBS[filename])
+        deny('API_HEALTH_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('API_HEALTH_FILE_STATE_DENIED');
+      seenApiHealthFiles.add(filename);
+      if (filename === 'public/work-center-visual.css') impact.add('core');
+      continue;
+    }
     if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
@@ -119,6 +141,9 @@ export function impactForPc01ReleaseFiles(files) {
     if (UPDATER_FILES.has(filename)) { impact.add('updater'); continue; }
     deny('FILE_OUT_OF_SCOPE');
   }
+  if (apiHealthCssChanged &&
+      seenApiHealthFiles.size !== Object.keys(OWNER_API_HEALTH_APPROVED_BLOBS).length)
+    deny('API_HEALTH_BUNDLE_INCOMPLETE');
   if (!impact.size) deny('NO_COMPONENT_IMPACT');
   return [...impact].sort();
 }
