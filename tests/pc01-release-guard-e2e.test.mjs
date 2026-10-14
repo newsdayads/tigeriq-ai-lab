@@ -288,6 +288,23 @@ it('cannot widen scope via component list, comment fields, or arbitrary paths',(
   expect(()=>impactForPc01ReleaseFiles([{filename:'apps/tigeriq-core/web-control-index.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
   expect(impactForPc01ReleaseFiles([{filename:'apps/openclaw-tigeriq-runtime/operator.mjs'}])).toEqual(['core','openclaw']);
 });
+it('one-tap rollout limits authorized changed files to the eight exact PR4746 blobs',()=>{
+  const pinned=Object.entries(OWNER_ONE_TAP_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  expect(pinned).toHaveLength(8);
+  expect(impactForPc01ReleaseFiles(pinned)).toEqual(['core']);
+  for(const i of pinned.keys()){
+    const changed=structuredClone(pinned);
+    changed[i].sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('ONE_TAP_CONTENT_UNVERIFIED');
+    delete changed[i].sha;
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('ONE_TAP_CONTENT_UNVERIFIED');
+  }
+  expect(impactForPc01ReleaseFiles([...pinned,{filename:'apps/tigeriq-core/pc01-release-approval.mjs'},{filename:'scripts/tigeriq-core/pc01-release-guard.ps1'}])).toEqual(['core','updater']);
+  for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
+    expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
+  }
+});
+
 it('end-to-end mock writes only exclusive protected approval after authenticated GH reads',async()=>{
   const fixture=ownerFixture(),raw=JSON.stringify({currentSha:approvalBaseline});
   const urls=[],written=[],openCalls=[];
