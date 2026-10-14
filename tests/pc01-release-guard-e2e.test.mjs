@@ -221,7 +221,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
@@ -304,6 +304,43 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
     expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
   }
+});
+
+it('only exact three-file API Health CSS bundle is eligible in combined Owner-scoped release',()=>{
+  const oneTap=Object.entries(OWNER_ONE_TAP_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const apiHealth=Object.entries(OWNER_API_HEALTH_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const protectedFiles=[{filename:'apps/tigeriq-core/pc01-release-approval.mjs',status:'modified'},
+    {filename:'scripts/tigeriq-core/pc01-release-guard.ps1',status:'modified'},
+    {filename:'tests/pc01-release-guard-e2e.test.mjs',status:'modified'}];
+  const approved=[...oneTap,...apiHealth,...protectedFiles];
+  expect(apiHealth).toHaveLength(3);
+  expect(impactForPc01ReleaseFiles(approved)).toEqual(['core','updater']);
+  expect(()=>impactForPc01ReleaseFiles(approved.filter(f=>f.filename!=='tests/e2e/api-health-work-card-layout.spec.ts')))
+    .toThrow('API_HEALTH_BUNDLE_INCOMPLETE');
+  for(const filename of Object.keys(OWNER_API_HEALTH_APPROVED_BLOBS)){
+    const changed=structuredClone(approved);
+    changed.find(f=>f.filename===filename).sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('API_HEALTH_CONTENT_UNVERIFIED');
+  }
+  expect(()=>impactForPc01ReleaseFiles([...approved,{filename:'public/work-center-visual-override.css'}]))
+    .toThrow('FILE_OUT_OF_SCOPE');
+  // Unrelated modifications to the shared CSS are NOT covered by this one-shot scope.
+  expect(()=>impactForPc01ReleaseFiles([{filename:'public/work-center-visual.css',sha:'0'.repeat(40),status:'modified'}]))
+    .toThrow('API_HEALTH_CONTENT_UNVERIFIED');
+});
+
+it.skipIf(!pwshPresent)('PC01 PowerShell guard pins matching API Health CSS and test Git blobs',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const files=[...Object.keys(OWNER_ONE_TAP_APPROVED_BLOBS),
+    ...Object.keys(OWNER_API_HEALTH_APPROVED_BLOBS),
+    'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1',
+    'tests/pc01-release-guard-e2e.test.mjs'];
+  const approval={...template(),targetSha,components:['core','updater']};
+  const impact='@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
+  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).approved).toBe(true);
+  expect(run({approval,paths:files.filter(p=>p!=='tests/e2e/api-health-work-card-layout.spec.ts'),impact,targetSha,controlRepo:root}).reason)
+    .toBe('RELEASE_API_HEALTH_BUNDLE_INCOMPLETE');
 });
 
 it.skipIf(!pwshPresent)('PC01 PowerShell release gate accepts the exact eight-blob signed-scope bundle in a disposable harness',()=>{
