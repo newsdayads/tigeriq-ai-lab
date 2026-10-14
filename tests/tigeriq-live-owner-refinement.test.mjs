@@ -58,10 +58,12 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain("const healthValue=");
   });
 
-  it('preserves explicit owner next actions and opens ChatGPT exactly once', () => {
+  it('preserves explicit owner next actions without opening an extra browser tab', () => {
     expect(html).toContain("const raw=String(row?.nextStep||'').trim()");
-    expect(html).toContain("link.target='_blank';link.rel='noopener noreferrer'");
+    expect(html).toContain("link.target=ios?'_self':'_blank';link.rel='noopener noreferrer'");
+    expect(html).toContain("navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1");
     expect(html).not.toContain("if(!opened)location.href=url");
+    expect(html).not.toContain("link.target='_blank'");
   });
 
   it('keeps the newest API snapshot instead of regressing to an older browser cache', () => {
