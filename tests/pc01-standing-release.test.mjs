@@ -162,3 +162,63 @@ it('requires Core live signed issue-event routing before this release PR can mer
   expect(handler).toMatch(/acceptPc01StandingWorkflowRelease\s*\(\s*\{/);
   expect(handler).toContain('identity,eventName,payload,githubToken:GITHUB_TOKEN');
 });
+
+// Regression harness: isolated mocks only, no production identity or writes.
+const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+const begin=source.indexOf("if(req.method==='POST'&&url.pathname==='/api/github-event')");
+const end=source.indexOf("    if(req.method==='GET'&&url.pathname==='/api/ui-assignment')",begin);
+if(begin<0||end<begin)throw Error('HANDLER_NOT_FOUND');
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+const route=new AsyncFunction('req','res','url','verifyGithubActionsOidc','readRawBody',
+ 'enablePc01StandingRelease','acceptPc01StandingWorkflowRelease','acceptPc01OwnerApprovalEvent',
+ 'pool','publishGithubEvent','GITHUB_TOKEN',source.slice(begin,end));
+async function invoke({eventName='issues',action='edited',number=280,duplicate=false,invalidIdentity=false}={}){
+ const calls={persisted:0,published:0,standing:0};
+ const payload={action,repository:{full_name:'newsdayads/tigeriq-ai-lab'},issue:{id:280999,number},comment:{id:1,body:'ordinary signal'}};
+ const req={method:'POST',headers:{authorization:'Bearer ISOLATED_FAKE_TOKEN','x-github-event':eventName,'x-tigeriq-delivery':'fixture-123'}};
+ const res={status:null,body:null,writeHead(n){this.status=n;},end(s){this.body=JSON.parse(s);}};
+ const identity={runId:'38552920000',claims:{event_name:eventName,ref:'refs/heads/main',run_attempt:'1'}};
+ const pool={connect:async()=>({query:async(q)=>{
+  if(q.startsWith('select 1'))return{rowCount:duplicate?1:0};
+  if(q.startsWith('insert'))calls.persisted++;
+  return{rowCount:0};
+ },release(){}})};
+ await route(req,res,{pathname:'/api/github-event'},
+  async()=>{if(invalidIdentity)throw Error('OIDC_INVALID');return identity;},
+  async()=>JSON.stringify(payload),async()=>{throw Error('UNEXPECTED_ACTIVATION');},
+  async()=>{calls.standing++;throw Error('PC01_STANDING_NOT_ACTIVATED');},
+  async()=>{throw Error('UNEXPECTED_OWNER_APPROVAL');},
+  pool,()=>{calls.published++;return{issueNumber:number,subscribers:0};},'ISOLATED_FAKE_READ_TOKEN');
+ return{calls,res};
+}
+it('keeps normal issue ingestion when the independent release policy is absent',async()=>{
+ const r=await invoke();
+ expect(r.res.status).toBe(202);
+ expect(r.res.body.accepted).toBe(true);
+ expect(r.res.body.pc01Release).toEqual({accepted:false,reason:'PC01_STANDING_NOT_ACTIVATED',releaseIssued:false});
+ expect(r.calls).toEqual({persisted:1,published:1,standing:1});
+});
+it('never checks a release before successful OIDC verification',async()=>{
+ const r=await invoke({invalidIdentity:true});
+ expect(r.res.status).toBe(401);
+ expect(r.calls).toEqual({persisted:0,published:0,standing:0});
+});
+it('deduplicated delivery cannot issue a second release request',async()=>{
+ const r=await invoke({duplicate:true});
+ expect(r.res.status).toBe(200);
+ expect(r.res.body.duplicate).toBe(true);
+ expect(r.calls).toEqual({persisted:0,published:0,standing:0});
+});
+it('unrelated and deleted issue signals remain ordinary events',async()=>{
+ for(const input of [{number:4725},{action:'deleted'},{eventName:'issue_comment',action:'edited'}]){
+  const r=await invoke(input);
+  expect(r.calls).toEqual({persisted:1,published:1,standing:0});
+  expect(r.res.body.pc01Release).toBeUndefined();
+ }
+});
+it('a newly created central comment checks the gate while preserving event delivery',async()=>{
+ const r=await invoke({eventName:'issue_comment',action:'created'});
+ expect(r.calls).toEqual({persisted:1,published:1,standing:1});
+ expect(r.res.body.pc01Release.releaseIssued).toBe(false);
+});
+
