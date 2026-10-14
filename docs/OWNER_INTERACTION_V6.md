@@ -23,6 +23,12 @@ Mọi phản hồi Owner-facing và bề mặt TigerIQ sở hữu trình bày ng
 - Thiếu checklist hoặc x/y không hợp lệ: “CHƯA ĐỦ DỮ LIỆU TÍNH %”. Không lấy thời gian đã chạy làm %.
 - Kết nối dịch vụ/PC01/RDC là sức khỏe riêng, không cộng vào % công việc.
 
+## KHÓA ĐỒNG BỘ CHECKLIST — SAU MỖI BƯỚC ĐÃ NGHIỆM THU (OWNER 15/10/2026)
+- Công việc có thẻ GitHub: ngay khi một bước có bằng chứng nghiệm thu đủ phạm vi, phải sửa đúng `- [ ]` thành `- [x]` và gắn URL bằng chứng cùng dòng trong Issue gốc qua quyền ghi/khóa hiện hành. Không dùng bình luận hoặc báo cáo chat thay việc tích.
+- Sau khi ghi, đọc lại Issue GitHub thật và xác nhận mã bước + `[x]` + URL khớp. Chỉ lúc đó mới báo bước ĐÃ HOÀN TẤT và chuyển bước phụ thuộc. Nếu không có quyền ghi, khóa độc quyền hoặc đọc lại thất bại: ghi CHỜ/BỊ CHẶN, không giả hoàn tất.
+- Cấm đóng toàn bộ công việc, gán DONE, hoặc báo 100% nếu một bước bắt buộc chưa được tích/kiểm chứng trên thẻ; giữ phân biệt kiểm thử thành công phạm vi hẹp và nghiệm thu toàn việc.
+- Với ChatGPT/Gemini gốc, đây là quy tắc vận hành khi nguồn được nạp, KHÔNG phải bằng chứng bộ kiểm tra của host đã tự cài. Cổng mã Core/NV02/Web chỉ được công nhận sau khi phát hành, kiểm thử và đọc lại trạng thái thật.
+
 ## BUTTON THẬT
 - HỒ SƠ: mở đúng URL nguồn đã xác minh.
 - KIỂM TRA: làm mới bằng callback và có lượt đọc nguồn mới; không tự nhận đã thay đổi công việc.
