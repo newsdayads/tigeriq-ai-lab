@@ -170,9 +170,16 @@ export function backlogQueueLane(spec={}){
   return 1;
 }
 
-function backlogQueueRank(spec={}){
-  const value=Number(spec?.queueRank);
-  return Number.isInteger(value)&&value>=1&&value<=99?value:Number.MAX_SAFE_INTEGER;
+function backlogWorkstreamRank(spec={}){
+  // Authoritative scope is already part of the checked Work Order contract.
+  // Prefer source repair over optional research/products without editing issue bodies
+  // (a body edit would be a new coding sourceRevision and could trigger rearm).
+  const scope=String(spec?.scopeLease?.resourceScope||spec?.resourceScope||'').toUpperCase();
+  if(/^API_DOCTOR_SOURCE_REPAIR_/.test(scope))return 0;
+  if(/^AUTO_RCA_/.test(scope))return 1;
+  if(/^TIGERIQ_CLINE_/.test(scope))return 3;
+  if(/^DEXCAM_/.test(scope))return 4;
+  return 2;
 }
 
 function backlogBooleanRank(value){
@@ -191,9 +198,8 @@ export function compareBacklogSpecs(a,b){
   const capabilityA=backlogBooleanRank(a?.capabilityMatch);
   const capabilityB=backlogBooleanRank(b?.capabilityMatch);
   if(capabilityA!==capabilityB)return capabilityA-capabilityB;
-  // Owner-ordered queue labels only break ties among already-eligible work.
-  // Never override P0 ownership, P1-P5 priority, lease, dependencies or capability.
-  const qa=backlogQueueRank(a),qb=backlogQueueRank(b);
+  // Only tie-break after lease/Owner/P0, priority, dependencies and capability.
+  const qa=backlogWorkstreamRank(a),qb=backlogWorkstreamRank(b);
   if(qa!==qb)return qa-qb;
   const ta=backlogTimeRank(a),tb=backlogTimeRank(b);
   if(ta!==tb)return ta-tb;
