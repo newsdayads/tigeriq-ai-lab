@@ -55,23 +55,34 @@ function sortClosed(rows,mode){
    A structured GitHub lifecycle state attestation (not issue.updatedAt)
    is the only accepted status-event timestamp. Missing evidence stays below
    attested rows in the existing Owner/priority order. */
+/* Sort only this visual list, without modifying the Core dispatcher.
+   Source STT is a fixed position in the incoming open-work snapshot; it is
+   never recalculated from the currently sorted screen order. */
 function sortOpen(rows,mode){
  const kind=String(mode||'priority');
- if(kind==='number_asc')return [...rows].sort((a,b)=>Number(a.number||0)-Number(b.number||0));
- if(kind==='number_desc')return [...rows].sort((a,b)=>Number(b.number||0)-Number(a.number||0));
- if(kind==='activity_latest')return [...rows].sort((a,b)=>{
+ const ordered=rows.map((row,index)=>({...row,displayOrdinal:index+1}));
+ const ordinal=(a,b)=>a.displayOrdinal-b.displayOrdinal;
+ if(kind==='rank_asc')return ordered;
+ if(kind==='rank_desc')return ordered.reverse();
+ if(kind==='number_asc')return ordered.sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0)||ordinal(a,b));
+ if(kind==='number_desc')return ordered.sort((a,b)=>(Number(b.number)||0)-(Number(a.number)||0)||ordinal(a,b));
+ if(kind==='priority')return ordered.sort((a,b)=>{
+  const ap=priority(a),bp=priority(b);
+  return (ap==='META'?6:Number(ap.slice(1)))-(bp==='META'?6:Number(bp.slice(1)))||ordinal(a,b);
+ });
+ if(kind==='activity_latest')return ordered.sort((a,b)=>{
   const accepted=new Set(['github_issue_comment','github_issue_created']);
   const aa=accepted.has(a?.lastActivitySource)?time(a.lastActivityAt):null;
   const bb=accepted.has(b?.lastActivitySource)?time(b.lastActivityAt):null;
   return Number(bb!==null)-Number(aa!==null)
-    ||(aa!==null&&bb!==null?bb-aa:0);
+    ||(aa!==null&&bb!==null?bb-aa:0)||ordinal(a,b);
  });
- if(kind!=='status_latest')return rows;
- return [...rows].sort((a,b)=>{
+ if(kind!=='status_latest')return ordered;
+ return ordered.sort((a,b)=>{
   const aa=a&&a.statusEvidenceSource==='github_structured_lifecycle_comment'?time(a.statusEvidenceAt):null;
   const bb=b&&b.statusEvidenceSource==='github_structured_lifecycle_comment'?time(b.statusEvidenceAt):null;
   return Number(bb!==null)-Number(aa!==null)
-    ||(aa!==null&&bb!==null?bb-aa:0);
+    ||(aa!==null&&bb!==null?bb-aa:0)||ordinal(a,b);
  });
 }
 function rowsFor(data,filter,closedOrder,openOrder){
@@ -143,7 +154,7 @@ function renderCards(container,rows,options){
   const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
-  el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
+  el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(Number.isInteger(row.displayOrdinal)&&row.displayOrdinal>0?row.displayOrdinal:index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
    +activityLine
