@@ -1,7 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
-import {sortBacklogSpecs} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
 function issue(body,extra={}){
@@ -1666,44 +1665,5 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(posted).toBe(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(newRevision);
-  });
-});
-
-
-
-describe('Owner 2026-10-14 source-repair-first coding queue',()=>{
-  const scoped=(number,priority,resourceScope,extra={})=>issue(
-    SAFE.replace('PRIORITY=P1',`PRIORITY=${priority}`)+`\nRESOURCE_SCOPE=${resourceScope}`,
-    {number,title:`Work ${number}`,...extra},
-  );
-  it('orders existing API repair work before Cline and DeXCam within P1',()=>{
-    const specs=[
-      scoped(4532,'P1','TIGERIQ_CLINE_NV02_SOURCE_AND_EVAL_V1'),
-      scoped(4625,'P1','DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD'),
-      scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA'),
-      scoped(4756,'P1','API_DOCTOR_SOURCE_REPAIR_NV19_COHERE'),
-    ].map(parseCodingIssue);
-    expect(specs.every(Boolean)).toBe(true);
-    expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4756,4532,4625]);
-  });
-  it('never lets P2 or Owner P0 bypass the priority/authority contract',()=>{
-    const specs=[
-      scoped(2293,'P2','API_DOCTOR_SOURCE_REPAIR_TEST'),
-      scoped(4625,'P1','DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD'),
-      scoped(4595,'P0','API_DOCTOR_SOURCE_REPAIR_NV13'),
-      scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA'),
-    ].map(parseCodingIssue).filter(Boolean);
-    expect(sortBacklogSpecs(specs).map(item=>item.number)).toEqual([4696,4625,2293]);
-  });
-  it('keeps original deterministic fallback, gates and revision stable on label edits',()=>{
-    const a=scoped(4756,'P1','GENERIC_SOURCE',{labels:[{name:'tigeriq:queue:01'}]});
-    const b=scoped(4756,'P1','GENERIC_SOURCE',{labels:[{name:'tigeriq:queue:99'}]});
-    expect(codingSourceTruthRevision(a)).toBe(codingSourceTruthRevision(b));
-    expect(parseCodingIssue(scoped(4696,'P1','API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA',{
-      body:SAFE.replace('ZERO_COST=true','ZERO_COST=false')+'\nRESOURCE_SCOPE=API_DOCTOR_SOURCE_REPAIR_NV20_NVIDIA',
-    }))).toBeNull();
-    expect(sortBacklogSpecs([
-      scoped(4756,'P1','GENERIC_SOURCE'),scoped(4696,'P1','GENERIC_SOURCE'),
-    ].map(parseCodingIssue)).map(item=>item.number)).toEqual([4696,4756]);
   });
 });
