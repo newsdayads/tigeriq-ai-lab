@@ -162,13 +162,14 @@ export function buildRoleFallbackPrompt(workerId){
   ].join(' ');
 }
 
-function claimFields(body){
+function claimFields(body,{nv02=false}={}){
   const text=String(body||'');
   const worker=employee(text.match(/^WORKER=(NV\d{2})$/m)?.[1]);
   const scope=String(text.match(/^RESOURCE_SCOPE=(.+)$/m)?.[1]||'').trim();
-  const until=String(text.match(/^LEASE_UNTIL=(.+)$/m)?.[1]||'').trim();
+  const until=String(text.match(nv02?/^EXPIRES_AT=(.+)$/m:/^LEASE_UNTIL=(.+)$/m)?.[1]||'').trim();
+  const leaseId=nv02?String(text.match(/^LEASE_ID=(.+)$/m)?.[1]||'').trim():'';
   const untilMs=Date.parse(until);
-  return {workerId:worker,resourceScope:scope,leaseUntil:until,leaseUntilMs:Number.isFinite(untilMs)?untilMs:0};
+  return {workerId:worker,resourceScope:scope,leaseUntil:until,leaseUntilMs:Number.isFinite(untilMs)?untilMs:0,leaseId};
 }
 
 export function activeRoleClaim(comments=[],nowMs=Date.now()){
@@ -179,7 +180,17 @@ export function activeRoleClaim(comments=[],nowMs=Date.now()){
   let active=null;
   for(const comment of ordered){
     const body=String(comment?.body||'');
-    if(body.includes(ROLE_CLAIM_MARKER)){
+    if(body.startsWith('[TIGERIQ_NV02_LEASE_V1]')){
+      const claim=claimFields(body,{nv02:true});
+      // The NV02 lease is the canonical self-pull receipt, not chat activity.
+      if(claim.workerId==='NV02'&&claim.resourceScope&&/^NV02-\d+-[\w-]+$/.test(claim.leaseId)&&claim.leaseUntilMs>nowMs)
+        active={...claim,commentId:comment?.id||null,createdAt:comment?.created_at||null};
+    }else if(body.startsWith('[TIGERIQ_NV02_RELEASE_V1]')){
+      const released=claimFields(body,{nv02:true});
+      // A delayed release of an older lease must not clear a new claim.
+      if(active?.workerId==='NV02'&&active?.leaseId&&released.leaseId===active.leaseId)
+        active=null;
+    }else if(body.includes(ROLE_CLAIM_MARKER)){
       const claim=claimFields(body);
       if(claim.workerId&&claim.leaseUntilMs>nowMs)active={...claim,commentId:comment?.id||null,createdAt:comment?.created_at||null};
       else if(claim.workerId)active=null;
