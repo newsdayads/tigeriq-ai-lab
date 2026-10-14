@@ -42,6 +42,13 @@ $ownerOneTapBlobs=@{
   'tests/web-control-bundle-assets.test.mjs'='b16bb88ac0614c8848876549e815d87a9fbb8065'
   'vitest.config.ts'='8d4d66e9aeeac9e54545b38165fe4e46cc5743f2'
 }
+# Scoped Owner-authorized API Health :8795 CSS and test bundle, exact Git blobs only.
+# Does not bypass the distinct signed GitHub/OIDC release event or ACL gate.
+$ownerApiHealthBlobs=@{
+  'public/work-center-visual.css'='d55a81c101b7f995cb71d6cbc3b3eb772c06e4f5'
+  'scripts/verify_work_board_ui.mjs'='90ec17f4a021aa2d20942932916af138c095e2fc'
+  'tests/e2e/api-health-work-card-layout.spec.ts'='a4c126d8b2dec8515332ca0366de5eb048f9e613'
+}
 $ownerOneTapWebPaths=@(
   'apps/tigeriq-core/web-control-server.mjs',
   'apps/tigeriq-core/web-control.html',
@@ -50,6 +57,8 @@ $ownerOneTapWebPaths=@(
 
 function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[string]$targetSha){
   if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
+  $healthCssChanged=@($changedPaths|Where-Object{$_ -ceq 'public/work-center-visual.css'}).Count -gt 0
+  $healthSeen=0
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
   foreach($path in $changedPaths){
     # Preserve the established source-only rule on unrelated releases.
@@ -64,6 +73,17 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
         $actual=(& git -C $controlRepo rev-parse $spec 2>$null | Out-String).Trim()
         if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
       }catch{return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
+      continue
+    }
+    if($healthCssChanged -and $ownerApiHealthBlobs.ContainsKey($path)){
+      if(-not $controlRepo){return 'RELEASE_API_HEALTH_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerApiHealthBlobs[$path]
+        $actual=(& git -C $controlRepo rev-parse ($targetSha+':'+$path) 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_API_HEALTH_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_API_HEALTH_CONTENT_MISMATCH'}
+      $healthSeen++
+      if($path -ceq 'public/work-center-visual.css' -and -not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
       continue
     }
     # The single Core-owned API module is executable: component gate required.
@@ -91,6 +111,7 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
     }
     return 'RELEASE_PATH_OUT_OF_SCOPE'
   }
+  if($healthCssChanged -and $healthSeen -ne $ownerApiHealthBlobs.Count){return 'RELEASE_API_HEALTH_BUNDLE_INCOMPLETE'}
   return $null
 }
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){
