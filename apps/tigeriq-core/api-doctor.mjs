@@ -350,3 +350,13 @@ export function parseApiDoctorDecision(text){
     sourceRepair:[...new Set((value.sourceRepair||[]).map(x=>safeText(x,16)).filter(Boolean))].slice(0,10),
   };
 }
+
+// Yield NV10 to already queued real, zero-cost GitHub work before running
+// another optional diagnostic analysis. Never claim a job or reset its attempts.
+export function apiDoctorAutoworkPriority(pending=0) {
+  const count=Number(pending);
+  if(!Number.isSafeInteger(count)||count<0)return {defer:false,reason:'PENDING_COUNT_UNVERIFIED'};
+  return count>0
+    ? {defer:true,reason:'ACTIVE_GITHUB_LOCAL_WORK_HAS_PRIORITY'}
+    : {defer:false,reason:'NO_ACTIVE_GITHUB_LOCAL_WORK'};
+}

@@ -38,7 +38,7 @@ import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -1337,6 +1337,19 @@ async function runApiDoctorAnalysisJob(items,scanSignature){
   if(recent)return {skipped:'deduped'};
   const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recentUnavailable)return {skipped:'deduped_nv10_unavailable'};
+  // NV10 is the sole local coordinator for github_api_autowork.
+  // Avoid starving accepted Owner work with recurring optional API Doctor inference.
+  // Only a dispatchable, due, still-active work item can defer diagnostics.
+  const localBacklog=(await pool.query(`
+    select count(*)::int as pending from tigeriq_jobs j
+    join tigeriq_objectives o on o.id=j.objective_id
+    where o.status='active' and j.kind='github_api_autowork'
+      and (j.status='queued'
+           or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+      and j.attempts<j.max_attempts
+  `)).rows[0]?.pending;
+  const priority=apiDoctorAutoworkPriority(localBacklog);
+  if(priority.defer) return {skipped:'deferred_for_real_github_work',pending:localBacklog};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
