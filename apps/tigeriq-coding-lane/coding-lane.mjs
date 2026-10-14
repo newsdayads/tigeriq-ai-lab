@@ -382,23 +382,6 @@ const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(300000,Number(process.env.TIGERI
 // Only Coding Manager planning is timeboxed; Worker/review Ollama requests retain their prior limit.
 export function normalizeManagerOllamaTimeout(value){const n=Number(value);return Math.max(15000,Math.min(120000,Number.isFinite(n)&&n>0?n:45000))}
 const MANAGER_OLLAMA_TIMEOUT_MS=normalizeManagerOllamaTimeout(process.env.TIGERIQ_CODING_MANAGER_OLLAMA_TIMEOUT_MS);
-/** Known PC01 NV08 qwen3:8b cold structured output measured 65–68s.
- * Grant the local fallback its own bounded 90s budget; keep the 45s primary
- * and all independent Worker/review timeouts unchanged.
- */
-export function managerResourceOllamaTimeoutMs(resource,base=MANAGER_OLLAMA_TIMEOUT_MS){
-  const budget=normalizeManagerOllamaTimeout(base);
-  return String(resource?.id||'')==='NV08'?Math.max(budget,90000):budget;
-}
-export function managerResourceFailureSummary(error){
-  const reason=String(error?.message||error||'AI_RESOURCES_UNAVAILABLE').slice(0,240);
-  const classes=[...new Set((Array.isArray(error?.detail?.failureLedger)?error.detail.failureLedger:[])
-    .map(row=>[String(row?.resourceId||''),String(row?.class||'')])
-    .filter(([id,kind])=>/^NV\d{2}$/.test(id)&&/^[a-z_]{1,40}$/i.test(kind))
-    .map(([id,kind])=>id+':'+kind))].slice(0,8);
-  return (reason+(classes.length?' | attempts='+classes.join(','):'')).slice(0,1000);
-}
-
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
@@ -1090,7 +1073,7 @@ async function managerTick(){
       // An overloaded local 27B model must not occupy the single-flight Manager for 240 seconds.
       // Abort Ollama HTTP on the Manager-only budget, then fail over to a distinct eligible AI.
       // Per-provider retry defaults and all Worker/reviewer timeouts remain unchanged.
-      invokeFn:(r,managerPrompt)=>invoke(r,managerPrompt,{ollamaTimeoutMs:managerResourceOllamaTimeoutMs(r)}),
+      invokeFn:(r,managerPrompt)=>invoke(r,managerPrompt,{ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS}),
       maxSameResourceAttempts:1,
       validateData:validateManagerDecision,
       leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'},
@@ -1112,10 +1095,10 @@ async function managerTick(){
   }catch(e){
     const plan=managerResourceFailurePlan(e,o);
     if(plan.transient&&plan.wait){
-      await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,manager_employee_id=$3,next_attempt_at=$4,resource_retry_count=$5,resource_retry_started_at=coalesce(resource_retry_started_at,now()),updated_at=now() where id=$1",[o.id,`WAITING_RESOURCE_MANAGER retry ${plan.retryCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${managerResourceFailureSummary(e)}`.slice(0,1000),manager.id,plan.nextAttemptAt,plan.retryCount]);
+      await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,manager_employee_id=$3,next_attempt_at=$4,resource_retry_count=$5,resource_retry_started_at=coalesce(resource_retry_started_at,now()),updated_at=now() where id=$1",[o.id,`WAITING_RESOURCE_MANAGER retry ${plan.retryCount}/${RESOURCE_WAIT_MAX_RETRIES}: ${String(e?.message||e)}`.slice(0,1000),manager.id,plan.nextAttemptAt,plan.retryCount]);
       return;
     }
-    await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,updated_at=now() where id=$1",[o.id,managerResourceFailureSummary(e),manager.id]);
+    await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,updated_at=now() where id=$1",[o.id,String(e.message).slice(0,1000),manager.id]);
   }
 }
 
