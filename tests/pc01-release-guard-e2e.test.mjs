@@ -21,7 +21,7 @@ const template=()=>({
   approved:true,components:['core'],
   expiresAtUtc:new Date(Date.now()+3600_000).toISOString(),
 });
-function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
+function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}',targetSha=sha,controlRepo='' }={}){
   const dir=mkdtempSync(join(tmpdir(),'tigeriq-guard-e2e-'));
   try{
     const approver=join(dir,'approval.json'),marker=join(dir,'attempt.json');
@@ -32,9 +32,10 @@ function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/
       "$releaseApprovalPath='"+esc(approver)+"'",
       "$releaseAttemptPath='"+esc(marker)+"'",
       ...(aclMock?["function Test-ReleaseApprovalAcl { return $true }"]:[]),
-      "$impact="+impact,
+      "$controlRepo='"+esc(controlRepo)+"'",
+       "$impact="+impact,
       '$changed='+JSON.stringify(paths).replace(/^\[/,'@(').replace(/\]$/,')').replaceAll('"',"'"),
-      "$result=Get-ReleaseApproval '"+sha+"' '"+previous+"' $impact $changed",
+      "$result=Get-ReleaseApproval '"+targetSha+"' '"+previous+"' $impact $changed",
       '$result|ConvertTo-Json -Compress -Depth 4',
     ].join('\n');
     const script=join(dir,'guard-harness.ps1');
@@ -220,7 +221,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
@@ -288,6 +289,35 @@ it('cannot widen scope via component list, comment fields, or arbitrary paths',(
   expect(()=>impactForPc01ReleaseFiles([{filename:'apps/tigeriq-core/web-control-index.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
   expect(impactForPc01ReleaseFiles([{filename:'apps/openclaw-tigeriq-runtime/operator.mjs'}])).toEqual(['core','openclaw']);
 });
+it('one-tap rollout limits authorized changed files to the eight exact PR4746 blobs',()=>{
+  const pinned=Object.entries(OWNER_ONE_TAP_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  expect(pinned).toHaveLength(8);
+  expect(impactForPc01ReleaseFiles(pinned)).toEqual(['core']);
+  for(const i of pinned.keys()){
+    const changed=structuredClone(pinned);
+    changed[i].sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('ONE_TAP_CONTENT_UNVERIFIED');
+    delete changed[i].sha;
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('ONE_TAP_CONTENT_UNVERIFIED');
+  }
+  expect(impactForPc01ReleaseFiles([...pinned,{filename:'apps/tigeriq-core/pc01-release-approval.mjs'},{filename:'scripts/tigeriq-core/pc01-release-guard.ps1'}])).toEqual(['core','updater']);
+  for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
+    expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
+  }
+});
+
+it.skipIf(!pwshPresent)('PC01 PowerShell release gate accepts the exact eight-blob signed-scope bundle in a disposable harness',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const approvedPaths=Object.keys(OWNER_ONE_TAP_APPROVED_BLOBS);
+  const files=[...approvedPaths,'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1','tests/pc01-release-guard-e2e.test.mjs'];
+  const approval={...template(),targetSha,components:['core','updater']};
+  const impact='@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
+  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).approved).toBe(true);
+  expect(run({approval,paths:files.slice(1),impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_ONE_TAP_BUNDLE_INCOMPLETE');
+  expect(run({approval,paths:[...files,'apps/tigeriq-core/web-control-admin.js'],impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_IMPACT_OUT_OF_SCOPE');
+});
+
 it('end-to-end mock writes only exclusive protected approval after authenticated GH reads',async()=>{
   const fixture=ownerFixture(),raw=JSON.stringify({currentSha:approvalBaseline});
   const urls=[],written=[],openCalls=[];

@@ -30,10 +30,42 @@ function Test-ReleaseApprovalAcl {
     return $true
   }catch{return $false}
 }
-function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact){
+# One-time P0 Owner authorization is bound to exact Git object content from merged PR #4746.
+# The manifest does not grant permission or replace a separately signed release ticket.
+$ownerOneTapBlobs=@{
+  'apps/shared/owner-one-tap-approval.mjs'='0443422cd188f41c7fd172184b4f4e7281bb2acb'
+  'apps/tigeriq-core/web-control-server.mjs'='fcc90b3a36f760dec4482689b01db26bbee20b98'
+  'apps/tigeriq-core/web-control.html'='02db28746fac9a50db20b285d920821658d78ba7'
+  'docs/OWNER_ONE_TAP_APPROVAL_V1.md'='6da62bae2baf67c84b0379d59a7b970e6d2082d5'
+  'scripts/tigeriq-core/run-web-control-bundle.ps1'='ebe81cf08e073b1f04c4c64aa31685aa3bf66772'
+  'tests/owner-one-tap-approval.test.mjs'='a4d4c1ba4f7157e86b36f85cbbb29c8a01bfe3e9'
+  'tests/web-control-bundle-assets.test.mjs'='b16bb88ac0614c8848876549e815d87a9fbb8065'
+  'vitest.config.ts'='8d4d66e9aeeac9e54545b38165fe4e46cc5743f2'
+}
+$ownerOneTapWebPaths=@(
+  'apps/tigeriq-core/web-control-server.mjs',
+  'apps/tigeriq-core/web-control.html',
+  'scripts/tigeriq-core/run-web-control-bundle.ps1'
+)
+
+function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[string]$targetSha){
   if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
   foreach($path in $changedPaths){
+    # Preserve the established source-only rule on unrelated releases.
+    if($path -ceq 'vitest.config.ts' -and -not $impact.web){continue}
+    # Exact, case-sensitive approved path AND exact blob from trusted local Git object DB.
+    $pinned=@($ownerOneTapBlobs.Keys|Where-Object{$_ -ceq $path})
+    if($pinned.Count -eq 1){
+      if(-not $controlRepo){return 'RELEASE_ONE_TAP_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerOneTapBlobs[$pinned[0]]
+        $spec=$targetSha+':'+$path
+        $actual=(& git -C $controlRepo rev-parse $spec 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
+      continue
+    }
     # The single Core-owned API module is executable: component gate required.
     if($path -ceq 'api/live-status.mjs'){
       if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
@@ -78,8 +110,20 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     $expiry=[DateTime]::Parse([string]$a.expiresAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
     $now=(Get-Date).ToUniversalTime()
     if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
-    if($impact.web -or $impact.coding -or $impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
-    $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact
+    if($impact.coding -or $impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    if($impact.web){
+      # Exception applies only to the FULL eight-file PR #4746 bundle and protected
+      # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
+      if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      foreach($wanted in $ownerOneTapBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_ONE_TAP_BUNDLE_INCOMPLETE'}}
+      }
+      $webChanged=@($changedPaths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'})
+      foreach($webPath in $webChanged){
+        if(@($ownerOneTapWebPaths|Where-Object{$_ -ceq $webPath}).Count -ne 1){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      }
+    }
+    $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact $targetSha
     if($pathDenial){return @{approved=$false;reason=$pathDenial}}
     if(-not($impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
     $wanted=@(@('core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
