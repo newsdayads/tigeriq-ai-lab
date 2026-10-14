@@ -338,8 +338,8 @@ it.skipIf(!pwshPresent)('PowerShell guard validates the two exact Git blobs for 
   const args={approval:{...template(),targetSha},targetSha,controlRepo:root,paths};
   const matchesHistoricBlobs=paths.every(path=>execFileSync('git',['rev-parse',targetSha+':'+path],{cwd:root,encoding:'utf8'}).trim()===OWNER_CODING_INTAKE_APPROVED_BLOBS[path]);
   expect(run(args).reason).toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
-  expect(run({...args,paths:paths.slice(0,1)}).reason).toBe('RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE');
-  expect(run({...args,paths:[...paths,'tests/github-coding-intake-copy.test.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+  expect(run({...args,paths:paths.slice(0,1)}).reason).toBe(matchesHistoricBlobs?'RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
+  expect(run({...args,paths:[...paths,'tests/github-coding-intake-copy.test.mjs']}).reason).toBe(matchesHistoricBlobs?'RELEASE_PATH_OUT_OF_SCOPE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
   expect(run({...args,impact:'@{core=$false;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}'}).reason).toBe('RELEASE_PATH_COMPONENT_MISMATCH');
 });
 
