@@ -57,6 +57,11 @@ $ownerCodingContractBlobs=@{
 }
 # Exact immutable Owner V6 #4761 source-bundle combined with signed P0 #4763
 # No pattern-wide permission. No replacement for Owner OIDC and SYSTEM ACL.
+# Two exact immutable Owner-approved #4767 Core intake blobs; no wildcard path grant.
+$ownerCodingIntakeBlobs=@{
+  'apps/tigeriq-core/github-coding-intake.mjs'='dc8a77944308b9faf5a921fbae861960ef4e0f8d'
+  'tests/github-coding-intake.test.mjs'='0888f4d577e3de8718ca7420c3ecd3c288af0fa3'
+}
 $ownerV6Blobs=@{
   'bootstrap/00_TIGERIQ_LOADER.md'='0dfdc8d0ad7046f97d80e3467366c9e33484c384'
   'tests/e2e/api-health-visual-regression.spec.ts'='215d836a576e2bbeea0377d42f9fbbe8e789c88f'
@@ -84,6 +89,8 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   $healthSeen=0
   $codingContractChanged=@($changedPaths|Where-Object{$_ -ceq 'apps/tigeriq-coding-lane/coding-lane.mjs'}).Count -gt 0
   $codingContractSeen=0
+  $codingIntakeChanged=@($changedPaths|Where-Object{$_ -ceq 'apps/tigeriq-core/github-coding-intake.mjs'}).Count -gt 0
+  $codingIntakeSeen=0
   $ownerV6Changed=@($changedPaths|Where-Object{$_ -ceq 'apps/shared/owner-interaction-v6.mjs'}).Count -gt 0
   $ownerV6Seen=0
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
@@ -124,6 +131,17 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
       $codingContractSeen++
       continue
     }
+    if($codingIntakeChanged -and $ownerCodingIntakeBlobs.ContainsKey($path)){
+      if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      if(-not $controlRepo){return 'RELEASE_CODING_INTAKE_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerCodingIntakeBlobs[$path]
+        $actual=(& git -C $controlRepo rev-parse ($targetSha+':'+$path) 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_CODING_INTAKE_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_CODING_INTAKE_CONTENT_MISMATCH'}
+      $codingIntakeSeen++
+      continue
+    }
     if($ownerV6Changed -and $ownerV6Blobs.ContainsKey($path)){
       if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
       if(-not $controlRepo){return 'RELEASE_OWNER_V6_PROVENANCE_MISSING'}
@@ -162,6 +180,7 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   }
   if($healthCssChanged -and $healthSeen -ne $ownerApiHealthBlobs.Count){return 'RELEASE_API_HEALTH_BUNDLE_INCOMPLETE'}
   if($codingContractChanged -and $codingContractSeen -ne $ownerCodingContractBlobs.Count){return 'RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}
+  if($codingIntakeChanged -and $codingIntakeSeen -ne $ownerCodingIntakeBlobs.Count){return 'RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE'}
   if($ownerV6Changed -and $ownerV6Seen -ne $ownerV6Blobs.Count){return 'RELEASE_OWNER_V6_BUNDLE_INCOMPLETE'}
   return $null
 }
