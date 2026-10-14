@@ -10,7 +10,7 @@ const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
 
-import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {normalizeManagerOllamaTimeout,invokeOllamaChat,managerResourceOllamaTimeoutMs,managerResourceFailureSummary} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 
 test('#280 Coding Manager uses existing Core-local capacity as backup without admitting unsafe or occupied AI',()=>{
   const primary=[{id:'NV09',provider:'ollama'}];
@@ -40,9 +40,21 @@ test('#280 Manager-only Ollama time budget has bounded safe default, leaving Wor
   assert.strictEqual(normalizeManagerOllamaTimeout(60000),60000);
   assert.strictEqual(normalizeManagerOllamaTimeout(600000),120000);
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-  assert.ok(src.includes('ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS'));
+  assert.ok(src.includes('ollamaTimeoutMs:managerResourceOllamaTimeoutMs(r)'));
   assert.ok(src.includes('maxSameResourceAttempts:1'));
   assert.ok(src.includes('timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS'));
+});
+
+test('#280 known slow NV08 local Manager receives bounded fallback budget, evidence sanitized',()=>{
+ assert.strictEqual(managerResourceOllamaTimeoutMs({id:'NV09'}),45000);
+ assert.strictEqual(managerResourceOllamaTimeoutMs({id:'NV10'}),45000);
+ assert.strictEqual(managerResourceOllamaTimeoutMs({id:'NV08'}),90000);
+ assert.strictEqual(managerResourceOllamaTimeoutMs({id:'NV08'},120000),120000);
+ assert.strictEqual(managerResourceFailureSummary({message:'AI_RESOURCES_UNAVAILABLE',detail:{failureLedger:[
+  {resourceId:'NV09',class:'timeout',message:'secret-token'},
+  {resourceId:'NV10',class:'invalid_response',message:'private-url'},
+  {resourceId:'NV08',class:'timeout',message:'credential'},
+ ]}}),'AI_RESOURCES_UNAVAILABLE | attempts=NV09:timeout,NV10:invalid_response,NV08:timeout');
 });
 
 test('#280 Manager timeout fails over after one aborted provider request, without retrying it twice',async()=>{
