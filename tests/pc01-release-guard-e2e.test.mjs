@@ -221,7 +221,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
@@ -304,6 +304,42 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
     expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
   }
+});
+
+it('exact two-blob Coding Lane maintenance permits signed coding only, fails closed on wrong or missing content',()=>{
+  const pinned=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  expect(pinned).toHaveLength(2);
+  expect(impactForPc01ReleaseFiles(pinned)).toEqual(['coding']);
+  expect(impactForPc01ReleaseFiles([...pinned,
+    {filename:'apps/tigeriq-core/pc01-release-approval.mjs'},
+    {filename:'scripts/tigeriq-core/pc01-release-guard.ps1'},
+  ])).toEqual(['coding','core','updater']);
+  expect(()=>impactForPc01ReleaseFiles(pinned.slice(0,1))).toThrow('CODING_CONTRACT_BUNDLE_INCOMPLETE');
+  expect(()=>impactForPc01ReleaseFiles(pinned.slice(1))).toThrow('FILE_OUT_OF_SCOPE');
+  for(const name of Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS)){
+    const edited=structuredClone(pinned);
+    edited.find(f=>f.filename===name).sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles(edited)).toThrow('CODING_CONTRACT_CONTENT_UNVERIFIED');
+  }
+  expect(()=>impactForPc01ReleaseFiles([...pinned,{filename:'apps/tigeriq-coding-lane/other.mjs'}]))
+    .toThrow('FILE_OUT_OF_SCOPE');
+  expect(()=>parsePc01OwnerApproval(ownerCommentText().replace('COMPONENTS=core','COMPONENTS=coding,core,updater')))
+    .not.toThrow();
+  expect(()=>parsePc01OwnerApproval(ownerCommentText().replace('COMPONENTS=core','COMPONENTS=core,coding,updater')))
+    .toThrow('COMPONENTS_INVALID');
+});
+
+it.skipIf(!pwshPresent)('signed PowerShell guard matches only the immutable Coding Lane source and test pair',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const paths=[...Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS),
+    'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1'];
+  const approval={...template(),targetSha,components:['coding','core','updater']};
+  const impact='@{core=$true;web=$false;coding=$true;openclaw=$false;updater=$true;liveBridge=$false}';
+  const args={approval,paths,impact,targetSha,controlRepo:root};
+  expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({...args,paths:paths.filter(p=>p!=='tests/coding-lane-ai-json-transport.test.mjs')}).reason)
+    .toBe('RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE');
 });
 
 it('only exact three-file API Health CSS bundle is eligible in combined Owner-scoped release',()=>{
