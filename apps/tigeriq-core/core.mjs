@@ -3070,8 +3070,23 @@ const server=createServer(async(req,res)=>{
       finally{client.release()}
       if(duplicate){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,duplicate:true,deliveryId}));}
       const published=publishGithubEvent({eventName,deliveryId,payload,receivedAt:new Date().toISOString()});
+      // Preserve normal issue ingestion and delivery deduplication. A central
+      // issue signal can only ask the independently Owner-activated gate to check;
+      // the event itself never grants release authority.
+      let pc01Release=null;
+      if(Number(payload?.issue?.number)===280&&
+         ((eventName==='issues'&&['edited','labeled','unlabeled','reopened'].includes(payload?.action))||
+          (eventName==='issue_comment'&&payload?.action==='created'))){
+        try{
+          pc01Release=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+        }catch(error){
+          pc01Release={accepted:false,reason:String(error?.message||error).slice(0,160),releaseIssued:false};
+        }
+      }
       res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers}));
+      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers,...(pc01Release?{pc01Release}:{})}));
     }
     if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
