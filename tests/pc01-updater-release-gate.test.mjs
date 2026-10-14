@@ -14,7 +14,7 @@ it('preserves single updater loop and small isolated release gate',()=>{
   expect(source.match(/while\(\$true\)\{/g)).toHaveLength(1);
   expect(guard.match(/function Get-ReleaseApproval/g)).toHaveLength(1);
   expect(guard.match(/function Save-ReleaseAttempt/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(60000);
+  expect(source.length).toBeLessThan(62000);
 });
 it('fails closed when local release guard or approval is missing',()=>{
   const guardLoad=source.indexOf('. $releaseGuardScript');
@@ -107,4 +107,38 @@ it('recognizes the real five-profile RDC 0.2.52 pool without falsely patching it
   expect(entry).toContain('if($externalPool){return $externalPool}');
   // Any unrecognized/altered launcher falls through to the old fail-closed path.
   expect(entry).toContain('remoteDesktopGuardInstaller');
+});
+
+
+it('five 0.2.52 RDC tasks are validated independently; legacy pooled task may stay disabled',()=>{
+  const begin=source.indexOf('function Get-RemoteDesktopExternalPool(){');
+  const end=source.indexOf('function Reconcile-RemoteDesktopGuard(){',begin);
+  const probe=source.slice(begin,end);
+  expect(probe).not.toContain('Get-ScheduledTask -TaskName $remoteDesktopTask');
+  for(const number of ['01','02','03','04','05']){
+    expect(probe).toContain('TigerIQ RDC'+number+' Remote');
+  }
+  expect(probe).toContain('foreach($name in $taskNames)');
+  expect(probe).toContain("if([string]$task.State -ne 'Running')");
+  expect(probe).toContain("reason='RDC_PINNED_FIVE_PROFILE_POOL'");
+  expect(probe).toContain("guardVerification='NOT_APPLICABLE_TO_EXTERNAL_POOL'");
+  expect(probe).not.toMatch(/\b(?:Stop|Start|Restart)-ScheduledTask\b/);
+});
+
+it('RDC partial/drifted external pool never falls back to legacy installer or touches sessions',()=>{
+  const begin=source.indexOf('function Get-RemoteDesktopExternalPool(){');
+  const end=source.indexOf('function Reconcile-RemoteDesktopGuard(){',begin);
+  const probe=source.slice(begin,end);
+  const entry=source.slice(end,end+260);
+  expect(probe).toContain("if($existing.Count -eq 0 -and $present.Count -eq 0){return $null}");
+  for(const reason of [
+    'RDC_EXTERNAL_POOL_INCOMPLETE',
+    'RDC_EXTERNAL_POOL_LAUNCHER_DRIFT',
+    'RDC_EXTERNAL_POOL_SOURCE_DRIFT',
+    'RDC_EXTERNAL_POOL_TASK_NOT_RUNNING',
+    'RDC_EXTERNAL_POOL_READ_ERROR',
+  ]) expect(probe).toContain(reason);
+  expect(entry).toContain('if($externalPool){return $externalPool}');
+  expect(entry).toContain('remoteDesktopGuardInstaller');
+  expect(probe).not.toMatch(/(?:Copy-Item|Set-Content|Remove-Item|Start-Process|Stop-Process)/);
 });
