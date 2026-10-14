@@ -373,10 +373,6 @@ function Restart-RemoteDesktopTaskClean([string]$reason,$result,[string]$authori
   }while((Get-Date)-lt$deadline)
   return @{action='blocked';reason='rdc_topology_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-RemoteDesktopRuntimeProcesses).Count;remoteLauncherCount=@(Get-RemoteDesktopLauncherProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
 }
-# The current Owner-configured five-profile 0.2.52 pool is NOT the old
-# single 0.2.51 runtime managed by the V4 guard installer. Never patch its
-# supervisor entrypoint or restart five live sessions as if they were one.
-# A foreign pool is explicit EXTERNAL (not a guard PASS), not a failed guard.
 function Get-RemoteDesktopExternalPool(){
   $launcher=Join-Path $remoteDesktopRuntime 'start-desktop-commander-remote.ps1'
   $supervisor=Join-Path $remoteDesktopRuntime 'rdc-pool-supervisor.ps1'
@@ -388,9 +384,6 @@ function Get-RemoteDesktopExternalPool(){
     $launcherBody=(Get-Content -Raw -LiteralPath $launcher).Trim()
     $workerBody=Get-Content -Raw -LiteralPath $worker
     $supervisorBody=Get-Content -Raw -LiteralPath $supervisor
-    # Exact wrapper path and five hard-pinned profiles. Malformed, renamed,
-    # latest/unpinned, or partial pools fail closed to the existing guard.
-    $expected='D:\TigerIQ\Runtime\desktop-commander-remote\rdc-pool-supervisor.ps1'
     if($launcherBody -cnotmatch '(?s)^\$ErrorActionPreference\s*=\s*"Stop"\s*&\s*"D:\\TigerIQ\\Runtime\\desktop-commander-remote\\rdc-pool-supervisor\.ps1"\s*exit\s+\$LASTEXITCODE$'){return $null}
     if($workerBody -cnotmatch '@wonderwhy-er/desktop-commander@0\.2\.52' -or
        $workerBody -cnotmatch '\^RDC0\[1-5\]\$' -or
