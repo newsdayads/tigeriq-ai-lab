@@ -221,7 +221,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, impactForPc01SignedSnapshotV2, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS, OWNER_V6_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS, OWNER_V6_APPROVED_BLOBS, OWNER_CODING_INTAKE_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
@@ -304,6 +304,42 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
     expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
   }
+});
+
+it('exact Owner-approved #4767 Coding Manager intake pair is atomic, content-bound and fail-closed',()=>{
+  const bundle=Object.entries(OWNER_CODING_INTAKE_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  expect(bundle).toHaveLength(2);
+  expect(impactForPc01ReleaseFiles(bundle)).toEqual(['core']);
+  expect(()=>impactForPc01ReleaseFiles(bundle.slice(0,1))).toThrow('CODING_INTAKE_BUNDLE_INCOMPLETE');
+  expect(()=>impactForPc01ReleaseFiles(bundle.slice(1))).toThrow('FILE_OUT_OF_SCOPE');
+  for(const name of Object.keys(OWNER_CODING_INTAKE_APPROVED_BLOBS)){
+    const changed=structuredClone(bundle);
+    changed.find(x=>x.filename===name).sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles(changed)).toThrow('CODING_INTAKE_CONTENT_UNVERIFIED');
+    const removed=structuredClone(bundle);
+    removed.find(x=>x.filename===name).status='removed';
+    expect(()=>impactForPc01ReleaseFiles(removed)).toThrow('CODING_INTAKE_FILE_STATE_DENIED');
+  }
+  expect(()=>impactForPc01ReleaseFiles([...bundle,{filename:'tests/github-coding-intake-copy.test.mjs'}])).toThrow('FILE_OUT_OF_SCOPE');
+  const v6=Object.entries(OWNER_V6_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const coding=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const guards=[
+    {filename:'apps/tigeriq-core/pc01-release-approval.mjs',status:'modified'},
+    {filename:'scripts/tigeriq-core/pc01-release-guard.ps1',status:'modified'},
+    {filename:'tests/pc01-release-guard-e2e.test.mjs',status:'modified'},
+  ];
+  expect(impactForPc01ReleaseFiles([...v6,...coding,...bundle,...guards])).toEqual(['coding','core','updater']);
+});
+
+it.skipIf(!pwshPresent)('PowerShell guard validates the two exact Git blobs for #4767 and rejects omission or mismatches',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const paths=Object.keys(OWNER_CODING_INTAKE_APPROVED_BLOBS);
+  const args={approval:{...template(),targetSha},targetSha,controlRepo:root,paths};
+  expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({...args,paths:paths.slice(0,1)}).reason).toBe('RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE');
+  expect(run({...args,paths:[...paths,'tests/github-coding-intake-copy.test.mjs']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
+  expect(run({...args,impact:'@{core=$false;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}'}).reason).toBe('RELEASE_PATH_COMPONENT_MISMATCH');
 });
 
 it('the immutable Owner V6 thirteen-blob package including Loader and sorting tests combines safely with Coding Lane two blobs for one signed main release',()=>{
@@ -537,7 +573,6 @@ it('refuses to replace an unconsumed or replayed Owner ticket',async()=>{
   expect(writes).toBe(0);
   expect(renames).toBe(0);
 });
-
 
 describe('Owner signed V2 exact-main snapshot: no perpetual per-blob pin edits',()=>{
   const baseline='1'.repeat(40), target='2'.repeat(40), fileSha='a'.repeat(40);

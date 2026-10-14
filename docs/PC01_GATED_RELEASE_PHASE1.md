@@ -61,7 +61,6 @@ File ví dụ luôn hết hạn nên không thể áp dụng. Khi chạy thật 
 
 Chưa đạt cổng nào thì giữ `OPEN`, không tuyên bố bản mã trên `main` tự chứng minh PC01 đã cài.
 
-
 ## P0 14/10/2026 — thiết kế chống tự khóa lần sau (V2, chưa cài PC01)
 
 - V1 ghim cứng Git blob vẫn chạy nguyên trạng cho các phiếu V1 cũ. Đây là lý do máy chạy SHA \`28ffe98c\` không chấp nhận toàn bộ thay đổi của \`5a04b8bf\`.
