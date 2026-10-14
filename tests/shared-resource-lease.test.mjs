@@ -7,6 +7,7 @@ import {
   recoverExpiredSharedResourceLeases,
   releaseSharedResourceLease,
   readVerifiedNv07CanaryCoreLease,
+  bindNv07CanaryCoreLeaseCallback,
   NV07_CANARY_CORE_SCOPE,
   sharedLeaseIdleWorkState,
 } from '../apps/tigeriq-core/shared-resource-lease.mjs';
@@ -283,4 +284,34 @@ test('NV07 Core lease reader fails closed for missing, wrong and expired DB auth
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(null,options),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[]})},options),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[{},{}]})},options),null);
+});
+
+test('NV07 Core host callback binds pinned job and SHA, rejects caller substitutions',async()=>{
+  const {db,calls}=nv07LeaseFixture();
+  const cb=bindNv07CanaryCoreLeaseCallback(db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  assert.strictEqual(await cb({jobId:'OTHER-JOB',resourceScope:NV07_CANARY_CORE_SCOPE}),null);
+  assert.strictEqual(await cb({jobId:NV07_JOB_ID,resourceScope:'OTHER-SCOPE'}),null);
+  assert.strictEqual(await cb({resourceScope:NV07_CANARY_CORE_SCOPE}),null);
+  assert.strictEqual(calls.length,0,'invalid requests must not query the DB');
+  const first=await cb({jobId:NV07_JOB_ID,resourceScope:NV07_CANARY_CORE_SCOPE,sourceSha:'b'.repeat(40)});
+  assert.strictEqual(first?.verifiedByCore,true);
+  assert.strictEqual(first?.job_id,NV07_JOB_ID);
+  assert.strictEqual(calls.length,1);
+  assert.ok(!JSON.stringify(first).includes('NEVER_LEAK_THIS_CORE_TOKEN'));
+  const second=await cb({jobId:NV07_JOB_ID,resourceScope:NV07_CANARY_CORE_SCOPE});
+  assert.strictEqual(second?.verifiedByCore,true);
+  assert.strictEqual(calls.length,2,'fresh DB lease must be read on each callback invocation');
+});
+
+test('NV07 Core host callback fails closed when pinned source, DB or fresh lease is invalid',async()=>{
+  const fixture=nv07LeaseFixture();
+  const args={jobId:NV07_JOB_ID,resourceScope:NV07_CANARY_CORE_SCOPE};
+  const untrusted=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:'latest'});
+  assert.strictEqual(await untrusted(args),null);
+  assert.strictEqual(fixture.calls.length,0);
+  const missing=bindNv07CanaryCoreLeaseCallback(null,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  assert.strictEqual(await missing(args),null);
+  const valid=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  fixture.row.lease_until=new Date(Date.now()-1000).toISOString();
+  assert.strictEqual(await valid(args),null,'expired DB lease must invalidate callback receipt');
 });
