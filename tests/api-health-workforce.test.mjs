@@ -16,6 +16,21 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(roster.at(-1)?.employee_id).toBe('NV20');
   });
 
+  it('restores NV07 Antigravity when explicitly registered, without claiming runtime activation',()=>{
+    const parsed=parseRegistryBody([
+      'REGISTRY_ROOT_VERSION=57',
+      '| mã | tên chuẩn | trạng thái quản trị |',
+      '|---|---|---|',
+      '| `NV07` | Google Antigravity | `ADMIN_ENABLED / PROVISIONING / RUNTIME_NOT_VERIFIED / NOT_YET_ROUTABLE` |',
+      '`5`,`7` RETIRED (historical entry)'
+    ].join(String.fromCharCode(10)));
+    const nv07=parsed.workforce.find(x=>x.employee_id==='NV07');
+    expect(parsed.version).toBe('57');
+    expect(nv07).toMatchObject({name:'Google Antigravity',assigned:true,retired:false});
+    expect(nv07?.admin_state).toContain('NOT_YET_ROUTABLE');
+    expect(parsed.workforce.find(x=>x.employee_id==='NV05')?.retired).toBe(true);
+  });
+
   it('parses NV00 from Registry #335 instead of dropping it',()=>{
     const parsed=parseRegistryBody([
       'REGISTRY_ROOT_VERSION=52',
