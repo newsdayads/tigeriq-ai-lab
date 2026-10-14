@@ -278,7 +278,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
-  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
+  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','NO_PROGRESS_WAIT_MATERIAL_CHANGE','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
@@ -699,9 +699,14 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
     const retryCount=retryEpoch.retryCount;
-    if(retryCount>=MAX_AUTO_RETRIES){
+    // A Manager that twice failed to produce any accepted child has no useful
+    // same-revision retry. Stop immediately; rearm only after a material
+    // canonical source change, without burning F1/F2 or blocking other scopes.
+    const noProgressStop=/manager attempt stopped:\s*two decisions without accepted child progress/i.test(String(objective.summary||''));
+    const terminalReason=noProgressStop?'NO_PROGRESS_WAIT_MATERIAL_CHANGE':'RETRY_BUDGET_EXHAUSTED';
+    if(noProgressStop||retryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
-      const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
+      const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:terminalReason,terminalReason:classification.reason,mainSha:currentMainSha,sourceRevision:currentSourceRevision};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
       if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
         if(retryCreatedThisTick)continue;
@@ -726,7 +731,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         results++;
         continue;
       }
-      await finalize('RETRY_BUDGET_EXHAUSTED',{terminalReason:classification.reason,retries:retryCount});
+      await finalize(terminalReason,{terminalReason:classification.reason,retries:retryCount});
       continue;
     }
 
