@@ -345,6 +345,75 @@ export function resolveCodingRepository(targetRepository='',{sourceRepository=SO
   if(!allowed.has(normalized))throw Object.assign(new Error('CODING_TARGET_REPOSITORY_NOT_ALLOWED'),{code:'CODING_TARGET_REPOSITORY_NOT_ALLOWED',detail:{targetRepository:raw}});
   return {owner:match[1],repo:match[2],fullName:raw,isSource:normalized===source.toLowerCase()};
 }
+// Owner direct 2026-10-15: this trusted source policy waives only optional
+// Coding review for this canonical repository. Objective text cannot grant it.
+const OWNER_CODING_REVIEW_WAIVER=Object.freeze({
+  kind:'owner_waiver',repository:'newsdayads/tigeriq-ai-lab',
+  authority:'OWNER_DIRECT_20261015T061206_ICT',
+  reference:'https://github.com/newsdayads/tigeriq-ai-lab/issues/504#issuecomment-6180609154',
+});
+export function codingOwnerReviewWaiver(repository=SOURCE_REPOSITORY,{
+  mode=process.env.TIGERIQ_CODING_REVIEW_POLICY||'owner_waiver',
+}={}){
+  if(mode!=='owner_waiver'||repository?.isSource!==true||
+     String(repository?.fullName||'').toLowerCase()!==OWNER_CODING_REVIEW_WAIVER.repository)return null;
+  return OWNER_CODING_REVIEW_WAIVER;
+}
+function assertTrustedOwnerReviewWaiver(waiver){
+  if(!waiver||Object.keys(OWNER_CODING_REVIEW_WAIVER).some(key=>waiver[key]!==OWNER_CODING_REVIEW_WAIVER[key]))
+    throw new Error('OWNER_REVIEW_WAIVER_INVALID');
+}
+export function formatCodingOwnerReviewPolicy(waiver){
+  if(!waiver)return '';
+  assertTrustedOwnerReviewWaiver(waiver);
+  return '\nAUTHORITATIVE_OWNER_REVIEW_POLICY: optional independent Coding review is OWNER_WAIVED for this repository; absence of a reviewer is not a blocker. This current Owner directive supersedes earlier optional review wording only. Canonical source scope, Owner stops, credentials, paid cost, destructive and external platform/Production gates still apply. Authority: '+waiver.reference+'\n';
+}
+export function formatOwnerReviewWaiverArtifact({implementerId,targetHead,waiver}={}){
+  assertTrustedOwnerReviewWaiver(waiver);
+  const implementer=reviewLine(implementerId,80),head=String(targetHead||'').trim();
+  if(!implementer||!/^[a-f0-9]{40}$/.test(head))throw new Error('OWNER_REVIEW_WAIVER_ARTIFACT_INVALID');
+  return ['[TIGERIQ_OWNER_REVIEW_WAIVER_V1]','REVIEW_MODE=OWNER_WAIVER',
+    'INDEPENDENT_REVIEW=NOT_PERFORMED_OWNER_WAIVED','IMPLEMENTER='+implementer,
+    'TARGET_HEAD='+head,'REPOSITORY='+waiver.repository,'AUTHORITY='+waiver.authority,
+    'OWNER_REFERENCE='+waiver.reference,'CI=PASSED_EXACT_TARGET_HEAD',
+    'WAIVER_IS_NOT_INDEPENDENT_PASS=true'].join('\n');
+}
+export async function runOwnerWaivedAcceptance({
+  waiver,waitGatesFn,onGatesPassed=async()=>{},recordWaiverFn,
+}={}){
+  assertTrustedOwnerReviewWaiver(waiver);
+  if(typeof waitGatesFn!=='function'||typeof recordWaiverFn!=='function')
+    throw new Error('OWNER_REVIEW_WAIVER_DEPENDENCY_MISSING');
+  const gates=await waitGatesFn();
+  if(gates?.state!=='passed'||!/^[a-f0-9]{40}$/.test(String(gates?.sha||'')))
+    throw new Error('OWNER_REVIEW_WAIVER_CI_REQUIRED');
+  await onGatesPassed({gates,reviewCycle:0});
+  const receipt=await recordWaiverFn({gates,waiver});
+  if(!receipt?.id||receipt?.targetHead!==gates.sha||
+     !/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/(?:issues|pull)\/[1-9]\d*#issuecomment-\d+$/.test(String(receipt?.url||'')))
+    throw new Error('OWNER_REVIEW_WAIVER_RECEIPT_REQUIRED');
+  return {gates,review:{kind:'owner_waiver',authority:waiver.authority,
+    reference:waiver.reference,targetHead:gates.sha,receiptUrl:receipt.url},
+    reviewCycle:0,action:{action:'owner_waiver'}};
+}
+export function assertCodingReviewAcceptance({
+  repository=SOURCE_REPOSITORY,implementerId,reviewerId,targetHead,expectedHead,review,
+}={}){
+  if(review?.kind!=='owner_waiver')
+    return assertIndependentReviewApproval({implementerId,reviewerId,targetHead,expectedHead,decision:review?.decision});
+  const waiver=codingOwnerReviewWaiver(repository);
+  if(!waiver||review.authority!==waiver.authority||review.reference!==waiver.reference)
+    throw new Error('OWNER_REVIEW_WAIVER_REVOKED_OR_INVALID');
+  if(!implementerId||!/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/(?:issues|pull)\/[1-9]\d*#issuecomment-\d+$/.test(String(review.receiptUrl||''))||review.targetHead!==targetHead||targetHead!==expectedHead||
+     !/^[a-f0-9]{40}$/.test(String(targetHead||'')))throw new Error('OWNER_REVIEW_WAIVER_HEAD_STALE');
+  return true;
+}
+async function persistOwnerReviewWaiverArtifact(prNumber,data,repository=SOURCE_REPOSITORY){
+  const out=await ghRepo(repository,'/issues/'+prNumber+'/comments',{
+    method:'POST',body:JSON.stringify({body:formatOwnerReviewWaiverArtifact(data)}),
+  });
+  return {id:out?.id,url:out?.html_url,targetHead:data.targetHead};
+}
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
@@ -1157,6 +1226,7 @@ async function managerTick(){
   let manager=pickManagerResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
+  const ownerWaiver=codingOwnerReviewWaiver(resolveCodingRepository(targetRepositoryFromObjective(o.objective)));
   let liveGithubContext=null;
   try{liveGithubContext=await loadAuthoritativeGithubContext(o.objective)}
   catch(error){
@@ -1168,7 +1238,7 @@ async function managerTick(){
   const tree=await repoTree(targetRepository);
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
   const liveContextText=liveGithubContextBlock?`\n\n${liveGithubContextBlock}\n`:'';
-  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`;
+  const prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`+formatCodingOwnerReviewPolicy(ownerWaiver);
   try{
     const validateManagerDecision=d=>{
       if(d?.status==='blocked'&&managerBlockKind(d?.summary)!=='hard'){
@@ -1683,6 +1753,7 @@ async function runJob(j){
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
+  const ownerWaiver=codingOwnerReviewWaiver(targetRepository);
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   j.liveGithubContext=generatedGithubContext;
@@ -1711,9 +1782,11 @@ async function runJob(j){
     j.head_sha=reconciled.headSha;
     await pool.query("update tigeriq_coding_jobs set branch=$2,pr_number=$3,head_sha=$4 where id=$1",[j.id,branch,reconciled.number,reconciled.headSha]);
     context=await contextFor(j.paths,branch,targetRepository);
+    if(!ownerWaiver){
     reviewer=selectableResources([worker.id,...cooldownExcludes]).find(r=>r.id===j.reviewer_employee_id)||pickResource([worker.id,...cooldownExcludes]);
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
-    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer.id]);
+    }
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer?.id||null]);
   }else{
     // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
@@ -1722,21 +1795,20 @@ async function runJob(j){
       await pool.query("update tigeriq_coding_jobs set live_github_context=$2,live_github_context_fingerprint=$3 where id=$1",[j.id,JSON.stringify(generatedGithubContext),generatedGithubContext.fingerprint]);
       j.live_github_context=generatedGithubContext;j.live_github_context_fingerprint=generatedGithubContext.fingerprint;
     }
-    reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+    if(!ownerWaiver){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
     const base=await mainSha(targetRepository);branch=branchName(worker.id,j.id);
     // await createBranch(branch,base)
     await createBranch(branch,base,targetRepository);
-    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer.id,branch]);
+    await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer?.id||null,branch]);
     for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth,targetRepository);
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nIndependent reviewer: ${reviewer.id}\nTarget repository: ${targetRepository.fullName}\nDirect writes to main are forbidden. Merge is attempted only after CI gates and reviewer approval.`,targetRepository);
+    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nReview: ${ownerWaiver?'OWNER_WAIVER (not independent PASS)':reviewer.id}\nTarget repository: ${targetRepository.fullName}\nDirect writes to main are forbidden. Merge is attempted only after exact-head CI and an applicable independent approval or explicit Owner waiver.`,targetRepository);
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
   let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
-  const lifecycle=await runReviewReworkLifecycle({
-    maxCycles:3,
-    waitGatesFn:async()=>runGateWithRepair({
+  const waitGatesFn=async()=>runGateWithRepair({
+
       // waitGates(branch,pr.number)
       waitFn:()=>waitGates(branch,pr.number,targetRepository),
       onWaiting:async()=>{await pool.query("update tigeriq_coding_jobs set status='waiting_ci' where id=$1",[j.id])},
@@ -1746,17 +1818,27 @@ async function runJob(j){
         // generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext)
         const repaired=await generateAndWriteRepair(worker,j,branch,[`CI gate failure on same PR #${pr.number}`,...evidence],cooldownExcludes,mutationAuth,canonicalObjective,freshContext,targetRepository);
         worker=repaired.worker;gen=repaired.payload;
-        if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
-        await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
+        if(!ownerWaiver&&reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+        await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
       },
       maxRepairCycles:3,
       timeoutRetries:1,
-    }),
-    onGatesPassed:async({gates:cycleGates})=>{
-      await pool.query("update tigeriq_coding_jobs set status='review',head_sha=$2 where id=$1",[j.id,cycleGates.sha]);
+    });
+  const onGatesPassed=async({gates:cycleGates})=>{
+    await pool.query("update tigeriq_coding_jobs set status=$3,head_sha=$2 where id=$1",[j.id,cycleGates.sha,ownerWaiver?'waiting_ci':'review']);
+  };
+  const lifecycle=ownerWaiver?await runOwnerWaivedAcceptance({
+    waiver:ownerWaiver,waitGatesFn,onGatesPassed,
+    recordWaiverFn:async({gates,waiver})=>{
+      const freshContext=await loadAuthoritativeGithubContext(canonicalObjective);
+      assertLiveGithubContextFresh(generatedGithubContext,freshContext);
+      await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
+      return persistOwnerReviewWaiverArtifact(pr.number,{implementerId:worker.id,targetHead:gates.sha,waiver},targetRepository);
     },
+  }):await runReviewReworkLifecycle({
+    maxCycles:3,waitGatesFn,onGatesPassed,
     reviewFn:async({gates:cycleGates})=>{
-      if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
+      if(!ownerWaiver&&reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
       const reviewGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,reviewGithubContext);j.liveGithubContext=reviewGithubContext;
       const diff=await ghTextRepo(targetRepository,`/pulls/${pr.number}`,'application/vnd.github.v3.diff');
       const reviewed=await reviewPr(reviewer,j,diff,worker.id,cooldownExcludes,canonicalObjective,reviewGithubContext);reviewer=reviewed.resource;
@@ -1773,16 +1855,16 @@ async function runJob(j){
       if(reviewer.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
     },
     onWaitingCi:async()=>{
-      await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer.id]);
+      await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
     },
   });
   review=lifecycle.review;gates=lifecycle.gates;
-  approvedHead=gates.sha;approvedReviewer=reviewer.id;approvedImplementer=worker.id;
-  if(review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
+  approvedHead=gates.sha;approvedReviewer=reviewer?.id||null;approvedImplementer=worker.id;
+  if(!ownerWaiver&&review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
   assertPrOpenState(await ghRepo(targetRepository,`/pulls/${pr.number}`));
   const mergeGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,mergeGithubContext);
   const finalSha=await headSha(branch,targetRepository);
-  assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
+  assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
   if(AUTO_MERGE){
     try{
@@ -1839,7 +1921,7 @@ export async function codingIssueStatusSnapshot(db,issueNumber){
   };
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
+async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),reviewPolicy:codingOwnerReviewWaiver()||{kind:'independent'},resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 

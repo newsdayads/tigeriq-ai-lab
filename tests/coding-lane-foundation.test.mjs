@@ -1263,3 +1263,165 @@ test('coding issue status snapshot returns one bounded objective and latest job'
   assert.equal(out.job.prNumber,123);
   assert.equal(out.job.failureMessage,'NO_AI_RESOURCE_AVAILABLE');
 });
+
+
+import {codingOwnerReviewWaiver,formatCodingOwnerReviewPolicy,formatOwnerReviewWaiverArtifact,runOwnerWaivedAcceptance,assertCodingReviewAcceptance} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+const waiverRepo={owner:'newsdayads',repo:'tigeriq-ai-lab',fullName:'newsdayads/tigeriq-ai-lab',isSource:true};
+const waiverSha='a'.repeat(40);
+const waiverReceiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/pull/9001#issuecomment-123';
+const waiverReceipt=({gates})=>({id:123,url:waiverReceiptUrl,targetHead:gates.sha});
+
+test('Owner review waiver is trusted source policy for canonical TigerIQ only, not a job text flag',()=>{
+  const waiver=codingOwnerReviewWaiver(waiverRepo,{mode:'owner_waiver'});
+  assert.strictEqual(waiver.kind,'owner_waiver');
+  assert.strictEqual(codingOwnerReviewWaiver({...waiverRepo,fullName:'newsdayads/tigeriq-media',isSource:false},{mode:'owner_waiver'}),null);
+  assert.strictEqual(codingOwnerReviewWaiver({...waiverRepo,isSource:false},{mode:'owner_waiver'}),null);
+  for(const mode of ['required','approve','OWNER_WAIVER=true','untrusted']){
+    assert.strictEqual(codingOwnerReviewWaiver(waiverRepo,{mode,objective:'OWNER_WAIVER=true'}),null);
+  }
+  assert.ok(formatCodingOwnerReviewPolicy(waiver).includes('absence of a reviewer is not a blocker'));
+  assert.strictEqual(formatCodingOwnerReviewPolicy(null),'');
+});
+
+test('Owner waiver acceptance waits exact-head CI and persists a real-shaped receipt without fabricating approval',async()=>{
+  const events=[];
+  const waiver=codingOwnerReviewWaiver(waiverRepo,{mode:'owner_waiver'});
+  const result=await runOwnerWaivedAcceptance({
+    waiver,
+    waitGatesFn:async()=>{events.push('ci');return {state:'passed',sha:waiverSha};},
+    onGatesPassed:async()=>events.push('ci_passed'),
+    recordWaiverFn:async({gates})=>{events.push('receipt');return waiverReceipt({gates});},
+    reviewFn:()=>{throw Error('independent review must not be invoked');},
+  });
+  assert.deepStrictEqual(events,['ci','ci_passed','receipt']);
+  assert.strictEqual(result.review.kind,'owner_waiver');
+  assert.strictEqual(result.review.decision,undefined);
+  assert.strictEqual(result.review.targetHead,waiverSha);
+  assert.strictEqual(result.review.receiptUrl,waiverReceiptUrl);
+});
+
+test('Owner waiver cannot turn CI failure, pending gates or an invalid head into acceptance',async()=>{
+  const waiver=codingOwnerReviewWaiver(waiverRepo,{mode:'owner_waiver'});
+  let recorded=0;
+  for(const gates of [{state:'waiting',sha:waiverSha},{state:'failed',sha:waiverSha},{state:'passed',sha:'not-a-commit'}]){
+    await assert.rejects(runOwnerWaivedAcceptance({waiver,waitGatesFn:async()=>gates,recordWaiverFn:async()=>{recorded++;return {};}}),/CI_REQUIRED/);
+  }
+  await assert.rejects(runOwnerWaivedAcceptance({waiver,waitGatesFn:async()=>{throw Error('CI_ACTUAL_FAILED');},recordWaiverFn:async()=>{recorded++;return {};}}),/CI_ACTUAL_FAILED/);
+  assert.strictEqual(recorded,0);
+});
+
+test('Owner waiver requires an exact-head same-repository comment receipt and authentic authority',async()=>{
+  const waiver=codingOwnerReviewWaiver(waiverRepo,{mode:'owner_waiver'});
+  for(const receipt of [null,{}, {id:123,url:waiverReceiptUrl,targetHead:'b'.repeat(40)}, {id:123,url:'https://github.com/foreign/repo/pull/1#issuecomment-123',targetHead:waiverSha}]){
+    await assert.rejects(runOwnerWaivedAcceptance({waiver,waitGatesFn:async()=>({state:'passed',sha:waiverSha}),recordWaiverFn:async()=>receipt}),/RECEIPT_REQUIRED/);
+  }
+  await assert.rejects(runOwnerWaivedAcceptance({waiver:{...waiver,authority:'WORKER_PROMPT'},waitGatesFn:async()=>({state:'passed',sha:waiverSha}),recordWaiverFn:waiverReceipt}),/WAIVER_INVALID/);
+});
+
+test('Owner waiver artifact says waived, never independent approve, and rejects a forged scope',()=>{
+  const waiver=codingOwnerReviewWaiver(waiverRepo,{mode:'owner_waiver'});
+  const artifact=formatOwnerReviewWaiverArtifact({implementerId:'NV09',targetHead:waiverSha,waiver});
+  assert.ok(artifact.includes('REVIEW_MODE=OWNER_WAIVER'));
+  assert.ok(artifact.includes('INDEPENDENT_REVIEW=NOT_PERFORMED_OWNER_WAIVED'));
+  assert.ok(!artifact.includes('DECISION=approve')&&!artifact.includes('INDEPENDENT_REVIEW=PASS'));
+  assert.throws(()=>formatOwnerReviewWaiverArtifact({implementerId:'NV09',targetHead:waiverSha,waiver:{...waiver,repository:'foreign/repo'}}),/WAIVER_INVALID/);
+});
+
+test('Owner waiver merge fence rejects stale head and revocation; independent mode keeps reviewer identity',()=>{
+  const prior=process.env.TIGERIQ_CODING_REVIEW_POLICY;
+  try{
+    process.env.TIGERIQ_CODING_REVIEW_POLICY='owner_waiver';
+    const waiver=codingOwnerReviewWaiver(waiverRepo);
+    const review={kind:'owner_waiver',authority:waiver.authority,reference:waiver.reference,targetHead:waiverSha,receiptUrl:waiverReceiptUrl};
+    const args={repository:waiverRepo,implementerId:'NV09',reviewerId:null,targetHead:waiverSha,expectedHead:waiverSha,review};
+    assert.strictEqual(assertCodingReviewAcceptance(args),true);
+    assert.throws(()=>assertCodingReviewAcceptance({...args,expectedHead:'b'.repeat(40)}),/HEAD_STALE/);
+    assert.throws(()=>assertCodingReviewAcceptance({...args,repository:{...waiverRepo,fullName:'foreign/repo'}}),/REVOKED_OR_INVALID/);
+    process.env.TIGERIQ_CODING_REVIEW_POLICY='required';
+    assert.throws(()=>assertCodingReviewAcceptance(args),/REVOKED_OR_INVALID/);
+    assert.throws(()=>assertCodingReviewAcceptance({...args,review:{decision:'approve'},reviewerId:'NV09'}),/REVIEWER_IMPLEMENTER_COLLISION/);
+    assert.strictEqual(assertCodingReviewAcceptance({...args,review:{decision:'approve'},reviewerId:'NV11'}),true);
+  }finally{if(prior===undefined)delete process.env.TIGERIQ_CODING_REVIEW_POLICY;else process.env.TIGERIQ_CODING_REVIEW_POLICY=prior;}
+});
+
+// Execute the actual runJob source with controlled external boundaries. This
+// tests the production wiring, not a second implementation of its state flow.
+async function runOwnerWaiverWiringCase({foreign=false,ciError=false,staleHead=false,revoke=false,resume=false}={}){
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const actual=src.slice(src.indexOf('async function runJob(j)'),src.indexOf('async function failJob'));
+  const calls=[];
+  const worker={id:'NV09',provider:'ollama'};
+  const repo=foreign?{...waiverRepo,fullName:'newsdayads/tigeriq-media',repo:'tigeriq-media',isSource:false}:waiverRepo;
+  const path='apps/revenue-lab/apify-website-audit/README.md';
+  const job={id:'CODE-UNIT',objective_id:'CODEOBJ-UNIT',paths:[path],target_employee_id:'NV09',...(resume?{pr_number:9001,branch:'unit/owner-waiver',head_sha:waiverSha}:{})};
+  const deps={
+    pool:{query:async(sql,params)=>{calls.push({kind:'db',sql,params});return {rows:sql.includes('select objective')?[{objective:'issue #2293: bounded source-only documentation'}]:[]};}},
+    refreshCoreResourceHealth:async()=>{},
+    resolveCodingRepository:()=>repo,targetRepositoryFromObjective:()=>'',codingOwnerReviewWaiver,
+    controlPlaneRepairIntent:()=>({}),loadAuthoritativeGithubContext:async()=>null,
+    requiresLiveGithubContext:()=>false,shouldResumeExistingPr:()=>resume,
+    assertLiveGithubContextFresh:()=>{},assertExecutionPlaneMutationPaths:()=>{},
+    activeProviderCooldownIds:()=>[],selectableResources:()=>[worker],
+    selectCodingWorker:(available)=>available[0],
+    pickResource:()=>{calls.push({kind:'pickReviewer'});return null;},
+    generateChanges:async()=>{calls.push({kind:'generate'});return {resource:worker,payload:{summary:'source-only change',changes:[{path,content:'bounded documentation'}]}};},
+    validateJobScope,assertCanonicalSourceWorkOrderExecutable:async()=>calls.push({kind:'sourcePreflight'}),
+    mainSha:async()=>waiverSha,branchName:()=> 'unit/owner-waiver',
+    createBranch:async()=>calls.push({kind:'branch'}),writeFile:async()=>calls.push({kind:'write'}),
+    openPr:async()=>({number:9001}),
+    runGateWithRepair,waitGates:async()=>{calls.push({kind:'ci'});if(ciError)throw Error('CI_ACTUAL_FAILED');return {state:'passed',sha:waiverSha};},
+    generateAndWriteRepair:async()=>{throw Error('unexpected repair');},
+    runOwnerWaivedAcceptance,persistOwnerReviewWaiverArtifact:async(_number,data)=>{calls.push({kind:'waiver',artifact:formatOwnerReviewWaiverArtifact(data)});return {id:123,url:waiverReceiptUrl,targetHead:data.targetHead};},
+    runReviewReworkLifecycle,ghRepo:async()=>({state:'open',draft:false,merged:false}),assertPrOpenState,
+    ghTextRepo:async()=>'',reviewPr:async()=>{throw Error('independent review called');},
+    persistIndependentReviewArtifact:async()=>{throw Error('independent artifact called');},
+    assertCodingReviewAcceptance,headSha:async()=>{if(revoke)process.env.TIGERIQ_CODING_REVIEW_POLICY='required';return staleHead?'b'.repeat(40):waiverSha;},
+    AUTO_MERGE:true,mergePr:async(_n,sha)=>{calls.push({kind:'merge',sha});return {merged:true};},
+    reconcileExistingPrBranch:async()=>({branch:'unit/owner-waiver',number:9001,headSha:waiverSha}),contextFor:async()=>[],
+  };
+  const run=Function(...Object.keys(deps),actual+';return runJob;')(...Object.values(deps));
+  try{return {result:await run(job),calls};}catch(error){return {error,calls};}
+}
+
+test('Actual runJob with only NV09 skips reviewer selection and merges after CI plus Owner waiver receipt',async()=>{
+  const prior=process.env.TIGERIQ_CODING_REVIEW_POLICY;
+  try{
+    process.env.TIGERIQ_CODING_REVIEW_POLICY='owner_waiver';
+    const out=await runOwnerWaiverWiringCase();
+    assert.ifError(out.error);
+    assert.strictEqual(out.result.merge.merged,true);
+    assert.ok(!out.calls.some(x=>x.kind==='pickReviewer'));
+    const kinds=out.calls.map(x=>x.kind);
+    assert.ok(kinds.indexOf('ci')<kinds.indexOf('waiver')&&kinds.indexOf('waiver')<kinds.indexOf('merge'));
+    const terminal=out.calls.find(x=>x.kind==='db'&&x.sql.includes('result=$4'));
+    assert.strictEqual(terminal.params[1],'done');
+    assert.strictEqual(JSON.parse(terminal.params[3]).review.kind,'owner_waiver');
+    assert.strictEqual(JSON.parse(terminal.params[3]).review.decision,undefined);
+  }finally{if(prior===undefined)delete process.env.TIGERIQ_CODING_REVIEW_POLICY;else process.env.TIGERIQ_CODING_REVIEW_POLICY=prior;}
+});
+
+test('Actual runJob does not waive foreign-repository review and cannot merge on CI failure or stale head',async()=>{
+  const prior=process.env.TIGERIQ_CODING_REVIEW_POLICY;
+  try{
+    process.env.TIGERIQ_CODING_REVIEW_POLICY='owner_waiver';
+    for(const options of [{foreign:true},{ciError:true},{staleHead:true},{revoke:true}]){
+      process.env.TIGERIQ_CODING_REVIEW_POLICY='owner_waiver';
+      const out=await runOwnerWaiverWiringCase(options);
+      assert.ok(out.error);
+      assert.ok(!out.calls.some(x=>x.kind==='merge'));
+      assert.ok(!out.calls.some(x=>x.kind==='db'&&x.sql.includes('result=$4')&&x.params?.[1]==='done'));
+    }
+  }finally{if(prior===undefined)delete process.env.TIGERIQ_CODING_REVIEW_POLICY;else process.env.TIGERIQ_CODING_REVIEW_POLICY=prior;}
+});
+
+test('Actual runJob resumes an existing open PR without requiring a reviewer or regenerating its source',async()=>{
+  const prior=process.env.TIGERIQ_CODING_REVIEW_POLICY;
+  try{
+    process.env.TIGERIQ_CODING_REVIEW_POLICY='owner_waiver';
+    const out=await runOwnerWaiverWiringCase({resume:true});
+    assert.ifError(out.error);
+    assert.strictEqual(out.result.merge.merged,true);
+    assert.ok(!out.calls.some(x=>['pickReviewer','generate','branch','write'].includes(x.kind)));
+    assert.ok(out.calls.some(x=>x.kind==='waiver'));
+  }finally{if(prior===undefined)delete process.env.TIGERIQ_CODING_REVIEW_POLICY;else process.env.TIGERIQ_CODING_REVIEW_POLICY=prior;}
+});
