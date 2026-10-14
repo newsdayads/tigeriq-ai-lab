@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const entries = [
   ['apps/dashboard/src/bcct.mjs', 'dist/apps/dashboard/src/bcct.mjs'],
   ['apps/shared/bcct-v4-contract.mjs', 'dist/apps/shared/bcct-v4-contract.mjs'],
+  ['apps/shared/owner-interaction-v6.mjs', 'dist/apps/shared/owner-interaction-v6.mjs'],
 ];
 for (const [from, to] of entries) {
   const source = join(root, from);
@@ -30,4 +31,4 @@ if (!result.ok || typeof result.html !== 'string' ||
     !result.html.includes('6. Mốc kế tiếp')) {
   throw new Error('BCCT_DIST_RUNTIME_SMOKE_FAILED');
 }
-console.log('BCCT_DIST_RUNTIME_SMOKE_PASS: 2 copied MJS modules; 6 sections, filters, GitHub link, RDC5 fallback');
+console.log('BCCT_DIST_RUNTIME_SMOKE_PASS: 3 copied MJS modules; 6 sections, filters, GitHub link, RDC5 fallback');

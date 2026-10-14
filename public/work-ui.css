@@ -6,11 +6,11 @@
   --tiq-work-line-hover:#315a82;
   --tiq-work-text:#f3f7fc;
   --tiq-work-muted:#91a4ba;
-  --tiq-live:#46d48f;
-  --tiq-review:#efb85c;
-  --tiq-queue:#58a6ff;
+  --tiq-live:#58a6ff;
+  --tiq-review:#58a6ff;
+  --tiq-queue:#efb85c;
   --tiq-error:#ff747e;
-  --tiq-done:#58d8c6;
+  --tiq-done:#46d48f;
   --tiq-violet:#8c72d6;
 }
 .work-row,.wo-card{
@@ -28,11 +28,12 @@
 .work-row:hover,.wo-card:hover{border-color:var(--tiq-work-line-hover);transform:translateY(-1px);box-shadow:0 10px 28px rgba(0,0,0,.2),0 0 18px rgba(49,90,130,.1)}
 .work-row::before,.wo-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#71849a;opacity:.95}
 .work-row.status-working::before,.wo-card.status-working::before{background:var(--tiq-live)}
-.work-row.status-review::before,.work-row.status-waiting::before,.wo-card.status-review::before,.wo-card.status-waiting::before{background:var(--tiq-review)}
+.work-row.status-review::before,.wo-card.status-review::before{background:var(--tiq-review)}
+.work-row.status-waiting::before,.wo-card.status-waiting::before{background:var(--tiq-queue)}
 .work-row.status-queued::before,.wo-card.status-queued::before{background:var(--tiq-queue)}
 .work-row.status-blocked::before,.work-row.status-owner_gate::before,.wo-card.status-blocked::before,.wo-card.status-owner_gate::before{background:var(--tiq-error)}
 .work-row.status-done::before,.wo-card.status-done::before{background:var(--tiq-done)}
-.work-row.status-verify::before,.wo-card.status-verify::before{background:#d9a84f}
+.work-row.status-verify::before,.wo-card.status-verify::before{background:var(--tiq-review)}
 .work-row.status-goal::before,.wo-card.status-goal::before{background:var(--tiq-violet)}
 .work-row.status-system::before,.wo-card.status-system::before{background:#6c7987}
 .work-main{min-width:0}

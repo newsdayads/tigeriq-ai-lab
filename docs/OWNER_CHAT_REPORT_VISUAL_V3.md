@@ -6,6 +6,11 @@ Chủ thể: Anh Sơn → Vy
 Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả công việc trong mọi phiên nạp nguồn chuẩn.
 Ưu tiên: Lệnh Owner hiện hành > quy định nền tảng > Interaction Policy #504 > tài liệu này.
 
+## QUY ƯỚC HIỆN HÀNH V6 — 14/10/2026
+- Chính sách bổ sung: `docs/OWNER_INTERACTION_V6.md`, nguồn động #504, mô-đun `apps/shared/owner-interaction-v6.mjs` cho renderer do TigerIQ sở hữu.
+- Mọi câu trả lời công việc có thể dùng thẻ màu/icon/nút/tiến độ bằng chứng; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
+- Giữ BCCT V5 về bố cục; trạng thái ChatGPT/Gemini native chỉ được ghi đã kiểm thử nếu có bằng chứng phiên thật.
+
 ## Hợp đồng trình bày
 - Luôn tiếng Việt; cực ngắn cho việc thường, chỉ đi sâu khi anh Sơn yêu cầu hoặc cần bằng chứng.
 - Luồng chính: KẾT QUẢ → VƯỚNG MẮC THẬT (nếu có) → BƯỚC TIẾP THEO.
