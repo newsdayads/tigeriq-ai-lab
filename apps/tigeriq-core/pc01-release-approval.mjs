@@ -58,6 +58,23 @@ export const OWNER_CODING_CONTRACT_APPROVED_BLOBS = Object.freeze({
   'tests/coding-lane-foundation.test.mjs': '20aff7451494d107f0629ba69c220d3516a76899',
 });
 
+// Exact, immutable Owner V6 display source epoch: formerly merged #4761.
+// Paired with separately signed Coding Manager patch #4763 in the installed-main
+// comparison. These pins do NOT authorize any other UI assets or future edits.
+export const OWNER_V6_APPROVED_BLOBS = Object.freeze({
+  'apps/dashboard/src/bcct.mjs': 'ff3d4a23fd9df2e46773e34f092131e948458fec',
+  'apps/shared/owner-interaction-v6.mjs': 'a11454a5dd14a651d79bd1149fef70d8f5f2f109',
+  'bootstrap/02_TIGERIQ_WORKFLOW.md': '161991bc203669189ed027789972104e0d83fa34',
+  'docs/OWNER_CHAT_REPORT_VISUAL_V3.md': 'b424bb342cd87c64273ba2c09b8671ac1098a2e3',
+  'docs/OWNER_INTERACTION_V6.md': '1e116588234452574c2fc55db82a895e8ef311a8',
+  'public/work-center.js': '805ac2ec5af164b4bba54dd050c388ee9684ecac',
+  'public/work-ui.css': '7d3154d490dbcd2ce4f59e860ffd32da054a45ad',
+  'scripts/package-bcct-runtime.mjs': 'aab7b48a09860144e15684608c548b8bce5253b4',
+  'tests/bcct-renderer.test.mjs': '61075fe03d776f0363951774ae6771cf2ad7a104',
+  'tests/owner-interaction-v6.test.mjs': '6486b3ea5f6677639a79de8733320c49f8d1c51e',
+  'tests/owner-v6-work-center-colors.test.mjs': 'c1ce618ab1c84c14d1c913658856ee0a2000cf26',
+});
+
 const OWNER_ONE_TAP_RUNTIME = new Set([
   'apps/shared/owner-one-tap-approval.mjs',
   'apps/tigeriq-core/web-control-server.mjs',
@@ -110,6 +127,8 @@ export function impactForPc01ReleaseFiles(files) {
   const seenApiHealthFiles = new Set();
   const codingContractChange = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-coding-lane/coding-lane.mjs');
   const seenCodingContractFiles = new Set();
+  const ownerV6Changed = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-interaction-v6.mjs');
+  const seenOwnerV6Files = new Set();
   for (const entry of files) {
     const filename = typeof entry === 'string' ? entry : entry?.filename;
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
@@ -145,6 +164,15 @@ export function impactForPc01ReleaseFiles(files) {
       if (filename === 'apps/tigeriq-coding-lane/coding-lane.mjs') impact.add('coding');
       continue;
     }
+    if (ownerV6Changed && Object.hasOwn(OWNER_V6_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_V6_APPROVED_BLOBS[filename])
+        deny('OWNER_V6_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('OWNER_V6_FILE_STATE_DENIED');
+      seenOwnerV6Files.add(filename);
+      if (['apps/shared/owner-interaction-v6.mjs', 'apps/dashboard/src/bcct.mjs', 'public/work-center.js', 'public/work-ui.css', 'scripts/package-bcct-runtime.mjs'].includes(filename)) impact.add('core');
+      continue;
+    }
     if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
@@ -165,6 +193,8 @@ export function impactForPc01ReleaseFiles(files) {
   if (codingContractChange &&
       seenCodingContractFiles.size !== Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS).length)
     deny('CODING_CONTRACT_BUNDLE_INCOMPLETE');
+  if (ownerV6Changed && seenOwnerV6Files.size !== Object.keys(OWNER_V6_APPROVED_BLOBS).length)
+    deny('OWNER_V6_BUNDLE_INCOMPLETE');
   if (!impact.size) deny('NO_COMPONENT_IMPACT');
   return [...impact].sort();
 }
