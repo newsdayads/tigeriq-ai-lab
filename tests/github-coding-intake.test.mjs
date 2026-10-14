@@ -1614,3 +1614,56 @@ describe('V2 historical contract must not veto coding intake',()=>{
     expect(parseCodingIssue(issue(V1_COMPLETE))).not.toBeNull();
   });
 });
+
+
+describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
+  it('does not run F1/F2 on an unchanged manager failure; rearms once on genuine source change',async()=>{
+    const pool=fakePool();
+    const body=['## ACTIVE WORK ORDER — V2','WORK_ORDER_LIFECYCLE=V2',SAFE,
+      'CAPABILITY=coding','EXECUTION_SURFACE=CODING','AUTO_QUEUE=INCLUDED',
+      'RESOURCE_SCOPE=MANAGER_NO_PROGRESS','ALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs',
+      'CURRENT_STATE=READY_SOURCE_RECONCILIATION'].join('\n');
+    let current=issue(body,{number:1607,title:'Manager source patch without child progress',comments:0});
+    const oldRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    const managerStopped='Manager attempt stopped: two decisions without accepted child progress; awaiting material change';
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{
+      issueNumber:1607,codingObjectiveId:'obj-1607',sourceRevision:oldRevision,
+      scopeLease:{resourceScope:'MANAGER_NO_PROGRESS',paths:['tests/github-coding-intake.test.mjs'],ambiguous:false},
+    }});
+    let posted=0;
+    let recoveryObjective=null;
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[
+        {id:'obj-1607',status:'blocked',summary:managerStopped},
+        ...(recoveryObjective?[recoveryObjective]:[]),
+      ],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-manager-v1'}});
+      if(url.includes('/issues/1607/comments?'))return response([]);
+      if(url.endsWith('/issues/1607'))return response(current);
+      if(url.includes('/api/objectives')){
+        posted++;
+        const objective=JSON.parse(init.body).objective;
+        expect(objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-1607');
+        recoveryObjective={id:'obj-1607-material-recovery',status:'queued',objective};
+        return response({id:recoveryObjective.id});
+      }
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(0);
+    const finals=pool.events.filter(e=>e.type==='GITHUB_CODING_BLOCKED_FINAL');
+    expect(finals).toHaveLength(1);
+    expect(finals[0].data.reason).toBe('NO_PROGRESS_WAIT_MATERIAL_CHANGE');
+    expect(shouldRearmRecoverableFinal(finals[0].data,'main-manager-v1',[],oldRevision,false)).toBe(false);
+    current={...current,body:body+'\nCURRENT_STEP=NEW_MATERIAL_SOURCE_REPAIR'};
+    const newRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    expect(newRevision).not.toBe(oldRevision);
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(newRevision);
+  });
+});
