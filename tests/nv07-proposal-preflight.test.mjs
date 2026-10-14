@@ -50,6 +50,28 @@ describe('NV07 proposal-only preflight (not runtime authorization)', () => {
   ])('denies %s', (_label, change, expectedCode) => {
     expect(nv07ProposalPreflight(make(change))).toMatchObject({ allowed: false, mode: 'DENY', code: expectedCode });
   });
+  it.each([
+    "--dangerously-skip-permissions=true",
+    "--dangerously-skip-permissions=false",
+    "--yolo=true",
+    "--allow-all=true",
+    "--approval-mode=\"yolo\"",
+    "--approval-mode='yolo'",
+    "--approval-mode \"yolo\"",
+    "--approval-mode 'yolo'",
+    "\"--yolo=true\"",
+    "'--allow-all=true'",
+    "--output-format json --dangerously-skip-permissions=true"
+])('denies value/quoted permission bypass form %s', (cliFlags) => {
+    expect(nv07ProposalPreflight(make({ cliFlags }))).toMatchObject({
+      allowed: false, mode: 'DENY', code: 'NV07_CLI_PERMISSION_BYPASS_DENIED',
+    });
+  });
+  it('keeps harmless output-format options eligible for a proposal', () => {
+    for (const cliFlags of ['--output-format json', '--output-format=json']) {
+      expect(nv07ProposalPreflight(make({ cliFlags })).allowed).toBe(true);
+    }
+  });
   it('normalizes Windows repo separators without permitting escape', () => {
     expect(nv07CanonicalRepoPath('docs\\implementation\\a.md')).toBe('docs/implementation/a.md');
     expect(nv07CanonicalRepoPath('docs/../../private')).toBeNull();

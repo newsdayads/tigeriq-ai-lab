@@ -8,7 +8,7 @@ const HOST = 'PC01';
 const REPO_SHA = /^[a-f0-9]{40}$/i;
 const BAD_FILE_PARTS = /(^|\/)(\.git|\.env(?:\.[^/]*)?|\.ssh|\.aws|\.npmrc|node_modules|secrets?|credentials?|private[_-]?keys?|tokens?)(\/|$)/i;
 const BAD_EXTENSIONS = /\.(?:pem|p12|pfx|key|kdbx)$/i;
-const BLOCKED_FLAGS = /(?:^|\s)--(?:dangerously-skip-permissions|yolo|allow-all|approval-mode[= ]yolo)(?:\s|$)/i;
+const BLOCKED_FLAGS = /(?:^|\s)["']?--(?:dangerously-skip-permissions|yolo|allow-all)(?=[\s="' ]|$)|(?:^|\s)["']?--approval-mode(?:\s*=\s*|\s+)["']?yolo(?=[\s"'=]|$)/i;
 
 function reject(code) { return Object.freeze({ allowed: false, code, mode: 'DENY' }); }
 

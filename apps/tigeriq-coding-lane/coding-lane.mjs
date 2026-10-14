@@ -404,6 +404,34 @@ const managerLocalBackupResources=[
 const busyAiResources=new Set();
 let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
 
+// B03: diagnostic-only counters, never affect worker eligibility or leases.
+let coreHealthReadback={attemptedAt:0,succeededAt:0,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
+export function codingCoreHealthFailureKind(error){
+  const code=String(error?.code||'').toUpperCase();
+  const name=String(error?.name||'');
+  if(name==='AbortError'||name==='TimeoutError'||code.includes('TIMEOUT')||code==='ABORT_ERR')return 'TIMEOUT';
+  if(code==='CODING_CORE_HEALTH_RESPONSE_STALE')return 'STALE_RESPONSE';
+  if(code.startsWith('CODING_CORE_HEALTH_'))return 'INVALID_RESPONSE';
+  const status=Number(error?.status||error?.statusCode||0);
+  if(status>=500&&status<600)return 'CORE_HTTP_5XX';
+  if(status>=400&&status<500)return 'CORE_HTTP_4XX';
+  return 'FETCH_OR_TRANSPORT_ERROR';
+}
+export function codingCoreHealthReadback(health,diagnostics,{nowMs=Date.now(),ttlMs=10000}={}){
+  const at=Number(health?.fetchedAt)||0;
+  const age=at?Math.max(0,nowMs-at):null;
+  const ageOf=stamp=>stamp?Math.max(0,nowMs-stamp):null;
+  return {
+    fresh:Boolean(at&&nowMs-at<=ttlMs),
+    ageMs:age,ttlMs,
+    lastAttemptAgeMs:ageOf(diagnostics?.attemptedAt),
+    lastSuccessAgeMs:ageOf(diagnostics?.succeededAt),
+    lastFailureAgeMs:ageOf(diagnostics?.failedAt),
+    lastFailureKind:diagnostics?.lastFailureKind||null,
+    consecutiveFailures:Math.max(0,Number(diagnostics?.consecutiveFailures)||0),
+  };
+}
+
 export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(!state||typeof state!=='object')return false;
   const health=String(state.health_state??state.healthState??'').toUpperCase();
@@ -497,19 +525,66 @@ export function rankCodingManagerResources(candidates=[],{nowMs=Date.now()}={}){
     ownerCodexApproved:false,
   });
 }
-async function refreshCoreResourceHealth(){
+export function createCodingCoreHealthPump(refresh,{intervalMs=2500,setTimer=setTimeout,clearTimer=clearTimeout}={}){
+  let active=false,timer=null,inFlight=null;
+  const run=()=>{
+    if(inFlight)return inFlight;
+    const job=Promise.resolve().then(refresh);
+    inFlight=job;
+    const release=()=>{if(inFlight===job)inFlight=null;};
+    job.then(release,release);
+    return job;
+  };
+  const arm=()=>{
+    if(!active||timer!==null)return;
+    timer=setTimer(()=>{
+      timer=null;
+      if(!active)return;
+      return run().catch(()=>{}).finally(arm);
+    },intervalMs);
+    timer?.unref?.();
+  };
+  return {
+    refresh:run,
+    start(){
+      if(active)return inFlight||Promise.resolve();
+      active=true;
+      return run().finally(arm);
+    },
+    stop(){
+      active=false;
+      if(timer!==null){clearTimer(timer);timer=null;}
+    },
+  };
+}
+
+async function fetchCoreResourceHealth(){
   const nowMs=Date.now();
-  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
+  // Refresh before expiry; freshness/eligibility still uses the original full TTL.
+  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS/2)return true;
+  coreHealthReadback.attemptedAt=nowMs;
   try{
     const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},FAST_CORE_HEALTH_ENABLED?3000:CORE_STATUS_TIMEOUT_MS);
     if(FAST_CORE_HEALTH_ENABLED)validateCodingFastHealthResponse(snapshot);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
+    coreHealthReadback.succeededAt=Date.now();
+    coreHealthReadback.consecutiveFailures=0;
     return true;
-  }catch{
+  }catch(error){
+    coreHealthReadback.failedAt=Date.now();
+    coreHealthReadback.lastFailureKind=codingCoreHealthFailureKind(error);
+    coreHealthReadback.consecutiveFailures++;
+    // Keep existing fail-closed semantics; do not retain an eligible AI on failure.
     coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
     return false;
   }
 }
+
+// One bounded local reader, independent of Manager latency and GitHub cooldown.
+const coreHealthPump=createCodingCoreHealthPump(fetchCoreResourceHealth,{
+  intervalMs:Math.max(1000,Math.floor(CORE_RESOURCE_HEALTH_TTL_MS/4)),
+});
+async function refreshCoreResourceHealth(){return coreHealthPump.refresh();}
 
 function coreResourceEligible(resource,nowMs=Date.now()){
   if(process.env.NODE_ENV==='test'&&coreResourceHealth.byEmployee.size===0)return true;
@@ -1729,7 +1804,7 @@ export async function codingIssueStatusSnapshot(db,issueNumber){
   };
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
+async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
@@ -1737,6 +1812,7 @@ if(process.env.NODE_ENV!=='test'){
   installAiJsonTransport({maxAttempts:1,baseDelayMs:350,attemptTimeoutMs:45000});
   await initDb();
   await recoverAfterCodingRestart();
+  void coreHealthPump.start().catch(()=>{});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
@@ -1771,8 +1847,8 @@ if(process.env.NODE_ENV!=='test'){
     await cleanupStaleRunningRuntimeCanary().catch(()=>{});
     console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:String(error?.code||error?.message||error).slice(0,160),pid:process.pid}));
   }
-  process.on('SIGINT',()=>{stop=true;server.close()});
-  process.on('SIGTERM',()=>{stop=true;server.close()});
+  process.on('SIGINT',()=>{stop=true;coreHealthPump.stop();server.close()});
+  process.on('SIGTERM',()=>{stop=true;coreHealthPump.stop();server.close()});
   while(!stop){
     const nowLoop=Date.now();
     if(githubApiBackoffUntil>nowLoop){
@@ -1814,5 +1890,6 @@ if(process.env.NODE_ENV!=='test'){
     }
     await sleep(1500);
   }
+  coreHealthPump.stop();
   if(pool)await pool.end();
 }
