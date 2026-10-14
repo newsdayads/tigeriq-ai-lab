@@ -7,7 +7,7 @@ test('recovery helper is unique and does not duplicate updater code',()=>{
   expect(source.match(/function Runtime-Source-Dirty/g)).toHaveLength(1);
   expect(source.match(/function Restart-Core/g)).toHaveLength(1);
   expect(source.match(/function Gates-Pass/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(60000);
+  expect(source.length).toBeLessThan(62000); // Five-session guard adds bounded fail-closed topology checks.
 });
 test('installed metadata must match worktree and be a valid known commit',()=>{
   const block=source.slice(source.indexOf('function Resolve-DeployedSourceSha'),source.indexOf('function Runtime-Source-Dirty'));
