@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 // Use the real CSS cascade: inline Health styles, shared Work UI,
 // canonical Work Center visual CSS, then the final PC01 Health overrides.
 const healthHtml = readFileSync('apps/tigeriq-core/dashboard.html', 'utf8');
-const inlineStyles = [...healthHtml.matchAll(/<style\\b[^>]*>([\\s\\S]*?)<\\/style>/g)].map((match) => match[1]);
+const inlineStyles = [...healthHtml.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map((match) => match[1]);
 if (inlineStyles.length !== 5) throw new Error('API Health inline CSS order changed; re-audit the fixture');
 const css = [
   ...inlineStyles.slice(0, 3),
