@@ -41,6 +41,7 @@ export default defineConfig({
       'tests/nv07-proposal-preflight.test.mjs',
       'tests/nv07-workforce-registry.test.mjs',
       'tests/nv07-headless-proposal-adapter.test.mjs',
+      'tests/nv07-core-routing-gate.test.mjs',
       'tests/shared-resource-lease.test.mjs',
       'tests/coding-autonomy-supervisor.test.mjs',
       'tests/autonomy-supervisor.test.mjs',
