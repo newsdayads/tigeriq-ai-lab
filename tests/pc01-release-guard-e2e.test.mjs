@@ -462,9 +462,18 @@ it.skipIf(!pwshPresent)('PC01 PowerShell guard pins matching API Health CSS and 
     'tests/pc01-release-guard-e2e.test.mjs'];
   const approval={...template(),targetSha,components:['core','updater']};
   const impact='@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
-  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).approved).toBe(true);
-  expect(run({approval,paths:files.filter(p=>p!=='tests/e2e/api-health-work-card-layout.spec.ts'),impact,targetSha,controlRepo:root}).reason)
-    .toBe('RELEASE_API_HEALTH_BUNDLE_INCOMPLETE');
+  // V1 keeps immutable historical pins. New HEAD bytes are not a new grant.
+  // Updated source is covered separately by the signed V2 tests below.
+  const matches=(pins,names=files)=>Object.entries(pins).filter(([name])=>names.includes(name)).every(([name,blob])=>
+    execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
+  const v1Reason=(names,success)=>!matches(OWNER_ONE_TAP_APPROVED_BLOBS,names)
+    ?'RELEASE_ONE_TAP_CONTENT_MISMATCH':!matches(OWNER_API_HEALTH_APPROVED_BLOBS,names)
+      ?'RELEASE_API_HEALTH_CONTENT_MISMATCH':success;
+  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).reason)
+    .toBe(v1Reason(files,'LOCAL_RELEASE_APPROVAL_PRESENT'));
+  const incomplete=files.filter(p=>p!=='tests/e2e/api-health-work-card-layout.spec.ts');
+  expect(run({approval,paths:incomplete,impact,targetSha,controlRepo:root}).reason)
+    .toBe(v1Reason(incomplete,'RELEASE_API_HEALTH_BUNDLE_INCOMPLETE'));
 });
 
 it.skipIf(!pwshPresent)('PC01 PowerShell release gate accepts the exact eight-blob signed-scope bundle in a disposable harness',()=>{
@@ -474,7 +483,11 @@ it.skipIf(!pwshPresent)('PC01 PowerShell release gate accepts the exact eight-bl
   const files=[...approvedPaths,'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1','tests/pc01-release-guard-e2e.test.mjs'];
   const approval={...template(),targetSha,components:['core','updater']};
   const impact='@{core=$true;web=$true;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
-  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).approved).toBe(true);
+  // Preserve V1 fail-closed behavior when any approved historical blob has drifted.
+  const matchesHistoricBlobs=Object.entries(OWNER_ONE_TAP_APPROVED_BLOBS).every(([name,blob])=>
+    execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
+  expect(run({approval,paths:files,impact,targetSha,controlRepo:root}).reason)
+    .toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_ONE_TAP_CONTENT_MISMATCH');
   expect(run({approval,paths:files.slice(1),impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_ONE_TAP_BUNDLE_INCOMPLETE');
   expect(run({approval,paths:[...files,'apps/tigeriq-core/web-control-admin.js'],impact,targetSha,controlRepo:root}).reason).toBe('RELEASE_IMPACT_OUT_OF_SCOPE');
 });
