@@ -171,8 +171,8 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     }
     $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact $targetSha
     if($pathDenial){return @{approved=$false;reason=$pathDenial}}
-    if(-not($impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
-    $wanted=@(@('core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
+    if(-not($impact.coding -or $impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
+    $wanted=@(@('coding','core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
     $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
     if(($provided -join ',') -cne ($wanted -join ',')){return @{approved=$false;reason='RELEASE_COMPONENTS_MISMATCH'}}
     if(Test-Path -LiteralPath $releaseAttemptPath){
