@@ -85,3 +85,26 @@ it('V2 maps Owner display-only and Web Control changes to Core without weakening
   expect(fn).toContain("public/(work-center(-visual)?|work-ui)");
   expect(fn).toContain("scripts/package-bcct-runtime.mjs");
 });
+
+
+it('recognizes the real five-profile RDC 0.2.52 pool without falsely patching its supervisor',()=>{
+  const begin=source.indexOf('function Get-RemoteDesktopExternalPool(){');
+  const end=source.indexOf('function Reconcile-RemoteDesktopGuard(){',begin);
+  expect(begin).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(begin);
+  const probe=source.slice(begin,end);
+  expect(probe).toContain('rdc-pool-supervisor.ps1');
+  expect(probe).toContain('rdc-pool-worker.ps1');
+  expect(probe).toContain('@wonderwhy-er/desktop-commander@0');
+  expect(probe).toContain('2\\.52');
+  expect(probe).toContain('RDC01.*RDC02.*RDC03.*RDC04.*RDC05');
+  expect(probe).toContain("reason='RDC_PINNED_FIVE_PROFILE_POOL'");
+  expect(probe).toContain("guardVerification='NOT_APPLICABLE_TO_EXTERNAL_POOL'");
+  expect(probe).not.toContain('Stop-ScheduledTask');
+  expect(probe).not.toContain('Start-ScheduledTask');
+  const entry=source.slice(end,end+290);
+  expect(entry).toContain('Get-RemoteDesktopExternalPool');
+  expect(entry).toContain('if($externalPool){return $externalPool}');
+  // Any unrecognized/altered launcher falls through to the old fail-closed path.
+  expect(entry).toContain('remoteDesktopGuardInstaller');
+});
