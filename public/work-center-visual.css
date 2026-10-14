@@ -398,3 +398,14 @@ body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
 :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center .work-activity span:last-child{
  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;max-width:100%;
 }
+
+/* Health desktop regression: the legacy Work panel uses height:100% with an
+   indefinite containing height while its work-list has flex-basis:0. That can
+   collapse grid-row sizes and put card contents over neighboring rows.
+   Let the panel and work grid establish height from their real content. */
+@media (min-width:1450px){
+ body.api-health .work-panel{height:auto!important;min-height:0!important}
+ body.api-health .work-panel #workList.wo-list.work-list.tiq-work-center{
+  flex:0 0 auto!important;height:auto!important;min-height:max-content!important;
+ }
+}
