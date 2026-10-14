@@ -207,10 +207,19 @@ export function apiDoctorRepairDeploymentGate({
     return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
   }
   const result=String(updaterResult||'').trim().toUpperCase();
+  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
+  // Updater result describes the LATEST candidate, not the last installed
+  // revision. A newer, separately gated release can be WAIT_RELEASE_APPROVAL
+  // after a completed repair was already deployed. The aligned, durable Core
+  // source and installed SHA plus post-issue cutover above prove only that an
+  // installed revision exists. Core still verifies that this SHA contains the
+  // exact repair PR before permitting bounded validation. No auto-RECOVERED.
+  if(result==='WAIT_RELEASE_APPROVAL'&&/^[0-9a-f]{40}$/.test(candidate)&&candidate!==installed){
+    return {action:'validate_repair',reason:'canonical_repair_installed_while_next_release_waits'};
+  }
   if(!['UPDATED','NO_CHANGE'].includes(result)){
     return {action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'};
   }
-  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
   if(candidate&&candidate!==installed){
     return {action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'};
   }
