@@ -375,7 +375,19 @@ it.skipIf(!pwshPresent)('PowerShell owner V6 plus Coding batch only accepts exac
   const args={approval:{...template(),targetSha,components:['coding','core','updater']},paths,
     impact:'@{core=$true;web=$false;coding=$true;openclaw=$false;updater=$true;liveBridge=$false}',
     targetSha,controlRepo:root};
-  expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  // A feature PR changes its HEAD Git blobs. Legacy V1 MUST reject that
+  // unsigned content; don't mistake the intended rejection for a CI defect.
+  const matches=(pins)=>Object.entries(pins).every(([name,blob])=>
+    execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
+  const v6Matches=matches(OWNER_V6_APPROVED_BLOBS),codingMatches=matches(OWNER_CODING_CONTRACT_APPROVED_BLOBS);
+  const outcome=run(args).reason;
+  if(!v6Matches||!codingMatches){
+    expect(outcome).toBe(v6Matches?'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH':'RELEASE_OWNER_V6_CONTENT_MISMATCH');
+    expect(run({...args,paths:paths.filter(p=>p!=='public/work-ui.css')}).approved).toBe(false);
+    expect(run({...args,paths:[...paths,'public/work-ui-unknown.css']}).approved).toBe(false);
+    return;
+  }
+  expect(outcome).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
   expect(run({...args,paths:paths.filter(p=>p!=='public/work-ui.css')}).reason).toBe('RELEASE_OWNER_V6_BUNDLE_INCOMPLETE');
   expect(run({...args,paths:[...paths,'public/work-ui-unknown.css']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
@@ -411,9 +423,11 @@ it.skipIf(!pwshPresent)('signed PowerShell guard matches only the immutable Codi
   const approval={...template(),targetSha,components:['coding','core','updater']};
   const impact='@{core=$true;web=$false;coding=$true;openclaw=$false;updater=$true;liveBridge=$false}';
   const args={approval,paths,impact,targetSha,controlRepo:root};
-  expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  const matchesHistoricBlobs=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).every(([name,blob])=>
+    execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
+  expect(run(args).reason).toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
   expect(run({...args,paths:paths.filter(p=>p!=='tests/coding-lane-foundation.test.mjs')}).reason)
-    .toBe('RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE');
+    .toBe(matchesHistoricBlobs?'RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
 });
 
 it('only exact three-file API Health CSS bundle is eligible in combined Owner-scoped release',()=>{
@@ -645,5 +659,26 @@ describe('Owner signed V2 exact-main snapshot: no perpetual per-blob pin edits',
       .toBe('RELEASE_ATTEMPT_ALREADY_RECORDED');
     expect(run({...args,paths:[...present,'api/live-device-auth.mjs']}).reason).toBe('RELEASE_V2_FORBIDDEN_SURFACE');
     expect(run({...args,approval:{...approval,releasePolicy:'ALLOW_ALL'}}).reason).toBe('RELEASE_V2_POLICY_INVALID');
+  });
+
+  it.skipIf(!pwshPresent)('V2 signed-snapshot source preflight handles new Coding blobs without relaxing V1',()=>{
+    const root=fileURLToPath(new URL('../',import.meta.url));
+    const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+    const paths=['apps/tigeriq-coding-lane/coding-lane.mjs','tests/coding-lane-foundation.test.mjs'];
+    const approval={...template(),schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V2',
+      releasePolicy:'SCOPED_SNAPSHOT_V2',targetSha,components:['coding']};
+    const impact='@{core=$false;web=$false;coding=$true;openclaw=$false;updater=$false;liveBridge=$false}';
+    const args={approval,paths,targetSha,impact,controlRepo:root};
+    // This is a source-only guard test with a synthetic approval fixture, NOT a real signed Owner ticket.
+    expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+    expect(run({...args,paths:[...paths,'apps/android-worker/runtime.mjs']}).reason)
+      .toBe('RELEASE_V2_FORBIDDEN_SURFACE');
+    expect(run({...args,approval:{...approval,releasePolicy:'ALLOW_ALL'}}).reason)
+      .toBe('RELEASE_V2_POLICY_INVALID');
+    const v1={...template(),targetSha,components:['coding']};
+    const currentPinned=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).every(([name,blob])=>
+      execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
+    expect(run({...args,approval:v1}).reason)
+      .toBe(currentPinned?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
   });
 });
