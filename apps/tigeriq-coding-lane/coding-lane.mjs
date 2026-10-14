@@ -378,6 +378,8 @@ const GEMINI_BACKOFF_BASE_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_BAC
 const GEMINI_MAX_ATTEMPTS=Math.max(1,Number(process.env.TIGERIQ_GEMINI_MAX_ATTEMPTS||4));
 const geminiRateController=createGeminiRateController({minIntervalMs:GEMINI_MIN_INTERVAL_MS,backoffBaseMs:GEMINI_BACKOFF_BASE_MS,maxAttempts:GEMINI_MAX_ATTEMPTS});
 const OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_NV09_OLLAMA_URL||process.env.TIGERIQ_OLLAMA_URL||'http://127.0.0.1:11435');
+// NV08 Manager uses the Core-local service; NV09 keeps its dedicated endpoint.
+const MANAGER_OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_CODING_MANAGER_OLLAMA_URL||'http://127.0.0.1:11434');
 const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(300000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||240000)));
 // Only Coding Manager planning is timeboxed; Worker/review Ollama requests retain their prior limit.
 export function normalizeManagerOllamaTimeout(value){const n=Number(value);return Math.max(15000,Math.min(120000,Number.isFinite(n)&&n>0?n:45000))}
@@ -659,6 +661,10 @@ export function normalizeLocalOllamaBaseUrl(value='http://127.0.0.1:11434'){
   if(url.protocol!=='http:'||!['127.0.0.1','localhost','::1','[::1]'].includes(url.hostname))throw new Error('OLLAMA_LOOPBACK_ONLY');
   return url.origin;
 }
+export function codingOllamaBaseUrlForResource(resource,{workerUrl=OLLAMA_BASE_URL,managerUrl=MANAGER_OLLAMA_BASE_URL}={}){
+  if(resource?.provider!=='ollama')throw new Error('CODING_OLLAMA_RESOURCE_REQUIRED');
+  return normalizeLocalOllamaBaseUrl(resource?.id==='NV08'?managerUrl:workerUrl);
+}
 export function configuredCodingResourceIds(){return resources.map(x=>x.id)}
 export function codingOutputTokenLimit(prompt,defaultMax=8000){
   const p=String(prompt||'');
@@ -687,9 +693,17 @@ export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLL
     return String(text);
   }finally{clearTimeout(timer)}
 }
+export function invokeCodingOllamaResource(resource,prompt,{
+  fetchImpl=fetch,workerUrl=OLLAMA_BASE_URL,managerUrl=MANAGER_OLLAMA_BASE_URL,
+  maxTokens=codingOutputTokenLimit(prompt),timeoutMs=OLLAMA_TIMEOUT_MS,
+}={}){
+  return invokeOllamaChat(resource.model,prompt,{
+    fetchImpl,baseUrl:codingOllamaBaseUrlForResource(resource,{workerUrl,managerUrl}),maxTokens,timeoutMs,
+  });
+}
 async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
   const outputTokens=codingOutputTokenLimit(prompt);
-  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS});
+  if(r.provider==='ollama')return invokeCodingOllamaResource(r,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS});
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,outputTokens);
