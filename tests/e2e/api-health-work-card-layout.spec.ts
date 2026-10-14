@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
+// GitHub-hosted runners provide Google Chrome, not Playwright's bundled Chromium.
+test.use({ channel: 'chrome' });
+
 // Use the real CSS cascade: inline Health styles, shared Work UI,
 // canonical Work Center visual CSS, then the final PC01 Health overrides.
 const healthHtml = readFileSync('apps/tigeriq-core/dashboard.html', 'utf8');
