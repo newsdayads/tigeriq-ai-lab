@@ -366,7 +366,7 @@ export async function acceptPc01OwnerApprovalEvent({
     let prior;
     try { prior = readJson(await io.readFile(attempt, 'utf8'), 'ATTEMPT_INVALID'); }
     catch (error) { if (error?.code === 'ENOENT') deny('ACTIVE_APPROVAL_UNCONSUMED'); throw error; }
-    if (existingTicket.schema !== 'TIGERIQ_PC01_RELEASE_APPROVAL_V1' ||
+    if (!['TIGERIQ_PC01_RELEASE_APPROVAL_V1','TIGERIQ_PC01_RELEASE_APPROVAL_V2'].includes(existingTicket.schema) ||
         prior.requestId !== existingTicket.requestId ||
         prior.targetSha !== existingTicket.targetSha ||
         !['COMMITTED','ROLLED_BACK'].includes(prior.result) ||
