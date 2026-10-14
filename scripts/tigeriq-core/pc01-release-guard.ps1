@@ -1,6 +1,7 @@
 # Operational gate sourced only from installed runtime, never candidate or GitHub metadata.
 $releaseApprovalPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-approval.json'
 $releaseAttemptPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'
+$ownerProjectPolicyPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-owner-project-policy.json'
 function Test-ReleaseApprovalAcl {
   # The parent directory matters: an untrusted directory writer can replace
   # a correctly ACL-protected child with a forged approval file.
@@ -223,10 +224,100 @@ function Assert-ReleaseChangedPathsV2([string[]]$changedPaths,[hashtable]$impact
   }
   return $null
 }
-function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){
+function Test-OwnerProjectPolicyAcl {
+  $trusted=@('S-1-5-18','S-1-5-32-544')
+  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
+             [System.Security.AccessControl.FileSystemRights]::Modify -bor
+             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
+             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+  try{
+    if(-not [Environment]::OSVersion.Platform.ToString().Equals('Win32NT')){return $false}
+    foreach($p in @((Split-Path -Parent $ownerProjectPolicyPath),$ownerProjectPolicyPath)){
+      $item=Get-Item -LiteralPath $p -Force -ErrorAction Stop
+      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
+      $acl=Get-Acl -LiteralPath $p
+      if($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted){return $false}
+      foreach($ace in @($acl.Access)){
+        if([string]$ace.AccessControlType -ne 'Allow'){continue}
+        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
+      }
+    }
+    return $true
+  }catch{return $false}
+}
+# Owner project delegation is installed by an explicitly authorized administrator,
+# outside GitHub candidate source. This is NOT a forged GitHub/OIDC signature.
+# Without that protected grant the V1/V2 signed-ticket behavior stays unchanged.
+function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSha,[string[]]$changedPaths,[string]$verifiedGateSha){
+  if(-not(Test-Path -LiteralPath $ownerProjectPolicyPath)){return $null}
+  if(-not(Test-OwnerProjectPolicyAcl)){return @{approved=$false;reason='OWNER_PROJECT_POLICY_ACL_UNTRUSTED'}}
+  try{
+    $p=Get-Content -Raw -LiteralPath $ownerProjectPolicyPath|ConvertFrom-Json -ErrorAction Stop
+    $expected=@('schema','enabled','repo','policy','authorizationSource','authorizationRef','activatedBy','installedAtActivation','issuedAtUtc')|Sort-Object
+    $actual=@($p.PSObject.Properties.Name|Sort-Object)
+    if(($actual -join ',') -cne ($expected -join ',') -or
+       [string]$p.schema -cne 'TIGERIQ_PC01_OWNER_PROJECT_POLICY_V2' -or
+       [string]$p.repo -cne 'newsdayads/tigeriq-ai-lab' -or
+       [string]$p.policy -cne 'OWNER_PROJECT_AUTONOMY_V2' -or
+       [string]$p.authorizationSource -cne 'OWNER_DIRECT_CHAT_RDC' -or
+       [string]$p.authorizationRef -cnotmatch '^https://github\.com/newsdayads/tigeriq-ai-lab/issues/504#issuecomment-[0-9]+$' -or
+       [string]$p.activatedBy -cnotmatch '^OWNER-RDC-[A-Za-z0-9-]{4,80}$' -or
+       [string]$p.installedAtActivation -cnotmatch '^[a-f0-9]{40}$' -or
+       $p.enabled -isnot [bool]){return @{approved=$false;reason='OWNER_PROJECT_POLICY_INVALID'}}
+    if(-not $p.enabled){return $null}
+    $issued=[DateTime]::Parse([string]$p.issuedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    if($issued -gt [DateTime]::UtcNow.AddSeconds(30)){return @{approved=$false;reason='OWNER_PROJECT_POLICY_TIME_INVALID'}}
+    # Use the normal updater CI gate on EXACT deployed main; PR-head fallback is
+    # insufficient for this broader grant. There is no per-release Owner prompt.
+    if($verifiedGateSha -cne $targetSha){return @{approved=$false;reason='OWNER_PROJECT_EXACT_MAIN_CI_REQUIRED'}}
+    if(-not $controlRepo){return @{approved=$false;reason='OWNER_PROJECT_PROVENANCE_MISSING'}}
+    & git -C $controlRepo merge-base --is-ancestor ([string]$p.installedAtActivation) $installedSha 2>$null
+    if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_ACTIVATION_BASELINE_MISMATCH'}}
+    & git -C $controlRepo merge-base --is-ancestor $installedSha $targetSha 2>$null
+    if($LASTEXITCODE -ne 0 -or $installedSha -ceq $targetSha){return @{approved=$false;reason='OWNER_PROJECT_ANCESTRY_INVALID'}}
+    if(-not $changedPaths -or @($changedPaths).Count -eq 0){return @{approved=$false;reason='RELEASE_CHANGED_PATHS_MISSING'}}
+    $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach($name in $changedPaths){
+      if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
+         @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or -not $seen.Add($name)){
+        return @{approved=$false;reason='OWNER_PROJECT_PATH_INVALID'}
+      }
+      # The grant covers project CODE (including security/workflows/updater),
+      # never private runtime credentials or secret material outside the repo.
+      if($name -match '(?i)(^|/)(secrets|credentials)(/|$)|(^|/)\.env($|\.)'){
+        return @{approved=$false;reason='OWNER_PROJECT_PRIVATE_MATERIAL'}
+      }
+      $entry=(& git -C $controlRepo ls-tree $targetSha -- $name 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}}
+      if($entry -cmatch '^(100644|100755) blob [a-f0-9]{40}\s') {continue}
+      # A real deletion is allowed; symlinks/submodules/unknown paths are not
+      # silently interpreted as regular runtime files.
+      if(-not $entry){
+        $deleted=(& git -C $controlRepo diff --diff-filter=D --name-only $installedSha $targetSha -- $name 2>$null|Out-String).Trim()
+        if($LASTEXITCODE -eq 0 -and $deleted -ceq $name){continue}
+      }
+      return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+    }
+    $requestId='OWNER-PROJECT-'+$targetSha
+    if(Test-Path -LiteralPath $releaseAttemptPath){
+      $attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
+      if([string]$attempt.result -ceq 'STARTED'){return @{approved=$false;reason='OWNER_PROJECT_INFLIGHT_ATTEMPT'}}
+      if([string]$attempt.targetSha -ceq $targetSha -or [string]$attempt.requestId -ceq $requestId){
+        return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}
+      }
+    }
+    return @{approved=$true;reason='OWNER_PROJECT_AUTHORIZED';requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
+  }catch{return @{approved=$false;reason='OWNER_PROJECT_POLICY_OR_PROVENANCE_INVALID'}}
+}
+function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths,[string]$verifiedGateSha=''){
   # The local file is an operational approval record, not cryptographic proof
   # of Owner identity. An independently authorized local procedure MUST provision it.
   if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
+  $projectApproval=Get-OwnerProjectReleaseApproval $targetSha $installedSha $changedPaths $verifiedGateSha
+  if($null -ne $projectApproval){return $projectApproval}
   if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
   if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
   try{
@@ -279,3 +370,4 @@ function Save-ReleaseAttempt([string]$requestId,[string]$targetSha,[string]$prev
   [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
   Move-Item -Force -LiteralPath $tmp -Destination $releaseAttemptPath
 }
+

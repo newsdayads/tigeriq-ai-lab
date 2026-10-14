@@ -1,6 +1,7 @@
 // Keep the installed Vitest configuration byte-exact; this registered suite
 // imports the complete standing-release regression suite (including live route mocks).
 import './pc01-standing-release.test.mjs';
+// Owner project authority tests are registered here, without changing Vitest pins.
 import { describe } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -24,21 +25,25 @@ const template=()=>({
   approved:true,components:['core'],
   expiresAtUtc:new Date(Date.now()+3600_000).toISOString(),
 });
-function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}',targetSha=sha,controlRepo='' }={}){
+function run({approval=null,attempt=null,aclMock=true,projectPolicy=null,projectAclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}',targetSha=sha,installedSha=previous,gateSha=targetSha,controlRepo='' }={}){
   const dir=mkdtempSync(join(tmpdir(),'tigeriq-guard-e2e-'));
   try{
     const approver=join(dir,'approval.json'),marker=join(dir,'attempt.json');
+    const projectPolicyFile=join(dir,'owner-project-policy.json');
     if(approval!==null)writeFileSync(approver,JSON.stringify(approval));
     if(attempt!==null)writeFileSync(marker,JSON.stringify(attempt));
+    if(projectPolicy!==null)writeFileSync(projectPolicyFile,JSON.stringify(projectPolicy));
     const powershell=[
       ". '"+esc(guardPath)+"'",
       "$releaseApprovalPath='"+esc(approver)+"'",
       "$releaseAttemptPath='"+esc(marker)+"'",
+      "$ownerProjectPolicyPath='"+esc(projectPolicyFile)+"'",
       ...(aclMock?["function Test-ReleaseApprovalAcl { return $true }"]:[]),
+      ...(projectAclMock?["function Test-OwnerProjectPolicyAcl { return $true }"]:[]),
       "$controlRepo='"+esc(controlRepo)+"'",
        "$impact="+impact,
       '$changed='+JSON.stringify(paths).replace(/^\[/,'@(').replace(/\]$/,')').replaceAll('"',"'"),
-      "$result=Get-ReleaseApproval '"+targetSha+"' '"+previous+"' $impact $changed",
+      "$result=Get-ReleaseApproval '"+targetSha+"' '"+installedSha+"' $impact $changed '"+gateSha+"'",
       '$result|ConvertTo-Json -Compress -Depth 4',
     ].join('\n');
     const script=join(dir,'guard-harness.ps1');
@@ -701,3 +706,85 @@ describe('Owner signed V2 exact-main snapshot: no perpetual per-blob pin edits',
       .toBe(currentPinned?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
   });
 });
+
+
+
+describe('Owner project authority — real Git + executable PowerShell guard',()=>{
+  function fixture(callback){
+    const repo=mkdtempSync(join(tmpdir(),'tigeriq-owner-project-'));
+    try{
+      git(repo,'init');git(repo,'config','user.name','TigerIQ isolated authority test');
+      git(repo,'config','user.email','authority-test@tigeriq.local');
+      const initial={'apps/tigeriq-core/core.mjs':'export const version=1;\n','obsolete.mjs':'export const old=true;\n'};
+      for(const [name,text] of Object.entries(initial)){mkdirSync(join(repo,name,'..'),{recursive:true});writeFileSync(join(repo,name),text);}
+      git(repo,'add','.');git(repo,'commit','-m','baseline');
+      const installedSha=git(repo,'rev-parse','HEAD');
+      const changes={
+        'apps/tigeriq-core/core.mjs':'export const version=2;\n',
+        'apps/tigeriq-coding-lane/coding-lane.mjs':'export const coding=true;\n',
+        'scripts/tigeriq-core/update-core-runtime.ps1':'# owner approved updater source\n',
+        'scripts/tigeriq-core/pc01-release-guard.ps1':'# owner approved guard source\n',
+        '.github/workflows/authority-test.yml':'name: isolated-test\n',
+        'apps/shared/security-policy.mjs':'export const permitted=true;\n',
+      };
+      for(const [name,text] of Object.entries(changes)){mkdirSync(join(repo,name,'..'),{recursive:true});writeFileSync(join(repo,name),text);}
+      rmSync(join(repo,'obsolete.mjs'));
+      git(repo,'add','.');git(repo,'commit','-m','owner project change');
+      const targetSha=git(repo,'rev-parse','HEAD');
+      const projectPolicy={
+        schema:'TIGERIQ_PC01_OWNER_PROJECT_POLICY_V2',enabled:true,repo:'newsdayads/tigeriq-ai-lab',
+        policy:'OWNER_PROJECT_AUTONOMY_V2',authorizationSource:'OWNER_DIRECT_CHAT_RDC',
+        authorizationRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/504#issuecomment-1234567890',
+        activatedBy:'OWNER-RDC-ISOLATED-TEST',installedAtActivation:installedSha,
+        issuedAtUtc:new Date(Date.now()-1000).toISOString(),
+      };
+      const args={projectPolicy,targetSha,installedSha,controlRepo:repo,paths:[...Object.keys(changes),'obsolete.mjs']};
+      return callback(args);
+    }finally{rmSync(repo,{recursive:true,force:true});}
+  }
+  it.skipIf(!pwshPresent)('authorizes Core, Coding, updater, guard, workflow and security code without per-file pins or repeated tickets',()=>fixture(args=>{
+    const r=run(args);
+    expect(r.approved).toBe(true);expect(r.reason).toBe('OWNER_PROJECT_AUTHORIZED');
+    expect(r.requestId).toBe('OWNER-PROJECT-'+args.targetSha);
+    expect(r.authorizationRef).toBe(args.projectPolicy.authorizationRef);
+  }));
+  it.skipIf(!pwshPresent)('removing or disabling the independent grant preserves the old manual release gate',()=>fixture(args=>{
+    expect(run({...args,projectPolicy:null}).reason).toBe('RELEASE_LOCAL_APPROVAL_MISSING');
+    expect(run({...args,projectPolicy:{...args.projectPolicy,enabled:false}}).reason).toBe('RELEASE_LOCAL_APPROVAL_MISSING');
+  }));
+  it.skipIf(!pwshPresent)('requires main CI for the exact target rather than an earlier PR head',()=>fixture(args=>{
+    expect(run({...args,gateSha:args.installedSha}).reason).toBe('OWNER_PROJECT_EXACT_MAIN_CI_REQUIRED');
+  }));
+  it.skipIf(!pwshPresent)('rejects real untrusted policy ACL and cannot activate from candidate metadata',()=>fixture(args=>{
+    expect(run({...args,projectAclMock:false}).reason).toBe('OWNER_PROJECT_POLICY_ACL_UNTRUSTED');
+    expect(run({...args,projectPolicy:{...args.projectPolicy,candidateMayActivate:true}}).reason).toBe('OWNER_PROJECT_POLICY_INVALID');
+  }));
+  it.skipIf(!pwshPresent)('rejects another repository, wrong authority source and string-valued enable flag',()=>fixture(args=>{
+    for(const override of [{repo:'other/repo'},{authorizationSource:'PR_COMMENT'},{enabled:'true'}])
+      expect(run({...args,projectPolicy:{...args.projectPolicy,...override}}).reason).toBe('OWNER_PROJECT_POLICY_INVALID');
+  }));
+  it.skipIf(!pwshPresent)('rejects non-installed activation baseline and future authorization time',()=>fixture(args=>{
+    expect(run({...args,projectPolicy:{...args.projectPolicy,installedAtActivation:args.targetSha}}).reason).toBe('OWNER_PROJECT_ACTIVATION_BASELINE_MISMATCH');
+    expect(run({...args,projectPolicy:{...args.projectPolicy,issuedAtUtc:new Date(Date.now()+86400000).toISOString()}}).reason).toBe('OWNER_PROJECT_POLICY_TIME_INVALID');
+  }));
+  it.skipIf(!pwshPresent)('keeps in-flight and replay protection after broad Owner authorization',()=>fixture(args=>{
+    expect(run({...args,attempt:{targetSha:args.installedSha,result:'STARTED'}}).reason).toBe('OWNER_PROJECT_INFLIGHT_ATTEMPT');
+    expect(run({...args,attempt:{targetSha:args.targetSha,result:'COMMITTED'}}).reason).toBe('RELEASE_ATTEMPT_ALREADY_RECORDED');
+    expect(run({...args,attempt:{targetSha:args.targetSha,result:'ROLLED_BACK'}}).reason).toBe('RELEASE_ATTEMPT_ALREADY_RECORDED');
+  }));
+  it.skipIf(!pwshPresent)('rejects traversal, duplicate paths and private material while allowing security code',()=>fixture(args=>{
+    expect(run({...args,paths:['../outside.ps1']}).reason).toBe('OWNER_PROJECT_PATH_INVALID');
+    expect(run({...args,paths:[args.paths[0],args.paths[0]]}).reason).toBe('OWNER_PROJECT_PATH_INVALID');
+    expect(run({...args,paths:['.env.production']}).reason).toBe('OWNER_PROJECT_PRIVATE_MATERIAL');
+    expect(run({...args,paths:['secrets/key.txt']}).reason).toBe('OWNER_PROJECT_PRIVATE_MATERIAL');
+    expect(run({...args,paths:['apps/shared/security-policy.mjs']}).approved).toBe(true);
+  }));
+  it.skipIf(!pwshPresent)('rejects unknown paths and backwards source movement',()=>fixture(args=>{
+    expect(run({...args,paths:['not-present.mjs']}).reason).toBe('OWNER_PROJECT_SOURCE_PROVENANCE_INVALID');
+    expect(run({...args,installedSha:args.targetSha,targetSha:args.installedSha,gateSha:args.installedSha})).toMatchObject({approved:false,reason:'OWNER_PROJECT_ANCESTRY_INVALID'});
+  }));
+  it.skipIf(!pwshPresent)('does not silently expire a valid Owner grant or invent a release quota',()=>fixture(args=>{
+    expect(run({...args,projectPolicy:{...args.projectPolicy,issuedAtUtc:'2020-01-01T00:00:00.000Z'}}).approved).toBe(true);
+  }));
+});
+

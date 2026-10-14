@@ -132,6 +132,24 @@ function Sync-UpdaterRuntime(){
   $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
   New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
   $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+  # Called only inside an approved release or its rollback. Refresh the guard
+  # from that same verified snapshot; a code merge cannot activate an Owner grant.
+  $guardSource=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
+  if(-not(Test-Path -LiteralPath $guardSource)){throw 'RELEASE_GUARD_SOURCE_MISSING'}
+  $parseTokens=$null;$parseErrors=$null
+  $null=[Management.Automation.Language.Parser]::ParseFile($guardSource,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'RELEASE_GUARD_SOURCE_PARSE_FAILED'}
+  $sourceHash=(Get-FileHash -LiteralPath $guardSource -Algorithm SHA256).Hash
+  $oldHash=if(Test-Path -LiteralPath $releaseGuardScript){(Get-FileHash -LiteralPath $releaseGuardScript -Algorithm SHA256).Hash}else{''}
+  if($sourceHash -ne $oldHash){
+    if($oldHash){
+      $guardBackup=Join-Path 'C:\ProgramData\TigerIQCoreRelease\Backup' ('guard-'+$oldHash+'.ps1')
+      if(-not(Test-Path -LiteralPath $guardBackup)){Copy-Item -LiteralPath $releaseGuardScript -Destination $guardBackup -ErrorAction Stop}
+    }
+    $guardTmp=$releaseGuardScript+'.tmp'
+    Copy-Item -LiteralPath $guardSource -Destination $guardTmp -Force
+    Move-Item -LiteralPath $guardTmp -Destination $releaseGuardScript -Force
+  }
 }
 function Ensure-UpdaterTaskRuntimeTarget(){
   # TIGERIQ_UPDATER_TASK_SELF_HEAL_V1: the updater must be able to recreate its own AtStartup task
@@ -853,7 +871,7 @@ while($true){
       continue
     }
     . $releaseGuardScript
-    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
     if(-not $releaseApproval.approved){
       Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
       Start-Sleep -Seconds $IntervalSeconds
@@ -902,3 +920,4 @@ while($true){
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
   Start-Sleep -Seconds $IntervalSeconds
 }
+
