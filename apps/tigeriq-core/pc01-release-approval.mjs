@@ -16,6 +16,17 @@ const SOURCE_ONLY = new Set([
   'docs/PC01_GATED_RELEASE_PHASE1.md', 'vitest.config.ts',
   'tests/pc01-release-guard-e2e.test.mjs', 'tests/pc01-release-preflight.test.mjs',
   'tests/pc01-updater-release-gate.test.mjs',
+  '.github/ISSUE_TEMPLATE/work_order_v2.md',
+  'scripts/verify_work_board_ui.mjs',
+  'tests/continuous-capability-verify.test.mjs',
+  'tests/core-autonomous-rca.test.ts',
+  'tests/core-manager-stop-next.test.mjs',
+  'tests/github-intake.test.mjs',
+  'tests/live-status-api.test.mjs',
+  'tests/tigeriq-live-owner-refinement.test.mjs',
+  'tests/web-control.test.ts',
+  'tests/work-order-lifecycle-v2.test.mjs',
+  'bootstrap/02_TIGERIQ_WORKFLOW.md'
 ]);
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
@@ -27,6 +38,7 @@ const UPDATER_FILES = new Set([
 const CORE_FILES = new Set([
   'scripts/tigeriq-core/run-core.ps1',
   'scripts/tigeriq-core/install-core-task.ps1',
+  'api/live-status.mjs', // Explicit Core-owned API module; never source-only.
 ]);
 
 function deny(reason) { throw new Error('PC01_RELEASE_' + reason); }
@@ -59,6 +71,9 @@ export function impactForPc01ReleaseFiles(files) {
   for (const entry of files) {
     const filename = typeof entry === 'string' ? entry : entry?.filename;
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
+    // The one Core-owned API entry is executable and must be classified
+    // as a Core component, never waived as a harmless test/source-only file.
+    if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
     if (filename.startsWith('apps/openclaw-tigeriq-runtime/')) {
