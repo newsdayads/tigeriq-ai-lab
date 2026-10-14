@@ -113,3 +113,34 @@ it('source integration cannot treat merge or current GH owner connection as acti
   expect(core).toContain('acceptPc01StandingWorkflowRelease');
   expect(core).toContain('enablePc01StandingRelease');
 });
+
+
+it('existing issues bridge is only a signed signal and cannot substitute Owner grant',()=>{
+  const issue={id:280999,number:280,updated_at:'2026-10-14T10:55:00Z'};
+  const verifiedIssue={id:280999,number:280,
+    url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/280'};
+  const trigger={...args(),eventName:'issues',
+    identity:{runId:'38552920000',claims:{event_name:'issues',ref:'refs/heads/main',run_attempt:'1'}},
+    payload:{action:'edited',repository:{full_name:'newsdayads/tigeriq-ai-lab'},issue},
+    verifiedRun:null,verifiedIssue};
+  expect(validateStandingReleaseEvidence(trigger).components).toEqual(['coding','core']);
+  expect(()=>validateStandingReleaseEvidence({...trigger,policy:null})).toThrow('STANDING_POLICY_INVALID');
+  expect(()=>validateStandingReleaseEvidence({...trigger,verifiedIssue:null})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
+  expect(()=>validateStandingReleaseEvidence({...trigger,payload:{...trigger.payload,issue:{...issue,id:1}}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
+  expect(()=>validateStandingReleaseEvidence({...trigger,identity:{...trigger.identity,claims:{...trigger.identity.claims,event_name:'issue_comment'}}})).toThrow('WORKFLOW_OIDC_REQUIRED');
+  expect(()=>validateStandingReleaseEvidence({...trigger,checks:checks.slice(0,2)})).toThrow('THREE_CI_CHECKS_REQUIRED');
+});
+
+it('issue comment signal only from audited central issue and actual GitHub readback',()=>{
+  const issue={id:280999,number:280};
+  const verifiedIssue={id:280999,number:280,
+    url:'https://api.github.com/repos/newsdayads/tigeriq-ai-lab/issues/280'};
+  const trigger={...args(),eventName:'issue_comment',
+    identity:{runId:'38552920000',claims:{event_name:'issue_comment',ref:'refs/heads/main',run_attempt:'1'}},
+    payload:{action:'created',repository:{full_name:'newsdayads/tigeriq-ai-lab'},issue,
+      comment:{id:6167190663}},verifiedRun:null,verifiedIssue};
+  expect(validateStandingReleaseEvidence(trigger).targetSha).toBe(next);
+  expect(()=>validateStandingReleaseEvidence({...trigger,payload:{...trigger.payload,action:'edited'}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
+  expect(()=>validateStandingReleaseEvidence({...trigger,payload:{...trigger.payload,issue:{id:1,number:4725}}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
+  expect(()=>validateStandingReleaseEvidence({...trigger,verifiedIssue:{...verifiedIssue,url:'https://evil.example/issues/280'}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
+});
