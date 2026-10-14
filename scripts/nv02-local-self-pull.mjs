@@ -37,6 +37,7 @@ function gh(args) {
 // Mirror canonical NV02 leases to existing GitHub labels consumed by TigerIQ Live.
 // Do not mistake Chrome chat activity or stale UI assignments for real claims.
 const NV02_CLAIM_LABELS=['tigeriq:role-claimed','tigeriq:role-worker-nv02'];
+const NV02_VERIFIED_DONE_LABEL='tigeriq:completed-by-nv02';
 function ghMutation(args) {
   execFileSync('gh',['api',...args],{encoding:'utf8',timeout:GITHUB_CLI_TIMEOUT_MS,maxBuffer:1024*1024});
 }
@@ -52,7 +53,7 @@ function ensureLiveLabel(label) {
     if(!/already_exists|already exists/i.test(message))throw error;
   }
 }
-function syncNv02LiveClaim(issue,lease,active) {
+function syncNv02LiveClaim(issue,lease,active,result=null) {
   const number=Number(issue.number);
   const current=details(issue);
   const labels=issueLabelNames(current);
@@ -81,10 +82,19 @@ function syncNv02LiveClaim(issue,lease,active) {
         ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels/'+encodeURIComponent(label),'-X','DELETE']);
       }
     }
+    // Preserve historical worker identity only after a verified V2 completion.
+    // The active lease labels are transient and must be removed on release.
+    if(result==='DONE'&&completionProof(current).verified&&!has(NV02_VERIFIED_DONE_LABEL)) {
+      ensureLiveLabel(NV02_VERIFIED_DONE_LABEL);
+      ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels','-X','POST','-f','labels[]='+NV02_VERIFIED_DONE_LABEL]);
+    }
   }
-  const after=issueLabelNames(details(issue)).map(label=>label.toLowerCase());
+  const afterIssue=details(issue);
+  const after=issueLabelNames(afterIssue).map(label=>label.toLowerCase());
   const hasBoth=NV02_CLAIM_LABELS.every(label=>after.includes(label));
   if(Boolean(active)!==hasBoth)throw Error('NV02_LIVE_CLAIM_LABEL_READBACK_MISMATCH');
+  if(!active&&result==='DONE'&&completionProof(afterIssue).verified&&!after.includes(NV02_VERIFIED_DONE_LABEL))
+    throw Error('NV02_VERIFIED_DONE_EXECUTOR_LABEL_READBACK_MISMATCH');
   return {verified:true,active:hasBoth};
 }
 function issueComments(number) {
@@ -330,7 +340,7 @@ try {
 }
 await releaseNv02WorkOrder({ issue, issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
 try {
-  const live=syncNv02LiveClaim(issue,lease,false);
+  const live=syncNv02LiveClaim(issue,lease,false,result);
   console.log(JSON.stringify({event:'NV02_LIVE_CLAIM_RELEASE_SYNC',issue:issue.number,leaseId:lease.leaseId,...live}));
 } catch(error) {
   process.exitCode=2;
