@@ -338,7 +338,7 @@ it.skipIf(!pwshPresent)('signed PowerShell guard matches only the immutable Codi
   const impact='@{core=$true;web=$false;coding=$true;openclaw=$false;updater=$true;liveBridge=$false}';
   const args={approval,paths,impact,targetSha,controlRepo:root};
   expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
-  expect(run({...args,paths:paths.filter(p=>p!=='tests/coding-lane-ai-json-transport.test.mjs')}).reason)
+  expect(run({...args,paths:paths.filter(p=>p!=='tests/coding-lane-foundation.test.mjs')}).reason)
     .toBe('RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE');
 });
 
