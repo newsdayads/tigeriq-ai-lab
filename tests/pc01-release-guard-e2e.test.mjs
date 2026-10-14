@@ -220,7 +220,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
   });
 });
 
-import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
+import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, impactForPc01SignedSnapshotV2, validatePc01ApprovalEvidence,
   acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS, OWNER_V6_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
@@ -536,4 +536,78 @@ it('refuses to replace an unconsumed or replayed Owner ticket',async()=>{
     .rejects.toThrow('PC01_RELEASE_ACTIVE_APPROVAL_UNCONSUMED');
   expect(writes).toBe(0);
   expect(renames).toBe(0);
+});
+
+
+describe('Owner signed V2 exact-main snapshot: no perpetual per-blob pin edits',()=>{
+  const baseline='1'.repeat(40), target='2'.repeat(40), fileSha='a'.repeat(40);
+  const paths=[
+    'apps/dashboard/src/bcct.mjs','apps/shared/owner-interaction-v6.mjs',
+    'apps/tigeriq-coding-lane/coding-lane.mjs','apps/tigeriq-core/github-coding-intake.mjs',
+    'apps/tigeriq-core/pc01-release-approval.mjs','apps/tigeriq-core/dashboard.html',
+    'bootstrap/00_TIGERIQ_LOADER.md','bootstrap/02_TIGERIQ_WORKFLOW.md',
+    'docs/OWNER_INTERACTION_V6.md','public/work-center.js','public/work-ui.css',
+    'scripts/package-bcct-runtime.mjs','scripts/tigeriq-core/pc01-release-guard.ps1',
+    'tests/github-coding-intake.test.mjs','tests/owner-interaction-v6.test.mjs',
+  ];
+  const files=paths.map(filename=>({filename,status:'modified',sha:fileSha}));
+  const comment=['TIGERIQ_PC01_RELEASE_APPROVE_V2','TARGET_SHA='+target,
+    'EXPECTED_INSTALLED_SHA='+baseline,'COMPONENTS=coding,core,updater',
+    'RELEASE_POLICY=SCOPED_SNAPSHOT_V2'].join('\n');
+
+  it('requires exact four data fields, no extra grant or unsigned policy downgrade',()=>{
+    expect(parsePc01OwnerApproval(comment).releasePolicy).toBe('SCOPED_SNAPSHOT_V2');
+    expect(()=>parsePc01OwnerApproval(comment.replace('SCOPED_SNAPSHOT_V2','ALLOW_ALL'))).toThrow('COMMENT_FORMAT_INVALID');
+    expect(()=>parsePc01OwnerApproval(comment+'\nNO_AUTH=true')).toThrow('COMMENT_FORMAT_INVALID');
+    expect(()=>parsePc01OwnerApproval(comment.replace('coding,core,updater','core'))).not.toThrow();
+  });
+
+  it('derives the release from immutable GitHub compare, not manually pinned blobs',()=>{
+    expect(impactForPc01SignedSnapshotV2(files)).toEqual(['coding','core','updater']);
+    for(const bad of [
+      {filename:'api/live-device-auth.mjs',status:'modified',sha:fileSha},
+      {filename:'apps/android-worker/runtime.mjs',status:'modified',sha:fileSha},
+      {filename:'.github/workflows/release.yml',status:'modified',sha:fileSha},
+      {filename:'secrets/config.json',status:'modified',sha:fileSha},
+      {filename:'scripts/tigeriq-core/new-shell.ps1',status:'modified',sha:fileSha},
+      {filename:'apps/tigeriq-core/../../unsafe.mjs',status:'modified',sha:fileSha},
+      {filename:'apps/tigeriq-core/core.mjs',status:'removed',sha:fileSha},
+      {filename:'apps/tigeriq-core/core.mjs',status:'modified',sha:'bad'},
+    ])expect(()=>impactForPc01SignedSnapshotV2([...files,bad])).toThrow('PC01_RELEASE_');
+    expect(()=>impactForPc01SignedSnapshotV2([...files,files[0]])).toThrow('V2_FILE_PATH_INVALID');
+  });
+
+  it('keeps OIDC signature, exact main, baseline and component gates for V2',()=>{
+    const fixture=ownerFixture();
+    fixture.verifiedComment.body=comment;
+    fixture.payload.comment.body=comment;
+    fixture.installedSha=baseline;
+    fixture.mainSha=target;
+    fixture.compare.files=files;
+    const signed=validatePc01ApprovalEvidence(fixture);
+    expect(signed).toMatchObject({
+      schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V2',releasePolicy:'SCOPED_SNAPSHOT_V2',
+      targetSha:target,expectedInstalledSha:baseline,components:['coding','core','updater'],
+    });
+    fixture.identity.actor='not-owner';
+    expect(()=>validatePc01ApprovalEvidence(fixture)).toThrow('OWNER_OIDC_REQUIRED');
+  });
+
+  it.skipIf(!pwshPresent)('installed V2 gate honors exact Git objects and anti-replay without changing runtime',()=>{
+    const root=fileURLToPath(new URL('../',import.meta.url));
+    const gitHead=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+    const present=[
+      'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1',
+      'tests/pc01-release-guard-e2e.test.mjs',
+    ];
+    const approval={...template(),schema:'TIGERIQ_PC01_RELEASE_APPROVAL_V2',
+      releasePolicy:'SCOPED_SNAPSHOT_V2',targetSha:gitHead,components:['core','updater']};
+    const impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}';
+    const args={approval,paths:present,targetSha:gitHead,controlRepo:root,impact};
+    expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+    expect(run({...args,attempt:{requestId:approval.requestId,targetSha:gitHead,result:'COMMITTED'}}).reason)
+      .toBe('RELEASE_ATTEMPT_ALREADY_RECORDED');
+    expect(run({...args,paths:[...present,'api/live-device-auth.mjs']}).reason).toBe('RELEASE_V2_FORBIDDEN_SURFACE');
+    expect(run({...args,approval:{...approval,releasePolicy:'ALLOW_ALL'}}).reason).toBe('RELEASE_V2_POLICY_INVALID');
+  });
 });
