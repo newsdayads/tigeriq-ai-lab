@@ -1838,7 +1838,12 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     // directly: neither comments nor the materialization index are sufficient.
     if(row.status==='completed'){
       const actualIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
-      const checklist=workOrderChecklistGate(actualIssue,{requireAll:true});
+      const partialStep=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
+      const stepId=String(row.metadata?.completedStepId||'').trim().toUpperCase();
+      // Partial objective must verify its accepted step; it never closes the parent.
+      const checklist=partialStep
+        ?workOrderChecklistGate(actualIssue,{stepId,requireAll:false})
+        :workOrderChecklistGate(actualIssue,{requireAll:true});
       if(!checklist.ok){
         const reason=`CHECKLIST_NOT_SYNCED:${checklist.reason}:${(checklist.missing||[]).join(',')}`;
         row.status='blocked';
