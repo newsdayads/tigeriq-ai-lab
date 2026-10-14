@@ -108,7 +108,46 @@ test('#280/B03 stopping during an in-flight read prevents a late completion from
   assert.strictEqual(clock.timers.size,0);
 });
 
-import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {normalizeManagerOllamaTimeout,invokeOllamaChat,codingOllamaBaseUrlForResource,invokeCodingOllamaResource} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+
+test('#280 NV08 Manager and NV09 Worker send actual Ollama requests to separate local services',async()=>{
+  const calls=[];
+  const fetchImpl=async(url,init)=>{
+    calls.push({url,body:JSON.parse(init.body),signal:init.signal});
+    return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'{"accepted":true}'}}]})};
+  };
+  const options={fetchImpl,managerUrl:'http://127.0.0.1:11434',workerUrl:'http://127.0.0.1:11435',maxTokens:64};
+  for(const resource of [{id:'NV08',provider:'ollama',model:'qwen3:8b'},{id:'NV09',provider:'ollama',model:'qwen3.6:27b-coding'}]){
+    assert.strictEqual(await invokeCodingOllamaResource(resource,'Return the tiny acceptance JSON.',options),'{"accepted":true}');
+  }
+  assert.deepStrictEqual(calls.map(x=>x.url),['http://127.0.0.1:11434/v1/chat/completions','http://127.0.0.1:11435/v1/chat/completions']);
+  assert.deepStrictEqual(calls.map(x=>x.body.model),['qwen3:8b','qwen3.6:27b-coding']);
+  assert.ok(calls.every(x=>x.body.stream===false&&x.body.max_tokens===64&&x.signal instanceof AbortSignal));
+});
+test('#280 configured Manager endpoint does not redirect Worker traffic',async()=>{
+  const urls=[];
+  const fetchImpl=async(url)=>{urls.push(url);return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'ok'}}]})};};
+  const options={fetchImpl,managerUrl:'http://localhost:11444/custom',workerUrl:'http://127.0.0.1:11445'};
+  await invokeCodingOllamaResource({id:'NV08',provider:'ollama',model:'qwen3:8b'},'test',options);
+  await invokeCodingOllamaResource({id:'NV09',provider:'ollama',model:'qwen3.6:27b-coding'},'test',options);
+  assert.deepStrictEqual(urls,['http://localhost:11444/v1/chat/completions','http://127.0.0.1:11445/v1/chat/completions']);
+  assert.strictEqual(codingOllamaBaseUrlForResource({id:'OTHER',provider:'ollama'},options),'http://127.0.0.1:11445');
+});
+test('#280 endpoint selection rejects nonlocal and wrong-provider requests before transport',()=>{
+  let calls=0;
+  const fetchImpl=()=>{calls++;throw new Error('must not send');};
+  assert.throws(()=>invokeCodingOllamaResource({id:'NV08',provider:'ollama',model:'x'},'test',{fetchImpl,managerUrl:'https://example.com'}),/OLLAMA_LOOPBACK_ONLY/);
+  assert.throws(()=>invokeCodingOllamaResource({id:'NV09',provider:'ollama',model:'x'},'test',{fetchImpl,workerUrl:'http://127.0.0.1.example.com'}),/OLLAMA_LOOPBACK_ONLY/);
+  assert.throws(()=>invokeCodingOllamaResource({id:'NV08',provider:'openrouter',model:'x'},'test',{fetchImpl}),/CODING_OLLAMA_RESOURCE_REQUIRED/);
+  assert.strictEqual(calls,0);
+});
+test('#280 separated local transport preserves provider failures and timeout propagation',async()=>{
+  const resource={id:'NV08',provider:'ollama',model:'qwen3:8b'};
+  const fetchImpl=async()=>({ok:false,status:422,text:async()=>JSON.stringify({error:'invalid schema'})});
+  await assert.rejects(invokeCodingOllamaResource(resource,'test',{fetchImpl}),error=>error.status===422&&error.message.startsWith('HTTP_422:'));
+  const timeout=Object.assign(new Error('bounded transport timeout'),{name:'AbortError'});
+  await assert.rejects(invokeCodingOllamaResource(resource,'test',{fetchImpl:async()=>{throw timeout;}}),error=>error===timeout);
+});
 
 test('#280 Owner 2026-10-14: Coding Manager does not borrow NV09 programmer or NV10 API Doctor',()=>{
   const primary=[{id:'NV09',provider:'ollama'},{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV11',provider:'groq'}];
