@@ -872,6 +872,19 @@ describe('Owner project updater — exact CI and reversible guard sync',()=>{
   }
   it.skipIf(!pwshPresent)('backs up and restores both updater and guard with their approved snapshot',async()=>{await syncCase();},30000);
   it.skipIf(!pwshPresent)('rejects malformed candidate before replacing either executable',async()=>{await syncCase({invalid:true});},30000);
+  it.skipIf(!pwshPresent)('backs off once while main CI is pending instead of spinning on the GitHub API',async()=>{
+    const begin=updaterSource.indexOf('if(-not $gateSha){');
+    const end=updaterSource.indexOf('    [string[]]$changed=',begin);
+    expect(begin).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(begin);
+    const branch=updaterSource.slice(begin,end);
+    const result=await execute("$script:saved=0;$script:delays=@();$script:later=0\n"+
+      "function Save-State {param([hashtable]$d); if($d.result -ne 'WAIT_GATES'){throw 'WRONG_WAIT_STATE'};$script:saved++}\n"+
+      "function Start-Sleep {param([int]$Seconds);$script:delays+= $Seconds}\n"+
+      "$gateSha=$null;$IntervalSeconds=120\nfor($i=0;$i -lt 1;$i++){\n"+branch+"$script:later++\n}\n"+
+      "@{saved=$script:saved;delays=@($script:delays);later=$script:later}|ConvertTo-Json -Compress\n");
+    expect(result).toEqual({saved:1,delays:[120],later:0});
+  },30000);
+
 });
 
 
