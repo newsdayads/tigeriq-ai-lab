@@ -28,6 +28,26 @@ const SOURCE_ONLY = new Set([
   'tests/work-order-lifecycle-v2.test.mjs',
   'bootstrap/02_TIGERIQ_WORKFLOW.md'
 ]);
+// One-time Owner approval: exactly the eight Git blobs merged by PR #4746.
+// Scope is bound to content, not wildcard directory names or arbitrary future edits.
+// Core denotes PC01 Core-owned runtime packaging; Web changes remain separately gated.
+export const OWNER_ONE_TAP_APPROVED_BLOBS = Object.freeze({
+  'apps/shared/owner-one-tap-approval.mjs': '0443422cd188f41c7fd172184b4f4e7281bb2acb',
+  'apps/tigeriq-core/web-control-server.mjs': 'fcc90b3a36f760dec4482689b01db26bbee20b98',
+  'apps/tigeriq-core/web-control.html': '02db28746fac9a50db20b285d920821658d78ba7',
+  'docs/OWNER_ONE_TAP_APPROVAL_V1.md': '6da62bae2baf67c84b0379d59a7b970e6d2082d5',
+  'scripts/tigeriq-core/run-web-control-bundle.ps1': 'ebe81cf08e073b1f04c4c64aa31685aa3bf66772',
+  'tests/owner-one-tap-approval.test.mjs': 'a4d4c1ba4f7157e86b36f85cbbb29c8a01bfe3e9',
+  'tests/web-control-bundle-assets.test.mjs': 'b16bb88ac0614c8848876549e815d87a9fbb8065',
+  'vitest.config.ts': '8d4d66e9aeeac9e54545b38165fe4e46cc5743f2',
+});
+const OWNER_ONE_TAP_RUNTIME = new Set([
+  'apps/shared/owner-one-tap-approval.mjs',
+  'apps/tigeriq-core/web-control-server.mjs',
+  'apps/tigeriq-core/web-control.html',
+  'scripts/tigeriq-core/run-web-control-bundle.ps1',
+]);
+
 const UPDATER_FILES = new Set([
   'scripts/tigeriq-core/update-core-runtime.ps1',
   'scripts/tigeriq-core/pc01-release-guard.ps1',
@@ -73,6 +93,15 @@ export function impactForPc01ReleaseFiles(files) {
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
     // The one Core-owned API entry is executable and must be classified
     // as a Core component, never waived as a harmless test/source-only file.
+    if (Object.hasOwn(OWNER_ONE_TAP_APPROVED_BLOBS, filename)) {
+      // GitHub's verified compare.files SHA must match exact authorized content.
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_ONE_TAP_APPROVED_BLOBS[filename])
+        deny('ONE_TAP_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('ONE_TAP_FILE_STATE_DENIED');
+      if (OWNER_ONE_TAP_RUNTIME.has(filename)) impact.add('core');
+      continue;
+    }
     if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
@@ -118,7 +147,7 @@ export function validatePc01ApprovalEvidence({ identity, eventName, payload, ver
   if (!compare || compare.status !== 'ahead' || compare.behind_by !== 0 ||
       !Number.isInteger(compare.ahead_by) || compare.ahead_by < 1 || compare.ahead_by > 30 ||
       (compare.total_commits != null && compare.total_commits > 30)) deny('ANCESTRY_UNVERIFIED');
-  const files = (compare.files || []).map(f => f.filename);
+  const files = compare.files || []; // preserve trusted GitHub blob SHA for pinned paths
   const actualComponents = impactForPc01ReleaseFiles(files);
   if (approval.components.join(',') !== actualComponents.join(',')) deny('IMPACT_MISMATCH');
   return {
