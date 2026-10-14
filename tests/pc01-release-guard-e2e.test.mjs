@@ -820,16 +820,16 @@ describe('Owner project updater — exact CI and reversible guard sync',()=>{
       return JSON.parse(r.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1));
     }finally{rmSync(dir,{recursive:true,force:true});}
   }
-  const ciNames=['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'];
+  const ciNames=['CI','WO-014 Queue Hygiene'];
   const runs=()=>ciNames.map((name,i)=>({name,id:i+1,head_sha:sha,event:'push',head_branch:'main',status:'completed',conclusion:'success'}));
   async function check(r){
     return execute(extract('function Gates-Pass(','function Resolve-GateSha(')+
       "\nfunction Invoke-GithubApiJson {param([string]$uri); return ('"+esc(JSON.stringify({workflow_runs:r}))+"'|ConvertFrom-Json)}\n"+
       "$v=Gates-Pass '"+sha+"' -ExactMain\n$v|ConvertTo-Json -Compress\n");
   }
-  it.skipIf(!pwshPresent)('accepts only all three successful main-push runs on the exact candidate',async()=>{
+  it.skipIf(!pwshPresent)('accepts both required runtime main-push runs on the exact candidate without a hosting dependency',async()=>{
     expect(await check(runs())).toBe(true);
-    expect(await check(runs().slice(0,2))).toBe(false);
+    expect(await check(runs().slice(0,1))).toBe(false);
   },30000);
   it.skipIf(!pwshPresent)('rejects stale success when a newer run fails/pends, PR-only evidence, and another revision',async()=>{
     expect(await check([...runs(),{...runs()[0],id:100,status:'in_progress',conclusion:null}])).toBe(false);
@@ -849,7 +849,7 @@ describe('Owner project updater — exact CI and reversible guard sync',()=>{
       const installedGuard=join(protectedRoot,'pc01-release-guard.ps1');
       writeFileSync(installedUpdater,'# updater old\n');writeFileSync(installedGuard,'# guard old\n');
       writeFileSync(sourceUpdater,'# updater new\n');writeFileSync(sourceGuard,invalid?'function broken {':'# guard new\n');
-      const script=extract('function Sync-UpdaterRuntime(){','function Ensure-UpdaterTaskRuntimeTarget(){')+
+      const script=". '"+esc(guardPath)+"'\n"+extract('function Sync-UpdaterRuntime(){','function Ensure-UpdaterTaskRuntimeTarget(){')+
         "\n$ErrorActionPreference='Stop'\n$runtimeRepo='"+esc(runtime)+"'\n$updaterRuntime='"+esc(installedUpdater)+"'\n$releaseGuardScript='"+esc(installedGuard)+"'\n";
       if(invalid){
         const r=await execute(script+"try {Sync-UpdaterRuntime; throw 'EXPECTED_REJECT'} catch {$_.Exception.Message|ConvertTo-Json -Compress}\n");

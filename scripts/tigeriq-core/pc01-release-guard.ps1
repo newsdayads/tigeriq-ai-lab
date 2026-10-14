@@ -312,6 +312,31 @@ function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSh
     return @{approved=$true;reason='OWNER_PROJECT_AUTHORIZED';requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
   }catch{return @{approved=$false;reason='OWNER_PROJECT_POLICY_OR_PROVENANCE_INVALID'}}
 }
+function Sync-ApprovedReleaseRuntime([string]$runtimeRepo,[string]$updaterRuntime,[string]$releaseGuardScript){
+  $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
+  # Called only inside an approved release or its rollback. Refresh the guard
+  # from that same verified snapshot; a code merge cannot activate an Owner grant.
+  $guardSource=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
+  if(-not(Test-Path -LiteralPath $guardSource)){throw 'RELEASE_GUARD_SOURCE_MISSING'}
+  $parseTokens=$null;$parseErrors=$null
+  $null=[Management.Automation.Language.Parser]::ParseFile($guardSource,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'RELEASE_GUARD_SOURCE_PARSE_FAILED'}
+  $null=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'UPDATER_SOURCE_PARSE_FAILED'}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
+  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+  $sourceHash=(Get-FileHash -LiteralPath $guardSource -Algorithm SHA256).Hash
+  $oldHash=if(Test-Path -LiteralPath $releaseGuardScript){(Get-FileHash -LiteralPath $releaseGuardScript -Algorithm SHA256).Hash}else{''}
+  if($sourceHash -ne $oldHash){
+    if($oldHash){
+      $guardBackup=Join-Path (Join-Path (Split-Path -Parent $releaseGuardScript) 'Backup') ('guard-'+$oldHash+'.ps1')
+      if(-not(Test-Path -LiteralPath $guardBackup)){Copy-Item -LiteralPath $releaseGuardScript -Destination $guardBackup -ErrorAction Stop}
+    }
+    $guardTmp=$releaseGuardScript+'.tmp'
+    Copy-Item -LiteralPath $guardSource -Destination $guardTmp -Force
+    Move-Item -LiteralPath $guardTmp -Destination $releaseGuardScript -Force
+  }
+}
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths,[string]$verifiedGateSha=''){
   # The local file is an operational approval record, not cryptographic proof
   # of Owner identity. An independently authorized local procedure MUST provision it.
