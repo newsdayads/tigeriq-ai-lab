@@ -204,4 +204,22 @@ assert.ok(publicView.includes('CỔNG TIẾN ĐỘ GITHUB'),'drawer must explain
 console.log('TIGERIQ_GITHUB_AUTO_PROGRESS_PASS');
 console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
 
+
+// API Health card regression: full title must grow naturally and stay inside its row.
+const workCenterVisual = readFileSync('public/work-center-visual.css', 'utf8');
+assert.match(workCenterVisual,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card \.work-title\{[^}]*display:block!important;-webkit-line-clamp:unset!important;[^}]*overflow:visible!important/s,
+  'API Health card titles must wrap fully rather than be clipped at two lines');
+const finalHealthGrid = workCenterVisual.slice(workCenterVisual.lastIndexOf('/* Do not create a nested scroller'));
+assert.match(finalHealthGrid,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card\{\s*height:auto!important;align-self:stretch!important/s,
+  'Card height must follow the tallest row content');
+assert.match(finalHealthGrid,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card>\.work-main\{\s*height:auto!important;flex:1 1 auto!important/s,
+  'Inner card cannot be 100% high in addition to its top badge offset');
+assert.doesNotMatch(finalHealthGrid,
+  /\.tiq-work-card>\.work-main\{\s*height:100%!important/s,
+  'Prevent 27px overflow into the next row');
+console.log('TIGERIQ_HEALTH_CARD_TITLE_FLOW_PASS');
+
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
