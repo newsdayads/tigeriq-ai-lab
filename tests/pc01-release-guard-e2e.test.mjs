@@ -427,7 +427,7 @@ it.skipIf(!pwshPresent)('signed PowerShell guard matches only the immutable Codi
     execFileSync('git',['rev-parse',targetSha+':'+name],{cwd:root,encoding:'utf8'}).trim()===blob);
   expect(run(args).reason).toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
   expect(run({...args,paths:paths.filter(p=>p!=='tests/coding-lane-foundation.test.mjs')}).reason)
-    .toBe(matchesHistoricBlobs?'RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE':'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH');
+    .toBe('RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'); // Earlier completeness preflight wins over blob comparison.
 });
 
 it('only exact three-file API Health CSS bundle is eligible in combined Owner-scoped release',()=>{
