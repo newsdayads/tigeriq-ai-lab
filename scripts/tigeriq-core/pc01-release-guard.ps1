@@ -55,7 +55,15 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
     # Exact, case-sensitive approved path AND exact blob from trusted local Git object DB.
     $pinned=@($ownerOneTapBlobs.Keys|Where-Object{$_ -ceq $path})
     if($pinned.Count -eq 1){
-      if($targetSha -cnotmatch '^[a-f0-9]{40}
+      if(-not $controlRepo){return 'RELEASE_ONE_TAP_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerOneTapBlobs[$pinned[0]]
+        $spec=$targetSha+':'+$path
+        $actual=(& git -C $controlRepo rev-parse $spec 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_ONE_TAP_CONTENT_MISMATCH'}
+      continue
+    }
     # The single Core-owned API module is executable: component gate required.
     if($path -ceq 'api/live-status.mjs'){
       if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
