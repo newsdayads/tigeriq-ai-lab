@@ -182,3 +182,17 @@ test('NV04 second-opinion policy routes review validation work without stealing 
   s=classifyWorkOrder('PRIORITY=P2\nCAPABILITY=review');
   assert.equal(s.workerId,'NV03');assert.equal(s.reviewRoutingReason,'NV03_PRIMARY_GENERIC_REVIEW');
 });
+
+test('NV02 local GitHub lease projects active work and matching release, never stale releases',()=>{
+  const now=Date.parse('2026-10-15T03:00:00Z');
+  const claim=(id,at)=>({id,created_at:at,body:'[TIGERIQ_NV02_LEASE_V1]\nWORK_ORDER=#5010\nWORKER=NV02\nRESOURCE_SCOPE=NV02_LIVE_PROJECTION\nLEASE_ID=NV02-5010-'+id+'\nEXPIRES_AT=2026-10-15T04:00:00Z'});
+  const release=(id,at,lease)=>({id,created_at:at,body:'[TIGERIQ_NV02_RELEASE_V1]\nWORK_ORDER=#5010\nWORKER=NV02\nRESOURCE_SCOPE=NV02_LIVE_PROJECTION\nLEASE_ID=NV02-5010-'+lease+'\nSTATE=DONE'});
+  const first=claim(1,'2026-10-15T02:10:00Z');
+  assert.equal(activeRoleClaim([first],now)?.workerId,'NV02');
+  assert.equal(activeRoleClaim([first],now)?.leaseId,'NV02-5010-1');
+  const second=claim(2,'2026-10-15T02:20:00Z');
+  assert.equal(activeRoleClaim([first,second,release(3,'2026-10-15T02:30:00Z',1)],now)?.leaseId,'NV02-5010-2');
+  assert.equal(activeRoleClaim([first,second,release(4,'2026-10-15T02:40:00Z',2)],now),null);
+  assert.equal(activeRoleClaim([first],Date.parse('2026-10-15T04:01:00Z')),null);
+  assert.equal(activeRoleClaim([{id:5,body:'[TIGERIQ_NV02_LEASE_V1]\nWORKER=NV02\nRESOURCE_SCOPE=NV02_LIVE_PROJECTION\nEXPIRES_AT=2026-10-15T04:00:00Z'}],now),null);
+});

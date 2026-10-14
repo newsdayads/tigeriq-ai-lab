@@ -1177,12 +1177,18 @@ describe('TigerIQ Live Work Order projection', () => {
       labels: [{ name: 'tigeriq:role-claimed' }, { name: 'tigeriq:role-worker-nv02' }],
       updated_at: '2026-09-27T10:00:00Z',
     });
-    const projected = projectExternalRoleClaims(base, [claimedIssue]);
+    const now=Date.parse('2026-09-27T10:30:00Z');
+    const projected = projectExternalRoleClaims(base, [claimedIssue], now);
     expect(projected.workers[0]).toMatchObject({
       employeeId: 'NV02', state: 'working', currentJobId: 'GH-1947',
       job: '#1947 - [P1] Active external claim',
     });
-    const fallback = projectExternalRoleClaims(base, [{ ...claimedIssue, labels: [] }]);
+    const fallback = projectExternalRoleClaims(base, [{ ...claimedIssue, labels: [] }], now);
+    const expired = projectExternalRoleClaims(base, [claimedIssue], Date.parse('2026-09-27T12:00:01Z'));
+    expect(expired.workers[0].currentJobId).toBe('GH-1766');
+    const missingTimestamp = projectExternalRoleClaims(base, [{ ...claimedIssue, updated_at: null }], now);
+    expect(missingTimestamp.workers[0].currentJobId).toBe('GH-1766');
+
     expect(fallback.workers[0].currentJobId).toBe('GH-1766');
   });
 

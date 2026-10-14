@@ -1013,7 +1013,10 @@ export function buildGithubPcOperatorPrompt(assignedAction,publicEvidenceKeys=[]
 async function readActiveExternalRoleClaim(fetchImpl,owner,repo,token,spec){
   if(Number(spec?.commentCount||0)<=0)return null;
   try{
-    const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${spec.number}/comments?per_page=100`,token);
+    // Read the most recent page: NV02 self-pull lease/release receipts can be
+    // beyond the first 100 historical comments on long-running Work Orders.
+    const page=Math.max(1,Math.ceil(Number(spec.commentCount)/100));
+    const comments=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${spec.number}/comments?per_page=100&page=${page}`,token);
     return activeRoleClaim(comments);
   }catch(error){
     if(githubRateLimitCooldownMs(error)>0)throw error;

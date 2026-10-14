@@ -18,6 +18,7 @@ import {
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
 import { completionProof } from '../apps/shared/work-center-history.mjs';
+import { activeRoleClaim } from '../apps/tigeriq-core/work-routing-policy.mjs';
 import { workOrderChecklistGate } from '../apps/tigeriq-core/work-order-checklist-hard-gate.mjs';
 import { syncAcceptedChecklistStep } from '../apps/tigeriq-core/work-order-step-autosync.mjs';
 
@@ -32,6 +33,69 @@ const CONTROLLER_REQUEST_TIMEOUT_MS = 30_000;
 
 function gh(args) {
   return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: GITHUB_CLI_TIMEOUT_MS }));
+}
+// Mirror canonical NV02 leases to existing GitHub labels consumed by TigerIQ Live.
+// Do not mistake Chrome chat activity or stale UI assignments for real claims.
+const NV02_CLAIM_LABELS=['tigeriq:role-claimed','tigeriq:role-worker-nv02'];
+const NV02_VERIFIED_DONE_LABEL='tigeriq:completed-by-nv02';
+function ghMutation(args) {
+  execFileSync('gh',['api',...args],{encoding:'utf8',timeout:GITHUB_CLI_TIMEOUT_MS,maxBuffer:1024*1024});
+}
+function issueLabelNames(issue) {
+  return (Array.isArray(issue?.labels)?issue.labels:[]).map(label=>typeof label==='string'?label:String(label?.name||'')).filter(Boolean);
+}
+function ensureLiveLabel(label) {
+  const color=label==='tigeriq:role-claimed'?'1d76db':'5319e7';
+  try {
+    ghMutation(['repos/'+OWNER+'/'+REPO+'/labels','-X','POST','-f','name='+label,'-f','color='+color]);
+  } catch(error) {
+    const message=String(error?.stderr||'')+' '+String(error?.stdout||'');
+    if(!/already_exists|already exists/i.test(message))throw error;
+  }
+}
+function syncNv02LiveClaim(issue,lease,active,result=null) {
+  const number=Number(issue.number);
+  const current=details(issue);
+  const labels=issueLabelNames(current);
+  const has=(name)=>labels.some(label=>label.toLowerCase()===name);
+  if(active) {
+    assertLeaseOwnership(current,lease);
+    if(labels.some(label=>/^tigeriq:role-worker-nv\d{2}$/i.test(label)&&label.toLowerCase()!=='tigeriq:role-worker-nv02'))
+      throw Error('NV02_LIVE_CLAIM_OTHER_WORKER_HELD');
+    for(const label of NV02_CLAIM_LABELS) {
+      if(has(label))continue;
+      try {
+        ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels','-X','POST','-f','labels[]='+label]);
+      } catch(error) {
+        const message=String(error?.stderr||'')+' '+String(error?.stdout||'');
+        if(!/422|does not exist|not found|validation failed/i.test(message))throw error;
+        ensureLiveLabel(label);
+        ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels','-X','POST','-f','labels[]='+label]);
+      }
+    }
+  } else {
+    // A delayed release must not clear a newer self-pull/other-worker claim.
+    if(activeRoleClaim(issueComments(number)))return {skipped:'NEWER_ACTIVE_CLAIM'};
+    if(has('tigeriq:role-worker-nv02')) {
+      for(const label of NV02_CLAIM_LABELS) {
+        if(!has(label))continue;
+        ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels/'+encodeURIComponent(label),'-X','DELETE']);
+      }
+    }
+    // Preserve historical worker identity only after a verified V2 completion.
+    // The active lease labels are transient and must be removed on release.
+    if(result==='DONE'&&completionProof(current).verified&&!has(NV02_VERIFIED_DONE_LABEL)) {
+      ensureLiveLabel(NV02_VERIFIED_DONE_LABEL);
+      ghMutation(['repos/'+OWNER+'/'+REPO+'/issues/'+number+'/labels','-X','POST','-f','labels[]='+NV02_VERIFIED_DONE_LABEL]);
+    }
+  }
+  const afterIssue=details(issue);
+  const after=issueLabelNames(afterIssue).map(label=>label.toLowerCase());
+  const hasBoth=NV02_CLAIM_LABELS.every(label=>after.includes(label));
+  if(Boolean(active)!==hasBoth)throw Error('NV02_LIVE_CLAIM_LABEL_READBACK_MISMATCH');
+  if(!active&&result==='DONE'&&completionProof(afterIssue).verified&&!after.includes(NV02_VERIFIED_DONE_LABEL))
+    throw Error('NV02_VERIFIED_DONE_EXECUTOR_LABEL_READBACK_MISMATCH');
+  return {verified:true,active:hasBoth};
 }
 function issueComments(number) {
   const pages = gh([`repos/${OWNER}/${REPO}/issues/${number}/comments?per_page=100`, '--paginate', '--slurp']);
@@ -215,6 +279,7 @@ console.log(JSON.stringify({
 }));
 let result = null;
 try {
+  syncNv02LiveClaim(issue,lease,true);
   const reconcileResult = await reconcile(issue, lease);
   if (reconcileResult?.action === 'CLOSED_TERMINAL') {
     result = 'DONE';
@@ -274,6 +339,14 @@ try {
   console.error(JSON.stringify({ event: 'NV02_DISPATCH_BLOCKED', issue: issue.number, error: String(error) }));
 }
 await releaseNv02WorkOrder({ issue, issueNumber: issue.number, leaseId: lease.leaseId, resourceScope: lease.resourceScope, state: result, postComment });
+try {
+  const live=syncNv02LiveClaim(issue,lease,false,result);
+  console.log(JSON.stringify({event:'NV02_LIVE_CLAIM_RELEASE_SYNC',issue:issue.number,leaseId:lease.leaseId,...live}));
+} catch(error) {
+  process.exitCode=2;
+  console.error(JSON.stringify({event:'NV02_LIVE_CLAIM_RELEASE_SYNC_FAILED',issue:issue.number,error:String(error)}));
+}
+
 console.log(JSON.stringify({ event: 'TIGERIQ_NV02_LEASE_RELEASED', issue: issue.number, resourceScope: lease.resourceScope, leaseId: lease.leaseId, state: result }));
 const nextIssues = summaries()
   .filter((summary) => nv02PrioritySummary(summary) !== 'P0' && Number(summary.number) !== Number(issue.number))

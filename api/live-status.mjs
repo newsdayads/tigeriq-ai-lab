@@ -659,13 +659,16 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (classification.workKind !== 'WORK') return null;
   const priority = issuePriority(issue);
   const relations = workflowRelationsForIssue(issue);
+  const assignedEmployee=issueEmployeeId(issue);
+  const hasNv02CompletionProof=issueLabelNames(issue).some(label=>label.toLowerCase()==='tigeriq:completed-by-nv02');
+  const completedEmployee=hasNv02CompletionProof&&(!assignedEmployee||assignedEmployee==='NV02')?'NV02':assignedEmployee;
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
     priority,
     effectivePriority: priority,
     sourcePriority: priority,
-    employeeId: issueEmployeeId(issue),
+    employeeId: completedEmployee,
     status: 'DONE',
     workKind: 'WORK',
     ...relations,
@@ -881,12 +884,18 @@ function normalizedRuntimeTitle(value = '') {
     .trim();
 }
 
-export function projectExternalRoleClaims(base = {}, issues = []) {
+// NV02 self-pull leases have a two-hour TTL. Labels are projections, not
+// perpetual proof: a stale/missing GitHub update must not keep NV02 WORKING.
+export function projectExternalRoleClaims(base = {}, issues = [], nowMs = Date.now()) {
   const claims = new Map();
   for (const issue of (Array.isArray(issues) ? issues : [])) {
     if (!issue || issue.pull_request || issue.state !== 'open' || !hasRoleClaimedLabel(issue)) continue;
     const workerId = roleClaimedWorkerId(issue);
     if (!/^NV(?:02|03|04)$/.test(String(workerId || ''))) continue;
+    if (workerId === 'NV02') {
+      const claimAt=Date.parse(issue.updated_at || '');
+      if (!Number.isFinite(claimAt) || claimAt > nowMs + 60_000 || nowMs - claimAt >= 2 * 60 * 60 * 1000) continue;
+    }
     const previous = claims.get(workerId);
     const currentAt = Date.parse(issue.updated_at || '') || 0;
     const previousAt = Date.parse(previous?.updated_at || '') || 0;
