@@ -52,6 +52,8 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
   foreach($path in $changedPaths){
+    # Preserve the established source-only rule on unrelated releases.
+    if($path -ceq 'vitest.config.ts' -and -not $impact.web){continue}
     # Exact, case-sensitive approved path AND exact blob from trusted local Git object DB.
     $pinned=@($ownerOneTapBlobs.Keys|Where-Object{$_ -ceq $path})
     if($pinned.Count -eq 1){
