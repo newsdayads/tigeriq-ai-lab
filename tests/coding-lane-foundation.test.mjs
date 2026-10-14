@@ -784,7 +784,7 @@ test('manager preflight retires stale terminal source objectives before AI sched
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const selectAt=src.indexOf("const o=q.rows[0];if(!o)return;");
   const preflightAt=src.indexOf('await assertCanonicalSourceWorkOrderExecutable(o.objective);',selectAt);
-  const managerAt=src.indexOf('let manager=pickResource();if(!manager)return',selectAt);
+  const managerAt=src.indexOf('let manager=pickManagerResource();if(!manager)return',selectAt);
   assert.ok(selectAt>=0&&preflightAt>selectAt&&managerAt>preflightAt);
   assert.ok(src.includes("status='completed',summary=$2,next_attempt_at=null"));
   assert.ok(src.includes("status='blocked',summary=$2,next_attempt_at=null"));
