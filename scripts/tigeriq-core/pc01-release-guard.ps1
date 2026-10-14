@@ -55,6 +55,21 @@ $ownerCodingContractBlobs=@{
   'apps/tigeriq-coding-lane/coding-lane.mjs'='ae42ee5bdfd9065dd103f782140ec6330c42dce6'
   'tests/coding-lane-foundation.test.mjs'='20aff7451494d107f0629ba69c220d3516a76899'
 }
+# Exact immutable Owner V6 #4761 source-bundle combined with signed P0 #4763
+# No pattern-wide permission. No replacement for Owner OIDC and SYSTEM ACL.
+$ownerV6Blobs=@{
+  'apps/dashboard/src/bcct.mjs'='ff3d4a23fd9df2e46773e34f092131e948458fec'
+  'apps/shared/owner-interaction-v6.mjs'='a11454a5dd14a651d79bd1149fef70d8f5f2f109'
+  'bootstrap/02_TIGERIQ_WORKFLOW.md'='161991bc203669189ed027789972104e0d83fa34'
+  'docs/OWNER_CHAT_REPORT_VISUAL_V3.md'='b424bb342cd87c64273ba2c09b8671ac1098a2e3'
+  'docs/OWNER_INTERACTION_V6.md'='1e116588234452574c2fc55db82a895e8ef311a8'
+  'public/work-center.js'='805ac2ec5af164b4bba54dd050c388ee9684ecac'
+  'public/work-ui.css'='7d3154d490dbcd2ce4f59e860ffd32da054a45ad'
+  'scripts/package-bcct-runtime.mjs'='aab7b48a09860144e15684608c548b8bce5253b4'
+  'tests/bcct-renderer.test.mjs'='61075fe03d776f0363951774ae6771cf2ad7a104'
+  'tests/owner-interaction-v6.test.mjs'='6486b3ea5f6677639a79de8733320c49f8d1c51e'
+  'tests/owner-v6-work-center-colors.test.mjs'='c1ce618ab1c84c14d1c913658856ee0a2000cf26'
+}
 $ownerOneTapWebPaths=@(
   'apps/tigeriq-core/web-control-server.mjs',
   'apps/tigeriq-core/web-control.html',
@@ -67,6 +82,8 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   $healthSeen=0
   $codingContractChanged=@($changedPaths|Where-Object{$_ -ceq 'apps/tigeriq-coding-lane/coding-lane.mjs'}).Count -gt 0
   $codingContractSeen=0
+  $ownerV6Changed=@($changedPaths|Where-Object{$_ -ceq 'apps/shared/owner-interaction-v6.mjs'}).Count -gt 0
+  $ownerV6Seen=0
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
   foreach($path in $changedPaths){
     # Preserve the established source-only rule on unrelated releases.
@@ -105,6 +122,17 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
       $codingContractSeen++
       continue
     }
+    if($ownerV6Changed -and $ownerV6Blobs.ContainsKey($path)){
+      if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      if(-not $controlRepo){return 'RELEASE_OWNER_V6_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerV6Blobs[$path]
+        $actual=(& git -C $controlRepo rev-parse ($targetSha+':'+$path) 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_OWNER_V6_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_OWNER_V6_CONTENT_MISMATCH'}
+      $ownerV6Seen++
+      continue
+    }
     # The single Core-owned API module is executable: component gate required.
     if($path -ceq 'api/live-status.mjs'){
       if(-not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
@@ -132,6 +160,7 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   }
   if($healthCssChanged -and $healthSeen -ne $ownerApiHealthBlobs.Count){return 'RELEASE_API_HEALTH_BUNDLE_INCOMPLETE'}
   if($codingContractChanged -and $codingContractSeen -ne $ownerCodingContractBlobs.Count){return 'RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}
+  if($ownerV6Changed -and $ownerV6Seen -ne $ownerV6Blobs.Count){return 'RELEASE_OWNER_V6_BUNDLE_INCOMPLETE'}
   return $null
 }
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){

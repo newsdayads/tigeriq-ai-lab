@@ -221,7 +221,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS, OWNER_API_HEALTH_APPROVED_BLOBS, OWNER_CODING_CONTRACT_APPROVED_BLOBS, OWNER_V6_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
@@ -304,6 +304,39 @@ it('one-tap rollout limits authorized changed files to the eight exact PR4746 bl
   for(const filename of ['apps/shared/owner-one-tap-approval-v2.mjs','apps/tigeriq-core/web-control-admin.js','scripts/tigeriq-core/run-web-control-admin.ps1','docs/OWNER_ONE_TAP_APPROVAL_V2.md']){
     expect(()=>impactForPc01ReleaseFiles([...pinned,{filename}])).toThrow('FILE_OUT_OF_SCOPE');
   }
+});
+
+it('the immutable Owner V6 eleven-blob package combines safely with Coding Lane two blobs for one signed main release',()=>{
+  const ui=Object.entries(OWNER_V6_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const coding=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
+  const protectedMaintenance=[
+    {filename:'apps/tigeriq-core/pc01-release-approval.mjs',status:'modified'},
+    {filename:'scripts/tigeriq-core/pc01-release-guard.ps1',status:'modified'},
+    {filename:'tests/pc01-release-guard-e2e.test.mjs',status:'modified'},
+  ];
+  expect(ui).toHaveLength(11);
+  expect(coding).toHaveLength(2);
+  expect(impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance])).toEqual(['coding','core','updater']);
+  expect(()=>impactForPc01ReleaseFiles([...ui.slice(0,-1),...coding,...protectedMaintenance])).toThrow('OWNER_V6_BUNDLE_INCOMPLETE');
+  for(const name of Object.keys(OWNER_V6_APPROVED_BLOBS)){
+    const changed=structuredClone(ui);
+    changed.find(x=>x.filename===name).sha='0'.repeat(40);
+    expect(()=>impactForPc01ReleaseFiles([...changed,...coding,...protectedMaintenance])).toThrow('OWNER_V6_CONTENT_UNVERIFIED');
+  }
+  expect(()=>impactForPc01ReleaseFiles([...ui,...coding,...protectedMaintenance,{filename:'public/work-ui-unapproved.css'}])).toThrow('FILE_OUT_OF_SCOPE');
+});
+
+it.skipIf(!pwshPresent)('PowerShell owner V6 plus Coding batch only accepts exact immutable Git content with both complete bundles',()=>{
+  const root=fileURLToPath(new URL('../',import.meta.url));
+  const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+  const paths=[...Object.keys(OWNER_V6_APPROVED_BLOBS),...Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS),
+    'apps/tigeriq-core/pc01-release-approval.mjs','scripts/tigeriq-core/pc01-release-guard.ps1','tests/pc01-release-guard-e2e.test.mjs'];
+  const args={approval:{...template(),targetSha,components:['coding','core','updater']},paths,
+    impact:'@{core=$true;web=$false;coding=$true;openclaw=$false;updater=$true;liveBridge=$false}',
+    targetSha,controlRepo:root};
+  expect(run(args).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  expect(run({...args,paths:paths.filter(p=>p!=='public/work-ui.css')}).reason).toBe('RELEASE_OWNER_V6_BUNDLE_INCOMPLETE');
+  expect(run({...args,paths:[...paths,'public/work-ui-unknown.css']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
 });
 
 it('exact two-blob Coding Lane maintenance permits signed coding only, fails closed on wrong or missing content',()=>{
