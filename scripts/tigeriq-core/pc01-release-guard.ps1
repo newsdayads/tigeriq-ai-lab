@@ -49,6 +49,12 @@ $ownerApiHealthBlobs=@{
   'scripts/verify_work_board_ui.mjs'='90ec17f4a021aa2d20942932916af138c095e2fc'
   'tests/e2e/api-health-work-card-layout.spec.ts'='a4c126d8b2dec8515332ca0366de5eb048f9e613'
 }
+# Owner-authorized #2293 Coding Lane repair: ONLY the two exact immutable Git blobs.
+# Distinct signed GitHub/OIDC approval, ACL, anti-replay and rollback stay mandatory.
+$ownerCodingContractBlobs=@{
+  'apps/tigeriq-coding-lane/coding-lane.mjs'='19db9937eb21a6dd0dad6bd4f48bc1c23a7952f1'
+  'tests/coding-lane-ai-json-transport.test.mjs'='ebbada83ad355077a657e608ef17bd7062441da8'
+}
 $ownerOneTapWebPaths=@(
   'apps/tigeriq-core/web-control-server.mjs',
   'apps/tigeriq-core/web-control.html',
@@ -59,6 +65,8 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
   if(-not $changedPaths -or @($changedPaths).Count -eq 0){return 'RELEASE_CHANGED_PATHS_MISSING'}
   $healthCssChanged=@($changedPaths|Where-Object{$_ -ceq 'public/work-center-visual.css'}).Count -gt 0
   $healthSeen=0
+  $codingContractChanged=@($changedPaths|Where-Object{$_ -ceq 'apps/tigeriq-coding-lane/coding-lane.mjs'}).Count -gt 0
+  $codingContractSeen=0
   $sourceOnly=@('docs/PC01_GATED_RELEASE_PHASE1.md','vitest.config.ts','tests/pc01-release-guard-e2e.test.mjs','tests/pc01-release-preflight.test.mjs','tests/pc01-updater-release-gate.test.mjs','.github/ISSUE_TEMPLATE/work_order_v2.md','scripts/verify_work_board_ui.mjs','tests/continuous-capability-verify.test.mjs','tests/core-autonomous-rca.test.ts','tests/core-manager-stop-next.test.mjs','tests/github-intake.test.mjs','tests/live-status-api.test.mjs','tests/tigeriq-live-owner-refinement.test.mjs','tests/web-control.test.ts','tests/work-order-lifecycle-v2.test.mjs','bootstrap/02_TIGERIQ_WORKFLOW.md')
   foreach($path in $changedPaths){
     # Preserve the established source-only rule on unrelated releases.
@@ -84,6 +92,17 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
       }catch{return 'RELEASE_API_HEALTH_CONTENT_MISMATCH'}
       $healthSeen++
       if($path -ceq 'public/work-center-visual.css' -and -not $impact.core){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      continue
+    }
+    if($codingContractChanged -and $ownerCodingContractBlobs.ContainsKey($path)){
+      if(-not $impact.coding){return 'RELEASE_PATH_COMPONENT_MISMATCH'}
+      if(-not $controlRepo){return 'RELEASE_CODING_CONTRACT_PROVENANCE_MISSING'}
+      try{
+        $expected=[string]$ownerCodingContractBlobs[$path]
+        $actual=(& git -C $controlRepo rev-parse ($targetSha+':'+$path) 2>$null | Out-String).Trim()
+        if($LASTEXITCODE -ne 0 -or $actual -cne $expected){return 'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH'}
+      }catch{return 'RELEASE_CODING_CONTRACT_CONTENT_MISMATCH'}
+      $codingContractSeen++
       continue
     }
     # The single Core-owned API module is executable: component gate required.
@@ -112,6 +131,7 @@ function Assert-ReleaseChangedPaths([string[]]$changedPaths,[hashtable]$impact,[
     return 'RELEASE_PATH_OUT_OF_SCOPE'
   }
   if($healthCssChanged -and $healthSeen -ne $ownerApiHealthBlobs.Count){return 'RELEASE_API_HEALTH_BUNDLE_INCOMPLETE'}
+  if($codingContractChanged -and $codingContractSeen -ne $ownerCodingContractBlobs.Count){return 'RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}
   return $null
 }
 function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths){
@@ -131,7 +151,12 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     $expiry=[DateTime]::Parse([string]$a.expiresAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
     $now=(Get-Date).ToUniversalTime()
     if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
-    if($impact.coding -or $impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    if($impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    if($impact.coding){
+      foreach($wanted in $ownerCodingContractBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}}
+      }
+    }
     if($impact.web){
       # Exception applies only to the FULL eight-file PR #4746 bundle and protected
       # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
@@ -146,8 +171,8 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
     }
     $pathDenial=Assert-ReleaseChangedPaths $changedPaths $impact $targetSha
     if($pathDenial){return @{approved=$false;reason=$pathDenial}}
-    if(-not($impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
-    $wanted=@(@('core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
+    if(-not($impact.coding -or $impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
+    $wanted=@(@('coding','core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
     $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
     if(($provided -join ',') -cne ($wanted -join ',')){return @{approved=$false;reason='RELEASE_COMPONENTS_MISMATCH'}}
     if(Test-Path -LiteralPath $releaseAttemptPath){

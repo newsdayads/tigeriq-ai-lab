@@ -11,7 +11,7 @@ export const PC01_RELEASE_ISSUE = 4725;
 const REPOSITORY = 'newsdayads/tigeriq-ai-lab';
 const OWNER = 'newsdayads';
 const SHA = /^[a-f0-9]{40}$/;
-const COMPONENTS = new Set(['core', 'openclaw', 'updater']);
+const COMPONENTS = new Set(['coding', 'core', 'openclaw', 'updater']);
 const SOURCE_ONLY = new Set([
   'docs/PC01_GATED_RELEASE_PHASE1.md', 'vitest.config.ts',
   'tests/pc01-release-guard-e2e.test.mjs', 'tests/pc01-release-preflight.test.mjs',
@@ -49,6 +49,13 @@ export const OWNER_API_HEALTH_APPROVED_BLOBS = Object.freeze({
   'public/work-center-visual.css': 'd55a81c101b7f995cb71d6cbc3b3eb772c06e4f5',
   'scripts/verify_work_board_ui.mjs': '90ec17f4a021aa2d20942932916af138c095e2fc',
   'tests/e2e/api-health-work-card-layout.spec.ts': 'a4c126d8b2dec8515332ca0366de5eb048f9e613',
+});
+
+// Exact two-blob Owner maintenance epoch for #2293 Coding Lane false-positive.
+// No wildcard apps/tigeriq-coding-lane/** release permission is granted.
+export const OWNER_CODING_CONTRACT_APPROVED_BLOBS = Object.freeze({
+  'apps/tigeriq-coding-lane/coding-lane.mjs': '19db9937eb21a6dd0dad6bd4f48bc1c23a7952f1',
+  'tests/coding-lane-ai-json-transport.test.mjs': 'ebbada83ad355077a657e608ef17bd7062441da8',
 });
 
 const OWNER_ONE_TAP_RUNTIME = new Set([
@@ -101,6 +108,8 @@ export function impactForPc01ReleaseFiles(files) {
   const ownerOneTapBundle = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-one-tap-approval.mjs');
   const apiHealthCssChanged = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'public/work-center-visual.css');
   const seenApiHealthFiles = new Set();
+  const codingContractChange = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-coding-lane/coding-lane.mjs');
+  const seenCodingContractFiles = new Set();
   for (const entry of files) {
     const filename = typeof entry === 'string' ? entry : entry?.filename;
     if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
@@ -127,6 +136,15 @@ export function impactForPc01ReleaseFiles(files) {
       if (filename === 'public/work-center-visual.css') impact.add('core');
       continue;
     }
+    if (codingContractChange && Object.hasOwn(OWNER_CODING_CONTRACT_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_CODING_CONTRACT_APPROVED_BLOBS[filename])
+        deny('CODING_CONTRACT_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('CODING_CONTRACT_STATE_DENIED');
+      seenCodingContractFiles.add(filename);
+      if (filename === 'apps/tigeriq-coding-lane/coding-lane.mjs') impact.add('coding');
+      continue;
+    }
     if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
     if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
     if (SOURCE_ONLY.has(filename)) continue;
@@ -144,6 +162,9 @@ export function impactForPc01ReleaseFiles(files) {
   if (apiHealthCssChanged &&
       seenApiHealthFiles.size !== Object.keys(OWNER_API_HEALTH_APPROVED_BLOBS).length)
     deny('API_HEALTH_BUNDLE_INCOMPLETE');
+  if (codingContractChange &&
+      seenCodingContractFiles.size !== Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS).length)
+    deny('CODING_CONTRACT_BUNDLE_INCOMPLETE');
   if (!impact.size) deny('NO_COMPONENT_IMPACT');
   return [...impact].sort();
 }
