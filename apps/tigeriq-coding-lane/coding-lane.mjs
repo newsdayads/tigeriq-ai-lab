@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {managerLocalRequestBody} from '../tigeriq-core/manager-json.mjs';
 import {createNonblockingManagerTick} from './nonblocking-manager-tick.mjs';
 import {codingChatRequestBody,codingChatContent} from '../shared/nvidia-coding-request.mjs';
 import {validateCodingFastHealthResponse} from '../shared/coding-core-health-response.mjs';
@@ -693,13 +694,33 @@ export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLL
     return String(text);
   }finally{clearTimeout(timer)}
 }
+// NV08 uses the already accepted Core JSON Manager contract. Worker chat is unchanged.
+export async function invokeOllamaManagerJson(model,prompt,{
+  fetchImpl=fetch,baseUrl=MANAGER_OLLAMA_BASE_URL,timeoutMs=MANAGER_OLLAMA_TIMEOUT_MS,
+}={}){
+  const origin=normalizeLocalOllamaBaseUrl(baseUrl);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||MANAGER_OLLAMA_TIMEOUT_MS));
+  try{
+    const response=await fetchImpl(origin+'/api/generate',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(managerLocalRequestBody(model,prompt)),signal:controller.signal,
+    });
+    const raw=await response.text();
+    let data={};
+    try{data=raw?JSON.parse(raw):{}}catch{data={text:raw}}
+    if(!response.ok){const error=new Error('HTTP_'+response.status+':'+String(data?.message||data?.error||raw).slice(0,300));error.status=response.status;throw error}
+    if(!String(data?.response||'').trim())throw new Error('EMPTY_RESPONSE');
+    return String(data.response);
+  }finally{clearTimeout(timer)}
+}
 export function invokeCodingOllamaResource(resource,prompt,{
   fetchImpl=fetch,workerUrl=OLLAMA_BASE_URL,managerUrl=MANAGER_OLLAMA_BASE_URL,
   maxTokens=codingOutputTokenLimit(prompt),timeoutMs=OLLAMA_TIMEOUT_MS,
 }={}){
-  return invokeOllamaChat(resource.model,prompt,{
-    fetchImpl,baseUrl:codingOllamaBaseUrlForResource(resource,{workerUrl,managerUrl}),maxTokens,timeoutMs,
-  });
+  const baseUrl=codingOllamaBaseUrlForResource(resource,{workerUrl,managerUrl});
+  if(resource.id==='NV08')return invokeOllamaManagerJson(resource.model,prompt,{fetchImpl,baseUrl,timeoutMs});
+  return invokeOllamaChat(resource.model,prompt,{fetchImpl,baseUrl,maxTokens,timeoutMs});
 }
 async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
   const outputTokens=codingOutputTokenLimit(prompt);
