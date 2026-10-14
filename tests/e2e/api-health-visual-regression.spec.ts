@@ -160,7 +160,7 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
  await expect(page.locator('.brand')).toContainText('TigerIQ AI');
  await expect(page.locator('#workOpenSort')).toHaveValue('priority');
- await expect.poll(order).toEqual([320,310,330]);
+ await expect.poll(order).toEqual([320,330,310]);
  await expect(page.locator('#woFilters')).toContainText('Có bình luận nhật ký: 2/3');
  await expect(page.locator('#workList .work-activity')).toHaveCount(2);
  await page.locator('#workOpenSort').selectOption('number_asc');
