@@ -528,8 +528,9 @@ export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
   excludeIds=[],busyIds=[],healthByEmployee=new Map(),nowMs=Date.now(),
 }={}){
   const excluded=new Set([...excludeIds,...busyIds].map(String));
-  const present=new Set(primary.map(x=>String(x?.id||'')));
-  return [...primary,...backups.filter(x=>{
+  const managerPrimary=primary.filter(x=>!['NV09','NV10'].includes(String(x?.id||'')));
+  const present=new Set(managerPrimary.map(x=>String(x?.id||'')));
+  return [...managerPrimary,...backups.filter(x=>{
     const id=String(x?.id||'');
     if(id!=='NV08'||excluded.has(id)||present.has(id))return false;
     if(!coreResourceStateEligible(healthByEmployee.get(id),nowMs))return false;
@@ -539,7 +540,7 @@ export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
 }
 function selectableManagerResources(exclude=[]){
   // Keep the designated coding implementer NV09 out of manager planning.
-  const primary=selectableResources([...exclude,'NV09']);
+  const primary=selectableResources([...exclude,'NV09','NV10']);
   const nowMs=Date.now();
   if(!coreResourceHealth.fetchedAt||nowMs-coreResourceHealth.fetchedAt>CORE_RESOURCE_HEALTH_TTL_MS)return primary;
   return appendEligibleCodingManagerBackups(primary,managerLocalBackupResources,{
@@ -547,7 +548,7 @@ function selectableManagerResources(exclude=[]){
   });
 }
 function pickManagerResource(exclude=[]){
-  const primary=pickResource([...exclude,'NV09']);
+  const primary=pickResource([...exclude,'NV09','NV10']);
   if(primary)return primary;
   // Use only the designated 8B manager as a bounded fallback; do not
   // borrow NV10 API Doctor or NV09 Coding worker for manager decisions.
