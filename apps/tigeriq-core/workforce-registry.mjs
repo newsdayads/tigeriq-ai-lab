@@ -13,6 +13,7 @@ const fallbackAssignments = new Map([
   ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'AVAILABLE_MANUAL / SECOND_REVIEW / SUPPORT_UI_ACCOUNT' }],
   ['NV04',{ employee_id:'NV04', name:'Gemini Pro', admin_state:'AVAILABLE_MANUAL / DEEP_RESEARCH / INDEPENDENT_REVIEW / PAID_SUBSCRIPTION_CONFIRMED_2026-09-14' }],
   ['NV06',{ employee_id:'NV06', name:'PC Operator · OpenClaw', admin_state:'ACTIVE_CORE_RESOURCE / PC_OPERATOR / ZERO_COST / ACCEPTANCE_1528_PASS' }],
+  ['NV07',{ employee_id:'NV07', name:'Google Antigravity', admin_state:'ADMIN_ENABLED / PROVISIONING / RUNTIME_NOT_VERIFIED / P1_P5_PROPOSAL_ONLY / NOT_YET_ROUTABLE' }],
   ['NV10',{ employee_id:'NV10', name:'Core API Doctor · Ollama Qwen3 4B', admin_state:'ACTIVE_CORE_RESOURCE / ONLINE_IDLE / LOCAL_AI' }],
   ['NV11',{ employee_id:'NV11', name:'Groq', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE' }],
   ['NV12',{ employee_id:'NV12', name:'Gemini', admin_state:'LIVE_PASS / READY_WHEN_CALLED / CORE_RESOURCE / FREE_GUARD' }],
@@ -28,7 +29,7 @@ const fallbackAssignments = new Map([
 
 const slotId = n => `NV${String(n).padStart(2,'0')}`;
 
-function completeRoster(assignments, retired = new Set(['NV05','NV07'])) {
+function completeRoster(assignments, retired = new Set(['NV05'])) {
   const base=Array.from({length:21},(_,i)=>{
     const employee_id=slotId(i);
     const found=assignments.get(employee_id);
