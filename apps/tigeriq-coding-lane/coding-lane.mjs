@@ -396,6 +396,12 @@ const resources=[
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
   R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
+// Existing Core-only LOCAL employees are manager failover, NOT Coding Lane
+// workers/reviewers. Both use the already provisioned local Ollama host.
+const managerLocalBackupResources=[
+  R('NV10','ollama','gemma3:4b',()=>true),
+  R('NV08','ollama','qwen3:8b',()=>true),
+];
 const busyAiResources=new Set();
 let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
 
@@ -517,6 +523,36 @@ function selectableResources(exclude=[]){
   return resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
 }
 
+// Guarded fallback: fail closed on stale Core health, occupied shared leases,
+// cooldown and errors. Preserve the original Coding Lane worker/reviewer pool.
+export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
+  excludeIds=[],busyIds=[],healthByEmployee=new Map(),nowMs=Date.now(),
+}={}){
+  const excluded=new Set([...excludeIds,...busyIds].map(String));
+  const present=new Set(primary.map(x=>String(x?.id||'')));
+  return [...primary,...backups.filter(x=>{
+    const id=String(x?.id||'');
+    if(!id||excluded.has(id)||present.has(id))return false;
+    if(!coreResourceStateEligible(healthByEmployee.get(id),nowMs))return false;
+    present.add(id);
+    return true;
+  })];
+}
+function selectableManagerResources(exclude=[]){
+  const primary=selectableResources(exclude);
+  const nowMs=Date.now();
+  if(!coreResourceHealth.fetchedAt||nowMs-coreResourceHealth.fetchedAt>CORE_RESOURCE_HEALTH_TTL_MS)return primary;
+  return appendEligibleCodingManagerBackups(primary,managerLocalBackupResources,{
+    excludeIds:exclude,busyIds:[...busyAiResources],healthByEmployee:coreResourceHealth.byEmployee,nowMs,
+  });
+}
+function pickManagerResource(exclude=[]){
+  const primary=pickResource(exclude);
+  if(primary)return primary;
+  // Fast Core-local 4B first, Core-local 8B second; both are bounded and
+  // protected by the same cross-lane DB lease as all other employees.
+  return selectableManagerResources(exclude).find(x=>managerLocalBackupResources.some(y=>y.id===x.id))||null;
+}
 function pickResource(exclude=[]){
   const available=selectableResources(exclude);
   if(!available.length)return null;
@@ -1007,7 +1043,7 @@ async function managerTick(){
     }
     return;
   }
-  let manager=pickResource();if(!manager)return
+  let manager=pickManagerResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   let liveGithubContext=null;
@@ -1033,6 +1069,7 @@ async function managerTick(){
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{
+      resourcePool:selectableManagerResources([]),
       // An overloaded local 27B model must not occupy the single-flight Manager for 240 seconds.
       // Abort Ollama HTTP on the Manager-only budget, then fail over to a distinct eligible AI.
       // Per-provider retry defaults and all Worker/reviewer timeouts remain unchanged.
