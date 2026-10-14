@@ -147,3 +147,18 @@ it('issue comment signal only from audited central issue and actual GitHub readb
   expect(()=>validateStandingReleaseEvidence({...trigger,payload:{...trigger.payload,issue:{id:1,number:4725}}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
   expect(()=>validateStandingReleaseEvidence({...trigger,verifiedIssue:{...verifiedIssue,url:'https://evil.example/issues/280'}})).toThrow('ISSUE_TRIGGER_NOT_VERIFIED');
 });
+
+it('requires Core live signed issue-event routing before this release PR can merge',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const start=core.indexOf("url.pathname==='/api/github-event'");
+  const end=core.indexOf("url.pathname==='/api/ui-assignment'",start);
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  const handler=core.slice(start,end);
+  // The existing OIDC workflow has issues/issue_comment, not workflow_run.
+  // A successful pure helper test cannot prove the live route calls that helper.
+  expect(handler).toMatch(/eventName\s*===\s*'issues'/);
+  expect(handler).toMatch(/Number\(payload\?\.issue\?\.number\)\s*===\s*280/);
+  expect(handler).toMatch(/acceptPc01StandingWorkflowRelease\s*\(\s*\{/);
+  expect(handler).toContain('identity,eventName,payload,githubToken:GITHUB_TOKEN');
+});
