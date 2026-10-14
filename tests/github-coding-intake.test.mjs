@@ -1667,3 +1667,72 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1)?.data.sourceRevision).toBe(newRevision);
   });
 });
+
+
+describe('P0: garbage-collected Coding Lane blocked final is not a permanent queue lock',()=>{
+  it('rearms exactly once after a material Owner source change, retaining a new dispatch lease',async()=>{
+    const pool=fakePool();let posted=0;
+    const old=issue(SAFE+'\nRESOURCE_SCOPE=ARCHIVE_REARM\nALLOW_PATH_PREFIX=docs/evidence/archive.md\nCURRENT_STEP=OLD_SOURCE',
+      {number:832,title:'Archived stale Manager final'});
+    const current={...old,body:old.body.replace('CURRENT_STEP=OLD_SOURCE','CURRENT_STEP=NEW_ACCEPTED_REPAIR_SCOPE')};
+    const oldRevision=codingSourceTruthRevision({...old,repository_owner:'newsdayads'},[]);
+    const newRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+    expect(newRevision).not.toBe(oldRevision);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:832,codingObjectiveId:'old-832',sourceRevision:oldRevision}},
+      {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:832,codingObjectiveId:'old-832',
+        reason:'NO_PROGRESS_WAIT_MATERIAL_CHANGE',terminalReason:'manager attempt stopped: two decisions without accepted child progress',
+        mainSha:'unchanged-main',sourceRevision:oldRevision}},
+      {type:'GITHUB_CODING_TERMINAL_LABEL_SYNCED',data:{issueNumber:832,codingObjectiveId:'old-832'}}
+    );
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'unchanged-main'}});
+      if(url.includes('/issues/832/comments')&&init.method!=='POST')return response([]);
+      if(url.includes('/issues/832'))return response(current);
+      if(url.includes('/api/objectives')){
+        posted++;
+        const objective=JSON.parse(init.body).objective;
+        expect(objective).toContain('RECOVERY_KEY=GITHUB-ISSUE-832-RECOVERY-');
+        expect(objective).toContain('SOURCE_REVISION='+newRevision);
+        return response({id:'recovered-832'});
+      }
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED').at(-1).data)
+      .toMatchObject({issueNumber:832,codingObjectiveId:'recovered-832',sourceRevision:newRevision});
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')).toHaveLength(1);
+  });
+
+  it('does not recycle same-revision or hard-security archived finals',async()=>{
+    for(const terminalReason of ['manager attempt stopped: two decisions without accepted child progress','SECURITY POLICY_BLOCK requires human']){
+      const pool=fakePool();let posted=0;
+      const current=issue(SAFE+'\nRESOURCE_SCOPE=ARCHIVE_HARD\nALLOW_PATH_PREFIX=docs/evidence/hard.md',
+        {number:833,title:'Unchanged archived final'});
+      const revision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
+      pool.events.push(
+        {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:833,codingObjectiveId:'old-833',sourceRevision:revision}},
+        {type:'GITHUB_CODING_BLOCKED_FINAL',data:{issueNumber:833,codingObjectiveId:'old-833',
+          reason:terminalReason.startsWith('SECURITY')?'HARD_BLOCKER':'NO_PROGRESS_WAIT_MATERIAL_CHANGE',
+          terminalReason,mainSha:'main-833',sourceRevision:revision}}
+      );
+      const fetchImpl=async(url,init={})=>{
+        if(url.includes('/api/status'))return response({objectives:[],jobs:[]});
+        if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-833'}});
+        if(url.includes('/issues/833/comments')&&init.method!=='POST')return response([]);
+        if(url.includes('/issues/833'))return response(current);
+        if(url.includes('/api/objectives')){posted++;return response({id:'unexpected'});}
+        return response([]);
+      };
+      await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+      await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+      expect(posted).toBe(0);
+      expect(pool.events.filter(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')).toHaveLength(1);
+      expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RECOVERY_REARMED')).toHaveLength(0);
+    }
+  });
+});
