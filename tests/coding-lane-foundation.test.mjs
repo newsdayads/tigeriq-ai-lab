@@ -1265,7 +1265,7 @@ test('coding issue status snapshot returns one bounded objective and latest job'
 });
 
 
-import {validateJobScope,codingOwnerReviewWaiver,formatCodingOwnerReviewPolicy,formatOwnerReviewWaiverArtifact,runOwnerWaivedAcceptance,assertCodingReviewAcceptance} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {validateJobScope,assertIndependentReviewApproval,codingOwnerReviewWaiver,formatCodingOwnerReviewPolicy,formatOwnerReviewWaiverArtifact,runOwnerWaivedAcceptance,assertCodingReviewAcceptance} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 const waiverRepo={owner:'newsdayads',repo:'tigeriq-ai-lab',fullName:'newsdayads/tigeriq-ai-lab',isSource:true};
 const waiverSha='a'.repeat(40);
 const waiverReceiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/pull/9001#issuecomment-123';
