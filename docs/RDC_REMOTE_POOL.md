@@ -4,6 +4,17 @@ Status: CURRENT
 Updated: 2026-10-05
 Scope: Remote Desktop Commander (RDC) multi-account pool on PC01
 
+## HARD ROUTING — P0 OWNER OVERRIDE 2026-10-15
+- Applies to every **already-authorized** ChatGPT-to-RDC operation within TigerIQ, not only the `RDC CHECK` shortcut. It does not authorize a new device action by itself.
+- Before starting each independent RDC operation, inspect the currently exposed linked accounts via `who_am_i` and `list_devices` (account metadata reads only). Use fresh actual connector readings; never pin one account or rely on an earlier quota snapshot.
+- Eligible = connector link exposed in this chat, authenticated, PC01 Online on that account's device ID, and numeric `remote_calls_left_pct > 0`. Unknown/offline/0% accounts are excluded, not assumed healthy.
+- Sort eligible links by **descending remaining percentage**, then by ascending stable `RDC01..RDC05` account number. Use that account's own `link_id` and `deviceId` for the actual RDC call. Recalculate when a new operation begins, or the selected link becomes unavailable.
+- On quota exhaustion or a known *pre-execution* failure, try the next eligible account in that fresh ordering if provider/platform policy allows. Never rotate linked identities to bypass a security, authentication, permissions or anti-abuse denial.
+- For read-only calls, failover is permitted. For writes with an uncertain execution outcome, first inspect the resource and completion receipt through an authorized read-only path; do not blindly replay the write on another account. Preserve one writer per resource.
+- If no eligible account remains, report `RDC_POOL_UNAVAILABLE` with actual exclusion reasons. Do not reconnect accounts automatically, invent capacity, or convert local PC01 availability into a ChatGPT connection.
+- This is a **canonical routing requirement for participating TigerIQ chats/agents**, not proof that the native ChatGPT connector implements a persistent host-level automatic router. Global/cross-chat acceptance requires actual host connector configuration and new-session tests. Do not claim it is installed solely from this GitHub policy.
+- Do not perform background polling or charge device-bound calls just to monitor quota. Use this rule only when an actual authorized RDC operation is requested.
+
 ## Runtime architecture
 - PC01 uses five independent Desktop Commander Remote sessions: `RDC01` → `RDC05`.
 - Each session has its own persisted profile under `D:\TigerIQ\RDCProfiles\RDC0N`.
