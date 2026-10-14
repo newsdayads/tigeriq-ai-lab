@@ -220,7 +220,7 @@ describe('PC01 #4725: isolated 3-version source → release gate → stage → h
 });
 
 import { parsePc01OwnerApproval, impactForPc01ReleaseFiles, validatePc01ApprovalEvidence,
-  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE } from '../apps/tigeriq-core/pc01-release-approval.mjs';
+  acceptPc01OwnerApprovalEvent, PC01_APPROVAL_PATH, PC01_INSTALLED_STATE, OWNER_ONE_TAP_APPROVED_BLOBS } from '../apps/tigeriq-core/pc01-release-approval.mjs';
 
 const approvalBaseline='1'.repeat(40), approvalTarget='2'.repeat(40);
 const ownerCommentText=()=>'TIGERIQ_PC01_RELEASE_APPROVE_V1\nTARGET_SHA='+approvalTarget+
