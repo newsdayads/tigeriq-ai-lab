@@ -51,11 +51,11 @@ export const OWNER_API_HEALTH_APPROVED_BLOBS = Object.freeze({
   'tests/e2e/api-health-work-card-layout.spec.ts': 'a4c126d8b2dec8515332ca0366de5eb048f9e613',
 });
 
-// Exact two-blob Owner maintenance epoch for #2293 Coding Lane false-positive.
+// Exact two-blob Owner manager failover epoch for #280 Coding Lane capacity.
 // No wildcard apps/tigeriq-coding-lane/** release permission is granted.
 export const OWNER_CODING_CONTRACT_APPROVED_BLOBS = Object.freeze({
-  'apps/tigeriq-coding-lane/coding-lane.mjs': '19db9937eb21a6dd0dad6bd4f48bc1c23a7952f1',
-  'tests/coding-lane-ai-json-transport.test.mjs': 'ebbada83ad355077a657e608ef17bd7062441da8',
+  'apps/tigeriq-coding-lane/coding-lane.mjs': 'ae42ee5bdfd9065dd103f782140ec6330c42dce6',
+  'tests/coding-lane-foundation.test.mjs': '20aff7451494d107f0629ba69c220d3516a76899',
 });
 
 const OWNER_ONE_TAP_RUNTIME = new Set([
