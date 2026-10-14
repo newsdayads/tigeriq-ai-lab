@@ -659,13 +659,16 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (classification.workKind !== 'WORK') return null;
   const priority = issuePriority(issue);
   const relations = workflowRelationsForIssue(issue);
+  const assignedEmployee=issueEmployeeId(issue);
+  const hasNv02CompletionProof=issueLabelNames(issue).some(label=>label.toLowerCase()==='tigeriq:completed-by-nv02');
+  const completedEmployee=hasNv02CompletionProof&&(!assignedEmployee||assignedEmployee==='NV02')?'NV02':assignedEmployee;
   return {
     number: Number(issue.number),
     title: String(issue.title || ''),
     priority,
     effectivePriority: priority,
     sourcePriority: priority,
-    employeeId: issueEmployeeId(issue),
+    employeeId: completedEmployee,
     status: 'DONE',
     workKind: 'WORK',
     ...relations,
