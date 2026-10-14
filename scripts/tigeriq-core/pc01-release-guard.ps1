@@ -58,6 +58,8 @@ $ownerCodingContractBlobs=@{
 # Exact immutable Owner V6 #4761 source-bundle combined with signed P0 #4763
 # No pattern-wide permission. No replacement for Owner OIDC and SYSTEM ACL.
 $ownerV6Blobs=@{
+  'bootstrap/00_TIGERIQ_LOADER.md'='0dfdc8d0ad7046f97d80e3467366c9e33484c384'
+  'tests/e2e/api-health-visual-regression.spec.ts'='215d836a576e2bbeea0377d42f9fbbe8e789c88f'
   'apps/dashboard/src/bcct.mjs'='ff3d4a23fd9df2e46773e34f092131e948458fec'
   'apps/shared/owner-interaction-v6.mjs'='a11454a5dd14a651d79bd1149fef70d8f5f2f109'
   'bootstrap/02_TIGERIQ_WORKFLOW.md'='161991bc203669189ed027789972104e0d83fa34'
