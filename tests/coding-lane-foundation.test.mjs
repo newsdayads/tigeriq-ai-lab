@@ -3,12 +3,198 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
+
+test('#280/B03 reports a stale Coding health snapshot without fabricating Core transport failure',()=>{
+  const at=Date.parse('2026-10-13T01:00:00Z');
+  const diagnostic={attemptedAt:at,succeededAt:at,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
+  const healthy=codingCoreHealthReadback({fetchedAt:at},diagnostic,{nowMs:at+9999,ttlMs:10000});
+  assert.strictEqual(healthy.fresh,true);
+  assert.strictEqual(healthy.lastFailureKind,null);
+  const expired=codingCoreHealthReadback({fetchedAt:at},diagnostic,{nowMs:at+10001,ttlMs:10000});
+  assert.strictEqual(expired.fresh,false);
+  assert.strictEqual(expired.ageMs,10001);
+  assert.strictEqual(expired.lastFailureAgeMs,null);
+});
+test('#280/B03 classifies bounded health fetch failures without leaking messages',()=>{
+  assert.strictEqual(codingCoreHealthFailureKind(Object.assign(new Error('private details'),{name:'AbortError'})),'TIMEOUT');
+  assert.strictEqual(codingCoreHealthFailureKind({code:'CODING_CORE_HEALTH_RESPONSE_STALE'}),'STALE_RESPONSE');
+  assert.strictEqual(codingCoreHealthFailureKind({code:'CODING_CORE_HEALTH_RESOURCE_INVALID'}),'INVALID_RESPONSE');
+  assert.strictEqual(codingCoreHealthFailureKind({status:503}),'CORE_HTTP_5XX');
+  assert.strictEqual(codingCoreHealthFailureKind(new Error('private details')),'FETCH_OR_TRANSPORT_ERROR');
+  const at=Date.parse('2026-10-13T01:00:00Z');
+  const failed=codingCoreHealthReadback({fetchedAt:0},{attemptedAt:at-500,failedAt:at,lastFailureKind:'TIMEOUT',consecutiveFailures:1},{nowMs:at+100,ttlMs:10000});
+  assert.strictEqual(failed.fresh,false);
+  assert.strictEqual(failed.lastFailureAgeMs,100);
+  assert.strictEqual(failed.consecutiveFailures,1);
+});
+
+
+function b03FakeHealthTimers(){
+  let now=0,nextId=0;
+  const timers=new Map();
+  return {
+    timers,
+    setTimer(fn,ms){const id=++nextId;timers.set(id,{fn,at:now+ms});return id;},
+    clearTimer(id){timers.delete(id);},
+    async advance(ms){
+      const target=now+ms;
+      for(;;){
+        const due=[...timers].filter(([,v])=>v.at<=target).sort((a,b)=>a[1].at-b[1].at)[0];
+        if(!due)break;
+        const [id,v]=due;timers.delete(id);now=v.at;await v.fn();
+      }
+      now=target;
+    },
+  };
+}
+test('#280/B03 shares one in-flight Core health read between the timer and main loop',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0,release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const pump=createCodingCoreHealthPump(()=>{calls++;return pending;},clock);
+  const started=pump.start();
+  await Promise.resolve();
+  const first=pump.refresh(),second=pump.refresh();
+  assert.strictEqual(first,second);
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,0);
+  release(true);await started;await first;
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();assert.strictEqual(clock.timers.size,0);
+});
+test('#280/B03 local Core health heartbeat continues while Manager or GitHub work is awaiting',async()=>{
+  const clock=b03FakeHealthTimers();
+  let healthReads=0,releaseManager,managerDone=false;
+  const manager=new Promise(resolve=>{releaseManager=resolve;}).then(()=>{managerDone=true;});
+  const pump=createCodingCoreHealthPump(async()=>{healthReads++;return true;},clock);
+  await pump.start();await pump.start();
+  await clock.advance(20000);
+  assert.strictEqual(managerDone,false);
+  assert.strictEqual(healthReads,9);
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();releaseManager();await manager;
+});
+test('#280/B03 a failed health read re-arms exactly one bounded timer without immediate retry',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0;
+  const pump=createCodingCoreHealthPump(async()=>{
+    calls++;
+    if(calls===1)throw Object.assign(new Error('private transport details'),{name:'AbortError'});
+    return true;
+  },clock);
+  await assert.rejects(pump.start(),{name:'AbortError'});
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,1);
+  await clock.advance(2499);assert.strictEqual(calls,1);
+  await clock.advance(1);assert.strictEqual(calls,2);
+  assert.strictEqual(clock.timers.size,1);
+  pump.stop();await clock.advance(20000);assert.strictEqual(calls,2);
+});
+test('#280/B03 stopping during an in-flight read prevents a late completion from restarting the timer',async()=>{
+  const clock=b03FakeHealthTimers();
+  let calls=0,release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const pump=createCodingCoreHealthPump(()=>{calls++;return pending;},clock);
+  const started=pump.start();await Promise.resolve();
+  pump.stop();release(true);await started;
+  await clock.advance(20000);
+  assert.strictEqual(calls,1);
+  assert.strictEqual(clock.timers.size,0);
+});
+
+import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+
+test('#280 Owner 2026-10-14: Coding Manager does not borrow NV09 programmer or NV10 API Doctor',()=>{
+  const primary=[{id:'NV09',provider:'ollama'},{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV11',provider:'groq'}];
+  const backups=[{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV08',provider:'ollama',model:'qwen3:8b'}];
+  const healthByEmployee=new Map([
+    ['NV10',{employee_id:'NV10',enabled:true,health_state:'READY',work_state:'IDLE',status:'READY',quota_state:{usable:true}}],
+    ['NV08',{employee_id:'NV08',enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE'}],
+  ]);
+  const run=(override={})=>appendEligibleCodingManagerBackups(primary,backups,{healthByEmployee,nowMs:Date.now(),...override}).map(x=>x.id);
+  assert.deepStrictEqual(run(),['NV11','NV08']);
+  assert.deepStrictEqual(run({busyIds:['NV08']}),['NV11']);
+  assert.deepStrictEqual(run({excludeIds:['NV08']}),['NV11']);
+  healthByEmployee.set('NV08',{health_state:'ONLINE',work_state:'BUSY',current_job_id:'CORE-REAL-LEASE'});
+  assert.deepStrictEqual(run(),['NV11']);
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes("const primary=selectableResources([...exclude,'NV09','NV10']);"),'NV09 cannot be a Coding Manager');
+  assert.ok(src.includes("const primary=pickResource([...exclude,'NV09','NV10']);"),'NV09 cannot be preferred as manager');
+  assert.ok(!src.includes("R('NV10','ollama','gemma3:4b',()=>true)"),'NV10 cannot be manager fallback');
+  assert.ok(src.includes("R('NV08','ollama','qwen3:8b',()=>true)"),'NV08 manager fallback preserved');
+  assert.ok(src.includes('resourcePool:selectableManagerResources([])'));
+  assert.ok(src.includes('const available=selectableResources(exclude);'),'Worker/reviewer pool remains original separate list');
+});
+
+test('#280 Manager-only Ollama time budget has bounded safe default, leaving Worker timeout separate',()=>{
+  assert.strictEqual(normalizeManagerOllamaTimeout(undefined),45000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(''),45000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(3000),15000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(60000),60000);
+  assert.strictEqual(normalizeManagerOllamaTimeout(600000),120000);
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes('ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS'));
+  assert.ok(src.includes('maxSameResourceAttempts:1'));
+  assert.ok(src.includes('timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS'));
+});
+
+test('#280 Manager timeout fails over after one aborted provider request, without retrying it twice',async()=>{
+  const first={id:'NV09',provider:'fake',model:'local-large'};
+  const second={id:'NV20',provider:'fake',model:'cloud-free'};
+  const calls=[];
+  const result=await invokeJsonWithFailover(first,'manager instruction',{
+    resourcePool:[first,second],
+    maxResources:2,
+    maxSameResourceAttempts:1,
+    invokeFn:async(resource)=>{
+      calls.push(resource.id);
+      if(resource.id==='NV09'){
+        const e=new Error('This local model exceeded the manager-specific budget');
+        e.name='AbortError';
+        throw e;
+      }
+      return '{"status":"blocked","summary":"sample"}';
+    },
+  });
+  assert.deepStrictEqual(calls,['NV09','NV20']);
+  assert.strictEqual(result.resource.id,'NV20');
+  assert.strictEqual(result.attempts,2);
+  assert.strictEqual(result.failureLedger[0].class,'timeout');
+});
+
+
+test('#280 Ollama HTTP deadline aborts one pending request rather than leaving inference in flight',async()=>{
+  let requests=0;
+  let aborted=0;
+  const fetchImpl=(_url,{signal}={})=>{
+    requests++;
+    assert.ok(signal instanceof AbortSignal);
+    return new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>{
+        aborted++;
+        const error=new Error('The manager HTTP request was aborted');
+        error.name='AbortError';
+        reject(error);
+      },{once:true});
+    });
+  };
+  const started=Date.now();
+  await assert.rejects(
+    ()=>invokeOllamaChat('local-test','manager prompt',{fetchImpl,baseUrl:'http://127.0.0.1:11435',timeoutMs:1}),
+    error=>error?.name==='AbortError',
+  );
+  assert.ok(Date.now()-started<4000,'Ollama HTTP abort must be bounded by the supplied deadline');
+  assert.strictEqual(requests,1,'one HTTP request only');
+  assert.strictEqual(aborted,1,'the pending HTTP request must receive exactly one abort');
+});
+
+
 
 test('Vietnamese title guard rejects English manager titles without canonical Work Order',()=>{
   assert.strictEqual(isVietnameseWorkTitle('Sửa lỗi Core'),true);
@@ -148,6 +334,25 @@ test('foundation bounded retry and autonomous repair',async(t)=>{
     const canonical=['tests/coding-lane-ai-json-transport.test.mjs'];
     assert.throws(()=>validateManagerJobPaths({status:'continue',job:{paths:['../escape.mjs']}},canonical),/MANAGER_PATHS_INVALID/);
     assert.deepStrictEqual(validateManagerJobPaths({status:'continue',job:{paths:canonical}},canonical),canonical);
+  });
+
+  await t.test('out-of-scope protected manager output is repaired, never granted mutation authority',async()=>{
+    const protectedPath='apps/tigeriq-core/shared-resource-lease.mjs';
+    const inScope='tests/cline-safe-eval.test.mjs';
+    const canonical=[inScope];
+    const decision=paths=>({status:'continue',job:{paths}});
+    assert.throws(()=>validateManagerJobPaths(decision([protectedPath]),canonical),/MANAGER_SCOPE_MISMATCH/);
+    assert.throws(()=>validateManagerJobPaths(decision([protectedPath]),[protectedPath]),/DENY_CONTROL_PLANE_MUTATION/);
+    const calls=[];
+    const out=await invokeJsonWithFailover(nv11,'manager',{resourcePool:[nv11,nv19],maxResources:2,
+      invokeFn:async res=>{
+        calls.push(res.id);
+        return JSON.stringify(decision([res.id==='NV19'?inScope:protectedPath]));
+      },
+      validateData:value=>validateManagerJobPaths(value,canonical),
+    });
+    assert.strictEqual(out.resource.id,'NV19');
+    assert.deepStrictEqual(calls,['NV11','NV11','NV19']);
   });
 
   await t.test('default failover can reach the sixth eligible coding provider',async()=>{
@@ -678,7 +883,7 @@ test('manager preflight retires stale terminal source objectives before AI sched
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const selectAt=src.indexOf("const o=q.rows[0];if(!o)return;");
   const preflightAt=src.indexOf('await assertCanonicalSourceWorkOrderExecutable(o.objective);',selectAt);
-  const managerAt=src.indexOf('let manager=pickResource();if(!manager)return',selectAt);
+  const managerAt=src.indexOf('let manager=pickManagerResource();if(!manager)return',selectAt);
   assert.ok(selectAt>=0&&preflightAt>selectAt&&managerAt>preflightAt);
   assert.ok(src.includes("status='completed',summary=$2,next_attempt_at=null"));
   assert.ok(src.includes("status='blocked',summary=$2,next_attempt_at=null"));

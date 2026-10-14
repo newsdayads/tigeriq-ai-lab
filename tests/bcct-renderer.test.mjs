@@ -29,3 +29,37 @@ describe('first-call live BCCT renderer path',()=>{
   expect(out.html).toContain('&lt;script&gt;');
  });
 });
+
+
+it('renders V6 evidence-backed progress and mobile-friendly real links without dispatch',()=>{
+ const report={generatedAt:'2026-10-14T04:00:00Z',sourceVerified:true,sourceFresh:true,workOrders:[
+   {id:'GH-4625',goal:'[P1] DeXCam Personal',status:'waiting',
+    progress:{verified:true,completed:4,total:30,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4625'},
+    blocker:'Hardware E2E pending',nextAction:'Verify source safely'},
+   {id:'GH-2293',goal:'[P2] Revenue Lab',status:'verified',
+    progress:{verified:true,completed:3,total:3,evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2293'}}
+ ]};
+ const out=renderBcctV4(report,'Tất cả');
+ expect(out.ok).toBe(true);
+ expect(out.html).toContain('aria-valuenow="13"');
+ expect(out.html).toContain('4/30 mốc');
+ expect(out.html).toContain('<details>');
+ expect(out.html).toContain('HỒ SƠ');
+ expect(out.html).toContain('TẢI LẠI TRANG');
+ expect(out.html).toContain('CHỜ NGHIỆM THU CUỐI');
+ expect(out.html).not.toContain('aria-valuenow="100"');
+ expect(out.html).not.toContain('LÀM NGAY');
+});
+it('does not invent progress or allow HTML injection in V6 drilldown',()=>{
+ const out=renderBcctV4({generatedAt:data.generatedAt,workOrders:[
+  {id:'GH-123',goal:'[P1] <img src=x onerror=alert(1)>',status:'working',
+   blocker:'<script>alert(1)</script>',nextAction:'<b>fake</b>'}
+ ]},'Tất cả');
+ expect(out.ok).toBe(true);
+ expect(out.html).toContain('CHƯA ĐỦ DỮ LIỆU TÍNH %');
+ expect(out.html).not.toContain('aria-valuenow=');
+ expect(out.html).not.toContain('<script>alert(1)</script>');
+ expect(out.html).not.toContain('<img src=x');
+ expect(out.html).toContain('&lt;script&gt;');
+ expect(out.html).toContain('CHƯA XÁC MINH');
+});

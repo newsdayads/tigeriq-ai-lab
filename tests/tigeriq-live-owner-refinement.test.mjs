@@ -58,10 +58,12 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain("const healthValue=");
   });
 
-  it('preserves explicit owner next actions and opens ChatGPT exactly once', () => {
+  it('preserves explicit owner next actions without opening an extra browser tab', () => {
     expect(html).toContain("const raw=String(row?.nextStep||'').trim()");
-    expect(html).toContain("link.target='_blank';link.rel='noopener noreferrer'");
+    expect(html).toContain("link.target=ios?'_self':'_blank';link.rel='noopener noreferrer'");
+    expect(html).toContain("navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1");
     expect(html).not.toContain("if(!opened)location.href=url");
+    expect(html).not.toContain("link.target='_blank'");
   });
 
   it('keeps the newest API snapshot instead of regressing to an older browser cache', () => {
@@ -132,5 +134,53 @@ describe('TigerIQ Live Owner refinement #2887', () => {
     expect(html).toContain('id="drawerStatusSection"');
     expect(html).toContain('id="drawerEvidenceSection"');
     expect(html).toContain('Mở GitHub ↗');
+  });
+});
+
+
+describe('TigerIQ Core Health Work Order steps restoration', () => {
+  const source = fs.readFileSync(new URL('../apps/tigeriq-core/dashboard.html', import.meta.url), 'utf8');
+  const start = source.indexOf('const structuredSteps=Array.isArray(row.progressSteps)');
+  const end = source.indexOf(';workDetailCurrent.textContent=', start);
+  const snippet = start >= 0 && end > start ? source.slice(start, end) : '';
+  const render = (row, stale = false) => {
+    expect(snippet).not.toBe('');
+    const header = { textContent: '' }, section = { hidden: true, querySelector: () => header }, steps = { innerHTML: '' };
+    const document = { getElementById: (id) => id === 'workDetailStepsSection' ? section : id === 'workDetailSteps' ? steps : null };
+    const esc = (value) => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    const result = new Function('row', 'document', 'workProjection', 'esc', snippet + ';return { visible: !stepSection.hidden, html: stepsEl.innerHTML, title: stepSection.querySelector("h3").textContent };');
+    return result(row, document, { stale }, esc);
+  };
+  const actualFourSteps = [
+    { title: 'R00 — Xác minh chữ ký lỗi', done: false },
+    { title: 'R01 — Sửa hàng đợi', done: false },
+    { title: 'R02 — Kiểm thử', done: false },
+    { title: 'R03 — Nghiệm thu', done: false },
+  ];
+
+  it('restores GitHub R00–R03 even when executionSteps is empty', () => {
+    const view = render({ workKind: 'WORK', progressSteps: actualFourSteps, executionSteps: [], progressChecklistVerified: false });
+    expect(view.visible).toBe(true);
+    expect(view.title).toBe('DANH SÁCH BƯỚC THỰC HIỆN');
+    for (const step of actualFourSteps) expect(view.html).toContain(step.title);
+    expect(view.html).not.toContain('class="work-detail-step done"');
+  });
+
+  it('does not assert checked/verified progress without a trusted proof', () => {
+    const steps = [{ title: 'R00', done: true }, { title: 'R01', done: false }];
+    const notVerified = render({ workKind: 'WORK', progressSteps: steps, progressChecklistVerified: false });
+    expect(notVerified.html).not.toContain('class="work-detail-step done"');
+    const verified = render({ workKind: 'WORK', progressSteps: steps, progressChecklistVerified: true });
+    expect(verified.html).toContain('class="work-detail-step done"');
+    const stale = render({ workKind: 'WORK', progressSteps: steps, progressChecklistVerified: true }, true);
+    expect(stale.html).not.toContain('class="work-detail-step done"');
+  });
+
+  it('shows an explicit empty state rather than silently hiding an unfinished card', () => {
+    const missing = render({ workKind: 'WORK', progressSteps: [], executionSteps: [] });
+    expect(missing.visible).toBe(true);
+    expect(missing.html).toContain('Chưa có danh sách bước');
+    const metadata = render({ workKind: 'SYSTEM', progressSteps: [], executionSteps: [] });
+    expect(metadata.visible).toBe(false);
   });
 });

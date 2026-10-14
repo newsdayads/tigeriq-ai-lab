@@ -1,4 +1,7 @@
+import { authorizedDevice } from './live-device-auth.mjs';
 import { parseExecutableIssue, safeAutoWorkAdmission } from '../apps/tigeriq-core/github-intake.mjs';
+import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
+import {completionProof} from '../apps/shared/work-center-history.mjs';
 import { parseOwnerBacklogOrder, OWNER_BACKLOG_ISSUE } from '../apps/tigeriq-core/owner-backlog-order.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
@@ -557,9 +560,11 @@ export function parseClearedBlockerLifecycleComment(comment = {}) {
 function statusFromLifecycleState(state = '') {
   const value = String(state || '').toUpperCase();
   if (!value) return null;
+  // A composite state like OPEN_BLOCKED_*_LIVE_ACCEPTANCE remains blocked,
+  // not verified/pending just because it names a future acceptance stage.
+  if (/(?:^|_)(?:BLOCKED|ERROR|FAILED)(?:_|$)/.test(value)) return 'BLOCKED';
   if (/REBOOT_NEXT|WAIT|PENDING|HOLD/.test(value)) return 'WAITING';
   if (/REVIEW|VERIFY/.test(value)) return 'REVIEW';
-  if (/BLOCKED|ERROR|FAILED/.test(value)) return 'BLOCKED';
   if (/INSTALL|UPDATE|APPLY|RUNNING|WORKING|IN_PROGRESS|EXECUTING|CODING_LANE_ACTIVE|(?:^|_)ACTIVE(?:_|$)/.test(value)) return 'WORKING';
   if (/READY|QUEUED/.test(value)) return 'QUEUED';
   return 'OPEN';
@@ -638,7 +643,9 @@ export function workflowRelationsForIssue(issue) {
 
 export function parseRecentCompletedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
-  if (String(issue.state_reason || '').toLowerCase() === 'not_planned') return null;
+  if (String(issue.state_reason || '').toLowerCase() !== 'completed') return null;
+  const proof=completionProof(issue);
+  if (!proof.verified) return null;
   const body = String(issue.body || '');
   const acceptance = ownerAcceptancePolicy(body);
   if (acceptance.required && !acceptance.accepted) return null;
@@ -664,10 +671,45 @@ export function parseRecentCompletedIssue(issue, now = Date.now()) {
     ...relations,
     progressPercent: 100,
     progressSource: 'terminal',
-    progressDetail: '5/5 gate',
+    progressDetail: 'Đã nghiệm thu đủ các bước và biên nhận V2',
+    progressChecklistVerified: true,
+    progressDone: proof.checkedSteps,
+    progressTotal: proof.checkedSteps,
+    lifecycleTiming: proof.timing,
+    lifecycleContract: proof.contract,
+    completionVerified: true,
     completedAt,
     updatedAt: completedAt,
     url: issue.html_url || null,
+  };
+}
+
+export function parseRecentClosedIssue(issue, now = Date.now()) {
+  const verified = parseRecentCompletedIssue(issue, now);
+  if (verified) return verified;
+  if (!issue || issue.pull_request || issue.state !== 'closed') return null;
+  const reason = String(issue.state_reason || '').toLowerCase();
+  if (reason === 'not_planned' || reason === 'duplicate') return null;
+  const body = String(issue.body || '');
+  if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
+      /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
+  const closedAt = issue.closed_at || issue.updated_at || null;
+  const ms = Date.parse(closedAt || '');
+  if (!Number.isFinite(ms) || ms > now) return null;
+  const classification = classifyOpenIssue(issue);
+  if (classification.workKind !== 'WORK') return null;
+  const priority = issuePriority(issue);
+  return {
+    number: Number(issue.number), title: String(issue.title || ''),
+    priority, effectivePriority: priority, sourcePriority: priority,
+    employeeId: issueEmployeeId(issue),
+    status: 'CLOSED_UNVERIFIED', workKind: 'WORK',
+    ...workflowRelationsForIssue(issue),
+    progressPercent: null, progressSource: 'closed_unverified',
+    progressDetail: 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    completionVerified: false,
+    lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
+    closedAt, updatedAt: closedAt, url: issue.html_url || null,
   };
 }
 
@@ -679,14 +721,15 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
   try {
     const pageSet = await ghAllPages('/repos/' + owner + '/' + repo + '/issues?state=closed&per_page=100&sort=updated&direction=desc', fetchImpl, 10);
     const candidates = (Array.isArray(pageSet.rows) ? pageSet.rows : [])
-      .map((issue) => parseRecentCompletedIssue(issue, now))
+      .map((issue) => parseRecentClosedIssue(issue, now))
       .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
-      .sort((a, b) => Date.parse(b.completedAt || 0) - Date.parse(a.completedAt || 0));
+      .sort((a, b) => Date.parse(b.closedAt || b.completedAt || 0) - Date.parse(a.closedAt || a.completedAt || 0));
     const rows = candidates.slice(0, RECENT_WORK_LIMIT);
     const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
     const value = {
       rows,
-      completedCount: rows.length,
+      completedCount: rows.filter((row)=>row.completionVerified===true).length,
+      archivedCount: rows.filter((row)=>row.status==='CLOSED_UNVERIFIED').length,
       complete: boundedScopeComplete,
       stale: false,
       scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
@@ -695,7 +738,7 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
     return value;
   } catch {
     if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
-    return { rows: [], completedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
+    return { rows: [], completedCount: 0, archivedCount: 0, complete: false, stale: true, scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open' };
   }
 }
 
@@ -963,9 +1006,11 @@ function issueCanonicalState(issue) {
 
 async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl = fetch) {
   const candidates = (Array.isArray(issues) ? issues : [])
-    .filter((issue) => issue && !issue.pull_request && issue.state === 'open' && /^P[1-5]$/.test(String(issuePriority(issue) || '')))
+    .filter((issue) => issue && !issue.pull_request && issue.state === 'open'
+      && /^P[0-5]$/.test(String(issuePriority(issue) || ''))
+)
     .sort((a, b) => Date.parse(b?.updated_at || 0) - Date.parse(a?.updated_at || 0))
-    .slice(0, Math.max(QUEUE_LIMIT, 24));
+    .slice(0, Math.max(QUEUE_LIMIT, 40));
   const pairs = await Promise.all(candidates.map(async (issue) => {
     const number = Number(issue.number);
     const now = Date.now();
@@ -976,17 +1021,34 @@ async function latestStructuredLifecycleOverrides(issues, owner, repo, fetchImpl
     let value = null;
     try {
       const commentsCount = Math.max(0, Number(issue?.comments || 0));
-      const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
-      const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
-      const rows = Array.isArray(comments) ? comments : [];
-      const issueAt = Date.parse(issue?.updated_at || '') || 0;
-      for (let i = rows.length - 1; i >= 0; i -= 1) {
-        const parsed = parseStructuredLifecycleComment(rows[i]);
-        if (!parsed) continue;
-        const commentAt = Date.parse(parsed.createdAt || '') || 0;
-        if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
-        value = parsed;
-        break;
+      if (commentsCount > 0) {
+        const lastPage = Math.max(1, Math.ceil(commentsCount / 100));
+        const comments = await gh('/repos/' + owner + '/' + repo + '/issues/' + number + '/comments?per_page=100&page=' + lastPage, fetchImpl);
+        const rows = Array.isArray(comments) ? comments : [];
+        const latest = rows.filter((comment) => Number.isFinite(Date.parse(comment?.created_at || '')))
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+        const issueAt = Date.parse(issue?.updated_at || '') || 0;
+        let structured = null;
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const parsed = parseStructuredLifecycleComment(rows[i]);
+          if (!parsed) continue;
+          const commentAt = Date.parse(parsed.createdAt || '') || 0;
+          if (issueAt && commentAt && commentAt + 60_000 < issueAt) break;
+          structured = parsed;
+          break;
+        }
+        // Recorded GitHub comment != verified AI execution/transition. It is
+        // still a real timestamped activity entry in the Owner audit journal.
+        if (latest) value = {
+          ...(structured || {}),
+          lastActivityAt: latest.created_at,
+          lastActivitySource: 'github_issue_comment',
+          lastActivitySummary: String(latest.body || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+          lastActivityAuthor: String(latest.user?.login || '').slice(0, 65),
+          lastActivityUrl: /^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-\d+$/.test(String(latest.html_url || ''))
+            ? latest.html_url : null,
+        };
+        else value = structured;
       }
     } catch {
       // Keep canonical body truth if comment readback is unavailable.
@@ -1081,6 +1143,36 @@ export function classifyOpenIssue(issue) {
   };
 }
 
+// Presentation only: NV02 is an external UI worker that self-pulls GitHub.
+// This marker never enables Core dispatch or bypasses OS/security action gates.
+function nv02LocalSelfPullEligible(issue) {
+  if (!issue || issue.state !== 'open' || issue.pull_request) return false;
+  const title=String(issue.title||'');
+  if (/\[P0\]/i.test(title) || hasTerminalBlockedLabel(issue)) return false;
+  const active=String(issue.body||'').split(/\r?\n(?=#{1,6}\s+\S)/)[0];
+  const v=(key)=>bodyValue(active,key).trim().toUpperCase();
+  if (!/^P[1-5]$/.test(v('PRIORITY'))) return false;
+  if (v('NV02_LOCAL_GITHUB_SELF_PULL')!=='P1_P5_ONLY'
+    || v('ASSIGNED_EXECUTOR')!=='NV02'
+    || v('EXECUTION_SURFACE')!=='UI'
+    || v('OWNER_POLICY')!=='AUTO'
+    || v('TIGERIQ_EXECUTABLE')!=='TRUE'
+    || v('AUTO_QUEUE')!=='INCLUDED'
+    || v('MUTATION_OWNER')!=='NONE'
+    || !v('RESOURCE_SCOPE')
+    || !/^READY_NV02_/.test(v('CURRENT_STATE'))) return false;
+  const restrictions=['NO_RDC','NO_PC01_SHELL','NO_CODEX','NO_DIRECT_MAIN',
+    'NO_PRODUCTION_RELEASE','NO_PAID_COST','NO_CREDENTIAL_CHANGE',
+    'NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE'];
+  if (!restrictions.every((key)=>v(key)==='TRUE') || v('APP_CHROME_MUTATION')!=='FORBIDDEN') return false;
+  if (['OWNER_HOLD','OWNER_GATE','OWNER_APPROVAL_REQUIRED','OWNER_REVIEW_REQUIRED',
+    'OWNER_ACCEPTANCE_REQUIRED','MANUAL_GATE'].some((key)=>bodyFlag(active,key))) return false;
+  if (v('BLOCKED_BY')&&!['NONE','NO','CLEARED'].includes(v('BLOCKED_BY'))) return false;
+  const contract=validateWorkOrderLifecycleV2(issue);
+  if(contract.required&&!contract.valid)return false;
+  return true;
+}
+
 export function executionEligibilityForIssue(issue, overlays = {}) {
   if (!issue || issue.pull_request || issue.state !== 'open') return 'TERMINAL';
   const body = String(issue.body || '');
@@ -1126,8 +1218,14 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
     return 'ELIGIBLE_AFTER_RESOURCE';
   }
 
+  // Invalid V2 cards remain parked even if a stale queue projection says READY.
+  const lifecycleGate=validateWorkOrderLifecycleV2(issue);
+  if(lifecycleGate.required&&!lifecycleGate.valid)return 'PARKED_DEPENDENCY';
+
   if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
   if (overlays.queued?.eligibleNow === true) return 'READY';
+
+  if (nv02LocalSelfPullEligible(issue)) return 'READY';
 
   const admission = safeAutoWorkAdmission(issue);
   if (admission.eligible) return 'READY';
@@ -1153,6 +1251,7 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
     'MUTATION_OWNER_CONFLICT',
     'RESOURCE_SCOPE_REQUIRED',
     'PUBLIC_EVIDENCE_KEYS_UNSUPPORTED',
+    'LIFECYCLE_V2_CONTRACT_INVALID',
     'SPECIALIST_CONTRACT_REQUIRED',
     'EXPLICIT_EXECUTION_DISABLED',
     'AUTO_QUEUE_EXCLUDED',
@@ -1192,10 +1291,10 @@ function actionableStatus(issue, overlays = {}) {
   if (terminalBlocked) return 'BLOCKED';
 
   if (classification.workKind === 'GOAL') return 'GOAL';
+  // A canonical BLOCKED phase takes precedence over a future LIVE_ACCEPTANCE
+  // word in the same phase; the current source must not be labeled VERIFY.
+  if (/(?:^|_)BLOCKED(?:_|$)/.test(phase)) return 'BLOCKED';
   if (/(?:READY_(?:LIVE_)?ACCEPTANCE|READY_VERIFY|WAIT_VERIFY|LIVE_ACCEPTANCE)/.test(phase)) return 'VERIFY';
-  if (/BLOCKED/.test(phase)) {
-    return (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON')) ? 'BLOCKED' : 'UNKNOWN';
-  }
   if (/(?:WAIT|PENDING|HOLD)/.test(phase)) return 'WAITING';
   if (/(?:REVIEW|VERIFY)/.test(phase)) return overlays.hasPull ? 'REVIEW' : 'UNKNOWN';
   if (/(?:WORKING|RUNNING|IN_PROGRESS|IMPLEMENT)/.test(phase)) return 'UNKNOWN';
@@ -1208,8 +1307,23 @@ export function checklistForIssue(issue) {
   const verified = bodyFlag(body, 'PROGRESS_VERIFIED')
     || source === 'VERIFIED' || source === 'VERIFIED_CHECKLIST';
   const items = [];
+  // Use only the first canonical checklist section, not historical duplicates.
+  // Legacy cards without that heading retain only checkboxes before the first
+  // history separator. A later current V2 section is permitted (GH-4709).
+  const lines = body.split(/\r?\n/);
+  const sectionStart = lines.findIndex((line) => /^##\s+STRUCTURED_PROGRESS_CHECKLIST\b/i.test(line));
+  const firstDivider = lines.findIndex((line) => /^ {0,3}---+\s*$/.test(line));
+  let checklistLines;
+  if (sectionStart >= 0) {
+    let sectionEnd = lines.findIndex((line, index) =>
+      index > sectionStart && (/^##\s+\S/.test(line) || /^ {0,3}---+\s*$/.test(line)));
+    if (sectionEnd < 0) sectionEnd = lines.length;
+    checklistLines = lines.slice(sectionStart + 1, sectionEnd);
+  } else {
+    checklistLines = lines.slice(0, firstDivider < 0 ? lines.length : firstDivider);
+  }
   let fenced = false;
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of checklistLines) {
     if (/^\s*(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
     if (fenced) continue;
     const match = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/);
@@ -1427,8 +1541,9 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const classification = classifyOpenIssue(issue);
   const canonicalPhase = issueCanonicalState(issue);
   const phase = String(classification.ownerGate ? canonicalPhase : currentLifecycle?.state || canonicalPhase).toUpperCase();
-  const status = actionableStatus(issue, effectiveOverlays);
+  let status = actionableStatus(issue, effectiveOverlays);
   const admission = safeAutoWorkAdmission(issue);
+  const lifecycleContract=validateWorkOrderLifecycleV2(issue);
   const rawExecutionEligibility = executionEligibilityForIssue(issue, effectiveOverlays);
   const lifecycleDisplayStatus = currentLifecycle ? statusFromLifecycleState(phase) : null;
   const lifecycleHasNoBlocker = Boolean(currentLifecycle && (!currentLifecycle.blocker || currentLifecycle.blockerCleared));
@@ -1447,6 +1562,22 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
   const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
     ? 'READY'
     : rawExecutionEligibility;
+
+  // Source-first presentation: eligibility is NOT a worker lease or proof
+  // of execution. Never render a blocked device as VERIFY, or an unclaimed
+  // ready job as generic WAITING. Parked source work must not show as OPEN.
+  if (classification.workKind === 'WORK' && !classification.ownerGate && active?.live !== true) {
+    const explicitlyBlocked=/(?:^|_)BLOCKED(?:_|$)/.test(canonicalPhase)
+      && !(currentLifecycle?.blockerCleared === true);
+    if (explicitlyBlocked && (!active || issueAt >= (Date.parse(active?.updatedAt || '') || 0))) {
+      status='BLOCKED';
+    } else if (executionEligibility === 'READY' && ['OPEN','WAITING','UNKNOWN'].includes(status)) {
+      status='QUEUED';
+    } else if (['PARKED_DEPENDENCY','HARD_GATE','ELIGIBLE_AFTER_RESOURCE'].includes(executionEligibility)
+      && status === 'OPEN') {
+      status='WAITING';
+    }
+  }
 
   const checks = classification.ownerGate ? null : active?.checks || null;
   const hasPull = classification.ownerGate ? false : Boolean(active?.prNumber || overlays.hasPull);
@@ -1525,6 +1656,29 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     status,
     displayState: bodyValue(body, 'DISPLAY_STATE').trim().toUpperCase() || status,
     executionEligibility,
+    lifecycleContract: {required:lifecycleContract.required,valid:lifecycleContract.valid,missing:lifecycleContract.missing,source:lifecycleContract.source},
+    lifecycleTiming:lifecycleContract.timestamps,
+    // Latest recorded event, not a proof of execution or a status transition.
+    // issue.updated_at is intentionally never used as a surrogate event time.
+    lastActivityAt: Number.isFinite(Date.parse(lifecycle?.lastActivityAt || ''))
+      ? lifecycle.lastActivityAt : (Number.isFinite(Date.parse(issue?.created_at || '')) ? issue.created_at : null),
+    lastActivitySource: lifecycle?.lastActivitySource || 'github_issue_created',
+    lastActivitySummary: lifecycle?.lastActivitySummary || 'Tạo hồ sơ',
+    lastActivityAuthor: lifecycle?.lastActivityAuthor || String(issue?.user?.login || ''),
+    lastActivityUrl: lifecycle?.lastActivityUrl || issue.html_url || null,
+    // Timestamp of the latest structured GitHub comment explicitly reporting
+    // the SAME effective display status; never infer from issue.updated_at.
+    // It is an observed status attestation, not necessarily a transition event.
+    statusEvidenceAt: currentLifecycle?.state
+      && lifecycleDisplayStatus===status
+      && Number.isFinite(Date.parse(currentLifecycle.createdAt||''))
+        ? currentLifecycle.createdAt : null,
+    statusEvidenceSource: currentLifecycle?.state
+      && lifecycleDisplayStatus===status
+      && Number.isFinite(Date.parse(currentLifecycle.createdAt||''))
+        ? 'github_structured_lifecycle_comment' : null,
+    // UI-only readiness: it is NOT a Core lease or proof NV02 is executing.
+    localSelfPullReady: executionEligibility === 'READY' && !activeLease && nv02LocalSelfPullEligible(issue),
     executionEligibilityReason: executionEligibility === 'READY' ? null : (admission.reason || null),
     waitReason: waitReason || (executionEligibility === 'READY' ? null : (admission.reason || null)),
     rearmCondition: rearmCondition || (executionEligibility === 'PARKED_DEPENDENCY' ? 'SOURCE_STATE_OR_DEPENDENCY_CHANGE' : null),
@@ -1855,7 +2009,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       unknown: actionable.filter((row) => row.status === 'UNKNOWN').length,
       waiting: actionable.filter((row) => ['QUEUED','WAITING','BLOCKED','UNKNOWN'].includes(row.status)).length,
       system: openWork.filter((row) => row.workKind === 'SYSTEM').length,
-      done: recentWork.length,
+      done: recentWork.filter((row)=>row.completionVerified===true).length,
+      archived: recentWork.filter((row)=>row.status==='CLOSED_UNVERIFIED').length,
     };
     const portfolioProgress = verifiedPortfolioProgress(actionable, { complete: issuesComplete === true && !projectionStale });
     const completionScope = await scopedCompletedWork(openIssues, actionable, owner, repo, issueMap, fetchImpl);
@@ -2035,6 +2190,10 @@ export async function fetchPc01Live(fetchImpl = fetch) {
 }
 
 export default async function handler(req, res) {
+  const deviceKey=String(process.env.TIGERIQ_LIVE_DEVICE_KEY||'');
+  res.setHeader('Cache-Control','private, no-store');
+  if(deviceKey.length<48)return json(res,503,{error:'DEVICE_AUTH_NOT_CONFIGURED'});
+  if(!authorizedDevice(String(req.headers?.cookie||''),deviceKey))return json(res,403,{error:'DEVICE_NOT_ENROLLED'});
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
   const now = Date.now();
   const requestUrl = new URL(req.url || '/', 'http://localhost');

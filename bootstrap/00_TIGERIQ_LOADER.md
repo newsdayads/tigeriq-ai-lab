@@ -17,6 +17,12 @@ Updated: 2026-10-05
 - Với bề mặt render do TigerIQ kiểm soát, gọi `validateBcctV4` / `publishBcctV4` từ `apps/shared/bcct-v4-contract.mjs` trước khi xuất bản. Sai hợp đồng phải bị chặn thay vì hiện báo cáo giả đạt.
 - GitHub không thể cưỡng chế bộ kết xuất ChatGPT gốc. Khác biệt giữa quy tắc và cưỡng chế phải được ghi đúng; chỉ ghi ĐẠT sau kiểm thử lần gọi đầu trên bề mặt thực tế.
 
+## RDC HARD SELECTOR — P0 OWNER 2026-10-15
+- When an authorized TigerIQ operation requires Remote Desktop Commander, load `docs/RDC_REMOTE_POOL.md` on current GitHub main and apply its **HARD ROUTING** contract without asking the Owner to select among connected accounts.
+- Before each independent device-bound call, read available account quota (`who_am_i`) and paired PC01 status (`list_devices`) for each exposed link; choose Online, authenticated, quota > 0, **highest quota first**, deterministic RDC ID tie-break. Pass the selected account's exact `link_id` and its own PC01 `deviceId` to the tool.
+- Recheck on a newly started operation; fail over after confirmed pre-execution/quota failure. An uncertain write requires verification before reattempt; no permission/security-denial bypass, no duplicate mutation or cross-resource lease takeover. Zero eligible links = `RDC_POOL_UNAVAILABLE`.
+- This policy governs source-loading assistants. GitHub policy does not install native cross-chat link selection in ChatGPT's host; never claim universal automatic routing until tested there.
+
 ## PREBOOT HARD COMMAND — OWNER AUTHORITY
 - `LÀM APP CHROME` is the primary hard command. Aliases `APP CHROME`, `APPCHROME`, and legacy `AC` are supported. Matching is trimmed and case-insensitive. The command MUST be resolved before greetings, generic chat handling, memory, cached attachments, or stale project copies.
 - `LÀM APP CHROME = APP_CHROME_OWNER_MODE`. Legacy `AC` maps to the same mode but is no longer the recommended user command.
@@ -79,6 +85,14 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 3. `bootstrap/03_TIGERIQ_AI_EMPLOYEE_MODEL.md`
 4. `bootstrap/05_TIGERIQ_BASELINE_DECISIONS.md`
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
+
+## OWNER INTERACTION V6 — HARD ROUTE CHO PHẢN HỒI CÔNG VIỆC (14/10/2026)
+- Nạp `docs/OWNER_INTERACTION_V6.md` từ GitHub `main` sau Bootstrap và Issue #504, cho câu trả lời có công việc, báo cáo, tiến độ hoặc nút thao tác.
+- Hiển thị màu trạng thái, biểu tượng vector, thanh % theo tử/mẫu nghiệm thu thật; nút chỉ được ghi hành động thực có quyền/backend/biên nhận. Câu hỏi đơn giản vẫn ngắn, không ép bảng.
+- Khi `bcct`, **GIỮ NGUYÊN** layout `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ bổ sung trình bày/hành động khi môi trường hỗ trợ.
+- Không ép bộ hiển thị ChatGPT/Gemini gốc bằng GitHub; không suy mã nguồn đã hợp nhất là Web/PC01 đã cập nhật; không bỏ cổng ký phát hành Production hoặc kiểm soát một người ghi.
+- Drive `00_TIGERIQ_LOADER.md` chỉ là điểm vào/bản sao đọc; GitHub `main` luôn là nguồn chuẩn, bản Drive không có quyền ghi đè chuẩn.
+STATE=OWNER_INTERACTION_V6_SOURCE_ROUTE|DEPLOYMENT_PER_SURFACE_EVIDENCE_REQUIRED
 
 ## OWNER BCCT FINAL V5 — HARD ROUTE MỌI CHAT TIGERIQ
 - Khi Owner nhập `bcct` hoặc `báo cáo chi tiết`, BẮT BUỘC đọc `docs/OWNER_BCCT_FINAL_V5.md` trên GitHub `main` (hoặc phiên bản mới hơn khi đã phát hành) và Issue #504, rồi xuất BCCT có giao diện tương tác nếu môi trường hỗ trợ. Không tự dùng mẫu Markdown cũ.

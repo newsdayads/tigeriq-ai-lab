@@ -17,6 +17,9 @@ import {
   releaseStaleAssigneeLease,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
+import { completionProof } from '../apps/shared/work-center-history.mjs';
+import { workOrderChecklistGate } from '../apps/tigeriq-core/work-order-checklist-hard-gate.mjs';
+import { syncAcceptedChecklistStep } from '../apps/tigeriq-core/work-order-step-autosync.mjs';
 
 const OWNER = 'newsdayads';
 const REPO = 'tigeriq-ai-lab';
@@ -81,6 +84,64 @@ async function reconcile(issue, lease) {
     closeIssue: (number) => gh([`repos/${OWNER}/${REPO}/issues/${number}`, '-X', 'PATCH', '-f', 'state=closed']),
   });
 }
+// Only an independently read-back, exact-head successful CI run or an explicit
+// Owner-authored acceptance can release a machine-consumable step checkpoint.
+// Worker statement or arbitrary comment text is never an acceptance by itself.
+const ACCEPTED_STEP_MARKER='[TIGERIQ_NV02_ACCEPTED_STEP_V1]';
+function stepFields(body){
+ return Object.fromEntries(String(body||'').split(/\r?\n/)
+  .map(line=>line.match(/^([A-Z_]+)=(.*)$/)).filter(Boolean).map(m=>[m[1],m[2].trim()]));
+}
+async function syncAcceptedNv02Comments(issue,lease,comments){
+ const markers=comments.filter(c=>String(c?.body||'').startsWith(ACCEPTED_STEP_MARKER)).slice(-5);
+ for(const marker of markers){
+  const m=stepFields(marker.body);
+  if(m.WORK_ORDER!=='#'+issue.number||m.RESOURCE_SCOPE!==lease.resourceScope||
+     m.LEASE_ID!==lease.leaseId||!/^([A-Z][A-Z0-9_-]{1,15})$/.test(m.STEP_ID||''))continue;
+  const expectedUrl=m.EVIDENCE_URL||'';
+  const part=expectedUrl.match(/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/(\d+)#issuecomment-(\d+)$/i);
+  if(!part||Number(part[1])!==Number(issue.number))continue;
+  if(workOrderChecklistGate(issue,{stepId:m.STEP_ID,expectedEvidenceUrl:expectedUrl,requireAll:false}).ok)continue;
+  const result=await syncAcceptedChecklistStep({
+   issueNumber:issue.number,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
+   resourceScope:lease.resourceScope,leaseId:lease.leaseId,
+   readIssue:async()=>details(issue),
+   assertWriter:async({issue:current})=>{
+    assertLeaseOwnership(current,lease);
+    return {valid:true,resourceScope:lease.resourceScope,leaseId:lease.leaseId};
+   },
+   verifyEvidence:async()=>{
+    const receipt=gh(['repos/'+OWNER+'/'+REPO+'/issues/comments/'+part[2]]);
+    const f=stepFields(receipt.body);
+    if(f.WORK_ORDER!=='#'+issue.number||f.RESOURCE_SCOPE!==lease.resourceScope||
+       f.STEP_ID!==m.STEP_ID||f.ACCEPTANCE!=='PASS')return {verified:false};
+    const expectedHead=String(issue.body||'').match(/^TARGET_HEAD=([a-f0-9]{40})$/mi)?.[1]?.toLowerCase()||'';
+    const ownerAcceptance=receipt?.user?.login===OWNER && f.VERIFIER==='OWNER';
+    let ciAcceptance=false;
+    if(/^(\d+)$/.test(f.CI_RUN_ID||'')&&/^[a-f0-9]{40}$/i.test(f.CI_HEAD_SHA||'')){
+     const run=gh(['repos/'+OWNER+'/'+REPO+'/actions/runs/'+f.CI_RUN_ID]);
+     ciAcceptance=Boolean(expectedHead)&&String(f.CI_HEAD_SHA).toLowerCase()===expectedHead&&run?.status==='completed'&&run?.conclusion==='success'
+       &&String(run?.head_sha||'').toLowerCase()===f.CI_HEAD_SHA.toLowerCase();
+    }
+    if(!ownerAcceptance&&!ciAcceptance)return {verified:false};
+    return {verified:true,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
+     resourceScope:lease.resourceScope,workOrder:'#'+issue.number};
+   },
+   writeIssue:async(number,body,{expectedBody})=>{
+    assertLeaseOwnership(details(issue),lease);
+    const current=details(issue);
+    if(current.state!=='open'||current.body!==expectedBody)throw Error('SOURCE_CHANGED_BEFORE_CHECKBOX_PATCH');
+    gh(['repos/'+OWNER+'/'+REPO+'/issues/'+number,'-X','PATCH','-f','body='+body]);
+   },
+  });
+  if(!result.ok)throw Error('CHECKLIST_AUTOSYNC_DENIED:'+result.reason);
+  console.log(JSON.stringify({event:'NV02_ACCEPTED_STEP_CHECKED',issue:issue.number,stepId:m.STEP_ID,
+   readbackVerified:result.readbackVerified,alreadyChecked:result.alreadyChecked}));
+  return result; // At most one write per poll and lease check.
+ }
+ return null;
+}
+
 async function controllerDispatch(issue, lease) {
   assertLeaseOwnership(issue, lease);
   const response = await fetch(`${CONTROLLER}/api/workers/NV02/dispatch`, {
@@ -94,8 +155,9 @@ async function controllerDispatch(issue, lease) {
 }
 function terminal(issue, comments) {
   const text = comments.map((x) => String(x.body || '')).join('\n');
-  if (issue.state === 'closed' && issue.state_reason === 'completed') return 'DONE';
-  if (new RegExp(`CLAIM_ID=.*STATE=DONE`, 'i').test(text) || /STATE=DONE/i.test(text)) return 'DONE';
+  // Never release a scoped lease as DONE from a comment or GitHub closure alone.
+  // Only V2 validated closed-completed with all checked, linked steps qualifies.
+  if (completionProof(issue).verified && workOrderChecklistGate(issue,{requireAll:true}).ok) return 'DONE';
   if (/STATE=BLOCKED/i.test(text)) return 'BLOCKED';
   return null;
 }
@@ -181,7 +243,8 @@ try {
       while (Date.now() - started < TIMEOUT_MS) {
         const fresh = details(issue);
         const comments = issueComments(issue.number);
-        result = terminal(fresh, comments);
+        await syncAcceptedNv02Comments(fresh,lease,comments);
+        result = terminal(details(issue), issueComments(issue.number));
         if (result) break;
         const currentGuard = nv02AuthoritativeResumeGuard({
           currentWorkOrder: lease.workOrder,

@@ -18,6 +18,7 @@ import {
   parseOwnerResultComment,
   projectOwnerResultInbox,
   progressForIssue,
+  checklistForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
   verifiedCompletionProgress,
@@ -25,6 +26,7 @@ import {
   optionalBodyNumber,
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
+  parseRecentClosedIssue,
   runtimeWorkRows,
   sanitizeRuntimePayload,
 } from '../api/live-status.mjs';
@@ -49,6 +51,35 @@ function coreQueueFlags() {
     'NO_PC01_SHELL=true',
   ];
 }
+
+describe('Canonical open work state vs. display labels', () => {
+  it('keeps blocked device work blocked even when its phase mentions LIVE_ACCEPTANCE', () => {
+    const row=parseOpenWorkIssue({
+      number:2949,state:'open',title:'[P1][ANDROID] Khôi phục S10 5G',
+      updated_at:'2026-10-12T12:48:15Z',body:[
+        'CURRENT_STATE=P1_OPEN_BLOCKED_DEVICE_RELEASE_AND_LIVE_ACCEPTANCE',
+        'BLOCKER=PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED',
+        'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+        'AUTO_QUEUE=EXCLUDED_PENDING_EXISTING_DEVICE_AND_RELEASE_GATES'
+      ].join('\n')
+    });
+    expect(row?.status).toBe('BLOCKED');
+    expect(row?.blocker).toBe('PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED');
+    expect(row?.activeLease).toBe(false);
+  });
+  it('does not show blocked source work as simply OPEN', () => {
+    const row=parseOpenWorkIssue({
+      number:2293,state:'open',title:'[P2][REVENUE LAB] Website Audit',
+      updated_at:'2026-10-12T13:12:00Z',body:[
+        'CURRENT_STATE=READY_SAFE_SOURCE_AND_COST_EVIDENCE_RECONCILIATION_UNCLAIMED',
+        'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+        'AUTO_QUEUE=EXCLUDED_PENDING_DEPENDENCY'
+      ].join('\n')
+    });
+    expect(row?.status).toBe('WAITING');
+    expect(row?.activeLease).toBe(false);
+  });
+});
 
 describe('TigerIQ Live Work Order projection', () => {
 
@@ -354,35 +385,30 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(normalizeRuntimeWorkerActivity({ ...base, heartbeatAt: '2026-09-24T23:59:59Z' }, now)).toMatchObject({ state: 'unknown', status: 'CHƯA RÕ' });
   });
 
-  it('keeps completed history beyond 24 hours and exposes priority + NV metadata', () => {
-    const now = Date.parse('2026-09-25T00:00:00Z');
-    const recent = parseRecentCompletedIssue({
-      number: 1861,
-      title: '[P0][VERCEL][NV12] Việc đã xong',
-      body: 'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
-      state: 'closed',
-      state_reason: 'completed',
-      closed_at: '2026-09-24T23:30:00Z',
-      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/1861',
-    }, now);
-    expect(recent).toMatchObject({ number: 1861, status: 'DONE', priority: 'P1', effectivePriority: 'P1', employeeId: 'NV19' });
+  it('preserves a closed GitHub Issue as archived, not verified 100%', () => {
+    const now=Date.parse('2026-10-12T14:00:00Z');
+    const legacy={number:4500,title:'[P2] Việc đã đóng cũ',body:'STATE=DONE\\nPRIORITY=P2',state:'closed',state_reason:'completed',closed_at:'2026-10-12T13:00:00Z',updated_at:'2026-10-12T13:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4500'};
+    const archived=parseRecentClosedIssue(legacy,now);
+    expect(archived).toMatchObject({number:4500,status:'CLOSED_UNVERIFIED',completionVerified:false,progressPercent:null,closedAt:'2026-10-12T13:00:00Z'});
+    expect(parseRecentCompletedIssue(legacy,now)).toBeNull();
+    expect(parseRecentClosedIssue({...legacy,state_reason:'not_planned'},now)).toBeNull();
+  });
 
-    const older = parseRecentCompletedIssue({
-      number: 1800,
-      title: '[P2][NV12] Việc cũ',
-      body: 'STATE=DONE',
-      state: 'closed',
-      closed_at: '2026-08-01T00:00:00Z',
-    }, now);
-    expect(older).toMatchObject({ number: 1800, priority: 'P2', employeeId: 'NV12', status: 'DONE' });
-
+  it('does not treat historical closed issues as verified completions without V2 receipts', () => {
+    const now=Date.parse('2026-09-25T00:00:00Z');
     expect(parseRecentCompletedIssue({
-      number: 1801,
-      title: '[P3] Không làm',
-      body: 'STATE=CANCELLED',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toBe(null);
+      number:1861,title:'[P0][VERCEL][NV12] Đã đóng thẻ cũ',
+      body:'STATE=DONE\nPRIORITY=P1\nASSIGNED_EXECUTOR=NV19',
+      state:'closed',state_reason:'completed',closed_at:'2026-09-24T23:30:00Z'
+    },now)).toBeNull();
+    expect(parseRecentCompletedIssue({
+      number:1800,title:'[P2][NV12] Đã đóng cũ',body:'STATE=DONE',
+      state:'closed',state_reason:'completed',closed_at:'2026-08-01T00:00:00Z'
+    },now)).toBeNull();
+    expect(parseRecentCompletedIssue({
+      number:1801,title:'[P3] Không làm',body:'STATE=CANCELLED',
+      state:'closed',state_reason:'not_planned',closed_at:'2026-09-24T23:30:00Z'
+    },now)).toBeNull();
   });
 
   it('projects all open work even when it is excluded from scheduler queue', () => {
@@ -430,6 +456,35 @@ describe('TigerIQ Live Work Order projection', () => {
       activeWorker: null,
     });
     expect(executionEligibilityForIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody))).toBe('READY');
+  });
+
+  it('shows NV02 GitHub-local P1 readiness without treating it as a Core/Owner action or a live worker', () => {
+    const safe = [
+      '## ACTIVE CONTRACT',
+      'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+      'NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY','ASSIGNED_EXECUTOR=NV02',
+      'EXECUTION_SURFACE=UI','CAPABILITY=coding','RESOURCE_SCOPE=TIGERIQ_CLINE_NV02_SOURCE_AND_EVAL_V1',
+      'MUTATION_OWNER=NONE','CURRENT_STATE=READY_NV02_SOURCE_RECONCILIATION',
+      'NO_RDC=true','NO_PC01_SHELL=true','NO_CODEX=true','NO_DIRECT_MAIN=true',
+      'NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+      'NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
+      'PROGRESS_SOURCE=VERIFIED_CHECKLIST','PROGRESS_VERIFIED=true',
+      '## CHECKLIST',
+      '- [x] Harness merged — [PR](https://github.com/newsdayads/tigeriq-ai-lab/pull/4542)',
+      '- [x] Decision-gate merged — [PR](https://github.com/newsdayads/tigeriq-ai-lab/pull/4685)',
+      ...Array.from({length:10},(_,idx)=>'- [ ] M'+(idx+3)+' stage not accepted'),
+    ].join('\n');
+    const row=parseOpenWorkIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',safe));
+    expect(row).toMatchObject({
+      status:'OPEN',executionEligibility:'READY',localSelfPullReady:true,
+      activeLease:false,activeWorker:null,progressDone:2,progressTotal:12,
+      progressPercent:17,progressSource:'checklist_verified'
+    });
+    expect(executionEligibilityForIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',
+      safe.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')))).toBe('HARD_GATE');
+    const blocked=safe.replace('CURRENT_STATE=READY_NV02_SOURCE_RECONCILIATION','CURRENT_STATE=WAIT_OWNER_AUTH_ACTION_SPECIFIC');
+    expect(executionEligibilityForIssue(issue(4532,'[P1][NV02][CLINE] Cline trial',blocked))).toBe('HARD_GATE');
+    expect(executionEligibilityForIssue(issue(4532,'[P0][NV02][CLINE] Cline trial',safe))).toBe('HARD_GATE');
   });
 
   it('classifies resource, dependency, owner and terminal gates independently from display state', () => {
@@ -1050,34 +1105,18 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(excludesGoalAndSystem).toMatchObject({ percent: 80, scopeItems: 1, verifiedItems: 1 });
   });
 
-  it('marks completed history as 100 percent', () => {
-    const row = parseRecentCompletedIssue({
-      number: 3104,
-      title: '[P1] Done',
-      body: 'STATE=DONE',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, Date.parse('2026-09-25T00:00:00Z'));
-    expect(row).toMatchObject({ status: 'DONE', progressPercent: 100, progressDetail: '5/5 gate' });
-  });
-
-  it('does not present a closed new capability as DONE before explicit Owner acceptance', () => {
-    const now = Date.parse('2026-09-25T00:00:00Z');
-    expect(parseRecentCompletedIssue({
-      number: 3105,
-      title: '[P1] New capability pending Owner',
-      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toBe(null);
-
-    expect(parseRecentCompletedIssue({
-      number: 3106,
-      title: '[P1] New capability accepted',
-      body: 'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true\nOWNER_ACCEPTED=true',
-      state: 'closed',
-      closed_at: '2026-09-24T23:30:00Z',
-    }, now)).toMatchObject({ status: 'DONE', number: 3106 });
+  it('does not show 100 percent from a GitHub closure without finish evidence even if Owner accepted', () => {
+    const now=Date.parse('2026-09-25T00:00:00Z');
+    for(const body of [
+      'STATE=DONE',
+      'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true',
+      'STATE=DONE\nOWNER_ACCEPTANCE_REQUIRED=true\nOWNER_ACCEPTED=true'
+    ]){
+      expect(parseRecentCompletedIssue({
+        number:3104,title:'[P1] Closed without work receipt',body,state:'closed',
+        state_reason:'completed',closed_at:'2026-09-24T23:30:00Z'
+      },now)).toBeNull();
+    }
   });
 
   it('keeps the existing workforce payload while adding read-only work projection fields', () => {
@@ -1180,23 +1219,11 @@ describe('TigerIQ Live Work Order projection', () => {
     });
   });
 
-  it('preserves workflow relations on recent completed work for graph history', () => {
-    const row = parseRecentCompletedIssue({
-      ...issue(4001, '[P1] Completed child', [
-        'PARENT=#4000',
-        'SOURCE=#4000',
-        'CAPABILITY=coding',
-      ].join('\n')),
-      state: 'closed',
-      state_reason: 'completed',
-      closed_at: '2026-09-24T12:01:00Z',
-    }, Date.parse('2026-09-24T12:02:00Z'));
-    expect(row).toMatchObject({
-      parentNumber: 4000,
-      sourceNumber: 4000,
-      capability: 'coding',
-      status: 'DONE',
-    });
+  it('does not include unverified legacy closure in completed workflow relations', () => {
+    expect(parseRecentCompletedIssue({
+      ...issue(4001,'[P1] Completed child','PARENT=#4000\nSOURCE=#4000\nCAPABILITY=coding'),
+      state:'closed',state_reason:'completed',closed_at:'2026-09-24T12:01:00Z'
+    },Date.parse('2026-09-24T12:02:00Z'))).toBeNull();
   });
 
   it('uses current canonical phase instead of stale historical owner-gate flags', () => {
@@ -1322,4 +1349,63 @@ describe('TigerIQ Live Work Order projection', () => {
   });
 
 
+});
+
+
+describe('Canonical checklist display across active and historical work', () => {
+  it('does not double count an old archived checklist (#4532)', () => {
+    const card = issue(4532, '[P1] Cline', [
+      '## ACTIVE WORK ORDER',
+      'PROGRESS_SOURCE=VERIFIED_CHECKLIST',
+      'PROGRESS_VERIFIED=true',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] M01 — Đã kiểm chứng [Bằng chứng](https://github.com/newsdayads/tigeriq-ai-lab/pull/1)',
+      '- [ ] M02 — Đang chờ',
+      '## ACCEPTANCE',
+      'Evidence required',
+      '---',
+      '## HISTORICAL',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] X01 — Đã xong trước đây',
+      '- [x] X02 — Đã xong trước đây',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 1, total: 2, remaining: 1, verified: true});
+    expect(checklistForIssue(card).steps.map(s => s.title)).toHaveLength(2);
+  });
+
+  it('finds the current V2 checklist after an introductory checkpoint divider (#4709)', () => {
+    const card = issue(4709, '[P1] Repair', [
+      '## TÓM TẮT LẦN SỬA',
+      'Phần nguồn đã hợp nhất, môi trường chạy chưa đạt.',
+      '---',
+      '## ACTIVE WORK ORDER',
+      'WORK_ORDER_LIFECYCLE=V2',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [ ] R00 — Rà nguồn',
+      '- [ ] R01 — Sửa nguồn',
+      '## ACCEPTANCE',
+      'Requires real result',
+      '---',
+      '## HISTORICAL',
+      '- [x] X00 — Không được tính',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 0, total: 2, remaining: 2});
+  });
+
+  it('preserves a bounded legacy checklist and excludes historical ticks (#2949)', () => {
+    const card = issue(2949, '[P1] NV102', [
+      'PROGRESS_VERIFIED=false',
+      '- [ ] 01 — Kiểm tra thiết bị',
+      '- [ ] 02 — Kiểm tra bản cài',
+      '---',
+      '## LỊCH SỬ',
+      '- [x] OLD — Một lần chạy trước',
+    ].join('\n'));
+    expect(checklistForIssue(card)).toMatchObject({done: 0, total: 2, verified: false});
+  });
+
+  it('does not invent progress for policy-only issues without checkboxes', () => {
+    expect(checklistForIssue(issue(1456, '[P0] Governance', 'SOURCE_ONLY=true')))
+      .toMatchObject({done: 0, total: 0, verified: false});
+  });
 });

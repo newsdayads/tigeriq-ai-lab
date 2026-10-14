@@ -29,6 +29,25 @@ foreach($asset in $assets){
   Move-Item -LiteralPath $tmp -Destination $target -Force
 }
 
+# Bundle the scoped Owner approval validator. A missing dependency fails closed.
+$approvalSrc=Join-Path $repo 'apps\shared\owner-one-tap-approval.mjs'
+if(-not(Test-Path -LiteralPath $approvalSrc)){throw 'OWNER_APPROVAL_SOURCE_MISSING'}
+$approvalDst=Join-Path $root 'owner-one-tap-approval.mjs'
+$approvalTmp=$approvalDst+'.tmp'
+Copy-Item -LiteralPath $approvalSrc -Destination $approvalTmp -Force
+Move-Item -LiteralPath $approvalTmp -Destination $approvalDst -Force
+
+# Include public Work Center assets: the bundled server is outside the GitHub source tree.
+$sharedRoot=Join-Path $repo 'public'
+foreach($name in @('work-center.js','work-ui.css','work-center-visual.css')){
+  $src=Join-Path $sharedRoot $name
+  if(-not(Test-Path -LiteralPath $src)){throw ('WEB_CONTROL_SHARED_ASSET_MISSING:'+ $name)}
+  $dst=Join-Path $root $name
+  $tmp=$dst+'.tmp'
+  Copy-Item -LiteralPath $src -Destination $tmp -Force
+  Move-Item -LiteralPath $tmp -Destination $dst -Force
+}
+
 $app=Join-Path $root 'web-control-server.mjs'
 if(-not(Test-Path -LiteralPath $app)){throw 'WEB_CONTROL_SERVER_MISSING'}
 $tail=(tailscale ip -4 2>$null | Select-Object -First 1)

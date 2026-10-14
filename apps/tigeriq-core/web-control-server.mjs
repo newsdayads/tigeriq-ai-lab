@@ -1,5 +1,11 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+// Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
+const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
+const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
+// Optional source-only adapter. Missing PC bundle asset must fail closed without breaking Web Control.
+const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(()=>import('../../apps/shared/owner-one-tap-approval.mjs').catch(()=>import('./owner-one-tap-approval.mjs').catch(()=>null)));
+const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
@@ -15,6 +21,17 @@ const GITHUB_WORK_ORDERS_DISABLED = process.env.TIGERIQ_GITHUB_WORK_ORDERS_DISAB
 const WORK_ORDER_CACHE_MS = 30000;
 let workOrderCache = { at: 0, workOrders: [], workOrdersRecent: [], meta: { ok: false, source: 'github', stale: true } };
 const baseHtml = readFileSync(new URL('./web-control.html', import.meta.url), 'utf8');
+// Read from the source tree for normal execution, from the atomic bundle for PC01.
+function sharedWorkAsset(name,required=false){
+ try{return readFileSync(new URL('../../public/'+name,import.meta.url),'utf8')}
+ catch(sourceError){
+  try{return readFileSync(new URL('./'+name,import.meta.url),'utf8')}
+  catch{if(required)throw sourceError;return ''}
+ }
+}
+const sharedWorkCenterJs=sharedWorkAsset('work-center.js');
+const sharedWorkUiCss=sharedWorkAsset('work-ui.css');
+const sharedWorkCenterVisualCss=sharedWorkAsset('work-center-visual.css',true);
 const healthModelJs = readFileSync(new URL('./web-control-health-model.js', import.meta.url), 'utf8');
 const truthJs = readFileSync(new URL('./web-control-truth.js', import.meta.url), 'utf8');
 const unifiedJs = readFileSync(new URL('./web-control-unified.js', import.meta.url), 'utf8');
@@ -25,7 +42,7 @@ const mobileCss = readFileSync(new URL('./web-control-mobile.css', import.meta.u
 const workforceCss = readFileSync(new URL('./web-control-workforce.css', import.meta.url), 'utf8');
 const routingCss = readFileSync(new URL('./web-control-routing.css', import.meta.url), 'utf8');
 const html = baseHtml
-  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"><link rel="stylesheet" href="/web-control-routing.css"></head>')
+  .replace('</head>', '<link rel="stylesheet" href="/web-control-unified.css"><link rel="stylesheet" href="/web-control-mobile.css"><link rel="stylesheet" href="/web-control-workforce.css"><link rel="stylesheet" href="/web-control-routing.css"><link rel="stylesheet" href="/work-ui.css"><link rel="stylesheet" href="/work-center-visual.css"><script src="/work-center.js"></script></head>')
   .replace('</body>', '<script src="/web-control-health-model.js"></script><script src="/web-control-truth.js"></script><script src="/web-control-unified.js"></script><script src="/web-control-workforce.js"></script><script src="/web-control-routing.js"></script></body>');
 
 const securityHeaders = {
@@ -64,7 +81,7 @@ function systemWorkOrder(issue,body='') {
   return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ)\]/.test(title) || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope);
 }
 
-export function projectWorkOrder(issue) {
+export function projectWorkOrder(issue, source = {}) {
   const body=String(issue?.body||'');
   const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
@@ -74,13 +91,16 @@ export function projectWorkOrder(issue) {
   const rawOwner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
   const owner=ownerControlled&&!executable?'OWNER':rawOwner;
   const closed=String(issue?.state||'').toLowerCase()==='closed';
+  const proof=closed?completionProof(issue):{verified:false,timing:null};
   const isSystem=systemWorkOrder(issue,body);
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
+  // Never expose an approval action without a fresh, authenticated Owner-authored GitHub issue.
+  const approvalProjection=ownerGate?projectApproval(issue,source):{ok:false};
   const review=/REVIEW|VERIFY|RÀ_SOÁT/.test(marker)||capability==='REVIEW';
   const blocked=/BLOCK/.test(marker);
   const working=machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING/.test(marker);
   let bucket='CẦN XỬ LÝ';
-  if(closed) bucket='HOÀN THÀNH';
+  if(closed) bucket=proof.verified?'HOÀN THÀNH':'CHỜ NGHIỆM THU';
   else if(ownerGate) bucket='CHỜ ANH SƠN';
   else if(review) bucket='RÀ SOÁT';
   else if(blocked) bucket=ownerStatusLabel('BLOCKED');
@@ -88,13 +108,14 @@ export function projectWorkOrder(issue) {
   else if(isSystem||ownerControlled||!executable) bucket='HỆ THỐNG';
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
+  else if(bucket==='CHỜ NGHIỆM THU') state='CHỜ NGHIỆM THU';
   else if(bucket===ownerStatusLabel('BLOCKED')) state=ownerStatusLabel('BLOCKED');
   else if(bucket===ownerStatusLabel('WORKING')) state=ownerStatusLabel('WORKING');
   else if(bucket==='RÀ SOÁT') state='RÀ SOÁT';
   else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
   else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';
   else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
-  return { issue_number:issue.number,title:issue.title,priority,state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),owner,closed,updated_at:issue.updated_at,url:issue.html_url };
+  return {issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,status:proof.verified?'DONE':closed?'VERIFY':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',updated_at:issue.updated_at,updatedAt:issue.updated_at,url:issue.html_url};
 }
 
 async function githubWorkOrders() {
@@ -114,7 +135,7 @@ async function githubWorkOrders() {
       const body=String(issue.body||'');
       const executable=/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body);
       return executable||systemWorkOrder(issue,body);
-    }).map(projectWorkOrder);
+    }).map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
     const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
     const workOrders=candidates.filter(x=>!x.closed)
       .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
@@ -152,6 +173,15 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/favicon.ico') {
       res.writeHead(204, { 'cache-control': 'public, max-age=86400' });
       return res.end();
+    }
+    if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(sharedWorkCenterJs?200:503,{'content-type':'text/javascript; charset=utf-8'});return res.end(sharedWorkCenterJs)}
+    if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(sharedWorkUiCss?200:503,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkUiCss)}
+    if(req.method==='GET'&&url.pathname==='/work-center-visual.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8'});return res.end(sharedWorkCenterVisualCss)}
+    if(req.method==='GET'&&url.pathname==='/api/work-history'){
+      const number=url.searchParams.get('number')||'';
+      if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
+      try{const response=await upstream(CORE_URL,'/api/work-history?number='+number,7000);res.writeHead(response.status,{'content-type':'application/json','cache-control':'no-store'});return res.end(response.text)}
+      catch{res.writeHead(503,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_UNAVAILABLE'}))}
     }
     if (req.method === 'GET' && url.pathname === '/web-control-health-model.js') {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });

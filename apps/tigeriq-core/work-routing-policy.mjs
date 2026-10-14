@@ -156,6 +156,7 @@ export function buildRoleFallbackPrompt(workerId){
     id+' — UI_WORKER_EXTERNAL_TO_CORE=true.',
     'Core does not select backlog for this worker.',
     'Command 02: active CURRENT_WORK_ORDER plus checkpoint means resume; terminal/no-current means local GitHub self-pull exactly one eligible P1-P5 item for NV02.',
+    'Before any NV02 local claim, validate Work Order Lifecycle V2 for every new or opted-in card: steps, current/next, ETA/time status, nonfabricated evidence, and allowed action scope; if invalid, park as CONTRACT_INVALID rather than self-claim.',
     'Use NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY with lease, evidence, release, then continue to the next eligible item.',
     'P0 remains Owner-only and App Chrome remains a separate Owner-controlled scope.',
   ].join(' ');

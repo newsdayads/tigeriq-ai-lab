@@ -1,6 +1,8 @@
+import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import {buildWorkHistory,recentCommentPages,latestComments} from '../shared/work-center-history.mjs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
@@ -10,7 +12,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
-import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure } from './objective-local-routing.mjs';
+import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
@@ -31,13 +33,17 @@ import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABE
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
+import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
+import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
+import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { objectiveCompletionGate } from './github-intake.mjs';
@@ -46,6 +52,7 @@ import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
+import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
@@ -1331,6 +1338,19 @@ async function runApiDoctorAnalysisJob(items,scanSignature){
   if(recent)return {skipped:'deduped'};
   const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recentUnavailable)return {skipped:'deduped_nv10_unavailable'};
+  // NV10 is the sole local coordinator for github_api_autowork.
+  // Avoid starving accepted Owner work with recurring optional API Doctor inference.
+  // Only a dispatchable, due, still-active work item can defer diagnostics.
+  const localBacklog=(await pool.query(`
+    select count(*)::int as pending from tigeriq_jobs j
+    join tigeriq_objectives o on o.id=j.objective_id
+    where o.status='active' and j.kind='github_api_autowork'
+      and (j.status='queued'
+           or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+      and j.attempts<j.max_attempts
+  `)).rows[0]?.pending;
+  const priority=apiDoctorAutoworkPriority(localBacklog);
+  if(priority.defer) return {skipped:'deferred_for_real_github_work',pending:localBacklog};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
@@ -1362,7 +1382,7 @@ async function runApiDoctorScan(){
   const actions=[];
   for(const resource of rows){
     const events=apiDoctorHealthEvidenceEvents(await apiDoctorRecentResourceEvents(resource.resource_id));
-    const latestFailure=apiDoctorCurrentFailure(events);
+    const latestFailure=apiDoctorCurrentFailure(events,{preserveWorkFailure:true});
     const workFailures=consecutiveWorkFailureEvidence(events);
     const repeatedSourceFailures=workFailures.filter(x=>classifyApiDoctorFailure({kind:x.data?.kind,message:x.data?.message})==='source_contract').length;
     const plan=apiDoctorAction({healthState:resource.health_state,credentialState:resource.credential_state,cooldownUntil:resource.cooldown_until,latestFailure:latestFailure?{kind:latestFailure.data?.kind,message:latestFailure.data?.message}:null,repeatedWorkFailures:repeatedSourceFailures});
@@ -1487,6 +1507,25 @@ async function runApiDoctorScan(){
       row.action='wait_repair';row.reason=handoffPlan.reason;row.handoff='deduped';row.validationAttempts=validationAttempts;row.codingObjectiveId=existingHandoff.data?.codingObjectiveId||null;row.repairIssueNumber=Number(existingHandoff.data?.repairIssueNumber||0)||null;actions.push(row);continue;
     }
     if(plan.action==='wait'||plan.action==='idle'){actions.push(row);continue;}
+    if(plan.action==='investigate'){
+      // Do not retry a failed inference via a mere health probe. Require
+      // redacted, causal runner evidence and preserve the existing repair scope.
+      const signature=apiDoctorRepairSignature({
+        employeeId:resource.employee_id,provider:resource.provider,
+        failureClass:plan.failureClass,message:'unresolved_real_work_timeout',
+      });
+      if(!await apiDoctorEventBySignature('API_DOCTOR_CAUSAL_TRACE_REQUIRED',signature)){
+        await event('API_DOCTOR_CAUSAL_TRACE_REQUIRED',{
+          employeeId:resource.employee_id,resourceId:resource.resource_id,
+          provider:resource.provider,taskKind:'api_doctor',
+          signature,failureClass:plan.failureClass,
+          failureAt:latestFailure?.ts||null,reason:plan.reason,
+          remedy:'bounded_redacted_runner_trace_then_authorized_repair',
+        });
+      }
+      row.failureAt=latestFailure?.ts||null;
+      actions.push(row);continue;
+    }
     let probeOk=false;
     try{
       const probe=await probeResource(resource.resource_id);
@@ -1804,7 +1843,7 @@ async function runJob(j) {
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist;
-    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
       const packet=executionPacketFromPrompt(j.prompt);
@@ -1812,7 +1851,7 @@ async function runJob(j) {
       if(!executionGate.pass){
         await event('EXECUTION_ACCEPTANCE_RETRY',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision});
         const retryPrompt=strictExecutionRetryPrompt(routedPrompt,executionGate);
-        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:j.kind==='github_api_autowork'?'LOCAL':(j.routing_profile||'AUTO'),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
+        routed=await invokeRouted(retryPrompt,j.capability,j.id,1,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
         executionGate=executionResultGate(routed.text,packet);
       }
       if(!executionGate.pass){
@@ -1821,9 +1860,49 @@ async function runJob(j) {
       }
       await event('EXECUTION_ACCEPTANCE_PASS',{objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,resourceId:routed.resource.resourceId,provider:routed.resource.provider,code:executionGate.code,promptRevision:packet.prompt_revision,evidenceIds:executionGate.evidenceIds});
     }
+    let reviewEvidence=null;
+    if(j.kind==='github_review'){
+      try{
+        reviewEvidence=parseGithubCoreReviewEvidence(routed.text,j.prompt);
+      }catch(validationError){
+        const attemptsRow=(await pool.query('select attempts,max_attempts from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
+        const expectedHead=String(validationError?.detail?.expectedHead||'').toLowerCase();
+        const eligible=githubReviewFormatRetryEligible({
+          kind:j.kind,message:String(validationError?.message||''),
+          resource:routed.resource,attempts:attemptsRow.attempts,maxAttempts:attemptsRow.max_attempts,
+          expectedHead,
+        });
+        if(!eligible)throw validationError;
+        const originalResource=routed.resource;
+        await event('GITHUB_CORE_REVIEW_FORMAT_RETRY',{
+          objectiveId:j.objective_id,jobId:j.id,employeeId:originalResource.id,
+          resourceId:originalResource.resourceId,expectedHead,
+          markerPresent:validationError.detail.markerPresent===true,
+          summaryPresent:validationError.detail.summaryPresent===true,
+          findingsPresent:validationError.detail.findingsPresent===true,
+        });
+        const retryPrompt=githubReviewFormatRetryPrompt(routedPrompt,expectedHead);
+        const retry=await invokeRouted(retryPrompt,j.capability,j.id,1,{
+          taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,
+          preferredEmployeeId:originalResource.id,employeeAllowlist:[originalResource.id],
+          // Fail closed before any inference: same employee is insufficient when it has multiple models.
+          excludedResourceIds:githubReviewRetryResourceExclusions(resources,originalResource.resourceId),
+        });
+        // The correction cannot transfer independent-review authority to a different identity.
+        if(retry.resource.resourceId!==originalResource.resourceId){
+          throw Object.assign(new Error('CORE_REVIEW_RETRY_IDENTITY_CHANGED'),{kind:'invalid_response'});
+        }
+        routed=retry;
+        reviewEvidence=parseGithubCoreReviewEvidence(routed.text,j.prompt);
+        await event('GITHUB_CORE_REVIEW_FORMAT_RECOVERED',{
+          objectiveId:j.objective_id,jobId:j.id,employeeId:routed.resource.id,
+          resourceId:routed.resource.resourceId,decision:reviewEvidence.decision,
+          targetHead:reviewEvidence.targetHead,
+        });
+      }
+    }
     const skillRoutingChain=finalizeSkillRoutingPreflight(skillRoutingPreflight,{resource:routed.resource,routingDecision:routed.routingDecision,failures:routed.failures});
     await event('SKILL_ROUTING_CHAIN',{objectiveId:j.objective_id,...skillRoutingChain});
-    const reviewEvidence=j.kind==='github_review'?parseGithubCoreReviewEvidence(routed.text,j.prompt):null;
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
     await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,executionGate,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
@@ -1858,14 +1937,15 @@ async function runJob(j) {
       }
     }
     let resourceWaitExhausted=null;
-    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'?await busyCapableResourceCount(j.capability,j.routing_profile||'AUTO'):0;
-    const transientLocalWait=mayWaitAfterLocalFailure({profile:j.routing_profile||'AUTO',message,failures,configuredLocalCount:busyCount});
+    const effectiveWaitProfile=effectiveCoreJobRoutingProfile(j);
+    const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'?await busyCapableResourceCount(j.capability,effectiveWaitProfile):0;
+    const transientLocalWait=mayWaitAfterLocalFailure({profile:effectiveWaitProfile,message,failures,configuredLocalCount:busyCount});
     const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
     if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||transientLocalWait||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':transientLocalWait?'LOCAL_TRANSIENT_INFERENCE_FAILURE':j.routing_profile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':transientLocalWait?'LOCAL_TRANSIENT_INFERENCE_FAILURE':effectiveWaitProfile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
         const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
         await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
@@ -1874,7 +1954,18 @@ async function runJob(j) {
       }
       resourceWaitExhausted={retryCount:plan.count,maxRetries:RESOURCE_WAIT_MAX_RETRIES,ageMs:plan.ageMs};
     }
-    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures})]);
+    // Persist bounded validation diagnostics, never raw model output or untrusted free text.
+    const reviewValidation=j.kind==='github_review'&&message==='CORE_REVIEW_EVIDENCE_INVALID'
+      ? {
+          expectedHead:/^[a-f0-9]{7,64}$/.test(String(error?.detail?.expectedHead||''))?error.detail.expectedHead:null,
+          targetHead:/^[a-f0-9]{7,64}$/.test(String(error?.detail?.targetHead||''))?error.detail.targetHead:null,
+          decision:['PASS','CHANGES_REQUIRED'].includes(String(error?.detail?.decision||''))?error.detail.decision:null,
+          markerPresent:error?.detail?.markerPresent===true,
+          summaryPresent:error?.detail?.summaryPresent===true,
+          findingsPresent:error?.detail?.findingsPresent===true,
+        }:null;
+    await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now(),next_attempt_at=null where id=$1",[j.id,JSON.stringify({message,failures,...(reviewValidation?{reviewValidation}:{})})]);
+    if(reviewValidation)await event('GITHUB_CORE_REVIEW_EVIDENCE_DIAGNOSTIC',{objectiveId:j.objective_id,jobId:j.id,...reviewValidation});
     const blockedOutcome=/(?:NO_AI_RESOURCE_AVAILABLE|UNAVAILABLE|RATE_LIMIT|COOLDOWN)/i.test(message)?'blocked':'failed';
     await emitSkillEffectivenessObservations({
       job:j,
@@ -1990,6 +2081,40 @@ export function githubCoreReviewDisposition(job){
   return {action:'block',status:status||'unknown'};
 }
 
+export function githubReviewFormatRetryEligible({kind='',message='',resource={},attempts=0,maxAttempts=0,expectedHead=''}={}){
+  const tier=String(resource?.costTier||'').toUpperCase();
+  const used=Number(attempts),limit=Number(maxAttempts);
+  return kind==='github_review'&&message==='CORE_REVIEW_EVIDENCE_INVALID'
+    &&resource?.zeroOutOfPocket===true&&['FREE','LOCAL'].includes(tier)
+    &&Number.isInteger(used)&&Number.isInteger(limit)&&used>=0&&used<limit
+    &&/^[a-f0-9]{40}$/.test(String(expectedHead||''));
+}
+export function githubReviewRetryResourceExclusions(available=[],originalResourceId=''){
+  const original=String(originalResourceId||'').trim();
+  if(!original||!Array.isArray(available)||!available.some(r=>r?.resourceId===original))
+    throw new Error('CORE_REVIEW_RETRY_RESOURCE_UNKNOWN');
+  return available.map(r=>String(r?.resourceId||'')).filter(id=>id&&id!==original);
+}
+export function githubReviewFormatRetryPrompt(original='',expectedHead=''){
+  const head=String(expectedHead||'').toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(head))throw new Error('CORE_REVIEW_RETRY_HEAD_INVALID');
+  return [
+    String(original||''),
+    '',
+    'STRICT REVIEW FORMAT CORRECTION — ONE BOUNDED RETRY.',
+    'Independently evaluate the exact same source evidence. Do not copy a prior model response or invent any facts.',
+    'The previous response was rejected by the schema validator. This does NOT imply your decision should be PASS.',
+    'If any review evidence is missing or insufficient, return CHANGES_REQUIRED with a specific reason.',
+    'Your entire output must be exactly five plain-text lines, with no Markdown fences, prefix or suffix.',
+    'Line 1 is literally [TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'Line 2 begins REVIEW= and ends with exactly PASS or CHANGES_REQUIRED based on your review.',
+    `Line 3 is literally TARGET_HEAD=${head}`,
+    'Line 4 begins SUMMARY= followed by an original, nonempty concrete finding.',
+    'Line 5 begins FINDINGS= followed by verifiable observations or NONE.',
+    'Do not output placeholders or the text PASS|CHANGES_REQUIRED.',
+  ].join('\n');
+}
+
 export function parseGithubCoreReviewEvidence(text,prompt=''){
   const raw=String(text||'').trim();
   const expected=String(prompt||'').match(/^TARGET_HEAD=([a-f0-9]{7,64})$/mi)?.[1]?.toLowerCase()||'';
@@ -2001,7 +2126,11 @@ export function parseGithubCoreReviewEvidence(text,prompt=''){
   if(!valid){
     const error=new Error('CORE_REVIEW_EVIDENCE_INVALID');
     error.kind='invalid_response';
-    error.detail={expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null};
+    error.detail={
+      expectedHead:expected||null,targetHead:targetHead||null,decision:decision||null,
+      markerPresent:raw.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]'),
+      summaryPresent:Boolean(summary),findingsPresent:Boolean(findings),
+    };
     throw error;
   }
   return {schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision,targetHead,summary,findings};
@@ -2245,6 +2374,7 @@ async function currentOwnerBacklogOrder(){
   return order;
 }
 async function managerTick() {
+  return withCoreManagerPgLock(pool, async () => {
   const ownerOrder=await currentOwnerBacklogOrder();
   const q=await pool.query(`select o.* from tigeriq_objectives o where o.status='active' and o.next_check_at<=now()
     and o.priority in ('P1','P2','P3','P4','P5')
@@ -2399,6 +2529,34 @@ async function managerTick() {
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
   if(managerGuard.blocked){await pool.query("update tigeriq_objectives set status='blocked',summary='manager cycle safety limit reached',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'manager_cycle_limit',mode:'consecutive_no_progress',maxCycles:managerGuard.maxCycles});return;}
+  // Two unchanged Manager decisions without a worker receipt end this
+  // attempt. If a child is still queued/leased/running, do not pre-empt it.
+  // A blocked objective leaves other eligible objectives to the normal queue.
+  if(managerGuard.effectiveCycles>=2){
+    const activeChildrenRow=(await pool.query(
+      "select count(*)::int as n from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status not in ('done','failed')",
+      [o.id,currentPhase],
+    )).rows[0]||{};
+    const activeChildren=Number(activeChildrenRow.n)||0;
+    const idlePlan=managerIdleStepStopPlan({
+      consecutiveNoProgressDecisions:managerGuard.effectiveCycles,activeChildren,limit:2,
+    });
+    if(idlePlan.action==='wait'){
+      await pool.query(
+        "update tigeriq_objectives set next_check_at=now()+interval '30 seconds' where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $2::text",
+        [o.id,o.metadata?.sourceRevision??null],
+      );
+      return;
+    }
+    if(idlePlan.action==='block'){
+      const stopped=await pool.query(
+        "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text and not exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$4 and j.status not in ('done','failed'))",
+        [o.id,'Manager attempt stopped: two decisions without accepted child progress; awaiting material change',o.metadata?.sourceRevision??null,currentPhase],
+      );
+      if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'no_progress_decision_budget_exhausted',maxCycles:2});
+      return;
+    }
+  }
   const history=(await pool.query("select title,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
   let historyContext={text:'[]',metrics:{itemsIn:0,itemsOut:0,bytesBefore:0,bytesAfter:2,budgetBytes:8000,headroomBytes:2000,effectiveBudgetBytes:6000,droppedCount:0,truncatedCount:0,reductionBytes:0}};
@@ -2600,12 +2758,22 @@ async function managerTick() {
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
         }
+        if(disposition.action==='block'){
+          const stopped=await pool.query(
+            "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text",
+            [o.id,'Same logical job has already failed; no new random job on unchanged work',o.metadata?.sourceRevision??null],
+          );
+          if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,reason:disposition.reason});
+          return;
+        }
         await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_ai',$6,$7)",[id,o.id,title,promptText,capability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
     }
   } catch(error){await pool.query("update tigeriq_objectives set summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[o.id,`manager error: ${String(error?.message||error).slice(0,500)}`]);await event('MANAGER_ERROR',{objectiveId:o.id,phaseIndex:currentPhase});}
-}function publicStatus(r){
+  });
+}
+function publicStatus(r){
   if(!r.enabled) return 'DISABLED';
   if(r.credential_state==='WAIT_KEY') return 'WAIT_KEY';
   if(r.current_job_id||r.work_state==='BUSY') return 'BUSY';
@@ -2695,50 +2863,22 @@ let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function iss
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
 
 
-/* Owner P0: non-blocking read-only LIVE verification for API Health work-list.
-   Serve local Core work immediately, warm the enriched GitHub gates in the background.
-   Never expose stale progress as verified. */
-const healthLiveWorkCache={at:0,result:null,pending:null,lastAttempt:0};
-function healthLiveResultFresh(result){
-  const age=Date.now()-Date.parse(result?.projection?.generatedAt||'');
-  return result?.ok===true&&result?.source==='LIVE_VERIFIED_GATES'
-    &&Number.isFinite(age)&&age>=0&&age<=90000;
-}
-async function refreshApiHealthLiveWork(){
-  try{
-    const upstream=await fetchJson('https://tigeriq-ai-lab.vercel.app/api/live-status',{},14000);
-    const age=Date.now()-Date.parse(upstream?.generatedAt||'');
-    if(upstream?.ok!==true||upstream?.liveConnected!==true||upstream?.staleAll||upstream?.workProjection?.stale
-      ||!Array.isArray(upstream?.openWork)||!Number.isFinite(age)||age<0||age>90000)
-      throw Error('LIVE_VERIFICATION_NOT_FRESH');
-    const previousTime=Date.parse(healthLiveWorkCache.result?.projection?.generatedAt||'');
-    if(Number.isFinite(previousTime)&&Date.parse(upstream.generatedAt)<previousTime)return;
-    healthLiveWorkCache.at=Date.now();
-    healthLiveWorkCache.result={ok:true,projection:{
-      openWork:upstream.openWork,
-      recentWork:Array.isArray(upstream.recentWork)?upstream.recentWork:[],
-      openSummary:upstream.openSummary||{},
-      generatedAt:upstream.generatedAt,
-      verifiedGateSource:true,stale:false
-    },source:'LIVE_VERIFIED_GATES'};
-  }catch{ /* Keep the local projection path available. Never infer verified progress. */ }
-}
+/* Owner P0: API Health is the canonical PC01 view, independent of Vercel.
+   Work projection combines PC01 runtime with GitHub evidence locally.
+   Do not claim verified progress when the local evidence is stale/unavailable. */
 async function apiHealthLiveWorkProjection(){
-  const now=Date.now();
-  if(!healthLiveWorkCache.pending&&now-healthLiveWorkCache.lastAttempt>=8000){
-    healthLiveWorkCache.lastAttempt=now;
-    const pending=Promise.resolve().then(refreshApiHealthLiveWork);
-    healthLiveWorkCache.pending=pending;
-    const finish=()=>{if(healthLiveWorkCache.pending===pending)healthLiveWorkCache.pending=null};
-    void pending.then(finish,finish);
-  }
-  if(healthLiveResultFresh(healthLiveWorkCache.result)&&now-healthLiveWorkCache.at<=45000)
-    return {...healthLiveWorkCache.result,cached:true};
   const local=await apiHealthWorkProjection();
-  return local?.ok&&local?.projection
-    ?{ok:true,projection:{...local.projection,verifiedGateSource:false},source:'PC01_FALLBACK',verificationUnavailable:true}
-    :{ok:false,reason:'WORK_PROJECTION_UNAVAILABLE',projection:null};
+  if(!local?.ok||!local?.projection)
+    return {ok:false,reason:local?.reason||'PC01_WORK_PROJECTION_UNAVAILABLE',projection:null};
+  const p=local.projection;
+  const stale=local.stale===true||p.workProjection?.stale===true;
+  return {ok:true,projection:{
+    ...p,
+    verifiedGateSource:!stale&&Boolean(p.workProjection?.verifiedAt),
+    stale,
+  },source:'PC01_LOCAL_GITHUB',cached:local.cached===true,stale};
 }
+
 function auth(req){return TOKEN && req.headers.authorization===`Bearer ${TOKEN}`;}
 function localSelf(req){const a=String(req.socket.remoteAddress||'').replace('::ffff:','');return a==='127.0.0.1'||a==='::1'||a===HOST;}
 async function readRawBody(req,maxBytes=65536){let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw,'utf8')>maxBytes)throw new Error('BODY_TOO_LARGE');}return raw;}
@@ -2773,11 +2913,41 @@ async function runNvInferenceRequest(input={}){
     throw error;
   }
 }
-function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}const server=createServer(async(req,res)=>{
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8').replace('@@TIGERIQ_LAB_VERSION@@',installedLabVersion());}
+function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
+function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
+function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
+async function workCenterHistory(number){
+  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6500);
+  const base='https://api.github.com/repos/'+encodeURIComponent(GITHUB_OWNER)+'/'+encodeURIComponent(GITHUB_REPO);
+  try{
+    async function get(path){
+      const response=await fetch(base+path,{headers,cache:'no-store',signal:controller.signal});
+      if(!response.ok)throw Error('GITHUB_HTTP_'+response.status);
+      return response.json();
+    }
+    const issue=await get('/issues/'+number);
+    if(issue?.pull_request)throw Error('NOT_WORK_ORDER');
+    const pages=recentCommentPages(issue.comments);
+    const comments=latestComments(await Promise.all(pages.map(p=>get('/issues/'+number+'/comments?per_page=100&page='+p))));
+    return buildWorkHistory(issue,comments);
+  }finally{clearTimeout(timer)}
+}
+const server=createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://localhost');
   try{
     if(await mobileWorkerApi(req,res,url))return;
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
+    if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});return res.end(workCenterJs());}
+    if(req.method==='GET'&&url.pathname==='/work-center-visual.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workCenterVisualCss());}
+    if(req.method==='GET'&&url.pathname==='/api/work-history'){
+      const number=url.searchParams.get('number')||'';
+      res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
+      if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
+      try{const value=await workCenterHistory(Number(number));res.writeHead(200);return res.end(JSON.stringify(value))}
+      catch{res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_UNAVAILABLE'}))}
+    }
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
     if(req.method==='GET'&&url.pathname==='/api/public-evidence'){
       const jobId=String(url.searchParams.get('jobId')||'').trim();
@@ -2788,6 +2958,18 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(evidence));
     }
     if(req.method==='GET'&&url.pathname==='/api/live-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await liveStatusSnapshot()));}
+    // B03: dedicated, bounded read-only Coding health projection. The full
+    // /api/status includes slow integration probes and large job/telemetry
+    // history; it is not appropriate for the Coding Lane's 3-second health TTL.
+    if(req.method==='GET'&&url.pathname==='/api/coding-health'){
+      const health=await createCodingCoreHealthSnapshot({
+        pool,nowIso,refreshWorkforce:refreshRegistryWorkforce,
+        activeLeases:activeSharedResourceLeases,indexLeases:indexSharedResourceLeases,
+        normalizeResources:normalizeRuntimeResources,normalizeQuota,publicStatus,
+      });
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(health));
+    }
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/api-doctor-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},apiDoctor:await apiDoctorTelemetry()}));}
     if(req.method==='GET'&&url.pathname==='/api/self-audit'){
@@ -2826,6 +3008,53 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       const raw=await readRawBody(req,512*1024);
       let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      // Delegation is default-OFF. Only a newly authenticated Owner GitHub/OIDC
+      // comment can arm the fixed bounded local policy; a code merge never can.
+      if(eventName==='issue_comment'&&
+         /^TIGERIQ_PC01_STANDING_ENABLE_V1(?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
+        try{
+          const activation=await enablePc01StandingRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...activation}));
+        }catch(error){
+          res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:String(error?.message||error).slice(0,160)}));
+        }
+      }
+      // GitHub's signed workflow_run is a candidate, not standing authorization.
+      // The protected Owner-activated policy + exact main checks and bounded quota
+      // decide independently. No fake release after a failed/absent grant.
+      if(eventName==='workflow_run'&&payload?.action==='completed'){
+        try{
+          const receipt=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...receipt}));
+        }catch(error){
+          const code=String(error?.message||error).slice(0,160);
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,accepted:false,reason:code,releaseIssued:false}));
+        }
+      }
+      // Exact manual Owner comment is a separate GitHub-authenticated release action.
+      // It is never inferred from merge, PR/issue text, CI or a worker result.
+      if(eventName==='issue_comment'&&/^TIGERIQ_PC01_RELEASE_APPROVE_V[12](?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
+        try{
+          const approval=await acceptPc01OwnerApprovalEvent({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...approval}));
+        }catch(error){
+          const reason=String(error?.message||'PC01_RELEASE_FAILED');
+          const status=/OWNER_|COMMENT_|IMPACT_|FILE_|SHA_|MAIN_|ANCESTRY_|REPLAY_|BASELINE_/.test(reason)?403:503;
+          res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:reason.slice(0,120)}));
+        }
+      }
       const client=await pool.connect();
       let duplicate=false;
       try{
@@ -2841,8 +3070,23 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
       finally{client.release()}
       if(duplicate){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,duplicate:true,deliveryId}));}
       const published=publishGithubEvent({eventName,deliveryId,payload,receivedAt:new Date().toISOString()});
+      // Preserve normal issue ingestion and delivery deduplication. A central
+      // issue signal can only ask the independently Owner-activated gate to check;
+      // the event itself never grants release authority.
+      let pc01Release=null;
+      if(Number(payload?.issue?.number)===280&&
+         ((eventName==='issues'&&['edited','labeled','unlabeled','reopened'].includes(payload?.action))||
+          (eventName==='issue_comment'&&payload?.action==='created'))){
+        try{
+          pc01Release=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+        }catch(error){
+          pc01Release={accepted:false,reason:String(error?.message||error).slice(0,160),releaseIssued:false};
+        }
+      }
       res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers}));
+      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers,...(pc01Release?{pc01Release}:{})}));
     }
     if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
@@ -3151,6 +3395,21 @@ async function collectSelfAuditSnapshot(store=pool){
     ? Boolean((!updaterState||updaterFresh)&&(!updaterService||(bootstrapFresh&&updaterService.healthy===true))&&!updaterFailed)
     : undefined;
   const watchdogHealthy=bootstrapState?bootstrapFresh:undefined;
+  const updaterStampMs=Date.parse(String(updaterState?.updatedAt||updaterState?.updated_at||''));
+  const watchdogHealthDetails={
+    updaterStatePresent:Boolean(updaterState),
+    updaterStateFresh:updaterState?updaterFresh:null,
+    watchdogStatePresent:Boolean(bootstrapState),
+    watchdogStateFresh:bootstrapState?bootstrapFresh:null,
+    watchdogUpdaterRowPresent:Boolean(updaterService),
+    watchdogUpdaterRowHealthy:updaterService?updaterService.healthy===true:null,
+    updaterTaskRunning:updaterService&&typeof updaterService.taskRunning==='boolean'?updaterService.taskRunning:null,
+    updaterHeartbeatFresh:updaterService&&typeof updaterService.heartbeatFresh==='boolean'?updaterService.heartbeatFresh:null,
+    updaterResultFailed:updaterFailed,
+    // Updater state write age and watchdog task heartbeat age are different clocks.
+    updaterStateAgeSec:Number.isFinite(updaterStampMs)?Math.max(0,Math.floor((now-updaterStampMs)/1000)):null,
+    updaterTaskHeartbeatAgeSec:updaterService&&typeof updaterService.heartbeatAgeSec==='number'?updaterService.heartbeatAgeSec:null,
+  };
 
   return {
     queue:{
@@ -3174,6 +3433,7 @@ async function collectSelfAuditSnapshot(store=pool){
     watchdog:{
       ...(typeof updaterHealthy==='boolean'?{updaterHealthy}:{}),
       ...(typeof watchdogHealthy==='boolean'?{watchdogHealthy}:{}),
+      healthDetails:watchdogHealthDetails,
     },
   };
 }
@@ -3244,7 +3504,18 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   if(!current)throw new Error('RCA_CANONICAL_ISSUE_UNAVAILABLE');
   const familyMarker=`RCA_FAMILY_KEY=${rca.rcaFamilyKey}`;
   const priorBody=String(current.body||'');
-  const alreadyRearmed=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')&&priorBody.includes(familyMarker);
+  // Never elevate a canonical issue with Owner/P0, manual or review-only restrictions.
+  // Scan all historical lines: a new leading recurrence header cannot bypass older holds.
+  const ownerGate=/^(?:PRIORITY\s*=\s*P0|OWNER_HOLD\s*=\s*(?:true|1)|OWNER_GATE\s*=\s*true|OWNER_APPROVAL_REQUIRED\s*=\s*true|MANUAL_GATE\s*=\s*true|REVIEW_ONLY\s*=\s*true|NO_CODE_CHANGE\s*=\s*true|AUTO_QUEUE\s*=\s*EXCLUDED[^\r\n]*|TIGERIQ_EXECUTABLE\s*=\s*false|CURRENT_STATE\s*=\s*BLOCKED_[^\r\n]*)\s*$/mi;
+  if(ownerGate.test(priorBody))throw new Error('RCA_CANONICAL_OWNER_GATE');
+  // Only the leading occurrence of the *current* family/evidence pair is idempotent.
+  // A subsequent closed-completed recurrence with fresh evidence must retain
+  // its previous header as history, but surface the new evidence at the top.
+  const priorHeader=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')
+    ? priorBody.slice(0,priorBody.indexOf('\n\n')>=0?priorBody.indexOf('\n\n'):priorBody.length)
+    : '';
+  const priorHeaderFields=new Set(priorHeader.split('\n'));
+  const alreadyRearmed=priorHeaderFields.has(familyMarker)&&priorHeaderFields.has(`EVIDENCE_HASH=${rca.evidenceHash}`);
   const rearmHeader=[
     '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
     `SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`,
@@ -3269,7 +3540,39 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   },10000);
 }
 
+// Recover canonical GitHub issues when PostgreSQL event history is incomplete.
+// Never create if the search is unavailable, partial or ambiguous.
+async function githubFindAutonomousRcaCanonical(familyKey){
+  if(!GITHUB_TOKEN)throw new Error('RCA_CANONICAL_SEARCH_TOKEN_MISSING');
+  const marker=`RCA_FAMILY_KEY=${familyKey}`;
+  const q=`repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue in:body "${marker}"`;
+  const url='https://api.github.com/search/issues?q='+encodeURIComponent(q)+'&per_page=100';
+  const found=await fetchJson(url,{
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Autonomous-RCA'},
+  },10000);
+  if(!found||found.incomplete_results===true||!Array.isArray(found.items)
+     ||!Number.isInteger(found.total_count)||found.total_count>100){
+    throw new Error('RCA_CANONICAL_SEARCH_UNVERIFIED');
+  }
+  const matches=[];
+  for(const item of found.items){
+    const candidate=await githubAutonomousRcaIssueLifecycle(item?.number);
+    if(!candidate.issue||candidate.state==='unknown')throw new Error('RCA_CANONICAL_CANDIDATE_UNAVAILABLE');
+    if(String(candidate.issue.body||'').replace(/\r\n/g,'\n').split('\n').some(line=>line.trim()===marker))
+      matches.push(candidate);
+  }
+  if(matches.length>1)throw new Error('RCA_CANONICAL_MULTIPLE_MATCHES');
+  return matches[0]||null;
+}
+
 async function materializeAutonomousRca({store=pool}={}){
+  // Production: hold PG session lease throughout discovery, intent, GitHub mutation and receipt.
+  if(typeof store.connect!=='function')return materializeAutonomousRcaUnlocked({store});
+  const guarded=await withCoreRcaPgLease(store,()=>materializeAutonomousRcaUnlocked({store}));
+  return guarded.admitted?guarded.outcome:
+    {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'ANOTHER_CORE_OWNS_RCA_LOCK'};
+}
+async function materializeAutonomousRcaUnlocked({store=pool}={}){
   const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
     from tigeriq_self_audit_anomalies
     where status='OPEN' and count>=2
@@ -3309,6 +3612,27 @@ async function materializeAutonomousRca({store=pool}={}){
         priorIssueState=selected.lifecycle.state;
         priorStateReason=selected.lifecycle.stateReason;
         priorIssue=selected.lifecycle.issue;
+      }
+      if(!prior){
+        try{
+          const recovered=await githubFindAutonomousRcaCanonical(rca.rcaFamilyKey);
+          if(recovered){
+            prior={type:'AUTONOMOUS_RCA_WORK_ORDER',data:{issueNumber:recovered.issue.number}};
+            priorIssueState=recovered.state;
+            priorStateReason=recovered.stateReason;
+            priorIssue=recovered.issue;
+            await event('AUTONOMOUS_RCA_WORK_ORDER',{
+              rcaFamilyKey:rca.rcaFamilyKey,issueNumber:Number(recovered.issue.number),
+              source:'CANONICAL_RECOVERED_FROM_GITHUB',provenance:rca.provenance,
+            });
+          }
+        }catch(error){
+          blocked++;
+          await event('AUTONOMOUS_RCA_MATERIALIZATION_BLOCKED',{
+            rcaFamilyKey:rca.rcaFamilyKey,reason:String(error?.message||error).slice(0,200),
+          });
+          continue;
+        }
       }
     }else prior=priorRows[0]||null;
     const canonicalAction=autonomousRcaCanonicalAction({mode,priorType:prior?.type,priorIssueState,priorStateReason});
@@ -3354,6 +3678,17 @@ async function materializeAutonomousRca({store=pool}={}){
       observeOnly++;continue;
     }
     try{
+      if(mode==='WORK_ORDER'){
+        const intent=(await store.query(
+          "select 1 from tigeriq_events where type='AUTONOMOUS_RCA_CREATE_INTENT' and data->>'rcaFamilyKey'=$1 limit 1",
+          [rca.rcaFamilyKey],
+        )).rows||[];
+        if(intent.length)throw new Error('RCA_CANONICAL_CREATE_INTENT_UNRESOLVED');
+        // Durable before POST: a crash plus delayed GitHub search indexing cannot create a duplicate.
+        await event('AUTONOMOUS_RCA_CREATE_INTENT',{
+          rcaFamilyKey:rca.rcaFamilyKey,evidenceHash:rca.evidenceHash,provenance:rca.provenance,
+        });
+      }
       const spec=buildImprovementWorkOrder(rca);
       const issue=await githubCreateAutonomousRcaIssue(spec);
       await event('AUTONOMOUS_RCA_WORK_ORDER',{

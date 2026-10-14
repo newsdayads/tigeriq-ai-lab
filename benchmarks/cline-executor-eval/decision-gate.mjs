@@ -7,6 +7,43 @@ const HASH=/^[a-f0-9]{64}$/i;
 const finite=(x)=>typeof x==='number'&&Number.isFinite(x);
 const object=(x)=>x!=null&&typeof x==='object'&&!Array.isArray(x);
 
+// Validate the native Node TAP trailer, rather than the writable lane's booleans.
+function readTapTrailer(text){
+  if(typeof text!=='string'||text.length>1200)return null;
+  const lines=text.split(/\r?\n/);
+  const read=(name)=>{
+    const prefix='# '+name+' ';
+    const matches=lines.filter(line=>line.startsWith(prefix));
+    if(matches.length!==1)return null;
+    const value=matches[0].slice(prefix.length).trim();
+    return /^\d+$/.test(value)?Number(value):null;
+  };
+  const names=['tests','pass','fail','cancelled','skipped','todo'];
+  const values=names.map(read);
+  if(!values.every(Number.isSafeInteger))return null;
+  return Object.fromEntries(names.map((name,i)=>[name,values[i]]));
+}
+function validRawFixture(row,expectedLane,issues,fixtureId){
+  const fail=(reason)=>{issues.push(expectedLane+':'+fixtureId+':'+reason);return false;};
+  if(!Number.isSafeInteger(row.testExitCode)||row.testExitCode<0||row.testExitCode>255||
+     !Number.isSafeInteger(row.filesChanged)||row.filesChanged<0||
+     !Number.isSafeInteger(row.linesChanged)||row.linesChanged<0||
+     typeof row.stdoutTail!=='string'||typeof row.stderrTail!=='string'||
+     row.stdoutTail.length>1200||row.stderrTail.length>1200)
+    return fail('RAW_SCORER_FIELDS_MISSING');
+  const tap=readTapTrailer(row.stdoutTail);
+  if(!tap||tap.tests!==row.testCount||tap.tests<1||
+     tap.pass+tap.fail+tap.cancelled+tap.skipped+tap.todo!==tap.tests)
+    return fail('TAP_SUMMARY_INCOMPLETE');
+  const pass=tap.pass===tap.tests&&tap.fail===0&&tap.cancelled===0&&
+    tap.skipped===0&&tap.todo===0&&row.testExitCode===0;
+  if(row.testsPass!==pass||(row.testsPass&&row.filesChanged<1)||
+     (row.testExitCode===0&&!pass)||
+     (row.testExitCode!==0&&tap.fail===0&&tap.cancelled===0))
+    return fail('RAW_SCORER_CONTRADICTION');
+  return true;
+}
+
 function inspectLane(lane,expected,issues){
   if(!object(lane)){issues.push(expected+':RECEIPT_MISSING');return null;}
   if(lane.lane!==expected)issues.push(expected+':LANE_ID_INVALID');
@@ -19,7 +56,7 @@ function inspectLane(lane,expected,issues){
      !finite(lane.peakRssBytes)||lane.peakRssBytes<=0||
      lane.paidCostUsd!==0)issues.push(expected+':METRICS_INVALID_OR_PAID');
   const score=lane.score;
-  if(!object(score)||score.lane!==expected||score.total!==3||
+  if(!object(score)||score.lane!==expected||score.version!==1||score.total!==3||
      !Array.isArray(score.fixtures)||score.fixtures.length!==3){
     issues.push(expected+':SCORE_NOT_CANONICAL');return null;
   }
@@ -33,13 +70,14 @@ function inspectLane(lane,expected,issues){
        !Array.isArray(row.unexpectedFiles)||typeof row.completed!=='boolean'){
       issues.push(expected+':RAW_SCORE_INCOMPLETE');continue;
     }
-    const valid=row.testsPass&&!row.testsMutated&&!row.taskMutated&&row.unexpectedFiles.length===0;
+    const rawValid=validRawFixture(row,expected,issues,row.fixtureId);
+    const valid=rawValid&&row.testsPass&&!row.testsMutated&&!row.taskMutated&&row.unexpectedFiles.length===0;
     if(row.completed!==valid)issues.push(expected+':COMPLETION_MISMATCH');
     if(row.testsMutated||row.taskMutated||row.unexpectedFiles.length!==0)
       issues.push(expected+':FIXTURE_TAMPERING');
     if(valid)completed++;
   }
-  if(score.completed!==completed||score.qualityPass!==true)
+  if(score.completed!==completed||score.completionRate!==completed/3||score.qualityPass!==true)
     issues.push(expected+':SCORE_AGGREGATE_INVALID');
   if(!Array.isArray(lane.attempts)||lane.attempts.length!==3||
      lane.attempts.some((r,i)=>r?.fixtureId!==REQUIRED_FIXTURES[i]||
@@ -61,6 +99,8 @@ export function evaluateBenchmarkComparison({cline,nv09,verifyTrustedReceipt}={}
   if(a&&b&&(a.modelDigest!==b.modelDigest||a.manifestSha256!==b.manifestSha256))
     issues.push('LANES_NOT_COMPARABLE');
   if(issues.length)return {status:'BLOCKED',decision:null,issues};
+  if(a.completed===0&&b.completed===0)
+    return {status:'BLOCKED',decision:null,issues:['BOTH_LANES_HAVE_ZERO_VALID_COMPLETIONS']};
   if(typeof verifyTrustedReceipt!=='function')
     return {status:'BLOCKED',decision:null,issues:['TRUSTED_OS_ISOLATION_VERIFIER_MISSING']};
   let proof;

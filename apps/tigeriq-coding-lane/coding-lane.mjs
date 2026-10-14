@@ -1,4 +1,7 @@
 import {createServer} from 'node:http';
+import {createNonblockingManagerTick} from './nonblocking-manager-tick.mjs';
+import {codingChatRequestBody,codingChatContent} from '../shared/nvidia-coding-request.mjs';
+import {validateCodingFastHealthResponse} from '../shared/coding-core-health-response.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
@@ -51,11 +54,14 @@ export function validateManagerJobPaths(decision,canonicalPaths=[],mutationAuth=
   if(!decision?.job||raw.length<1||raw.length>8||raw.some(p=>!safeRepoPath(p))){
     const e=new Error('MANAGER_PATHS_INVALID');e.code='MANAGER_PATHS_INVALID';throw e;
   }
-  assertExecutionPlaneMutationPaths(raw,mutationAuth);
+  // Reject a hallucinated out-of-scope path as a correctable manager output
+  // before evaluating protected-area mutation authority. Both checks still run
+  // for every in-scope proposal; the control-plane deny is never bypassed.
   try{validateSourceScope(raw,canonicalPaths)}catch(error){
     const offending=Array.isArray(error?.offending)?error.offending:raw.filter(p=>!(canonicalPaths||[]).includes(p));
     const e=new Error('MANAGER_SCOPE_MISMATCH:'+offending.join(', '));e.code='MANAGER_SCOPE_MISMATCH';e.detail={offending};throw e;
   }
+  assertExecutionPlaneMutationPaths(raw,mutationAuth);
   return raw;
 }
 
@@ -341,7 +347,18 @@ export function resolveCodingRepository(targetRepository='',{sourceRepository=SO
 const HOST=process.env.TIGERIQ_CODING_HOST||'127.0.0.1';
 const PORT=Number(process.env.TIGERIQ_CODING_PORT||8797);
 const CORE_STATUS_URL=process.env.TIGERIQ_CORE_STATUS_URL?.trim()||`http://${process.env.TIGERIQ_CORE_HOST?.trim()||'127.0.0.1'}:${Number(process.env.TIGERIQ_CORE_PORT||8795)}/api/status`;
+// The fast endpoint is not yet installed on Core. Keep the legacy path until explicitly enabled.
+const FAST_CORE_HEALTH_ENABLED=process.env.TIGERIQ_CODING_FAST_CORE_HEALTH==='true';
+const FAST_CORE_HEALTH_URL=process.env.TIGERIQ_CORE_FAST_HEALTH_URL?.trim()||new URL('/api/coding-health',CORE_STATUS_URL).href;
 const CORE_RESOURCE_HEALTH_TTL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_CORE_HEALTH_TTL_MS||10000));
+// The full Core status payload is ~920 KB on PC01; 3s occasionally timed out.
+// Keep the fast health endpoint at 3s once safely enabled. The legacy full
+// snapshot has a bounded 8s budget and fails closed on actual Core outages.
+export function normalizeCodingCoreStatusTimeout(value=8000){
+  const n=Number(value);
+  return Math.max(3000,Math.min(12000,Number.isFinite(n)&&n>0?Math.floor(n):8000));
+}
+const CORE_STATUS_TIMEOUT_MS=normalizeCodingCoreStatusTimeout(process.env.TIGERIQ_CODING_CORE_STATUS_TIMEOUT_MS);
 const AUTO_MERGE=String(process.env.TIGERIQ_CODING_AUTO_MERGE||'true').toLowerCase()==='true';
 const STALE_RUNNING_TIMEOUT_MS=Math.max(60000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_TIMEOUT_MS||15*60*1000));
 const STALE_RUNNING_SCAN_INTERVAL_MS=Math.max(5000,Number(process.env.TIGERIQ_CODING_STALE_RUNNING_SCAN_INTERVAL_MS||15000));
@@ -352,6 +369,8 @@ const STALE_RUNNING_RUNTIME_CANARY_SOURCE_ISSUE=2068;
 const STALE_RUNNING_RUNTIME_CANARY_TIMEOUT_MS=Math.max(45000,STALE_RUNNING_SCAN_INTERVAL_MS*3);
 export function normalizeCodingParallelLimit(value=6){const n=Number(value);return Math.max(1,Math.min(6,Number.isFinite(n)?Math.floor(n):6))}
 const MAX_PARALLEL=normalizeCodingParallelLimit(process.env.TIGERIQ_CODING_MAX_PARALLEL||6);
+// Opt-in until exact deployed source and real worker canary are verified.
+const DECOUPLED_MANAGER=process.env.TIGERIQ_CODING_MANAGER_DECOUPLED==='true';
 const pool=DATABASE_URL?new Pool({connectionString:DATABASE_URL,max:8}):null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const GEMINI_MIN_INTERVAL_MS=Math.max(4500,Number(process.env.TIGERIQ_GEMINI_MIN_INTERVAL_MS||4500));
@@ -360,6 +379,9 @@ const GEMINI_MAX_ATTEMPTS=Math.max(1,Number(process.env.TIGERIQ_GEMINI_MAX_ATTEM
 const geminiRateController=createGeminiRateController({minIntervalMs:GEMINI_MIN_INTERVAL_MS,backoffBaseMs:GEMINI_BACKOFF_BASE_MS,maxAttempts:GEMINI_MAX_ATTEMPTS});
 const OLLAMA_BASE_URL=normalizeLocalOllamaBaseUrl(process.env.TIGERIQ_NV09_OLLAMA_URL||process.env.TIGERIQ_OLLAMA_URL||'http://127.0.0.1:11435');
 const OLLAMA_TIMEOUT_MS=Math.max(15000,Math.min(300000,Number(process.env.TIGERIQ_CODING_OLLAMA_TIMEOUT_MS||240000)));
+// Only Coding Manager planning is timeboxed; Worker/review Ollama requests retain their prior limit.
+export function normalizeManagerOllamaTimeout(value){const n=Number(value);return Math.max(15000,Math.min(120000,Number.isFinite(n)&&n>0?n:45000))}
+const MANAGER_OLLAMA_TIMEOUT_MS=normalizeManagerOllamaTimeout(process.env.TIGERIQ_CODING_MANAGER_OLLAMA_TIMEOUT_MS);
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
@@ -374,8 +396,41 @@ const resources=[
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
   R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
+// Owner 2026-10-14: NV08 is the sole Core-local manager fallback.
+// NV09 implements code; NV10 diagnoses APIs. Neither may be Coding Manager.
+const managerLocalBackupResources=[
+  R('NV08','ollama','qwen3:8b',()=>true),
+];
 const busyAiResources=new Set();
 let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
+
+// B03: diagnostic-only counters, never affect worker eligibility or leases.
+let coreHealthReadback={attemptedAt:0,succeededAt:0,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
+export function codingCoreHealthFailureKind(error){
+  const code=String(error?.code||'').toUpperCase();
+  const name=String(error?.name||'');
+  if(name==='AbortError'||name==='TimeoutError'||code.includes('TIMEOUT')||code==='ABORT_ERR')return 'TIMEOUT';
+  if(code==='CODING_CORE_HEALTH_RESPONSE_STALE')return 'STALE_RESPONSE';
+  if(code.startsWith('CODING_CORE_HEALTH_'))return 'INVALID_RESPONSE';
+  const status=Number(error?.status||error?.statusCode||0);
+  if(status>=500&&status<600)return 'CORE_HTTP_5XX';
+  if(status>=400&&status<500)return 'CORE_HTTP_4XX';
+  return 'FETCH_OR_TRANSPORT_ERROR';
+}
+export function codingCoreHealthReadback(health,diagnostics,{nowMs=Date.now(),ttlMs=10000}={}){
+  const at=Number(health?.fetchedAt)||0;
+  const age=at?Math.max(0,nowMs-at):null;
+  const ageOf=stamp=>stamp?Math.max(0,nowMs-stamp):null;
+  return {
+    fresh:Boolean(at&&nowMs-at<=ttlMs),
+    ageMs:age,ttlMs,
+    lastAttemptAgeMs:ageOf(diagnostics?.attemptedAt),
+    lastSuccessAgeMs:ageOf(diagnostics?.succeededAt),
+    lastFailureAgeMs:ageOf(diagnostics?.failedAt),
+    lastFailureKind:diagnostics?.lastFailureKind||null,
+    consecutiveFailures:Math.max(0,Number(diagnostics?.consecutiveFailures)||0),
+  };
+}
 
 export function coreResourceStateEligible(state,nowMs=Date.now()){
   if(!state||typeof state!=='object')return false;
@@ -470,18 +525,66 @@ export function rankCodingManagerResources(candidates=[],{nowMs=Date.now()}={}){
     ownerCodexApproved:false,
   });
 }
-async function refreshCoreResourceHealth(){
+export function createCodingCoreHealthPump(refresh,{intervalMs=2500,setTimer=setTimeout,clearTimer=clearTimeout}={}){
+  let active=false,timer=null,inFlight=null;
+  const run=()=>{
+    if(inFlight)return inFlight;
+    const job=Promise.resolve().then(refresh);
+    inFlight=job;
+    const release=()=>{if(inFlight===job)inFlight=null;};
+    job.then(release,release);
+    return job;
+  };
+  const arm=()=>{
+    if(!active||timer!==null)return;
+    timer=setTimer(()=>{
+      timer=null;
+      if(!active)return;
+      return run().catch(()=>{}).finally(arm);
+    },intervalMs);
+    timer?.unref?.();
+  };
+  return {
+    refresh:run,
+    start(){
+      if(active)return inFlight||Promise.resolve();
+      active=true;
+      return run().finally(arm);
+    },
+    stop(){
+      active=false;
+      if(timer!==null){clearTimer(timer);timer=null;}
+    },
+  };
+}
+
+async function fetchCoreResourceHealth(){
   const nowMs=Date.now();
-  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS)return true;
+  // Refresh before expiry; freshness/eligibility still uses the original full TTL.
+  if(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<CORE_RESOURCE_HEALTH_TTL_MS/2)return true;
+  coreHealthReadback.attemptedAt=nowMs;
   try{
-    const snapshot=await fetchJson(CORE_STATUS_URL,{},3000);
+    const snapshot=await fetchJson(FAST_CORE_HEALTH_ENABLED?FAST_CORE_HEALTH_URL:CORE_STATUS_URL,{},FAST_CORE_HEALTH_ENABLED?3000:CORE_STATUS_TIMEOUT_MS);
+    if(FAST_CORE_HEALTH_ENABLED)validateCodingFastHealthResponse(snapshot);
     setCoreResourceHealthSnapshot(snapshot,Date.now());
+    coreHealthReadback.succeededAt=Date.now();
+    coreHealthReadback.consecutiveFailures=0;
     return true;
-  }catch{
+  }catch(error){
+    coreHealthReadback.failedAt=Date.now();
+    coreHealthReadback.lastFailureKind=codingCoreHealthFailureKind(error);
+    coreHealthReadback.consecutiveFailures++;
+    // Keep existing fail-closed semantics; do not retain an eligible AI on failure.
     coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
     return false;
   }
 }
+
+// One bounded local reader, independent of Manager latency and GitHub cooldown.
+const coreHealthPump=createCodingCoreHealthPump(fetchCoreResourceHealth,{
+  intervalMs:Math.max(1000,Math.floor(CORE_RESOURCE_HEALTH_TTL_MS/4)),
+});
+async function refreshCoreResourceHealth(){return coreHealthPump.refresh();}
 
 function coreResourceEligible(resource,nowMs=Date.now()){
   if(process.env.NODE_ENV==='test'&&coreResourceHealth.byEmployee.size===0)return true;
@@ -494,6 +597,38 @@ function selectableResources(exclude=[]){
   return resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
 }
 
+// Guarded fallback: fail closed on stale Core health, occupied shared leases,
+// cooldown and errors. Preserve the original Coding Lane worker/reviewer pool.
+export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
+  excludeIds=[],busyIds=[],healthByEmployee=new Map(),nowMs=Date.now(),
+}={}){
+  const excluded=new Set([...excludeIds,...busyIds].map(String));
+  const managerPrimary=primary.filter(x=>!['NV09','NV10'].includes(String(x?.id||'')));
+  const present=new Set(managerPrimary.map(x=>String(x?.id||'')));
+  return [...managerPrimary,...backups.filter(x=>{
+    const id=String(x?.id||'');
+    if(id!=='NV08'||excluded.has(id)||present.has(id))return false;
+    if(!coreResourceStateEligible(healthByEmployee.get(id),nowMs))return false;
+    present.add(id);
+    return true;
+  })];
+}
+function selectableManagerResources(exclude=[]){
+  // Keep the designated coding implementer NV09 out of manager planning.
+  const primary=selectableResources([...exclude,'NV09','NV10']);
+  const nowMs=Date.now();
+  if(!coreResourceHealth.fetchedAt||nowMs-coreResourceHealth.fetchedAt>CORE_RESOURCE_HEALTH_TTL_MS)return primary;
+  return appendEligibleCodingManagerBackups(primary,managerLocalBackupResources,{
+    excludeIds:exclude,busyIds:[...busyAiResources],healthByEmployee:coreResourceHealth.byEmployee,nowMs,
+  });
+}
+function pickManagerResource(exclude=[]){
+  const primary=pickResource([...exclude,'NV09','NV10']);
+  if(primary)return primary;
+  // Use only the designated 8B manager as a bounded fallback; do not
+  // borrow NV10 API Doctor or NV09 Coding worker for manager decisions.
+  return selectableManagerResources(exclude).find(x=>managerLocalBackupResources.some(y=>y.id===x.id))||null;
+}
 function pickResource(exclude=[]){
   const available=selectableResources(exclude);
   if(!available.length)return null;
@@ -531,7 +666,7 @@ export function codingOutputTokenLimit(prompt,defaultMax=8000){
   if(p.includes('"changes":[{"path"'))return 2600;
   return Math.max(1,Number(defaultMax)||8000);
 }
-async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt)){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
+async function openAi(endpoint,key,model,prompt,maxTokens=codingOutputTokenLimit(prompt),providerPayload=null){const b=await fetchJson(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(providerPayload||{model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:maxTokens,stream:false})});const text=providerPayload?codingChatContent(b):b?.choices?.[0]?.message?.content;if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
 export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLLAMA_BASE_URL,timeoutMs=OLLAMA_TIMEOUT_MS,maxTokens=codingOutputTokenLimit(prompt)}={}){
   const origin=normalizeLocalOllamaBaseUrl(baseUrl);
   const controller=new AbortController();
@@ -552,9 +687,9 @@ export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLL
     return String(text);
   }finally{clearTimeout(timer)}
 }
-async function invoke(r,prompt){
+async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
   const outputTokens=codingOutputTokenLimit(prompt);
-  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens});
+  if(r.provider==='ollama')return invokeOllamaChat(r.model,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS});
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,outputTokens);
@@ -563,7 +698,7 @@ async function invoke(r,prompt){
   if(r.provider==='inception')return openAi('https://api.inceptionlabs.ai/v1/chat/completions',process.env.INCEPTION_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='gemini')return geminiRateController.run(async()=>{const b=await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(r.model)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:codingOutputTokenLimit(prompt,8192)}})});const text=b?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('\n');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)});
   if(r.provider==='cohere'){const b=await fetchJson('https://api.cohere.com/v2/chat',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.COHERE_API_KEY}`},body:JSON.stringify({model:r.model,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:outputTokens})});const text=b?.message?.content?.map(x=>x.text||'').join('');if(!String(text||'').trim())throw new Error('EMPTY_RESPONSE');return String(text)}
-  if(r.provider==='nvidia')return openAi('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,outputTokens);
+  if(r.provider==='nvidia')return openAi('https://integrate.api.nvidia.com/v1/chat/completions',process.env.NVIDIA_API_KEY,r.model,prompt,outputTokens,codingChatRequestBody({model:r.model,prompt,maxTokens:outputTokens}));
   throw new Error('PROVIDER_UNSUPPORTED');
 }
 
@@ -632,6 +767,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{
   invokeFn=invoke,
   shrinkPrompt=shrinkAiPrompt,
   maxResources=null,
+  maxSameResourceAttempts=2,
   validateData=null,
   parseData=parseJsonObject,
   sleepFn=sleep,
@@ -653,7 +789,7 @@ export async function invokeJsonWithFailover(initialResource,prompt,{
   const failureLedger=[];let attempts=0,leaseBusy=0;
   for(let resourceIndex=0;resourceIndex<unique.length;resourceIndex++){
     const resource=unique[resourceIndex];
-    for(let same=0;same<2;same++){
+    for(let same=0;same<Math.max(1,Math.min(2,Number(maxSameResourceAttempts)||2));same++){
       if(busyAiResources.has(resource.id))break;
       let sharedLease=null,heartbeatTimer=null;
       if(leaseContext?.workId){
@@ -887,17 +1023,31 @@ export function sourceWorkOrderNumber(objective=''){
   return null;
 }
 
+// The GitHub Coding Intake accepts ONLY the first current contract section.
+// Historical snapshots commonly contain TIGERIQ_EXECUTABLE=false and must
+// never revoke a later, explicit Owner-issued current authorization.
+export function currentSourceWorkOrderContract(body=''){
+  const source=String(body||'');
+  const headings=[...source.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const sectionEnd=first?.index===0?(headings[1]?.index??source.length):(first?.index??source.length);
+  const separator=source.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return source.slice(0,Math.min(sectionEnd,separator?.index??source.length));
+}
+
 export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
-  const body=String(issue?.body||'');
+  const body=currentSourceWorkOrderContract(issue?.body);
   const state=String(issue?.state||'').trim().toLowerCase();
   const stateReason=String(issue?.state_reason||'').trim().toLowerCase();
+  const executableTrue=/^\s*TIGERIQ_EXECUTABLE\s*=\s*true\s*$/im.test(body);
   const executableFalse=/^\s*TIGERIQ_EXECUTABLE\s*=\s*false\s*$/im.test(body);
   const terminalState=/^\s*STATE\s*=\s*(?:SUPERSEDED|CANCELLED)\s*$/im.test(body);
   const supersededBy=/^\s*SUPERSEDED_BY\s*=\s*\S+/im.test(body);
-  if(state!=='open'||executableFalse||terminalState||supersededBy){
+  if(state!=='open'||!executableTrue||executableFalse||terminalState||supersededBy){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
-    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableFalse,terminalState,supersededBy};
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy};
     throw error;
   }
   return true;
@@ -969,7 +1119,7 @@ async function managerTick(){
     }
     return;
   }
-  let manager=pickResource();if(!manager)return
+  let manager=pickManagerResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   let liveGithubContext=null;
@@ -994,7 +1144,16 @@ async function managerTick(){
       validateManagerJobTitle(d,o.objective);
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
-    const invoked=await invokeJsonWithFailover(manager,prompt,{validateData:validateManagerDecision,leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'}});manager=invoked.resource;const d=invoked.data;
+    const invoked=await invokeJsonWithFailover(manager,prompt,{
+      resourcePool:selectableManagerResources([]),
+      // An overloaded local 27B model must not occupy the single-flight Manager for 240 seconds.
+      // Abort Ollama HTTP on the Manager-only budget, then fail over to a distinct eligible AI.
+      // Per-provider retry defaults and all Worker/reviewer timeouts remain unchanged.
+      invokeFn:(r,managerPrompt)=>invoke(r,managerPrompt,{ollamaTimeoutMs:MANAGER_OLLAMA_TIMEOUT_MS}),
+      maxSameResourceAttempts:1,
+      validateData:validateManagerDecision,
+      leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'},
+    });manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let resumeBranch=null,resumePr=null,resumeHead=null;
@@ -1645,7 +1804,7 @@ export async function codingIssueStatusSnapshot(db,issueNumber){
   };
 }
 
-async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
+async function snapshot(){const objectives=(await pool.query('select * from tigeriq_coding_objectives order by created_at desc limit 20')).rows;const jobs=(await pool.query('select * from tigeriq_coding_jobs order by created_at desc limit 30')).rows;const nowMs=Date.now();return {ok:true,service:'tigeriq-coding-lane',host:HOST,port:PORT,pid:process.pid,maxParallel:MAX_PARALLEL,coreHealthFresh:Boolean(coreResourceHealth.fetchedAt&&nowMs-coreResourceHealth.fetchedAt<=CORE_RESOURCE_HEALTH_TTL_MS),coreHealthReadback:codingCoreHealthReadback(coreResourceHealth,coreHealthReadback,{nowMs,ttlMs:CORE_RESOURCE_HEALTH_TTL_MS}),activeAiResources:[...busyAiResources],freeAiResources:selectableResources([]).map(x=>x.id),resources:resources.map(x=>({id:x.id,provider:x.provider,model:x.model,busy:busyAiResources.has(x.id),coreEligible:coreResourceEligible(x,nowMs)})),objectives,jobs}}
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw new Error('BODY_TOO_LARGE')}return s?JSON.parse(s):{}}
 const server=createServer(async(req,res)=>{const u=new URL(req.url||'/','http://localhost');try{if(req.method==='GET'&&u.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,service:'tigeriq-coding-lane',pid:process.pid,resources:resources.length}))}if(req.method==='GET'&&u.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()))}if(req.method==='GET'&&u.pathname==='/api/issue-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await codingIssueStatusSnapshot(pool,u.searchParams.get('issue'))))}if(req.method==='POST'&&u.pathname==='/api/objectives'){const b=await body(req);if(!String(b.objective||'').trim()){res.writeHead(400);return res.end('objective_required')}const routing=validateObjectiveRoutingInput(b);const id=`CODEOBJ-${randomUUID()}`;const priority=['P0','P1','P2'].includes(b.priority)?b.priority:'P1';await pool.query('insert into tigeriq_coding_objectives(id,objective,priority,target_employee,current_pr,target_head) values($1,$2,$3,$4,$5,$6)',[id,String(b.objective).slice(0,12000),priority,routing.targetEmployee,routing.currentPr,routing.targetHead]);res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id}))}res.writeHead(404);res.end('not_found')}catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}});
 
@@ -1653,10 +1812,23 @@ if(process.env.NODE_ENV!=='test'){
   installAiJsonTransport({maxAttempts:1,baseDelayMs:350,attemptTimeoutMs:45000});
   await initDb();
   await recoverAfterCodingRestart();
+  void coreHealthPump.start().catch(()=>{});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve)});
   console.log(JSON.stringify({event:'TIGERIQ_CODING_LANE_STARTED',host:HOST,port:PORT,pid:process.pid,resources:resources.map(x=>x.id),autoMerge:AUTO_MERGE}));
   let stop=false;
   let githubApiBackoffUntil=0;
+  const managerPump=createNonblockingManagerTick(managerTick,{
+    onError:(error)=>{
+      const rateLimitUntil=githubApiRateLimitBackoffUntil(error,Date.now());
+      // Only the manager has a bounded cooldown; do not stop queued worker jobs.
+      console.error(JSON.stringify({event:'CODING_MANAGER_NONBLOCKING_ERROR',
+        rateLimitUntil:rateLimitUntil>Date.now()?new Date(rateLimitUntil).toISOString():null,
+        error:String(error?.code||error?.message||error).slice(0,240)}));
+    },
+    onStall:({elapsedMs})=>console.warn(JSON.stringify({
+      event:'CODING_MANAGER_SLOW_SINGLE_FLIGHT',elapsedMs,pid:process.pid,
+    })),
+  });
   const active=new Set();
   let lastStaleRecoveryScanAt=0;
   let staleRuntimeCanaryDone=false;
@@ -1675,8 +1847,8 @@ if(process.env.NODE_ENV!=='test'){
     await cleanupStaleRunningRuntimeCanary().catch(()=>{});
     console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:String(error?.code||error?.message||error).slice(0,160),pid:process.pid}));
   }
-  process.on('SIGINT',()=>{stop=true;server.close()});
-  process.on('SIGTERM',()=>{stop=true;server.close()});
+  process.on('SIGINT',()=>{stop=true;coreHealthPump.stop();server.close()});
+  process.on('SIGTERM',()=>{stop=true;coreHealthPump.stop();server.close()});
   while(!stop){
     const nowLoop=Date.now();
     if(githubApiBackoffUntil>nowLoop){
@@ -1699,7 +1871,8 @@ if(process.env.NODE_ENV!=='test'){
           console.warn(JSON.stringify({event:'CODING_STALE_RUNNING_CANARY_FAIL',reason:'TIMEOUT',status:canary.status||null,detail:canary.reason||null,pid:process.pid}));
         }
       }
-      await managerTick();
+      if(DECOUPLED_MANAGER)managerPump.launch();
+      else await managerTick();
       while(active.size<MAX_PARALLEL){
         const j=await claimJob();
         if(!j)break;
@@ -1717,5 +1890,6 @@ if(process.env.NODE_ENV!=='test'){
     }
     await sleep(1500);
   }
+  coreHealthPump.stop();
   if(pool)await pool.end();
 }

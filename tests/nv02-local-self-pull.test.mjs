@@ -403,8 +403,8 @@ describe('NV02 local GitHub self-pull contract', () => {
       authoritativeComments: [],
     })).toMatchObject({
       state: 'REFRESH_REQUIRED',
-      reason: 'AUTHORITATIVE_TERMINAL',
-      archiveAllowed: true,
+      reason: 'SOURCE_REVISION_MISMATCH',
+      archiveAllowed: false,
       next: 'SELF_PULL',
     });
     expect(resolveNv02Command02State({ currentWorkOrder: null })).toMatchObject({ state: 'SELF_PULL', policy: NV02_LOCAL_GITHUB_SELF_PULL });
@@ -502,7 +502,7 @@ describe('NV02 local GitHub self-pull contract', () => {
       created_at: '2026-09-30T13:31:00Z',
       body: '[TIGERIQ_NV02_RELEASE_V1]\nWORKER=NV02\nSTATE=DONE',
     }];
-    expect(nv02HasTerminalEvidence(work, newDone)).toBe(true);
+    expect(nv02HasTerminalEvidence(work, newDone)).toBe(false); // A comment-only DONE is not terminal.
   });
 
   it('claims once, rejects a second lease, and releases after evidence', async () => {

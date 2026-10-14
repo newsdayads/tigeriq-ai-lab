@@ -1,0 +1,412 @@
+// Owner-authorized GitHub comment -> existing signed GitHub event -> SYSTEM Core.
+// This module has exactly one write target. It exposes NO generic PC file/shell API.
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
+export const PC01_RELEASE_ROOT = 'C:\\ProgramData\\TigerIQCoreRelease';
+export const PC01_APPROVAL_PATH = path.win32.join(PC01_RELEASE_ROOT, 'core-runtime-release-approval.json');
+export const PC01_ATTEMPT_PATH = path.win32.join(PC01_RELEASE_ROOT, 'core-runtime-release-attempt.json');
+export const PC01_INSTALLED_STATE = 'D:\\TigerIQ\\State\\core-runtime-source.json';
+export const PC01_RELEASE_ISSUE = 4725;
+const REPOSITORY = 'newsdayads/tigeriq-ai-lab';
+const OWNER = 'newsdayads';
+const SHA = /^[a-f0-9]{40}$/;
+const COMPONENTS = new Set(['coding', 'core', 'openclaw', 'updater']);
+const SOURCE_ONLY = new Set([
+  'docs/PC01_GATED_RELEASE_PHASE1.md', 'vitest.config.ts',
+  'tests/pc01-release-guard-e2e.test.mjs', 'tests/pc01-release-preflight.test.mjs',
+  'tests/pc01-updater-release-gate.test.mjs',
+  '.github/ISSUE_TEMPLATE/work_order_v2.md',
+  'scripts/verify_work_board_ui.mjs',
+  'tests/continuous-capability-verify.test.mjs',
+  'tests/core-autonomous-rca.test.ts',
+  'tests/core-manager-stop-next.test.mjs',
+  'tests/github-intake.test.mjs',
+  'tests/live-status-api.test.mjs',
+  'tests/tigeriq-live-owner-refinement.test.mjs',
+  'tests/web-control.test.ts',
+  'tests/work-order-lifecycle-v2.test.mjs',
+  'bootstrap/02_TIGERIQ_WORKFLOW.md'
+]);
+// One-time Owner approval: exactly the eight Git blobs merged by PR #4746.
+// Scope is bound to content, not wildcard directory names or arbitrary future edits.
+// Core denotes PC01 Core-owned runtime packaging; Web changes remain separately gated.
+export const OWNER_ONE_TAP_APPROVED_BLOBS = Object.freeze({
+  'apps/shared/owner-one-tap-approval.mjs': '0443422cd188f41c7fd172184b4f4e7281bb2acb',
+  'apps/tigeriq-core/web-control-server.mjs': 'fcc90b3a36f760dec4482689b01db26bbee20b98',
+  'apps/tigeriq-core/web-control.html': '02db28746fac9a50db20b285d920821658d78ba7',
+  'docs/OWNER_ONE_TAP_APPROVAL_V1.md': '6da62bae2baf67c84b0379d59a7b970e6d2082d5',
+  'scripts/tigeriq-core/run-web-control-bundle.ps1': 'ebe81cf08e073b1f04c4c64aa31685aa3bf66772',
+  'tests/owner-one-tap-approval.test.mjs': 'a4d4c1ba4f7157e86b36f85cbbb29c8a01bfe3e9',
+  'tests/web-control-bundle-assets.test.mjs': 'b16bb88ac0614c8848876549e815d87a9fbb8065',
+  'vitest.config.ts': '8d4d66e9aeeac9e54545b38165fe4e46cc5743f2',
+});
+
+// Owner 2026-10-14: exact source-bundle maintenance for API Health work cards.
+// These pins are NOT a broad public/ or test-directory release exemption.
+// A separately authenticated, one-shot Owner GitHub/OIDC release remains required.
+export const OWNER_API_HEALTH_APPROVED_BLOBS = Object.freeze({
+  'public/work-center-visual.css': 'd55a81c101b7f995cb71d6cbc3b3eb772c06e4f5',
+  'scripts/verify_work_board_ui.mjs': '90ec17f4a021aa2d20942932916af138c095e2fc',
+  'tests/e2e/api-health-work-card-layout.spec.ts': 'a4c126d8b2dec8515332ca0366de5eb048f9e613',
+});
+
+// Exact two-blob Owner manager failover epoch for #280 Coding Lane capacity.
+// No wildcard apps/tigeriq-coding-lane/** release permission is granted.
+export const OWNER_CODING_CONTRACT_APPROVED_BLOBS = Object.freeze({
+  'apps/tigeriq-coding-lane/coding-lane.mjs': 'ae42ee5bdfd9065dd103f782140ec6330c42dce6',
+  'tests/coding-lane-foundation.test.mjs': '20aff7451494d107f0629ba69c220d3516a76899',
+});
+
+// Exact, immutable Owner V6 display + approved sorting/Loader epoch (#4761/#4762/#4764).
+// Paired with separately signed Coding Manager patch #4763 in the installed-main
+// comparison. These pins do NOT authorize any other UI assets or future edits.
+export const OWNER_V6_APPROVED_BLOBS = Object.freeze({
+  'bootstrap/00_TIGERIQ_LOADER.md': '0dfdc8d0ad7046f97d80e3467366c9e33484c384',
+  'tests/e2e/api-health-visual-regression.spec.ts': '215d836a576e2bbeea0377d42f9fbbe8e789c88f',
+  'apps/dashboard/src/bcct.mjs': 'ff3d4a23fd9df2e46773e34f092131e948458fec',
+  'apps/shared/owner-interaction-v6.mjs': 'a11454a5dd14a651d79bd1149fef70d8f5f2f109',
+  'bootstrap/02_TIGERIQ_WORKFLOW.md': '161991bc203669189ed027789972104e0d83fa34',
+  'docs/OWNER_CHAT_REPORT_VISUAL_V3.md': 'b424bb342cd87c64273ba2c09b8671ac1098a2e3',
+  'docs/OWNER_INTERACTION_V6.md': '1e116588234452574c2fc55db82a895e8ef311a8',
+  'public/work-center.js': '805ac2ec5af164b4bba54dd050c388ee9684ecac',
+  'public/work-ui.css': '7d3154d490dbcd2ce4f59e860ffd32da054a45ad',
+  'scripts/package-bcct-runtime.mjs': 'aab7b48a09860144e15684608c548b8bce5253b4',
+  'tests/bcct-renderer.test.mjs': '61075fe03d776f0363951774ae6771cf2ad7a104',
+  'tests/owner-interaction-v6.test.mjs': '6486b3ea5f6677639a79de8733320c49f8d1c51e',
+  'tests/owner-v6-work-center-colors.test.mjs': 'c1ce618ab1c84c14d1c913658856ee0a2000cf26',
+});
+
+// Owner-approved #4767 manager no-progress fix: content-bound Core plus test pair.
+// It does not authorize generic Coding Lane, Github intake, or test-directory writes.
+export const OWNER_CODING_INTAKE_APPROVED_BLOBS = Object.freeze({
+  'apps/tigeriq-core/github-coding-intake.mjs': 'dc8a77944308b9faf5a921fbae861960ef4e0f8d',
+  'tests/github-coding-intake.test.mjs': '0888f4d577e3de8718ca7420c3ecd3c288af0fa3',
+});
+
+const OWNER_ONE_TAP_RUNTIME = new Set([
+  'apps/shared/owner-one-tap-approval.mjs',
+  'apps/tigeriq-core/web-control-server.mjs',
+  'apps/tigeriq-core/web-control.html',
+  'scripts/tigeriq-core/run-web-control-bundle.ps1',
+]);
+
+const UPDATER_FILES = new Set([
+  'scripts/tigeriq-core/update-core-runtime.ps1',
+  'scripts/tigeriq-core/pc01-release-guard.ps1',
+  'scripts/tigeriq-core/pc01-release-preflight.mjs',
+  'scripts/tigeriq-core/bootstrap-watchdog.ps1',
+  'scripts/tigeriq-core/install-core-updater.ps1',
+]);
+const CORE_FILES = new Set([
+  'scripts/tigeriq-core/run-core.ps1',
+  'scripts/tigeriq-core/install-core-task.ps1',
+  'api/live-status.mjs', // Explicit Core-owned API module; never source-only.
+]);
+
+function deny(reason) { throw new Error('PC01_RELEASE_' + reason); }
+function exactObject(input, keys) {
+  return input && typeof input === 'object' && !Array.isArray(input) &&
+    Object.keys(input).sort().join(',') === keys.slice().sort().join(',');
+}
+
+export function parsePc01OwnerApproval(body) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').trim().split('\n');
+  const snapshotV2 = lines[0] === 'TIGERIQ_PC01_RELEASE_APPROVE_V2';
+  if ((snapshotV2 && (lines.length !== 5 || lines[4] !== 'RELEASE_POLICY=SCOPED_SNAPSHOT_V2')) ||
+      (!snapshotV2 && (lines.length !== 4 || lines[0] !== 'TIGERIQ_PC01_RELEASE_APPROVE_V1')))
+    deny('COMMENT_FORMAT_INVALID');
+  const pairs = lines.slice(1).map(line => {
+    const i = line.indexOf('=');
+    return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : ['', ''];
+  });
+  if (pairs.map(([k]) => k).join(',') !== (snapshotV2
+    ? 'TARGET_SHA,EXPECTED_INSTALLED_SHA,COMPONENTS,RELEASE_POLICY'
+    : 'TARGET_SHA,EXPECTED_INSTALLED_SHA,COMPONENTS')) deny('COMMENT_FIELDS_INVALID');
+  const targetSha = pairs[0][1], expectedInstalledSha = pairs[1][1];
+  if (!SHA.test(targetSha) || !SHA.test(expectedInstalledSha) || targetSha === expectedInstalledSha) deny('SHA_INVALID');
+  const components = pairs[2][1].split(',');
+  if (!components.length || new Set(components).size !== components.length ||
+      components.some(c => !COMPONENTS.has(c)) ||
+      components.join(',') !== [...components].sort().join(',')) deny('COMPONENTS_INVALID');
+  return { targetSha, expectedInstalledSha, components, releasePolicy: snapshotV2 ? 'SCOPED_SNAPSHOT_V2' : null };
+}
+
+export function impactForPc01ReleaseFiles(files) {
+  if (!Array.isArray(files) || !files.length || files.length >= 300) deny('FILE_LIST_UNVERIFIED');
+  const impact = new Set();
+  const ownerOneTapBundle = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-one-tap-approval.mjs');
+  const apiHealthCssChanged = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'public/work-center-visual.css');
+  const seenApiHealthFiles = new Set();
+  const codingContractChange = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-coding-lane/coding-lane.mjs');
+  const seenCodingContractFiles = new Set();
+  const codingIntakeChanged = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/tigeriq-core/github-coding-intake.mjs');
+  const seenCodingIntakeFiles = new Set();
+  const ownerV6Changed = files.some(f => (typeof f === 'string' ? f : f?.filename) === 'apps/shared/owner-interaction-v6.mjs');
+  const seenOwnerV6Files = new Set();
+  for (const entry of files) {
+    const filename = typeof entry === 'string' ? entry : entry?.filename;
+    if (!filename || typeof filename !== 'string') deny('FILE_PATH_INVALID');
+    // The one Core-owned API entry is executable and must be classified
+    // as a Core component, never waived as a harmless test/source-only file.
+    // Preserve the pre-existing source-only status of vitest.config.ts on unrelated releases.
+    if (filename === 'vitest.config.ts' && !ownerOneTapBundle) continue;
+    if (Object.hasOwn(OWNER_ONE_TAP_APPROVED_BLOBS, filename)) {
+      // GitHub's verified compare.files SHA must match exact authorized content.
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_ONE_TAP_APPROVED_BLOBS[filename])
+        deny('ONE_TAP_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('ONE_TAP_FILE_STATE_DENIED');
+      if (OWNER_ONE_TAP_RUNTIME.has(filename)) impact.add('core');
+      continue;
+    }
+    if (apiHealthCssChanged && Object.hasOwn(OWNER_API_HEALTH_APPROVED_BLOBS, filename)) {
+      // Exact Git blob matching rejects later edits and newly invented files.
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_API_HEALTH_APPROVED_BLOBS[filename])
+        deny('API_HEALTH_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('API_HEALTH_FILE_STATE_DENIED');
+      seenApiHealthFiles.add(filename);
+      if (filename === 'public/work-center-visual.css') impact.add('core');
+      continue;
+    }
+    if (codingContractChange && Object.hasOwn(OWNER_CODING_CONTRACT_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_CODING_CONTRACT_APPROVED_BLOBS[filename])
+        deny('CODING_CONTRACT_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('CODING_CONTRACT_STATE_DENIED');
+      seenCodingContractFiles.add(filename);
+      if (filename === 'apps/tigeriq-coding-lane/coding-lane.mjs') impact.add('coding');
+      continue;
+    }
+    if (codingIntakeChanged && Object.hasOwn(OWNER_CODING_INTAKE_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_CODING_INTAKE_APPROVED_BLOBS[filename])
+        deny('CODING_INTAKE_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('CODING_INTAKE_FILE_STATE_DENIED');
+      seenCodingIntakeFiles.add(filename);
+      if (filename === 'apps/tigeriq-core/github-coding-intake.mjs') impact.add('core');
+      continue;
+    }
+    if (ownerV6Changed && Object.hasOwn(OWNER_V6_APPROVED_BLOBS, filename)) {
+      if (typeof entry !== 'object' || entry?.sha !== OWNER_V6_APPROVED_BLOBS[filename])
+        deny('OWNER_V6_CONTENT_UNVERIFIED');
+      if (entry?.status === 'removed' || entry?.status === 'renamed')
+        deny('OWNER_V6_FILE_STATE_DENIED');
+      seenOwnerV6Files.add(filename);
+      if (['apps/shared/owner-interaction-v6.mjs', 'apps/dashboard/src/bcct.mjs', 'public/work-center.js', 'public/work-ui.css', 'scripts/package-bcct-runtime.mjs'].includes(filename)) impact.add('core');
+      continue;
+    }
+    if (filename === 'api/live-status.mjs') { impact.add('core'); continue; }
+    if (/app.?chrome|android|secrets|credential|\.env|vercel\.json|^api\//i.test(filename)) deny('FILE_OUT_OF_SCOPE');
+    if (SOURCE_ONLY.has(filename)) continue;
+    if (filename.startsWith('apps/openclaw-tigeriq-runtime/')) {
+      impact.add('core'); impact.add('openclaw'); continue;
+    }
+    if (filename.startsWith('apps/tigeriq-core/') &&
+        !/^apps\/tigeriq-core\/(?:web-control|owner-facing-vietnamese)/.test(filename)) {
+      impact.add('core'); continue;
+    }
+    if (CORE_FILES.has(filename)) { impact.add('core'); continue; }
+    if (UPDATER_FILES.has(filename)) { impact.add('updater'); continue; }
+    deny('FILE_OUT_OF_SCOPE');
+  }
+  if (apiHealthCssChanged &&
+      seenApiHealthFiles.size !== Object.keys(OWNER_API_HEALTH_APPROVED_BLOBS).length)
+    deny('API_HEALTH_BUNDLE_INCOMPLETE');
+  if (codingContractChange &&
+      seenCodingContractFiles.size !== Object.keys(OWNER_CODING_CONTRACT_APPROVED_BLOBS).length)
+    deny('CODING_CONTRACT_BUNDLE_INCOMPLETE');
+  if (codingIntakeChanged && seenCodingIntakeFiles.size !== Object.keys(OWNER_CODING_INTAKE_APPROVED_BLOBS).length)
+    deny('CODING_INTAKE_BUNDLE_INCOMPLETE');
+  if (ownerV6Changed && seenOwnerV6Files.size !== Object.keys(OWNER_V6_APPROVED_BLOBS).length)
+    deny('OWNER_V6_BUNDLE_INCOMPLETE');
+  if (!impact.size) deny('NO_COMPONENT_IMPACT');
+  return [...impact].sort();
+}
+
+/**
+ * V2: The Owner's authenticated OIDC comment authorizes precisely the immutable
+ * main SHA and listed components. A bounded path-class policy replaces mutable
+ * per-blob allowlist maintenance; forbidden host/security surfaces stay excluded.
+ * Legacy V1 pinned approvals remain unchanged.
+ */
+export function impactForPc01SignedSnapshotV2(files) {
+  if (!Array.isArray(files) || !files.length || files.length >= 300) deny('FILE_LIST_UNVERIFIED');
+  const impact = new Set(), seen = new Set();
+  for (const entry of files) {
+    const name = entry?.filename;
+    if (typeof name !== 'string' || !/^[A-Za-z0-9_.\/-]+$/.test(name) ||
+        name.startsWith('/') || name.split('/').some(p => p === '..' || p === '.' || !p) ||
+        seen.has(name)) deny('V2_FILE_PATH_INVALID');
+    seen.add(name);
+    if (!SHA.test(String(entry?.sha || '')) || !['added','modified','changed'].includes(entry?.status))
+      deny('V2_FILE_PROVENANCE_INVALID');
+    if (/(?:app.?chrome|android|credential|secret|\.env|vercel\.json|^\.github\/|^api\/(?!live-status\.mjs$))/i.test(name))
+      deny('V2_FORBIDDEN_SURFACE');
+    if (/^(?:docs\/[A-Za-z0-9_./-]+\.md|bootstrap\/[A-Za-z0-9_./-]+\.md|tests\/[A-Za-z0-9_./-]+\.(?:mjs|js|ts|tsx)|\.github\/ISSUE_TEMPLATE\/work_order_v2\.md)$/.test(name))
+      continue;
+    if (/^apps\/tigeriq-coding-lane\/[A-Za-z0-9_./-]+\.(?:mjs|js|json|html)$/.test(name) ||
+        /^scripts\/tigeriq-core\/(?:run-coding-lane|install-coding-lane)\.ps1$/.test(name)) {
+      impact.add('coding'); continue;
+    }
+    if (/^apps\/openclaw-tigeriq-runtime\/[A-Za-z0-9_./-]+\.(?:mjs|js|json)$/.test(name)) {
+      impact.add('openclaw'); impact.add('core'); continue;
+    }
+    if (/^scripts\/tigeriq-core\/(?:update-core-runtime|pc01-release-guard|pc01-release-preflight|bootstrap-watchdog|install-core-updater)\.(?:ps1|mjs)$/.test(name)) {
+      impact.add('updater'); continue;
+    }
+    if (/^apps\/tigeriq-core\/[A-Za-z0-9_./-]+\.(?:mjs|js|html|css)$/.test(name) ||
+        /^apps\/shared\/owner-(?:interaction-v6|one-tap-approval)\.mjs$/.test(name) ||
+        /^apps\/dashboard\/src\/bcct\.mjs$/.test(name) ||
+        /^public\/(?:work-center(?:-visual)?|work-ui)(?:\.js|\.css)$/.test(name) ||
+        /^scripts\/package-bcct-runtime\.mjs$/.test(name) ||
+        name === 'api/live-status.mjs' ||
+        /^scripts\/tigeriq-core\/(?:run-core|install-core-task|run-web-control-bundle)\.ps1$/.test(name)) {
+      impact.add('core'); continue;
+    }
+    deny('V2_FILE_OUT_OF_SCOPE');
+  }
+  if (!impact.size) deny('NO_COMPONENT_IMPACT');
+  return [...impact].sort();
+}
+
+export function validatePc01ApprovalEvidence({ identity, eventName, payload, verifiedComment,
+  installedSha, mainSha, compare, nowMs = Date.now() }) {
+  // Identity is supplied ONLY after cryptographic GitHub Actions OIDC verification.
+  // Ordinary issue metadata, CI, worker output, or this body cannot provide identity.
+  const claims = identity?.claims || {};
+  if (eventName !== 'issue_comment' || claims.event_name !== 'issue_comment' ||
+      identity?.actor !== OWNER || claims.actor !== OWNER ||
+      String(claims.run_attempt || '') !== '1' ||
+      !/^\d{3,20}$/.test(String(identity?.runId || ''))) deny('OWNER_OIDC_REQUIRED');
+  if (payload?.action !== 'created' || payload?.repository?.full_name !== REPOSITORY ||
+      payload?.issue?.number !== PC01_RELEASE_ISSUE ||
+      payload?.sender?.login !== OWNER ||
+      payload?.comment?.user?.login !== OWNER ||
+      !Number.isSafeInteger(payload?.comment?.id) || payload.comment.id <= 0) deny('OWNER_COMMENT_REQUIRED');
+  const c = verifiedComment;
+  if (!c || Number(c.id) !== payload.comment.id || c.user?.login !== OWNER ||
+      !String(c.issue_url || '').endsWith('/issues/' + PC01_RELEASE_ISSUE) ||
+      c.body !== payload.comment.body || c.created_at !== c.updated_at) deny('OWNER_COMMENT_SOURCE_INVALID');
+  const created = Date.parse(c.created_at);
+  if (!Number.isFinite(created) || created > nowMs + 30_000 || nowMs - created > 15 * 60_000)
+    deny('OWNER_COMMENT_EXPIRED');
+  const approval = parsePc01OwnerApproval(c.body);
+  if (approval.expectedInstalledSha !== installedSha) deny('INSTALLED_SHA_MISMATCH');
+  if (approval.targetSha !== mainSha) deny('MAIN_SHA_MISMATCH');
+  if (!compare || compare.status !== 'ahead' || compare.behind_by !== 0 ||
+      !Number.isInteger(compare.ahead_by) || compare.ahead_by < 1 || compare.ahead_by > 30 ||
+      (compare.total_commits != null && compare.total_commits > 30)) deny('ANCESTRY_UNVERIFIED');
+  const files = compare.files || []; // preserve trusted GitHub blob SHA for pinned paths
+  const actualComponents = approval.releasePolicy === 'SCOPED_SNAPSHOT_V2'
+    ? impactForPc01SignedSnapshotV2(files) : impactForPc01ReleaseFiles(files);
+  if (approval.components.join(',') !== actualComponents.join(',')) deny('IMPACT_MISMATCH');
+  return {
+    schema: approval.releasePolicy === 'SCOPED_SNAPSHOT_V2' ? 'TIGERIQ_PC01_RELEASE_APPROVAL_V2' : 'TIGERIQ_PC01_RELEASE_APPROVAL_V1',
+    ...(approval.releasePolicy ? { releasePolicy: approval.releasePolicy } : {}),
+    scope: 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1',
+    requestId: 'GH-' + identity.runId + '-' + c.id,
+    targetSha: approval.targetSha,
+    expectedInstalledSha: approval.expectedInstalledSha,
+    rollbackSha: approval.expectedInstalledSha,
+    approved: true,
+    components: actualComponents,
+    expiresAtUtc: new Date(nowMs + 10 * 60_000).toISOString(),
+  };
+}
+
+function readJson(text, reason) {
+  try { return JSON.parse(String(text)); } catch { deny(reason); }
+}
+async function githubJson(relative, { githubToken, fetchImpl = fetch }) {
+  if (!githubToken) deny('GITHUB_READ_AUTH_MISSING');
+  const response = await fetchImpl('https://api.github.com/repos/' + REPOSITORY + relative, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: 'Bearer ' + githubToken,
+      'user-agent': 'TigerIQ-PC01-Release-Authority',
+      'x-github-api-version': '2022-11-28',
+    },
+    signal: AbortSignal.timeout(6500),
+  });
+  if (!response.ok) deny('GITHUB_READ_HTTP_' + response.status);
+  return response.json();
+}
+async function ensureProtectedDirectory(io, root, platform = process.platform) {
+  // The existing PowerShell updater separately checks parent+file ACL before applying.
+  // Core never creates, fixes permissions for, or writes outside this one protected root.
+  if (platform !== 'win32') deny('WINDOWS_SYSTEM_RUNTIME_REQUIRED');
+  const stat = await io.lstat(root);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) deny('RELEASE_ROOT_UNTRUSTED');
+  const real = await io.realpath(root);
+  if (path.win32.normalize(real).toLowerCase() !== path.win32.normalize(root).toLowerCase())
+    deny('RELEASE_ROOT_REDIRECTED');
+}
+
+export async function acceptPc01OwnerApprovalEvent({
+  identity, eventName, payload, githubToken, fetchImpl = fetch, io = fs,
+  nowMs = Date.now(),
+  root = PC01_RELEASE_ROOT, platform = process.platform,
+} = {}) {
+  // Production entry always uses constant root; tests can inject a sandbox FS.
+  if (root !== PC01_RELEASE_ROOT) deny('RELEASE_ROOT_OVERRIDE_DENIED');
+  if (!identity?.claims || identity.actor !== OWNER ||
+      eventName !== 'issue_comment' || payload?.action !== 'created') deny('OWNER_OIDC_REQUIRED');
+  const commentId = payload?.comment?.id;
+  if (!Number.isSafeInteger(commentId) || commentId <= 0) deny('COMMENT_ID_INVALID');
+  const verifiedComment = await githubJson('/issues/comments/' + commentId, { githubToken, fetchImpl });
+  const installed = readJson(await io.readFile(PC01_INSTALLED_STATE, 'utf8'), 'RUNTIME_STATE_INVALID');
+  const installedSha = String(installed.currentSha || '');
+  if (!SHA.test(installedSha)) deny('RUNTIME_BASELINE_UNVERIFIED');
+  const main = await githubJson('/git/ref/heads/main', { githubToken, fetchImpl });
+  const mainSha = String(main.object?.sha || '');
+  if (!SHA.test(mainSha)) deny('GITHUB_MAIN_UNVERIFIED');
+  const compare = await githubJson('/compare/' + installedSha + '...' + mainSha, { githubToken, fetchImpl });
+  const approval = validatePc01ApprovalEvidence({
+    identity, eventName, payload, verifiedComment, installedSha, mainSha, compare, nowMs,
+  });
+  await ensureProtectedDirectory(io, root, platform);
+  const ticket = path.win32.join(root, 'core-runtime-release-approval.json');
+  const attempt = path.win32.join(root, 'core-runtime-release-attempt.json');
+  try {
+    const prior = readJson(await io.readFile(attempt, 'utf8'), 'ATTEMPT_INVALID');
+    if (prior.targetSha === approval.targetSha || prior.requestId === approval.requestId)
+      deny('REPLAY_REJECTED');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  // Rotate only a *consumed* ticket whose exact target and requestId were
+  // committed or rolled back by the protected updater. An unconsumed ticket
+  // remains an exclusive blocker; no worker or comment can replace it.
+  let existingTicket;
+  try { existingTicket = readJson(await io.readFile(ticket, 'utf8'), 'ACTIVE_APPROVAL_INVALID'); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (existingTicket) {
+    let prior;
+    try { prior = readJson(await io.readFile(attempt, 'utf8'), 'ATTEMPT_INVALID'); }
+    catch (error) { if (error?.code === 'ENOENT') deny('ACTIVE_APPROVAL_UNCONSUMED'); throw error; }
+    if (!['TIGERIQ_PC01_RELEASE_APPROVAL_V1','TIGERIQ_PC01_RELEASE_APPROVAL_V2'].includes(existingTicket.schema) ||
+        prior.requestId !== existingTicket.requestId ||
+        prior.targetSha !== existingTicket.targetSha ||
+        !['COMMITTED','ROLLED_BACK'].includes(prior.result) ||
+        !SHA.test(String(existingTicket.targetSha || ''))) deny('ACTIVE_APPROVAL_UNCONSUMED');
+    const archive = path.win32.join(root, 'Backup', 'release-ticket-' + existingTicket.targetSha + '-' + prior.result + '.json');
+    try { await io.lstat(archive); deny('APPROVAL_ARCHIVE_COLLISION'); }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    await io.rename(ticket, archive);
+  }
+  // Exclusive creation, no overwrites. A separate updater checks precise impacts
+  // and CI; a GitHub merge or an LLM job cannot author this ticket.
+  const handle = await io.open(ticket, 'wx', 0o600);
+  try {
+    await handle.writeFile(JSON.stringify(approval, null, 2) + '\n', 'utf8');
+    await handle.sync();
+  } finally { await handle.close(); }
+  return {
+    accepted: true, ticketWritten: true, owner: OWNER,
+    requestId: approval.requestId, targetSha: approval.targetSha,
+    expectedInstalledSha: approval.expectedInstalledSha, components: approval.components,
+    expiresAtUtc: approval.expiresAtUtc, provenance: 'GITHUB_ACTIONS_OIDC_AND_OWNER_COMMENT',
+  };
+}

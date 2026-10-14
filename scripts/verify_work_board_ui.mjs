@@ -4,18 +4,22 @@ import { existsSync, readFileSync } from 'node:fs';
 const publicView = readFileSync('command-center.html', 'utf8');
 const deployedView = readFileSync('public/command-center.html', 'utf8');
 const liveApi = readFileSync('api/live-status.mjs', 'utf8');
+const sharedWork = readFileSync('public/work-center.js', 'utf8');
+const workUiSources = publicView+'\n'+sharedWork;
 const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
 
 assert.equal(existsSync('public/index.html'), false);
 assert.equal(config?.cleanUrls, true);
-assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/command-center');
+assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/api/health-view?resource=');
+assert.equal(config?.rewrites?.find((route) => route?.source === '/pc01/:path*')?.destination, '/api/health-view?resource=:path*');
+assert.match(readFileSync('apps/tigeriq-core/dashboard.html','utf8'), /TigerIQ AI/);
 assert.equal(deployedView, publicView, 'Vercel public command-center must match canonical TigerIQ Live view');
 
 assert.match(publicView, /TigerIQ Live/);
 assert.match(publicView, /DANH SÁCH CÔNG VIỆC/);
 assert.match(publicView, /aria-label="STT · Work Order · Tên việc · NV thực hiện \/ Owner · Trạng thái"/);
 assert.match(publicView, /width:19px;height:19px/);
-assert.match(publicView, /padStart\(2,'0'\)/);
+assert.match(workUiSources, /padStart\(2,'0'\)/);
 assert.match(publicView, /function displayTitle/);
 assert.match(publicView, /api\/live-status/);
 assert.match(publicView, /ĐANG LÀM/);
@@ -26,13 +30,17 @@ assert.match(publicView, /HOÀN TẤT/);
 assert.match(publicView, /setInterval\(.*10000/);
 assert.match(publicView, /PC01 LIVE/);
 assert.match(publicView, /DỮ LIỆU CŨ/);
-assert.match(publicView, /CẦN XỬ LÝ/);
-assert.match(publicView, /CHỜ ANH SƠN/);
-// Owner V2.3: waiting and blocked are separate, truthful filter buckets.
-for (const bucket of ['waiting','blocked','review','verify','paused']) {
-  assert.match(publicView, new RegExp('data-filter="'+bucket+'"'));
+// Owner P0: four concise filters; detailed states stay on the work cards.
+for (const bucket of ['action','working','waitblocked','closed']) {
+  assert.match(publicView,new RegExp('data-filter="'+bucket+'"'));
 }
-assert.doesNotMatch(publicView, /CHỜ \/ BỊ CHẶN <b/);
+assert.equal((publicView.match(/<button class="filter(?: active)?" data-filter="/g)||[]).length,4);
+assert.match(publicView, /let currentFilter='action'/);
+assert.match(publicView, /data-filter="action">CÒN MỞ/);
+assert.match(sharedWork, /if\(f==='closed'\)return sortClosed\(ended,closedOrder\)/);
+assert.match(sharedWork, /return o\.filter\(work\)/);
+assert.match(sharedWork, /CLOSED_UNVERIFIED:'ĐÓNG KHÁC'/);
+assert.match(sharedWork, /if\(f==='closed'\)return sortClosed\(ended,closedOrder\)/);
 for (const [status,color] of Object.entries({
   OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',
   VERIFY:'#14B8A6',WAITING:'#F59E0B',BLOCKED:'#F43F5E',
@@ -40,18 +48,15 @@ for (const [status,color] of Object.entries({
 })) {
   assert.ok(publicView.includes(status+":'"+color+"'"), 'missing semantic status color '+status);
 }
-assert.match(publicView, /el\.style\.setProperty\('--status-color',STATUS_COLORS\[status\]/);
+assert.match(sharedWork, /el\.style\.setProperty\('--status-color',COLORS\[s\]/);
 assert.match(publicView, /style\.setProperty\('--detail-color',STATUS_COLORS\[workStatus\(row\)\]/);
-assert.match(publicView, /data-filter="owner"/);
-assert.match(publicView, /data-filter="review"/);
-assert.match(publicView, /data-filter="system"/);
-assert.match(publicView, /data-filter="done"/);
+assert.match(publicView, /data-filter="closed"/);
 assert.match(publicView, /progressPercent/);
 assert.match(publicView, /tigeriq-live-open-progress-v2/);
 assert.match(publicView, /tự cập nhật 10 giây/);
 assert.match(publicView, /priority\.p0/);
 assert.match(publicView, /priority\.p1/);
-assert.match(publicView, /filter\[data-filter="running"\]\.active/);
+assert.match(publicView, /filter\[data-filter="working"\]\.active/);
 assert.match(publicView, /work-row\.status-working::before/);
 assert.match(publicView, /work-row\.status-blocked::before/);
 assert.match(publicView, /status-owner_gate/);
@@ -78,19 +83,19 @@ assert.match(publicView, /event\.key==='Tab'/);
 assert.match(publicView, /function verifiedProgress/);
 assert.match(publicView, /workKind==='WORK'/);
 assert.match(publicView, /evidenceFresh=.*staleAll/);
-assert.match(publicView, /refreshOpenDrawer\(\);\s*if\(!rows\.length\)/);
+assert.match(publicView, /TigerIQWorkCenter\.renderCards\(box,rows/);
 assert.match(publicView, /'terminal'/);
 assert.match(publicView, /function effectiveBlocker/);
 assert.match(publicView, /function refreshOpenDrawer/);
 assert.match(publicView, /setAttribute\('inert'/);
 assert.match(publicView, /removeAttribute\('inert'/);
-assert.match(publicView, /data-work-number/);
+assert.match(workUiSources, /data-work-number/);
 assert.match(publicView, /ĐANG XỬ LÝ':'WORKING/);
 assert.match(publicView, /DỮ LIỆU CŨ.*staleTime/);
 assert.match(publicView, /row\.url\|\|row\.evidenceUrl/);
 assert.match(publicView, /Mở GitHub/);
 assert.match(publicView, /openDrawer/);
-assert.match(publicView, /role','button'/);
+assert.match(workUiSources, /role','button'/);
 assert.match(publicView, /working-live/);
 assert.match(publicView, /prefers-reduced-motion:reduce/);
 assert.doesNotMatch(publicView, /createElement\(targetUrl\?'a':'article'\)/);
@@ -198,5 +203,26 @@ assert.ok(publicView.includes("'github_gates_verified'"),'UI must accept verifie
 assert.ok(publicView.includes('CỔNG TIẾN ĐỘ GITHUB'),'drawer must explain GitHub evidence');
 console.log('TIGERIQ_GITHUB_AUTO_PROGRESS_PASS');
 console.log('TIGERIQ_CHECKLIST_VERIFY_PASS');
+
+
+// API Health card regression: full title must grow naturally and stay inside its row.
+const workCenterVisual = readFileSync('public/work-center-visual.css', 'utf8');
+assert.match(workCenterVisual,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card \.work-title\{[^}]*display:block!important;-webkit-line-clamp:unset!important;[^}]*overflow:visible!important/s,
+  'API Health card titles must wrap fully rather than be clipped at two lines');
+const finalHealthGrid = workCenterVisual.slice(workCenterVisual.lastIndexOf('/* Do not create a nested scroller'));
+assert.match(finalHealthGrid,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card\{\s*height:auto!important;align-self:stretch!important/s,
+  'Card height must follow the tallest row content');
+assert.match(finalHealthGrid,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card>\.work-main\{\s*height:auto!important;min-height:max-content!important;\s*flex:1 0 auto!important/s,
+  'Inner card cannot be 100% high in addition to its top badge offset');
+assert.doesNotMatch(finalHealthGrid,
+  /\.tiq-work-card>\.work-main\{\s*height:100%!important/s,
+  'Prevent 27px overflow into the next row');
+assert.match(workCenterVisual,
+  /@media \(min-width:1450px\)\{\s*body\.api-health \.work-panel\{height:auto!important;min-height:0!important\}[\s\S]*?#workList\.wo-list\.work-list\.tiq-work-center\{\s*flex:0 0 auto!important/,
+  'Desktop Health Work list must not collapse from a zero flex basis');
+console.log('TIGERIQ_HEALTH_CARD_TITLE_FLOW_PASS');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');

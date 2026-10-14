@@ -11,9 +11,9 @@ test('Owner-approved LIVE removes only dropdown toolbar, preserves status naviga
     expect(root).not.toContain('id="'+id+'"');
   }
   expect(root).not.toContain('class="bcct-toolbar owner-filter-toolbar"');
-  expect(root).toContain('data-filter="running"');
-  expect(root).toContain('data-filter="done"');
-  expect(root).toContain('data-filter="system"');
+  for(const key of ['action','working','waitblocked','closed'])expect(root).toContain('data-filter="'+key+'"');
+  expect((root.match(/<button class="filter(?: active)?" data-filter="/g)||[]).length).toBe(4);
+  expect(root).toContain("let currentFilter='action'");
   expect(root).toContain('id="workList"');
 });
 test('LIVE employee cards appear before jobs and follow verified PC01 snapshot',()=>{

@@ -80,6 +80,9 @@ export function apiDoctorAction({
   if((health==='RATE_LIMITED'||cls==='rate_limit')&&cooling)return {action:'wait',failureClass:'rate_limit',reason:'cooldown_active'};
   if(health==='RATE_LIMITED'||cls==='rate_limit')return {action:'probe',failureClass:'rate_limit',reason:'cooldown_due'};
   if(cls==='source_contract'&&Number(repeatedWorkFailures)>=2)return {action:'probe_then_handoff',failureClass:cls,reason:'repeated_work_contract_failure'};
+  // A provider ping cannot certify a prior timed-out real inference. Keep an
+  // actionable diagnosis request without launching an unbounded retry.
+  if(cls==='timeout'&&health==='ONLINE')return {action:'investigate',failureClass:cls,reason:'real_work_timeout_causal_trace_required'};
   if(['source_contract','timeout','transient'].includes(cls))return {action:'probe',failureClass:cls,reason:'bounded_reprobe'};
   if(['ERROR','OFFLINE','READY'].includes(health)&&!cooling)return {action:'probe',failureClass:cls,reason:'health_recheck'};
   return {action:'idle',failureClass:cls,reason:'healthy_or_no_action'};
@@ -103,13 +106,26 @@ export function apiDoctorExistingHandoffAction({
   return {action:'wait_repair',reason:'post_repair_validation_budget_exhausted'};
 }
 
-export function apiDoctorCurrentFailure(events=[]){
+export function apiDoctorCurrentFailure(events=[],{preserveWorkFailure=false}={}){
+  // Health pings are not evidence that an actual failed inference recovered.
+  // Legacy callers keep their historical probe semantics unless explicitly opted in.
+  if(!preserveWorkFailure){
+    for(const row of Array.isArray(events)?events:[]){
+      const type=String(row?.type||'');
+      if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK')return null;
+      if(type==='RESOURCE_FAILURE'||type==='RESOURCE_PROBE_FAIL')return row;
+    }
+    return null;
+  }
+  let latestProbeFailure=null;
   for(const row of Array.isArray(events)?events:[]){
     const type=String(row?.type||'');
-    if(type==='RESOURCE_SUCCESS'||type==='RESOURCE_PROBE_OK')return null;
-    if(type==='RESOURCE_FAILURE'||type==='RESOURCE_PROBE_FAIL')return row;
+    const taskKind=String(row?.task_kind||row?.data?.taskKind||'').toLowerCase();
+    if(type==='RESOURCE_SUCCESS'&&!['probe','api_doctor','api_doctor_validation'].includes(taskKind))return null;
+    if(type==='RESOURCE_FAILURE'&&!['probe','api_doctor','api_doctor_validation'].includes(taskKind))return row;
+    if(type==='RESOURCE_PROBE_FAIL'&&!latestProbeFailure)latestProbeFailure=row;
   }
-  return null;
+  return latestProbeFailure;
 }
 
 export function apiDoctorHandoffMatchesFailureClass(handoff,currentFailureClass){
@@ -191,10 +207,19 @@ export function apiDoctorRepairDeploymentGate({
     return {action:'wait_repair',reason:'canonical_repair_runtime_source_not_aligned'};
   }
   const result=String(updaterResult||'').trim().toUpperCase();
+  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
+  // Updater result describes the LATEST candidate, not the last installed
+  // revision. A newer, separately gated release can be WAIT_RELEASE_APPROVAL
+  // after a completed repair was already deployed. The aligned, durable Core
+  // source and installed SHA plus post-issue cutover above prove only that an
+  // installed revision exists. Core still verifies that this SHA contains the
+  // exact repair PR before permitting bounded validation. No auto-RECOVERED.
+  if(result==='WAIT_RELEASE_APPROVAL'&&/^[0-9a-f]{40}$/.test(candidate)&&candidate!==installed){
+    return {action:'validate_repair',reason:'canonical_repair_installed_while_next_release_waits'};
+  }
   if(!['UPDATED','NO_CHANGE'].includes(result)){
     return {action:'wait_repair',reason:'canonical_repair_runtime_updater_not_terminal'};
   }
-  const candidate=String(updaterCandidateSha||'').trim().toLowerCase();
   if(candidate&&candidate!==installed){
     return {action:'wait_repair',reason:'canonical_repair_runtime_candidate_not_installed'};
   }
@@ -333,4 +358,14 @@ export function parseApiDoctorDecision(text){
     attention:[...new Set((value.attention||[]).map(x=>safeText(x,16)).filter(Boolean))].slice(0,10),
     sourceRepair:[...new Set((value.sourceRepair||[]).map(x=>safeText(x,16)).filter(Boolean))].slice(0,10),
   };
+}
+
+// Yield NV10 to already queued real, zero-cost GitHub work before running
+// another optional diagnostic analysis. Never claim a job or reset its attempts.
+export function apiDoctorAutoworkPriority(pending=0) {
+  const count=Number(pending);
+  if(!Number.isSafeInteger(count)||count<0)return {defer:false,reason:'PENDING_COUNT_UNVERIFIED'};
+  return count>0
+    ? {defer:true,reason:'ACTIVE_GITHUB_LOCAL_WORK_HAS_PRIORITY'}
+    : {defer:false,reason:'NO_ACTIVE_GITHUB_LOCAL_WORK'};
 }

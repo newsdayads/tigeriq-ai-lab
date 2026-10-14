@@ -4,6 +4,9 @@ import fs from 'node:fs';
 test.use({ channel: 'chrome' });
 
 const liveHtml = fs.readFileSync(new URL('../../command-center.html', import.meta.url), 'utf8');
+const sharedWorkJs=fs.readFileSync(new URL('../../public/work-center.js',import.meta.url),'utf8');
+const sharedWorkCss=fs.readFileSync(new URL('../../public/work-ui.css',import.meta.url),'utf8');
+const workCenterVisualCss=fs.readFileSync(new URL('../../public/work-center-visual.css',import.meta.url),'utf8');
 const projectsHtml = fs.readFileSync(new URL('../../projects.html', import.meta.url), 'utf8');
 
 const snapshot = {
@@ -31,12 +34,30 @@ async function routeTiger(page:Page,payload:Record<string,unknown>=snapshot,work
     if(url.includes('/api/live-status?scope=workforce')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(workforce())});return}
     if(url.endsWith('/api/live-status')){await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)});return}
     if(url.endsWith('/projects')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:projectsHtml});return}
+    if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
+    if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
+    if(url.endsWith('/work-center-visual.css')){await route.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});return}
     if(url.endsWith('/command-center')){await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:liveHtml});return}
     await route.fulfill({status:204,body:''});
   });
 }
 
 async function openLive(page:Page){await routeTiger(page);await page.goto('https://tigeriq.test/command-center');await expect(page.locator('#workList')).toBeVisible()}
+
+test('a single ended filter preserves both closeout outcomes',async({page})=>{
+ const archived={number:4691,title:'[P2] Nút tải lại cũ',priority:'P2',status:'CLOSED_UNVERIFIED',workKind:'WORK',completionVerified:false,progressPercent:null,progressSource:'closed_unverified'};
+ const verified={number:4690,title:'[P2] Đã nghiệm thu',priority:'P2',status:'DONE',workKind:'WORK',completionVerified:true,progressPercent:100,progressSource:'terminal'};
+ await routeTiger(page,{...snapshot,recentWork:[archived,verified],openSummary:{...snapshot.openSummary,done:1,archived:1}});
+ await page.goto('https://tigeriq.test/command-center');
+ await expect(page.locator('.filters .filter')).toHaveCount(4);
+ await page.locator('.filter[data-filter="closed"]').click();
+ await expect(page.locator('#closedCount')).toHaveText('2');
+ await expect(page.locator('.work-row')).toHaveCount(2);
+ const row=page.locator('.work-row[data-work-number="4691"]');
+ await expect(row).toContainText('ĐÓNG KHÁC');
+ await expect(row.locator('.progress-text')).toHaveCount(0);
+ await expect(page.locator('.work-row[data-work-number="4690"]')).toContainText('HOÀN TẤT');
+});
 
 test('LIVE shows the work list immediately and keeps project surfaces out of layout',async({page})=>{
   await page.setViewportSize({width:390,height:844});await openLive(page);
@@ -88,13 +109,10 @@ test('P0 removes the Owner dropdown strip but keeps status filters and all P0–
   await expect(page.locator('#workProjectFilter, #workStatusFilter, #workPriorityFilter, #bcctSort, #bcctRefresh')).toHaveCount(0);
   await expect(page.locator('.work-row')).toHaveCount(4);
   await expect(page.locator('.work-row[data-work-number="500"]')).toBeVisible();
-  await page.locator('.filter[data-filter="ready"]').click();
-  await expect(page.locator('.work-row[data-work-number="111"]')).toBeVisible();
-  await expect(page.locator('.work-row')).toHaveCount(1);
-  await page.locator('.filter[data-filter="waiting"]').click();
+  await page.locator('.filter[data-filter="waitblocked"]').click();
   await expect(page.locator('.work-row[data-work-number="112"]')).toBeVisible();
-  await page.locator('.filter[data-filter="blocked"]').click();
   await expect(page.locator('.work-row[data-work-number="501"]')).toBeVisible();
+  await expect(page.locator('.work-row[data-work-number="111"]')).toHaveCount(0);
 });
 
 test('P0 LIVE cards show only employees with a fresh PC01 heartbeat and assigned running JOB',async({page})=>{
@@ -176,6 +194,9 @@ test('P0 5-second workforce refresh does not rebuild unrelated work cards or unc
     if(url.endsWith('/api/live-status')){
       fullCalls++;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...snapshot,generatedAt:at})});return;
     }
+    if(url.endsWith('/work-center.js')){await route.fulfill({status:200,contentType:'text/javascript',body:sharedWorkJs});return}
+    if(url.endsWith('/work-ui.css')){await route.fulfill({status:200,contentType:'text/css',body:sharedWorkCss});return}
+    if(url.endsWith('/work-center-visual.css')){await route.fulfill({status:200,contentType:'text/css',body:workCenterVisualCss});return}
     if(url.endsWith('/command-center')){
       await route.fulfill({status:200,contentType:'text/html',body:liveHtml});return;
     }
@@ -293,20 +314,20 @@ test('V2.1 semantic colors cover all eight statuses with dedicated system and co
     {number:808,status:'DONE',color:'#06B6D4'}
   ];
   const records=specs.map(item=>({...snapshot.openWork[0],number:item.number,title:'[P1] Thử màu '+item.status,
-    status:item.status,workKind:item.status==='SYSTEM'?'SYSTEM':'WORK',progressSource:''}));
+    status:item.status,workKind:item.status==='SYSTEM'?'SYSTEM':'WORK',progressSource:'',completionVerified:item.status==='DONE'}));
   const payload={...snapshot,openWork:records.filter(row=>row.status!=='DONE'),
     recentWork:records.filter(row=>row.status==='DONE'),activeWork:[]};
   await routeTiger(page,payload);
   await page.goto('https://tigeriq.test/command-center');
   for(const spec of specs){
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="system"]').click();
-    else if(spec.status==='DONE')await page.locator('.filter[data-filter="done"]').click();
+    if(spec.status==='SYSTEM'){await expect(page.locator('.work-row[data-work-number="807"]')).toHaveCount(0);continue;}
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="closed"]').click();
     const row=page.locator('.work-row[data-work-number="'+spec.number+'"]');
     await expect(row).toBeVisible();
     await expect(row).toHaveClass(new RegExp('status-'+spec.status.toLowerCase()));
     const color=await row.evaluate(element=>getComputedStyle(element).getPropertyValue('--status-color').trim().toUpperCase());
     expect(color).toBe(spec.color);
-    if(spec.status==='SYSTEM')await page.locator('.filter[data-filter="action"]').click();
+    if(spec.status==='DONE')await page.locator('.filter[data-filter="action"]').click();
   }
 });
 
@@ -411,14 +432,13 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     title:'[P1] Phân loại '+item.filter,status:item.status,
     workKind:item.filter==='system'?'SYSTEM':'WORK',progressSource:''}));
   const recentWork=[{...snapshot.openWork[0],number:909,
-    title:'[P1] Công việc đã hoàn tất',status:'HOÀN TẤT',workKind:'WORK',progressSource:'terminal',progressPercent:100}];
+    title:'[P1] Công việc đã hoàn tất',status:'HOÀN TẤT',workKind:'WORK',progressSource:'terminal',progressPercent:100,completionVerified:true}];
   await routeTiger(page,{...snapshot,openWork,recentWork,activeWork:[],
     nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const item of rows){
-    await page.locator('.filter[data-filter="'+item.filter+'"]').click();
-    const filtered=page.locator('.work-row');
-    await expect(filtered).toHaveCount(1);
+    await page.locator('.filter[data-filter="action"]').click();
+    if(item.filter==='system'){await expect(page.locator('.work-row[data-work-number="908"]')).toHaveCount(0);continue;}
     const card=page.locator('.work-row[data-work-number="'+item.number+'"]');
     await expect(card).toBeVisible();
     const actual=await card.evaluate(element=>
@@ -432,7 +452,7 @@ test('V2.3 filters keep distinct review verification waiting blocked and paused 
     expect(detailColor).toBe(item.color);
     await page.locator('#drawerCloseBottom').click();
   }
-  await page.locator('.filter[data-filter="done"]').click();
+  await page.locator('.filter[data-filter="closed"]').click();
   await expect(page.locator('.work-row')).toHaveCount(1);
   await expect(page.locator('.work-row[data-work-number="909"]')).toBeVisible();
 });
@@ -537,19 +557,11 @@ test('P0 progress fixed at BOTTOM and exact semantic status color on all verifie
     progressDone:3,progressTotal:6,progressRemaining:3,activeLease:false,heartbeatFresh:false,
     nextStep:'Bước tiếp: Kiểm tra mã nguồn'
   }));
-  const done={...rows[0],number:719,status:'DONE',progressPercent:100,progressSource:'terminal'};
+  const done={...rows[0],number:719,status:'DONE',progressPercent:100,progressSource:'terminal',completionVerified:true};
   await routeTiger(page,{...snapshot,openWork:rows,recentWork:[done],activeWork:[],nextQueue:[],openSummary:{}});
   await page.goto('https://tigeriq.test/command-center');
   for(const [i,[state,color]] of colors.entries()){
-    if(state==='DONE')await page.locator('.filter[data-filter="done"]').click();
-    else if(state==='OWNER_GATE')await page.locator('.filter[data-filter="owner"]').click();
-    else if(state==='QUEUED')await page.locator('.filter[data-filter="ready"]').click();
-    else if(state==='WAITING')await page.locator('.filter[data-filter="waiting"]').click();
-    else if(state==='PAUSED')await page.locator('.filter[data-filter="paused"]').click();
-    else if(state==='BLOCKED')await page.locator('.filter[data-filter="blocked"]').click();
-    else if(state==='VERIFY')await page.locator('.filter[data-filter="verify"]').click();
-    else if(state==='REVIEW')await page.locator('.filter[data-filter="review"]').click();
-    else if(state==='WORKING')await page.locator('.filter[data-filter="running"]').click();
+    await page.locator('.filter[data-filter="'+(state==='DONE'?'closed':'action')+'"]').click();
     const card=page.locator('.work-row[data-work-number="'+(state==='DONE'?719:710+i)+'"]');
     await expect(card).toBeVisible();
     const data=await card.evaluate(el=>{

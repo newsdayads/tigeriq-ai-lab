@@ -3,6 +3,8 @@ import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './m
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
+import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
+import {workOrderChecklistGate} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -632,22 +634,28 @@ export function safeAutoWorkAdmission(issue){
   // or a missing current flag, never authorizes a safe-looking work order.
   if(bodyValue(currentSafetyBody,'TIGERIQ_EXECUTABLE').toLowerCase()!=='true')return {eligible:false,reason:'EXECUTION_FLAG_REQUIRED'};
   const priority=bodyValue(currentSafetyBody,'PRIORITY').toUpperCase();
-  if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(body,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
+  if(!SAFE_AUTO_WORK_PRIORITIES.has(priority)||isOwnerOnlyP0(currentSafetyBody,title))return {eligible:false,reason:'P0_OR_INVALID_PRIORITY'};
+  // Newly created work cards must have source-valid lifecycle/steps/timing before auto-intake.
+  // Existing legacy cards are not silently disabled; NV02 external pull requires its own gate.
+  const lifecycleContract=validateWorkOrderLifecycleV2(issue);
+  if(lifecycleContract.required&&!lifecycleContract.valid)return {eligible:false,reason:'LIFECYCLE_V2_CONTRACT_INVALID',missing:lifecycleContract.missing};
   const ownerPolicy=bodyValue(currentSafetyBody,'OWNER_POLICY').toUpperCase();
   if(!ownerPolicy&&bodyValue(body,'OWNER_POLICY'))return {eligible:false,reason:'HISTORICAL_ONLY_OWNER_POLICY'};
   if(ownerPolicy&&!['AUTO','AUTO_AFTER_GATE'].includes(ownerPolicy))return {eligible:false,reason:'OWNER_POLICY_NOT_AUTO'};
-  if(backlogOwnerControlled(body)
-    ||hasExactFlag(body,'OWNER_ACCEPTANCE_REQUIRED')
-    ||hasExactFlag(body,'OWNER_REVIEW_REQUIRED')
-    ||hasExactFlag(body,'MANUAL_GATE'))return {eligible:false,reason:'OWNER_OR_HOLD_GATE'};
+  // Historical snapshots cannot reimpose owner/dependency/terminal holds on a
+  // currently authorized work order; only the active section is authoritative.
+  if(backlogOwnerControlled(currentSafetyBody)
+    ||hasExactFlag(currentSafetyBody,'OWNER_ACCEPTANCE_REQUIRED')
+    ||hasExactFlag(currentSafetyBody,'OWNER_REVIEW_REQUIRED')
+    ||hasExactFlag(currentSafetyBody,'MANUAL_GATE'))return {eligible:false,reason:'OWNER_OR_HOLD_GATE'};
   if(isManualOnlyAppChromeMaintenance(title,body))return {eligible:false,reason:'APP_CHROME_EXCLUDED'};
-  if(githubDependencyAdmissionBlocked(body))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
-  const state=bodyValue(body,'CURRENT_STATE').toUpperCase();
+  if(githubDependencyAdmissionBlocked(currentSafetyBody))return {eligible:false,reason:'DEPENDENCY_BLOCKED'};
+  const state=bodyValue(currentSafetyBody,'CURRENT_STATE').toUpperCase();
   const standingRelease=isP1P5StandingReleaseAction(currentSafetyBody);
   // A still-open GitHub issue with terminal CURRENT_STATE must not be re-dispatched.
   // SUPERSEDED_BY is terminal even if historical READY_* markers remain first.
   if(/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
-    ||bodyValue(body,'SUPERSEDED_BY').trim())return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
+    ||bodyValue(currentSafetyBody,'SUPERSEDED_BY').trim())return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT)(?:_|$)/.test(state)&&!standingRelease&&!/(?:OWNER|DEPENDENCY|PARENT_GATE)/.test(state))return {eligible:false,reason:'NON_EXECUTABLE_STATE'};
   if(/(?:WAITING|WAIT|CHỜ).*OWNER|OWNER_REVIEW_REQUIRED|OWNER_ACCEPTANCE_REQUIRED|HOLD/.test(state)&&!standingRelease)return {eligible:false,reason:'OWNER_WAIT_STATE'};
   if(issueLabelNames(issue).some((name)=>name.toLowerCase()==='tigeriq:terminal-blocked'))return {eligible:false,reason:'TERMINAL_BLOCKED'};
@@ -697,8 +705,8 @@ export function parseExecutableIssue(issue){
   const body=String(issue.body||'');
   const currentBody=currentAutoExecutionHeader(body);
   const title=String(issue.title||'');
-  if(chatMutationOwnerPlan(body,title).owner==='VY')return null;
-  if(isOwnerOnlyP0(body,title))return null;
+  if(chatMutationOwnerPlan(currentBody,title).owner==='VY')return null;
+  if(isOwnerOnlyP0(currentBody,title))return null;
   if(androidProductAutoExecutionExclusion(issue))return null;
   const legacyExecutable=bodyValue(currentBody,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'
     &&bodyValue(currentBody,'OWNER_POLICY').toUpperCase()==='AUTO'
@@ -1824,6 +1832,24 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
       row.status='active';
       row.summary=summary;
+    }
+    // A successful worker result is not a completed Work Order until the GitHub
+    // card itself has every step checked with a receipt. Fetch the current issue
+    // directly: neither comments nor the materialization index are sufficient.
+    if(row.status==='completed'){
+      const actualIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
+      const partialStep=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
+      const stepId=String(row.metadata?.completedStepId||'').trim().toUpperCase();
+      // Partial objective must verify its accepted step; it never closes the parent.
+      const checklist=partialStep
+        ?workOrderChecklistGate(actualIssue,{stepId,requireAll:false})
+        :workOrderChecklistGate(actualIssue,{requireAll:true});
+      if(!checklist.ok){
+        const reason=`CHECKLIST_NOT_SYNCED:${checklist.reason}:${(checklist.missing||[]).join(',')}`;
+        row.status='blocked';
+        row.summary=`Completion refused until checked GitHub card readback: ${reason}`;
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       const resultComment=formatResultComment(row);

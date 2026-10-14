@@ -33,11 +33,11 @@ a{color:inherit;text-decoration:none}
 .filter.active{box-shadow:0 0 0 1px rgba(255,255,255,.03) inset}
 .filter[data-filter="action"].active{border-color:#6676a8;background:#20294b;color:#ddd7ff}
 .filter[data-filter="owner"].active{border-color:#9a4550;background:#451f27;color:#ffc0c6}
-.filter[data-filter="running"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
+.filter[data-filter="working"].active{border-color:#2f7757;background:#113928;color:#9ef0bd}
 .filter[data-filter="review"].active{border-color:#7a5a28;background:#3a2b17;color:#ffd38d}
-.filter[data-filter="waiting"].active{border-color:#35628d;background:#112b45;color:#b9dcff}
+.filter[data-filter="waitblocked"].active{border-color:#35628d;background:#112b45;color:#b9dcff}
 .filter[data-filter="system"].active{border-color:#556273;background:#1c2631;color:#c1ccd7}
-.filter[data-filter="done"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
+.filter[data-filter="closed"].active{border-color:#246c64;background:#0e3733;color:#91eee0}
 .filter b{font-weight:900;color:inherit;margin-left:3px}
 .work-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .work-row{display:block;cursor:pointer;border:1px solid var(--line);background:linear-gradient(180deg,#102139,#0b1829);border-radius:13px;padding:9px 10px;min-width:0;box-shadow:0 8px 24px rgba(0,0,0,.12);position:relative;overflow:hidden}
@@ -141,7 +141,7 @@ body.drawer-open{overflow:hidden}
 :root{--green:#10B981;--cyan:#06B6D4;--violet:#A78BFA;--amber:#F59E0B;--red:#F43F5E;--blue:#3B82F6;--teal:#14B8A6;--slate:#64748B}
 .filter[data-filter="owner"].active{border-color:var(--violet);background:#32224e;color:#e6d6ff}
 .filter[data-filter="review"].active{border-color:var(--blue);background:#172d54;color:#c5ddff}
-.filter[data-filter="waiting"].active{border-color:var(--amber);background:#382c16;color:#ffe2a1}
+.filter[data-filter="waitblocked"].active{border-color:var(--amber);background:#382c16;color:#ffe2a1}
 .work-list{gap:25px 13px;margin-top:19px}
 .work-row{overflow:visible;padding:17px 13px 12px;border-radius:0 0 14px 14px;border-color:var(--status-color,#64748B);transition:transform .16s ease,box-shadow .16s ease}
 .work-row:hover,.work-row:focus-visible{transform:translateY(-2px);box-shadow:0 14px 28px #0005;outline-offset:3px}
@@ -456,15 +456,15 @@ body.drawer-open{overflow:hidden}
 .raw-work-details>summary{color:#bca7f3!important;font-size:11px!important;text-transform:uppercase;letter-spacing:.035em}
 .raw-work-details>summary .details-hint{color:#7893b2;font-size:8px;margin-left:5px}
 .filter{cursor:pointer}.filter[data-filter="action"],.filter[data-filter="owner"]{color:#ff747e;border-color:#87434d;background:rgba(255,116,126,.10)}
-.filter[data-filter="running"]{color:#47db91;border-color:#287453;background:rgba(71,219,145,.10)}
-.filter[data-filter="review"],.filter[data-filter="waiting"]{color:#f0b94d;border-color:#8b6426;background:rgba(240,185,77,.10)}
+.filter[data-filter="working"]{color:#47db91;border-color:#287453;background:rgba(71,219,145,.10)}
+.filter[data-filter="review"],.filter[data-filter="waitblocked"]{color:#f0b94d;border-color:#8b6426;background:rgba(240,185,77,.10)}
 .filter[data-filter="system"]{color:#8796a6;border-color:#526170;background:rgba(135,150,166,.10)}
-.filter[data-filter="done"]{color:#55d8c4;border-color:#287468;background:rgba(85,216,196,.10)}
+.filter[data-filter="closed"]{color:#55d8c4;border-color:#287468;background:rgba(85,216,196,.10)}
 .filter[data-filter="action"].active,.filter[data-filter="owner"].active{color:#ff9ba3;border-color:#a64f59;background:rgba(255,116,126,.22)}
-.filter[data-filter="running"].active{color:#7df0b5;border-color:#329466;background:rgba(71,219,145,.23)}
-.filter[data-filter="review"].active,.filter[data-filter="waiting"].active{color:#ffd27a;border-color:#a8792c;background:rgba(240,185,77,.23)}
+.filter[data-filter="working"].active{color:#7df0b5;border-color:#329466;background:rgba(71,219,145,.23)}
+.filter[data-filter="review"].active,.filter[data-filter="waitblocked"].active{color:#ffd27a;border-color:#a8792c;background:rgba(240,185,77,.23)}
 .filter[data-filter="system"].active{color:#b7c2cc;border-color:#667687;background:rgba(135,150,166,.20)}
-.filter[data-filter="done"].active{color:#82eddd;border-color:#338a7d;background:rgba(85,216,196,.22)}
+.filter[data-filter="closed"].active{color:#82eddd;border-color:#338a7d;background:rgba(85,216,196,.22)}
 a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.flow-package-tabs button{cursor:pointer}button:disabled,[aria-disabled="true"]{cursor:not-allowed}
 @media(max-width:700px){
   .top,.brand,.brand h1{min-width:0;max-width:100%}
@@ -483,6 +483,13 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 <style id="live-ui-v2">
 
 .top-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+.reload-page{display:grid;place-items:center;flex:none;width:40px;height:40px;padding:0;border:1px solid #274861;border-radius:12px;background:#0b1e30;color:#b9dcff;cursor:pointer;touch-action:manipulation;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+.reload-page svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.reload-page:hover{border-color:#3f86b4;background:#102a43}
+.reload-page:active{transform:scale(.96)}
+.reload-page:focus-visible{outline:2px solid #65d7e8;outline-offset:2px}
+@media(max-width:430px){.top{gap:6px}.top-actions{gap:5px}.top-actions .live{padding:7px 8px;max-width:156px;min-width:0}.top-actions #liveLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}.reload-page{width:38px;height:38px}}
+@media(prefers-reduced-motion:reduce){.reload-page{transition:none}}
 .health-utility{display:grid;place-items:center;width:30px;height:30px;border:1px solid #274861;background:#0b1e30;color:#80cfff;border-radius:9px;font-size:15px;text-decoration:none;transition:border-color .16s ease,background .16s ease,transform .16s ease}
 .health-utility:hover{border-color:#3f86b4;background:#102a43;transform:translateY(-1px)}
 .v2-global-nav{display:flex;align-items:center;gap:7px;margin:-4px 0 14px;padding:5px;border:1px solid #1c3550;background:#091625;border-radius:12px;overflow-x:auto;scrollbar-width:none}
@@ -729,7 +736,7 @@ a[href],button:not(:disabled),[role="button"],[onclick],.work-row,.package-tab,.
 .work-row.status-done .state{border-color:#06B6D4;color:#A0F2FC;background:#113943}
 .filter[data-filter="owner"].active{border-color:#A78BFA;background:#302447;color:#E0CAFF}
 .filter[data-filter="review"].active{border-color:#3B82F6;background:#172E54;color:#B8D5FF}
-.filter[data-filter="waiting"].active{border-color:#F59E0B;background:#3A2B14;color:#FFE2A1}
+.filter[data-filter="waitblocked"].active{border-color:#F59E0B;background:#3A2B14;color:#FFE2A1}
 @media(max-width:759px){.work-list{gap:13px}.work-row .work-main{padding:12px 11px}.work-row .work-title{font-size:14px}.work-row .work-id,.work-row .priority{font-size:16px!important;height:27px}.work-row .work-main{margin-top:27px;height:calc(100% - 27px)}}
 </style>
 
@@ -775,14 +782,14 @@ html,body,body{background:#071321!important}
 .filter[data-filter].active{color:var(--filter-accent)!important;border-color:var(--filter-accent)!important;background:color-mix(in srgb,var(--filter-accent) 17%,#071321)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--filter-accent) 18%,transparent) inset}
 .filter[data-filter="action"]{--filter-accent:#94A3B8}
 .filter[data-filter="owner"]{--filter-accent:#A78BFA}
-.filter[data-filter="running"]{--filter-accent:#10B981}
+.filter[data-filter="working"]{--filter-accent:#10B981}
 .filter[data-filter="review"]{--filter-accent:#3B82F6}
 .filter[data-filter="verify"]{--filter-accent:#14B8A6}
-.filter[data-filter="waiting"]{--filter-accent:#F59E0B}
+.filter[data-filter="waitblocked"]{--filter-accent:#F59E0B}
 .filter[data-filter="blocked"]{--filter-accent:#F43F5E}
 .filter[data-filter="paused"]{--filter-accent:#64748B}
 .filter[data-filter="system"]{--filter-accent:#64748B}
-.filter[data-filter="done"]{--filter-accent:#06B6D4}
+.filter[data-filter="closed"]{--filter-accent:#06B6D4}
 .work-row .state{color:var(--status-color,#64748B)!important}
 .work-row .work-id{background:var(--status-color,#64748B)!important;color:#fff!important}
 .work-row .work-main{border-color:var(--status-color,#64748B)!important}
@@ -881,6 +888,7 @@ html,body,body{background:#071321!important}
 @media(max-width:1099px){.live-workers-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}}
 @media(max-width:599px){.live-workers-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.live-worker-card{padding:6px 5px;border-radius:8px}.live-worker-top{align-items:flex-start;flex-direction:column;gap:2px}.live-worker-id{font-size:10px}.live-worker-state{font-size:8px}.live-worker-name{font-size:10px;margin:3px 0 2px}.live-worker-job{font-size:9px;line-height:1.25;min-height:23px}.live-worker-footer{font-size:8px;gap:2px;align-items:flex-start;flex-direction:column;margin-top:4px;padding-top:4px}.live-worker-code{max-width:100%}.live-worker-updated{font-size:8px}}
 </style>
+<link rel="stylesheet" href="/work-center-visual.css">
 </head>
 <body>
 <main id="appMain" class="wrap">
@@ -909,19 +917,12 @@ html,body,body{background:#071321!important}
 <section aria-labelledby="workListHeading">
   <div class="list-head"><h2 id="workListHeading">DANH SÁCH CÔNG VIỆC</h2><span id="workMeta">—</span></div>
   <nav class="filters" aria-label="Lọc công việc">
-    <button class="filter active" data-filter="action">CẦN XỬ LÝ <b id="actionCount">0</b></button>
-    <button class="filter" data-filter="owner">CHỜ ANH SƠN <b id="ownerCount">0</b></button>
-    <button class="filter" data-filter="running">ĐANG LÀM <b id="runningCount">0</b></button>
-    <button class="filter" data-filter="review">RÀ SOÁT <b id="reviewCount">0</b></button>
-    <button class="filter" data-filter="verify">XÁC MINH <b id="verifyCount">0</b></button>
-    <button class="filter" data-filter="ready">SẴN SÀNG <b id="readyCount">0</b></button>
-    <button class="filter" data-filter="waiting">ĐANG CHỜ <b id="waitingCount">0</b></button>
-    <button class="filter" data-filter="blocked">BỊ CHẶN <b id="blockedCount">0</b></button>
-    <button class="filter" data-filter="paused">TẠM DỪNG <b id="pausedCount">0</b></button>
-    <button class="filter" data-filter="system">HỆ THỐNG <b id="systemCount">0</b></button>
-    <button class="filter" data-filter="done">HOÀN TẤT <b id="doneCount">0</b></button>
-  </nav>
-  <div id="workList" class="work-list"></div>
+    <button class="filter active" data-filter="action">CÒN MỞ <b id="actionCount">0</b></button>
+    <button class="filter" data-filter="working">ĐANG LÀM <b id="workingCount">0</b></button>
+    <button class="filter" data-filter="waitblocked">CHỜ / CHẶN <b id="waitblockedCount">0</b></button>
+    <button class="filter" data-filter="closed">ĐÃ KẾT THÚC <b id="closedCount">0</b></button>
+  </nav><label id="liveClosedSortLabel" class="work-scope-note" hidden>Sắp xếp <select id="liveClosedSort" aria-label="Sắp xếp việc đã kết thúc"><option value="finished">VỪA HOÀN TẤT ↓</option><option value="closed">MỚI ĐÓNG HỒ SƠ ↓</option></select></label><small class="work-scope-note">Mặc định chỉ hiện việc còn mở; ĐÃ KẾT THÚC sắp việc hoàn tất có bằng chứng lên đầu, không tính hồ sơ chỉ đóng là hoàn tất.</small>
+  <div id="workList" class="work-list tiq-work-center"></div>
 </section>
 </div>
 </details>
@@ -940,23 +941,25 @@ html,body,body{background:#071321!important}
       <div id="drawerChecklistHint" class="drawer-checklist-hint"></div>
     </section>
     <section id="drawerStatusSection" class="drawer-section"><h3>Trạng thái hiện tại</h3><div class="drawer-row"><span>Hiện tại</span><span id="drawerCurrent">—</span></div><div class="drawer-row"><span>Bước tới</span><span id="drawerNext">—</span></div><div class="drawer-row"><span>Bị chặn</span><span id="drawerBlocker">Không có</span></div></section>
+    <section id="drawerTimingSection" class="drawer-section"><h3>THỜI GIAN THỰC HIỆN</h3><div class="drawer-row"><span>Bắt đầu</span><span id="drawerStartAt">Chưa xác minh</span></div><div class="drawer-row"><span>ETA xong</span><span id="drawerTargetAt">Chưa xác định</span></div><div class="drawer-row"><span>Hạn bước</span><span id="drawerCheckpointAt">Chưa xác định</span></div><div class="drawer-row"><span>Xong thật</span><span id="drawerFinishAt">Chưa nghiệm thu</span></div><div class="drawer-row"><span>Đủ chuẩn</span><span id="drawerContractGate">Chưa xác minh</span></div></section>
     <section id="drawerTerminalSection" class="drawer-section"><h3>Kết thúc công việc</h3><div class="drawer-row"><span>Trạng thái cuối</span><strong id="drawerTerminalState">CHƯA HOÀN TẤT</strong></div><div class="drawer-row"><span>Điều kiện hoàn tất</span><span id="drawerTerminalCriteria">Chưa xác minh</span></div></section>
-    <section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
+    <section class="drawer-section"><h3>NHẬT KÝ VÀ THỜI GIAN</h3><div id="drawerAudit"></div></section><section id="drawerEvidenceSection" class="drawer-section"><h3>Bằng chứng / chi tiết</h3><div class="drawer-row"><span>Dự án</span><span id="drawerProject">—</span></div><div class="drawer-row"><span>Nhánh việc</span><span id="drawerWorkstream">—</span></div><div class="drawer-row"><span>JOB</span><span id="drawerJob">—</span></div><div class="drawer-row"><span>Nhân sự</span><span id="drawerWorker">—</span></div><div class="drawer-row"><span>Vừa xong</span><span id="drawerDone">—</span></div><div class="drawer-row"><span>Cập nhật</span><span id="drawerUpdated">—</span></div></section>
   </div>
   <div class="drawer-actions"><button id="drawerAskVy" class="drawer-btn ask-vy" type="button" title="Mở TigerIQ với nội dung trao đổi; có sao chép dự phòng">Trao đổi với Vy ↗</button><a id="drawerGithub" class="drawer-btn" target="_blank" rel="noopener">Mở GitHub ↗</a><button id="drawerCloseBottom" class="drawer-btn primary" type="button">Đóng</button></div>
 </aside>
+<script src="/work-center.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const LAST_GOOD_KEY='tigeriq-live-open-progress-v2';
 const LAST_GOOD_MAX_MS=30*60*1000;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 let snapshot=null;
-let currentFilter='action';
+let currentFilter='action',currentClosedSort='finished';
 let missionProjectId='all';
 const lastVisualState=new Map();
 let drawerRow=null;
 let drawerReturnFocus=null;
-const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
+const stateLabel={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',PAUSED:'TẠM DỪNG',BLOCKED:'BỊ CHẶN',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT',CLOSED_UNVERIFIED:'ĐÓNG KHÁC'};
 const stateHelp={WORKING:'Đang thực hiện công việc.',REVIEW:'Phần thực hiện đã xong hoặc gần xong; đang được kiểm tra độc lập, chưa phải hoàn tất.',VERIFY:'Đã qua bước rà soát; đang xác minh bản phát hành hoặc kết quả thực tế, chưa phải hoàn tất.',DONE:'Mọi cổng bắt buộc đã đạt và công việc đã đóng.'};
 const STATUS_COLORS=Object.freeze({OWNER_GATE:'#A78BFA',WORKING:'#10B981',REVIEW:'#3B82F6',VERIFY:'#14B8A6',QUEUED:'#F59E0B',WAITING:'#F59E0B',BLOCKED:'#F43F5E',DONE:'#06B6D4',PAUSED:'#64748B',SYSTEM:'#64748B',GOAL:'#64748B',OPEN:'#64748B',UNKNOWN:'#64748B'});
 function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
@@ -1026,7 +1029,7 @@ const executionLabelMap={
   HARD_GATE:'CẦN ANH SƠN',
   TERMINAL:'ĐÃ KẾT THÚC'
 };
-function executionLabel(row){const key=String(row?.executionEligibility||'').trim().toUpperCase();return executionLabelMap[key]||'CHƯA XÁC MINH'}
+function executionLabel(row){if(row?.executionEligibilityReason==='LIFECYCLE_V2_CONTRACT_INVALID')return 'CHỜ CHUẨN HÓA THẺ';const key=String(row?.executionEligibility||'').trim().toUpperCase();if(key==='READY'&&row?.localSelfPullReady===true)return 'NV02 TỰ NHẬN QUA GITHUB';return executionLabelMap[key]||'CHƯA XÁC MINH'}
 function activeHolder(row){const value=String(row?.activeWorker||'').trim().toUpperCase();return /^(?:NV\d{2}|CODEX|AUTO)$/.test(value)?value:'chưa giữ AI'}
 function executionWaitReason(row){
   const value=String(row?.waitReason||'').trim();
@@ -1036,26 +1039,7 @@ function executionWaitReason(row){
     :'Không có';
 }
 function normalizeRows(value){
-  const fallbackOpen=()=>{
-    const map=new Map();
-    for(const row of [...(value?.activeWork||[]),...(value?.nextQueue||[])])if(Number(row?.number))map.set(Number(row.number),row);
-    return [...map.values()];
-  };
-  const openRows=Array.isArray(value?.openWork)?value.openWork:fallbackOpen();
-  let rows=[];
-  if(currentFilter==='done')rows=(Array.isArray(value?.recentWork)?value.recentWork:[]).map(x=>({...x,status:'DONE'}));
-  else if(currentFilter==='owner')rows=openRows.filter(x=>workStatus(x)==='OWNER_GATE');
-  else if(currentFilter==='running')rows=openRows.filter(x=>workStatus(x)==='WORKING');
-  else if(currentFilter==='review')rows=openRows.filter(x=>workStatus(x)==='REVIEW');
-  else if(currentFilter==='verify')rows=openRows.filter(x=>workStatus(x)==='VERIFY');
-  else if(currentFilter==='ready')rows=openRows.filter(x=>x.workKind==='WORK'&&['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY'));
-  else if(currentFilter==='waiting')rows=openRows.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY');
-  else if(currentFilter==='blocked')rows=openRows.filter(x=>workStatus(x)==='BLOCKED');
-  else if(currentFilter==='paused')rows=openRows.filter(x=>workStatus(x)==='PAUSED');
-  else if(currentFilter==='open')rows=openRows.filter(x=>workStatus(x)==='OPEN');
-  else if(currentFilter==='system')rows=openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM');
-  else rows=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  return rows;
+ return TigerIQWorkCenter.rowsFor(value,currentFilter,currentClosedSort);
 }
 
 function readLastGood(){try{const x=JSON.parse(localStorage.getItem(LAST_GOOD_KEY)||'null');return x?.value&&Date.now()-x.savedAt<=LAST_GOOD_MAX_MS?x.value:null}catch{return null}}
@@ -1072,22 +1056,13 @@ function hydrate(raw){
   return {...cached,ok:true,liveConnected:false,staleAll:true,staleAt:cached?.workProjection?.verifiedAt||cached?.generatedAt||null,liveReason:raw?.reason||projection.reason||'fetch failed',workProjection:{...(cached.workProjection||{}),stale:true,reason:raw?.reason||projection.reason||'fetch failed'}};
 }
 function updateCounts(){
-  const s=snapshot?.openSummary||{};
-  const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[...(snapshot?.activeWork||[]),...(snapshot?.nextQueue||[])];
-  const actionable=openRows.filter(x=>x?.workKind==='WORK'&&workStatus(x)!=='SYSTEM');
-  const visibleActionable=actionable;
-  $('actionCount').textContent=visibleActionable.length;
-  $('ownerCount').textContent=Number.isFinite(Number(s.owner))?s.owner:actionable.filter(x=>workStatus(x)==='OWNER_GATE').length;
-  $('runningCount').textContent=Number.isFinite(Number(s.running))?s.running:actionable.filter(x=>workStatus(x)==='WORKING').length;
-  $('reviewCount').textContent=actionable.filter(x=>workStatus(x)==='REVIEW').length;
-  $('verifyCount').textContent=actionable.filter(x=>workStatus(x)==='VERIFY').length;
-  $('readyCount').textContent=actionable.filter(x=>['QUEUED','WAITING','OPEN'].includes(workStatus(x))&&(workStatus(x)==='QUEUED'||x.executionEligibility==='READY')).length;
-  $('waitingCount').textContent=actionable.filter(x=>workStatus(x)==='WAITING'&&x.executionEligibility!=='READY').length;
-  $('blockedCount').textContent=actionable.filter(x=>workStatus(x)==='BLOCKED').length;
-  $('pausedCount').textContent=actionable.filter(x=>workStatus(x)==='PAUSED').length;
-  $('systemCount').textContent=Number.isFinite(Number(s.system))?s.system:openRows.filter(x=>x?.workKind==='SYSTEM'||workStatus(x)==='SYSTEM').length;
-  $('doneCount').textContent=Number.isFinite(Number(s.done))?s.done:(snapshot?.recentWork||[]).length;
+ const filters=['action','working','waitblocked','closed'];
+ for(const key of filters){
+  const node=$(key+'Count');
+  if(node)node.textContent=TigerIQWorkCenter.rowsFor(snapshot,key).length;
+ }
 }
+
 function renderOwnerSummary(){
   const portfolioProgress=snapshot?.portfolioProgress; void portfolioProgress;
   const openRows=Array.isArray(snapshot?.openWork)?snapshot.openWork:[];
@@ -2081,6 +2056,7 @@ function jobCloseoutState(row){
   const state=workStatus(row),stale=Boolean(snapshot?.staleAll||snapshot?.workProjection?.stale);
   if(stale)return {label:'CHƯA XÁC MINH KẾT THÚC',detail:'Dữ liệu đang cũ; cần đồng bộ nguồn trước khi xác nhận.'};
   if(state==='DONE')return {label:'HOÀN TẤT · ĐÃ KẾT THÚC',detail:'Nguồn ghi hoàn tất; đối chiếu bằng chứng thực thi, rà soát và phát hành tại GitHub.'};
+  if(state==='CLOSED_UNVERIFIED')return {label:'ĐÃ ĐÓNG · CHƯA XÁC MINH KẾT QUẢ',detail:'Hồ sơ GitHub đã đóng nhưng chưa đủ bằng chứng kết luận hoàn tất; không tính 100%.'};
   if(state==='OWNER_GATE'&&row?.technicalComplete===true)return {label:'XONG KỸ THUẬT · CHƯA KẾT THÚC',detail:'Chờ nghiệm thu cuối; không tự đóng công việc.'};
   if(state==='BLOCKED')return {label:'CHƯA KẾT THÚC · BỊ CHẶN',detail:'Chờ xử lý trở ngại có bằng chứng, không tự lặp lại vô hạn.'};
   if(state==='REVIEW'||state==='VERIFY')return {label:'CHƯA KẾT THÚC · CHỜ NGHIỆM THU',detail:'Chờ rà soát hoặc xác minh kết quả thực tế.'};
@@ -2089,7 +2065,7 @@ function jobCloseoutState(row){
 function populateDrawer(row){
   drawerRow=row;
   const isResultInbox=row?.ownerResultInbox===true;
-  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(stateLabel[workStatus(row)]||workStatus(row))+' · '+executionLabel(row));
+  $('drawerKicker').textContent=isResultInbox?('#'+row.number+' · KẾT QUẢ · OWNER'):('#'+row.number+' · '+workPriority(row)+' · '+workerFrom(row)+' · '+(row?.localSelfPullReady===true&&workStatus(row)==='OPEN'?'SẴN SÀNG NV02 NHẬN':(stateLabel[workStatus(row)]||workStatus(row)))+' · '+executionLabel(row));
   $('drawerTitle').textContent=displayTitle(row.title);
   $('workDrawer').dataset.status=workStatus(row).toLowerCase();
   $('workDrawer').style.setProperty('--detail-color',STATUS_COLORS[workStatus(row)]||'#64748B');
@@ -2100,6 +2076,14 @@ function populateDrawer(row){
   $('drawerCurrent').textContent=row?.technicalComplete&&workStatus(row)==='OWNER_GATE'?'Đã xong kỹ thuật · chờ anh Sơn duyệt':(row.currentStep||'Chưa có trạng thái xác minh');
   $('drawerNext').textContent=shortNext(row);
   $('drawerBlocker').textContent=effectiveBlocker(row)||'Không có';
+  const timing=row?.lifecycleTiming||{};
+  const displayDate=(value)=>{if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toLocaleString('vi-VN',{hour12:false,timeZone:'Asia/Ho_Chi_Minh'})};
+  $('drawerStartAt').textContent=timing?.startedAt?(displayDate(timing.startedAt)+(timing.startVerified?' · CÓ BIÊN NHẬN':' · CHỜ ĐỐI CHIẾU')):'CHƯA CÓ BIÊN NHẬN BẮT ĐẦU';
+  $('drawerTargetAt').textContent=timing?.targetFinishAt?(displayDate(timing.targetFinishAt)+' · '+(timing.etaStatus||'ESTIMATED')):'CHƯA CÓ ETA ĐƯỢC XÁC NHẬN';
+  $('drawerCheckpointAt').textContent=displayDate(timing?.checkpointDueAt)||'CHƯA ẤN ĐỊNH';
+  $('drawerFinishAt').textContent=timing?.finishedAt?(displayDate(timing.finishedAt)+(timing.finishVerified?' · CÓ BIÊN NHẬN':' · CHỜ ĐỐI CHIẾU')):'CHƯA NGHIỆM THU';
+  const c=row?.lifecycleContract;
+  $('drawerContractGate').textContent=c?.required?(c.valid?'ĐỦ CẤU TRÚC V2 · CHỜ NGHIỆM THU THỰC TẾ':('THIẾU '+(c.missing?.length||0)+' ĐIỀU KIỆN · '+(c.missing||[]).slice(0,2).join(', '))):'THẺ CŨ · ĐANG CHUYỂN ĐỔI';
   const closeout=jobCloseoutState(row);$('drawerTerminalState').textContent=closeout.label;$('drawerTerminalCriteria').textContent=closeout.detail;
   $('drawerProject').textContent=row?.projectName||'Chưa phân dự án';
   $('drawerWorkstream').textContent=row?.workstreamName||row?.workPackageName||'Chưa phân nhánh';
@@ -2107,6 +2091,7 @@ function populateDrawer(row){
   $('drawerWorker').textContent=row?.assignee||workerFrom(row);
   $('drawerDone').textContent=row.latestCompletedStep||(row?.technicalComplete?'Đã có bằng chứng canonical':'Chưa có bằng chứng');
   $('drawerUpdated').textContent=row.updatedAt?new Date(row.updatedAt).toLocaleString('vi-VN',{hour12:false}):'Chưa xác minh';
+  TigerIQWorkCenter.renderAudit($('drawerAudit'),row,{historyEndpoint:'/api/work-history'});
   renderOwnerResultInbox(row);
   const url=row.url||row.evidenceUrl||'';
   $('drawerGithub').hidden=!url;if(url)$('drawerGithub').href=url;else $('drawerGithub').removeAttribute('href');
@@ -2143,62 +2128,12 @@ function render(){
   renderNowRunning();
   renderApiWorkforce();
   updateCounts();
+  const closedLabel=$('liveClosedSortLabel');if(closedLabel)closedLabel.hidden=currentFilter!=='closed';
   const rows=normalizeRows(snapshot);
-  if(currentFilter==='action')rows.sort((a,b)=>systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));
+  if(currentFilter==='action'){const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));rows.sort((a,b)=>Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))||systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));}
   $('workMeta').textContent=rows.length+' mục';
-  const box=$('workList');box.innerHTML='';
-  refreshOpenDrawer();
-  if(!rows.length){box.innerHTML='<div class="empty">Không có công việc trong nhóm này.</div>';return}
-  rows.forEach((row,index)=>{
-    const el=document.createElement('article');
-    const status=workStatus(row),label=stateLabel[status]||status;
-    const priority=workPriority(row),priorityClass=String(priority).toLowerCase().replace(/[^a-z0-9]/g,'')||'meta';
-    el.className='work-row status-'+status.toLowerCase()+' priority-'+priorityClass;
-    el.style.setProperty('--status-color',STATUS_COLORS[status]||'#64748B');
-    el.setAttribute('data-work-number',String(row.number));
-    el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết #'+row.number+' '+displayTitle(row.title));
-    const title=displayTitle(row.title);
-    const rank=String(index+1).padStart(2,'0');
-    const {pct,verified:progressVerified}=verifiedProgress(row);
-    const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(status);
-    const liveRunning=status==='WORKING'&&row?.activeLease===true&&row?.heartbeatFresh===true
-      &&snapshot?.liveConnected===true&&!(snapshot?.staleAll||snapshot?.workProjection?.stale);
-    if(liveRunning)el.classList.add('progress-running');
-    const progress=progressVerified&&Number.isFinite(pct)&&pct>=0&&pct<=100
-      ?'<div class="progress" title="'+esc(row.progressDetail||'Tiến độ đã xác minh')+'"><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div><span class="progress-text">'+pct+'%</span></div>'
-      :activeWithoutPercent
-        ?'<div class="progress indeterminate" title="Đang hoạt động · chưa đủ dữ liệu để tính phần trăm"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>'
-        :'';
-    const stepSummary=verifiedStepSummary(row);
-    const project=String(row?.projectName||'Chưa phân dự án').trim();
-    const stream=String(row?.workstreamName||row?.workPackageName||'Chưa phân nhánh').trim();
-    const parent=Number(row?.parentNumber);
-    const parentLine=Number.isInteger(parent)&&parent>0?'<div class="work-parent">↳ Công việc cha #'+parent+'</div>':'';
-    const hierarchy='<div class="work-hierarchy" title="'+esc(project+' → '+stream)+'">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine;
-    const summaryText=String(row?.technicalComplete&&status==='OWNER_GATE'
-      ?'Đã xong kỹ thuật · chờ anh Sơn duyệt'
-      :(row?.currentStep||(row?.workKind==='SYSTEM'?'Chính sách / nguồn chuẩn — không phải việc thực thi':row?.workKind==='GOAL'?'Mục tiêu cấp hệ thống — không đồng nghĩa đang chạy':''))).trim();
-    const doneText=String(row?.latestCompletedStep||'').trim();
-    const nextText=shortNext(row);
-    const blockerText=effectiveBlocker(row).trim();
-    const executionText=executionLabel(row),activeHolderText=activeHolder(row),waitReasonText=executionWaitReason(row);
-    const usefulSummary=summaryText&&!/^(?:Chưa có trạng thái xác minh|Chưa xác định)$/i.test(summaryText)?summaryText:'';
-    const usefulNext=nextText&&!/^(?:Chưa xác định|Duyệt quyết định)$/i.test(nextText)?nextText:'';
-    const quickKind=blockerText?'blocked':usefulNext?'next':usefulSummary?'current':'';
-    const quickText=blockerText?('Bị chặn: '+blockerText):usefulNext?usefulNext.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):usefulSummary?('Hiện tại: '+usefulSummary):'';
-    const nextSvg='<svg class="next-step-icon" aria-label="Bước tiếp theo" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-    const quickLine=quickText?'<div class="work-quick '+quickKind+'">'+(quickKind==='next'?nextSvg:'')+'<span>'+esc(quickText)+'</span></div>':'';
-    const progressBottom=progress||stepSummary?'<div class="work-progress-bottom">'+stepSummary+progress+'</div>':'';
-    const signature=status+'|'+(progressVerified&&Number.isFinite(pct)?pct:'unverified')+'|'+summaryText+'|'+executionText+'|'+activeHolderText+'|'+waitReasonText+'|'+nextText+'|'+blockerText+'|'+(row?.progressDone??'-')+'/'+(row?.progressTotal??'-')+'/'+Boolean(row?.progressChecklistVerified);
-    const previous=lastVisualState.get(Number(row.number));
-    if(previous&&previous!==signature)el.classList.add('recently-updated');
-    lastVisualState.set(Number(row.number),signature);
-    el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+esc(rank)+'</span><span class="work-id">#'+esc(row.number)+'</span><span class="priority '+esc(priorityClass)+'">'+esc(priority)+'</span><span class="work-nv">'+esc(row?.assignee||workerFrom(row))+'</span><span class="state '+esc(status.toLowerCase())+'" title="'+esc(stateHelp[status]||label)+'">'+liveStateIcon(status)+esc(label)+'</span></div>'+hierarchy+'<div class="work-title">'+esc(title)+'</div>'+quickLine+progressBottom+'</div>';
-    el.addEventListener('click',()=>openDrawer(row,el));
-    el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDrawer(row,el)}});
-    box.append(el);
-    if(el.classList.contains('recently-updated'))setTimeout(()=>el.classList.remove('recently-updated'),850);
-  });
+  const box=$('workList');
+  TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
   refreshOpenDrawer();
 }
 function show(value){
@@ -2229,6 +2164,8 @@ async function load(){
     $('liveLabel').textContent='MẤT DỮ LIỆU';$('err').textContent='Không có snapshot xác minh để hiển thị.';$('err').style.display='block';
   }
 }
+TigerIQWorkCenter.mountFloatingReload();
+const sortClosedPicker=$('liveClosedSort');if(sortClosedPicker)sortClosedPicker.addEventListener('change',()=>{currentClosedSort=sortClosedPicker.value;render()});
 document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{
   currentFilter=button.dataset.filter||'action';
   document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===button));
@@ -2242,7 +2179,9 @@ function buildVyHandoffPrompt(row){
 function openChatGptHandoff(url,prompt){
   if(navigator.clipboard?.writeText)navigator.clipboard.writeText(prompt).catch(()=>{});
   const link=document.createElement('a');
-  link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+  // Keep a desktop tab for existing workflows; iOS universal links reuse this view.
+  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  link.href=url;link.target=ios?'_self':'_blank';link.rel='noopener noreferrer';
   document.body.appendChild(link);link.click();link.remove();
 }
 $('drawerAskVy').addEventListener('click',()=>{
