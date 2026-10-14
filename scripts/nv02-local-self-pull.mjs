@@ -115,11 +115,12 @@ async function syncAcceptedNv02Comments(issue,lease,comments){
     const f=stepFields(receipt.body);
     if(f.WORK_ORDER!=='#'+issue.number||f.RESOURCE_SCOPE!==lease.resourceScope||
        f.STEP_ID!==m.STEP_ID||f.ACCEPTANCE!=='PASS')return {verified:false};
+    const expectedHead=String(issue.body||'').match(/^TARGET_HEAD=([a-f0-9]{40})$/mi)?.[1]?.toLowerCase()||'';
     const ownerAcceptance=receipt?.user?.login===OWNER && f.VERIFIER==='OWNER';
     let ciAcceptance=false;
     if(/^(\d+)$/.test(f.CI_RUN_ID||'')&&/^[a-f0-9]{40}$/i.test(f.CI_HEAD_SHA||'')){
      const run=gh(['repos/'+OWNER+'/'+REPO+'/actions/runs/'+f.CI_RUN_ID]);
-     ciAcceptance=run?.status==='completed'&&run?.conclusion==='success'
+     ciAcceptance=Boolean(expectedHead)&&String(f.CI_HEAD_SHA).toLowerCase()===expectedHead&&run?.status==='completed'&&run?.conclusion==='success'
        &&String(run?.head_sha||'').toLowerCase()===f.CI_HEAD_SHA.toLowerCase();
     }
     if(!ownerAcceptance&&!ciAcceptance)return {verified:false};
