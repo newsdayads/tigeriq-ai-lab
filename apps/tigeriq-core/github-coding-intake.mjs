@@ -144,15 +144,6 @@ export function codingScopesOverlap(a,b){
   return overlaps(a.paths||[],b.paths||[]);
 }
 
-function verifiedQueueRank(issue){
-  // Labels are metadata, so reordering cannot change the canonical coding source revision.
-  const matches=(Array.isArray(issue?.labels)?issue.labels:[])
-    .map(label=>String(typeof label==='string'?label:label?.name||''))
-    .filter(label=>/^tigeriq:queue:(?:0[1-9]|[1-9][0-9])$/.test(label))
-    .map(label=>Number(label.split(':').at(-1)));
-  return matches.length===1?matches[0]:null;
-}
-
 export function parseCodingIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
@@ -193,7 +184,7 @@ export function parseCodingIssue(issue){
   if(scopeLease.paths.some(isProtectedControlPlanePath)&&!controlRepair.delegated)return null;
   const routing=parseCodingRouteMetadata(header);
   if(!routing.valid)return null;
-  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(header),ownerDirect:backlogOwnerDirect(header),queueRank:verifiedQueueRank(issue),scopeLease,controlRepair,routing};
+  return {number:Number(issue.number),title:String(issue.title||''),body,comments:Math.max(0,Number(issue.comments||0)),priority,sourcePriority,legacyP0Autonomous,ownerControlled,assignedExecutor,url:String(issue.html_url||''),dependsOn:extractCodingDependencies(header),ownerDirect:backlogOwnerDirect(header),scopeLease,controlRepair,routing};
 }
 
 async function jsonFetch(fetchImpl,url,init={}){
