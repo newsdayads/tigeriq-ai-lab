@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -11,6 +11,27 @@ const nv19={id:'NV19',provider:'fake',model:'b'};
 const nv13={id:'NV13',provider:'fake',model:'c'};
 
 import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+
+test('#280 Coding Manager uses existing Core-local capacity as backup without admitting unsafe or occupied AI',()=>{
+  const primary=[{id:'NV09',provider:'ollama'}];
+  const backups=[{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV08',provider:'ollama',model:'qwen3:8b'}];
+  const healthByEmployee=new Map([
+    ['NV10',{employee_id:'NV10',enabled:true,health_state:'READY',work_state:'IDLE',status:'READY',quota_state:{usable:true}}],
+    ['NV08',{employee_id:'NV08',enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE'}],
+  ]);
+  const run=(override={})=>appendEligibleCodingManagerBackups(primary,backups,{healthByEmployee,nowMs:Date.now(),...override}).map(x=>x.id);
+  assert.deepStrictEqual(run(),['NV09','NV10','NV08']);
+  assert.deepStrictEqual(run({busyIds:['NV10']}),['NV09','NV08']);
+  assert.deepStrictEqual(run({excludeIds:['NV08']}),['NV09','NV10']);
+  healthByEmployee.set('NV10',{health_state:'ERROR',work_state:'ERROR',status:'ERROR'});
+  assert.deepStrictEqual(run(),['NV09','NV08']);
+  healthByEmployee.set('NV08',{health_state:'ONLINE',work_state:'BUSY',current_job_id:'CORE-REAL-LEASE'});
+  assert.deepStrictEqual(run(),['NV09']);
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes('let manager=pickManagerResource()'));
+  assert.ok(src.includes('resourcePool:selectableManagerResources([])'));
+  assert.ok(src.includes('const available=selectableResources(exclude);'),'Worker/reviewer pool remains original separate list');
+});
 
 test('#280 Manager-only Ollama time budget has bounded safe default, leaving Worker timeout separate',()=>{
   assert.strictEqual(normalizeManagerOllamaTimeout(undefined),45000);
