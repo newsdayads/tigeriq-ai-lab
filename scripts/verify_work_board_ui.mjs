@@ -220,6 +220,9 @@ assert.match(finalHealthGrid,
 assert.doesNotMatch(finalHealthGrid,
   /\.tiq-work-card>\.work-main\{\s*height:100%!important/s,
   'Prevent 27px overflow into the next row');
+assert.match(workCenterVisual,
+  /@media \(min-width:1450px\)\{\s*body\.api-health \.work-panel\{height:auto!important;min-height:0!important\}[\s\S]*?#workList\.wo-list\.work-list\.tiq-work-center\{\s*flex:0 0 auto!important/,
+  'Desktop Health Work list must not collapse from a zero flex basis');
 console.log('TIGERIQ_HEALTH_CARD_TITLE_FLOW_PASS');
 
 console.log('TIGERIQ_LIVE_UNIFIED_WORK_LIST_PASS');
