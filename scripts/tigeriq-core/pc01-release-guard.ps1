@@ -49,11 +49,11 @@ $ownerApiHealthBlobs=@{
   'scripts/verify_work_board_ui.mjs'='90ec17f4a021aa2d20942932916af138c095e2fc'
   'tests/e2e/api-health-work-card-layout.spec.ts'='a4c126d8b2dec8515332ca0366de5eb048f9e613'
 }
-# Owner-authorized #2293 Coding Lane repair: ONLY the two exact immutable Git blobs.
+# Owner-authorized #280 Coding Lane manager failover: ONLY the two exact immutable Git blobs.
 # Distinct signed GitHub/OIDC approval, ACL, anti-replay and rollback stay mandatory.
 $ownerCodingContractBlobs=@{
-  'apps/tigeriq-coding-lane/coding-lane.mjs'='19db9937eb21a6dd0dad6bd4f48bc1c23a7952f1'
-  'tests/coding-lane-ai-json-transport.test.mjs'='ebbada83ad355077a657e608ef17bd7062441da8'
+  'apps/tigeriq-coding-lane/coding-lane.mjs'='ae42ee5bdfd9065dd103f782140ec6330c42dce6'
+  'tests/coding-lane-foundation.test.mjs'='20aff7451494d107f0629ba69c220d3516a76899'
 }
 $ownerOneTapWebPaths=@(
   'apps/tigeriq-core/web-control-server.mjs',
