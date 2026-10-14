@@ -1,3 +1,4 @@
+import {completionProof} from '../shared/work-center-history.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { open, stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -83,17 +84,25 @@ function nv02RearmEpochMs(issue) {
 }
 
 export function nv02HasTerminalEvidence(issue, comments = []) {
-  if (issue?.state === 'closed' && issue?.state_reason === 'completed') return true;
-  const epochMs = nv02RearmEpochMs(issue);
-  return (Array.isArray(comments) ? comments : [])
-    .filter((comment) => {
-      const body = String(comment?.body || '');
-      return body.includes(NV02_LEASE_MARKER) || body.includes(NV02_RELEASE_MARKER) || /WORKER=NV02/i.test(body);
-    })
-    .filter((comment) => !epochMs || commentAtMs(comment) >= epochMs)
-    .some((comment) => /^(?:STATE|CURRENT_STATE)=(?:DONE|BLOCKED)$/mi.test(String(comment?.body || '')));
+  // A release comment claiming DONE is not a completion receipt. Require
+  // GitHub's closed/completed state plus V2 checked steps and finish evidence.
+  if (completionProof(issue).verified) return true;
+  const epochMs=nv02RearmEpochMs(issue);
+  return (Array.isArray(comments)?comments:[])
+    .filter(c=>!epochMs||commentAtMs(c)>=epochMs)
+    .some(c=>{
+      const text=String(c?.body||'');
+      if(!text.startsWith('[TIGERIQ_NV02_STEP_CHECKPOINT_V1]'))return false;
+      const val=k=>String(text.match(new RegExp('^'+k+'=([^\\r\\n]+)$','m'))?.[1]||'').trim();
+      return ['BLOCKED','EXTERNAL_WAIT'].includes(val('STATE'))
+        &&val('WORK_ORDER')==='#'+Number(issue?.number)
+        &&val('RESOURCE_SCOPE')===String(nv02WorkOrderMeta(issue).RESOURCE_SCOPE||'').trim()
+        &&/^NV02-\d+-[0-9a-f-]+$/i.test(val('LEASE_ID'))
+        &&val('EVIDENCE_READBACK_VERIFIED')==='true'
+        &&/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull|commit)\/[\w#/.?-]+$/i.test(val('EVIDENCE_URL'))
+        &&val('BLOCKER').length>3;
+    });
 }
-
 function workOrderRef(issueOrNumber) {
   const number = Number(typeof issueOrNumber === 'object' ? issueOrNumber?.number : issueOrNumber);
   return Number.isInteger(number) && number > 0 ? `#${number}` : '';
@@ -576,6 +585,7 @@ export function buildNv02LocalSelfPullPrompt(issue, lease) {
     'Không đổi RESOURCE_SCOPE, title suffix, version hoặc reviewer để né dedupe. Chỉ tạo review Work Order mới khi TARGET_HEAD thay đổi hoặc acceptance/review scope thay đổi thực chất.',
     'Nếu review trả CHANGES_REQUIRED thì quay lại implementation trên cùng canonical parent/PR; nếu PASS thì tiếp tục gate kế tiếp. Không sinh review-on-review.',
     'Đọc checklist STRUCTURED_PROGRESS_CHECKLIST theo thứ tự. Mỗi bước phải có biên nhận nguồn thật, đối chiếu lại và chỉ sửa [ ] thành [x] trên GitHub khi đã xác minh bản ghi và lease duy nhất. Sau mỗi cập nhật, đọc lại Issue để xác nhận bước đã được ghi; không lấy comment/chat làm % tự động.',
+    'Khi một bước được nghiệm thu thật: gửi comment bằng chứng riêng chứa WORK_ORDER, RESOURCE_SCOPE, STEP_ID, ACCEPTANCE=PASS, CI_RUN_ID và CI_HEAD_SHA khớp TARGET_HEAD đang khóa (nếu là bước có CI); sau đó gửi [TIGERIQ_NV02_ACCEPTED_STEP_V1] với WORK_ORDER, RESOURCE_SCOPE, LEASE_ID, STEP_ID và EVIDENCE_URL trỏ tới chính comment biên nhận. NV02 sẽ tự cập nhật [x] và đọc lại GitHub. Không tạo event nếu thiếu CI đúng HEAD hoặc người nghiệm thu hợp lệ. Thiếu biên nhận → CHỜ, cấm báo DONE.',
     'Còn bước hợp pháp → thực thi bước kế. Bị chặn một bước nhưng có bước độc lập → ghi WAIT cho bước bị chặn và làm tiếp bước độc lập; hết bước khả thi → ghi [TIGERIQ_NV02_STEP_CHECKPOINT_V1] với WORK_ORDER, LEASE_ID, RESOURCE_SCOPE, STATE=BLOCKED hoặc EXTERNAL_WAIT, BLOCKER, EVIDENCE_URL và EVIDENCE_READBACK_VERIFIED=true chỉ khi thật đã đối chiếu.',
     'Chỉ ghi DONE=true, FINISHED_AT, FINISH_RECEIPT_URL và đóng GitHub completed sau khi tất cả checklist có biên nhận thật, CI đúng HEAD, rà soát độc lập/miễn đúng phạm vi, nghiệm thu runtime khi áp dụng và readback đóng thẻ. Không tự đánh dấu DONE từ câu trả lời/chat hoặc một bình luận STATE=DONE.',
     'Giới hạn 2 lượt thử cùng lỗi và HEAD; không kiểm thử lặp vô hạn. Sau DONE hoặc BLOCKED/EXTERNAL_WAIT đã có biên nhận → nhả lease an toàn, tự chọn một Work Order P1–P5 khác không trùng scope; không chờ Core giao việc.',

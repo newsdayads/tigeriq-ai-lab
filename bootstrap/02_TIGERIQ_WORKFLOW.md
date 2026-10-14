@@ -188,6 +188,9 @@ Khi anh Sơn yêu cầu `prompt`, `đưa prompt`, `qua Work`, `giao NV` hoặc t
 - Phải giữ đầy đủ nội dung cần thiết để AI khác làm đúng.
 - Mặc định toàn bộ prompt là **01 dòng vật lý duy nhất**; không tự chèn newline nếu không bắt buộc bởi cú pháp.
 - Không giải thích dài trước/sau prompt.
+- **OWNER LOCK 2026-10-12:** chỉ 01 khung code block native `text`, toàn bộ lời giao việc trên 01 dòng; **không bất kỳ lời dẫn/lời kết ngoài khung**. Không dùng WritingBlock, danh sách hay nhiều khối thay thế; không cắt điều kiện nhiệm vụ.
+- Đặc tả và điều kiện nghiệm thu: `docs/OWNER_PROMPT_COPY_V1.md`. Bề mặt TigerIQ thật sự sở hữu renderer phải chặn xuất sai bằng `validateOwnerPromptCopy` / `publishOwnerPromptCopy` từ `apps/shared/owner-prompt-copy-contract.mjs` tại điểm phát ra, không chỉ có module/test mà tuyên bố triển khai.
+- Giao diện ChatGPT/Gemini gốc và các chat không tải nguồn: không có quyền cưỡng chế từ GitHub. Phải thử thật đúng bề mặt, tách `SOURCE_SPEC` / `GUARD_CODE` / `RUNTIME_WIRED` / `LIVE_CANARY_PASS`.
 
 ## 12. Chuẩn hiển thị nội dung cần sao chép
 - Dùng đúng **01 code block native** của ChatGPT để có nút Copy.
