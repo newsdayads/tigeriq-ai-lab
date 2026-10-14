@@ -130,8 +130,6 @@ function Sync-Launchers(){
 }
 function Sync-UpdaterRuntime(){
   $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
-  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
-  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
   # Called only inside an approved release or its rollback. Refresh the guard
   # from that same verified snapshot; a code merge cannot activate an Owner grant.
   $guardSource=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
@@ -139,11 +137,15 @@ function Sync-UpdaterRuntime(){
   $parseTokens=$null;$parseErrors=$null
   $null=[Management.Automation.Language.Parser]::ParseFile($guardSource,[ref]$parseTokens,[ref]$parseErrors)
   if(@($parseErrors).Count -gt 0){throw 'RELEASE_GUARD_SOURCE_PARSE_FAILED'}
+  $null=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'UPDATER_SOURCE_PARSE_FAILED'}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
+  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
   $sourceHash=(Get-FileHash -LiteralPath $guardSource -Algorithm SHA256).Hash
   $oldHash=if(Test-Path -LiteralPath $releaseGuardScript){(Get-FileHash -LiteralPath $releaseGuardScript -Algorithm SHA256).Hash}else{''}
   if($sourceHash -ne $oldHash){
     if($oldHash){
-      $guardBackup=Join-Path 'C:\ProgramData\TigerIQCoreRelease\Backup' ('guard-'+$oldHash+'.ps1')
+      $guardBackup=Join-Path (Join-Path (Split-Path -Parent $releaseGuardScript) 'Backup') ('guard-'+$oldHash+'.ps1')
       if(-not(Test-Path -LiteralPath $guardBackup)){Copy-Item -LiteralPath $releaseGuardScript -Destination $guardBackup -ErrorAction Stop}
     }
     $guardTmp=$releaseGuardScript+'.tmp'
@@ -630,7 +632,15 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
-function Gates-Pass([string]$sha){
+function Gates-Pass([string]$sha,[switch]$ExactMain){
+  if($ExactMain){
+    $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&per_page=50"
+    foreach($name in @('CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify')){
+      $latest=@($runs.workflow_runs|Where-Object{$_.name -eq $name -and $_.head_sha -ceq $sha -and $_.event -eq 'push' -and $_.head_branch -eq 'main'}|Sort-Object -Property id -Descending|Select-Object -First 1)
+      if($latest.Count -ne 1 -or $latest[0].status -ne 'completed' -or $latest[0].conclusion -ne 'success'){return $false}
+    }
+    return $true
+  }
   $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
   $need=@('CI','WO-014 Queue Hygiene')
   foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
@@ -638,6 +648,10 @@ function Gates-Pass([string]$sha){
 }
 function Resolve-GateSha([string]$remote){
   if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
+  if(Test-Path -LiteralPath 'C:\ProgramData\TigerIQCoreRelease\core-runtime-owner-project-policy.json'){
+    if(Gates-Pass $remote -ExactMain){return $remote}
+    return $null
+  }
   if(Gates-Pass $remote){return $remote}
   try{$prs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls" @('Accept: application/vnd.github+json')}catch{if($_.Exception.Message -match '^GITHUB_API_RATE_LIMIT'){throw};return $null}
   foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
