@@ -19,6 +19,13 @@ Must declare `WORK_ORDER_LIFECYCLE=V2`, `PROJECT_ID`, `WORKSTREAM_ID`, `PRIORITY
 - Dashboard may display the declared timeline (unverified until source readback); it must not invent started/finished values or project timestamps as execution timestamps.
 - Branch/PR, required CI, reviewed release, installed Core SHA, and a live PC01 plus NV02 real-card canary are separate mandatory milestones. GitHub source PASS != deployment PASS.
 
+## Bắt buộc đồng bộ ô hoàn tất sau MỖI bước — Owner 15/10/2026
+- Ngay sau khi nghiệm thu một bước có bằng chứng thật, người đang giữ quyền ghi hợp lệ phải sửa đúng dòng tương ứng trên thẻ GitHub từ `- [ ]` sang `- [x]` và gắn URL bằng chứng trên cùng dòng. Không tích các bước chưa nghiệm thu.
+- Đọc lại nội dung Issue từ GitHub sau khi cập nhật, đối chiếu chính xác mã bước, dấu `[x]`, URL biên nhận và khóa một người ghi. Chỉ sau kết quả đối chiếu mới được công bố bước đó hoàn tất hoặc chuyển sang bước phụ thuộc.
+- Nếu ghi thất bại, mất quyền, khác phiên bản thẻ, thiếu khóa ghi hoặc không đọc lại được: lưu lỗi và ở CHỜ/BỊ CHẶN, KHÔNG báo bước HOÀN TẤT, KHÔNG giả phần trăm; không dùng bình luận `DONE` thay ô tích. Không thử lặp trên cùng dữ liệu khi đã hết lượt cho phép.
+- Cổng cuối phải đọc lại thẻ mới nhất, kiểm tra tất cả ô cần thiết đã được tích và gắn URL nguồn. Bình luận DONE, mã chạy xong hoặc Issue đóng riêng lẻ không phải xác nhận đủ.
+- Quy tắc áp dụng cho công việc do Owner giao trong ChatGPT/Gemini và nhân sự AI; lớp mã cưỡng chế chỉ có hiệu lực trên từng tuyến đã thật sự tích hợp và phát hành. Không tuyên bố đã cài đặt xuyên các tài khoản gốc chỉ vì đã sửa GitHub.
+
 ## Fixed closure acceptance
 1. Accurate one-writer claim + timestamp + receipt; all checklist entries have verified original evidence.
 2. Exact-head CI/QA/PR/field tests as required, runtime acceptance and rollback verification when applicable.

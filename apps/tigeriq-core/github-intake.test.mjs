@@ -989,8 +989,14 @@ describe('GitHub Core intake guardrails',()=>{
     expect(activeGithubObjectiveSourceExclusion({number:897,state:'closed',title:'[P1] Core',body:safe})).toBe('NOT_OPEN_ISSUE');
   });
 
+  const acceptedChecklistForSource=(step='M01',partial=true)=>[
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    '- [x] '+step+' — verified [Receipt](https://github.com/newsdayads/tigeriq-ai-lab/issues/842#issuecomment-12345)',
+    ...(partial?['- [ ] M02 — remaining work']:['- [x] M02 — done [Receipt](https://github.com/newsdayads/tigeriq-ai-lab/issues/842#issuecomment-12346)']),
+    '## ACCEPTANCE',
+  ].join(String.fromCharCode(10));
   it('keeps completed multi-phase Core issue open while reporting the step result',async()=>{
-    const row={id:'OBJ-GH-842',status:'completed',summary:'phase done',metadata:{source:'github',issueNumber:842,githubClaimReported:true,githubResultReported:false,keepOpenOnStepComplete:true}};
+    const row={id:'OBJ-GH-842',status:'completed',summary:'phase done',metadata:{source:'github',issueNumber:842,githubClaimReported:true,githubResultReported:false,keepOpenOnStepComplete:true,completedStepId:'M01'}};
     const pool={async query(q,params=[]){
       if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
       if(q.includes('update tigeriq_objectives set metadata=metadata||$2::jsonb')){
@@ -1001,6 +1007,7 @@ describe('GitHub Core intake guardrails',()=>{
     }};
     const calls=[];
     const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/842')&&(init.method||'GET')==='GET')return new Response(JSON.stringify({number:842,state:'open',body:acceptedChecklistForSource()}),{status:200,headers:{'content-type':'application/json'}});
       if(url.endsWith('/issues/842/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
       if(url.endsWith('/issues/842')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
       if(url.includes('/issues/842/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
@@ -1405,7 +1412,7 @@ describe('GitHub Core intake guardrails',()=>{
   });
 
   it('closes only after current-revision live PASS plus trusted independent review job',async()=>{
-    const sourceIssue={number:2659,state:'open',state_reason:null,title:'live gate',comments:1,body:'LIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'};
+    const sourceIssue={number:2659,state:'open',state_reason:null,title:'live gate',comments:1,body:['LIVE_ACCEPTANCE_REQUIRED=true','FINAL_REVIEW_REQUIRED=true',acceptedChecklistForSource('M01',false)].join(String.fromCharCode(10))};
     const revision=githubIssueSourceRevision(sourceIssue);
     const row={id:'OBJ-GH-2659-Rcurrent',status:'completed',summary:'ready for live gate',metadata:{source:'github',issueNumber:2659,githubClaimReported:true,githubResultReported:false,sourceRevision:revision,liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptanceCommentCount:0}};
     let trustedJobId='';
@@ -1422,6 +1429,7 @@ describe('GitHub Core intake guardrails',()=>{
     const calls=[];
     const fetchImpl=async(url,init={})=>{
       if(url.includes('/issues/2659/comments?')&&(init.method||'GET')==='GET'){calls.push('comments-get');return new Response(JSON.stringify([{id:11,body:`LIVE_ACCEPTANCE_PASS=true\nSOURCE_REVISION=${revision}`}]),{status:200,headers:{'content-type':'application/json'}});}
+      if(url.endsWith('/issues/2659')&&(init.method||'GET')==='GET')return new Response(JSON.stringify(sourceIssue),{status:200,headers:{'content-type':'application/json'}});
       if(url.endsWith('/issues/2659/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
       if(url.endsWith('/issues/2659')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
       if(url.includes('/issues/2659/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}
@@ -1504,6 +1512,7 @@ describe('GitHub Core intake guardrails',()=>{
     }};
     const calls=[];
     const fetchImpl=async(url,init={})=>{
+      if(url.endsWith('/issues/841')&&(init.method||'GET')==='GET')return new Response(JSON.stringify({number:841,state:'open',body:acceptedChecklistForSource('M01',false)}),{status:200,headers:{'content-type':'application/json'}});
       if(url.endsWith('/issues/841/comments')&&init.method==='POST'){calls.push('result-comment');return new Response(JSON.stringify({}),{status:201,headers:{'content-type':'application/json'}});}
       if(url.endsWith('/issues/841')&&init.method==='PATCH'){calls.push('close-issue');return new Response(JSON.stringify({state:'closed'}),{status:200,headers:{'content-type':'application/json'}});}
       if(url.includes('/issues/841/labels/')&&init.method==='DELETE'){calls.push('clear-label');return new Response(null,{status:204});}

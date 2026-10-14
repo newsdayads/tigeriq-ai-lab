@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
+import {workOrderChecklistGate} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -1831,6 +1832,24 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       await pool.query("update tigeriq_objectives set status='active',summary=$2,next_check_at=now()+interval '1 minute',updated_at=now() where id=$1",[row.id,summary]);
       row.status='active';
       row.summary=summary;
+    }
+    // A successful worker result is not a completed Work Order until the GitHub
+    // card itself has every step checked with a receipt. Fetch the current issue
+    // directly: neither comments nor the materialization index are sufficient.
+    if(row.status==='completed'){
+      const actualIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
+      const partialStep=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
+      const stepId=String(row.metadata?.completedStepId||'').trim().toUpperCase();
+      // Partial objective must verify its accepted step; it never closes the parent.
+      const checklist=partialStep
+        ?workOrderChecklistGate(actualIssue,{stepId,requireAll:false})
+        :workOrderChecklistGate(actualIssue,{requireAll:true});
+      if(!checklist.ok){
+        const reason=`CHECKLIST_NOT_SYNCED:${checklist.reason}:${(checklist.missing||[]).join(',')}`;
+        row.status='blocked';
+        row.summary=`Completion refused until checked GitHub card readback: ${reason}`;
+        await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
+      }
     }
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       const resultComment=formatResultComment(row);

@@ -17,6 +17,8 @@ import {
   releaseStaleAssigneeLease,
 } from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 import { reconcileStaleDependency } from '../apps/tigeriq-core/dependency-reconcile.mjs';
+import { completionProof } from '../apps/shared/work-center-history.mjs';
+import { workOrderChecklistGate } from '../apps/tigeriq-core/work-order-checklist-hard-gate.mjs';
 
 const OWNER = 'newsdayads';
 const REPO = 'tigeriq-ai-lab';
@@ -94,8 +96,9 @@ async function controllerDispatch(issue, lease) {
 }
 function terminal(issue, comments) {
   const text = comments.map((x) => String(x.body || '')).join('\n');
-  if (issue.state === 'closed' && issue.state_reason === 'completed') return 'DONE';
-  if (new RegExp(`CLAIM_ID=.*STATE=DONE`, 'i').test(text) || /STATE=DONE/i.test(text)) return 'DONE';
+  // Never release a scoped lease as DONE from a comment or GitHub closure alone.
+  // Only V2 validated closed-completed with all checked, linked steps qualifies.
+  if (completionProof(issue).verified && workOrderChecklistGate(issue,{requireAll:true}).ok) return 'DONE';
   if (/STATE=BLOCKED/i.test(text)) return 'BLOCKED';
   return null;
 }
