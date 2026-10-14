@@ -105,20 +105,24 @@ function exactObject(input, keys) {
 
 export function parsePc01OwnerApproval(body) {
   const lines = String(body || '').replace(/\r\n/g, '\n').trim().split('\n');
-  if (lines.length !== 4 || lines[0] !== 'TIGERIQ_PC01_RELEASE_APPROVE_V1')
+  const snapshotV2 = lines[0] === 'TIGERIQ_PC01_RELEASE_APPROVE_V2';
+  if ((snapshotV2 && (lines.length !== 5 || lines[4] !== 'RELEASE_POLICY=SCOPED_SNAPSHOT_V2')) ||
+      (!snapshotV2 && (lines.length !== 4 || lines[0] !== 'TIGERIQ_PC01_RELEASE_APPROVE_V1')))
     deny('COMMENT_FORMAT_INVALID');
   const pairs = lines.slice(1).map(line => {
     const i = line.indexOf('=');
     return i > 0 ? [line.slice(0, i), line.slice(i + 1)] : ['', ''];
   });
-  if (pairs.map(([k]) => k).join(',') !== 'TARGET_SHA,EXPECTED_INSTALLED_SHA,COMPONENTS') deny('COMMENT_FIELDS_INVALID');
+  if (pairs.map(([k]) => k).join(',') !== (snapshotV2
+    ? 'TARGET_SHA,EXPECTED_INSTALLED_SHA,COMPONENTS,RELEASE_POLICY'
+    : 'TARGET_SHA,EXPECTED_INSTALLED_SHA,COMPONENTS')) deny('COMMENT_FIELDS_INVALID');
   const targetSha = pairs[0][1], expectedInstalledSha = pairs[1][1];
   if (!SHA.test(targetSha) || !SHA.test(expectedInstalledSha) || targetSha === expectedInstalledSha) deny('SHA_INVALID');
   const components = pairs[2][1].split(',');
   if (!components.length || new Set(components).size !== components.length ||
       components.some(c => !COMPONENTS.has(c)) ||
       components.join(',') !== [...components].sort().join(',')) deny('COMPONENTS_INVALID');
-  return { targetSha, expectedInstalledSha, components };
+  return { targetSha, expectedInstalledSha, components, releasePolicy: snapshotV2 ? 'SCOPED_SNAPSHOT_V2' : null };
 }
 
 export function impactForPc01ReleaseFiles(files) {
@@ -201,6 +205,52 @@ export function impactForPc01ReleaseFiles(files) {
   return [...impact].sort();
 }
 
+/**
+ * V2: The Owner's authenticated OIDC comment authorizes precisely the immutable
+ * main SHA and listed components. A bounded path-class policy replaces mutable
+ * per-blob allowlist maintenance; forbidden host/security surfaces stay excluded.
+ * Legacy V1 pinned approvals remain unchanged.
+ */
+export function impactForPc01SignedSnapshotV2(files) {
+  if (!Array.isArray(files) || !files.length || files.length >= 300) deny('FILE_LIST_UNVERIFIED');
+  const impact = new Set(), seen = new Set();
+  for (const entry of files) {
+    const name = entry?.filename;
+    if (typeof name !== 'string' || !/^[A-Za-z0-9_.\/-]+$/.test(name) ||
+        name.startsWith('/') || name.split('/').some(p => p === '..' || p === '.' || !p) ||
+        seen.has(name)) deny('V2_FILE_PATH_INVALID');
+    seen.add(name);
+    if (!SHA.test(String(entry?.sha || '')) || !['added','modified','changed'].includes(entry?.status))
+      deny('V2_FILE_PROVENANCE_INVALID');
+    if (/(?:app.?chrome|android|credential|secret|\.env|vercel\.json|^\.github\/|^api\/(?!live-status\.mjs$))/i.test(name))
+      deny('V2_FORBIDDEN_SURFACE');
+    if (/^(?:docs\/[A-Za-z0-9_./-]+\.md|bootstrap\/[A-Za-z0-9_./-]+\.md|tests\/[A-Za-z0-9_./-]+\.(?:mjs|js|ts|tsx)|\.github\/ISSUE_TEMPLATE\/work_order_v2\.md)$/.test(name))
+      continue;
+    if (/^apps\/tigeriq-coding-lane\/[A-Za-z0-9_./-]+\.(?:mjs|js|json|html)$/.test(name) ||
+        /^scripts\/tigeriq-core\/(?:run-coding-lane|install-coding-lane)\.ps1$/.test(name)) {
+      impact.add('coding'); continue;
+    }
+    if (/^apps\/openclaw-tigeriq-runtime\/[A-Za-z0-9_./-]+\.(?:mjs|js|json)$/.test(name)) {
+      impact.add('openclaw'); impact.add('core'); continue;
+    }
+    if (/^scripts\/tigeriq-core\/(?:update-core-runtime|pc01-release-guard|pc01-release-preflight|bootstrap-watchdog|install-core-updater)\.(?:ps1|mjs)$/.test(name)) {
+      impact.add('updater'); continue;
+    }
+    if (/^apps\/tigeriq-core\/[A-Za-z0-9_./-]+\.(?:mjs|js|html|css)$/.test(name) ||
+        /^apps\/shared\/owner-(?:interaction-v6|one-tap-approval)\.mjs$/.test(name) ||
+        /^apps\/dashboard\/src\/bcct\.mjs$/.test(name) ||
+        /^public\/(?:work-center(?:-visual)?|work-ui)(?:\.js|\.css)$/.test(name) ||
+        /^scripts\/package-bcct-runtime\.mjs$/.test(name) ||
+        name === 'api/live-status.mjs' ||
+        /^scripts\/tigeriq-core\/(?:run-core|install-core-task|run-web-control-bundle)\.ps1$/.test(name)) {
+      impact.add('core'); continue;
+    }
+    deny('V2_FILE_OUT_OF_SCOPE');
+  }
+  if (!impact.size) deny('NO_COMPONENT_IMPACT');
+  return [...impact].sort();
+}
+
 export function validatePc01ApprovalEvidence({ identity, eventName, payload, verifiedComment,
   installedSha, mainSha, compare, nowMs = Date.now() }) {
   // Identity is supplied ONLY after cryptographic GitHub Actions OIDC verification.
@@ -229,10 +279,12 @@ export function validatePc01ApprovalEvidence({ identity, eventName, payload, ver
       !Number.isInteger(compare.ahead_by) || compare.ahead_by < 1 || compare.ahead_by > 30 ||
       (compare.total_commits != null && compare.total_commits > 30)) deny('ANCESTRY_UNVERIFIED');
   const files = compare.files || []; // preserve trusted GitHub blob SHA for pinned paths
-  const actualComponents = impactForPc01ReleaseFiles(files);
+  const actualComponents = approval.releasePolicy === 'SCOPED_SNAPSHOT_V2'
+    ? impactForPc01SignedSnapshotV2(files) : impactForPc01ReleaseFiles(files);
   if (approval.components.join(',') !== actualComponents.join(',')) deny('IMPACT_MISMATCH');
   return {
-    schema: 'TIGERIQ_PC01_RELEASE_APPROVAL_V1',
+    schema: approval.releasePolicy === 'SCOPED_SNAPSHOT_V2' ? 'TIGERIQ_PC01_RELEASE_APPROVAL_V2' : 'TIGERIQ_PC01_RELEASE_APPROVAL_V1',
+    ...(approval.releasePolicy ? { releasePolicy: approval.releasePolicy } : {}),
     scope: 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1',
     requestId: 'GH-' + identity.runId + '-' + c.id,
     targetSha: approval.targetSha,
