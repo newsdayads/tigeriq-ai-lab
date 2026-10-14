@@ -4,6 +4,8 @@ export const LIFECYCLE_V2_NEW_WORK_CUTOFF='2026-10-12T00:00:00.000Z';
 const SYSTEM_TITLE=/\[(?:CENTRAL|QUẢN TRỊ|REGISTRY|STATE|TÀI NGUYÊN|POLICY|SOT|RESULTS)\]/i;
 const TIME_PATTERN=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 const WAIT_PATTERN=/^(?:WAIT|WAITING|BLOCKED|PARKED|EXTERNAL_WAIT|OWNER_GATE)/;
+export const BOUNDED_EXECUTION_V1_CUTOFF='2026-10-14T00:00:00.000Z';
+const RETRY_INTEGER=/^(?:0|[1-9][0-9]*)$/;
 const ACTIVE_PATTERN=/(?:^|_)(?:WORKING|RUNNING|IN_PROGRESS|REVIEW|VERIFY|CODING_LANE_ACTIVE|DONE|COMPLETED)(?:_|$)/;
 export function lifecycleStage(state=''){
   const s=String(state||'').toUpperCase();
@@ -20,7 +22,16 @@ export function lifecycleStage(state=''){
 function activeText(value=''){
   const all=String(value||'');
   const divider=all.search(/^ {0,3}(?:---+|\*\*\*+|___+)(?:\s+HISTORICAL[^\n]*)?\s*$/m);
-  return divider<0?all:all.slice(0,divider);
+  const current=divider<0?all:all.slice(0,divider);
+  if (/^WORK_ORDER_LIFECYCLE=V2\s*$/m.test(current)) return current;
+  // A current V2 contract can follow a short checkpoint and a separator
+  // (GH-4709); choose its first ACTIVE WORK ORDER block, not the preface.
+  const heading=all.match(/^##\s+ACTIVE WORK ORDER[^\r\n]*$/mi);
+  if (!heading) return current;
+  const candidate=all.slice(heading.index);
+  const nextDivider=candidate.search(/^ {0,3}(?:---+|\*\*\*+|___+)\s*$/m);
+  const active=nextDivider<0?candidate:candidate.slice(0,nextDivider);
+  return /^WORK_ORDER_LIFECYCLE=V2\s*$/m.test(active)?active:current;
 }
 function activeHeader(value=''){
   const text=activeText(value),lines=text.split(/\r?\n/);
@@ -109,6 +120,36 @@ export function validateWorkOrderLifecycleV2(issue={}){
   if(!/^##\s+STOP_CONDITIONS\b/m.test(body))missing.push('STOP_CONDITIONS_SECTION');
   if(steps.length<2||steps.length>64)missing.push('CHECKLIST_2_TO_64');
   if(steps.some(s=>s.checked&&!s.evidence))missing.push('CHECKED_STEP_WITHOUT_EVIDENCE_URL');
+  // Bounded budgets are source-admission guards, not a runtime scheduler or external attestation.
+  // New work is required to declare them; legacy cards are opt-in to avoid mass false blockers.
+  const budgets=['SAME_FAILURE_RETRY_COUNT','SAME_FAILURE_RETRY_MAX',
+    'VERIFICATION_COUNT_CURRENT_HEAD','VERIFICATION_MAX_PER_HEAD'];
+  const created=Date.parse(String(issue.created_at||''));
+  const needsBudgets=(Number.isFinite(created)&&created>=Date.parse(BOUNDED_EXECUTION_V1_CUTOFF))
+    ||budgets.some(key=>f(key)!=='');
+  if(needsBudgets){
+    for(const key of budgets){
+      if(!RETRY_INTEGER.test(f(key)))missing.push('BOUNDED_'+key+'_INVALID');
+    }
+    const retryMax=Number(f('SAME_FAILURE_RETRY_MAX'));
+    const verifyMax=Number(f('VERIFICATION_MAX_PER_HEAD'));
+    if(RETRY_INTEGER.test(f('SAME_FAILURE_RETRY_MAX'))&&(retryMax<1||retryMax>2))
+      missing.push('SAME_FAILURE_RETRY_MAX_OUT_OF_BOUNDS');
+    if(RETRY_INTEGER.test(f('VERIFICATION_MAX_PER_HEAD'))&&(verifyMax<1||verifyMax>2))
+      missing.push('VERIFICATION_MAX_PER_HEAD_OUT_OF_BOUNDS');
+    if(!f('LAST_FAILURE_SIGNATURE'))missing.push('LAST_FAILURE_SIGNATURE');
+    if(!f('RETRY_RESUME_TRIGGER'))missing.push('RETRY_RESUME_TRIGGER');
+    const ready=lifecycleStage(f('CURRENT_STATE'))==='READY';
+    if(ready&&RETRY_INTEGER.test(f('SAME_FAILURE_RETRY_COUNT'))&&
+      RETRY_INTEGER.test(f('SAME_FAILURE_RETRY_MAX'))&&retryMax>0&&
+      Number(f('SAME_FAILURE_RETRY_COUNT'))>=retryMax&&
+      !['NONE','NOT_AVAILABLE'].includes(f('LAST_FAILURE_SIGNATURE').toUpperCase()))
+      missing.push('SAME_FAILURE_RETRY_BUDGET_EXHAUSTED_WAIT_FOR_CHANGE');
+    if(ready&&RETRY_INTEGER.test(f('VERIFICATION_COUNT_CURRENT_HEAD'))&&
+      RETRY_INTEGER.test(f('VERIFICATION_MAX_PER_HEAD'))&&verifyMax>0&&
+      Number(f('VERIFICATION_COUNT_CURRENT_HEAD'))>=verifyMax)
+      missing.push('VERIFICATION_BUDGET_EXHAUSTED_WAIT_FOR_NEW_HEAD');
+  }
   const state=f('CURRENT_STATE').toUpperCase(),start=f('STARTED_AT'),finish=f('FINISHED_AT');
   const stage=lifecycleStage(state);
   if(stage==='UNKNOWN')missing.push('UNRECOGNIZED_LIFECYCLE_STATE');

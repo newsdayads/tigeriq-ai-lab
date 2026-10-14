@@ -1,0 +1,43 @@
+import { describe,expect,it } from 'vitest';
+import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
+import {managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
+
+describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
+  it('allows one new decision before the two-decision no-progress stop',()=>{
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:1,activeChildren:0}).action).toBe('continue');
+  });
+  it('does not strand or pre-empt a live existing child when the limit is reached',()=>{
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:1}))
+      .toMatchObject({action:'wait',reason:'await_existing_child_receipt'});
+  });
+  it('stops a jobless phase after two decisions and lets another scope be selected',()=>{
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0}))
+      .toMatchObject({action:'block',reason:'no_progress_decision_budget_exhausted',limit:2});
+  });
+  it('never allows a greater retry limit to bypass the global cap',()=>{
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0,limit:999}).action).toBe('block');
+  });
+  it('does not mint another random UUID for the same failed logical job',()=>{
+    expect(managerJobMaterializationDecision('failed'))
+      .toMatchObject({action:'block',reason:'previous_failed_terminal_no_duplicate_job'});
+    expect(managerJobMaterializationDecision('done').action).toBe('dedupe');
+    expect(managerJobMaterializationDecision('queued').action).toBe('dedupe');
+    expect(managerJobMaterializationDecision('').action).toBe('create');
+  });
+});
+
+describe('NV10 optional diagnosis must yield to real accepted GitHub work',()=>{
+  it('defers recurring API Doctor work while any dispatchable local work exists',()=>{
+    expect(apiDoctorAutoworkPriority(1)).toEqual({defer:true,reason:'ACTIVE_GITHUB_LOCAL_WORK_HAS_PRIORITY'});
+    expect(apiDoctorAutoworkPriority(3).defer).toBe(true);
+  });
+  it('allows diagnosis when no ready local Owner work is waiting',()=>{
+    expect(apiDoctorAutoworkPriority(0)).toEqual({defer:false,reason:'NO_ACTIVE_GITHUB_LOCAL_WORK'});
+  });
+  it('does not suppress diagnostics based on invalid counters',()=>{
+    for(const n of [-1,NaN,Infinity,'invalid',1.5]){
+      expect(apiDoctorAutoworkPriority(n).defer).toBe(false);
+    }
+  });
+});

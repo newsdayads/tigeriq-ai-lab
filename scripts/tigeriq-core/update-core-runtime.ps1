@@ -10,7 +10,7 @@ $rollbackCanaryMode=[bool]($RollbackCanaryRuntimeRepo -and $RollbackCanaryPrevio
 $controlRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Workspace\tigeriq-ai-lab'}
 $runtimeRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Runtime\CoreSource'}
 $runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'D:\TigerIQ\State\core-runtime-source.json'}
-$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'}
+$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'}
 $launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'D:\TigerIQ\Runtime\CoreLaunchers'}
 $state=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater-state.json'}else{'D:\TigerIQ\State\core-runtime-updater.json'}
 $openclawState='D:\TigerIQ\State\openclaw-runtime-applied.json'
@@ -27,6 +27,8 @@ $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
+# A merged main commit is NOT an authorized PC01 runtime release.
+$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -44,7 +46,7 @@ $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $bootstrapWatchdogTask='TigerIQ Bootstrap Watchdog'
-$bootstrapWatchdogRuntime='D:\TigerIQ\Runtime\BootstrapWatchdog\bootstrap-watchdog.ps1'
+$bootstrapWatchdogRuntime='C:\ProgramData\TigerIQCoreRelease\BootstrapWatchdog\bootstrap-watchdog.ps1'
 $webRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-web-control'}else{'D:\TigerIQ\Runtime\WebControl24x7'}
 $tokenPath='D:\TigerIQ\Secrets\github-command-center.token'
 $corePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\core-entry.mjs').ToLowerInvariant()
@@ -127,9 +129,8 @@ function Sync-Launchers(){
   }
 }
 function Sync-UpdaterRuntime(){
-  $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
-  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
-  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+  # The installed guard owns reversible executable sync after release approval.
+  Sync-ApprovedReleaseRuntime $runtimeRepo $updaterRuntime $releaseGuardScript
 }
 function Ensure-UpdaterTaskRuntimeTarget(){
   # TIGERIQ_UPDATER_TASK_SELF_HEAL_V1: the updater must be able to recreate its own AtStartup task
@@ -185,16 +186,27 @@ function Ensure-WebTaskRuntimeTarget(){
     return @{action=if($retarget){'retargeted_started'}else{'verified_started'};task=$webTask;target=$launcher}
   }catch{return @{action='blocked';reason=('WEB_TASK_'+$_.Exception.GetType().Name);detail=[string]$_.Exception.Message}}
 }
-function Ensure-BootstrapWatchdogTask(){
+function Ensure-BootstrapWatchdogTask([switch]$AllowSourceRefresh){
   try{
-    $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
-    if(-not(Test-Path -LiteralPath $source)){return @{action='skip';reason='SOURCE_MISSING'}}
-    New-Item -ItemType Directory -Path (Split-Path -Parent $bootstrapWatchdogRuntime) -Force|Out-Null
-    $needsCopy=$true
-    if(Test-Path -LiteralPath $bootstrapWatchdogRuntime){
-      try{$needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)}catch{$needsCopy=$true}
+    # Existing protected bootstrap executable is the authority until an exact
+    # candidate has passed both CI and the separate local release gate.
+    $needsCopy=$false
+    if($AllowSourceRefresh){
+      $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\bootstrap-watchdog.ps1'
+      if(-not(Test-Path -LiteralPath $source)){return @{action='blocked';reason='WATCHDOG_SOURCE_MISSING'}}
+      if(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+        $needsCopy=$true
+      }else{
+        $needsCopy=((Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapWatchdogRuntime).Hash)
+      }
+      if($needsCopy){
+        $tmp=$bootstrapWatchdogRuntime+'.tmp'
+        Copy-Item -LiteralPath $source -Destination $tmp -Force
+        Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force
+      }
+    }elseif(-not(Test-Path -LiteralPath $bootstrapWatchdogRuntime)){
+      return @{action='blocked';reason='PROTECTED_WATCHDOG_BOOTSTRAP_MISSING'}
     }
-    if($needsCopy){$tmp=$bootstrapWatchdogRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $bootstrapWatchdogRuntime -Force}
     $task=Get-ScheduledTask -TaskName $bootstrapWatchdogTask -ErrorAction SilentlyContinue
     $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
     $args="-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$bootstrapWatchdogRuntime`" -IntervalSeconds 60 -FailureThreshold 2 -CooldownSeconds 300"
@@ -360,7 +372,39 @@ function Restart-RemoteDesktopTaskClean([string]$reason,$result,[string]$authori
   }while((Get-Date)-lt$deadline)
   return @{action='blocked';reason='rdc_topology_not_recovered';task=$remoteDesktopTask;remoteProcessCount=@(Get-RemoteDesktopRuntimeProcesses).Count;remoteLauncherCount=@(Get-RemoteDesktopLauncherProcesses).Count;stoppedPids=$stopped;version=[string]$result.version;changes=@($result.changes)}
 }
+function Get-RemoteDesktopExternalPool(){
+  $launcher=Join-Path $remoteDesktopRuntime 'start-desktop-commander-remote.ps1'
+  $supervisor=Join-Path $remoteDesktopRuntime 'rdc-pool-supervisor.ps1'
+  $worker=Join-Path $remoteDesktopRuntime 'rdc-pool-worker.ps1'
+  # The five independent 0.2.52 tasks replace the disabled legacy pool.
+  # Incomplete/drifted external topology must not invoke the 0.2.51 installer.
+  $taskNames=@('TigerIQ RDC01 Remote','TigerIQ RDC02 Remote','TigerIQ RDC03 Remote','TigerIQ RDC04 Remote','TigerIQ RDC05 Remote')
+  $existing=@($taskNames|Where-Object{Task-Exists $_})
+  $present=@(@($launcher,$supervisor,$worker)|Where-Object{Test-Path -LiteralPath $_ -PathType Leaf})
+  if($existing.Count -eq 0 -and $present.Count -eq 0){return $null}
+  if($existing.Count -ne 5 -or $present.Count -ne 3){
+    return @{action='blocked';reason='RDC_EXTERNAL_POOL_INCOMPLETE';tasksFound=$existing.Count;filesFound=$present.Count}
+  }
+  try {
+    $launcherBody=(Get-Content -Raw -LiteralPath $launcher).Trim()
+    $workerBody=Get-Content -Raw -LiteralPath $worker
+    $supervisorBody=Get-Content -Raw -LiteralPath $supervisor
+    if($launcherBody -cnotmatch '(?s)^\$ErrorActionPreference\s*=\s*"Stop"\s*&\s*"D:\\TigerIQ\\Runtime\\desktop-commander-remote\\rdc-pool-supervisor\.ps1"\s*exit\s+\$LASTEXITCODE$'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_LAUNCHER_DRIFT'}}
+    if($workerBody -cnotmatch '@wonderwhy-er/desktop-commander@0\.2\.52' -or
+       $workerBody -cnotmatch '\^RDC0\[1-5\]\$' -or
+       $supervisorBody -cnotmatch 'RDC01.*RDC02.*RDC03.*RDC04.*RDC05'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_SOURCE_DRIFT'}}
+    $states=@()
+    foreach($name in $taskNames){
+      $task=Get-ScheduledTask -TaskName $name -ErrorAction Stop
+      $states+=([string]$task.State)
+      if([string]$task.State -ne 'Running'){return @{action='blocked';reason='RDC_EXTERNAL_POOL_TASK_NOT_RUNNING';task=$name;taskState=[string]$task.State}}
+    }
+    return @{action='external';reason='RDC_PINNED_FIVE_PROFILE_POOL';topology='FIVE_PROFILE_0_2_52';guardVerification='NOT_APPLICABLE_TO_EXTERNAL_POOL';taskStates=$states;changes=@()}
+  }catch{return @{action='blocked';reason='RDC_EXTERNAL_POOL_READ_ERROR';detail=[string]$_.Exception.GetType().Name}}
+}
 function Reconcile-RemoteDesktopGuard(){
+  $externalPool=Get-RemoteDesktopExternalPool
+  if($externalPool){return $externalPool}
   if(-not(Test-Path -LiteralPath $remoteDesktopGuardInstaller)){return @{action='skip';reason='installer_missing'}}
   if(-not(Task-Exists $remoteDesktopTask)){return @{action='blocked';reason='task_missing';task=$remoteDesktopTask}}
   try{
@@ -567,7 +611,15 @@ function Invoke-OpenClawCanary([string]$installedSha,[string]$treeSha){
   Save-OpenClawCanaryState $installedSha $treeSha $result $reason $reported
   return @{action='executed';result=$result;reason=$reason;reported=$reported}
 }
-function Gates-Pass([string]$sha){
+function Gates-Pass([string]$sha,[switch]$ExactMain){
+  if($ExactMain){
+    $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&per_page=50"
+    foreach($name in @('CI','WO-014 Queue Hygiene')){
+      $latest=@($runs.workflow_runs|Where-Object{$_.name -eq $name -and $_.head_sha -ceq $sha -and $_.event -eq 'push' -and $_.head_branch -eq 'main'}|Sort-Object -Property id -Descending|Select-Object -First 1)
+      if($latest.Count -ne 1 -or $latest[0].status -ne 'completed' -or $latest[0].conclusion -ne 'success'){return $false}
+    }
+    return $true
+  }
   $runs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/actions/runs?head_sha=$sha&status=completed&per_page=30"
   $need=@('CI','WO-014 Queue Hygiene')
   foreach($n in $need){if(-not(@($runs.workflow_runs|Where-Object{$_.name -eq $n -and $_.conclusion -eq 'success'}))){return $false}}
@@ -575,6 +627,10 @@ function Gates-Pass([string]$sha){
 }
 function Resolve-GateSha([string]$remote){
   if(Test-GithubApiBackoff){throw 'GITHUB_API_RATE_LIMIT_BACKOFF'}
+  if(Test-Path -LiteralPath 'C:\ProgramData\TigerIQCoreRelease\core-runtime-owner-project-policy.json'){
+    if(Gates-Pass $remote -ExactMain){return $remote}
+    return $null
+  }
   if(Gates-Pass $remote){return $remote}
   try{$prs=Invoke-GithubApiJson "repos/newsdayads/tigeriq-ai-lab/commits/$remote/pulls" @('Accept: application/vnd.github+json')}catch{if($_.Exception.Message -match '^GITHUB_API_RATE_LIMIT'){throw};return $null}
   foreach($pr in @($prs)){$head=[string]$pr.head.sha;if($head -and (Gates-Pass $head)){return $head}}
@@ -733,8 +789,8 @@ function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
   $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
-  $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -eq 'api/live-status.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw)
-  $updater=[bool](@($paths|Where-Object{$_ -eq 'scripts/tigeriq-core/update-core-runtime.ps1'}).Count)
+  $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -eq 'api/live-status.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw -or $web -or @($paths|Where-Object{$_ -match '^apps/shared/owner-(interaction-v6|one-tap-approval)\.mjs$' -or $_ -eq 'apps/dashboard/src/bcct.mjs' -or $_ -match '^public/(work-center(-visual)?|work-ui)(\.js|\.css)$' -or $_ -eq 'scripts/package-bcct-runtime.mjs'}).Count)
+  $updater=[bool](@($paths|Where-Object{$_ -in @('scripts/tigeriq-core/update-core-runtime.ps1','scripts/tigeriq-core/pc01-release-guard.ps1','scripts/tigeriq-core/pc01-release-preflight.mjs','scripts/tigeriq-core/bootstrap-watchdog.ps1','scripts/tigeriq-core/install-core-updater.ps1')}).Count)
   $liveBridge=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-live-bridge/'}).Count)
   return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater;liveBridge=$liveBridge}
 }
@@ -799,10 +855,23 @@ while($true){
     if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
     if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
-    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
     $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    if(-not(Test-Path -LiteralPath $releaseGuardScript)){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason='RELEASE_GUARD_SCRIPT_MISSING';runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    . $releaseGuardScript
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
+    if(-not $releaseApproval.approved){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
     $previousRuntimeSha=$local
     try{
       Ensure-RuntimeSource $remote
@@ -812,7 +881,7 @@ while($true){
       $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
       Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
       Sync-Launchers
-      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
       if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
       $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
       if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
@@ -832,13 +901,16 @@ while($true){
     }catch{
       $failure=$_.Exception.Message
       $null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact
+      Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'ROLLED_BACK'
       throw ('ROLLED_BACK:'+ $failure)
     }
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
     Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
   Start-Sleep -Seconds $IntervalSeconds
 }
+

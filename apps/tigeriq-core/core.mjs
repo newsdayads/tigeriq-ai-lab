@@ -1,3 +1,4 @@
+import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -34,13 +35,15 @@ import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
 import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
-import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
+import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
+import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
 import { githubTransportSnapshot } from './github-shared-client.mjs';
 import { objectiveCompletionGate } from './github-intake.mjs';
@@ -1335,6 +1338,19 @@ async function runApiDoctorAnalysisJob(items,scanSignature){
   if(recent)return {skipped:'deduped'};
   const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recentUnavailable)return {skipped:'deduped_nv10_unavailable'};
+  // NV10 is the sole local coordinator for github_api_autowork.
+  // Avoid starving accepted Owner work with recurring optional API Doctor inference.
+  // Only a dispatchable, due, still-active work item can defer diagnostics.
+  const localBacklog=(await pool.query(`
+    select count(*)::int as pending from tigeriq_jobs j
+    join tigeriq_objectives o on o.id=j.objective_id
+    where o.status='active' and j.kind='github_api_autowork'
+      and (j.status='queued'
+           or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
+      and j.attempts<j.max_attempts
+  `)).rows[0]?.pending;
+  const priority=apiDoctorAutoworkPriority(localBacklog);
+  if(priority.defer) return {skipped:'deferred_for_real_github_work',pending:localBacklog};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
@@ -2513,6 +2529,34 @@ async function managerTick() {
     await event('MANAGER_PROGRESS_CYCLE_RESET',{objectiveId:o.id,phaseIndex:currentPhase,previousCycles:managerGuard.currentCycles,latestTerminalAt:latestManagerProgress});
   }
   if(managerGuard.blocked){await pool.query("update tigeriq_objectives set status='blocked',summary='manager cycle safety limit reached',updated_at=now() where id=$1",[o.id]);await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'manager_cycle_limit',mode:'consecutive_no_progress',maxCycles:managerGuard.maxCycles});return;}
+  // Two unchanged Manager decisions without a worker receipt end this
+  // attempt. If a child is still queued/leased/running, do not pre-empt it.
+  // A blocked objective leaves other eligible objectives to the normal queue.
+  if(managerGuard.effectiveCycles>=2){
+    const activeChildrenRow=(await pool.query(
+      "select count(*)::int as n from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status not in ('done','failed')",
+      [o.id,currentPhase],
+    )).rows[0]||{};
+    const activeChildren=Number(activeChildrenRow.n)||0;
+    const idlePlan=managerIdleStepStopPlan({
+      consecutiveNoProgressDecisions:managerGuard.effectiveCycles,activeChildren,limit:2,
+    });
+    if(idlePlan.action==='wait'){
+      await pool.query(
+        "update tigeriq_objectives set next_check_at=now()+interval '30 seconds' where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $2::text",
+        [o.id,o.metadata?.sourceRevision??null],
+      );
+      return;
+    }
+    if(idlePlan.action==='block'){
+      const stopped=await pool.query(
+        "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text and not exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$4 and j.status not in ('done','failed'))",
+        [o.id,'Manager attempt stopped: two decisions without accepted child progress; awaiting material change',o.metadata?.sourceRevision??null,currentPhase],
+      );
+      if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'no_progress_decision_budget_exhausted',maxCycles:2});
+      return;
+    }
+  }
   const history=(await pool.query("select title,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
   let historyContext={text:'[]',metrics:{itemsIn:0,itemsOut:0,bytesBefore:0,bytesAfter:2,budgetBytes:8000,headroomBytes:2000,effectiveBudgetBytes:6000,droppedCount:0,truncatedCount:0,reductionBytes:0}};
@@ -2714,6 +2758,14 @@ async function managerTick() {
           await event('MANAGER_JOB_DEDUPED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,title,capability,status:existing.status||'unknown',reason:disposition.reason});
           continue;
         }
+        if(disposition.action==='block'){
+          const stopped=await pool.query(
+            "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text",
+            [o.id,'Same logical job has already failed; no new random job on unchanged work',o.metadata?.sourceRevision??null],
+          );
+          if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,reason:disposition.reason});
+          return;
+        }
         await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_ai',$6,$7)",[id,o.id,title,promptText,capability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       }
       await event('JOB_CREATED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});
@@ -2861,7 +2913,7 @@ async function runNvInferenceRequest(input={}){
     throw error;
   }
 }
-function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8');}
+function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta.url),'utf8').replace('@@TIGERIQ_LAB_VERSION@@',installedLabVersion());}
 function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
 function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
@@ -2956,6 +3008,53 @@ const server=createServer(async(req,res)=>{
       const raw=await readRawBody(req,512*1024);
       let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      // Delegation is default-OFF. Only a newly authenticated Owner GitHub/OIDC
+      // comment can arm the fixed bounded local policy; a code merge never can.
+      if(eventName==='issue_comment'&&
+         /^TIGERIQ_PC01_STANDING_ENABLE_V1(?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
+        try{
+          const activation=await enablePc01StandingRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...activation}));
+        }catch(error){
+          res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:String(error?.message||error).slice(0,160)}));
+        }
+      }
+      // GitHub's signed workflow_run is a candidate, not standing authorization.
+      // The protected Owner-activated policy + exact main checks and bounded quota
+      // decide independently. No fake release after a failed/absent grant.
+      if(eventName==='workflow_run'&&payload?.action==='completed'){
+        try{
+          const receipt=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...receipt}));
+        }catch(error){
+          const code=String(error?.message||error).slice(0,160);
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,accepted:false,reason:code,releaseIssued:false}));
+        }
+      }
+      // Exact manual Owner comment is a separate GitHub-authenticated release action.
+      // It is never inferred from merge, PR/issue text, CI or a worker result.
+      if(eventName==='issue_comment'&&/^TIGERIQ_PC01_RELEASE_APPROVE_V[12](?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
+        try{
+          const approval=await acceptPc01OwnerApprovalEvent({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+          res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:true,...approval}));
+        }catch(error){
+          const reason=String(error?.message||'PC01_RELEASE_FAILED');
+          const status=/OWNER_|COMMENT_|IMPACT_|FILE_|SHA_|MAIN_|ANCESTRY_|REPLAY_|BASELINE_/.test(reason)?403:503;
+          res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});
+          return res.end(JSON.stringify({ok:false,error:reason.slice(0,120)}));
+        }
+      }
       const client=await pool.connect();
       let duplicate=false;
       try{
@@ -2971,8 +3070,23 @@ const server=createServer(async(req,res)=>{
       finally{client.release()}
       if(duplicate){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,duplicate:true,deliveryId}));}
       const published=publishGithubEvent({eventName,deliveryId,payload,receivedAt:new Date().toISOString()});
+      // Preserve normal issue ingestion and delivery deduplication. A central
+      // issue signal can only ask the independently Owner-activated gate to check;
+      // the event itself never grants release authority.
+      let pc01Release=null;
+      if(Number(payload?.issue?.number)===280&&
+         ((eventName==='issues'&&['edited','labeled','unlabeled','reopened'].includes(payload?.action))||
+          (eventName==='issue_comment'&&payload?.action==='created'))){
+        try{
+          pc01Release=await acceptPc01StandingWorkflowRelease({
+            identity,eventName,payload,githubToken:GITHUB_TOKEN,
+          });
+        }catch(error){
+          pc01Release={accepted:false,reason:String(error?.message||error).slice(0,160),releaseIssued:false};
+        }
+      }
       res.writeHead(202,{'content-type':'application/json','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers}));
+      return res.end(JSON.stringify({ok:true,accepted:true,deliveryId,eventName,issueNumber:published.issueNumber,subscribers:published.subscribers,...(pc01Release?{pc01Release}:{})}));
     }
     if(req.method==='GET'&&url.pathname==='/api/ui-assignment'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}

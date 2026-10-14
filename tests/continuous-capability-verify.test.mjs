@@ -99,8 +99,8 @@ describe('Manager logical job materialization policy', () => {
     expect(managerJobMaterializationDecision('waiting_resource')).toMatchObject({action:'dedupe'});
   });
 
-  it('allows a new materialization after a terminal failed logical job', () => {
-    expect(managerJobMaterializationDecision('failed')).toMatchObject({action:'create',reason:'previous_failed'});
+  it('stops a terminal failed logical job instead of creating infinite duplicates', () => {
+    expect(managerJobMaterializationDecision('failed')).toMatchObject({action:'block',reason:'previous_failed_terminal_no_duplicate_job'});
     expect(managerJobMaterializationDecision('')).toMatchObject({action:'create',reason:'no_existing_job'});
   });
 

@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
@@ -36,6 +36,28 @@ test('#280/B03 classifies bounded health fetch failures without leaking messages
 
 
 import {normalizeManagerOllamaTimeout,invokeOllamaChat} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+
+test('#280 Owner 2026-10-14: Coding Manager does not borrow NV09 programmer or NV10 API Doctor',()=>{
+  const primary=[{id:'NV09',provider:'ollama'},{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV11',provider:'groq'}];
+  const backups=[{id:'NV10',provider:'ollama',model:'gemma3:4b'},{id:'NV08',provider:'ollama',model:'qwen3:8b'}];
+  const healthByEmployee=new Map([
+    ['NV10',{employee_id:'NV10',enabled:true,health_state:'READY',work_state:'IDLE',status:'READY',quota_state:{usable:true}}],
+    ['NV08',{employee_id:'NV08',enabled:true,health_state:'ONLINE',work_state:'IDLE',status:'IDLE'}],
+  ]);
+  const run=(override={})=>appendEligibleCodingManagerBackups(primary,backups,{healthByEmployee,nowMs:Date.now(),...override}).map(x=>x.id);
+  assert.deepStrictEqual(run(),['NV11','NV08']);
+  assert.deepStrictEqual(run({busyIds:['NV08']}),['NV11']);
+  assert.deepStrictEqual(run({excludeIds:['NV08']}),['NV11']);
+  healthByEmployee.set('NV08',{health_state:'ONLINE',work_state:'BUSY',current_job_id:'CORE-REAL-LEASE'});
+  assert.deepStrictEqual(run(),['NV11']);
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.ok(src.includes("const primary=selectableResources([...exclude,'NV09','NV10']);"),'NV09 cannot be a Coding Manager');
+  assert.ok(src.includes("const primary=pickResource([...exclude,'NV09','NV10']);"),'NV09 cannot be preferred as manager');
+  assert.ok(!src.includes("R('NV10','ollama','gemma3:4b',()=>true)"),'NV10 cannot be manager fallback');
+  assert.ok(src.includes("R('NV08','ollama','qwen3:8b',()=>true)"),'NV08 manager fallback preserved');
+  assert.ok(src.includes('resourcePool:selectableManagerResources([])'));
+  assert.ok(src.includes('const available=selectableResources(exclude);'),'Worker/reviewer pool remains original separate list');
+});
 
 test('#280 Manager-only Ollama time budget has bounded safe default, leaving Worker timeout separate',()=>{
   assert.strictEqual(normalizeManagerOllamaTimeout(undefined),45000);
@@ -788,7 +810,7 @@ test('manager preflight retires stale terminal source objectives before AI sched
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const selectAt=src.indexOf("const o=q.rows[0];if(!o)return;");
   const preflightAt=src.indexOf('await assertCanonicalSourceWorkOrderExecutable(o.objective);',selectAt);
-  const managerAt=src.indexOf('let manager=pickResource();if(!manager)return',selectAt);
+  const managerAt=src.indexOf('let manager=pickManagerResource();if(!manager)return',selectAt);
   assert.ok(selectAt>=0&&preflightAt>selectAt&&managerAt>preflightAt);
   assert.ok(src.includes("status='completed',summary=$2,next_attempt_at=null"));
   assert.ok(src.includes("status='blocked',summary=$2,next_attempt_at=null"));

@@ -94,8 +94,74 @@ describe('Work Order Lifecycle V2 global source contract',()=>{
     expect(row.localSelfPullReady).toBe(false);
     expect(row.lifecycleContract).toMatchObject({required:true,valid:false});
   });
+  it('requires a bounded failure/verification budget on new work, keeping existing cards compatible',()=>{
+    const tomorrow=issue(header,{created_at:'2026-10-14T01:00:00Z'});
+    expect(validateWorkOrderLifecycleV2(tomorrow).missing)
+      .toContain('BOUNDED_SAME_FAILURE_RETRY_COUNT_INVALID');
+    expect(safeAutoWorkAdmission(tomorrow).eligible).toBe(false);
+    expect(validateWorkOrderLifecycleV2(issue(header)).valid).toBe(true);
+  });
+  it('stops READY tasks when the same failure or verification head reaches the attempt cap',()=>{
+    const budget=[
+      'SAME_FAILURE_RETRY_COUNT=0','SAME_FAILURE_RETRY_MAX=2',
+      'VERIFICATION_COUNT_CURRENT_HEAD=0','VERIFICATION_MAX_PER_HEAD=2',
+      'LAST_FAILURE_SIGNATURE=NV20_BAD_JSON',
+      'RETRY_RESUME_TRIGGER=NEW_REVISION_OR_NEW_EVIDENCE_OR_DEPENDENCY_CHANGE'
+    ].join('\n');
+    const base=header.replace('CURRENT_STEP=M02',budget+'\nCURRENT_STEP=M02');
+    expect(validateWorkOrderLifecycleV2(issue(base)).valid).toBe(true);
+    const repeated=base.replace('SAME_FAILURE_RETRY_COUNT=0','SAME_FAILURE_RETRY_COUNT=2');
+    expect(validateWorkOrderLifecycleV2(issue(repeated)).missing)
+      .toContain('SAME_FAILURE_RETRY_BUDGET_EXHAUSTED_WAIT_FOR_CHANGE');
+    expect(safeAutoWorkAdmission(issue(repeated)).eligible).toBe(false);
+    const verified=base.replace('VERIFICATION_COUNT_CURRENT_HEAD=0','VERIFICATION_COUNT_CURRENT_HEAD=2');
+    expect(validateWorkOrderLifecycleV2(issue(verified)).missing)
+      .toContain('VERIFICATION_BUDGET_EXHAUSTED_WAIT_FOR_NEW_HEAD');
+    expect(validateWorkOrderLifecycleV2(issue(repeated.replace('CURRENT_STATE=READY','CURRENT_STATE=BLOCKED_FAILURE').replace('BLOCKER=NONE','BLOCKER=NV20_BAD_JSON'))).valid).toBe(true);
+  });
+  it('rejects fake budgets outside a tight two-attempt maximum',()=>{
+    const add=['SAME_FAILURE_RETRY_COUNT=0','SAME_FAILURE_RETRY_MAX=999',
+      'VERIFICATION_COUNT_CURRENT_HEAD=0','VERIFICATION_MAX_PER_HEAD=2',
+      'LAST_FAILURE_SIGNATURE=NONE','RETRY_RESUME_TRIGGER=SOURCE_CHANGE'].join('\n');
+    const result=validateWorkOrderLifecycleV2(issue(header.replace('CURRENT_STEP=M02',add+'\nCURRENT_STEP=M02')));
+    expect(result.missing).toContain('SAME_FAILURE_RETRY_MAX_OUT_OF_BOUNDS');
+  });
   it('does not treat an administrative not-planned closure as a completed task',()=>{
     const stopped=issue(header,{state:'closed',state_reason:'not_planned'});
     expect(validateWorkOrderLifecycleV2(stopped).timestamps.finishedAt).toBe(null);
+  });
+});
+
+
+describe('V2 checklist beneath a current checkpoint header',()=>{
+  it('validates the active checklist instead of losing steps behind a separator (#4709)',()=>{
+    const body=[
+      '## Owner checkpoint — source merged, runtime still waiting',
+      'No live acceptance is claimed.',
+      '---',
+      '## ACTIVE WORK ORDER — repair auto dispatch',
+      'WORK_ORDER_LIFECYCLE=V2',
+      'PROJECT_ID=tigeriq-platform',
+      'WORKSTREAM_ID=queue',
+      'CURRENT_STATE=WAITING_RUNTIME_RELEASE',
+      'CURRENT_STEP=R00',
+      'NEXT_ACTION=Obtain a real install receipt',
+      'LAST_COMPLETED_STEP=NONE',
+      'BLOCKER=EXACT_INSTALL_RECEIPT_NOT_VERIFIED',
+      'RESOURCE_SCOPE=QUEUE_4709',
+      'MUTATION_OWNER=NONE',
+      'ETA_STATUS=UNVERIFIED',
+      'STARTED_AT=NOT_STARTED',
+      'FINISHED_AT=NOT_FINISHED',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [ ] R00 — Verify source',
+      '- [ ] R01 — Verify runtime',
+      '## ACCEPTANCE','Real runtime evidence required.',
+      '## STOP_CONDITIONS','No unauthorized runtime mutation.',
+    ].join('\n');
+    const result=validateWorkOrderLifecycleV2(issue(body));
+    expect(result.steps).toHaveLength(2);
+    expect(result.missing).not.toContain('CHECKLIST_2_TO_64');
+    expect(result.missing).not.toContain('WORK_ORDER_LIFECYCLE=V2');
   });
 });

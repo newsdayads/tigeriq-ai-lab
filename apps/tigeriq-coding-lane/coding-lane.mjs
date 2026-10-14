@@ -396,8 +396,14 @@ const resources=[
   R('NV19','cohere',process.env.TIGERIQ_COHERE_MODEL||'command-a-plus-05-2026',()=>process.env.COHERE_API_KEY&&process.env.TIGERIQ_COHERE_TRIAL_CONFIRMED==='true'),
   R('NV20','nvidia',process.env.TIGERIQ_NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',()=>process.env.NVIDIA_API_KEY&&process.env.TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED==='true'),
 ].filter(x=>x.ready());
+// Owner 2026-10-14: NV08 is the sole Core-local manager fallback.
+// NV09 implements code; NV10 diagnoses APIs. Neither may be Coding Manager.
+const managerLocalBackupResources=[
+  R('NV08','ollama','qwen3:8b',()=>true),
+];
 const busyAiResources=new Set();
 let coreResourceHealth={fetchedAt:0,byEmployee:new Map(),performanceByResourceTask:new Map(),functionalByEmployee:new Map()};
+
 // B03: diagnostic-only counters, never affect worker eligibility or leases.
 let coreHealthReadback={attemptedAt:0,succeededAt:0,failedAt:0,lastFailureKind:null,consecutiveFailures:0};
 export function codingCoreHealthFailureKind(error){
@@ -551,6 +557,38 @@ function selectableResources(exclude=[]){
   return resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
 }
 
+// Guarded fallback: fail closed on stale Core health, occupied shared leases,
+// cooldown and errors. Preserve the original Coding Lane worker/reviewer pool.
+export function appendEligibleCodingManagerBackups(primary=[],backups=[],{
+  excludeIds=[],busyIds=[],healthByEmployee=new Map(),nowMs=Date.now(),
+}={}){
+  const excluded=new Set([...excludeIds,...busyIds].map(String));
+  const managerPrimary=primary.filter(x=>!['NV09','NV10'].includes(String(x?.id||'')));
+  const present=new Set(managerPrimary.map(x=>String(x?.id||'')));
+  return [...managerPrimary,...backups.filter(x=>{
+    const id=String(x?.id||'');
+    if(id!=='NV08'||excluded.has(id)||present.has(id))return false;
+    if(!coreResourceStateEligible(healthByEmployee.get(id),nowMs))return false;
+    present.add(id);
+    return true;
+  })];
+}
+function selectableManagerResources(exclude=[]){
+  // Keep the designated coding implementer NV09 out of manager planning.
+  const primary=selectableResources([...exclude,'NV09','NV10']);
+  const nowMs=Date.now();
+  if(!coreResourceHealth.fetchedAt||nowMs-coreResourceHealth.fetchedAt>CORE_RESOURCE_HEALTH_TTL_MS)return primary;
+  return appendEligibleCodingManagerBackups(primary,managerLocalBackupResources,{
+    excludeIds:exclude,busyIds:[...busyAiResources],healthByEmployee:coreResourceHealth.byEmployee,nowMs,
+  });
+}
+function pickManagerResource(exclude=[]){
+  const primary=pickResource([...exclude,'NV09','NV10']);
+  if(primary)return primary;
+  // Use only the designated 8B manager as a bounded fallback; do not
+  // borrow NV10 API Doctor or NV09 Coding worker for manager decisions.
+  return selectableManagerResources(exclude).find(x=>managerLocalBackupResources.some(y=>y.id===x.id))||null;
+}
 function pickResource(exclude=[]){
   const available=selectableResources(exclude);
   if(!available.length)return null;
@@ -945,17 +983,31 @@ export function sourceWorkOrderNumber(objective=''){
   return null;
 }
 
+// The GitHub Coding Intake accepts ONLY the first current contract section.
+// Historical snapshots commonly contain TIGERIQ_EXECUTABLE=false and must
+// never revoke a later, explicit Owner-issued current authorization.
+export function currentSourceWorkOrderContract(body=''){
+  const source=String(body||'');
+  const headings=[...source.matchAll(/^ {0,3}#{1,6}[ \t]+\S[^\r\n]*/gm)];
+  const first=headings[0];
+  if(first?.index===0&&/(?:\b(?:HISTORICAL|HISTORY|SUPERSEDED|ARCHIVED)\b|LỊCH SỬ)/i.test(first[0]))return '';
+  const sectionEnd=first?.index===0?(headings[1]?.index??source.length):(first?.index??source.length);
+  const separator=source.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})(?:[ \t]+(?:HISTORICAL|SUPERSEDED|LỊCH SỬ)[^\r\n]*)?[ \t]*$/mi);
+  return source.slice(0,Math.min(sectionEnd,separator?.index??source.length));
+}
+
 export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
-  const body=String(issue?.body||'');
+  const body=currentSourceWorkOrderContract(issue?.body);
   const state=String(issue?.state||'').trim().toLowerCase();
   const stateReason=String(issue?.state_reason||'').trim().toLowerCase();
+  const executableTrue=/^\s*TIGERIQ_EXECUTABLE\s*=\s*true\s*$/im.test(body);
   const executableFalse=/^\s*TIGERIQ_EXECUTABLE\s*=\s*false\s*$/im.test(body);
   const terminalState=/^\s*STATE\s*=\s*(?:SUPERSEDED|CANCELLED)\s*$/im.test(body);
   const supersededBy=/^\s*SUPERSEDED_BY\s*=\s*\S+/im.test(body);
-  if(state!=='open'||executableFalse||terminalState||supersededBy){
+  if(state!=='open'||!executableTrue||executableFalse||terminalState||supersededBy){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
-    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableFalse,terminalState,supersededBy};
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy};
     throw error;
   }
   return true;
@@ -1027,7 +1079,7 @@ async function managerTick(){
     }
     return;
   }
-  let manager=pickResource();if(!manager)return
+  let manager=pickManagerResource();if(!manager)return
   const canonical=extractCanonicalAllowedPaths(o.objective);
   const mutationAuth={...controlPlaneRepairIntent(o.objective),executorClass:'CODING_LANE_MANAGER'};
   let liveGithubContext=null;
@@ -1053,6 +1105,7 @@ async function managerTick(){
       validateManagerJobPaths(d,canonical,mutationAuth);
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{
+      resourcePool:selectableManagerResources([]),
       // An overloaded local 27B model must not occupy the single-flight Manager for 240 seconds.
       // Abort Ollama HTTP on the Manager-only budget, then fail over to a distinct eligible AI.
       // Per-provider retry defaults and all Worker/reviewer timeouts remain unchanged.

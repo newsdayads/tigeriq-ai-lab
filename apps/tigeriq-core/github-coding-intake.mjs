@@ -278,7 +278,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
-  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
+  if(!mainSha||!['RETRY_BUDGET_EXHAUSTED','NO_PROGRESS_WAIT_MATERIAL_CHANGE','HARD_BLOCKER','ISSUE_CLOSED_OR_SUPERSEDED'].includes(finalReason))return false;
   const terminalReason=String(final?.terminalReason||'');
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
@@ -554,7 +554,8 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       // Only fetch GitHub for an unsynced blocked-final event; normal historical dispatch rows stay request-free.
       const historicalFinal=(await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n))[0]||null;
       const historicalObjectiveId=String(historicalFinal?.codingObjectiveId||id);
-      if(!historicalFinal||await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,historicalObjectiveId))continue;
+      if(!historicalFinal||historicalObjectiveId!==id)continue;
+      const terminalLabelSynced=await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,historicalObjectiveId);
       let historicalIssue;
       try{historicalIssue=await gh(fetchImpl,owner,repo,`/issues/${n}`,token)}
       catch(error){
@@ -567,7 +568,52 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       const historicalEvidence=historicalSpec&&String(historicalFinal?.mainSha||'').trim()!==currentMainSha&&String(historicalFinal?.sourceRevision||'').trim()===String(historicalSourceRevision||'').trim()
         ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,historicalFinal.mainSha,currentMainSha,historicalSpec.scopeLease,recoveryCompareCache)
         :{relevantMainChanged:false};
-      if(await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+      // The Coding Lane may have garbage-collected a terminal objective after
+      // persisting BLOCKED_FINAL. A durable dispatch marker must not turn
+      // a genuinely NEW Owner source revision into a permanent dead-end.
+      // Recover only the latest canonical terminal, with the exact same
+      // hard-block, material-change, dependency, lease, and idempotency gates
+      // used for a still-visible terminal objective.
+      const historicalRearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
+      if(historicalSpec&&!issueSuperseded(historicalIssue)&&
+         shouldRearmRecoverableFinal(historicalFinal,currentMainSha,historicalRearms,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+        if(retryCreatedThisTick)continue;
+        const dependency=await dependencyGate(fetchImpl,owner,repo,token,historicalSpec.dependsOn);
+        if(!dependency.ok){
+          await recordDependencyWait(pool,fetchImpl,owner,repo,token,{issueNumber:n,objectiveId:id,dependsOn:historicalSpec.dependsOn,sourceRevision:historicalSourceRevision,stage:'archived-terminal-rearm',gate:dependency});
+          continue;
+        }
+        if(await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:historicalSpec.scopeLease}))continue;
+        const sourceKey=(historicalSourceRevision||'no-source').replace(/[^0-9A-Za-z]/g,'').slice(-20)||'no-source';
+        const recoveryKey=`GITHUB-ISSUE-${n}-RECOVERY-${currentMainSha.slice(0,12)}-${sourceKey}`;
+        let recovered=(status.objectives||[]).find(x=>String(x.objective||'').includes(`RECOVERY_KEY=${recoveryKey}`));
+        if(!recovered){
+          const text=`GitHub autonomous coding recovery from archived terminal objective for issue #${n}: ${historicalSpec.title}
+${historicalSpec.url}
+
+RECOVERY_KEY=${recoveryKey}
+SOURCE_BASE=${currentMainSha}
+SOURCE_REVISION=${historicalSourceRevision||'unknown'}
+PRIOR_OBJECTIVE_ID=${id}
+
+${historicalSpec.body}
+
+Continue only after the canonical source materially changed. Execute zero-cost reversible repository work only. No direct main, security/credential changes, production release, destructive actions, browser auth or PC01 source edits.`;
+          const out=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/objectives`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:text,priority:historicalSpec.priority})});
+          if(!out?.id)throw new Error('CODING_ARCHIVED_RECOVERY_OBJECTIVE_ID_MISSING');
+          recovered={id:out.id,objective:text,status:'queued'};
+        }
+        // Write the canonical dispatch marker only AFTER label clearance,
+        // then keep a single explicit recovery receipt per material revision.
+        await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
+        await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recovered.id,mainSha:currentMainSha,sourceRevision:historicalSourceRevision||null,sourceChanged:String(historicalFinal.sourceRevision||'')!==String(historicalSourceRevision||''),recoveryKey,historical:true});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:historicalSpec.url,codingObjectiveId:recovered.id,ownerDirect:historicalSpec.ownerDirect,sourcePriority:historicalSpec.sourcePriority,dispatchPriority:historicalSpec.priority,dispatchReason:'ARCHIVED_MATERIAL_RECOVERY',recoveryKey,sourceRevision:historicalSourceRevision||null,priorObjectiveId:id,scopeLease:historicalSpec.scopeLease});
+        await comment(fetchImpl,owner,repo,n,token,`[ARCHIVED_RECOVERY_REARMED] ${recovered.id} prior=${id} revision=${historicalSourceRevision||'unknown'}`);
+        retryCreatedThisTick=true;
+        results++;
+        continue;
+      }
+      if(!terminalLabelSynced&&await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
         await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,historical:true});
       }
@@ -699,9 +745,14 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       continue;
     }
     const retryCount=retryEpoch.retryCount;
-    if(retryCount>=MAX_AUTO_RETRIES){
+    // A Manager that twice failed to produce any accepted child has no useful
+    // same-revision retry. Stop immediately; rearm only after a material
+    // canonical source change, without burning F1/F2 or blocking other scopes.
+    const noProgressStop=/manager attempt stopped:\s*two decisions without accepted child progress/i.test(String(objective.summary||''));
+    const terminalReason=noProgressStop?'NO_PROGRESS_WAIT_MATERIAL_CHANGE':'RETRY_BUDGET_EXHAUSTED';
+    if(noProgressStop||retryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
-      const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:'RETRY_BUDGET_EXHAUSTED',terminalReason:classification.reason,mainSha:currentMainSha};
+      const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:terminalReason,terminalReason:classification.reason,mainSha:currentMainSha,sourceRevision:currentSourceRevision};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
       if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
         if(retryCreatedThisTick)continue;
@@ -726,7 +777,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         results++;
         continue;
       }
-      await finalize('RETRY_BUDGET_EXHAUSTED',{terminalReason:classification.reason,retries:retryCount});
+      await finalize(terminalReason,{terminalReason:classification.reason,retries:retryCount});
       continue;
     }
 

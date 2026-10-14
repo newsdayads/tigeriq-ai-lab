@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 // Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
 const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
 const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
+// Optional source-only adapter. Missing PC bundle asset must fail closed without breaking Web Control.
+const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(()=>import('../../apps/shared/owner-one-tap-approval.mjs').catch(()=>import('./owner-one-tap-approval.mjs').catch(()=>null)));
+const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 
@@ -78,7 +81,7 @@ function systemWorkOrder(issue,body='') {
   return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ)\]/.test(title) || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope);
 }
 
-export function projectWorkOrder(issue) {
+export function projectWorkOrder(issue, source = {}) {
   const body=String(issue?.body||'');
   const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
@@ -91,6 +94,8 @@ export function projectWorkOrder(issue) {
   const proof=closed?completionProof(issue):{verified:false,timing:null};
   const isSystem=systemWorkOrder(issue,body);
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
+  // Never expose an approval action without a fresh, authenticated Owner-authored GitHub issue.
+  const approvalProjection=ownerGate?projectApproval(issue,source):{ok:false};
   const review=/REVIEW|VERIFY|RÀ_SOÁT/.test(marker)||capability==='REVIEW';
   const blocked=/BLOCK/.test(marker);
   const working=machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING/.test(marker);
@@ -110,7 +115,7 @@ export function projectWorkOrder(issue) {
   else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
   else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';
   else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
-  return {issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,status:proof.verified?'DONE':closed?'VERIFY':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),owner,assignee:owner,closed,completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',updated_at:issue.updated_at,updatedAt:issue.updated_at,url:issue.html_url};
+  return {issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,status:proof.verified?'DONE':closed?'VERIFY':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',updated_at:issue.updated_at,updatedAt:issue.updated_at,url:issue.html_url};
 }
 
 async function githubWorkOrders() {
@@ -130,7 +135,7 @@ async function githubWorkOrders() {
       const body=String(issue.body||'');
       const executable=/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body);
       return executable||systemWorkOrder(issue,body);
-    }).map(projectWorkOrder);
+    }).map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
     const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
     const workOrders=candidates.filter(x=>!x.closed)
       .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
