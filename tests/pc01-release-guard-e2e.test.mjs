@@ -21,7 +21,7 @@ const template=()=>({
   approved:true,components:['core'],
   expiresAtUtc:new Date(Date.now()+3600_000).toISOString(),
 });
-function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}'}={}){
+function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/core.mjs'],impact='@{core=$true;web=$false;coding=$false;openclaw=$false;updater=$false;liveBridge=$false}',targetSha=sha,controlRepo='' }={}){
   const dir=mkdtempSync(join(tmpdir(),'tigeriq-guard-e2e-'));
   try{
     const approver=join(dir,'approval.json'),marker=join(dir,'attempt.json');
@@ -32,9 +32,10 @@ function run({approval=null,attempt=null,aclMock=true,paths=['apps/tigeriq-core/
       "$releaseApprovalPath='"+esc(approver)+"'",
       "$releaseAttemptPath='"+esc(marker)+"'",
       ...(aclMock?["function Test-ReleaseApprovalAcl { return $true }"]:[]),
-      "$impact="+impact,
+      "$controlRepo='"+esc(controlRepo)+"'",
+       "$impact="+impact,
       '$changed='+JSON.stringify(paths).replace(/^\[/,'@(').replace(/\]$/,')').replaceAll('"',"'"),
-      "$result=Get-ReleaseApproval '"+sha+"' '"+previous+"' $impact $changed",
+      "$result=Get-ReleaseApproval '"+targetSha+"' '"+previous+"' $impact $changed",
       '$result|ConvertTo-Json -Compress -Depth 4',
     ].join('\n');
     const script=join(dir,'guard-harness.ps1');
