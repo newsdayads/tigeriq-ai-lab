@@ -3009,7 +3009,7 @@ const server=createServer(async(req,res)=>{
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
       // Exact manual Owner comment is a separate GitHub-authenticated release action.
       // It is never inferred from merge, PR/issue text, CI or a worker result.
-      if(eventName==='issue_comment'&&String(payload?.comment?.body||'').trim().startsWith('TIGERIQ_PC01_RELEASE_APPROVE_V1')){
+      if(eventName==='issue_comment'&&/^TIGERIQ_PC01_RELEASE_APPROVE_V[12](?:\r?\n|$)/.test(String(payload?.comment?.body||'').trim())){
         try{
           const approval=await acceptPc01OwnerApprovalEvent({
             identity,eventName,payload,githubToken:GITHUB_TOKEN,
