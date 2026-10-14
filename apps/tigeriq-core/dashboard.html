@@ -654,7 +654,7 @@ document.getElementById('opsEvidenceClose').addEventListener('click',hideOpsEvid
 opsEvidenceBackdrop.addEventListener('click',e=>{if(e.target===opsEvidenceBackdrop)hideOpsEvidence()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!opsEvidenceBackdrop.hidden)hideOpsEvidence()});
 
-let workProjection=null,workFilter='action',workClosedSort='finished',workOpenSort='activity_latest',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
+let workProjection=null,workFilter='action',workClosedSort='finished',workOpenSort='priority',lastWorkFetchAt=0;async function fetchWorkProjection(){if(workProjection&&Date.now()-lastWorkFetchAt<8000)return{ok:true,projection:workProjection};const r=await fetch('/api/health-live-work',{cache:'no-store'});if(!r.ok)throw Error('WORK_PROJECTION_HTTP_'+r.status);const w=await r.json();if(!w?.ok||!w?.projection)throw Error(w?.reason||'WORK_PROJECTION_NOT_OK');workProjection=w.projection;lastWorkFetchAt=Date.now();return w}
 const WO_STATUS={OPEN:'CHƯA LÀM',UNKNOWN:'CHƯA RÕ',OWNER_GATE:'CHỜ ANH SƠN',WORKING:'ĐANG LÀM',REVIEW:'ĐANG RÀ SOÁT',VERIFY:'ĐANG XÁC MINH',QUEUED:'SẴN SÀNG',WAITING:'CHỜ',BLOCKED:'BỊ CHẶN',PAUSED:'TẠM DỪNG',GOAL:'MỤC TIÊU',SYSTEM:'HỆ THỐNG',DONE:'HOÀN TẤT'};
 function woStatus(x){return TigerIQWorkCenter.status(x)}
 function woVisualStatus(x){const s=woStatus(x);return ['WAITING','OPEN','QUEUED'].includes(s)&&x?.workKind==='WORK'&&(s==='QUEUED'||x?.executionEligibility==='READY')?'QUEUED':s}
@@ -663,7 +663,29 @@ function woTitle(v){let t=String(v||'Chưa có tên việc').replace(/^\s*#?\d+\
 function woNext(x){const raw=String(x?.nextStep||'').trim();if(raw){if(/#\d+\s*[-=]?>\s*#\d+/.test(raw))return'Hoàn tất chuỗi phụ thuộc';return raw.length>72?raw.slice(0,69).trimEnd()+'…':raw}return woStatus(x)==='OWNER_GATE'?'Duyệt quyết định':'Chưa xác định'}
 function woBlocker(x){if(x?.blocker)return String(x.blocker);if(woStatus(x)==='BLOCKED')return String(x?.waitReason||'Chưa có lý do blocker xác minh');return''}
 function woProgress(x,s){const p=TigerIQWorkCenter.progress(x,{fresh:!workProjection?.stale,sourceGate:workProjection?.verifiedGateSource===true});return p.verified?{pct:p.percent,label:p.percent+'%',kind:'verified'}:{pct:null,label:String(WO_STATUS[s]||s),kind:'stage'}}
-function workRows(){return TigerIQWorkCenter.rowsFor(workProjection,workFilter,workClosedSort,workOpenSort)}
+/* Display sort belongs only to API Health, never to Core dispatch.
+   The 01/02/... badge is the original snapshot order, not the GitHub #. */
+function workRows(){
+ if(workFilter!=='action')return TigerIQWorkCenter.rowsFor(workProjection,workFilter,workClosedSort,workOpenSort);
+ const source=TigerIQWorkCenter.rowsFor(workProjection,'action',workClosedSort,'priority');
+ const annotated=source.map((row,index)=>({...row,displayOrdinal:index+1}));
+ const origin=(a,b)=>a.displayOrdinal-b.displayOrdinal;
+ const mode=workOpenSort;
+ if(mode==='rank_desc')return annotated.reverse();
+ if(mode==='rank_asc')return annotated;
+ if(mode==='number_asc')return annotated.sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0)||origin(a,b));
+ if(mode==='number_desc')return annotated.sort((a,b)=>(Number(b.number)||0)-(Number(a.number)||0)||origin(a,b));
+ if(mode==='activity_latest')return annotated.sort((a,b)=>{
+  const valid=new Set(['github_issue_comment','github_issue_created']);
+  const stamp=x=>{const ms=valid.has(x.lastActivitySource)?Date.parse(x.lastActivityAt||''):NaN;return Number.isFinite(ms)?ms:null};
+  const aa=stamp(a),bb=stamp(b);
+  return Number(bb!==null)-Number(aa!==null)||(aa!==null&&bb!==null?bb-aa:0)||origin(a,b);
+ });
+ return annotated.sort((a,b)=>{
+  const rank=x=>{const p=TigerIQWorkCenter.priority(x);return /^P[0-5]$/.test(p)?Number(p[1]):6};
+  return rank(a)-rank(b)||origin(a,b);
+ });
+}
 let workDetailRows=[],workDetailRow=null,workDetailReturnFocus=null;
 const TIGERIQ_OWNER_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-6a925c470aa08191a10595e215d04f4e/project';
 function workDetailProgressMarkup(row){const s=woVisualStatus(row),p=woProgress(row,s);return p.pct===null?`<div class="progress stage stage-${esc(s.toLowerCase())}"><span class="progress-text">${esc(p.label)}</span></div>`:`<div class="progress ${p.kind==='checks'?'checks':''}" style="--status-color:${HEALTH_WO_STATUS_COLORS[s]||'#94A3B8'}"><div class="progress-track"><div class="progress-fill" style="width:${p.pct}%"></div></div><span class="progress-text">${esc(p.label)}</span></div>`}
@@ -716,11 +738,18 @@ function renderWork(){
  const defs=[['action','CÒN MỞ'],['working','ĐANG LÀM'],['waitblocked','CHỜ / CHẶN'],['closed','ĐÃ KẾT THÚC']];
  const counts=Object.fromEntries(defs.map(([key])=>[key,TigerIQWorkCenter.rowsFor(workProjection,key).length]));
  const button=([key,label])=>'<button type="button" aria-pressed="'+(workFilter===key)+'" class="wo-filter '+key+' '+(workFilter===key?'on':'')+'" data-wo="'+key+'">'+label+' <b>'+counts[key]+'</b></button>';
- woFilters.innerHTML=defs.map(button).join('')+(workFilter==='action'?'<label class="work-scope-note" for="workOpenSort">Sắp xếp <select id="workOpenSort" aria-label="Sắp xếp việc còn mở"><option value="priority" '+(workOpenSort==='priority'?'selected':'')+'>ƯU TIÊN</option><option value="activity_latest" '+(workOpenSort==='activity_latest'?'selected':'')+'>HOẠT ĐỘNG MỚI NHẤT ↓</option><option value="number_asc" '+(workOpenSort==='number_asc'?'selected':'')+'>STT ↑</option><option value="number_desc" '+(workOpenSort==='number_desc'?'selected':'')+'>STT ↓</option></select></label>':'')+(workFilter==='action'&&workOpenSort==='activity_latest'?'<small hidden aria-hidden="true" style="display:none!important">Có bình luận nhật ký: '+TigerIQWorkCenter.rowsFor(workProjection,'action').filter(x=>x.lastActivitySource==='github_issue_comment'&&Number.isFinite(Date.parse(x.lastActivityAt||''))).length+'/'+counts.action+'; không đồng nghĩa đã thực thi.</small>':'')+(workFilter==='closed'?'<label class="work-scope-note">Sắp xếp <select id="workClosedSort" aria-label="Sắp xếp việc đã kết thúc"><option value="finished" '+(workClosedSort==='finished'?'selected':'')+'>VỪA HOÀN TẤT ↓</option><option value="closed" '+(workClosedSort==='closed'?'selected':'')+'>MỚI ĐÓNG HỒ SƠ ↓</option></select></label>':'');
+ woFilters.innerHTML=defs.map(button).join('')+(workFilter==='action'?'<label class="work-scope-note" for="workOpenSort">Sắp xếp <select id="workOpenSort" aria-label="Sắp xếp việc còn mở"><option value="priority" '+(workOpenSort==='priority'?'selected':'')+'>ƯU TIÊN P0–P5</option><option value="rank_asc" '+(workOpenSort==='rank_asc'?'selected':'')+'>STT ↑</option><option value="rank_desc" '+(workOpenSort==='rank_desc'?'selected':'')+'>STT ↓</option><option value="number_asc" '+(workOpenSort==='number_asc'?'selected':'')+'># ↑</option><option value="number_desc" '+(workOpenSort==='number_desc'?'selected':'')+'># ↓</option><option value="activity_latest" '+(workOpenSort==='activity_latest'?'selected':'')+'>MỚI NHẤT ↓</option></select></label>':'')+(workFilter==='action'?'<small hidden aria-hidden="true" style="display:none!important">Có bình luận nhật ký: '+TigerIQWorkCenter.rowsFor(workProjection,'action').filter(x=>x.lastActivitySource==='github_issue_comment'&&Number.isFinite(Date.parse(x.lastActivityAt||''))).length+'/'+counts.action+'; không đồng nghĩa đã thực thi.</small>':'')+(workFilter==='closed'?'<label class="work-scope-note">Sắp xếp <select id="workClosedSort" aria-label="Sắp xếp việc đã kết thúc"><option value="finished" '+(workClosedSort==='finished'?'selected':'')+'>VỪA HOÀN TẤT ↓</option><option value="closed" '+(workClosedSort==='closed'?'selected':'')+'>MỚI ĐÓNG HỒ SƠ ↓</option></select></label>':'');
  woFilters.querySelectorAll('[data-wo]').forEach(btn=>btn.onclick=()=>{workFilter=btn.dataset.wo;renderWork()});const openSort=woFilters.querySelector('#workOpenSort');if(openSort)openSort.onchange=()=>{workOpenSort=openSort.value;renderWork()};const closedSort=woFilters.querySelector('#workClosedSort');if(closedSort)closedSort.onchange=()=>{workClosedSort=closedSort.value;renderWork()};
  const rows=workRows();
  workDetailRows=rows;
  TigerIQWorkCenter.renderCards(workList,rows,{compact:false,fresh:!(workProjection?.stale||workProjection?.workProjection?.stale),sourceGate:workProjection?.verifiedGateSource===true,onOpen:(row,el)=>openWorkDetail(row,el)});
+ /* The rank badge remains tied to original source STT through every sort. */
+ if(workFilter==='action'){
+  [...workList.querySelectorAll('.work-row')].forEach((card,index)=>{
+   const n=rows[index]?.displayOrdinal,rank=card.querySelector('.rank');
+   if(rank&&Number.isInteger(n)&&n>0)rank.textContent=String(n).padStart(2,'0');
+  });
+ }
 }
 
 workDetailClose.onclick=closeWorkDetail;workDetailCloseBottom.onclick=closeWorkDetail;workDetailBackdrop.addEventListener('click',e=>{if(e.target===workDetailBackdrop)closeWorkDetail()});document.addEventListener('keydown',e=>{if(!workDetailBackdrop.classList.contains('open'))return;if(e.key==='Escape'){closeWorkDetail();return}if(e.key!=='Tab')return;const focusable=[...workDetailModal.querySelectorAll('button:not([disabled]),a[href]:not([disabled])')].filter(el=>!el.hidden&&getComputedStyle(el).display!=='none');if(!focusable.length)return;const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&(document.activeElement===first||!workDetailModal.contains(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&(document.activeElement===last||!workDetailModal.contains(document.activeElement))){e.preventDefault();first.focus()}});workDetailAskVy.onclick=()=>openWorkDetailChat(TIGERIQ_OWNER_CHATGPT_PROJECT_URL);workDetailFallback.onclick=()=>openWorkDetailChat('https://chatgpt.com/');

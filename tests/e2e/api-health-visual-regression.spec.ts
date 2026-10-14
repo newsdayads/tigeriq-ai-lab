@@ -139,7 +139,7 @@ test('API Health mobile sorts newly verified finishes first and lets Owner switc
  await expect.poll(order).toEqual([601,602,603]);
  await page.locator('.wo-filter.action').click();
  await expect(page.locator('#workClosedSort')).toHaveCount(0);
- await expect.poll(order).toEqual([3278,4574,2054]);
+ await expect.poll(order).toEqual([2054,3278,4574]);
 });
 
 
@@ -159,10 +159,18 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  const order=()=>page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>Number((n as HTMLElement).dataset.workNumber)));
  await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
  await expect(page.locator('.brand')).toContainText('TigerIQ AI');
- await expect(page.locator('#workOpenSort')).toHaveValue('activity_latest');
- await expect.poll(order).toEqual([320,310,330]);
+ await expect(page.locator('#workOpenSort')).toHaveValue('priority');
+ await expect.poll(order).toEqual([320,330,310]);
  await expect(page.locator('#woFilters')).toContainText('Có bình luận nhật ký: 2/3');
  await expect(page.locator('#workList .work-activity')).toHaveCount(2);
+ const ranks=()=>page.locator('#workList .work-row .rank').allTextContents();
+ await expect.poll(ranks).toEqual(['03','01','02']);
+ await page.locator('#workOpenSort').selectOption('rank_asc');
+ await expect.poll(order).toEqual([330,310,320]);
+ await expect.poll(ranks).toEqual(['01','02','03']);
+ await page.locator('#workOpenSort').selectOption('rank_desc');
+ await expect.poll(order).toEqual([320,310,330]);
+ await expect.poll(ranks).toEqual(['03','02','01']);
  await page.locator('#workOpenSort').selectOption('number_asc');
  await expect.poll(order).toEqual([310,320,330]);
  await page.locator('#workOpenSort').selectOption('number_desc');
@@ -170,7 +178,7 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await page.locator('#workOpenSort').selectOption('activity_latest');
  await expect.poll(order).toEqual([320,310,330]);
  await page.locator('#workOpenSort').selectOption('priority');
- await expect.poll(order).toEqual([330,310,320]);
+ await expect.poll(order).toEqual([320,330,310]);
  const semantic=await page.locator('.wo-filter').evaluateAll(buttons=>buttons.map(el=>{
    const style=getComputedStyle(el);return {label:el.textContent?.trim(),selected:el.getAttribute('aria-pressed'),text:style.color,border:style.borderColor,background:style.backgroundColor};
  }));
