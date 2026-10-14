@@ -1,9 +1,10 @@
 import http from 'node:http';
+import { verifiedActiveUiWorkOrder } from './ui-worker-attribution.mjs';
 
 const PORT=Number(process.env.TIGERIQ_LIVE_BRIDGE_PORT||8801);
-const CORE=process.env.TIGERIQ_CORE_STATUS_URL||'http://100.97.23.87:8795/api/status';
-const CORE_EVENT=process.env.TIGERIQ_CORE_EVENT_URL||'http://100.97.23.87:8795/api/github-event';
-const CODING=process.env.TIGERIQ_CODING_STATUS_URL||'http://100.97.23.87:8797/api/status';
+const CORE=process.env.TIGERIQ_CORE_STATUS_URL||'http://127.0.0.1:8795/api/status';
+const CORE_EVENT=process.env.TIGERIQ_CORE_EVENT_URL||'http://127.0.0.1:8795/api/github-event';
+const CODING=process.env.TIGERIQ_CODING_STATUS_URL||'http://127.0.0.1:8797/api/status';
 const UI_HEALTH='http://127.0.0.1:8794/health';
 const UI_CONTROLLER='http://127.0.0.1:8798/api/state';
 const UI_HEARTBEAT_STALE_MS=15000;
@@ -67,15 +68,16 @@ function uiWorker(id,controller,serviceOk){
     else if(phase==='STALLED'){state='waiting';status='CHỜ'}
     else if(phase==='READY'||hb?.uiReady===true||String(w?.status||'').toUpperCase()==='READY'){state='idle';status='RẢNH'}
   }
-  let job=activeJob?.title||activeJob?.jobId||null;
-  if(!job&&state==='working'&&controller?.autopilot?.lastDispatchedWorkerId===id)job=controller?.autopilot?.lastDispatchedJobId||null;
-  if(!job)job=state==='working'?'Đang xử lý trong chat hiện tại':state==='waiting'?'Đang chờ/khôi phục giao diện':state==='blocked'?(w?.lastError||hb?.securityBlock||'Giao diện bị chặn'):state==='paused'?'Đang tạm ngưng':'Không có việc đang chạy';
+  // A fresh UI heartbeat proves chat activity, not ownership of historical Work Orders.
+  const attributedJob=verifiedActiveUiWorkOrder(activeJob,id);
+  let job=attributedJob?.title||attributedJob?.jobId||null;
+  if(!job)job=state==='working'?'Đang xử lý trong chat; chưa xác minh mã công việc':state==='waiting'?'Đang chờ/khôi phục giao diện':state==='blocked'?(w?.lastError||hb?.securityBlock||'Giao diện bị chặn'):state==='paused'?'Đang tạm ngưng':'Không có việc đang chạy';
   const meta=[phase||null,hb?.modelName||null,hb?.reasoningEffort||null].filter(Boolean).join(' · ');
   return {
     employeeId:id,label:labels[id],kind:'ui',state,status,job:String(job).slice(0,220),
     detail:fresh?(meta||'Heartbeat giao diện hợp lệ'):(serviceOk?'Heartbeat riêng đã cũ hoặc chưa có':'UI controller không online'),
     updatedAt:heartbeatAt||w?.windowEventAt||new Date().toISOString(),heartbeatAt,
-    currentJobId:activeJob?.jobId||((state==='working'&&controller?.autopilot?.lastDispatchedWorkerId===id)?controller?.autopilot?.lastDispatchedJobId:null),
+    currentJobId:attributedJob?.jobId||null,
     prNumber:null,provider:null,model:hb?.modelName||null,cooldownUntil:null,lastError:w?.lastError||hb?.securityBlock||null,source:'PC01 Chrome Controller'
   };
 }
