@@ -215,7 +215,7 @@ assert.match(finalHealthGrid,
   /body\.api-health #workList\.tiq-work-center>\.tiq-work-card\{\s*height:auto!important;align-self:stretch!important/s,
   'Card height must follow the tallest row content');
 assert.match(finalHealthGrid,
-  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card>\.work-main\{\s*height:auto!important;flex:1 1 auto!important/s,
+  /body\.api-health #workList\.tiq-work-center>\.tiq-work-card>\.work-main\{\s*height:auto!important;min-height:max-content!important;\s*flex:1 0 auto!important/s,
   'Inner card cannot be 100% high in addition to its top badge offset');
 assert.doesNotMatch(finalHealthGrid,
   /\.tiq-work-card>\.work-main\{\s*height:100%!important/s,
