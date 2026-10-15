@@ -124,3 +124,11 @@ test('step contract is pinned to exact source commit, not only an objective text
   const other=compileCodingStepPacket({objectiveId:'GH-4625',sourceRevision:'shaA',sourceHeadSha:'b'.repeat(40),job,allowedPaths:job.paths});
   assert.notEqual(p.prompt_revision,other.prompt_revision);
 });
+
+test('Owner-controlled canary always creates draft PRs and never auto-merges',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(lane,/draft:\(process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\)/);
+  assert.match(lane,/if\(AUTO_MERGE&&process\.env\.TIGERIQ_P0_CODING_STEP_CANARY!=='1'\)/);
+  assert.doesNotMatch(lane,/TIGERIQ_P0_CODING_STEP_OWNER_RELEASE/);
+});
