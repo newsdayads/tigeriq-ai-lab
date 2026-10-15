@@ -10,6 +10,13 @@ export const NV04_IDLE_AUDIT_PATHS=Object.freeze([
 export const NV04_IDLE_AUDIT_HEARTBEAT_FILE='D:\\TigerIQ\\Apps\\ChromeController\\Runtime\\runtime-evidence.json';
 
 function exactSha(value){return /^[a-f0-9]{40}$/i.test(String(value||''));}
+export function nv04IdleAuditSlot(now=Date.now()){
+  const date=new Date(now);
+  if(!Number.isFinite(date.getTime()))throw new Error('NV04_IDLE_SLOT_TIME_INVALID');
+  const h=Math.floor(date.getUTCHours()/6)*6;
+  return date.toISOString().slice(0,10).replace(/-/g,'')+'T'+String(h).padStart(2,'0');
+}
+function validSlot(slot){return /^\d{8}T(?:00|06|12|18)$/.test(String(slot||''));}
 function sourceHeaders(token=''){return {accept:'application/vnd.github+json','user-agent':'TigerIQ-NV04-Idle-Audit/1.0',...(token?{authorization:'Bearer '+token}:{})};}
 
 export function nv04IdleAuditGate({enabled=false,worker=null,normalJobPending=false,coreAvailable=true,now=Date.now()}={}){
@@ -40,14 +47,15 @@ async function json(fetchImpl,url,token){
   return response.json();
 }
 
-export async function nv04IdleSourcePacket({fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',paths=NV04_IDLE_AUDIT_PATHS,refSha=''}={}){
+export async function nv04IdleSourcePacket({fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',paths=NV04_IDLE_AUDIT_PATHS,refSha='',slot=nv04IdleAuditSlot()}={}){
   const base='https://api.github.com/repos/'+owner+'/'+repo;
   const commit=refSha?null:await json(fetchImpl,base+'/commits/main',token);
   const sha=String(refSha||commit?.sha||'').toLowerCase();
   if(!exactSha(sha))throw new Error('NV04_IDLE_MAIN_SHA_UNVERIFIED');
+  if(!validSlot(slot))throw new Error('NV04_IDLE_SLOT_INVALID');
   const ordered=paths.filter(path=>NV04_IDLE_AUDIT_PATHS.includes(path));
   if(!ordered.length)throw new Error('NV04_IDLE_SOURCE_ALLOWLIST_EMPTY');
-  const shift=parseInt(sha.slice(0,4),16)%ordered.length;
+  const shift=(parseInt(sha.slice(0,4),16)+Number(slot.slice(-2))/6)%ordered.length;
   const rotated=ordered.slice(shift).concat(ordered.slice(0,shift)).slice(0,2);
   const files=[];
   for(const path of rotated){
@@ -59,7 +67,7 @@ export async function nv04IdleSourcePacket({fetchImpl=fetch,owner='newsdayads',r
     files.push({path,sha:blob.sha||null,source:decoded.slice(0,120000),excerpt:selected});
   }
   if(files.length!==2)throw new Error('NV04_IDLE_SOURCE_INCOMPLETE');
-  return {sha,files,sourceUrl:'https://github.com/'+owner+'/'+repo+'/tree/'+sha};
+  return {sha,slot,files,sourceUrl:'https://github.com/'+owner+'/'+repo+'/tree/'+sha};
 }
 
 export function buildNv04IdleAuditPrompt(packet){
@@ -70,6 +78,7 @@ export function buildNv04IdleAuditPrompt(packet){
     'NV04_ROLE=READ_ONLY_CODE_AUDITOR',
     'SOURCE_SHA='+packet.sha,
     'SOURCE_URL='+packet.sourceUrl,
+    'AUDIT_SLOT='+packet.slot,
     'QUYEN=READ_ONLY; KHONG_SUA_CODE; KHONG_TU_CLAIM; KHONG_DUNG_P0; KHONG_SUA_APP_CHROME.',
     'PHAM_VI=Chỉ hai file được cấp bên dưới, KHÔNG được báo đã rà toàn repository.',
     'NHIEM_VU=Tìm lỗi logic, retry, idempotency, đồng bộ, trạng thái và ranh giới quyền có căn cứ mã.',
@@ -87,6 +96,8 @@ export function parseNv04IdleAuditResult(raw,packet){
   if(!value.includes('NV04_IDLE_AUDIT_RESULT_V1'))return {accepted:false,reason:'AUDIT_RESULT_MARKER_MISSING'};
   const sha=String(value.match(/^SOURCE_SHA=([a-f0-9]{40})\s*$/mi)?.[1]||'').toLowerCase();
   if(sha!==String(packet?.sha||'').toLowerCase())return {accepted:false,reason:'AUDIT_SOURCE_SHA_MISMATCH'};
+  const slot=String(value.match(/^AUDIT_SLOT=(\d{8}T(?:00|06|12|18))\s*$/mi)?.[1]||'');
+  if(slot!==String(packet?.slot||''))return {accepted:false,reason:'AUDIT_SLOT_MISMATCH'};
   const payload=value.match(/^FINDINGS_JSON=(\[[^\r\n]*\])\s*$/m)?.[1]||'';
   if(!payload)return {accepted:false,reason:'AUDIT_FINDINGS_MISSING'};
   let findings;
@@ -106,5 +117,5 @@ export function parseNv04IdleAuditResult(raw,packet){
     const signature=createHash('sha256').update(packet.sha+'|'+f.path+'|'+line+'|'+quote).digest('hex').slice(0,20);
     checked.push({path:f.path,line,quote,description:String(f.description).slice(0,800),repro:String(f.repro).slice(0,800),severity:f.severity,signature,verification:'SOURCE_LINE_CONFIRMED_LOGIC_UNVERIFIED'});
   }
-  return {accepted:true,reason:'SOURCE_GROUNDED_FINDINGS_NOT_YET_PROVEN',findings:checked,sourceSha:packet.sha};
+  return {accepted:true,reason:'SOURCE_GROUNDED_FINDINGS_NOT_YET_PROVEN',findings:checked,sourceSha:packet.sha,auditSlot:packet.slot};
 }
