@@ -35,6 +35,7 @@ import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
 import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
+import { withPc01LocalInferenceSlot,localInferenceBusy } from './pc01-local-inference-slot.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
@@ -73,8 +74,8 @@ const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.tri
 const CORE_MANAGER_EMPLOYEE_ID = 'NV08';
 const CORE_MANAGER_MODEL = process.env.TIGERIQ_CORE_MANAGER_MODEL?.trim() || 'qwen3:8b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
-// NV08 is the sole manager; NV10 remains dedicated to independent local work.
-const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID]);
+// Owner policy: NV08 only Manager; NV10 only API Doctor. Do not route generic Core jobs to NV10.
+const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object.freeze([]);
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
@@ -254,14 +255,16 @@ async function runSurfSenseResearch(query, limit=6) {
 }
 
 async function invokeLocalManager(prompt,model) {
-  const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body:JSON.stringify(managerLocalRequestBody(model,prompt)),
-  },CORE_MANAGER_TIMEOUT_MS);
-  const text=String(body?.response||'').trim();
-  if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
-  return text;
+  return withPc01LocalInferenceSlot(pool,async()=>{
+    const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify(managerLocalRequestBody(model,prompt)),
+    },CORE_MANAGER_TIMEOUT_MS);
+    const text=String(body?.response||'').trim();
+    if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
+    return text;
+  },{waitMs:CORE_MANAGER_TIMEOUT_MS});
 }
 
 function shrinkGroq413Prompt(prompt) {
@@ -356,6 +359,7 @@ export function watsonxRetryDecision(body,attempt,maxRetries=2){
 async function invokeProvider(r, prompt, providerContext={}) {
   switch (r.provider) {
     case 'ollama': {
+      return withPc01LocalInferenceSlot(pool,async()=>{
       if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
       // Bounded opt-in for compiled LOCAL packets. No generic request mutation.
       if(process.env.TIGERIQ_NV10_NATIVE_STRUCTURED==='enabled'
@@ -368,6 +372,7 @@ async function invokeProvider(r, prompt, providerContext={}) {
         return native.text;
       }
       return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},r.id===CORE_MANAGER_EMPLOYEE_ID?CORE_MANAGER_TIMEOUT_MS:OLLAMA_TIMEOUT_MS,r);
+      },{waitMs:r.id===OLLAMA_EMPLOYEE_ID?20000:120000});
     }
     case 'groq': return openAiCompat('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,{},90000,r);
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
@@ -1336,6 +1341,12 @@ async function invokeApiDoctorLocal(prompt){
   return parseApiDoctorDecision(body?.response||'');
 }
 async function runApiDoctorAnalysisJob(items,scanSignature){
+  // API Doctor is background work. Defer on another local NV's active inference;
+  // do not create a failed Doctor job or burn provider retry budgets.
+  try { return await withPc01LocalInferenceSlot(pool,()=>runApiDoctorAnalysisJobInSlot(items,scanSignature),{waitMs:0}); }
+  catch(error){if(localInferenceBusy(error))return {skipped:'local_inference_busy'};throw error;}
+}
+async function runApiDoctorAnalysisJobInSlot(items,scanSignature){
   const recent=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_DONE' and data->>'signature'=$1 and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recent)return {skipped:'deduped'};
   const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
