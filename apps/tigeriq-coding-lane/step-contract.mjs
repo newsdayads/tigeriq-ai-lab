@@ -32,7 +32,10 @@ export function compileCodingStepPacket({objectiveId,sourceRevision,job,allowedP
     steps:strings(job.steps,'STEPS'),acceptance:strings(job.acceptance,'ACCEPTANCE'),
     evidence_required:strings(job.evidence_required,'EVIDENCE'),
     skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0})),
-    required_checks:job.required_checks?strings(job.required_checks,'FUNCTIONAL_CHECKS',{max:5}):({android:['Android Build Verify'],frontend:['Frontend Functional Verify'],backend:['Backend Contract Verify'],test:['Focused Test Verify'],source:['Focused Test Verify'],documentation:[]}[kind])
+    required_checks:[...new Set([
+      ...({android:['Android Build Verify'],frontend:['Frontend Functional Verify'],backend:['Backend Contract Verify'],test:['Focused Test Verify'],source:['Focused Test Verify'],documentation:[]}[kind]),
+      ...(job.required_checks===undefined?[]:strings(job.required_checks,'FUNCTIONAL_CHECKS',{max:5,allowEmpty:true}))
+    ])]
   };
   packet.skill_ids=packet.skill_refs.map(x=>x.id);
   packet.prompt_revision=createHash('sha256').update(JSON.stringify(packet)).digest('hex').slice(0,24);
@@ -47,7 +50,11 @@ export function codingStepPacketFromInstruction(instruction){
   if(!match)return null;
   try{
     const packet=JSON.parse(match[1]);
-    if(packet?.schema===CODING_STEP_PACKET_VERSION&&packet.prompt_revision)return packet;
+    if(packet?.schema===CODING_STEP_PACKET_VERSION&&/^[a-f0-9]{24}$/.test(String(packet.prompt_revision||''))){
+      const {prompt_revision,...withoutRevision}=packet;
+      const calculated=createHash('sha256').update(JSON.stringify(withoutRevision)).digest('hex').slice(0,24);
+      if(calculated===prompt_revision)return packet;
+    }
   }catch{}
   throw Error('CODING_STEP_PACKET_CORRUPT');
 }
@@ -109,4 +116,24 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
   });
   const missing=packet.required_checks.filter(name=>!rows.some(row=>row.name===name&&row.status==='completed'&&row.conclusion==='success'));
   return {pass:missing.length===0,code:missing.length?'CODING_FUNCTIONAL_CHECKS_MISSING':'CODING_FUNCTIONAL_CHECKS_PASSED',missing};
+}
+
+
+// Evidence check for a *closed* GitHub source Work Order. Closed state is not
+// accepted product delivery. This gate is deliberately independent of AI text.
+export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason='completed'}={}){
+  const source=string(body);
+  const fields=name=>[...source.matchAll(new RegExp('^'+name+'\\s*=\\s*([^\\r\\n]+)$','gmi'))].map(x=>x[1].trim());
+  const done=fields('DONE');
+  const finished=fields('FINISHED_AT');
+  const receipt=fields('FINISH_RECEIPT_URL');
+  const checkboxes=source.split(/\r?\n/).filter(line=>/^\s*-\s*\[[ xX]\]\s+/.test(line));
+  const incomplete=checkboxes.filter(line=>/^\s*-\s*\[\s\]/.test(line));
+  const reasons=[];
+  if(string(state).toLowerCase()!=='closed'||string(stateReason).toLowerCase()!=='completed')reasons.push('NOT_CLOSED_COMPLETED');
+  if(done.length!==1||done[0].toLowerCase()!=='true')reasons.push('DONE_EVIDENCE_MISSING_OR_AMBIGUOUS');
+  if(finished.length!==1||!/\b20\d\d-\d\d-\d\dT\d\d:\d\d/.test(finished[0]))reasons.push('FINISHED_AT_UNVERIFIED');
+  if(receipt.length!==1||!/^https:\/\/[a-z0-9.-]+\/\S+/i.test(receipt[0]))reasons.push('FINISH_RECEIPT_UNVERIFIED');
+  if(checkboxes.length===0||incomplete.length)reasons.push('CHECKLIST_NOT_ACCEPTED');
+  return {pass:reasons.length===0,code:reasons.length?'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED':'SOURCE_WORK_ORDER_COMPLETION_EVIDENCED',reasons,completedChecklist:checkboxes.length-incomplete.length,totalChecklist:checkboxes.length};
 }
