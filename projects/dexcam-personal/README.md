@@ -1,10 +1,10 @@
-# DeXCam Personal — hồ sơ dự án độc lập (CHỈ ĐẶC TẢ)
+# DeXCam Personal — hồ sơ dự án độc lập (đặc tả và phát triển theo cổng)
 
 > PROJECT_ID canonical theo `projects/portfolio.yaml`: `dexcam-personal` · Issue #4625 đã đồng nhất `PROJECT_ID=dexcam-personal`; mã lịch sử được giữ riêng tại `LEGACY_PROJECT_ID=TIGERIQ_DEXCAM_PERSONAL` · Nguồn quản lý: [Issue #4625 — dự án Android/DeX riêng](https://github.com/newsdayads/tigeriq-ai-lab/issues/4625)
 >
 > **TRẠNG THÁI: DISCOVERY / ĐẶC TẢ. CHƯA LẬP TRÌNH, CHƯA BUILD, CHƯA KIỂM THỬ APK CÁ NHÂN.**
 >
-> **HOLD:** Chỉ nghiên cứu, viết yêu cầu và lập kế hoạch cho tới khi anh Sơn ra lệnh rõ ràng **LÀM APP** hoặc tương đương.
+> **QUYẾT ĐỊNH NGÀY 12/10/2026:** Phần mềm DeXCam được phép phát triển **có điều kiện** theo Work Order GH-4625. Chưa có bằng chứng đã lập trình; không tự thử xe/cài APK/thay quyền, không vượt qua các cổng G1/G2 và nghiệm thu.
 
 ## I. Sứ mệnh
 
@@ -22,7 +22,7 @@ Tạo ứng dụng Android **mới, độc lập, dùng cá nhân**, kết hợp
 - Dây đỏ nối với mạch/kích hoạt R của xe; dây đen nối với dây đen cục điều khiển; chưa có bản đo mạch.
 - Khi R, camera đáng lẽ tự nổi lên, nhưng thường bị lỡ kích hoạt; bấm icon camera thủ công thường cho phép hiển thị.
 - Khi không R, các cửa sổ ứng dụng đang hoạt động phải giữ bố cục bình thường.
-- Owner yêu cầu trước tiên phân tích sâu và đăng ký thành dự án riêng; **chưa giao làm app**.
+- Owner ban đầu chỉ yêu cầu lập đặc tả; ngày 12/10/2026 đã cho phép phát triển phần mềm có điều kiện. Quyền thao tác trên xe/thiết bị và ký/cài APK không được cấp ngầm.
 
 ## III. Bằng chứng và mức tin cậy
 - **[O] Đã xác nhận bởi Owner:** dây kích hoạt R, hub, triệu chứng lỗi, mục tiêu kinh doanh/kỹ thuật.
@@ -48,12 +48,12 @@ Tạo ứng dụng Android **mới, độc lập, dùng cá nhân**, kết hợp
 ```
 OWNER=SON
 ORCHESTRATOR=VY
-PRIORITY=P1_OWNER_OVERRIDE_20261010
-RESOURCE_SCOPE=DEXCAM_PERSONAL_SPEC_20261009
-STAGE=SPEC_ONLY
-APP_IMPLEMENTATION=HOLD_UNTIL_EXPLICIT_OWNER_COMMAND
+PRIORITY=P1_OWNER_OVERRIDE_20261012
+RESOURCE_SCOPE=DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD
+STAGE=SOURCE_SPEC_RECONCILIATION_PENDING_G1_G2
+APP_IMPLEMENTATION=CONDITIONALLY_AUTHORIZED_PER_GH4625_20261012
 REPO_CODE=NOT_YET_CREATED
-AUTO_QUEUE=EXCLUDED
+AUTO_QUEUE=INCLUDED
 RDC=NOT_AUTHORIZED
 CODEX=NOT_AUTHORIZED
 APK_INSTALL_OR_RELEASE=NOT_AUTHORIZED
@@ -63,11 +63,11 @@ DRIVE_SYNC=NOT_REQUIRED
 ```
 Dự án được **tách riêng bằng hồ sơ, phạm vi tài nguyên, yêu cầu và tiến trình** bên trong repository điều hành TigerIQ. Đây **chưa phải repository mã nguồn Android riêng**; quyết định kho mã riêng phải hoàn tất trước khi viết ứng dụng.
 
-**Đối chiếu nguồn động 2026-10-10:** Issue #4625 đã được Owner chuyển sang P1, NV02 có thể tiếp tục phần tài liệu trong đúng phạm vi. `AUTO_QUEUE=EXCLUDED` và `APP_IMPLEMENTATION=HOLD` vẫn áp dụng cho phần lập trình cho đến khi có lệnh rõ ràng; không khẳng định nhân sự đang chạy.
+**Đối chiếu nguồn động 2026-10-15:** [Work Order GH-4625](https://github.com/newsdayads/tigeriq-ai-lab/issues/4625) ở P1, `AUTO_QUEUE=INCLUDED`, cho phép phát triển phần mềm theo cổng. Việc xếp hàng không chứng minh Core đã nhận lease hoặc bắt đầu lập trình; G1/G2 và quyền nguồn phải được xác minh trước mã ứng dụng; quyền dùng thiết bị/xe/cài APK xét riêng theo hành động.
 
 ## VI. Điều kiện đổi trạng thái
 - `DISCOVERY` → `SPEC_APPROVED`: Owner xác nhận phạm vi, camera/hub và các tiêu chí đo đã được thống nhất.
-- `SPEC_APPROVED` → `IMPLEMENTATION_AUTHORIZED`: Có lệnh Owner giao lập trình app.
+- `SPEC_APPROVED` → `IMPLEMENTATION_AUTHORIZED`: Quyết định Owner ngày 12/10/2026 đã cấp phạm vi phần mềm có điều kiện; chỉ khởi tạo mã app sau khi G1/G2, khả thi camera và quyền nguồn/khóa ghi được xác minh.
 - `IMPLEMENTATION_AUTHORIZED` → `PROTOTYPE`: Có nguồn mã và kiểm thử; không khẳng định khi chỉ có bản mô tả.
 - `PROTOTYPE` → `ACCEPTED`: kiểm thử thật trên điện thoại/DeX/camera; có bằng chứng các tiêu chí an toàn và chất lượng.
 - `ACCEPTED` → `RELEASED`: Owner chấp thuận đúng phạm vi phát hành/cài đặt.
