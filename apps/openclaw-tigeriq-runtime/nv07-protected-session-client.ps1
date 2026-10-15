@@ -107,12 +107,8 @@ public static class Nv07PeerProof {
     }finally{$writer.Dispose();$reader.Dispose()}
   }finally{$pipe.Dispose()}
 }catch{
-  # Stable, non-secret denial. Callers cannot turn a failed native read into trust.
   $reason='NV07_NATIVE_IO_ERROR'
-  if($_.Exception.Message -match '^NV07_[A-Z_]+$false;coreLeaseVerified=$false;nv07Active=$false}|ConvertTo-Json -Compress
-  exit 1
-}
-){$reason=$_.Exception.Message}
+  if($_.Exception.Message -match '^NV07_[A-Z_]+$'){$reason=$_.Exception.Message}
   @{accepted=$false;code='NV07_NATIVE_TRUST_NOT_VERIFIED';reason=$reason;attestationVerified=$false;coreLeaseVerified=$false;nv07Active=$false}|ConvertTo-Json -Compress
   exit 1
 }
