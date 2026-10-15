@@ -11,7 +11,7 @@ const job={
   steps:['Đọc đặc tả','Tạo tệp nguồn thực','Chạy kiểm thử'],acceptance:['Gradle thật','Manifest thật','Kotlin thật'],
   evidence_required:['Commit đúng SHA','Kết quả kiểm thử']
 };
-const make=(j=job)=>compileCodingStepPacket({objectiveId:'GH-4625',sourceRevision:'shaA',job:j,allowedPaths:job.paths,skillEvidence:[{id:'spec-first-tdd',version:'1.1.0',bytes:1800}]});
+const make=(j=job)=>compileCodingStepPacket({objectiveId:'GH-4625',sourceRevision:'shaA',sourceHeadSha:'a'.repeat(40),job:j,allowedPaths:job.paths,skillEvidence:[{id:'spec-first-tdd',version:'1.1.0',bytes:1800}]});
 test('stable step identity and skill provenance',()=>{
   const p=make();
   assert.equal(p.step_id,'D01');assert.deepEqual(p.skill_ids,['spec-first-tdd']);
@@ -114,4 +114,13 @@ test('an in-flight canonical step blocks duplicate objective dispatch even witho
 test('same failure with varying transient ids normalizes to one retry signature',()=>{
   assert.equal(codingFailureSignature({code:'OUTPUT_CONTRACT_EXHAUSTED',message:'abc-1'}),'OUTPUT_CONTRACT_EXHAUSTED');
   assert.equal(codingFailureSignature({message:'Job CODE #12345 returned HTTP 422 after 23917ms'}),codingFailureSignature({message:'Job CODE #78911 returned HTTP 422 after 79884ms'}));
+});
+
+test('step contract is pinned to exact source commit, not only an objective text fingerprint',()=>{
+  const p=make();
+  assert.equal(p.source_head_sha,'a'.repeat(40));
+  assert.match(codingRolePrompt({role:'implementer',packet:p}),/SOURCE_HEAD_SHA=a{40}/);
+  assert.throws(()=>compileCodingStepPacket({objectiveId:'GH-4625',sourceRevision:'shaA',sourceHeadSha:'invalid',job,allowedPaths:job.paths}),/SOURCE_HEAD_INVALID/);
+  const other=compileCodingStepPacket({objectiveId:'GH-4625',sourceRevision:'shaA',sourceHeadSha:'b'.repeat(40),job,allowedPaths:job.paths});
+  assert.notEqual(p.prompt_revision,other.prompt_revision);
 });
