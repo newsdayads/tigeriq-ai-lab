@@ -147,3 +147,33 @@ test('R04 invalid clock fails before GET',async()=>{
   await assert.rejects(inspectHistoricalRun({env,fetchFn:m.fetchFn,now:()=>new Date('invalid')}),e=>e.code==='CLOCK_INVALID');
   assert.equal(m.calls.length,0);
 });
+
+// R04 provenance: mismatching compute-unit counters must not silently become
+// a verified numeric cost input. No real Apify GET is performed in these cases.
+test('R04 conflicting compute units (stats zero, usage positive) remain unverified', async()=>{
+  const m=mocked({final:{...run(),stats:{computeUnits:0},usage:{ACTOR_COMPUTE_UNITS:0.002}}});
+  const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(res.run.computeUnits,null);
+  assert.equal(res.acceptance.platformFinalInvoiceVerified,false);
+  assert.equal(m.calls.length,4);
+});
+test('R04 conflicting compute units (stats positive, usage zero) remain unverified', async()=>{
+  const m=mocked({final:{...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:0}}});
+  const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(res.run.computeUnits,null);
+});
+test('R04 identical compute-unit counters remain numeric', async()=>{
+  const m=mocked({final:{...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:0.002}}});
+  const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(res.run.computeUnits,0.002);
+});
+test('R04 usage-only compute units still readable when stats field is absent', async()=>{
+  const m=mocked({final:{...run(),stats:{},usage:{ACTOR_COMPUTE_UNITS:0.004}}});
+  const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(res.run.computeUnits,0.004);
+});
+test('R04 an invalid secondary compute-unit counter invalidates a numeric primary', async()=>{
+  const m=mocked({final:{...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:-1}}});
+  const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(res.run.computeUnits,null);
+});

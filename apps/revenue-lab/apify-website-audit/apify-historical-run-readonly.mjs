@@ -70,8 +70,17 @@ function localDay(iso) {
   return [val('year'),val('month'),val('day')].join('-');
 }
 function getUnits(run) {
-  const v = run?.stats?.computeUnits ?? run?.usage?.ACTOR_COMPUTE_UNITS ?? null;
-  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+  // Both Apify counters can be present. Never silently trust one when the
+  // other disagrees: an unverified count must not become cost evidence.
+  const stats = run?.stats?.computeUnits;
+  const usage = run?.usage?.ACTOR_COMPUTE_UNITS;
+  const valid = value => typeof value === 'number' &&
+    Number.isFinite(value) && value >= 0;
+  if (stats != null && !valid(stats)) return null;
+  if (usage != null && !valid(usage)) return null;
+  if (stats == null) return valid(usage) ? usage : null;
+  if (usage == null) return valid(stats) ? stats : null;
+  return stats === usage ? stats : null;
 }
 function validateRun(run, config, nowMs) {
   if (!object(run) || run.id !== config.runId || run.actId !== config.actorId)
