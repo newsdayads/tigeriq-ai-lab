@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -119,4 +119,54 @@ it('CLI does not echo nonexistent paths or filesystem errors', () => {
 
 it('imported preflight helper safely rejects non-JSON data without filesystem reads', () => {
   expect(inspectB01Json('{bad').errors).toContain('input:INVALID_JSON');
+});
+
+
+it.skipIf(process.platform === 'win32')('rejects symlink aliases even when target is a valid JSON file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dexcam-b01-symlink-'));
+  try {
+    const privateTarget = join(dir, 'private-target.json');
+    const alias = join(dir, 'link.json');
+    writeFileSync(privateTarget, JSON.stringify(fixture()));
+    symlinkSync(privateTarget, alias);
+    const r = spawnSync(process.execPath, [script, alias], { encoding: 'utf8', timeout: 2000 });
+    expect(r.error).toBeUndefined();
+    expect(r.status).toBe(1);
+    expect(JSON.parse(r.stdout).errors).toContain('input:NOT_A_REGULAR_FILE');
+    expect(r.stdout).not.toContain(privateTarget);
+    expect(r.stderr).toBe('');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it('rejects directory inputs rather than attempting to parse/read them', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dexcam-b01-directory-'));
+  try {
+    const r = spawnSync(process.execPath, [script, dir], { encoding: 'utf8', timeout: 2000 });
+    expect(r.error).toBeUndefined();
+    expect(r.status).toBe(1);
+    expect(JSON.parse(r.stdout).errors).toContain('input:NOT_A_REGULAR_FILE');
+    expect(r.stdout).not.toContain(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const hasMkfifo = process.platform !== 'win32' &&
+  spawnSync('which', ['mkfifo'], { stdio: 'ignore' }).status === 0;
+it.skipIf(!hasMkfifo)('rejects named pipes promptly instead of hanging on open', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dexcam-b01-fifo-'));
+  try {
+    const fifo = join(dir, 'pipe');
+    expect(spawnSync('mkfifo', [fifo], { encoding: 'utf8', timeout: 2000 }).status).toBe(0);
+    const r = spawnSync(process.execPath, [script, fifo], { encoding: 'utf8', timeout: 2000 });
+    expect(r.error).toBeUndefined();
+    expect(r.status).toBe(1);
+    expect(JSON.parse(r.stdout).errors).toContain('input:NOT_A_REGULAR_FILE');
+    expect(r.stdout).not.toContain(fifo);
+    expect(r.stderr).toBe('');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
