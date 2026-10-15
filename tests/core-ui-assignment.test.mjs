@@ -40,7 +40,7 @@ function fakePool(){
     if(sql.startsWith('with locked as materialized')){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);if(found)return{rowCount:0,rows:[]};objectives.push({id:params[1],objective:params[2],priority:params[3],status:'active',summary:params[4],metadata:JSON.parse(params[5]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[{id:params[1]}]};}
     if(sql.includes("metadata->>'resourceScope'=$1")){const found=objectives.some(x=>x.status==='active'&&x.metadata.resourceScope===params[0]);return{rowCount:found?1:0,rows:found?[{one:1}]:[]};}
     if(sql.startsWith('insert into tigeriq_objectives')){objectives.push({id:params[0],objective:params[1],priority:params[2],status:'active',summary:params[3],metadata:JSON.parse(params[4]),updated_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
-    if(sql.startsWith('insert into tigeriq_jobs')){jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:params[4],kind:'ui',status:'ui_assigned',employee_id:params[5],resource_id:params[6],provider:'ui',created_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
+    if(sql.startsWith('insert into tigeriq_jobs')){jobs.push({id:params[0],objective_id:params[1],title:params[2],prompt:params[3],capability:params[4],kind:'ui',status:'ui_assigned',employee_id:params[5],resource_id:params[6],provider:'ui',routing_decision:JSON.parse(params[7]),created_at:'2026-09-30T00:00:01Z'});return{rowCount:1,rows:[]};}
     if(sql.includes('CORE_UI_ASSIGNMENT_CREATED')){events.push({type:'CORE_UI_ASSIGNMENT_CREATED',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.includes('CORE_UI_ASSIGNMENT_TERMINAL')){events.push({type:'CORE_UI_ASSIGNMENT_TERMINAL',objectiveId:params[0],jobId:params[1],workerId:params[2]});return{rowCount:1,rows:[]};}
     if(sql.startsWith('select prompt from tigeriq_jobs')){const j=jobs.find(x=>x.id===params[0]);return{rowCount:j?1:0,rows:j?[{prompt:j.prompt}]:[]};}
@@ -721,4 +721,58 @@ test('installed Core launcher persistently disables NV03 Core routing after upda
  const script=readFileSync(new URL('../scripts/tigeriq-core/run-core.ps1',import.meta.url),'utf8');
  assert.match(script,/\$env:TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1'/);
  assert.match(script,/\$env:TIGERIQ_CORE_PORT='8795'/);
+});
+
+test('Core NV04 idle audit is created only after normal work absence; terminal findings remain verification-gated',async()=>{
+  const pool=fakePool(),sha='0000000000000000000000000000000000000000';
+  const content='export function auditRoute(){return 12345678;}\nexport const VERSION=2026;\n';
+  const fetchImpl=async url=>{
+    if(url.includes('/issues?'))return response([]);
+    if(url.includes('/commits/main'))return response({sha});
+    if(url.includes('/contents/'))return response({encoding:'base64',sha:'fixture-blob',content:Buffer.from(content).toString('base64')});
+    throw Error('UNEXPECTED_IDLE_FETCH:'+url);
+  };
+  const ready={id:'NV04',status:'READY',uiPhase:'READY',uiBusy:false,blocked:false,heartbeatAt:new Date().toISOString(),
+    url:'https://gemini.google.com/app',securityBlock:null,windowState:'OPEN',composerReady:true};
+  const args={pool,fetchImpl,token:'test',nv04Observation:ready,nv04IdleEnabled:true,nv04IdleForceProbe:true};
+  const snapshot=await buildCoreUiAssignmentSnapshot(args);
+  assert.equal(snapshot.nextJobs.length,1);
+  assert.equal(snapshot.nextJobs[0].workerId,'NV04');
+  assert.match(snapshot.nextJobs[0].jobId,/^NV04-AUDIT-0{12}-\d{8}T(?:00|06|12|18)$/);
+  assert.match(snapshot.nextJobs[0].prompt,/KHONG_SUA_CODE/);
+  assert.equal(pool.jobs.length,1);
+  const repeated=await buildCoreUiAssignmentSnapshot(args);
+  assert.equal(repeated.nextJobs.length,1);
+  assert.equal(pool.jobs.length,1);
+  const finding={path:pool.objectives[0].metadata.sourcePaths[0],line:1,quote:'export function auditRoute()',
+    description:'Có nguy cơ sai định tuyến trong trường hợp đầu vào biên',repro:'Tạo test cho dữ liệu đầu vào không hợp lệ',severity:'P2'};
+  const result=['NV04_IDLE_AUDIT_RESULT_V1','SOURCE_SHA='+sha,'AUDIT_SLOT='+pool.objectives[0].metadata.auditSlot,'FINDINGS_JSON='+JSON.stringify([finding])].join('\n');
+  const completed=await completeCoreUiAssignment({pool,fetchImpl,token:'test',jobId:snapshot.nextJobs[0].jobId,workerId:'NV04',terminal:'DONE',result});
+  assert.equal(completed.accepted,true);
+  assert.equal(completed.repairAuthorized,false);
+  assert.equal(completed.findingCount,1);
+  assert.equal(pool.jobs[0].status,'done');
+  assert.equal(pool.jobs[0].result.findings[0].verification,'SOURCE_LINE_CONFIRMED_LOGIC_UNVERIFIED');
+  const after=await buildCoreUiAssignmentSnapshot(args);
+  assert.equal(after.nextJobs.length,0);
+  assert.equal(pool.jobs.length,1);
+  const previous=await buildCoreUiAssignmentSnapshot({...args,previousJobId:snapshot.nextJobs[0].jobId});
+  assert.equal(previous.previousJob.status,'DONE');
+  assert.equal(previous.previousJob.executable,false);
+});
+
+test('Core NV04 idle audit does not preempt a real P1-P5 research task',async()=>{
+  const pool=fakePool(),sha='0000000000000000000000000000000000000000';
+  const work=issue(4889,safe(['CAPABILITY=research']).replace('PRIORITY=P2','PRIORITY=P1'));
+  const fetchImpl=async url=>{
+    if(url.includes('/issues?'))return response([work]);
+    if(url.endsWith('/issues/4889'))return response(work);
+    if(url.includes('/commits/main')||url.includes('/contents/'))throw Error('IDLE_SOURCE_SHOULD_NOT_BE_FETCHED');
+    return response([]);
+  };
+  const ready={id:'NV04',status:'READY',uiPhase:'READY',uiBusy:false,blocked:false,heartbeatAt:new Date().toISOString(),
+    url:'https://gemini.google.com/app',securityBlock:null,windowState:'OPEN',composerReady:true};
+  const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'test',nv04Observation:ready,nv04IdleEnabled:true,nv04IdleForceProbe:true});
+  assert.equal(snap.nextJobs[0].jobId,'GH-4889');
+  assert.equal(pool.jobs.length,1);
 });
