@@ -73,6 +73,11 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(wo.body).toContain('RESOURCE_SCOPE=AUTO_RCA_ROUTING_');
     expect(wo.body).toContain('SELF_UPGRADE_CANDIDATE=true');
     expect(wo.body).toContain('TIGERIQ_EXECUTABLE=true');
+    // Regression: a composite capability made every Core resource ineligible
+    // and repeatedly blocked real RCA objectives with NO_AI_RESOURCE_AVAILABLE.
+    expect(wo.body).toContain('CAPABILITY=coding');
+    expect(wo.body).toContain('EXECUTION_SURFACE=CODING');
+    expect(wo.body).not.toContain('CAPABILITY=coding,reasoning,review');
     expect(wo.body).toContain('AUTO_QUEUE=INCLUDED');
     expect(wo.body).toContain('CURRENT_STATE=READY_AUTONOMOUS_REPAIR');
     expect(wo.body).toContain('NO_DIRECT_MAIN=true');
