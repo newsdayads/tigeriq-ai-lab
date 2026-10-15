@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
-import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer } from './pad-ui.mjs';
+import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer, probeNv07NativeUserSession } from './pad-ui.mjs';
 import { PAPERCLIP_LAB_ACTIONS, executePaperclipLabAction } from './paperclip-lab.mjs';
 
 const win = path.win32;
@@ -2526,6 +2526,8 @@ export async function executePcAction(input, options = {}) {
   let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
+  } else if (action === 'nv07_native_session_probe') {
+    data = await probeNv07NativeUserSession();
   } else if (action === 'nv07_preflight') {
     data = await nv07UserSessionPreflight();
   } else if (action === 'nv07_read_metadata_canary') {

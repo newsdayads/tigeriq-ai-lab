@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {describe,it,expect,vi} from 'vitest';
 import {createNv07CoreDbCanaryCallbacks,runCoreBoundNv07OneShotCanary} from '../apps/tigeriq-core/nv07-core-canary-bindings.mjs';
 import {NV07_CANARY_CORE_SCOPE as SCOPE} from '../apps/tigeriq-core/shared-resource-lease.mjs';
@@ -120,4 +121,12 @@ describe('NV07 Core-bound one-shot wiring is opt-in and not routable',()=>{
     expect(createNv07CoreDbCanaryCallbacks(f.db,{jobId,sourceSha})).toBeNull();
     expect(createNv07CoreDbCanaryCallbacks(null,{jobId,sourceSha,resourceId})).toBeNull();
   });
+});
+it('P0 NV07 bootstrap slot is opt-in and cannot join regular routing',()=>{
+  const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  expect(source).toContain("process.env.TIGERIQ_NV07_BOOTSTRAP_RESOURCE_ENABLED==='1'");
+  expect(source).toContain("...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[])");
+  expect(source).toContain("capabilities:['nv07_bootstrap']");
+  expect(source).toContain("if(r.id==='NV07'){credential='WAIT_KEY';health='OFFLINE';}");
+  expect(source).toContain("resourceId:'res:antigravity:agy-cli:owner-wdragons12x:pc01'");
 });

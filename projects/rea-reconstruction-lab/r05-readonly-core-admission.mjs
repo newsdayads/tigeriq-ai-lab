@@ -33,17 +33,25 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
       !(typeof x.employee_id === 'string' || x.employee_id === null) ||
       !coreStatuses.has(x.status)))
     return report('INVALID_RESOURCE');
+  // Duplicate resource IDs make Core's resource-to-lease projection ambiguous.
+  if (new Set(snapshot.resources.map(x => x.resource_id)).size !== snapshot.resources.length)
+    return report('INVALID_RESOURCE');
   if (snapshot.sharedLeases.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256))
     return report('INVALID_LEASE_PROJECTION');
   if (snapshot.jobs.some(x => !rec(x) || !['running', 'queued'].includes(x.status) ||
-      !(x.resource_id === null || typeof x.resource_id === 'string') ||
+      !(x.resource_id === null || (typeof x.resource_id === 'string' &&
+        x.resource_id.length > 0 && x.resource_id.length <= 256)) ||
       !(x.employee_id === null || typeof x.employee_id === 'string')))
     return report('INVALID_JOB_PROJECTION');
   const ownedRows = snapshot.resources.filter(x => x.employee_id === 'NV02');
   const counts = { resources: snapshot.resources.length, nv02Rows: ownedRows.length,
     sharedLeases: snapshot.sharedLeases.length };
   if (!ownedRows.length) return report('NV02_RESOURCE_ABSENT', counts);
+  // A running NV02 job without a mapped resource ID must not appear idle.
+  if (snapshot.jobs.some(x => x.status === 'running' && x.employee_id === 'NV02' &&
+      x.resource_id === null))
+    return report('NV02_RESOURCE_BUSY', { ...counts, busyRows: ownedRows.length });
   const inUse = new Set(snapshot.sharedLeases.map(x => x.resource_id));
   const runningJobs = new Set(snapshot.jobs.filter(x => x.status === 'running' &&
     typeof x.resource_id === 'string').map(x => x.resource_id));

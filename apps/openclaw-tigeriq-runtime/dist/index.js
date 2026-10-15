@@ -79,6 +79,7 @@ export default defineToolPlugin({
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal('shell_exec'),
+          Type.Literal('nv07_native_session_probe'),
           Type.Literal('nv07_preflight'),
           Type.Literal('nv07_read_metadata_canary'),
           Type.Literal('nv07_read_metadata_canary_v2'),

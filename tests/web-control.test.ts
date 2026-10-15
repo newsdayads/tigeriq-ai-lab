@@ -25,7 +25,7 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(apiHealth).toContain("t?.claimState==='NOT_CLAIMED'");
     expect(apiHealth).toContain("1 yêu cầu QA chờ nhận".replace('1',''));
     expect(apiHealth).toContain("pending_qa_count");
-    expect(apiHealth).toContain("let activeFilter='all'");
+    expect(apiHealth).toContain("let activeFilter='working'");
     expect(apiHealth).toContain('data-filter="ready">Rảnh</button>');
     expect(apiHealth).toContain("else if(activeFilter==='ready')list=list.filter(x=>simpleState(x).group==='ready')");
   });
