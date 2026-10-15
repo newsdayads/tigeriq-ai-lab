@@ -13,7 +13,7 @@ import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {matchAndLoadSkills} from '../tigeriq-core/skill-loader.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -1204,7 +1204,8 @@ export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
   if(state!=='open'||!executableTrue||executableFalse||terminalState||supersededBy){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
-    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy};
+    error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy,
+      completionEvidence:((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&state==='closed')?verifyClosedCodingWorkOrder({body,state,stateReason}):null};
     throw error;
   }
   return true;
@@ -1231,7 +1232,11 @@ export function codingObjectiveSourcePreflightDecision(error){
   if(code!=='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE')return {action:'defer',code};
   const state=String(error?.detail?.state||'').toLowerCase();
   const stateReason=String(error?.detail?.stateReason||'').toLowerCase();
-  if(state==='closed'&&stateReason==='completed')return {action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'};
+  if(state==='closed'&&stateReason==='completed'){
+    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&error?.detail?.completionEvidence?.pass!==true)
+      return {action:'block',code:'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED'};
+    return {action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'};
+  }
   return {action:'block',code:'SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE'};
 }
 
