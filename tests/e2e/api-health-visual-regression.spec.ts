@@ -449,3 +449,57 @@ test('Owner P0 journal timestamp is green and blocker NONE is hidden',async({pag
  expect(await journal.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(74, 222, 128)');
  await expect(page.locator('#workList .work-row[data-work-number="4574"] .work-quick.blocked')).toHaveCount(0);
 });
+
+
+test('Owner 3 screen density: compact cards, uniform buttons and usable content at 1664 924 630',async({page})=>{
+ for(const [width,height,minWork,minWorkers] of [[1664,936,5,6],[924,1040,3,4],[630,1040,2,3]] as const){
+  await page.setViewportSize({width,height});
+  await openFixture(page);
+  const metrics=await page.evaluate(()=>{
+   const w=document.querySelector('#workList')!,emp=document.querySelector('#workers')!;
+   const columns=(el:Element)=>getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length;
+   const widths=(sel:string)=>[...document.querySelectorAll(sel)].map(el=>Math.round(el.getBoundingClientRect().width));
+   const wo=widths('#woFilters>.wo-filter'),wf=widths('.workforce-panel .filters .filter[data-filter]');
+   const card=document.querySelector('#workList .tiq-work-card')!;
+   const state=card.querySelector('.work-top .state')!;
+   const title=card.querySelector('.work-title')!;
+   const meta=card.querySelector('.work-hierarchy')!;
+   return {workCols:columns(w),workerCols:columns(emp),wo,wf,
+    titleFont:parseFloat(getComputedStyle(title).fontSize),
+    stateFont:parseFloat(getComputedStyle(state).fontSize),
+    metaFont:parseFloat(getComputedStyle(meta).fontSize),
+    docWidth:document.documentElement.scrollWidth,windowWidth:document.documentElement.clientWidth};
+  });
+  expect(metrics.workCols,'work columns at '+width).toBeGreaterThanOrEqual(minWork);
+  expect(metrics.workerCols,'workforce columns at '+width).toBeGreaterThanOrEqual(minWorkers);
+  expect(new Set(metrics.wo).size,'work button widths at '+width).toBe(1);
+  expect(new Set(metrics.wf).size,'workforce button widths at '+width).toBe(1);
+  expect(metrics.wo[0],'compact work buttons at '+width).toBeLessThanOrEqual(112);
+  expect(metrics.wf[0],'compact workforce buttons at '+width).toBeLessThanOrEqual(114);
+  expect(metrics.titleFont).toBeGreaterThan(metrics.stateFont);
+  expect(metrics.stateFont).toBe(metrics.metaFont);
+  expect(metrics.docWidth,'horizontal overflow at '+width).toBeLessThanOrEqual(metrics.windowWidth);
+ }
+});
+
+test('Owner work-card hover highlights the surface and detail fonts stay uniform',async({page})=>{
+ await page.setViewportSize({width:924,height:980});
+ await openFixture(page);
+ const card=page.locator('#workList .tiq-work-card').first();
+ const first=await card.locator('.work-main').evaluate(el=>getComputedStyle(el).backgroundColor);
+ await card.hover();
+ await expect.poll(()=>card.locator('.work-main').evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(first);
+ await card.click();
+ const modal=page.locator('#workDetailModal');
+ await expect(modal).toBeVisible();
+ const f=await modal.evaluate(el=>({
+  title:parseFloat(getComputedStyle(el.querySelector('.work-detail-title')!).fontSize),
+  line:parseFloat(getComputedStyle(el.querySelector('.work-detail-row')!).fontSize),
+  section:parseFloat(getComputedStyle(el.querySelector('.work-detail-section h3')!).fontSize),
+  kicker:parseFloat(getComputedStyle(el.querySelector('.work-detail-kicker')!).fontSize),
+ }));
+ expect(f.line).toBe(12);
+ expect(f.section).toBe(f.line);
+ expect(f.kicker).toBe(f.line);
+ expect(f.title).toBeGreaterThan(f.line);
+});
