@@ -11,9 +11,26 @@ const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.c
 const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
+const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('uses muted NV cards and evidence-based V6 status colors on both surfaces', () => {
+    expect(apiHealth).toContain('--tiq-working:#60A5FA;--tiq-ready:#A8B7C9');
+    expect(apiHealth).toContain('--tiq-done:#4ADE80');
+    expect(apiHealth).toContain("if(s==='MOBILE_OFFLINE')return{group:'unknown',label:'CHƯA CÓ HEARTBEAT',rank:4}");
+    expect(apiHealth).toContain('function stateBadge(state){return esc(state.label)}');
+    expect(apiHealth).toContain('.worker.employee-card.state-ready,.worker.employee-card.state-ondemand{--state-color:#a8b7c9;}');
+    expect(apiHealth).toContain('.worker.employee-card.state-working{--state-color:#60a5fa;}');
+    expect(apiHealth).toContain('background:#101c2e!important;border:1px solid #344257!important;');
+    expect(apiHealth).not.toContain('const STATE_ICON=');
+    expect(workforceCss).toContain('/* Owner interaction V6: workforce cards are neutral;');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-ready,');
+    expect(workforceCss).toContain('background:#101c2e!important;');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-working{--state-color:#60a5fa;}');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-attention{--state-color:#fb7185;}');
+  });
+
   it('shows NV102 Mobile Core presence without registering a fake generic AI resource',()=>{
     expect(core).toContain('projectMobileWorkerPresence');
     expect(core).toContain('resources:rr,mobileWorkers,workforce');
