@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -103,4 +103,15 @@ test('completed source work order needs coherent terminal evidence',()=>{
   assert.equal(good.pass,true);
   const ambiguous=verifyClosedCodingWorkOrder({body:'DONE=true\nDONE=false\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://example.com/a\n- [x] G1'});
   assert.equal(ambiguous.pass,false);
+});
+
+test('an in-flight canonical step blocks duplicate objective dispatch even without failures',()=>{
+  for(const status of ['queued','running','review','waiting_ci','waiting_resource']){
+    const decision=repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'A',history:[{workOrderId:'4625',stepId:'D01',sourceRevision:'A',status}]});
+    assert.deepEqual(decision,{allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'});
+  }
+});
+test('same failure with varying transient ids normalizes to one retry signature',()=>{
+  assert.equal(codingFailureSignature({code:'OUTPUT_CONTRACT_EXHAUSTED',message:'abc-1'}),'OUTPUT_CONTRACT_EXHAUSTED');
+  assert.equal(codingFailureSignature({message:'Job CODE #12345 returned HTTP 422 after 23917ms'}),codingFailureSignature({message:'Job CODE #78911 returned HTTP 422 after 79884ms'}));
 });
