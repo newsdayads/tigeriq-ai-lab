@@ -2,7 +2,7 @@ import {readFile,lstat,writeFile,rename,unlink} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {attestNv07ProtectedSession} from '../openclaw-tigeriq-runtime/nv07-protected-session.mjs';
-import {prepareNv07CliProposal} from '../shared/nv07-headless-proposal-adapter.mjs';
+import {prepareNv07CliProposal,verifyNv07CliProposal} from '../shared/nv07-headless-proposal-adapter.mjs';
 import {runCoreBoundNv07OneShotCanary} from './nv07-core-canary-bindings.mjs';
 import {acquireSharedResourceLease,releaseSharedResourceLease,heartbeatSharedResourceLease,
  readVerifiedNv07CanaryCoreLease,NV07_CANARY_CORE_SCOPE} from './shared-resource-lease.mjs';
@@ -80,6 +80,13 @@ async function nativeBoundCli(db,job,approval,input){
    ||proof.pid!==session.pid||!proof.cliResult||typeof proof.cliResult.stdout!=='string'
    ||proof.cliResult.stdout.length>262144||typeof proof.cliResult.stderr!=='string'
    ||proof.cliResult.stderr.length>262144)throw new Error('NV07_BOUND_CLI_RESULT_NOT_VERIFIED');
+  const verified=verifyNv07CliProposal({job,invocation:expected,...proof.cliResult});
+  if(verified.accepted){
+   await writeFile(ROOT+String.raw`\evidence\proposal-`+job.jobId+'.json',
+    JSON.stringify({jobId:job.jobId,sourceSha:job.sourceSha,outputHash:verified.outputHash,
+     summary:verified.summary,proposedFiles:verified.proposedFiles,risks:verified.risks}),
+    {encoding:'utf8',flag:'wx'});
+  }
   return proof.cliResult;
  }finally{await unlink(path).catch(()=>{});}
 }
@@ -88,7 +95,7 @@ async function nativeBoundCli(db,job,approval,input){
 // command, path, "verified" field, database handle or execution identity.
 export async function runNv07ApprovedBootstrap(db){
  if(process.platform!=='win32'||!db?.query||!db?.connect)return deny('NV07_CORE_RUNTIME_REQUIRED');
- let lease=null,timer=null,job=null;
+ let lease=null,timer=null,job=null,resultOut=null;
  try{
   const session=await attestNv07ProtectedSession();
   if(session.attestationVerified!==true)return deny('NV07_NATIVE_SESSION_UNVERIFIED');
@@ -136,13 +143,20 @@ export async function runNv07ApprovedBootstrap(db){
    });
   await db.query("update tigeriq_jobs set status=$2,result=$3,completed_at=now() where id=$1",
    [job.jobId,result.accepted?'done':'failed',JSON.stringify(result)]);
-  return {...result,coreLeaseVerified:result.accepted===true,leaseReleasedAfterRun:true,nv07Active:false};
+  resultOut={...result,coreLeaseVerified:result.accepted===true,leaseReleasedAfterRun:false,nv07Active:false};
+  return resultOut;
  }catch{
   if(job&&lease)await db.query("update tigeriq_jobs set status='failed',failure='NV07_BOUNDED_OPERATION_FAILED',completed_at=now() where id=$1 and status='running'",[job.jobId]).catch(()=>{});
   return deny('NV07_BOUNDED_OPERATION_FAILED');
  }finally{
   if(timer)clearInterval(timer);
-  if(lease)await releaseSharedResourceLease(db,{resourceId:NV07_BOOTSTRAP_RESOURCE_ID,
-   leaseToken:lease.lease_token});
+  if(lease){
+   let released=false;
+   try{released=await releaseSharedResourceLease(db,{resourceId:NV07_BOOTSTRAP_RESOURCE_ID,leaseToken:lease.lease_token});}catch{}
+   if(resultOut){
+    resultOut.leaseReleasedAfterRun=released;
+    if(!released){resultOut.accepted=false;resultOut.code='NV07_LEASE_RELEASE_UNVERIFIED';}
+   }
+  }
  }
 }
