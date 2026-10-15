@@ -375,7 +375,10 @@ test('NV03/NV04: current UI state, QA inbox, color and filter have distinct evid
  await page.setViewportSize({width:390,height:844});
  await openFixture(page);
  const all=page.locator('.filter[data-filter="all"]');
- await expect(all).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveAttribute('aria-pressed','true');
+  await expect(all).toHaveAttribute('aria-pressed','false');
+  await all.click();
+  await expect(all).toHaveAttribute('aria-pressed','true');
  await expect(page.locator('.filter[data-filter="working"]')).toHaveText(/Đang làm/);
  await expect(page.locator('.filter[data-filter="ready"]')).toHaveText(/Rảnh/);
  const nv03=page.locator('.employee-card[data-employee="NV03"]');
@@ -407,4 +410,42 @@ test('UI generating response is WORKING only while heartbeat fresh, never a fabr
    return {working:working.status,workingJob:working.current_job_id,workingLive:working.ui_live,stale:stale.status,staleJob:stale.current_job_id,staleLive:stale.live_job};
  });
  expect(test).toEqual({working:'UI_BUSY',workingJob:null,workingLive:true,stale:'UNKNOWN',staleJob:null,staleLive:null});
+});
+
+
+test('Owner P0 flat workforce default and equal work-filter controls with visible progress',async({page})=>{
+ await page.setViewportSize({width:1648,height:900});
+ await openFixture(page);
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.filter[data-filter="all"]')).toHaveAttribute('aria-pressed','false');
+ const buttons=page.locator('#woFilters > .wo-filter');
+ await expect(buttons).toHaveCount(4);
+ const widths=await buttons.evaluateAll(els=>els.map(el=>Math.round(el.getBoundingClientRect().width)));
+ expect(new Set(widths).size).toBe(1);
+ const priority=page.locator('#workList .priority.p2').first();
+ await expect(priority).toBeVisible();
+ expect(await priority.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(255, 255, 255)');
+ const row=page.locator('#workList .progress:not(.indeterminate)').first();
+ await expect(row).toBeVisible();
+ const styling=await row.locator('.progress-fill').evaluate(el=>({
+   effect:getComputedStyle(el,'::before').animationName,
+   seconds:getComputedStyle(el,'::before').animationDuration,
+   shadow:getComputedStyle(el).textShadow}));
+ expect(styling.effect).toContain('tiq-owner-flow-fast');
+ expect(styling.seconds).toBe('0.95s');
+ expect(styling.shadow).toBe('none');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ expect(await row.locator('.progress-fill').evaluate(el=>getComputedStyle(el,'::before').animationName)).toBe('none');
+});
+
+test('Owner P0 journal timestamp is green and blocker NONE is hidden',async({page})=>{
+ await openFixture(page);
+ const rows=[{...work[0],lastActivitySource:'github_issue_comment',lastActivityAt:recent(2),lastActivitySummary:'Confirmed progress'},
+   {...work[1],blocker:'NONE',waitReason:'NONE'},work[2]];
+ await page.route(base+'/api/health-live-work',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,projection:{...projection().projection,openWork:rows}})}));
+ await page.reload();
+ const journal=page.locator('#workList .work-activity span:first-child');
+ await expect(journal).toBeVisible();
+ expect(await journal.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(74, 222, 128)');
+ await expect(page.locator('#workList .work-row[data-work-number="4574"] .work-quick.blocked')).toHaveCount(0);
 });
