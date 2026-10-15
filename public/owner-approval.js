@@ -24,7 +24,7 @@ async function load(){
     message('Cần đăng nhập đúng tài khoản Owner. Sau khi đăng nhập, quay lại và tải lại trang này.');
     return;
   }
-  const data=await getJson('/api/owner-decision?issue='+encodeURIComponent(issue));
+  const data=await getJson('/api/control?operation=owner-decision?issue='+encodeURIComponent(issue));
   if(!data.ok){message('Không thể xác minh yêu cầu: '+String(data.error||data.httpStatus));return}
   if(!data.pending){
     message('Yêu cầu này đã có quyết định được ghi nhận. Không cho gửi trùng.');
@@ -40,10 +40,10 @@ async function choose(decision){
   byId('approve').disabled=true;
   byId('reject').disabled=true;
   message('Đang gửi quyết định có xác thực…');
-  const data=await getJson('/api/owner-decision',{
+  const data=await getJson('/api/control?operation=owner-decision',{
     method:'POST',
     headers:{'content-type':'application/json'},
-    body:JSON.stringify({...current,decision})
+    body:JSON.stringify({...current,decision,operation:'owner-decision'})
   }).catch(()=>({ok:false,error:'KHÔNG KẾT NỐI ĐƯỢC'}));
   if(!data.ok){
     message('CHƯA GHI NHẬN: '+String(data.error||data.httpStatus)+'. Tải lại hồ sơ để đối chiếu.');
