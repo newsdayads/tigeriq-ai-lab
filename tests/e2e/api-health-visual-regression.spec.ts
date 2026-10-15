@@ -24,13 +24,13 @@ function fixtureStatus(stale=false){
     {employee_id:'NV14',resource_id:'NV14',name:'Mistral',provider:'mistral',model:'small',status:'RATE_LIMITED',cooldown_until:ahead(),last_seen_at:ts,last_latency_ms:900},
     {employee_id:'NV15',resource_id:'NV15',name:'Cloudflare',provider:'cloudflare',status:'ERROR',last_error:'Provider unavailable',last_seen_at:ts,last_latency_ms:300}
    ],
-   workforce:['NV09','NV06','NV14','NV15'].map(employee_id=>({employee_id,name:employee_id,assigned:true,admin_state:'READY'})),
+   workforce:['NV03','NV04','NV09','NV06','NV14','NV15'].map(employee_id=>({employee_id,name:employee_id,assigned:true,admin_state:'READY'})),
    jobs:[],events:Array.from({length:28},(_,i)=>({seq:String(100-i),ts:recent(i+1),type:i===0?'API_DOCTOR_SCAN':'RESOURCE_SUCCESS',employee_id:'NV06',resource_id:'NV06',data:{kind:'health',...(i===0?{repairIssueNumber:3278}:{})}})),
    telemetry:[{ts,employee_id:'NV06',type:'RESOURCE_SUCCESS'}]
  };
 }
 function projection(stale=false){return {ok:true,projection:{generatedAt:recent(stale?7200:1),stale,verifiedGateSource:true,
- openSummary:{open:work.length,actionable:work.length,review:1,waiting:1,done:0},openWork:work,recentWork:[],workers:[]}}}
+ openSummary:{open:work.length,actionable:work.length,review:1,waiting:1,done:0},openWork:work,recentWork:[],workProjection:{stale},nv03MilestoneQaInboxFresh:!stale,nv03MilestoneQaInbox:[{employeeId:'NV03',proofStatus:'REVIEW_REQUEST_DISCOVERED',claimState:'NOT_CLAIMED',receiptCoverage:'COMPLETE',issueNumber:4625}],workers:[{employeeId:'NV03',kind:'ui',state:'idle',uiSessionState:'idle',heartbeatAt:recent(stale?7200:1),currentJobId:null,job:'Không có việc đang chạy',detail:'READY'},{employeeId:'NV04',kind:'ui',state:'idle',uiSessionState:'idle',heartbeatAt:recent(stale?7200:1),currentJobId:null,job:'Không có việc đang chạy',detail:'READY'}]}}}
 async function openFixture(page:Page,stale=false){
  await page.route('https://fonts.googleapis.com/**',r=>r.fulfill({status:200,contentType:'text/css',body:''}));
  await page.route('https://fonts.gstatic.com/**',r=>r.fulfill({status:204,body:''}));
@@ -369,4 +369,42 @@ test('Ops monitoring: verified source-age, active severity, event history and ev
  await expect(page.locator('#opsEvidenceGithub')).toHaveAttribute('href',/issues\/3278/);
  await page.locator('#opsEvidenceClose').click();
  await expect(page.locator('#opsEvidenceBackdrop')).toBeHidden();
+});
+
+test('NV03/NV04: current UI state, QA inbox, color and filter have distinct evidence',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await openFixture(page);
+ const all=page.locator('.filter[data-filter="all"]');
+ await expect(all).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveText(/Đang làm/);
+ await expect(page.locator('.filter[data-filter="ready"]')).toHaveText(/Rảnh/);
+ const nv03=page.locator('.employee-card[data-employee="NV03"]');
+ const nv04=page.locator('.employee-card[data-employee="NV04"]');
+ await expect(nv03).toBeVisible();
+ await expect(nv04).toBeVisible();
+ await expect(nv03).toContainText('RẢNH');
+ await expect(nv03).toContainText('1 yêu cầu QA chờ nhận');
+ await expect(nv04).toContainText('RẢNH');
+ await expect(nv04).not.toContainText('ĐANG LÀM');
+ const colors=await page.locator('.filter[data-filter]').evaluateAll(nodes=>Object.fromEntries(nodes.map(el=>[el.getAttribute('data-filter'),getComputedStyle(el).color])));
+ expect(colors.working).toBe('rgb(34, 197, 94)');
+ expect(colors.ready).toBe('rgb(59, 130, 246)');
+ expect(colors.cloud).toBe('rgb(203, 213, 225)');
+ await page.locator('.filter[data-filter="ready"]').click();
+ await expect(page.locator('.filter[data-filter="ready"]')).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.employee-card[data-employee="NV03"]')).toBeVisible();
+ await expect(page.locator('.employee-card[data-employee="NV04"]')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('UI generating response is WORKING only while heartbeat fresh, never a fabricated Core job',async({page})=>{
+ await openFixture(page);
+ const test=await page.evaluate(()=>{
+   const fn=(window as any).applyLiveWorkforce;
+   const row={employee_id:'NV03',status:'UNKNOWN',current_job_id:'STALE-GH',live_job:'STALE'};
+   const working=fn([row],[{employeeId:'NV03',kind:'ui',state:'working',uiSessionState:'working',heartbeatAt:new Date().toISOString(),currentJobId:null,job:'Chat đang trả lời'}])[0];
+   const stale=fn([row],[{employeeId:'NV03',kind:'ui',state:'working',uiSessionState:'working',heartbeatAt:new Date(Date.now()-61000).toISOString(),currentJobId:'OLD-GH',job:'Old job'}])[0];
+   return {working:working.status,workingJob:working.current_job_id,workingLive:working.ui_live,stale:stale.status,staleJob:stale.current_job_id,staleLive:stale.live_job};
+ });
+ expect(test).toEqual({working:'UI_BUSY',workingJob:null,workingLive:true,stale:'UNKNOWN',staleJob:null,staleLive:null});
 });
