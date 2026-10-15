@@ -1,6 +1,29 @@
+import {createHash} from 'node:crypto';
 import {isRetryableManagerOutputError} from './manager-json.mjs';
 
 export const API_DOCTOR_CAPABILITY='api_doctor';
+
+// API Doctor owns provider diagnosis for cloud NV11–NV20 only. Local NV06,
+// NV08 and NV09 use their own health/manager/coding lifecycles.
+export function apiDoctorScannableEmployeeId(employeeId=''){
+  return /^NV(?:1[1-9]|20)$/.test(String(employeeId||'').trim().toUpperCase());
+}
+
+// Unlike repair signatures (which intentionally collapse changing attempt
+// numbers), a scan key must preserve each NV identity and provider. Otherwise
+// NV11:probe and NV20:probe can collapse to the same dedupe key.
+export function apiDoctorScanSignature(items=[]){
+  const states=(Array.isArray(items)?items:[])
+    .filter(item=>apiDoctorScannableEmployeeId(item?.employeeId))
+    .map(item=>[
+      safeText(item.employeeId,16).toUpperCase(),
+      safeText(item.provider,64).toLowerCase(),
+      safeText(item.action,40).toLowerCase(),
+      safeText(item.failureClass,40).toLowerCase(),
+    ])
+    .sort((a,b)=>a[0].localeCompare(b[0]));
+  return 'SCAN|core|state|'+createHash('sha256').update(JSON.stringify(states)).digest('hex');
+}
 
 const safeText=(value,max=240)=>String(value??'').trim().slice(0,max);
 
