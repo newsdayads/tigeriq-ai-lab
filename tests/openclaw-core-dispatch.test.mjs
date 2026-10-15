@@ -152,6 +152,15 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
         coreLeaseVerified:false,nv07Active:false},
     }};
     expect(trustedBridgeNv07ActionReceipt([canary],'nv07_read_metadata_canary')).toBe(true);
+    const v3={...canary,result:{...canary.result,
+      action:'nv07_read_metadata_canary_v3',
+      data:{...canary.result.data,schema:'NV07_GATEWAY_CANARY_V3'},
+    }};
+    expect(expectedNv07OperatorActionFromInstruction('call nv07_read_metadata_canary_v3'))
+      .toBe('nv07_read_metadata_canary_v3');
+    expect(trustedBridgeNv07ActionReceipt([v3],'nv07_read_metadata_canary_v3')).toBe(true);
+    expect(trustedBridgeNv07ActionReceipt([canary],'nv07_read_metadata_canary_v3')).toBe(false);
+
     expect(trustedBridgeNv07ActionReceipt([{
       ...canary,result:{...canary.result,data:{...canary.result.data,nv07Active:true}},
     }],'nv07_read_metadata_canary')).toBe(false);
