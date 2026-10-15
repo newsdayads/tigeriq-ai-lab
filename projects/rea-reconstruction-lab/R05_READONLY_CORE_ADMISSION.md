@@ -29,3 +29,9 @@ R05 remains **unchecked** until a legitimate executor identity/resource binding,
 ## Core status safety regression (15/10/2026)
 
 Core `publicStatus()` distinguishes `WAIT_KEY`, `RATE_LIMITED`, `ERROR`, `OFFLINE`, `DISABLED`, `BUSY`, `ON_DEMAND`, `IDLE`, and `READY`. The read-only projection is *not* an authenticated action grant. When all NV02 rows are unhealthy/disabled or busy, the diagnostic must not suggest a free claim candidate. Added tests cover unknown/missing statuses, five unavailable statuses, mixed contention and health, and CLI no-authorization flags. The actual NV02 resource and device authorization still require separate Core/PC01 receipts. Changes are source-only and do not alter Core, resource registry, leases, PC01, or REA installation.
+
+## Core job lịch sử — đối chiếu PC01 thật (16/10/2026)
+- Đọc tại PC01 qua `GET /api/status`, giờ nguồn `2026-10-15T18:38:35.684Z`: `ok=true`, **15 resources**, **40 jobs với `status=done`**, **0 shared leases**, **0 NV02 resource**. Đây là biên nhận ảnh chụp chỉ đọc, không phải quyền sử dụng Core.
+- Bộ đọc R05 cũ chỉ nhận `running`/`queued`, nên khi đưa đúng 40 job lịch sử vào, bộ kiểm tra đánh `INVALID_JOB_PROJECTION` trước khi có thể trả `NV02_RESOURCE_ABSENT`. Đây là lỗi định dạng đầu vào, không phải lỗi cấp tài nguyên.
+- Bản vá chỉ chấp nhận thêm `done` như trạng thái cuối lịch sử, vẫn kiểm tra định dạng `employee_id`/`resource_id`, chỉ `running` được tính là tranh chấp hiện hành; `queued` không được diễn dịch là đã nhận lease. Trạng thái lạ vẫn bị từ chối.
+- Chỉ thay bộ chẩn đoán và hồi quy nguồn, không sửa Core server, lịch sử job, lease, tài nguyên, quyền thiết bị hoặc cài REA. `R05` và `R06` tiếp tục chờ nghiệm thu ngoài đời thật.
