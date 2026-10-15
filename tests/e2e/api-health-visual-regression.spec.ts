@@ -503,3 +503,37 @@ test('Owner work-card hover highlights the surface and detail fonts stay uniform
  expect(f.kicker).toBe(f.line);
  expect(f.title).toBeGreaterThan(f.line);
 });
+
+test('Owner mobile filter chips use compact four-across layout without oversized padding',async({page})=>{
+ for(const width of [390,414,430,320]){
+  await page.setViewportSize({width,height:844});
+  await openFixture(page);
+  const a=await page.evaluate(()=>{
+   const wf=document.querySelector('.workforce-panel .filters')!;
+   const wo=document.querySelector('#woFilters')!;
+   const tabs=[...wf.querySelectorAll('.filter[data-filter]')] as HTMLElement[];
+   const work=[...wo.querySelectorAll('.wo-filter')] as HTMLElement[];
+   const box=(el:HTMLElement)=>el.getBoundingClientRect();
+   return {
+    wfTracks:getComputedStyle(wf).gridTemplateColumns.split(' ').filter(Boolean).length,
+    workTracks:getComputedStyle(wo).gridTemplateColumns.split(' ').filter(Boolean).length,
+    wfHeights:tabs.map(e=>Math.round(box(e).height)),
+    workHeights:work.map(e=>Math.round(box(e).height)),
+    wfWidths:tabs.map(e=>Math.round(box(e).width)),
+    workWidths:work.map(e=>Math.round(box(e).width)),
+    wfRows:new Set(tabs.map(e=>Math.round(box(e).top))).size,
+    workRows:new Set(work.map(e=>Math.round(box(e).top))).size,
+    overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth
+   };
+  });
+  expect(a.wfTracks).toBe(width>=360?4:3);
+  expect(a.workTracks).toBe(width>=360?4:2);
+  expect(new Set(a.wfHeights)).toEqual(new Set([27]));
+  expect(new Set(a.workHeights)).toEqual(new Set([27]));
+  expect(new Set(a.wfWidths).size).toBe(1);
+  expect(new Set(a.workWidths).size).toBe(1);
+  expect(a.wfRows).toBe(width>=360?2:3);
+  expect(a.workRows).toBe(width>=360?1:2);
+  expect(a.overflow).toBe(false);
+ }
+});
