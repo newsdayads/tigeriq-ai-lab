@@ -3,6 +3,11 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 const rec = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+const coreStatuses = new Set([
+  'DISABLED', 'WAIT_KEY', 'BUSY', 'RATE_LIMITED', 'ERROR', 'OFFLINE', 'ON_DEMAND', 'IDLE', 'READY'
+]);
+const notReadyStatuses = new Set(['DISABLED', 'WAIT_KEY', 'RATE_LIMITED', 'ERROR', 'OFFLINE']);
+
 const report = (decision, counts) => ({
   decision, resourceScope: 'TIGERIQ_REA_RECONSTRUCTION_LAB_V1',
   employee: 'NV02', sourceAuthenticated: false, leaseOwned: false,
@@ -25,7 +30,8 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
     return report('STALE_SNAPSHOT');
   if (snapshot.resources.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256 ||
-      !(typeof x.employee_id === 'string' || x.employee_id === null)))
+      !(typeof x.employee_id === 'string' || x.employee_id === null) ||
+      !coreStatuses.has(x.status)))
     return report('INVALID_RESOURCE');
   if (snapshot.sharedLeases.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256))
@@ -47,6 +53,12 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
     (typeof x.shared_lease_work_id === 'string' && x.shared_lease_work_id.length > 0));
   if (busy.length === ownedRows.length) return report('NV02_RESOURCE_BUSY',
     { ...counts, busyRows: busy.length });
+  // A visible non-busy resource can still lack credentials or runtime health.
+  // Never present it as a candidate for an atomic claim when no row is ready.
+  const candidateRows = ownedRows.filter(x => !busy.includes(x) && !notReadyStatuses.has(x.status));
+  if (!candidateRows.length)
+    return report('NV02_RESOURCE_NOT_READY',
+      { ...counts, busyRows: busy.length, notReadyRows: ownedRows.length - busy.length });
   // Visible resource is NOT proof of user identity, action authorization or
   // transactional claim; only an actual Core-issued receipt could prove that.
   return report('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED', counts);
