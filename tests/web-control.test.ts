@@ -15,6 +15,31 @@ const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('distinguishes NV03/NV04 live UI response from Core job, with fresh-only evidence',()=>{
+    expect(apiHealth).toContain("const map={working:'UI_BUSY',idle:'READY'");
+    expect(apiHealth).toContain("current_job_id:fresh?w.currentJobId||null:null");
+    expect(apiHealth).toContain("live_job:fresh?w.job||null:null");
+    expect(apiHealth).toContain("ui_session_state:fresh?w.uiSessionState||w.state||null:null");
+    expect(apiHealth).toContain("if(rawStatus==='UI_BUSY')return'ChatGPT đang phản hồi");
+    expect(apiHealth).toContain('function applyPendingQa(rows,projection)');
+    expect(apiHealth).toContain("t?.claimState==='NOT_CLAIMED'");
+    expect(apiHealth).toContain("1 yêu cầu QA chờ nhận".replace('1',''));
+    expect(apiHealth).toContain("pending_qa_count");
+    expect(apiHealth).toContain("let activeFilter='all'");
+    expect(apiHealth).toContain('data-filter="ready">Rảnh</button>');
+    expect(apiHealth).toContain("else if(activeFilter==='ready')list=list.filter(x=>simpleState(x).group==='ready')");
+  });
+
+  it('matches workforce filter colors to card semantics, without provider-color false signals',()=>{
+    expect(apiHealth).toContain('data-filter="all">Tất cả</button>');
+    expect(apiHealth).toContain('data-filter="problem">Cần kiểm tra</button>');
+    expect(apiHealth).toContain('filter-divider');
+    expect(apiHealth).toContain('data-filter="working"]{color:#22c55e!important;');
+    expect(apiHealth).toContain('data-filter="ready"]{color:#3b82f6!important;');
+    expect(workforceCss).toContain('NV filters match card semantics');
+    expect(workforceCss).toContain('data-filter="cloud"],.api-health .workforce-panel');
+  });
+
   it('uses muted NV cards and evidence-based V6 status colors on both surfaces', () => {
     expect(apiHealth).toContain('--tiq-working:#22C55E;--tiq-ready:#3B82F6');
     expect(apiHealth).toContain('--tiq-done:#4ADE80');
