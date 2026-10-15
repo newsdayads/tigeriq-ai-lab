@@ -12,6 +12,7 @@ const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
+const visualCss = readFileSync(resolve('public/work-center-visual.css'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
@@ -34,8 +35,8 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(apiHealth).toContain('data-filter="all">Tất cả</button>');
     expect(apiHealth).toContain('data-filter="problem">Cần kiểm tra</button>');
     expect(apiHealth).toContain('filter-divider');
-    expect(apiHealth).toContain('data-filter="working"]{color:#22c55e!important;');
-    expect(apiHealth).toContain('data-filter="ready"]{color:#3b82f6!important;');
+    expect(visualCss).toContain('data-filter="working"]{color:#22c55e!important;');
+    expect(visualCss).toContain('data-filter="ready"]{color:#3b82f6!important;');
     expect(workforceCss).toContain('NV filters match card semantics');
     expect(workforceCss).toContain('data-filter="cloud"],.api-health .workforce-panel');
   });
@@ -45,9 +46,9 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(apiHealth).toContain('--tiq-done:#4ADE80');
     expect(apiHealth).toContain("if(s==='MOBILE_OFFLINE')return{group:'unknown',label:'CHƯA CÓ HEARTBEAT',rank:4}");
     expect(apiHealth).toContain('function stateBadge(state){return esc(state.label)}');
-    expect(apiHealth).toContain('.worker.employee-card.state-ready{--state-color:#3b82f6;}');
-    expect(apiHealth).toContain('.worker.employee-card.state-working{--state-color:#22c55e;}');
-    expect(apiHealth).toContain('background:#101c2e!important;border:1px solid #344257!important;');
+    expect(visualCss).toContain('.worker.employee-card.state-ready{--state-color:#3b82f6;}');
+    expect(visualCss).toContain('.worker.employee-card.state-working{--state-color:#22c55e;}');
+    expect(visualCss).toContain('background:#101c2e!important;border:1px solid #344257!important;');
     expect(apiHealth).not.toContain('const STATE_ICON=');
     expect(workforceCss).toContain('/* Owner interaction V6: workforce cards are neutral;');
     expect(workforceCss).toContain('.api-health .worker.employee-card.state-ready,');
