@@ -7,7 +7,7 @@
 | ADR-002 | Camera và quản lý cửa sổ trong cùng một app | Owner xác nhận | ĐÃ CHỐT |
 | ADR-003 | Không cần tài khoản/Firebase/thanh toán/server | Owner xác nhận | ĐÃ CHỐT |
 | ADR-004 | Không có thời hạn sử dụng cưỡng chế | Owner xác nhận | ĐÃ CHỐT |
-| ADR-005 | Chỉ phân tích, lập dự án; chưa code/cài APK | Owner xác nhận nhiều lần | ĐÃ CHỐT — GIỮ HOLD |
+| ADR-005 | Quyết định chỉ đặc tả cũ đã được lệnh phát triển phần mềm có điều kiện ngày 12/10/2026 thay thế; chưa tự cài APK/xe | Work Order GH-4625 | ĐÃ THAY THẾ — CHỜ CỔNG G1/G2 |
 | ADR-006 | Không vá/vượt license APK gốc; tự triển khai kiến trúc/mã độc lập | Thiết kế an toàn/pháp lý | ĐÃ ĐỀ XUẤT |
 | ADR-007 | Phát hiện R dựa trên USB attach hay video signal | Thiếu USB log | CHƯA CHỐT |
 | ADR-008 | Công cụ ép cửa sổ ADB/Shizuku/khác | Thiếu DeX permission và thử nghiệm | CHƯA CHỐT |
@@ -32,7 +32,7 @@
 | R-10 | Khung hình cũ gây nhận thức sai khi lùi | NGHIÊM TRỌNG | Live-frame freshness + fail-visible | Chứng cứ thử stream stall |
 | R-11 | Tính năng mở rộng ảnh hưởng camera P0 | CAO | Cơ chế ưu tiên camera, modular tests | Regression P0 sau mọi thay đổi |
 | R-12 | Phụ thuộc mã/nhãn/thư viện không hợp quyền | CAO | Mã độc lập, audit giấy phép thư viện | Rà soát nguồn bên thứ ba |
-| R-13 | Chưa có quyền xây dựng nhưng hệ thống tự chạy | NGHIÊM TRỌNG | `IMPLEMENTATION_AUTHORIZATION=false`, không đưa hàng đợi | Có lệnh Owner thực |
+| R-13 | Nhầm quyền phát triển phần mềm với quyền thao tác xe/PC01 hoặc Core lease | NGHIÊM TRỌNG | Phân biệt mã nguồn với cài/xe; cần cổng G1/G2, owner claim riêng khi dùng Core | Bằng chứng đúng bề mặt và nghiệm thu |
 | R-14 | Nhận nhầm "có app" là đã hoạt động an toàn | NGHIÊM TRỌNG | Thử thật và log acceptance | Kiểm thử trên xe thật |
 
 ## 3. Chế độ dự phòng đề xuất khi sản phẩm đã làm
@@ -76,14 +76,14 @@ OWNER=SON
 PHASE=DISCOVERY_SPECIFICATION
 REPOSITORY_OF_PROJECT_DOCS=newsdayads/tigeriq-ai-lab
 REPOSITORY_OF_APP_CODE=NONE
-IMPLEMENTATION_AUTHORIZATION=false
+IMPLEMENTATION_AUTHORIZATION=CONDITIONAL_OWNER_20261012
 READY_FOR_IMPLEMENTATION=false
 TESTED_ON_HARDWARE=false
 APP_SOURCE_WRITTEN=false
 APK_BUILT=false
 INSTALLED=false
 RELEASED=false
-CORE_QUEUE=EXCLUDED
-SOURCE_OF_TRUTH=GITHUB_MAIN_AFTER_PR_MERGE
+CORE_QUEUE=INCLUDED_ELIGIBLE_NOT_CLAIMED
+SOURCE_OF_TRUTH=GH4625_CURRENT_PLUS_GITHUB_MAIN_AFTER_PR_MERGE
 DRIVE_SYNC=NOT_REQUIRED; no bootstrap/loader or operating policy changes
 ```
