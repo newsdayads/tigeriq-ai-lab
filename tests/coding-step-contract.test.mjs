@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -74,4 +74,33 @@ test('candidate coding lane wiring is explicit and off by default',async()=>{
   assert.match(source,/verifyCodingDeliverable/);
   assert.match(source,/verifyCodingFunctionalChecks/);
   assert.match(source,/repeatedCodingAttemptDecision/);
+});
+
+test('an AI manager cannot opt out of required domain functional checks',()=>{
+  const p=make({...job,required_checks:[]});
+  assert.deepEqual(p.required_checks,['Android Build Verify']);
+  const bypass=make({...job,required_checks:['CI Verify']});
+  assert.ok(bypass.required_checks.includes('Android Build Verify'));
+  assert.ok(bypass.required_checks.includes('CI Verify'));
+  assert.equal(verifyCodingFunctionalChecks({packet:bypass,checkRuns:[{name:'CI Verify',status:'completed',conclusion:'success'}]}).pass,false);
+});
+test('tampered serialized packet refuses a changed test plan or accepted scope',()=>{
+  const original=codingStepInstruction(make());
+  for(const tampered of [
+    original.replace('Android Build Verify','CI Verify'),
+    original.replace('"step_id":"D01"','"step_id":"D02"'),
+    original.replace('Gradle thật','README updated')
+  ])assert.throws(()=>codingStepPacketFromInstruction(tampered),/CODING_STEP_PACKET_CORRUPT/);
+});
+test('GitHub closed state without verified DONE, checklist or receipt is not accepted',()=>{
+  const bad=verifyClosedCodingWorkOrder({body:'DONE=false\nFINISHED_AT=NOT_FINISHED\n- [x] G1\n- [ ] G2\n',state:'closed',stateReason:'completed'});
+  assert.equal(bad.pass,false);
+  assert.ok(bad.reasons.includes('CHECKLIST_NOT_ACCEPTED'));
+  assert.ok(bad.reasons.includes('DONE_EVIDENCE_MISSING_OR_AMBIGUOUS'));
+});
+test('completed source work order needs coherent terminal evidence',()=>{
+  const good=verifyClosedCodingWorkOrder({body:'DONE=true\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/4858#issuecomment-1\n- [x] G1\n- [x] G2',state:'closed',stateReason:'completed'});
+  assert.equal(good.pass,true);
+  const ambiguous=verifyClosedCodingWorkOrder({body:'DONE=true\nDONE=false\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://example.com/a\n- [x] G1'});
+  assert.equal(ambiguous.pass,false);
 });
