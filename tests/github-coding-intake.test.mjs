@@ -1736,3 +1736,20 @@ describe('P0: garbage-collected Coding Lane blocked final is not a permanent que
     }
   });
 });
+
+describe('P0: pause Coding Lane for external evidence',()=>{
+  const base=[SAFE,'WORK_ORDER_LIFECYCLE=V2','CAPABILITY=coding','EXECUTION_SURFACE=CODING',
+    'RESOURCE_SCOPE=DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD',
+    'ALLOW_PATH_PREFIX=projects/dexcam-personal','AUTO_QUEUE=INCLUDED'].join('\n');
+  it('does not re-dispatch blocked A05 review and B01 physical-device dependencies',()=>{
+    const blocked=issue(base+'\nCURRENT_STATE=SOURCE_VERIFIED_WAIT_A05_INDEPENDENT_REVIEW_AND_B01_REAL_DEVICE_EVIDENCE\nDISPLAY_STATE=WAIT_DEPENDENCY_NOT_WORKING',{number:4625});
+    expect(parseCodingIssue(blocked)).toBeNull();
+    expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=EXTERNAL_WAIT'))).toBeNull();
+    expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION\nDISPLAY_STATE=WAIT_DEPENDENCY_NOT_WORKING'))).toBeNull();
+  });
+  it('allows genuinely executable source scopes and does not revive historical wait labels',()=>{
+    expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION'))).not.toBeNull();
+    expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=WORKING'))).not.toBeNull();
+    expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION\n## HISTORICAL\nCURRENT_STATE=EXTERNAL_WAIT'))).not.toBeNull();
+  });
+});
