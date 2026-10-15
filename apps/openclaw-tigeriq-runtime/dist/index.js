@@ -79,6 +79,7 @@ export default defineToolPlugin({
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal('shell_exec'),
+          Type.Literal('nv07_preflight'),
           Type.Literal('task_status'),
           Type.Literal('task_start'),
           Type.Literal('task_stop'),
