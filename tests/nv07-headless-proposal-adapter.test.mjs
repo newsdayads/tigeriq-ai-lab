@@ -14,7 +14,8 @@ describe('NV07 CLI proposal adapter (not runtime authorization)',()=>{
     expect(i).toMatchObject({accepted:true,executionState:'PREPARED_NOT_RUN',command:'agy',timeoutMs:130000});
     expect(i.args).toContain('--output-format');expect(i.args).toContain('--json-schema');expect(i.args).toContain('--sandbox');
     expect(i.args).not.toContain('--dangerously-skip-permissions');
-    expect(JSON.parse(i.args[1])).toMatchObject({job_id:'GH-4787:S4',pinned_source_sha:'a'.repeat(40)});
+    expect(JSON.parse(i.args.at(-1))).toMatchObject({job_id:'GH-4787:S4',pinned_source_sha:'a'.repeat(40)});
+    expect(i.args.at(-2)).toBe('-p');
     expect(NV07_PROPOSAL_SCHEMA.properties.proposed_files.type).toBe('array');
     expect(prepareNv07CliProposal(job(),{sandboxCwd:'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'}).accepted).toBe(false);
     expect(prepareNv07CliProposal(job({action:'WRITE_SOURCE'}),{sandboxCwd:cwd}).accepted).toBe(false);
@@ -45,6 +46,15 @@ describe('NV07 CLI proposal adapter (not runtime authorization)',()=>{
     ['invalid item',{stdout:stdout(answer({proposed_files:[{path:file,change:'x'}]}))},'NV07_PROPOSAL_ITEM_INVALID'],
     ['invalid risk',{stdout:stdout(answer({risks:[null]}))},'NV07_PROPOSAL_RISK_INVALID'],
   ])('rejects %s',(_label,change,code)=>{expect(verifyNv07CliProposal(context(change))).toMatchObject({accepted:false,code,executionState:'DENIED'});});
+  it('accepts only a strict schema JSON string response from agy, retaining original output digest',()=>{
+    const raw=JSON.stringify({status:'SUCCESS',response:JSON.stringify(answer())});
+    const verdict=verifyNv07CliProposal(context({stdout:raw}));
+    expect(verdict.accepted).toBe(true);
+    expect(verdict.proposedFiles).toEqual(answer().proposed_files);
+    expect(verifyNv07CliProposal(context({stdout:JSON.stringify({status:'SUCCESS',response:'text '+JSON.stringify(answer())})})).accepted).toBe(false);
+    expect(verifyNv07CliProposal(context({stdout:JSON.stringify({status:'SUCCESS',response:JSON.stringify(answer({job_id:'OTHER'}))})})).accepted).toBe(false);
+    expect(verifyNv07CliProposal(context({stdout:JSON.stringify({status:'ERROR',response:JSON.stringify(answer())})})).accepted).toBe(false);
+  });
   it('rejects cross-job use and unprepared execution',()=>{
     expect(verifyNv07CliProposal(context({job:job({jobId:'GH-4890:OTHER'})})).code).toBe('NV07_JOB_BINDING_MISMATCH');
     expect(verifyNv07CliProposal(context({invocation:{accepted:false}})).code).toBe('NV07_NOT_PREPARED');
