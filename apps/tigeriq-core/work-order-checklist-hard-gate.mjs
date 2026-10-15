@@ -1,12 +1,12 @@
 // Readback-only gate: checklist assertions are not proof of runtime acceptance.
 // Caller MUST supply the fresh GitHub issue fetched after the attempted checkbox write.
-const STEP=/^\s*[-*]\s+\[([ xX])\]\s+([A-Z][A-Z0-9_-]{1,15})\b\s*(.*)$/;
+const STEP=/^\s*[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
 const MARKDOWN_LINK=/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/g;
 function sectionName(line){
  const m=String(line).match(/^\s{0,3}#{2,6}\s+(.+)$/);
  if(!m)return null;
  const name=m[1].trim().toUpperCase();
- return /^(?:STRUCTURED_PROGRESS_CHECKLIST|KẾ HOẠCH TUẦN TỰ VÀ TIÊU CHÍ NGHIỆM THU|DANH SÁCH BƯỚC THỰC HIỆN)$/.test(name)?'checklist':'other';
+ return /^(?:STRUCTURED_PROGRESS_CHECKLIST|KẾ HOẠCH TUẦN TỰ VÀ TIÊU CHÍ NGHIỆM THU|DANH SÁCH BƯỚC THỰC HIỆN|THEO DÕI TIẾN ĐỘ)\b/i.test(name)?'checklist':'other';
 }
 export function workOrderChecklistSteps(body=''){
  const lines=String(body||'').split(/\r?\n/);
