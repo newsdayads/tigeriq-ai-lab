@@ -38,7 +38,7 @@ import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -1379,7 +1379,7 @@ async function runApiDoctorAnalysisJob(items,scanSignature){
   }
 }
 async function runApiDoctorScan(){
-  const rows=(await pool.query("select * from tigeriq_ai_resources where enabled=true and employee_id<>$1 order by employee_id",[OLLAMA_EMPLOYEE_ID])).rows;
+  const rows=(await pool.query("select * from tigeriq_ai_resources where enabled=true and employee_id<>$1 order by employee_id",[OLLAMA_EMPLOYEE_ID])).rows.filter(resource=>apiDoctorScannableEmployeeId(resource.employee_id));
   const actions=[];
   for(const resource of rows){
     const events=apiDoctorHealthEvidenceEvents(await apiDoctorRecentResourceEvents(resource.resource_id));
@@ -1545,7 +1545,7 @@ async function runApiDoctorScan(){
   }
   const degraded=actions.filter(x=>!['idle'].includes(x.action));
   const analysisCandidates=degraded.filter(x=>!['wait','wait_repair','busy_skip','external_blocked'].includes(x.action));
-  const scanSignature=apiDoctorRepairSignature({employeeId:'SCAN',provider:'core',failureClass:'state',message:analysisCandidates.map(x=>`${x.employeeId}:${x.action}:${x.failureClass}`).join(',')});
+  const scanSignature=apiDoctorScanSignature(analysisCandidates);
   const analysis=analysisCandidates.length
     ?await runApiDoctorAnalysisJob(analysisCandidates,scanSignature)
     :{skipped:degraded.length?'no_actionable_degraded':'no_degraded'};
