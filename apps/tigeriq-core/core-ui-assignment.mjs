@@ -389,12 +389,12 @@ async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,ob
 }
 
 let nv04IdleNextProbeAt=0;
-async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token}){
+async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token,nv04Observation=undefined,nv04IdleEnabled=undefined,forceProbe=false}){
   const now=Date.now();
-  if(now<nv04IdleNextProbeAt)return null;
+  if(!forceProbe&&now<nv04IdleNextProbeAt)return null;
   const gate=nv04IdleAuditGate({
-    enabled:process.env.TIGERIQ_NV04_IDLE_AUDIT_ENABLED==='1',
-    worker:readNv04IdleHeartbeat(),
+    enabled:nv04IdleEnabled===undefined?process.env.TIGERIQ_NV04_IDLE_AUDIT_ENABLED==='1':nv04IdleEnabled===true,
+    worker:nv04Observation===undefined?readNv04IdleHeartbeat():nv04Observation,
     normalJobPending:false,coreAvailable:true,now,
   });
   if(!gate.eligible){
@@ -430,7 +430,7 @@ async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token})
   return row(pool,{jobId});
 }
 
-export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,previousJobId}={}){
+export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token='',owner=OWNER,repo=REPO,previousJobId,nv04Observation=undefined,nv04IdleEnabled=undefined,nv04IdleForceProbe=false}={}){
   if(!pool)throw new Error('CORE_UI_POOL_REQUIRED');
   const observedAt=new Date().toISOString();let previous;
   let prev=previousJobId?await row(pool,{jobId:previousJobId}):null;
@@ -465,7 +465,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     }
     if(Array.isArray(issues)&&missingWorkers.includes('NV04')&&!current.some(item=>item.employee_id==='NV04')){
       // Only after a complete normal-work selection: idle audit never steals a real assignment.
-      const idle=await materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token});
+      const idle=await materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token,nv04Observation,nv04IdleEnabled,forceProbe:nv04IdleForceProbe});
       if(idle&&['ui_assigned','ui_running'].includes(String(idle.status||'')))current.push(idle);
     }
   }
