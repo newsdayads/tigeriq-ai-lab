@@ -16,7 +16,7 @@ import {matchAndLoadSkills} from '../tigeriq-core/skill-loader.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
-const OWNER_P0_CODING_STEP_CANARY=process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1';
+// The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
 import {SHARED_RESOURCE_LEASE_HEARTBEAT_MS,acquireSharedResourceLease,ensureSharedResourceLeaseTable,heartbeatSharedResourceLease,releaseSharedResourceLease} from '../tigeriq-core/shared-resource-lease.mjs';
 
 export class CodingScopeViolationError extends Error {
@@ -1295,7 +1295,7 @@ async function managerTick(){
   let managerSkills={evidence:[],contextBlock:''};
   const contractRevision=liveGithubContext?.fingerprint||createHash('sha256').update(String(o.objective||'')).digest('hex');
   try{
-    if(OWNER_P0_CODING_STEP_CANARY){
+    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       managerSkills=matchAndLoadSkills(o.objective+'\n coding-lane spec-first-tdd');
       if(!managerSkills.evidence.some(skill=>skill.id==='spec-first-tdd'))throw Error('CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED');
       prompt+='\n\nOWNER_P0_CODING_STEP_PACKET_REQUIRED=true\n';
@@ -1310,7 +1310,7 @@ async function managerTick(){
       }
       validateManagerJobTitle(d,o.objective);
       const scoped=validateManagerJobPaths(d,canonical,mutationAuth);
-      if(OWNER_P0_CODING_STEP_CANARY&&d?.status==='continue'){
+      if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&d?.status==='continue'){
         compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.evidence});
       }
     };
@@ -1327,7 +1327,7 @@ async function managerTick(){
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let jobInstruction=String(d.job.instruction||o.objective);
-    if(OWNER_P0_CODING_STEP_CANARY){
+    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
       const previous=await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id order by j.created_at desc limit 500");
@@ -1835,7 +1835,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
-async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if(OWNER_P0_CODING_STEP_CANARY){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');prompt+='\n'+codingRolePrompt({role:'reviewer',packet,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
+async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');prompt+='\n'+codingRolePrompt({role:'reviewer',packet,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
   await refreshCoreResourceHealth();
@@ -1847,7 +1847,7 @@ async function runJob(j){
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   let stepPacket=null;
-  if(OWNER_P0_CODING_STEP_CANARY){
+  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
     stepPacket=codingStepPacketFromInstruction(j.instruction);
     if(!stepPacket)throw Error('CODING_STEP_PACKET_MISSING');
     const activeSkills=matchAndLoadSkills(canonicalObjective+'\n coding-lane spec-first-tdd');
@@ -1891,7 +1891,7 @@ async function runJob(j){
     // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
-    if(OWNER_P0_CODING_STEP_CANARY){
+    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       const artifactGate=verifyCodingDeliverable({packet:stepPacket,changes:gen.changes});
       if(!artifactGate.pass)throw Object.assign(new Error(artifactGate.code+':'+artifactGate.reasons.join(';')),{code:artifactGate.code});
     }
@@ -1963,7 +1963,7 @@ async function runJob(j){
     },
   });
   review=lifecycle.review;gates=lifecycle.gates;
-  if(OWNER_P0_CODING_STEP_CANARY){
+  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
     const changedFiles=await ghRepo(targetRepository,`/pulls/${pr.number}/files?per_page=100`);
     const actual=new Set((Array.isArray(changedFiles)?changedFiles:[]).map(x=>String(x.filename||'')));
     const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
@@ -1979,7 +1979,7 @@ async function runJob(j){
   if(ownerWaiver)assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
   else assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE&&(!OWNER_P0_CODING_STEP_CANARY||process.env.TIGERIQ_P0_CODING_STEP_OWNER_RELEASE==='1')){
+  if(AUTO_MERGE&&(!(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')||process.env.TIGERIQ_P0_CODING_STEP_OWNER_RELEASE==='1')){
     try{
       await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
       // merge=await mergePr(pr.number,approvedHead,j.title)
