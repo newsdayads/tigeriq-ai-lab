@@ -103,3 +103,49 @@ it('oversized CLI input fails without echoes',()=>{
   expect(JSON.parse(r.stdout).decision).toBe('INPUT_TOO_LARGE');
   expect(r.stdout).not.toContain('XXXXX');
 });
+
+it('R05 live-status running job must make matching NV02 resource busy even if resource row is stale',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'j1',employee_id:'NV02',resource_id:'rea-nv02',status:'running'}];
+  const r=check(x);expect(r.decision).toBe('NV02_RESOURCE_BUSY');safe(r);
+});
+it('R05 foreign running job on exact resource blocks diagnostic availability',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'j2',employee_id:'NV20',resource_id:'rea-nv02',status:'running'}];
+  expect(check(x).decision).toBe('NV02_RESOURCE_BUSY');
+});
+it('R05 unrelated running job leaves NV02 resource unclaimed and unauthorized',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'j3',employee_id:'NV09',resource_id:'r9',status:'running'}];
+  const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 queued job alone is not a running lease receipt',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'j4',employee_id:'NV02',resource_id:'rea-nv02',status:'queued'}];
+  const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 rejects malformed job projection rows instead of assuming free resources',()=>{
+  for(const job of [null,{}, {status:'running',employee_id:'NV02',resource_id:22},
+    {status:'running',employee_id:99,resource_id:'rea-nv02'}]){
+    const x=fixture();nv02(x);x.jobs=[job];
+    const r=check(x);expect(r.decision).toBe('INVALID_JOB_PROJECTION');safe(r);
+  }
+});
+it('R05 rejects February 30 normalized by JavaScript Date.parse',()=>{
+  const x=fixture();nv02(x);x.core.time='2026-02-30T09:35:53Z';
+  const r=check(x,Date.parse('2026-03-02T09:35:53Z'));
+  expect(r.decision).toBe('INVALID_TIME');safe(r);
+});
+it('R05 accepts valid Gregorian leap day with independent clock',()=>{
+  const x=fixture();nv02(x);x.core.time='2024-02-29T09:35:53Z';
+  const r=check(x,Date.parse(x.core.time));
+  expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 CLI rejects normalized impossible date without exposing job identifiers',()=>{
+  const x=fixture();nv02(x);x.core.time='2026-02-30T09:35:53Z';
+  x.jobs=[{id:'PRIVATE_JOB_DO_NOT_ECHO',employee_id:'NV02',resource_id:'rea-nv02',status:'running'}];
+  const r=run(['--read-only'],JSON.stringify(x));
+  expect(r.status).toBe(2);
+  expect(JSON.parse(r.stdout).decision).toBe('INVALID_TIME');
+  expect(r.stdout).not.toContain('PRIVATE_JOB_DO_NOT_ECHO');
+});
