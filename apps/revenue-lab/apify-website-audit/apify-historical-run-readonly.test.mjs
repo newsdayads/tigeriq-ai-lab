@@ -117,7 +117,8 @@ for(const value of [null,-0.01,'0.000',NaN]){
   });
 }
 test('R04 missing computeUnits is explicitly null not zero',async()=>{
-  const m=mocked({final:{...run(),stats:{}}});
+  const missing={...run(),stats:{}};
+  const m=mocked({first:missing,final:missing});
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,null);
   assert.equal(res.cost.zeroCostClaim,false);
@@ -151,14 +152,16 @@ test('R04 invalid clock fails before GET',async()=>{
 // R04 provenance: mismatching compute-unit counters must not silently become
 // a verified numeric cost input. No real Apify GET is performed in these cases.
 test('R04 conflicting compute units (stats zero, usage positive) remain unverified', async()=>{
-  const m=mocked({final:{...run(),stats:{computeUnits:0},usage:{ACTOR_COMPUTE_UNITS:0.002}}});
+  const conflicting={...run(),stats:{computeUnits:0},usage:{ACTOR_COMPUTE_UNITS:0.002}};
+  const m=mocked({first:conflicting,final:conflicting});
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,null);
   assert.equal(res.acceptance.platformFinalInvoiceVerified,false);
   assert.equal(m.calls.length,4);
 });
 test('R04 conflicting compute units (stats positive, usage zero) remain unverified', async()=>{
-  const m=mocked({final:{...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:0}}});
+  const conflicting={...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:0}};
+  const m=mocked({first:conflicting,final:conflicting});
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,null);
 });
@@ -168,12 +171,44 @@ test('R04 identical compute-unit counters remain numeric', async()=>{
   assert.equal(res.run.computeUnits,0.002);
 });
 test('R04 usage-only compute units still readable when stats field is absent', async()=>{
-  const m=mocked({final:{...run(),stats:{},usage:{ACTOR_COMPUTE_UNITS:0.004}}});
+  const usageOnly={...run(),stats:{},usage:{ACTOR_COMPUTE_UNITS:0.004}};
+  const m=mocked({first:usageOnly,final:usageOnly});
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,0.004);
 });
 test('R04 an invalid secondary compute-unit counter invalidates a numeric primary', async()=>{
-  const m=mocked({final:{...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:-1}}});
+  const invalid={...run(),stats:{computeUnits:0.002},usage:{ACTOR_COMPUTE_UNITS:-1}};
+  const m=mocked({first:invalid,final:invalid});
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,null);
+});
+
+// R04: a final GET cannot manufacture settled usage from an unstable first GET.
+test('R04 changed usageTotalUsd between two successful GETs fails closed',async()=>{
+  const calls=await rejected('RUN_USAGE_RECHECK_DRIFT',{final:{...run(),usageTotalUsd:0.0008}});
+  assert.equal(calls.length,3);
+});
+test('R04 missing first usageTotalUsd cannot be rescued by later GET',async()=>{
+  const calls=await rejected('APIFY_USAGE_UNVERIFIED',{first:{...run(),usageTotalUsd:null}});
+  assert.equal(calls.length,3);
+});
+test('R04 negative first usageTotalUsd cannot be rescued by later GET',async()=>{
+  const calls=await rejected('APIFY_USAGE_UNVERIFIED',{first:{...run(),usageTotalUsd:-1}});
+  assert.equal(calls.length,3);
+});
+test('R04 changed computeUnits between two otherwise valid GETs fails closed',async()=>{
+  const calls=await rejected('RUN_USAGE_RECHECK_DRIFT',{final:{...run(),stats:{computeUnits:0.004}}});
+  assert.equal(calls.length,3);
+});
+test('R04 first computeUnits missing then present is unsettled evidence',async()=>{
+  const calls=await rejected('RUN_USAGE_RECHECK_DRIFT',{first:{...run(),stats:{}}});
+  assert.equal(calls.length,3);
+});
+test('R04 equal numeric computeUnits from different supported fields stays valid',async()=>{
+  const m=mocked({final:{...run(),stats:{},usage:{ACTOR_COMPUTE_UNITS:0.002}}});
+  const evidence=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(evidence.run.computeUnits,0.002);
+  assert.equal(evidence.run.usageTotalUsd,0.0004);
+  assert.equal(evidence.acceptance.platformFinalInvoiceVerified,false);
+  assert.equal(m.calls.length,4);
 });
