@@ -156,3 +156,10 @@ test('a closed issue with all fields marked DONE but no trusted external verific
   assert.equal(decision.pass,false);
   assert.ok(decision.reasons.includes('EXTERNAL_ACCEPTANCE_UNVERIFIED'));
 });
+
+test('P0 canary caps CI repair and independent review to two cycles',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(lane,/maxRepairCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
+  assert.match(lane,/maxCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
+});
