@@ -153,6 +153,7 @@ export function codingFailureSignature(failure={}){
     .replace(/\b[0-9A-F]{40,64}\b/g,'<SHA>')
     .replace(/\b20\d{2}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)?\b/g,'<TIME>')
     .replace(/\b(?:PR|JOB|CODE)\s*#?[0-9A-F-]{4,}\b/g,'<ID>')
+    .replace(/\b\d{2,}(?:MS|MSEC|SEC)\b/g,'<DURATION>')
     .replace(/\b\d{3,}\b/g,'<N>')
     .replace(/\s+/g,' ').slice(0,180);
   return message||'UNKNOWN_FAILURE';
