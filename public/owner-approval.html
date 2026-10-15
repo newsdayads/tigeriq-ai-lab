@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>DUYỆT YÊU CẦU — TigerIQ</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body{background:#0b1729;color:#ebf4ff;margin:0;padding:18px}
+main{margin:20px auto;max-width:590px;background:#12243a;border:1px solid #33516f;border-radius:16px;padding:22px}
+h1{font-size:19px;margin:0 0 14px}h2{font-size:16px;margin:10px 0}
+p{line-height:1.5;font-size:14px}dt{color:#aac1db;font-size:12px;margin-top:13px}
+dd{margin:3px 0;font-size:14px;overflow-wrap:anywhere}a{color:#7dd7ff}
+.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+button,.action{padding:11px 17px;border-radius:9px;border:1px solid #6e9cb7;font-size:14px;cursor:pointer}
+.approve{background:#0c795c;color:white;border-color:#0c795c}.reject{background:#593042;color:white}
+.action{display:inline-block;text-decoration:none;color:white;background:#26577c}
+button:disabled{opacity:.5;cursor:not-allowed}
+#message{padding:10px;border-radius:8px;border:1px solid #556b84}
+#card[hidden],#login[hidden],#result[hidden]{display:none}
+small{display:block;color:#a9c1d9;margin-top:12px}
+</style>
+<script defer src="/owner-approval.js"></script>
+</head>
+<body>
+<main>
+<h1>YÊU CẦU ANH SƠN XỬ LÝ</h1>
+<p id="message" role="status" aria-live="polite">Đang xác minh tài khoản và hồ sơ…</p>
+<p id="login" hidden><a class="action" href="/api/owner-auth?action=login">ĐĂNG NHẬP OWNER</a></p>
+<section id="card" hidden>
+<h2 id="title"></h2>
+<dl><dt>Hành động</dt><dd id="action"></dd><dt>Phạm vi</dt><dd id="scope"></dd>
+<dt>Ảnh hưởng</dt><dd id="impact"></dd><dt>Rủi ro</dt><dd id="risk"></dd>
+<dt>Chi phí</dt><dd id="cost"></dd><dt>Hoàn tác</dt><dd id="reversibility"></dd></dl>
+<div class="actions">
+<button id="approve" type="button" class="approve">DUYỆT</button>
+<button id="reject" type="button" class="reject">TỪ CHỐI</button>
+<a id="issue" class="action" target="_blank" rel="noopener noreferrer">HỒ SƠ</a>
+</div>
+<small>Quyết định được ghi nhận qua phiên Owner đã xác thực. Cổng phát hành, phí và bảo mật vẫn phải được hệ thống đích kiểm chứng riêng.</small>
+</section>
+<section id="result" hidden><h2 id="outcome"></h2><p id="details"></p><a id="receipt" target="_blank" rel="noopener noreferrer">XEM BIÊN NHẬN</a></section>
+</main>
+</body>
+</html>
