@@ -125,7 +125,7 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
 
 // Evidence check for a *closed* GitHub source Work Order. Closed state is not
 // accepted product delivery. This gate is deliberately independent of AI text.
-export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason='completed'}={}){
+export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason='completed',externallyVerified=false}={}){
   const source=string(body);
   const fields=name=>[...source.matchAll(new RegExp('^'+name+'\\s*=\\s*([^\\r\\n]+)$','gmi'))].map(x=>x[1].trim());
   const done=fields('DONE');
@@ -139,6 +139,8 @@ export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason=
   if(finished.length!==1||!/\b20\d\d-\d\d-\d\dT\d\d:\d\d/.test(finished[0]))reasons.push('FINISHED_AT_UNVERIFIED');
   if(receipt.length!==1||!/^https:\/\/[a-z0-9.-]+\/\S+/i.test(receipt[0]))reasons.push('FINISH_RECEIPT_UNVERIFIED');
   if(checkboxes.length===0||incomplete.length)reasons.push('CHECKLIST_NOT_ACCEPTED');
+  // Issue body is authored text, never an independent acceptance receipt.
+  if(externallyVerified!==true)reasons.push('EXTERNAL_ACCEPTANCE_UNVERIFIED');
   return {pass:reasons.length===0,code:reasons.length?'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED':'SOURCE_WORK_ORDER_COMPLETION_EVIDENCED',reasons,completedChecklist:checkboxes.length-incomplete.length,totalChecklist:checkboxes.length};
 }
 
