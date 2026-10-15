@@ -4,6 +4,7 @@ import {validateWorkOrderLifecycleV2} from '../apps/tigeriq-core/work-order-life
 import {completionProof} from '../apps/shared/work-center-history.mjs';
 import { parseOwnerBacklogOrder, OWNER_BACKLOG_ISSUE } from '../apps/tigeriq-core/owner-backlog-order.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
+import { discoverNv03MilestoneQa } from '../apps/tigeriq-core/nv03-qa-milestone-inbox.mjs';
 import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
@@ -1829,6 +1830,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const openIssues = (Array.isArray(issues) ? issues : []).filter((issue) => !issue?.pull_request);
     base = projectExternalRoleClaims(base, openIssues);
     const openPulls = Array.isArray(pulls) ? pulls : [];
+    // Merged-PR milestone QA is separate from open PR QA. No claim or PASS here.
+    const nv03MilestoneQaInbox = discoverNv03MilestoneQa(openIssues);
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
     const ownerBacklogOrder = issuesComplete === true && !projectionStale
@@ -2073,6 +2076,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
         { ownerDirect: false, priority: a.priority || 'P2', number: a.number },
         { ownerDirect: false, priority: b.priority || 'P2', number: b.number },
       )).map(ownerFacingWorkRow),
+      nv03MilestoneQaInbox: nv03MilestoneQaInbox.map(ownerFacingWorkRow),
+      nv03MilestoneQaInboxFresh: !projectionStale && issuesComplete === true,
       nextQueue: nextQueue.map(ownerFacingWorkRow),
       nextQueueTotal: rankedQueue.length,
       nextExecutable: nextExecutable ? ownerFacingWorkRow(nextExecutable) : null,
@@ -2098,6 +2103,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       openWork: [],
       openSummary: { open: 0, running: 0, waiting: 0, done: 0 },
       activeWork: [],
+      nv03MilestoneQaInbox: [],
+      nv03MilestoneQaInboxFresh: false,
       nextQueue: [],
       nextQueueTotal: 0,
       recentWork: [],
