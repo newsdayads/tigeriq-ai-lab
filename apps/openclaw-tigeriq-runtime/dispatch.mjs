@@ -322,13 +322,13 @@ export function trustedBridgeTaskActionReceipt(bridgeCalls,expected=null){
 // Only a TOOL-origin receipt may prove NV07 gateway execution. A model's
 // final JSON text is untrusted, even when it claims ready:true or SUCCESS.
 export function expectedNv07OperatorActionFromInstruction(instruction=''){
-  const matches=String(instruction||'').match(/\bnv07_(?:preflight|read_metadata_canary)\b/ig)||[];
+  const matches=String(instruction||'').match(/\bnv07_(?:preflight|read_metadata_canary(?:_v2)?)\b/ig)||[];
   const unique=[...new Set(matches.map(x=>x.toLowerCase()))];
   return unique.length===1?unique[0]:null;
 }
 
 export function trustedBridgeNv07ActionReceipt(bridgeCalls,expectedAction){
-  if(!['nv07_preflight','nv07_read_metadata_canary'].includes(expectedAction)
+  if(!['nv07_preflight','nv07_read_metadata_canary','nv07_read_metadata_canary_v2'].includes(expectedAction)
     ||!Array.isArray(bridgeCalls))return false;
   const calls=bridgeCalls.filter(c=>c?.tool==='tigeriq_pc'
     &&c?.result?.ok===true&&c.result?.target==='pc01-local'
@@ -341,6 +341,7 @@ export function trustedBridgeNv07ActionReceipt(bridgeCalls,expectedAction){
       &&data?.reason==='NV07_AGY_MODELS_LISTED_IN_OWNER_SESSION'
       &&data?.execution==='READ_ONLY';
   return data?.accepted===true
+    &&(expectedAction!=='nv07_read_metadata_canary_v2'||data?.schema==='NV07_GATEWAY_CANARY_V2')
     &&data?.state==='GATEWAY_USER_CLI_JSON_VERIFIED_NOT_CORE_LEASE'
     &&data?.reason==='NV07_READ_METADATA_TRANSPORT_OK'
     &&data?.coreLeaseVerified===false

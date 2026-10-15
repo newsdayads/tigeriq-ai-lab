@@ -5,6 +5,10 @@ import {
   NV07_CANARY_STATE_DIR,
   NV07_CANARY_SANDBOX,
   NV07_CANARY_RECEIPT,
+  NV07_GATEWAY_V2_JOB,
+  NV07_GATEWAY_V2_RECEIPT,
+  evaluateNv07GatewayV2Proposal,
+  runNv07GatewayReadMetadataV2,
   runNv07GatewayReadMetadataCanary,
   assertShellCommandAllowed,
   assertTigerIQTaskName,
@@ -70,6 +74,59 @@ describe('NV07 Windows canary filesystem path regression #4783', () => {
     }
   });
 });
+describe('NV07 separate V2 one-shot CLI proposal verification #4783',()=>{
+  const sourceSha='0da30d00a4d78c35d9f0d6f168474231f9083526';
+  const proposed={
+    job_id:NV07_GATEWAY_V2_JOB,summary:'Read-only, no execution',
+    proposed_files:[{
+      path:'docs/implementation/nv07-proposal.md',
+      change:'Propose only; not executed',
+      rationale:'Owned canary read-only analysis',
+    }],
+    risks:['No source modifications permitted'],
+  };
+  const wrap=structured_output=>JSON.stringify({
+    status:'SUCCESS',error:null,structured_output,
+    usage:{total_tokens:15952},
+  });
+  it('uses new absolute receipt instead of replaying failed V1 and does not run on Linux',async()=>{
+    expect(NV07_GATEWAY_V2_RECEIPT).toBe(String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-v2.json`);
+    expect(NV07_GATEWAY_V2_RECEIPT).not.toBe(NV07_CANARY_RECEIPT);
+    if(process.platform!=='win32')
+      expect(await runNv07GatewayReadMetadataV2()).toMatchObject({
+        accepted:false,state:'DENIED_NOT_RUN',reason:'NV07_WRONG_WINDOWS_LOGON',
+      });
+  });
+  it('accepts bounded path-pinned textual proposals, not only proposed_files=[]',()=>{
+    const answer=evaluateNv07GatewayV2Proposal({
+      exitCode:0,stdout:wrap(proposed),stderr:'',timedOut:false,
+    });
+    expect(answer).toMatchObject({
+      accepted:true,validationCode:'NV07_PROPOSAL_VERIFIED',
+      proposedFileCount:1,riskCount:1,totalTokens:15952,
+    });
+    expect(answer.outputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(answer)).not.toContain(proposed.summary);
+    expect(sourceSha).toHaveLength(40);
+  });
+  it('denies out-of-scope paths, wrong job, tool timeout and status errors',()=>{
+    const entries=[
+      [{...proposed,proposed_files:[{...proposed.proposed_files[0],path:'apps/tigeriq-core/core.mjs'}]},'NV07_PROPOSAL_PATH_OUT_OF_SCOPE'],
+      [{...proposed,job_id:'WRONG-JOB'},'NV07_PROPOSAL_SCHEMA_INVALID'],
+    ];
+    for(const [payload,code] of entries){
+      expect(evaluateNv07GatewayV2Proposal({exitCode:0,stdout:wrap(payload)}))
+        .toMatchObject({accepted:false,validationCode:code});
+    }
+    expect(evaluateNv07GatewayV2Proposal({
+      exitCode:0,stdout:wrap(proposed),timedOut:true,
+    }).validationCode).toBe('NV07_CLI_TIMEOUT');
+    expect(evaluateNv07GatewayV2Proposal({
+      exitCode:0,stdout:JSON.stringify({status:'FAILED',structured_output:proposed}),
+    }).validationCode).toBe('NV07_CLI_STATUS_NOT_SUCCESS');
+  });
+});
+
 describe('NV07 user-session OpenClaw read-only preflight', () => {
   it('requires the actual wdragons12x Windows logon, never SYSTEM', () => {
     expect(nv07UserSessionPreflightIdentity({platform:'win32',windowsUser:'wdragons12x'})).toBe(true);
@@ -88,6 +145,7 @@ describe('NV07 user-session OpenClaw read-only preflight', () => {
     const operator = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
     expect(plugin).toContain("Type.Literal('nv07_preflight')");
     expect(plugin).toContain("Type.Literal('nv07_read_metadata_canary')");
+    expect(plugin).toContain("Type.Literal('nv07_read_metadata_canary_v2')");
     expect(operator).toContain("data = await runNv07GatewayReadMetadataCanary()");
     expect(operator).toContain("fs.open(NV07_CANARY_RECEIPT, 'wx')");
     expect(operator).toContain("'--mode', 'plan', '--disable-slash-commands'");
