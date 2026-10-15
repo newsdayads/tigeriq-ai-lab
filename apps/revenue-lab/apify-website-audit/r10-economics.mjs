@@ -72,8 +72,15 @@ export function computePpeScenario({
   const profit = proceeds - platformCost;
   const breakEvenBudget = proceeds - (tierIsPaid ? nonCuCost : 0n);
   const margin30Budget = divideRounded(proceeds * 7n, 10n) - (tierIsPaid ? nonCuCost : 0n);
-  const capacity = budget => (tierIsPaid && budget >= 0n)
-    ? toFixed(divideRounded(budget * SCALE, rate)) : null;
+  // A displayed maximum must never round UP beyond the safe CU budget.
+  // Keep 9-decimal public output; floor both integer division stages.
+  const capacity = budget => {
+    if (!tierIsPaid || budget < 0n) return null;
+    const capacityPicoCu = budget * SCALE / rate;
+    const nanoCu = capacityPicoCu / 1000n;
+    const billion = 1000000000n;
+    return `${nanoCu / billion}.${(nanoCu % billion).toString().padStart(9, '0')}`;
+  };
   return Object.freeze({
     evidenceStatus: R10_ECONOMICS_SCOPE,
     pricingModel, actorUsesStandbyMode, customerTier,
