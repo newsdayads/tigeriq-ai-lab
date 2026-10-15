@@ -1356,7 +1356,7 @@ async function managerTick(){
         if(!previousPacket)continue;
         const failure=typeof row.failure==='string'?JSON.parse(row.failure):row.failure;
         history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||row.source_objective_id),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
-          status:row.status==='done'?'merged_unaccepted':row.status==='failed'?'failed':String(row.status||''),
+          status:row.status==='done'?'merged_unaccepted':row.status==='blocked'?'blocked_unaccepted':row.status==='failed'?'failed':String(row.status||''),
           failureSignature:codingFailureSignature(failure)});
       }
       const same=history.filter(h=>h.workOrderId===workOrderId&&h.stepId===packet.step_id&&h.sourceRevision===packet.source_revision);
