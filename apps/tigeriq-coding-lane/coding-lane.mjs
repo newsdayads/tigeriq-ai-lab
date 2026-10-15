@@ -457,7 +457,7 @@ const MANAGER_OLLAMA_TIMEOUT_MS=normalizeManagerOllamaTimeout(process.env.TIGERI
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
-  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3.6:27b-coding',()=>true),
+  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3.5:9b',()=>true),
   R('NV11','groq',process.env.TIGERIQ_GROQ_MODEL||'openai/gpt-oss-120b',()=>process.env.GROQ_API_KEY&&process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED==='true'),
   R('NV12','gemini',process.env.TIGERIQ_GEMINI_MODEL||'gemini-3.5-flash-lite',()=>process.env.GEMINI_API_KEY&&process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED==='true'),
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
@@ -763,6 +763,41 @@ export async function invokeOllamaChat(model,prompt,{fetchImpl=fetch,baseUrl=OLL
     return String(text);
   }finally{clearTimeout(timer)}
 }
+// NV09 has its own Ollama process on loopback 11435. Native chat with
+// think:false avoids spending the entire output budget on hidden reasoning,
+// which the OpenAI-compatible chat endpoint otherwise returned as EMPTY_RESPONSE.
+// Keep alive=0s releases local RAM/VRAM between tasks shared with NV08/NV10.
+export async function invokeNv09NativeCoder(model,prompt,{
+  fetchImpl=fetch,baseUrl=OLLAMA_BASE_URL,timeoutMs=OLLAMA_TIMEOUT_MS,
+  maxTokens=codingOutputTokenLimit(prompt),
+}={}){
+  const origin=normalizeLocalOllamaBaseUrl(baseUrl);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||OLLAMA_TIMEOUT_MS));
+  try{
+    const response=await fetchImpl(origin+'/api/chat',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({
+        model,messages:[{role:'user',content:prompt}],stream:false,
+        think:false,keep_alive:'0s',
+        options:{temperature:0,num_ctx:8192,num_predict:Math.max(1,Number(maxTokens)||1)},
+      }),
+      signal:controller.signal,
+    });
+    const raw=await response.text();
+    let data={};
+    try{data=raw?JSON.parse(raw):{}}catch{data={text:raw}}
+    if(!response.ok){
+      const error=new Error('HTTP_'+response.status+':'+String(data?.error||data?.message||raw).slice(0,300));
+      error.status=response.status;
+      throw error;
+    }
+    const content=String(data?.message?.content||'');
+    if(!content.trim())throw new Error('EMPTY_RESPONSE');
+    return content;
+  }finally{clearTimeout(timer)}
+}
 // NV08 uses the already accepted Core JSON Manager contract. Worker chat is unchanged.
 export async function invokeOllamaManagerJson(model,prompt,{
   fetchImpl=fetch,baseUrl=MANAGER_OLLAMA_BASE_URL,timeoutMs=MANAGER_OLLAMA_TIMEOUT_MS,
@@ -789,6 +824,7 @@ export function invokeCodingOllamaResource(resource,prompt,{
 }={}){
   const baseUrl=codingOllamaBaseUrlForResource(resource,{workerUrl,managerUrl});
   if(resource.id==='NV08')return invokeOllamaManagerJson(resource.model,prompt,{fetchImpl,baseUrl,timeoutMs});
+  if(resource.id==='NV09')return invokeNv09NativeCoder(resource.model,prompt,{fetchImpl,baseUrl,maxTokens,timeoutMs});
   return invokeOllamaChat(resource.model,prompt,{fetchImpl,baseUrl,maxTokens,timeoutMs});
 }
 async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
