@@ -40,10 +40,10 @@ async function json(fetchImpl,url,token){
   return response.json();
 }
 
-export async function nv04IdleSourcePacket({fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',paths=NV04_IDLE_AUDIT_PATHS}={}){
+export async function nv04IdleSourcePacket({fetchImpl=fetch,owner='newsdayads',repo='tigeriq-ai-lab',token='',paths=NV04_IDLE_AUDIT_PATHS,refSha=''}={}){
   const base='https://api.github.com/repos/'+owner+'/'+repo;
-  const commit=await json(fetchImpl,base+'/commits/main',token);
-  const sha=String(commit?.sha||'').toLowerCase();
+  const commit=refSha?null:await json(fetchImpl,base+'/commits/main',token);
+  const sha=String(refSha||commit?.sha||'').toLowerCase();
   if(!exactSha(sha))throw new Error('NV04_IDLE_MAIN_SHA_UNVERIFIED');
   const ordered=paths.filter(path=>NV04_IDLE_AUDIT_PATHS.includes(path));
   if(!ordered.length)throw new Error('NV04_IDLE_SOURCE_ALLOWLIST_EMPTY');
