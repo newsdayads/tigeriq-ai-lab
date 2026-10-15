@@ -43,6 +43,7 @@ import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmp
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
 import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
 import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
@@ -2933,7 +2934,71 @@ async function snapshot(){
   return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,mobileWorkers,workforce,workforceMeta,objectives,jobs,events,telemetry,sharedLeases,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
 
-let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}function issueBucket(issue){const body=String(issue.body||''),state=issueField(body,'CURRENT_STATE').toUpperCase(),labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());if(issue.state==='closed')return'HOÀN THÀNH';if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state)))return'CHỜ ANH SƠN';if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK')))return'BLOCKED';if(/REVIEW|RÀ SOÁT/.test(state))return'RÀ SOÁT';if(/WORKING|IMPLEMENTING|EXECUTING|ACTIVE/.test(state))return'ĐANG LÀM';if(labels.some(x=>x.includes('SYSTEM'))||/\[SYSTEM\]/i.test(issue.title||''))return'HỆ THỐNG';return'CẦN XỬ LÝ'}function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}async function githubWorkOrders(){const now=Date.now();if(now-workOrdersCache.at<30000)return workOrdersCache.value;if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}try{const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>({number:x.number,title:String(x.title||''),priority:issuePriority(x),state:x.state,bucket:issueBucket(x),owner:issueOwner(x),updated_at:x.updated_at,html_url:x.html_url}));const value={ok:true,updatedAt:nowIso(),items};workOrdersCache={at:now,value};return value}catch(error){const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};workOrdersCache={at:now,value};return value}}
+let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};
+function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}
+function isSystemIssue(issue,body=''){
+  const title=String(issue?.title||'').toUpperCase();
+  const scope=issueField(body,'RESOURCE_SCOPE').toUpperCase();
+  const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
+  return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ|ĐIỀU PHỐI)\]/.test(title)
+      || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope)
+      || labels.some(x=>x.includes('SYSTEM')||x.includes('CENTRAL')||x.includes('POLICY'));
+}
+function issueBucket(issue){
+  const body=String(issue.body||'');
+  const state=issueField(body,'CURRENT_STATE').toUpperCase();
+  const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
+  if(issue.state==='closed') return 'HOÀN THÀNH';
+  if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK'))) return 'BLOCKED';
+  if(isSystemIssue(issue,body)) return 'HỆ THỐNG';
+  if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state))) return 'CHỜ ANH SƠN';
+  if(/(?<!NOT_)\b(?:REVIEW|RÀ SOÁT)\b/.test(state)) return 'RÀ SOÁT';
+  if(!/\bNOT_(?:EXECUTING|WORKING)\b/.test(state) && /\b(?:WORKING|IMPLEMENTING|EXECUTING|ACTIVE)\b/.test(state)) return 'ĐANG LÀM';
+  return 'CẦN XỬ LÝ';
+}
+function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}
+function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}
+async function githubWorkOrders(){
+  const now=Date.now();
+  if(now-workOrdersCache.at<30000) return workOrdersCache.value;
+  if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}
+  try{
+    const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;
+    const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);
+    const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>{
+      const body=String(x.body||'');
+      const checklist=workOrderChecklistSteps(body);
+      const checkedCount=checklist.steps.filter(s=>s.checked).length;
+      const totalCount=checklist.steps.length;
+      const progressPercent=totalCount>0?Math.round((checkedCount/totalCount)*100):null;
+      return {
+        number:x.number,
+        title:String(x.title||''),
+        priority:issuePriority(x),
+        state:x.state,
+        bucket:issueBucket(x),
+        owner:issueOwner(x),
+        workKind:isSystemIssue(x,body)?'SYSTEM':'WORK',
+        currentStep:issueField(body,'CURRENT_STEP')||null,
+        nextAction:issueField(body,'NEXT_ACTION')||null,
+        resourceScope:issueField(body,'RESOURCE_SCOPE')||null,
+        progressSteps:checklist.steps,
+        progressCompleted:checkedCount,
+        progressTotal:totalCount,
+        progressPercent,
+        updated_at:x.updated_at,
+        html_url:x.html_url
+      };
+    });
+    const value={ok:true,updatedAt:nowIso(),items};
+    workOrdersCache={at:now,value};
+    return value;
+  }catch(error){
+    const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};
+    workOrdersCache={at:now,value};
+    return value;
+  }
+}
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
 
 
