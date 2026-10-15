@@ -607,3 +607,21 @@ body.api-health #workDetailModal .work-detail-actions>*{
   transition:none!important;transform:none!important;
  }
 }
+
+/* Tablet/compact PC portrait: give work and workforce the usable full rail.
+   Monitoring remains accessible immediately below, never dropped. */
+@media (min-width:900px) and (max-width:1199px) and (orientation:portrait){
+ body.api-health .layout{
+  display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+ }
+ body.api-health #workList.wo-list.work-list.tiq-work-center{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ }
+ body.api-health #workers.workers{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+ }
+ body.api-health .layout>.side{
+  display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ }
+ body.api-health .layout>.side>.alert-panel{grid-column:1/-1!important}
+}
