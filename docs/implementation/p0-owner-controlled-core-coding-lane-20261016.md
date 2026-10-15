@@ -46,3 +46,13 @@ Code-read findings: Core `task-prompt-compiler.mjs` supports step/acceptance/evi
 ## Entry and exit
 
 Owner-approved scope is G1–G6 on this isolated branch. Work cannot be called G6 DONE from generic green CI or schema-only tests. In absence of a legitimate isolated multi-step E2E, report G6 BLOCKED_WITH_EVIDENCE and require further scoped test authorization, rather than endless retries or false success.
+
+## G1 source-only audit addendum — 2026-10-16
+
+- Canonical P0 tracking: https://github.com/newsdayads/tigeriq-ai-lab/issues/4902. Draft code: https://github.com/newsdayads/tigeriq-ai-lab/pull/4898. None merged or released.
+- Most recently inspected `main` SHA: `82e27e9ff96cdb97a131d089eca26bb4458d303d`; G1 original branch baseline `cdec13873c63004fb8761a932bf9a26804b35f24`. Source diff of intervening main changes affected `apps/revenue-lab/`, `projects/rea-reconstruction-lab/` and related tests, **not** the current P0 candidate files. This is an observation, not a waiver of future rebasing/conflict checks.
+- Existing overlapping open PR **#4487 (NV09 local Ollama)** modifies the same `apps/tigeriq-coding-lane/coding-lane.mjs`. Preserve it and resolve overlap before any source merge; do not silently overwrite its work. Other open PRs #4737, #4573, #4061 currently have disjoint file lists to the P0 change set but affect adjacent Core services.
+- Remote Desktop Commander linked account authentication succeeded, PC01 appeared `Online`; however `remote_calls_left_pct=0`. A real current PC01 runtime status/installed SHA/lease/rollback readback was **not** obtained. **No shell or device changes were made**. G1 cannot pass its PC01 read-only evidence gate on this evidence.
+- GitHub code branch write succeeded; no Core DB lease is claimed. GitHub writer permission, Core resource lease, and production deployment permission remain separate.
+- Recovery plan is branch-only revert/close PR without modifying `main`; an installed-runtime rollback plan cannot be signed off without current PC01 state.
+- Do not use this GitHub snapshot to assert service health or a real coding job has executed. Environment / G6 remain unverified.
