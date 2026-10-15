@@ -1831,7 +1831,28 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     base = projectExternalRoleClaims(base, openIssues);
     const openPulls = Array.isArray(pulls) ? pulls : [];
     // Merged-PR milestone QA is separate from open PR QA. No claim or PASS here.
-    const nv03MilestoneQaInbox = discoverNv03MilestoneQa(openIssues);
+    const preliminaryMilestoneQa = discoverNv03MilestoneQa(openIssues,{limit:3});
+    const receiptByIssue = new Map(), receiptCoverage = new Map();
+    await Promise.all(preliminaryMilestoneQa.filter(x=>x.sourceSha).map(async task=>{
+      if(receiptCoverage.has(task.issueNumber))return;
+      // Only a complete bounded issue comment history can prove no duplicate
+      // review of this milestone at the same immutable SHA.
+      receiptCoverage.set(task.issueNumber,'UNVERIFIED');
+      try{
+        const history=await ghAllPages('/repos/'+owner+'/'+repo+'/issues/'+task.issueNumber+'/comments?per_page=100',fetchImpl,4);
+        if(history.complete===true){
+          receiptByIssue.set(task.issueNumber,history.rows);
+          receiptCoverage.set(task.issueNumber,'COMPLETE');
+        }
+      }catch{/* No invented no-duplicate result under GitHub failures. */}
+    }));
+    const nv03MilestoneQaInbox = discoverNv03MilestoneQa(openIssues,{receiptsByIssue:receiptByIssue})
+      .map(task=>({...task,
+        receiptCoverage:receiptCoverage.get(task.issueNumber)||'UNVERIFIED',
+        proofStatus:task.proofStatus==='REVIEW_REQUEST_DISCOVERED'
+          &&receiptCoverage.get(task.issueNumber)!=='COMPLETE'
+          ?'REVIEW_RECEIPTS_UNVERIFIED':task.proofStatus,
+      }));
     const runs = Array.isArray(runPayload?.workflow_runs) ? runPayload.workflow_runs : [];
     const issueMap = new Map(openIssues.map((issue) => [Number(issue.number), issue]));
     const ownerBacklogOrder = issuesComplete === true && !projectionStale
