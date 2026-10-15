@@ -691,3 +691,161 @@ body.api-health #workDetailModal .work-detail-actions>*{
   grid-column:1/-1!important;margin:0!important;
  }
 }
+
+/* API Health Owner final overlays migrated out of HTML: post-canonical card CSS. */
+/* P0 owner visual acceptance: scoped, canonical PC01 viewer only.
+   This stylesheet lives in dashboard because the authorized core release gate
+   explicitly forbids mutating public/ assets. Vercel mirrors the same HTML. */
+body.api-health .brand-health{display:inline-flex;align-items:center;flex:0 0 auto;white-space:nowrap!important;min-width:0}
+body.api-health .brand-health>span:nth-child(2){white-space:nowrap!important}
+body.api-health .brand-health .brand-ai{display:inline;color:#7DD3FC}
+body.api-health .footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;justify-content:space-between;max-width:100%}
+body.api-health #labRelease{font:800 11px/1.4 var(--tiq-font,system-ui);letter-spacing:.03em;white-space:nowrap;color:#7DD3FC}
+@media(max-width:599px){
+ body.api-health .brand-health{font-size:clamp(17px,4.3vw,22px)!important;min-width:0}
+ body.api-health .footer{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+}
+body.api-health #workers.workers{
+ grid-auto-rows:max-content!important;align-items:stretch!important
+}
+body.api-health #workers.workers>.worker.employee-card{
+ padding:8px!important;min-width:0!important;min-height:0!important;
+ height:auto!important;align-self:stretch!important;overflow:hidden!important;
+ display:flex!important;flex-direction:column!important
+}
+body.api-health #workers .employee-card-head,
+body.api-health #workers .employee-identity{min-width:0;max-width:100%}
+body.api-health #workers .employee-name,
+body.api-health #workers .employee-task{
+ min-width:0!important;max-width:100%!important;
+ overflow:hidden!important;overflow-wrap:anywhere!important;word-break:break-word!important
+}
+body.api-health #workers .employee-state{max-width:calc(100% - 46px);overflow:hidden;text-overflow:ellipsis}
+body.api-health #workers .employee-live-line{
+ margin-top:6px!important;min-width:0;max-width:100%;flex-shrink:0
+}
+body.api-health #workers .employee-live-line span:last-child{
+ min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+body.api-health #workDetailBackdrop{isolation:isolate}
+body.api-health #workDetailModal{min-width:0;max-width:calc(100vw - 24px)}
+body.api-health #workDetailModal .work-detail-head{flex:0 0 auto;min-width:0}
+body.api-health #workDetailModal .work-detail-head-main,
+body.api-health #workDetailModal .work-detail-title{min-width:0;overflow-wrap:anywhere}
+body.api-health #workDetailModal .work-detail-body{
+ display:flex!important;flex:1 1 auto!important;flex-direction:column!important;
+ min-width:0!important;min-height:0!important;
+ overflow-x:hidden!important;overflow-y:auto!important;
+ gap:12px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch
+}
+body.api-health #workDetailModal .work-detail-section{
+ flex:0 0 auto!important;min-width:0!important;max-width:100%!important;
+ width:100%!important;overflow-wrap:anywhere;box-sizing:border-box
+}
+body.api-health #workDetailModal #workDetailAudit,
+body.api-health #workDetailModal .tiq-audit-grid,
+body.api-health #workDetailModal .tiq-audit-timeline{
+ min-width:0!important;max-width:100%!important;overflow-wrap:anywhere
+}
+body.api-health #workDetailModal .work-detail-actions{
+ margin-top:0!important;flex:0 0 auto!important
+}
+
+/* P0 #4750 — narrow phones: indicators must wrap, not disappear behind
+   an overflow-hidden 58px header (PC01 measured 448px content at 390px). */
+@media(max-width:599px){
+ body.api-health .topbar{
+  height:auto!important;min-height:58px!important;
+  flex-wrap:wrap!important;gap:5px 7px!important;
+  padding-block:8px!important
+ }
+ body.api-health .topbar .brand-health{
+  flex:1 1 100%!important;margin-right:0!important
+ }
+ body.api-health .topbar :is(.top-indicator,.sync-status,.ops-freshness){
+  min-width:0!important;flex-shrink:1!important
+ }
+ body.api-health .topbar #topLive{max-width:calc(100vw - 24px)!important}
+ body.api-health .topbar #topLiveMeta{
+  display:block!important;min-width:0!important;
+  max-width:min(35vw,140px)!important;
+  overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important
+ }
+ body.api-health .topbar .sync-status{
+  max-width:calc(100vw - 24px)!important;
+  overflow:hidden!important;text-overflow:ellipsis!important
+ }
+ body.api-health .topbar .ops-freshness{flex:0 0 auto!important;margin-left:auto!important}
+}
+
+/* Owner API Health layout corrections: no synthetic progress or state change. */
+@media (min-width:1200px){
+ body.api-health #workers.workers{
+  grid-template-columns:repeat(auto-fill,minmax(185px,1fr))!important;
+ }
+}
+@media (min-width:600px) and (max-width:899px){
+ body.api-health #workers.workers{
+  grid-template-columns:repeat(auto-fill,minmax(185px,1fr))!important;
+ }
+}
+@media (max-width:899px){
+ /* 'hidden' on the app creates a nested scrolling ancestor; clip instead
+    and let the page own vertical scrolling, including the final work card. */
+ html,body.api-health{height:auto!important;overflow-x:clip!important;overflow-y:auto!important}
+ body.api-health .app{
+  height:auto!important;min-height:100dvh!important;
+  overflow-x:clip!important;overflow-y:visible!important;
+  padding-bottom:max(18px,env(safe-area-inset-bottom))!important
+ }
+ body.api-health .layout,body.api-health .layout>main,
+ body.api-health .work-panel{height:auto!important;min-height:0!important;overflow:visible!important}
+ body.api-health .work-panel #workList.wo-list.work-list.tiq-work-center{
+  height:auto!important;max-height:none!important;min-height:0!important;
+  overflow:visible!important;grid-auto-rows:max-content!important;
+  align-items:stretch!important;overscroll-behavior:auto!important
+ }
+}
+
+/* Owner V6 — neutral workforce surfaces; only an evidence-backed status label carries color. */
+.worker.employee-card{--state-border:#344257!important;background:#101c2e!important;border:1px solid #344257!important;box-shadow:none!important;animation:none!important;}
+.worker.employee-card:hover,.worker.employee-card:focus-visible{border-color:#718096!important;box-shadow:0 0 0 1px #53657d44!important;}
+.worker.employee-card .employee-id{color:#e2e8f0;background:#19283a;border:1px solid #405069;box-shadow:none;text-shadow:none;}
+.worker.employee-card .employee-avatar{background:#17273a;border:1px solid #405069;box-shadow:none;}
+.worker.employee-card .employee-source{color:#a8b7c9;background:#172439;border-color:#405069;}
+.worker.employee-card .employee-state{color:var(--state-color,#94a3b8);background:none;border:0;padding:3px 0;letter-spacing:.01em;}
+.worker.employee-card .employee-name{color:#f1f5f9;}
+.worker.employee-card .employee-task{color:#b0bfd0;border-top-color:#293a51;}
+.worker.employee-card.state-working{--state-color:#22c55e;}
+.worker.employee-card.state-ready{--state-color:#3b82f6;}.worker.employee-card.state-ondemand{--state-color:#a8b7c9;}
+.worker.employee-card.state-waiting{--state-color:#fbbf24;}
+.worker.employee-card.state-attention{--state-color:#fb7185;}
+.worker.employee-card.state-unknown,.worker.employee-card.state-paused{--state-color:#94a3b8;}
+.worker.employee-card .employee-live-line{color:#94a3b8;}.worker.employee-card.state-ready .employee-live-line{color:#3b82f6;}
+.worker.employee-card .employee-live-dot{background:#94a3b8;box-shadow:none;animation:none;}.worker.employee-card.state-ready .employee-live-dot{background:#3b82f6;box-shadow:none;animation:none;}
+.worker.employee-card.state-working .employee-live-dot{background:#22c55e;}
+.worker.employee-card.state-waiting .employee-live-dot{background:#fbbf24;}
+.worker.employee-card.state-attention .employee-live-dot{background:#fb7185;}
+.worker.employee-card.changed{animation:none;}
+/* Workforce filter colors mirror real status labels; provider/category remains neutral. */
+body.api-health .workforce-panel .filters{align-items:center;gap:6px;}
+body.api-health .workforce-panel .filter-divider{height:20px;width:1px;background:#405069;margin:0 3px;flex:none;}
+body.api-health .workforce-panel .filters .filter.on{outline:2px solid currentColor!important;outline-offset:-2px!important;}
+body.api-health .workforce-panel .filters .filter[data-filter="working"]{color:#22c55e!important;}
+body.api-health .workforce-panel .filters .filter[data-filter="ready"]{color:#3b82f6!important;}
+body.api-health .workforce-panel .filters .filter[data-filter="problem"],body.api-health .workforce-panel .filters .filter[data-filter="local"],body.api-health .workforce-panel .filters .filter[data-filter="cloud"],body.api-health .workforce-panel .filters .filter[data-filter="manual"]{color:#cbd5e1!important;}
+/* Same state accent as selected workforce card; flat details, no gray forced border. */
+body.api-health #detailModal.detail-modal{
+ --modal-accent:var(--state-color,#94A3B8);
+ border:1px solid var(--modal-accent)!important;
+ background:#111C2E!important;box-shadow:none!important;
+}
+body.api-health #detailModal.detail-modal .detail-modal-head{
+ border-bottom:2px solid var(--modal-accent)!important;
+}
+body.api-health #detailModal.detail-modal :is(.detail-status,.detail-modal-title strong){
+ color:var(--modal-accent)!important;
+}
+body.api-health #detailModal.detail-modal .employee-avatar{
+ border-color:var(--modal-accent)!important;
+}

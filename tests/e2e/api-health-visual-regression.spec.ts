@@ -71,27 +71,14 @@ for(const width of [390,1024,1648]){
   await expect.poll(async()=>page.locator('.employee-card.state-ready:hover').first()
     .evaluate(el=>getComputedStyle(el).borderColor).catch(()=>normalBorder),{timeout:5000})
     .not.toBe(normalBorder);
-  const popup=page.locator('#techPopover');
-  await expect(popup).toHaveClass(/open/);
-  await expect.poll(async()=>page.evaluate(()=>{
-    const surface=document.querySelector('#techPopover');
-    const employee=document.querySelector('.employee-card.state-ready');
-    if(!surface||!employee)return false;
-    const surfaceBorder=getComputedStyle(surface).borderColor;
-    const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder==='rgb(52, 66, 87)');
-  }),{timeout:5000}).toBe(true);
+  await expect(page.locator('#techPopover')).toHaveCount(0);
+  await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
   await testInfo.attach('api-health-worker-hover-'+width+'.png',{body:await page.screenshot({animations:'disabled'}),contentType:'image/png'});
   await employee.click();
   await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
-  await expect.poll(async()=>page.evaluate(()=>{
-    const surface=document.querySelector('#detailModal');
-    const employee=document.querySelector('.employee-card.state-ready');
-    if(!surface||!employee)return false;
-    const surfaceBorder=getComputedStyle(surface).borderColor;
-    const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder==='rgb(52, 66, 87)');
-  }),{timeout:5000}).toBe(true);
+  await expect(page.locator('#detailModal')).toHaveClass(/state-ready/);
+  await expect.poll(()=>page.locator('#detailModal').evaluate(el=>getComputedStyle(el).borderTopColor)).toBe('rgb(59, 130, 246)');
+  expect(await page.locator('#detailModal #detailTitle').evaluate(el=>getComputedStyle(el).color)).toBe('rgb(59, 130, 246)');
   await testInfo.attach('api-health-employee-modal-'+width+'.png',{body:await page.locator('#detailModal').screenshot({animations:'disabled'}),contentType:'image/png'});
   await page.locator('#detailClose').click();
   const card=page.locator('.work-row').filter({hasText:'#3278'}).first();
@@ -536,4 +523,34 @@ test('Owner mobile filter chips use compact four-across layout without oversized
   expect(a.workRows).toBe(width>=360?1:2);
   expect(a.overflow).toBe(false);
  }
+});
+
+test('Employee card click-only detail inherits verified state palette',async({page})=>{
+ await page.setViewportSize({width:924,height:980});
+ await openFixture(page);
+ await page.locator('.filter[data-filter="all"]').click();
+ await expect(page.locator('#techPopover')).toHaveCount(0);
+ for(const [state,color] of [['working','rgb(34, 197, 94)'],['ready','rgb(59, 130, 246)'],['attention','rgb(251, 113, 133)']] as const){
+  const card=page.locator('.employee-card.state-'+state).first();
+  await expect(card).toBeVisible();
+  await card.hover();
+  await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
+  await card.click();
+  await expect(page.locator('#detailModal')).toHaveClass(new RegExp('state-'+state));
+  expect(await page.locator('#detailModal').evaluate(el=>getComputedStyle(el).borderTopColor)).toBe(color);
+  expect(await page.locator('#detailModal #detailStatus').evaluate(el=>getComputedStyle(el).color)).toBe(color);
+  await page.locator('#detailClose').click();
+ }
+ const card=page.locator('.employee-card.state-ready').first();
+ await card.focus();await card.press('Enter');
+ await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
+ await page.keyboard.press('Escape');
+ await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
+});
+test('Stylesheets are consolidated without obsolete employee-hover inspector',async({page})=>{
+ await openFixture(page);
+ expect(await page.locator('style').count()).toBe(2);
+ await expect(page.locator('#techPopover')).toHaveCount(0);
+ const styles=await page.evaluate(()=>[...document.styleSheets].map(s=>s.href||''));
+ expect(styles.some(x=>x.includes('/work-center-visual.css'))).toBe(true);
 });

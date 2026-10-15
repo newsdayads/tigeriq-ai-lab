@@ -1299,7 +1299,7 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 .api-health .worker.employee-card .employee-live-line{color:#94a3b8!important;}
 .api-health .worker.employee-card.state-ready .employee-live-line{color:#3b82f6!important;}
 .api-health .worker.employee-card.changed{animation:none!important;}
-body.api-health #techPopover.tech-popover,body.api-health #detailModal.detail-modal{border:1px solid #344257!important;box-shadow:0 16px 40px #0009!important;}
+/* Workforce modal state coloring resides in work-center-visual.css. */
 /* NV filters match card semantics: working green, ready blue, mixed/source neutral. */
 .api-health .workforce-panel .filters .filter[data-filter="working"]{color:#22c55e!important;}
 .api-health .workforce-panel .filters .filter[data-filter="ready"]{color:#3b82f6!important;}
