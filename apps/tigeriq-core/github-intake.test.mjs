@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,isEquivalentPreMigrationProgressRevision,normalizeWorkOrderChecklistReceiptProgress,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -547,6 +547,7 @@ describe('GitHub Core intake guardrails',()=>{
 
   it('receipt-only checklist transitions do not create new objectives or invalidate acceptance source SHA',()=>{
     const body=['TIGERIQ_EXECUTABLE=true','PRIORITY=P2','RESOURCE_SCOPE=CANARY_TEST',
+      'CHECKLIST_RECEIPT_STABLE_REVISION=V2',
       'NO_PRODUCTION_RELEASE=true','## STRUCTURED_PROGRESS_CHECKLIST',
       '- [ ] R02 — Verify package source and license.'].join('\n');
     const base={number:4780,title:'REA scope canary',body};
@@ -556,11 +557,26 @@ describe('GitHub Core intake guardrails',()=>{
     )};
     const baseline=githubIssueSourceRevision(base);
     expect(githubIssueSourceRevision(verified)).toBe(baseline);
+    // Legacy tasks do not silently change their stored hashes on rollout.
+    const legacyBase={...base,body:base.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};
+    const legacyVerified={...verified,body:verified.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};
+    expect(githubIssueSourceRevision(legacyVerified)).not.toBe(githubIssueSourceRevision(legacyBase));
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('Verify package source','Install package source')})).not.toBe(baseline);
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false')})).not.toBe(baseline);
     expect(githubIssueSourceRevision({...verified,title:'REA changed scope'})).not.toBe(baseline);
     const signedOtherSite={...verified,body:verified.body.replace('github.com','not-github.invalid')};
     expect(githubIssueSourceRevision(signedOtherSite)).not.toBe(baseline);
+  });
+
+  it('migration-equivalent normalized Objective does not rearm under legacy contract',()=>{
+    const issue={title:'P2 REA',body:'TIGERIQ_EXECUTABLE=true\nNO_PRODUCTION_RELEASE=true\n- [x] R02 — Audit source [Bằng chứng](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780)'};
+    const legacySpec={...issue,sourceRevision:githubIssueSourceRevision(issue)};
+    const prior={metadata:{sourceRevision:githubIssueSourceRevision({...issue,body:normalizeWorkOrderChecklistReceiptProgress(issue.body)})}};
+    expect(prior.metadata.sourceRevision).not.toBe(legacySpec.sourceRevision);
+    expect(isEquivalentPreMigrationProgressRevision(prior,legacySpec)).toBe(true);
+    expect(isEquivalentPreMigrationProgressRevision(prior,{...legacySpec,title:'P2 new specification'})).toBe(false);
+    expect(isEquivalentPreMigrationProgressRevision(prior,{...legacySpec,body:legacySpec.body.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false')})).toBe(false);
+    expect(isEquivalentPreMigrationProgressRevision({metadata:{sourceRevision:'deadbeef0000'}},legacySpec)).toBe(false);
   });
 
   it('keeps source revision stable across lifecycle state_reason changes but changes on title/body edits',()=>{

@@ -76,12 +76,34 @@ export function normalizeWorkOrderChecklistReceiptProgress(body=''){
 }
 
 export function githubIssueSourceRevision(issue={}){
+  const body=String(issue?.body||'');
+  // Migration guard: changing the fingerprint algorithm for every existing
+  // Work Order would falsely rearm all historical terminal Core objectives.
+  // Apply stable checklist receipts only when the CURRENT owner-controlled
+  // contract explicitly opts in, never from archived/historical snapshots.
+  const stableProgress=/^CHECKLIST_RECEIPT_STABLE_REVISION=V2$/m.test(currentAutoExecutionHeader(body));
   return createHash('sha256')
     .update(String(issue?.title||''))
     .update('\n')
-    .update(normalizeWorkOrderChecklistReceiptProgress(issue?.body))
+    .update(stableProgress?normalizeWorkOrderChecklistReceiptProgress(body):body)
     .digest('hex')
     .slice(0,12);
+}
+
+// Compatibility for the short-lived rollout that used the normalized hash
+// before the opt-in migration gate. Its blocked objectives must not be
+// rearmed a second time when legacy hashing is restored on the next deploy.
+export function isEquivalentPreMigrationProgressRevision(prior,spec){
+  const body=String(spec?.body||'');
+  if(!prior||/^CHECKLIST_RECEIPT_STABLE_REVISION=V2$/m.test(currentAutoExecutionHeader(body)))return false;
+  const priorRevision=String(prior.metadata?.sourceRevision||'');
+  if(!priorRevision||priorRevision===String(spec?.sourceRevision||''))return false;
+  const normalizedHash=createHash('sha256')
+    .update(String(spec?.title||''))
+    .update('\n')
+    .update(normalizeWorkOrderChecklistReceiptProgress(body))
+    .digest('hex').slice(0,12);
+  return priorRevision===normalizedHash;
 }
 
 export function finalLiveReviewJobId(objectiveId='',evidenceKey='',implementationFingerprint='base'){
@@ -1241,9 +1263,11 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       if(roleClaimLabeled)await syncExternalRoleClaimLabels({fetchImpl,owner,repo,token,issue:spec,active:false});
       skipped++;continue;
     }
-    const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision);
+    const migrationEquivalent=isEquivalentPreMigrationProgressRevision(prior,spec);
+    const sourceChanged=Boolean(prior&&String(prior.metadata?.sourceRevision||'')!==spec.sourceRevision&&!migrationEquivalent);
     let fallbackRearm={eligible:false,reason:'NOT_APPLICABLE',ordinal:0};
     if(prior&&!sourceChanged){
+      if(migrationEquivalent){skipped++;skipReasons.terminalSameRevision++;continue;}
       fallbackRearm=await sameRevisionFallbackRearmPlan(pool,prior,spec);
       if(!fallbackRearm.eligible){skipped++;skipReasons.terminalSameRevision++;continue;}
     }
