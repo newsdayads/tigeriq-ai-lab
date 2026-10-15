@@ -17,7 +17,7 @@ const run = () => ({
   id:env.APIFY_RUN_ID, actId:env.APIFY_ACTOR_ID, status:'SUCCEEDED',
   startedAt:'2026-10-08T03:00:00.000Z',
   finishedAt:'2026-10-08T03:00:02.000Z',
-  defaultKeyValueStoreId:'STORE12345',
+  defaultKeyValueStoreId:'STORE12345', buildNumber:'0.0.4',
   stats:{computeUnits:0.002}, usageTotalUsd:0.0004,
 });
 const output=()=>({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'});
@@ -49,6 +49,7 @@ test('R04 authenticated existing run only: exactly 4 GET, no build/run/sync muta
   const m=mocked();
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.id,env.APIFY_RUN_ID);
+  assert.equal(res.run.buildNumber,'0.0.4');
   assert.equal(res.run.computeUnits,0.002);
   assert.equal(res.run.usageTotalUsd,0.0004);
   assert.equal(res.output.schemaVersion,'1.0');
