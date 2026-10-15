@@ -129,3 +129,37 @@ it('R06 detects scoped package substitution while accepting canonical encoded sc
   const x=inspectR06ConsumerLock(ok);
   expect(x.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(x);
 });
+
+it('R06 permits missing optional OS-specific node-pty binary rows without accepting installation',()=>{
+  const realOptionalOs=['darwin-arm64','darwin-x64','linux-arm64','linux-x64','win32-arm64','win32-x64'];
+  const x=fixture();
+  x.packages['node_modules/@lydell/node-pty'].optionalDependencies=Object.fromEntries(
+    realOptionalOs.map(os=>['@lydell/node-pty-'+os,'1.1.0']));
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',optional:true,
+    os:['win32'],cpu:['x64'],integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  expect(r.counts).toMatchObject({missingOptionalDependencies:5,packageRows:37});
+  safe(r);
+});
+it('R06 reports absent optional native package without claiming binary availability',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={
+    '@lydell/node-pty-win32-x64':'1.1.0'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.counts.missingOptionalDependencies).toBe(1);safe(r);
+});
+it('R06 preserves mandatory dependency fail-closed checks',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={requiredMissing:'1.0.0'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.reason).toBe('UNRESOLVED_DEPENDENCY_REFERENCE');safe(r);
+});
+it('R06 rejects invalid optional specs and suspicious optional package tarball substitution',()=>{
+  const x=fixture();x.packages['node_modules/zod'].optionalDependencies={missing:''};
+  expect(inspectR06ConsumerLock(x).reason).toBe('INVALID_DEPENDENCY_REFERENCE');
+  const y=fixture();y.packages['node_modules/zod'].optionalDependencies={foo:'1.0.0'};
+  y.packages['node_modules/foo']={version:'1.0.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/rogue/-/rogue-1.0.0.tgz'};
+  const r=inspectR06ConsumerLock(y);
+  expect(r.reason).toBe('UNVERIFIED_PACKAGE_SOURCE');safe(r);
+});

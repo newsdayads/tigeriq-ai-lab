@@ -96,25 +96,31 @@ export function inspectR06ConsumerLock(lock){
     const path=locate(pkgs,'node_modules/rea-agents',name);
     return !path||pkgs[path]?.version!==v;
   }))return report('REJECTED','REA_LOCK_RESOLUTION_MISMATCH');
+  let missingOptionalDependencies=0;
   for(const [path,p] of rows){
     if(!path)continue;
     if(p.link===true||!versionOk(p.version)||!sriOk(p.integrity)||
         !resolvedOk(p.resolved,path.slice(path.lastIndexOf('node_modules/')+13),p.version))
       return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
-    for(const deps of [p.dependencies,p.optionalDependencies]){
+    // npm optionalDependencies may be absent (e.g. non-target OS binaries).
+    // Strictly reject missing required edges. Never treat shape as host acceptance.
+    for(const [kind,deps] of [['required',p.dependencies],['optional',p.optionalDependencies]]){
       if(deps===undefined)continue;
       if(!rec(deps))return report('REJECTED','INVALID_DEPENDENCY_MAP');
       for(const [name,spec] of pairs(deps)){
-        if(!nameOk(name)||typeof spec!=='string'||spec.length>256||
-            !locate(pkgs,path,name))
+        if(!nameOk(name)||typeof spec!=='string'||!spec.trim()||spec.length>256)
+          return report('REJECTED','INVALID_DEPENDENCY_REFERENCE');
+        if(!locate(pkgs,path,name)){
+          if(kind==='optional') { missingOptionalDependencies++; continue; }
           return report('REJECTED','UNRESOLVED_DEPENDENCY_REFERENCE');
+        }
       }
     }
   }
   // Never equate caller-controlled lock data with actual npm-installed artifacts.
   return report('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED',
     'R05_AND_HOST_AND_CONSUMER_PROVENANCE_STILL_REQUIRED',{
-      packageRows:rows.length-1,directDependencies:35,
+      packageRows:rows.length-1,directDependencies:35,missingOptionalDependencies,
       packagesWithInstallScriptFlag:rows.filter(([path,p])=>path&&p.hasInstallScript===true).length
     });
 }
