@@ -95,7 +95,8 @@ export function computePpeScenario({
     profitUsdAssumed: toFixed(profit),
     profitMarginOnDeveloperShare: safeRatio(profit, proceeds),
     breakEvenComputeUnitsAtAssumedNonCuCost: capacity(breakEvenBudget),
-    maxComputeUnitsFor30PctDeveloperMargin: capacity(margin30Budget),
+    // A 30% margin is undefined with no developer proceeds, even at zero CU.
+    maxComputeUnitsFor30PctDeveloperMargin: proceeds === 0n ? null : capacity(margin30Budget),
     verifiedActualApifyUsage: false,
     verifiedActualPaidRevenue: false,
     commercialDecisionReady: false,
