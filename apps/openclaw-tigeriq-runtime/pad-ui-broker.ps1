@@ -267,6 +267,77 @@ function Invoke-V020Signer {
 }
 function Invoke-Request($Request) {
   switch ([string]$Request.action) {
+    'nv07_native_session_ping' {
+      # This response is emitted ONLY by the existing InteractiveToken task.
+      # A nonce round-trip is not proof of OS credentials or a Core lease.
+      $nonce=[string]$Request.nonce
+      if($nonce -notmatch '^[0-9a-f-]{36} { return Invoke-V020Signer }
+    'pad_launch' {
+      Start-Process 'ms-powerautomate:' | Out-Null
+      return [pscustomobject]@{ Launched=$true }
+    }
+    'pad_windows' { return @(Get-PadWindows) }
+    'pad_tree' {
+      $window = Get-TopWindowElement $Request
+      $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+      $limit = if ($Request.maxResults) { [math]::Min(400,[int]$Request.maxResults) } else { 200 }
+      $out = @()
+      foreach ($e in $all) {
+        if ($out.Count -ge $limit) { break }
+        try {
+          if ([string]$e.Current.Name -or [string]$e.Current.AutomationId) { $out += (Element-ToObject $e) }
+        } catch {}
+      }
+      return @($out)
+    }
+    'pad_invoke' { return Invoke-PadElement $Request $false }
+    'pad_click' { return Invoke-PadElement $Request $true }
+    'pad_set_value' { return Set-PadValue $Request }
+    'pad_keys' { return Send-PadKey $Request }
+    default { throw 'TIGERIQ_PAD_UI_ACTION_NOT_ALLOWED' }
+  }
+}
+
+try {
+  while ($true) {
+    Write-JsonAtomic $Heartbeat ([pscustomobject]@{
+      schema='TIGERIQ_PAD_UI_HEARTBEAT_V1'; version='1.0'; at=(Get-Date).ToUniversalTime().ToString('o')
+      sessionId=(Get-Process -Id $PID).SessionId; user=[Environment]::UserName; pid=$PID
+    })
+
+    $items = @(Get-ChildItem -LiteralPath $Requests -Filter 'request-*.json' -File -ErrorAction SilentlyContinue | Sort-Object CreationTimeUtc | Select-Object -First 5)
+    foreach ($item in $items) {
+      $req = $null
+      try {
+        $req = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
+        if ([string]$req.schema -ne 'TIGERIQ_PAD_UI_REQUEST_V1' -or [string]$req.id -notmatch '^[0-9a-f-]{36}$') { throw 'TIGERIQ_PAD_UI_REQUEST_INVALID' }
+        $data = Invoke-Request $req
+        $resp = [pscustomobject]@{ schema='TIGERIQ_PAD_UI_RESPONSE_V1'; id=[string]$req.id; ok=$true; data=$data; completedAt=(Get-Date).ToUniversalTime().ToString('o') }
+      } catch {
+        $resp = [pscustomobject]@{ schema='TIGERIQ_PAD_UI_RESPONSE_V1'; id=[string]$req.id; ok=$false; error=[string]$_.Exception.Message; completedAt=(Get-Date).ToUniversalTime().ToString('o') }
+      }
+      if ($req -and $req.id) {
+        Write-JsonAtomic (Join-Path $Responses "response-$($req.id).json") $resp
+      }
+      Remove-Item -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Milliseconds 200
+  }
+} finally {
+  try { $mutex.ReleaseMutex() } catch {}
+  $mutex.Dispose()
+}
+){throw 'NV07_SESSION_NONCE_INVALID'}
+      $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent()
+      $process=Get-Process -Id $PID
+      if($identity.Name.Split('\')[-1] -ne 'wdragons12x' -or $process.SessionId -le 0){
+        throw 'NV07_USER_SESSION_NOT_VALID'
+      }
+      return [pscustomobject]@{
+        nonce=$nonce; windowsUser='wdragons12x'; sessionId=[int]$process.SessionId;
+        pid=$PID; source='WINDOWS_INTERACTIVE_BROKER'; authority='OBSERVATION_ONLY'
+      }
+    }
     'pad_android_sign_v020' { return Invoke-V020Signer }
     'pad_launch' {
       Start-Process 'ms-powerautomate:' | Out-Null

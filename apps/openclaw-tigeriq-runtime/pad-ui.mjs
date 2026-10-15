@@ -21,6 +21,7 @@ const HEARTBEAT_PATH = win.join(PAD_UI_BROKER_ROOT, 'heartbeat.json');
 const MAX_BROKER_WAIT_MS = 12000;
 const MAX_V020_SIGNER_WAIT_MS = 130000;
 const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020';
+const INTERNAL_NV07_SESSION_PING = 'nv07_native_session_ping';
 const ALLOWED_KEYS = new Set(['ENTER', 'ESC', 'TAB', 'CTRL+A', 'CTRL+F', 'CTRL+N', 'F5']);
 
 function cleanText(value, max, label) {
@@ -133,4 +134,34 @@ export async function executePadUiAction(raw = {}) {
 
 export async function executePadV020Signer() {
   return await executePadBrokerRequest({ action: INTERNAL_V020_SIGNER_ACTION }, MAX_V020_SIGNER_WAIT_MS);
+}
+
+/**
+ * Send a challenge to the *existing* Windows InteractiveToken PAD broker.
+ * This verifies a real Core/SYSTEM -> user-session IPC round trip only.
+ * OS process owner/session verification and scoped Core lease remain separate.
+ */
+export async function probeNv07NativeUserSession() {
+  const nonce=randomUUID();
+  try {
+    const {broker,result}=await executePadBrokerRequest({
+      action:INTERNAL_NV07_SESSION_PING,nonce,
+    });
+    const pid=Number(result?.pid);
+    const sessionId=Number(result?.sessionId);
+    const ready=result?.nonce===nonce && result?.windowsUser==='wdragons12x'
+      && Number.isSafeInteger(pid) && pid>0
+      && Number.isInteger(sessionId) && sessionId>0
+      && Number(broker?.sessionId)===sessionId
+      && String(broker?.user||'').toLowerCase()==='wdragons12x';
+    return Object.freeze({
+      ready,code:ready?'NV07_NATIVE_SESSION_IPC_RESPONDED':'NV07_NATIVE_SESSION_PROOF_INVALID',
+      windowsUser:ready?'wdragons12x':null,
+      sessionId:ready?sessionId:null,pid:ready?pid:null,
+      attestationVerified:false,coreLeaseVerified:false,nv07Active:false,
+    });
+  } catch {
+    return Object.freeze({ready:false,code:'NV07_NATIVE_SESSION_BROKER_UNAVAILABLE',
+      attestationVerified:false,coreLeaseVerified:false,nv07Active:false});
+  }
 }
