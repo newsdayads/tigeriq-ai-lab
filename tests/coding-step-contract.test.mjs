@@ -163,3 +163,11 @@ test('P0 canary caps CI repair and independent review to two cycles',async()=>{
   assert.match(lane,/maxRepairCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
   assert.match(lane,/maxCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
 });
+
+test('domain acceptance reads real exact-head GitHub check runs, not generic gate projection',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/commits\/\$\{encodeURIComponent\(gates\.sha\)\}\/check-runs\?per_page=100/);
+  assert.match(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:domainCheckReceipt\.check_runs\}\)/);
+  assert.doesNotMatch(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:gates\.states\}\)/);
+});
