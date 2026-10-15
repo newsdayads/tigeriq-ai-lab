@@ -72,8 +72,15 @@ export function computePpeScenario({
   const profit = proceeds - platformCost;
   const breakEvenBudget = proceeds - (tierIsPaid ? nonCuCost : 0n);
   const margin30Budget = divideRounded(proceeds * 7n, 10n) - (tierIsPaid ? nonCuCost : 0n);
-  const capacity = budget => (tierIsPaid && budget >= 0n)
-    ? toFixed(divideRounded(budget * SCALE, rate)) : null;
+  // A displayed maximum must never round UP beyond the safe CU budget.
+  // Keep 9-decimal public output; floor both integer division stages.
+  const capacity = budget => {
+    if (!tierIsPaid || budget < 0n) return null;
+    const capacityPicoCu = budget * SCALE / rate;
+    const nanoCu = capacityPicoCu / 1000n;
+    const billion = 1000000000n;
+    return `${nanoCu / billion}.${(nanoCu % billion).toString().padStart(9, '0')}`;
+  };
   return Object.freeze({
     evidenceStatus: R10_ECONOMICS_SCOPE,
     pricingModel, actorUsesStandbyMode, customerTier,
@@ -88,7 +95,8 @@ export function computePpeScenario({
     profitUsdAssumed: toFixed(profit),
     profitMarginOnDeveloperShare: safeRatio(profit, proceeds),
     breakEvenComputeUnitsAtAssumedNonCuCost: capacity(breakEvenBudget),
-    maxComputeUnitsFor30PctDeveloperMargin: capacity(margin30Budget),
+    // A 30% margin is undefined with no developer proceeds, even at zero CU.
+    maxComputeUnitsFor30PctDeveloperMargin: proceeds === 0n ? null : capacity(margin30Budget),
     verifiedActualApifyUsage: false,
     verifiedActualPaidRevenue: false,
     commercialDecisionReady: false,

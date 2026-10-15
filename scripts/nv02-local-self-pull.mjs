@@ -164,7 +164,9 @@ async function syncAcceptedNv02Comments(issue,lease,comments){
      m.LEASE_ID!==lease.leaseId||!/^([A-Z][A-Z0-9_-]{1,15})$/.test(m.STEP_ID||''))continue;
   const expectedUrl=m.EVIDENCE_URL||'';
   const part=expectedUrl.match(/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/(\d+)#issuecomment-(\d+)$/i);
-  if(!part||Number(part[1])!==Number(issue.number))continue;
+  const prPart=expectedUrl.match(/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/pull\/(\d+)/i);
+  if(!part&&!prPart)continue;
+  if(part&&Number(part[1])!==Number(issue.number))continue;
   if(workOrderChecklistGate(issue,{stepId:m.STEP_ID,expectedEvidenceUrl:expectedUrl,requireAll:false}).ok)continue;
   const result=await syncAcceptedChecklistStep({
    issueNumber:issue.number,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
@@ -175,21 +177,30 @@ async function syncAcceptedNv02Comments(issue,lease,comments){
     return {valid:true,resourceScope:lease.resourceScope,leaseId:lease.leaseId};
    },
    verifyEvidence:async()=>{
-    const receipt=gh(['repos/'+OWNER+'/'+REPO+'/issues/comments/'+part[2]]);
-    const f=stepFields(receipt.body);
-    if(f.WORK_ORDER!=='#'+issue.number||f.RESOURCE_SCOPE!==lease.resourceScope||
-       f.STEP_ID!==m.STEP_ID||f.ACCEPTANCE!=='PASS')return {verified:false};
-    const expectedHead=String(issue.body||'').match(/^TARGET_HEAD=([a-f0-9]{40})$/mi)?.[1]?.toLowerCase()||'';
-    const ownerAcceptance=receipt?.user?.login===OWNER && f.VERIFIER==='OWNER';
-    let ciAcceptance=false;
-    if(/^(\d+)$/.test(f.CI_RUN_ID||'')&&/^[a-f0-9]{40}$/i.test(f.CI_HEAD_SHA||'')){
-     const run=gh(['repos/'+OWNER+'/'+REPO+'/actions/runs/'+f.CI_RUN_ID]);
-     ciAcceptance=Boolean(expectedHead)&&String(f.CI_HEAD_SHA).toLowerCase()===expectedHead&&run?.status==='completed'&&run?.conclusion==='success'
-       &&String(run?.head_sha||'').toLowerCase()===f.CI_HEAD_SHA.toLowerCase();
+    if(part){
+     const receipt=gh(['repos/'+OWNER+'/'+REPO+'/issues/comments/'+part[2]]);
+     const f=stepFields(receipt.body);
+     if(f.WORK_ORDER!=='#'+issue.number||f.RESOURCE_SCOPE!==lease.resourceScope||
+        f.STEP_ID!==m.STEP_ID||f.ACCEPTANCE!=='PASS')return {verified:false};
+     const expectedHead=String(issue.body||'').match(/^TARGET_HEAD=([a-f0-9]{40})$/mi)?.[1]?.toLowerCase()||'';
+     const ownerAcceptance=receipt?.user?.login===OWNER && f.VERIFIER==='OWNER';
+     let ciAcceptance=false;
+     if(/^(\d+)$/.test(f.CI_RUN_ID||'')&&/^[a-f0-9]{40}$/i.test(f.CI_HEAD_SHA||'')){
+      const run=gh(['repos/'+OWNER+'/'+REPO+'/actions/runs/'+f.CI_RUN_ID]);
+      ciAcceptance=Boolean(expectedHead)&&String(f.CI_HEAD_SHA).toLowerCase()===expectedHead&&run?.status==='completed'&&run?.conclusion==='success'
+        &&String(run?.head_sha||'').toLowerCase()===f.CI_HEAD_SHA.toLowerCase();
+     }
+     if(!ownerAcceptance&&!ciAcceptance)return {verified:false};
+     return {verified:true,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
+      resourceScope:lease.resourceScope,workOrder:'#'+issue.number};
     }
-    if(!ownerAcceptance&&!ciAcceptance)return {verified:false};
-    return {verified:true,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
-     resourceScope:lease.resourceScope,workOrder:'#'+issue.number};
+    if(prPart){
+     const pr=gh(['repos/'+OWNER+'/'+REPO+'/pulls/'+prPart[1]]);
+     if(!pr?.merged)return {verified:false};
+     return {verified:true,stepId:m.STEP_ID,evidenceUrl:expectedUrl,
+      resourceScope:lease.resourceScope,workOrder:'#'+issue.number};
+    }
+    return {verified:false};
    },
    writeIssue:async(number,body,{expectedBody})=>{
     assertLeaseOwnership(details(issue),lease);

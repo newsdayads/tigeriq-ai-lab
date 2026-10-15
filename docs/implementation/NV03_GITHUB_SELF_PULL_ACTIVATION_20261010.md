@@ -1,5 +1,8 @@
 # NV03 P1–P5 tự nhận từ GitHub — cổng phát hành
 
+**LỊCH SỬ — ĐÃ BỊ THAY THẾ bởi quyết định Owner QA-only 11/10/2026**, Issue #4649 comment `6109979504`. Không bật các flags hay tự nhận P1–P5 coding dựa vào tài liệu này. NV03 hiện **chỉ QA**, xem `bootstrap/03_TIGERIQ_AI_EMPLOYEE_MODEL.md` và `docs/NV03_QA_INBOX_V1.md`. App Chrome LocalOnly giữ nguyên.
+
+
 Trạng thái: CHƯA KÍCH HOẠT, chỉ chuẩn bị khả năng chuyển chế độ.
 
 - Owner ủy quyền NV03 tự nhận một việc P1–P5 phù hợp; NV04 giữ tuyến nghiên cứu/kiểm duyệt qua Core.

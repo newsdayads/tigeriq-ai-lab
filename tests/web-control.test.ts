@@ -11,9 +11,73 @@ const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.c
 const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
+const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
+const visualCss = readFileSync(resolve('public/work-center-visual.css'), 'utf8');
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('distinguishes NV03/NV04 live UI response from Core job, with fresh-only evidence',()=>{
+    expect(apiHealth).toContain("const map={working:'UI_BUSY',idle:'READY'");
+    expect(apiHealth).toContain("current_job_id:fresh?w.currentJobId||null:null");
+    expect(apiHealth).toContain("live_job:fresh?w.job||null:null");
+    expect(apiHealth).toContain("ui_session_state:fresh?w.uiSessionState||w.state||null:null");
+    expect(apiHealth).toContain("if(rawStatus==='UI_BUSY')return'ChatGPT đang phản hồi");
+    expect(apiHealth).toContain('function applyPendingQa(rows,projection)');
+    expect(apiHealth).toContain("t?.claimState==='NOT_CLAIMED'");
+    expect(apiHealth).toContain("1 yêu cầu QA chờ nhận".replace('1',''));
+    expect(apiHealth).toContain("pending_qa_count");
+    expect(apiHealth).toContain("let activeFilter='working'");
+    expect(apiHealth).toContain('data-filter="ready">Rảnh</button>');
+    expect(apiHealth).toContain("else if(activeFilter==='ready')list=list.filter(x=>simpleState(x).group==='ready')");
+  });
+
+  it('matches workforce filter colors to card semantics, without provider-color false signals',()=>{
+    expect(apiHealth).toContain('data-filter="all">Tất cả</button>');
+    expect(apiHealth).toContain('data-filter="problem">Cần kiểm tra</button>');
+    expect(apiHealth).toContain('filter-divider');
+    expect(visualCss).toContain('data-filter="working"]{color:#22c55e!important;');
+    expect(visualCss).toContain('data-filter="ready"]{color:#3b82f6!important;');
+    expect(workforceCss).toContain('NV filters match card semantics');
+    expect(workforceCss).toContain('data-filter="cloud"],.api-health .workforce-panel');
+  });
+
+  it('uses muted NV cards and evidence-based V6 status colors on both surfaces', () => {
+    expect(apiHealth).toContain('--tiq-working:#22C55E;--tiq-ready:#3B82F6');
+    expect(apiHealth).toContain('--tiq-done:#4ADE80');
+    expect(apiHealth).toContain("if(s==='MOBILE_OFFLINE')return{group:'unknown',label:'CHƯA CÓ HEARTBEAT',rank:4}");
+    expect(apiHealth).toContain('function stateBadge(state){return esc(state.label)}');
+    expect(visualCss).toContain('.worker.employee-card.state-ready{--state-color:#3b82f6;}');
+    expect(visualCss).toContain('.worker.employee-card.state-working{--state-color:#22c55e;}');
+    expect(visualCss).toContain('background:#101c2e!important;border:1px solid #344257!important;');
+    expect(apiHealth).not.toContain('const STATE_ICON=');
+    expect(workforceCss).toContain('/* Owner interaction V6: workforce cards are neutral;');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-ready,');
+    expect(workforceCss).toContain('background:#101c2e!important;');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-working{--state-color:#22c55e;}');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-attention{--state-color:#fb7185;}');
+  });
+
+  it('shows NV102 Mobile Core presence without registering a fake generic AI resource',()=>{
+    expect(core).toContain('projectMobileWorkerPresence');
+    expect(core).toContain('resources:rr,mobileWorkers,workforce');
+    expect(core).toContain("from tigeriq_mobile_devices where revoked=false");
+    expect(apiHealth).toContain('function applyMobileWorkers(rows,mobileWorkers)');
+    expect(apiHealth).toContain("d.mobileWorkers||[]");
+    expect(apiHealth).toContain("status:fresh?'MOBILE_ONLINE':'MOBILE_OFFLINE'");
+    expect(apiHealth).toContain("resource_class:'mobile_worker'");
+    expect(apiHealth).toContain("Chờ nghiệm thu 20 tác vụ");
+    expect(apiHealth).toContain("if(x.resource_class==='mobile_worker')return'MOBILE'");
+    expect(apiHealth).not.toContain("NV102','ollama'");
+  });
+
+  it('categorizes PC01 NV06 OpenClaw in Local without changing its operator role', () => {
+    expect(apiHealth).toContain("['ollama','openclaw'].includes(String(live?.provider||'').toLowerCase())");
+    expect(apiHealth).toContain("['NV06','NV09','NV10'].includes(id)");
+    expect(apiHealth).toContain("if(x.employee_id==='NV06')return'AUTO'");
+    expect(truth).toContain("['ollama','openclaw'].includes(provider)");
+    expect(core).toContain("provider:OPENCLAW_PROVIDER");
+  });
+
   it('uses API Health as the visual/function reference without iframe duplication', () => {
     expect(apiHealth).toContain('<title>TigerIQ AI</title>');
     expect(core).toContain('dashboard()');

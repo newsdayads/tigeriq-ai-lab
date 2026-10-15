@@ -35,6 +35,7 @@ import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
 import { withCoreRcaPgLease } from './core-rca-pg-lease.mjs';
 import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
+import { withPc01LocalInferenceSlot,localInferenceBusy } from './pc01-local-inference-slot.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
@@ -42,6 +43,7 @@ import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmp
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
+import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
 import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
 import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
@@ -52,10 +54,14 @@ import { refreshRegistryWorkforce, normalizeRuntimeResources } from './workforce
 import { OPENCLAW_EMPLOYEE_ID, OPENCLAW_MODEL, OPENCLAW_PROVIDER, OPENCLAW_RESOURCE_ID, normalizeOpenClawDispatchEnvelope, waitOpenClawDispatch } from '../openclaw-tigeriq-runtime/dispatch.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
+import { projectMobileWorkerPresence } from './mobile-workforce-presence.mjs';
 import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
+import {recordNv07GithubProposalReceipt} from './nv07-github-proposal-receipt.mjs';
+import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
+import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -73,7 +79,7 @@ const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.tri
 const CORE_MANAGER_EMPLOYEE_ID = 'NV08';
 const CORE_MANAGER_MODEL = process.env.TIGERIQ_CORE_MANAGER_MODEL?.trim() || 'qwen3:8b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
-// NV08 is the sole manager; NV10 remains dedicated to independent local work.
+// NV08 only Manager. NV10 performs API Doctor scans AND github_api_autowork repair tasks, never Coding Manager.
 const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID]);
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
@@ -146,10 +152,21 @@ const openclawResource={
   id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'PC Operator · OpenClaw',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
   accountBinding:'default',runtimeBinding:'pc01',costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['pc_operator'],
 };
+// Owner-scoped NV07 bootstrap slot is opted in only by PC01 runtime policy.
+// Even when provisioned, keep it OFFLINE for normal inference routing.
+const NV07_BOOTSTRAP_RESOURCE_ENABLED=process.env.TIGERIQ_NV07_BOOTSTRAP_RESOURCE_ENABLED==='1';
+const nv07BootstrapResource=Object.freeze({
+  id:'NV07',employeeId:'NV07',resourceId:'res:antigravity:agy-cli:owner-wdragons12x:pc01',
+  name:'Google Antigravity — scoped bootstrap canary',
+  provider:'antigravity',model:'agy-cli',req:[],rank:999,
+  accountBinding:'owner-wdragons12x',runtimeBinding:'pc01',
+  costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['nv07_bootstrap'],
+});
 const resources = [
   nv08Resource,
   nv09Resource,
   nv10Resource,
+  ...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[]),
   openclawResource,
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
@@ -254,14 +271,16 @@ async function runSurfSenseResearch(query, limit=6) {
 }
 
 async function invokeLocalManager(prompt,model) {
-  const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body:JSON.stringify(managerLocalRequestBody(model,prompt)),
-  },CORE_MANAGER_TIMEOUT_MS);
-  const text=String(body?.response||'').trim();
-  if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
-  return text;
+  return withPc01LocalInferenceSlot(pool,async()=>{
+    const body=await fetchJson('http://127.0.0.1:11434/api/generate',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify(managerLocalRequestBody(model,prompt)),
+    },CORE_MANAGER_TIMEOUT_MS);
+    const text=String(body?.response||'').trim();
+    if(!text){const e=new Error('OLLAMA_MANAGER_EMPTY');e.kind='invalid_response';throw e;}
+    return text;
+  },{waitMs:CORE_MANAGER_TIMEOUT_MS});
 }
 
 function shrinkGroq413Prompt(prompt) {
@@ -356,6 +375,7 @@ export function watsonxRetryDecision(body,attempt,maxRetries=2){
 async function invokeProvider(r, prompt, providerContext={}) {
   switch (r.provider) {
     case 'ollama': {
+      return withPc01LocalInferenceSlot(pool,async()=>{
       if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
       // Bounded opt-in for compiled LOCAL packets. No generic request mutation.
       if(process.env.TIGERIQ_NV10_NATIVE_STRUCTURED==='enabled'
@@ -368,6 +388,7 @@ async function invokeProvider(r, prompt, providerContext={}) {
         return native.text;
       }
       return openAiCompat('http://127.0.0.1:11434/v1/chat/completions','',r.model,prompt,{authorization:undefined},r.id===CORE_MANAGER_EMPLOYEE_ID?CORE_MANAGER_TIMEOUT_MS:OLLAMA_TIMEOUT_MS,r);
+      },{waitMs:r.id===OLLAMA_EMPLOYEE_ID?20000:120000});
     }
     case 'groq': return openAiCompat('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,{},90000,r);
     case 'openrouter': return openAiCompat('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,{},90000,r);
@@ -571,6 +592,12 @@ async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',re
   await event(eventType,{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(error?.code||error?.message||error).slice(0,300),cooldownUntil,taskKind:context.taskKind||null,routingProfile:context.profile||null,quota:quotaPatch});
   const quarantine=await maybeQuarantineResource(r);return {kind,health,cooldownUntil,quarantine,policy};
 }
+async function releaseLocalInferenceContention(r,jobId,taskKind){
+  // Local CPU contention is neither a model failure nor an API outage.
+  await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where resource_id=$1",[r.resourceId]);
+  await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,updated_at=now() where employee_id=$1",[r.id]);
+  await event('PC01_LOCAL_INFERENCE_DEFERRED',{jobId,employeeId:r.id,resourceId:r.resourceId,taskKind});
+}
 async function releaseManagerOutputContractFailure(r,jobId,error){
   await pool.query("update tigeriq_ai_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,last_seen_at=now(),updated_at=now() where resource_id=$1",[r.resourceId]);
   await pool.query("update tigeriq_resources set current_job_id=null,work_state=case when health_state='ONLINE' then 'IDLE' when health_state='READY' then 'READY' else health_state end,last_seen_at=now(),updated_at=now() where employee_id=$1",[r.id]);
@@ -593,7 +620,10 @@ async function refreshResources() {
     let credential = r.provider === 'ollama' ? 'LOCAL' : (!credentialPresent(r) ? 'WAIT_KEY' : (reqReady(r) ? 'READY' : 'BLOCKED'));
     let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
     const old = (await pool.query('select health_state,work_state,last_seen_at,cooldown_until,current_job_id from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0];
-    if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
+    // The Core lease is admitted independently; never mark NV07 routable from
+    // the gateway being online or from the mere presence of this resource row.
+    if(r.id==='NV07'){credential='WAIT_KEY';health='OFFLINE';}
+    else if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
     else if (r.id === NV09_EMPLOYEE_ID) {
       credential='LOCAL';
       const availability=await nv09ModelAvailability();
@@ -868,7 +898,7 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -908,12 +938,12 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker',options={
     try{
       // JSON acceptance must exercise the Coding Lane's actual local OpenAI-compatible
       // chat/completions transport, not the unrelated native /api/generate path.
-      const inference=contract==='json'
+      const inference=await withPc01LocalInferenceSlot(pool,async()=>contract==='json'
         ? {text:String((await fetchJson(`${NV09_ENDPOINT}/v1/chat/completions`,{
           method:'POST',headers:{'content-type':'application/json'},
           body:JSON.stringify({model:NV09_MODEL,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:256,stream:false}),
         },canaryTimeoutMs))?.choices?.[0]?.message?.content||'').trim()}
-        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'});
+        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'}),{waitMs:canaryTimeoutMs});
       const latency=Date.now()-started;
       if(contract==='json'){
         let json;
@@ -1348,6 +1378,12 @@ async function invokeApiDoctorLocal(prompt){
   return parseApiDoctorDecision(body?.response||'');
 }
 async function runApiDoctorAnalysisJob(items,scanSignature){
+  // API Doctor is background work. Defer on another local NV's active inference;
+  // do not create a failed Doctor job or burn provider retry budgets.
+  try { return await withPc01LocalInferenceSlot(pool,()=>runApiDoctorAnalysisJobInSlot(items,scanSignature),{waitMs:0}); }
+  catch(error){if(localInferenceBusy(error))return {skipped:'local_inference_busy'};throw error;}
+}
+async function runApiDoctorAnalysisJobInSlot(items,scanSignature){
   const recent=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_DONE' and data->>'signature'=$1 and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
   if(recent)return {skipped:'deduped'};
   const recentUnavailable=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_ANALYSIS_SKIPPED' and data->>'signature'=$1 and data->>'reason'='nv10_unavailable' and ts>now()-($2::text||' milliseconds')::interval limit 1",[scanSignature,String(API_DOCTOR_ANALYSIS_DEDUPE_MS)])).rows[0];
@@ -1772,6 +1808,17 @@ async function reviewerResourceIdsForJob(j){
 async function claimJob() {
   const c=await pool.connect();
   try { await c.query('begin');
+    // Owner-approved canary has no P0 objective. Claim its fixed existing-ledger
+    // kind separately so the normal objective/P0 selector remains unchanged.
+    const nv=await c.query("select j.*,null::jsonb as objective_metadata from tigeriq_jobs j where j.objective_id is null and j.kind='nv07_bootstrap' and j.capability='nv07_bootstrap' and j.employee_id='NV07' and j.resource_id='res:antigravity:agy-cli:owner-wdragons12x:pc01' and j.max_attempts=1 and j.attempts=0 and j.status='queued' order by j.created_at for update skip locked limit 1");
+    if(nv.rows[0]){
+      const j=nv.rows[0];
+      await c.query("update tigeriq_jobs set status='running',attempts=1,started_at=now(),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
+      await c.query('commit');
+      const claimed={...j,attempts:1,started_at:new Date()};
+      await hotPathStage(claimed,'CLAIMED');
+      return claimed;
+    }
     const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active' and o.priority<>'P0'
@@ -1851,6 +1898,15 @@ async function emitSkillEffectivenessObservations({
   }
 }
 async function runJob(j) {
+  if(j.kind==='nv07_bootstrap'){
+    const result=await runNv07ApprovedBootstrap(pool,{queuedJobId:j.id});
+    // Cover pre-lease denials too. They must terminate, never retry a canary.
+    await pool.query("update tigeriq_jobs set status=$2,result=$3,lease_until=null,completed_at=now() where id=$1 and status='running'",
+      [j.id,result.accepted?'done':'failed',JSON.stringify(result)]);
+    await event('NV07_CANONICAL_QUEUE_JOB_FINISHED',{workOrderId:4783,jobId:j.id,
+      accepted:result.accepted===true,code:result.code,nv07Active:false});
+    return;
+  }
   let skillRoutingPreflight=null;
   let jobSkillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
   const skillUseStartedAt=Date.now();
@@ -1991,11 +2047,11 @@ async function runJob(j) {
     const busyCount=message==='NO_AI_RESOURCE_AVAILABLE'?await busyCapableResourceCount(j.capability,effectiveWaitProfile):0;
     const transientLocalWait=mayWaitAfterLocalFailure({profile:effectiveWaitProfile,message,failures,configuredLocalCount:busyCount});
     const targetedReviewWait=shouldWaitForTargetedReviewResource({job:j,message,failures});
-    if(shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||transientLocalWait||targetedReviewWait){
+    if(localInferenceBusy(error)||shouldWaitForBusyResource({message,failures,busyCapableCount:busyCount})||transientLocalWait||targetedReviewWait){
       const current=(await pool.query('select resource_wait_count,resource_wait_started_at from tigeriq_jobs where id=$1',[j.id])).rows[0]||{};
       const plan=resourceWaitPlan({waitCount:current.resource_wait_count,startedAt:current.resource_wait_started_at});
       if(plan.wait){
-        const waitCode=targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':transientLocalWait?'LOCAL_TRANSIENT_INFERENCE_FAILURE':effectiveWaitProfile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
+        const waitCode=localInferenceBusy(error)?'PC01_LOCAL_INFERENCE_BUSY':targetedReviewWait?'TARGET_REVIEWER_UNAVAILABLE':transientLocalWait?'LOCAL_TRANSIENT_INFERENCE_FAILURE':effectiveWaitProfile==='LOCAL'?'LOCAL_RESOURCE_TEMPORARILY_UNAVAILABLE':'TEMPORARY_RESOURCE_BUSY';
         const failure={code:waitCode,message,failures,resourceWait:{count:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt}};
         await pool.query("update tigeriq_jobs set status='waiting_resource',failure=$2,lease_until=null,completed_at=null,next_attempt_at=$3,resource_wait_count=$4,resource_wait_started_at=coalesce(resource_wait_started_at,now()) where id=$1",[j.id,JSON.stringify(failure),plan.nextAttemptAt,plan.count]);
         await event('RESOURCE_WAIT_QUEUED',{jobId:j.id,objectiveId:j.objective_id,taskKind:j.kind||'ai',reason:waitCode,targetWorker:j.objective_metadata?.targetWorker||null,busyCapableCount:busyCount,retryCount:plan.count,delayMs:plan.delayMs,nextAttemptAt:plan.nextAttemptAt});
@@ -2054,7 +2110,7 @@ async function callManagerDecision(prompt,objectiveId){
     },
     onRetry:async(r,error)=>event('MANAGER_OUTPUT_RETRY',{objectiveId,jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind:'manager',kind:error?.code||error?.message||'invalid_response'}),
     onSuccess:async r=>markResourceSuccess(r,jobId,Math.max(0,Date.now()-(starts.get(r.id)||Date.now())),'RESOURCE_SUCCESS',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
-    onFailure:async(r,error)=>isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure(r,jobId,error):markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
+    onFailure:async(r,error)=>localInferenceBusy(error)||isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure(r,jobId,error):markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
   });
 }
 async function reconcileAutonomousHandoff(o){
@@ -2900,16 +2956,85 @@ async function snapshot(){
       live_job:lease?`${lease.role} · ${lease.work_id}`:null,
     };
   });
+  // Mobile workers pair into the native mobile device table, not the generic AI
+  // provider resource table. Show real presence without granting dispatch rights.
+  const mobileWorkers=projectMobileWorkerPresence((await pool.query(
+    "select employee_id,provider,agent_version,last_seen_at,revoked from tigeriq_mobile_devices where revoked=false order by last_seen_at desc nulls last limit 100"
+  )).rows);
   const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;
   const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;
   const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;
   const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;
   const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;
   const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,workforce,workforceMeta,objectives,jobs,events,telemetry,sharedLeases,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,mobileWorkers,workforce,workforceMeta,objectives,jobs,events,telemetry,sharedLeases,apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
 
-let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}function issueBucket(issue){const body=String(issue.body||''),state=issueField(body,'CURRENT_STATE').toUpperCase(),labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());if(issue.state==='closed')return'HOÀN THÀNH';if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state)))return'CHỜ ANH SƠN';if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK')))return'BLOCKED';if(/REVIEW|RÀ SOÁT/.test(state))return'RÀ SOÁT';if(/WORKING|IMPLEMENTING|EXECUTING|ACTIVE/.test(state))return'ĐANG LÀM';if(labels.some(x=>x.includes('SYSTEM'))||/\[SYSTEM\]/i.test(issue.title||''))return'HỆ THỐNG';return'CẦN XỬ LÝ'}function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}async function githubWorkOrders(){const now=Date.now();if(now-workOrdersCache.at<30000)return workOrdersCache.value;if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}try{const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>({number:x.number,title:String(x.title||''),priority:issuePriority(x),state:x.state,bucket:issueBucket(x),owner:issueOwner(x),updated_at:x.updated_at,html_url:x.html_url}));const value={ok:true,updatedAt:nowIso(),items};workOrdersCache={at:now,value};return value}catch(error){const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};workOrdersCache={at:now,value};return value}}
+let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};
+function issueField(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)','m'));return m?.[1]?.trim()||''}
+function isSystemIssue(issue,body=''){
+  const title=String(issue?.title||'').toUpperCase();
+  const scope=issueField(body,'RESOURCE_SCOPE').toUpperCase();
+  const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
+  return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ|ĐIỀU PHỐI)\]/.test(title)
+      || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope)
+      || labels.some(x=>x.includes('SYSTEM')||x.includes('CENTRAL')||x.includes('POLICY'));
+}
+function issueBucket(issue){
+  const body=String(issue.body||'');
+  const state=issueField(body,'CURRENT_STATE').toUpperCase();
+  const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
+  if(issue.state==='closed') return 'HOÀN THÀNH';
+  if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK'))) return 'BLOCKED';
+  if(isSystemIssue(issue,body)) return 'HỆ THỐNG';
+  if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state))) return 'CHỜ ANH SƠN';
+  if(/(?<!NOT_)\b(?:REVIEW|RÀ SOÁT)\b/.test(state)) return 'RÀ SOÁT';
+  if(!/\bNOT_(?:EXECUTING|WORKING)\b/.test(state) && /\b(?:WORKING|IMPLEMENTING|EXECUTING|ACTIVE)\b/.test(state)) return 'ĐANG LÀM';
+  return 'CẦN XỬ LÝ';
+}
+function issuePriority(issue){const labels=(issue.labels||[]).map(x=>String(x?.name||x));return labels.find(x=>/^P[0-2]$/i.test(x))?.toUpperCase()||String(issue.title||'').match(/\[(P[0-2])\]/i)?.[1]?.toUpperCase()||'—'}
+function issueOwner(issue){const body=String(issue.body||'');for(const key of ['PRIMARY_EMPLOYEE','ASSIGNED_EXECUTOR','MUTATION_OWNER']){const v=issueField(body,key);if(v&&v!=='NONE'&&v!=='AUTO')return v}return issue.assignee?.login||issue.assignees?.[0]?.login||'—'}
+async function githubWorkOrders(){
+  const now=Date.now();
+  if(now-workOrdersCache.at<30000) return workOrdersCache.value;
+  if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}
+  try{
+    const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;
+    const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);
+    const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>{
+      const body=String(x.body||'');
+      const checklist=workOrderChecklistSteps(body);
+      const checkedCount=checklist.steps.filter(s=>s.checked).length;
+      const totalCount=checklist.steps.length;
+      const progressPercent=totalCount>0?Math.round((checkedCount/totalCount)*100):null;
+      return {
+        number:x.number,
+        title:String(x.title||''),
+        priority:issuePriority(x),
+        state:x.state,
+        bucket:issueBucket(x),
+        owner:issueOwner(x),
+        workKind:isSystemIssue(x,body)?'SYSTEM':'WORK',
+        currentStep:issueField(body,'CURRENT_STEP')||null,
+        nextAction:issueField(body,'NEXT_ACTION')||null,
+        resourceScope:issueField(body,'RESOURCE_SCOPE')||null,
+        progressSteps:checklist.steps,
+        progressCompleted:checkedCount,
+        progressTotal:totalCount,
+        progressPercent,
+        updated_at:x.updated_at,
+        html_url:x.html_url
+      };
+    });
+    const value={ok:true,updatedAt:nowIso(),items};
+    workOrdersCache={at:now,value};
+    return value;
+  }catch(error){
+    const value={ok:false,updatedAt:nowIso(),reason:String(error?.message||error).slice(0,120),items:workOrdersCache.value.items||[]};
+    workOrdersCache={at:now,value};
+    return value;
+  }
+}
 let apiHealthProjectionCache={at:0,value:null};async function apiHealthWorkProjection(){const now=Date.now();if(apiHealthProjectionCache.value&&now-apiHealthProjectionCache.at<5000)return{ok:true,projection:apiHealthProjectionCache.value,cached:true};try{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3500);let raw;try{const r=await fetch('http://127.0.0.1:8801/status',{headers:{accept:'application/json'},signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error('LIVE_BRIDGE_HTTP_'+r.status);raw=await r.json()}finally{clearTimeout(timer)}const base=sanitizeRuntimePayload(raw);const projection=await buildWorkSections(base);apiHealthProjectionCache={at:now,value:projection};return{ok:true,projection,cached:false}}catch(error){if(apiHealthProjectionCache.value)return{ok:true,projection:{...apiHealthProjectionCache.value,workProjection:{...(apiHealthProjectionCache.value.workProjection||{}),stale:true,reason:String(error?.message||error).slice(0,120)}},cached:true,stale:true};return{ok:false,reason:String(error?.message||error).slice(0,160),projection:null}}}
 
 
@@ -3019,6 +3144,37 @@ const server=createServer(async(req,res)=>{
       });
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(health));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/nv07/proposal-github-receipt'){
+      if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
+      const input=await readBody(req);
+      if(Object.keys(input).some(k=>!['jobId','pullRequestNumber'].includes(k))){
+        res.writeHead(400);return res.end('NV07_RECEIPT_FIELDS_INVALID');
+      }
+      const result=await recordNv07GithubProposalReceipt(pool,input);
+      res.writeHead(result.accepted?200:409,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(result));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/nv07/bootstrap-read-metadata'){
+      if(!auth(req)||!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const input=await readBody(req);
+      if(!input||Array.isArray(input)||Object.keys(input).some(k=>k!=='action')||input.action!=='READ_METADATA'){
+        res.writeHead(400);return res.end('NV07_FIXED_OPERATION_REQUIRED');
+      }
+      const result=await queueNv07ApprovedBootstrap(pool);
+      res.writeHead(result.accepted?202:409,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(result));
+    }
+    if(req.method==='GET'&&url.pathname==='/api/nv07/bootstrap-receipts'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const rows=await pool.query("select seq,ts,type,job_id,resource_id,data from tigeriq_events where employee_id='NV07' and data->>'workOrderId'='4783' and type in ('NV07_GITHUB_PROPOSAL_APPLIED','NV07_CORE_BOOTSTRAP_QUEUED','NV07_CORE_BOOTSTRAP_DISPATCHED','NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT') order by seq desc limit 10");
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({receipts:rows.rows,nv07Active:false}));
+    }
+    if(req.method==='GET'&&url.pathname==='/api/nv07/gateway-status'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(readNv07GatewayCanarySnapshot()));
     }
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/api-doctor-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},apiDoctor:await apiDoctorTelemetry()}));}
@@ -3815,7 +3971,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
-      if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}
+      if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       const runtimeTrigger=observeRuntimeContinuousVerify();
@@ -3892,7 +4048,7 @@ const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('requ
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
 void probeReadyResources();
-void owner4595CanaryOnce();
+// NV09 is on-demand only after cloud Coding APIs are unavailable. No automatic canary.
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,loopbackHost:'127.0.0.1',loopbackListener:Boolean(loopbackServer),port:PORT,pid:process.pid,resources:resources.length}));
 const closeCoreServers=()=>{stop=true;server.close();loopbackServer?.close();};
 process.on('SIGINT',closeCoreServers);process.on('SIGTERM',closeCoreServers);

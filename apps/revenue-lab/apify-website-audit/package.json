@@ -6,13 +6,16 @@
   "main": "actor.mjs",
   "scripts": {
     "start": "node actor.mjs",
-    "test": "node --test audit.test.mjs",
+    "test": "node --test audit.test.mjs r10-economics.test.mjs",
     "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
     "validate:actor": "node validate-package.mjs",
     "test:apify-e2e": "node --test apify-private-e2e.test.mjs",
     "apify:e2e": "node apify-private-e2e.mjs",
     "test:apify-preflight": "node --test apify-private-preflight.test.mjs",
-    "apify:preflight": "node apify-private-preflight.mjs"
+    "apify:preflight": "node apify-private-preflight.mjs",
+    "test:apify-historical": "node --test apify-historical-run-readonly.test.mjs apify-historical-run-build-check.test.mjs apify-existing-run-locator.test.mjs apify-existing-run-cli.test.mjs",
+    "apify:historical-discover": "node apify-existing-run-cli.mjs",
+    "apify:historical-readonly": "node apify-historical-run-readonly.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"

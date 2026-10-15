@@ -267,6 +267,21 @@ function Invoke-V020Signer {
 }
 function Invoke-Request($Request) {
   switch ([string]$Request.action) {
+    'nv07_native_session_ping' {
+      # This response is emitted ONLY by the existing InteractiveToken task.
+      # A nonce round-trip is not proof of OS credentials or a Core lease.
+      $nonce=[string]$Request.nonce
+      if ($nonce -notmatch '^[0-9a-f-]{36}$') { throw 'NV07_SESSION_NONCE_INVALID' }
+      $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent()
+      $process=Get-Process -Id $PID
+      if ($identity.Name.Split('\')[-1] -ne 'wdragons12x' -or $process.SessionId -le 0) {
+        throw 'NV07_USER_SESSION_NOT_VALID'
+      }
+      return [pscustomobject]@{
+        nonce=$nonce; windowsUser='wdragons12x'; sessionId=[int]$process.SessionId;
+        pid=$PID; source='WINDOWS_INTERACTIVE_BROKER'; authority='OBSERVATION_ONLY'
+      }
+    }
     'pad_android_sign_v020' { return Invoke-V020Signer }
     'pad_launch' {
       Start-Process 'ms-powerautomate:' | Out-Null

@@ -1,12 +1,12 @@
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
-import { NV07_PROPOSAL_SCHEMA } from '../shared/nv07-headless-proposal-adapter.mjs';
+import { NV07_PROPOSAL_SCHEMA, verifyNv07CliProposal } from '../shared/nv07-headless-proposal-adapter.mjs';
 import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
-import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer } from './pad-ui.mjs';
+import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer, probeNv07NativeUserSession } from './pad-ui.mjs';
 import { PAPERCLIP_LAB_ACTIONS, executePaperclipLabAction } from './paperclip-lab.mjs';
 
 const win = path.win32;
@@ -2217,9 +2217,9 @@ export async function nv07UserSessionPreflight() {
 }
 
 
-const NV07_CANARY_STATE_DIR = 'D:\TigerIQ\State\NV07';
-const NV07_CANARY_SANDBOX = 'D:\TigerIQ\State\NV07\proposal-sandbox';
-const NV07_CANARY_RECEIPT = 'D:\TigerIQ\State\NV07\gateway-read-metadata-once.json';
+export const NV07_CANARY_STATE_DIR = String.raw`D:\TigerIQ\State\NV07`;
+export const NV07_CANARY_SANDBOX = String.raw`D:\TigerIQ\State\NV07\proposal-sandbox`;
+export const NV07_CANARY_RECEIPT = String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-once.json`;
 const NV07_CANARY_JOB = 'NV07-4783-GW-CANARY';
 const NV07_CANARY_SOURCE_SHA = '83078f5c6dfc6a1abb2c14f225c747bb9dee97a8';
 
@@ -2309,6 +2309,216 @@ export async function runNv07GatewayReadMetadataCanary() {
   }
 }
 
+// V2 is a NEW one-shot transport job after the separate V1 (failed) receipt.
+// Never delete or reinterpret the V1 evidence. Only the Owner-approved
+// READ_METADATA action is exposed; this is not a Core lease or NV07 routing.
+export const NV07_GATEWAY_V2_JOB = 'NV07-4783-GW-VALIDATED-V2';
+export const NV07_GATEWAY_V2_RECEIPT = String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-v2.json`;
+const NV07_GATEWAY_V2_SOURCE = '0da30d00a4d78c35d9f0d6f168474231f9083526';
+const NV07_GATEWAY_V2_PATH = 'docs/implementation/nv07-proposal.md';
+
+export function evaluateNv07GatewayV2Proposal({ exitCode = -1, stdout = '', stderr = '', timedOut = false } = {}) {
+  const job = { jobId: NV07_GATEWAY_V2_JOB, sourceSha: NV07_GATEWAY_V2_SOURCE };
+  const invocation = {
+    accepted: true, executionState: 'PREPARED_NOT_RUN',
+    jobId: job.jobId, sourceSha: job.sourceSha,
+    allowedPaths: [NV07_GATEWAY_V2_PATH],
+  };
+  const verdict = verifyNv07CliProposal({ job, invocation, exitCode, stdout, stderr, timedOut });
+  return Object.freeze({
+    accepted: verdict.accepted === true,
+    validationCode: String(verdict.code || 'NV07_PROPOSAL_INVALID').slice(0,80),
+    proposedFileCount: verdict.accepted === true ? verdict.proposedFiles.length : null,
+    riskCount: verdict.accepted === true ? verdict.risks.length : null,
+    totalTokens: verdict.accepted === true ? verdict.usage?.total_tokens ?? null : null,
+    outputHash: createHash('sha256').update(typeof stdout === 'string' ? stdout : '').digest('hex'),
+  });
+}
+
+export async function runNv07GatewayReadMetadataV2() {
+  const preflight = await nv07UserSessionPreflight();
+  if (preflight.ready !== true)
+    return { accepted: false, state: 'DENIED_NOT_RUN', reason: preflight.reason };
+  await fs.mkdir(NV07_CANARY_STATE_DIR, { recursive: true });
+  await fs.mkdir(NV07_CANARY_SANDBOX, { recursive: true });
+  let handle;
+  try { handle = await fs.open(NV07_GATEWAY_V2_RECEIPT, 'wx'); }
+  catch(error) {
+    if (error?.code !== 'EEXIST') throw error;
+    try {
+      const current = JSON.parse(await fs.readFile(NV07_GATEWAY_V2_RECEIPT, 'utf8'));
+      return { ...current, replay: true };
+    } catch { return { accepted: false, state: 'DENIED_PREVIOUS_V2_ATTEMPT', replay: true }; }
+  }
+  const startedAt = new Date().toISOString();
+  try {
+    await handle.writeFile(JSON.stringify({
+      schema: 'NV07_GATEWAY_CANARY_V2', state: 'STARTED_NOT_ACCEPTED',
+      jobId: NV07_GATEWAY_V2_JOB, startedAt,
+    }));
+    await handle.close();
+    const prompt = {
+      task: 'READ_METADATA', job_id: NV07_GATEWAY_V2_JOB,
+      pinned_source_sha: NV07_GATEWAY_V2_SOURCE,
+      paths: [NV07_GATEWAY_V2_PATH],
+      rules: [
+        'Return only a structured non-executable proposal using the JSON schema; no tool calls.',
+        'Do not read or write files, use a browser or terminal, access secrets or modify Production.',
+        'Proposed_files may contain only paths from the allowlist and must never be executed.',
+        'Do not claim implementation, CI, commit or PR completion.',
+      ],
+    };
+    const args = [
+      '-p', JSON.stringify(prompt), '--output-format', 'json',
+      '--json-schema', JSON.stringify(NV07_PROPOSAL_SCHEMA),
+      '--print-timeout', '45s', '--sandbox', '--mode', 'plan', '--disable-slash-commands',
+    ];
+    const result = await spawnBounded(NV07_AGY_EXE, args, {
+      cwd: NV07_CANARY_SANDBOX, timeoutSec: 60,
+      extraEnvKeys: ['USERPROFILE','APPDATA','LOCALAPPDATA'],
+    });
+    const validation = evaluateNv07GatewayV2Proposal(result);
+    const receipt = {
+      schema: 'NV07_GATEWAY_CANARY_V2', accepted: validation.accepted,
+      state: validation.accepted ? 'GATEWAY_USER_CLI_JSON_VERIFIED_NOT_CORE_LEASE'
+        : 'GATEWAY_CANARY_FAILED',
+      reason: validation.accepted ? 'NV07_READ_METADATA_TRANSPORT_OK'
+        : validation.validationCode,
+      jobId: NV07_GATEWAY_V2_JOB, sourceSha: NV07_GATEWAY_V2_SOURCE,
+      startedAt, completedAt: new Date().toISOString(),
+      exitCode: result.exitCode, timedOut: result.timedOut,
+      proposedFileCount: validation.proposedFileCount, riskCount: validation.riskCount,
+      totalTokens: validation.totalTokens, outputHash: validation.outputHash,
+      coreLeaseVerified: false, nv07Active: false,
+    };
+    await fs.writeFile(NV07_GATEWAY_V2_RECEIPT, JSON.stringify(receipt), 'utf8');
+    return receipt;
+  } catch {
+    const receipt = {
+      schema: 'NV07_GATEWAY_CANARY_V2', accepted: false,
+      state: 'GATEWAY_CANARY_FAILED', reason: 'NV07_V2_NATIVE_ERROR',
+      jobId: NV07_GATEWAY_V2_JOB,
+      startedAt, completedAt: new Date().toISOString(),
+      coreLeaseVerified: false, nv07Active: false,
+    };
+    await fs.writeFile(NV07_GATEWAY_V2_RECEIPT, JSON.stringify(receipt), 'utf8').catch(()=>{});
+    return receipt;
+  } finally { await handle?.close().catch(()=>{}); }
+}
+
+// V3 is a distinct, owner-authorized one-shot diagnostic for the V2 JSON
+// schema rejection. Never reuse/overwrite V1 or V2 receipts, and never log
+// model text, stdout, stderr, account identifiers or secrets.
+export const NV07_GATEWAY_V3_JOB='NV07-4783-GW-STRUCTURE-V3';
+export const NV07_GATEWAY_V3_RECEIPT=String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-v3.json`;
+const NV07_GATEWAY_V3_SOURCE='949c1b6ac3fefa21eea2f0be8505acc60d425d2';
+const NV07_GATEWAY_V3_ALLOWPATH='docs/implementation/nv07-proposal.md';
+const NV07_GATEWAY_V3_SCHEMA='NV07_GATEWAY_CANARY_V3';
+
+export function evaluateNv07GatewayV3Envelope({exitCode=-1,stdout='',stderr='',timedOut=false}={}){
+  let envelope=null;
+  try { envelope=JSON.parse(stdout); }catch{}
+  const structured=envelope?.structured_output;
+  let responseParsed=null;
+  if(typeof envelope?.response==='string'){
+    try { responseParsed=JSON.parse(envelope.response); }catch{}
+  }
+  const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+  // diagnostics contain presence/type/shape only; no field values from the model.
+  const shape=v=>Object.freeze({
+    isObject:object(v),
+    hasJobId:typeof v?.job_id==='string',
+    jobIdMatches:v?.job_id===NV07_GATEWAY_V3_JOB,
+    hasSummary:typeof v?.summary==='string',
+    hasFiles:Array.isArray(v?.proposed_files),
+    fileCount:Array.isArray(v?.proposed_files)?v.proposed_files.length:null,
+    hasRisks:Array.isArray(v?.risks),
+    riskCount:Array.isArray(v?.risks)?v.risks.length:null,
+  });
+  const job={jobId:NV07_GATEWAY_V3_JOB,sourceSha:NV07_GATEWAY_V3_SOURCE};
+  const invocation={accepted:true,executionState:'PREPARED_NOT_RUN',
+    jobId:job.jobId,sourceSha:job.sourceSha,allowedPaths:[NV07_GATEWAY_V3_ALLOWPATH]};
+  const fields=object(structured)?structured:(object(responseParsed)?responseParsed:null);
+  const safeEnvelope=object(envelope)?{...envelope,structured_output:fields}:envelope;
+  const verdict=verifyNv07CliProposal({
+    job,invocation,exitCode,stdout:JSON.stringify(safeEnvelope),stderr,timedOut,
+  });
+  return Object.freeze({
+    accepted:verdict.accepted===true,
+    code:String(verdict.code||'NV07_V3_INVALID').slice(0,80),
+    source:object(structured)?'structured_output':object(responseParsed)?'response_json':'none',
+    topLevelJson:object(envelope),
+    statusSuccess:envelope?.status==='SUCCESS',
+    structuredShape:shape(structured),
+    responseShape:shape(responseParsed),
+    proposedFileCount:verdict.accepted===true?verdict.proposedFiles.length:null,
+    totalTokens:Number.isSafeInteger(envelope?.usage?.total_tokens)?envelope.usage.total_tokens:null,
+    outputHash:createHash('sha256').update(typeof stdout==='string'?stdout:'').digest('hex'),
+  });
+}
+
+export async function runNv07GatewayReadMetadataV3(){
+  const preflight=await nv07UserSessionPreflight();
+  if(preflight.ready!==true)return{accepted:false,state:'DENIED_NOT_RUN',reason:preflight.reason};
+  await fs.mkdir(NV07_CANARY_STATE_DIR,{recursive:true});
+  await fs.mkdir(NV07_CANARY_SANDBOX,{recursive:true});
+  let handle;
+  try{handle=await fs.open(NV07_GATEWAY_V3_RECEIPT,'wx');}
+  catch(error){
+    if(error?.code!=='EEXIST')throw error;
+    try{return{...JSON.parse(await fs.readFile(NV07_GATEWAY_V3_RECEIPT,'utf8')),replay:true};}
+    catch{return{accepted:false,state:'DENIED_PREVIOUS_V3_ATTEMPT',replay:true};}
+  }
+  const startedAt=new Date().toISOString();
+  try{
+    await handle.writeFile(JSON.stringify({
+      schema:NV07_GATEWAY_V3_SCHEMA,state:'STARTED_NOT_ACCEPTED',
+      jobId:NV07_GATEWAY_V3_JOB,startedAt,
+    }));
+    await handle.close();
+    const prompt=[
+      'READ_METADATA transport check, no tools, no file reads/writes, no source changes.',
+      'Return exactly one JSON object in the provided schema.',
+      'Set job_id to exactly '+NV07_GATEWAY_V3_JOB+'.',
+      'Set summary to a short nonempty description of a read-only proposal.',
+      'Set proposed_files to [] (no modifications or file writes).',
+      'Set risks to ["No implementation performed"].',
+      'Do not include any extra fields. Use no shell, browser, credentials or Production.',
+    ].join(' ');
+    // '-p' LAST: protects the print-mode argument contract of agy 1.3.x.
+    const args=['--output-format','json','--json-schema',JSON.stringify(NV07_PROPOSAL_SCHEMA),
+      '--print-timeout','45s','--sandbox','--mode','plan',
+      '--disable-slash-commands','-p',prompt];
+    const result=await spawnBounded(NV07_AGY_EXE,args,{
+      cwd:NV07_CANARY_SANDBOX,timeoutSec:60,
+      extraEnvKeys:['USERPROFILE','APPDATA','LOCALAPPDATA'],
+    });
+    const v=evaluateNv07GatewayV3Envelope(result);
+    const receipt={
+      schema:NV07_GATEWAY_V3_SCHEMA,accepted:v.accepted,
+      state:v.accepted?'GATEWAY_USER_CLI_JSON_VERIFIED_NOT_CORE_LEASE':'GATEWAY_CANARY_FAILED',
+      reason:v.accepted?'NV07_READ_METADATA_TRANSPORT_OK':v.code,
+      startedAt,completedAt:new Date().toISOString(),
+      jobId:NV07_GATEWAY_V3_JOB,sourceSha:NV07_GATEWAY_V3_SOURCE,
+      exitCode:result.exitCode,timedOut:result.timedOut,
+      evidenceSource:v.source,topLevelJson:v.topLevelJson,
+      statusSuccess:v.statusSuccess,structuredShape:v.structuredShape,
+      responseShape:v.responseShape,
+      proposedFileCount:v.proposedFileCount,totalTokens:v.totalTokens,
+      outputHash:v.outputHash,coreLeaseVerified:false,nv07Active:false,
+    };
+    await fs.writeFile(NV07_GATEWAY_V3_RECEIPT,JSON.stringify(receipt),'utf8');
+    return receipt;
+  }catch{
+    const receipt={schema:NV07_GATEWAY_V3_SCHEMA,accepted:false,
+      state:'GATEWAY_CANARY_FAILED',reason:'NV07_V3_NATIVE_ERROR',
+      startedAt,completedAt:new Date().toISOString(),
+      coreLeaseVerified:false,nv07Active:false};
+    await fs.writeFile(NV07_GATEWAY_V3_RECEIPT,JSON.stringify(receipt),'utf8').catch(()=>{});
+    return receipt;
+  }finally{await handle?.close().catch(()=>{});}
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -2316,10 +2526,16 @@ export async function executePcAction(input, options = {}) {
   let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
+  } else if (action === 'nv07_native_session_probe') {
+    data = await probeNv07NativeUserSession();
   } else if (action === 'nv07_preflight') {
     data = await nv07UserSessionPreflight();
   } else if (action === 'nv07_read_metadata_canary') {
     data = await runNv07GatewayReadMetadataCanary();
+  } else if (action === 'nv07_read_metadata_canary_v2') {
+    data = await runNv07GatewayReadMetadataV2();
+  } else if (action === 'nv07_read_metadata_canary_v3') {
+    data = await runNv07GatewayReadMetadataV3();
   } else if (action === 'task_list') {
     data = await listTigerIQTasks();
   } else if (action === 'android_worker_release_build') {

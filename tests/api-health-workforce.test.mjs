@@ -53,15 +53,15 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).toContain('grid-template-columns:repeat(4,minmax(0,1fr))!important');
     expect(dashboard).toContain('@media(max-width:720px){.workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}}');
     expect(dashboard).toContain('employee-avatar');
-    expect(dashboard).toContain("NV02:'💬'");
-    expect(dashboard).toContain("NV03:'🔎'");
+    expect(dashboard).toContain('return logo||`<span class="avatar-id">${esc(monogram)}</span>`');
+    expect(dashboard).not.toContain("NV03:'🔎'");
     expect(dashboard).toContain('employee-state');
     expect(dashboard).toContain('employee-task');
     expect(dashboard).toContain('employee-card-head');
     expect(dashboard).toContain('employee-identity');
-    expect(dashboard).toContain("NV02:'💬'");
-    expect(dashboard).toContain("const STATE_ICON={working:'▶',ready:'✓',waiting:'◷',attention:'!',paused:'Ⅱ'}");
-    expect(dashboard).toContain('color:#e0c6ff;background:#2b1d4f');
+    expect(dashboard).toContain('return logo||`<span class="avatar-id">${esc(monogram)}</span>`');
+    expect(dashboard).toContain('function stateBadge(state){return esc(state.label)}');
+    expect(dashboard).toContain('color:#e2e8f0;background:#19283a');
     expect(dashboard).toContain('tech-popover');
     expect(dashboard).toContain("matchMedia('(hover:hover) and (pointer:fine)').matches");
     expect(dashboard).toContain("detailModal.className='detail-modal state-'+state.group");
@@ -127,4 +127,37 @@ describe('#1600 full API Health workforce roster',()=>{
     expect(dashboard).not.toContain("return jobId+' · '+job");
   });
 
+});
+
+
+describe('P0 NV02 UI presence must stay separate from work acceptance',()=>{
+  const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
+  const start=dashboard.indexOf('function applyLiveWorkforce(');
+  const end=dashboard.indexOf('function applyCoreJobs(',start);
+  const mapper=Function(dashboard.slice(start,end)+';return applyLiveWorkforce;')();
+  const row={employee_id:'NV02',name:'ChatGPT Plus',status:'UNKNOWN',resource_class:'ui_manual'};
+  const presence=(state,heartbeatAt)=>({
+    employeeId:'NV02',kind:'ui',state:'unknown',uiSessionState:state,
+    heartbeatAt,currentJobId:null,job:'Đang xử lý trong chat hiện tại'
+  });
+  it('shows a fresh working UI session without inventing a Core/GitHub job',()=>{
+    const [v]=mapper([row],[presence('working',new Date().toISOString())]);
+    expect(v).toMatchObject({employee_id:'NV02',status:'UI_BUSY',ui_live:true,current_job_id:null,ui_session_state:'working'});
+    expect(dashboard).toContain("label:'UI ĐANG PHẢN HỒI'");
+    expect(dashboard).toContain('Chưa xác minh Work Order Core/GitHub');
+  });
+  it('does not keep UI status online when the heartbeat becomes stale',()=>{
+    const [v]=mapper([row],[presence('working',new Date(Date.now()-30000).toISOString())]);
+    expect(v).toMatchObject({status:'UNKNOWN',ui_live:false,current_job_id:null,ui_session_state:null});
+  });
+  it('does not turn an unknown UI session into an unverified running job',()=>{
+    const [v]=mapper([row],[{...presence('unknown',new Date().toISOString()),currentJobId:null}]);
+    expect(v.status).toBe('UNKNOWN');
+  });
+  it('keeps non-UI Core employees unchanged and reapplies UI after the 1s Core poll',()=>{
+    const api={employee_id:'NV09',status:'READY'};
+    const next=mapper([row,api],[presence('working',new Date().toISOString())]);
+    expect(next.find(x=>x.employee_id==='NV09')).toEqual(api);
+    expect(dashboard).toContain("applyCoreJobs(applyLiveWorkforce(allResources,workProjection?.workers||[]),d.jobs||[])");
+  });
 });

@@ -7,6 +7,7 @@ $targets = @(
   Get-ChildItem -Path (Join-Path $PSScriptRoot 'tigeriq-core') -Filter '*.ps1' -File
   Get-ChildItem -Path (Join-Path $PSScriptRoot 'security') -Filter '*.ps1' -File
   Get-ChildItem -Path (Join-Path $repoRoot 'apps\chrome-controller') -Filter '*.ps1' -File -Recurse
+  Get-ChildItem -Path (Join-Path $repoRoot 'apps\openclaw-tigeriq-runtime') -Filter '*.ps1' -File -Recurse
 ) | Sort-Object FullName -Unique
 $failed = $false
 foreach ($target in $targets) {

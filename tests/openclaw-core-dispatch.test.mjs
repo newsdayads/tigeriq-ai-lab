@@ -11,6 +11,8 @@ import {
   hasHardGateTextIntent,
   parseOpenClawAgentResult,
   openClawTerminalDecision,
+  expectedNv07OperatorActionFromInstruction,
+  trustedBridgeNv07ActionReceipt,
   safeOpenClawFailureMessage,
   expectedTigerIQTaskActionFromInstruction,
   trustedBridgeFileReadReceipt,
@@ -100,6 +102,68 @@ describe('Core -> OpenClaw bounded dispatch #1528', () => {
     } finally {
       await rm(root,{recursive:true,force:true});
     }
+  });
+
+  it('rejects the actual NV07 #4783 false-positive: LLM ready:true without tool calls',()=>{
+    const expected='nv07_preflight';
+    expect(expectedNv07OperatorActionFromInstruction(
+      'Call tigeriq_pc action nv07_preflight once and return proof.'
+    )).toBe(expected);
+    const noTool={
+      exitCode:0,status:'ok',
+      agentResult:{status:'success',evidence:{nv07_preflight:{
+        ready:true,reason:'NV07_AGY_MODELS_LISTED_IN_OWNER_SESSION',execution:'READ_ONLY',
+      }}},
+      successfulToolNames:[],bridgeCalls:null,
+    };
+    expect(openClawTerminalDecision(noTool,{
+      expectedNv07Action:expected,parsedPresent:true,
+    })).toMatchObject({
+      success:false,invalidTerminal:true,nv07Receipt:false,
+    });
+    // Existing non-NV07 job semantics remain intact.
+    expect(openClawTerminalDecision(noTool,{parsedPresent:true}).success).toBe(true);
+  });
+
+  it('requires exactly one gateway tool-origin, correctly scoped NV07 receipt',()=>{
+    const preflight='nv07_preflight';
+    const direct={tool:'tigeriq_pc',result:{
+      ok:true,target:'pc01-local',action:preflight,data:{
+        ready:true,windowsUser:'wdragons12x',
+        reason:'NV07_AGY_MODELS_LISTED_IN_OWNER_SESSION',execution:'READ_ONLY',
+      },
+    }};
+    expect(trustedBridgeNv07ActionReceipt([direct],preflight)).toBe(true);
+    expect(openClawTerminalDecision({
+      exitCode:0,status:'ok',agentResult:{status:'success'},
+      bridgeCalls:[direct],successfulToolNames:['tigeriq_pc'],
+    },{parsedPresent:true,expectedNv07Action:preflight}))
+      .toMatchObject({success:true,nv07Receipt:true,successSource:'trusted_nv07_gateway_tool_receipt'});
+    expect(trustedBridgeNv07ActionReceipt([{...direct,result:{
+      ...direct.result,target:'other',
+    }}],preflight)).toBe(false);
+    expect(trustedBridgeNv07ActionReceipt([direct,direct],preflight)).toBe(false);
+    expect(trustedBridgeNv07ActionReceipt([direct],'nv07_read_metadata_canary')).toBe(false);
+    expect(expectedNv07OperatorActionFromInstruction('call nv07_preflight and nv07_read_metadata_canary')).toBeNull();
+    const canary={tool:'tigeriq_pc',result:{
+      ok:true,target:'pc01-local',action:'nv07_read_metadata_canary',
+      data:{accepted:true,state:'GATEWAY_USER_CLI_JSON_VERIFIED_NOT_CORE_LEASE',
+        reason:'NV07_READ_METADATA_TRANSPORT_OK',outputHash:'a'.repeat(64),
+        coreLeaseVerified:false,nv07Active:false},
+    }};
+    expect(trustedBridgeNv07ActionReceipt([canary],'nv07_read_metadata_canary')).toBe(true);
+    const v3={...canary,result:{...canary.result,
+      action:'nv07_read_metadata_canary_v3',
+      data:{...canary.result.data,schema:'NV07_GATEWAY_CANARY_V3'},
+    }};
+    expect(expectedNv07OperatorActionFromInstruction('call nv07_read_metadata_canary_v3'))
+      .toBe('nv07_read_metadata_canary_v3');
+    expect(trustedBridgeNv07ActionReceipt([v3],'nv07_read_metadata_canary_v3')).toBe(true);
+    expect(trustedBridgeNv07ActionReceipt([canary],'nv07_read_metadata_canary_v3')).toBe(false);
+
+    expect(trustedBridgeNv07ActionReceipt([{
+      ...canary,result:{...canary.result,data:{...canary.result.data,nv07Active:true}},
+    }],'nv07_read_metadata_canary')).toBe(false);
   });
 
   it('requires structured agent terminal evidence before treating CLI success as dispatch success', () => {

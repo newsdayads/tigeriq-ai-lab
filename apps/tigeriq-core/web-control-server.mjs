@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 // Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
 const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
 const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
@@ -8,8 +9,9 @@ const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(
 const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
+import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
 
-const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '127.0.0.1';
+const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '0.0.0.0';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
 const CORE_URL = (process.env.TIGERIQ_CORE_URL?.trim() || 'http://127.0.0.1:8795').replace(/\/$/, '');
 const CODING_URL = (process.env.TIGERIQ_CODING_LANE_URL?.trim() || CORE_URL.replace(/:8795$/, ':8797')).replace(/\/$/, '');
@@ -78,15 +80,35 @@ function machineValue(body,key) {
 function systemWorkOrder(issue,body='') {
   const title=String(issue?.title||'').toUpperCase();
   const scope=machineValue(body,'RESOURCE_SCOPE').toUpperCase();
-  return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ)\]/.test(title) || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope);
+  const labels=(issue?.labels||[]).map(x=>String(x?.name||x).toUpperCase());
+  return /\[(CENTRAL|REGISTRY|STATE|POLICY|SYSTEM|QUẢN TRỊ|ĐIỀU PHỐI)\]/.test(title)
+      || /(?:^|_)(CENTRAL|REGISTRY|POLICY|SYSTEM)(?:_|$)/.test(scope)
+      || labels.some(x=>x.includes('SYSTEM')||x.includes('CENTRAL')||x.includes('POLICY'));
+}
+
+// Work Center must include legacy assigned Work Orders without an explicit
+// TIGERIQ_EXECUTABLE field; they remain visible, but this grants NO execution.
+export function webControlWorkOrderCandidate(issue) {
+  if (!issue || typeof issue !== 'object' || issue.pull_request) return false;
+  const body = String(issue.body || '');
+  if (/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body)) return true;
+  if (systemWorkOrder(issue, body)) return true;
+  const checklist = workOrderChecklistSteps(body);
+  return Boolean(machineValue(body, 'RESOURCE_SCOPE') &&
+    machineValue(body, 'CURRENT_STEP') && checklist.found && checklist.steps.length);
 }
 
 export function projectWorkOrder(issue, source = {}) {
   const body=String(issue?.body||'');
+  const checklist=workOrderChecklistSteps(body);
+  const checkedCount=checklist.steps.filter(s=>s.checked).length;
+  const totalCount=checklist.steps.length;
+  const progressPercent=totalCount>0?Math.round((checkedCount/totalCount)*100):null;
   const priority=machineValue(body,'PRIORITY') || (String(issue?.title||'').match(/\[(P[0-5])\]/)?.[1] || 'P2');
   const marker=(machineValue(body,'CURRENT_STATE')+' '+machineValue(body,'STATE')).toUpperCase();
   const capability=machineValue(body,'CAPABILITY').toUpperCase();
   const executable=machineValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='true';
+  const explicitlyNonExecutable=machineValue(body,'TIGERIQ_EXECUTABLE').toLowerCase()==='false';
   const ownerControlled=machineValue(body,'OWNER_CONTROLLED').toLowerCase()==='true';
   const rawOwner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
   const owner=ownerControlled&&!executable?'OWNER':rawOwner;
@@ -96,16 +118,19 @@ export function projectWorkOrder(issue, source = {}) {
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
   // Never expose an approval action without a fresh, authenticated Owner-authored GitHub issue.
   const approvalProjection=ownerGate?projectApproval(issue,source):{ok:false};
-  const review=/REVIEW|VERIFY|RÀ_SOÁT/.test(marker)||capability==='REVIEW';
-  const blocked=/BLOCK/.test(marker);
-  const working=machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING/.test(marker);
+  const review=!isSystem && (/(?<!NOT_)\b(?:REVIEW|VERIFY|RÀ_SOÁT)\b/.test(marker)||capability==='REVIEW');
+  // Match a blocked *state token*, not the harmless substring in UNBLOCKED.
+  const blocked=/(?:^|[\s_])(?:BLOCKED|BLOCK|EXTERNAL_WAIT|NO_GO)(?:[_\s]|$)/.test(marker);
+  const working=!isSystem && !/\bNOT_(?:EXECUTING|WORKING)\b/.test(marker) && (machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/\b(?:CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING)\b/.test(marker));
   let bucket='CẦN XỬ LÝ';
   if(closed) bucket=proof.verified?'HOÀN THÀNH':'CHỜ NGHIỆM THU';
+  else if(isSystem||ownerControlled) bucket='HỆ THỐNG';
+  else if(blocked) bucket=ownerStatusLabel('BLOCKED');
   else if(ownerGate) bucket='CHỜ ANH SƠN';
   else if(review) bucket='RÀ SOÁT';
-  else if(blocked) bucket=ownerStatusLabel('BLOCKED');
   else if(working&&executable) bucket=ownerStatusLabel('WORKING');
-  else if(isSystem||ownerControlled||!executable) bucket='HỆ THỐNG';
+  // Legacy structured Work Orders lack this flag; absence is NOT explicit disable.
+  else if(explicitlyNonExecutable) bucket='HỆ THỐNG';
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
   else if(bucket==='CHỜ NGHIỆM THU') state='CHỜ NGHIỆM THU';
@@ -115,7 +140,24 @@ export function projectWorkOrder(issue, source = {}) {
   else if(bucket==='CHỜ ANH SƠN') state='CHỜ ANH SƠN';
   else if(bucket==='HỆ THỐNG') state='HỆ THỐNG';
   else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
-  return {issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,status:proof.verified?'DONE':closed?'VERIFY':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',updated_at:issue.updated_at,updatedAt:issue.updated_at,url:issue.html_url};
+  return {
+    issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,
+    status:proof.verified?'DONE':closed?'VERIFY':isSystem?'SYSTEM':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',
+    state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),
+    bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),
+    owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,
+    completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',
+    projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',
+    workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',
+    currentStep:machineValue(body,'CURRENT_STEP')||null,
+    nextAction:machineValue(body,'NEXT_ACTION')||null,
+    resourceScope:machineValue(body,'RESOURCE_SCOPE')||null,
+    progressSteps:checklist.steps,
+    progressCompleted:checkedCount,
+    progressTotal:totalCount,
+    progressPercent,
+    updated_at:issue.updated_at,updatedAt:issue.updated_at,url:issue.html_url
+  };
 }
 
 async function githubWorkOrders() {
@@ -132,12 +174,9 @@ async function githubWorkOrders() {
     const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=all&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
     if(!response.ok) throw new Error('GITHUB_HTTP_'+response.status);
     const rows=await response.json();
-    const candidates=(Array.isArray(rows)?rows:[]).filter(issue=>{
-      if(issue.pull_request)return false;
-      const body=String(issue.body||'');
-      const executable=/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body);
-      return executable||systemWorkOrder(issue,body);
-    }).map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
+    const candidates=(Array.isArray(rows)?rows:[])
+      .filter(webControlWorkOrderCandidate)
+      .map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
     const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
     const workOrders=candidates.filter(x=>!x.closed)
       .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
@@ -168,8 +207,9 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
   try {
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/web-control')) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/web-control')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      if (req.method === 'HEAD') return res.end();
       return res.end(html);
     }
     if (req.method === 'GET' && url.pathname === '/favicon.ico') {
@@ -298,11 +338,14 @@ const server = createServer(async (req, res) => {
   }
 });
 
-await new Promise((resolve, reject) => {
-  server.once('error', reject);
-  server.listen(PORT, HOST, resolve);
-});
-console.log(JSON.stringify({ event: 'TIGERIQ_WEB_CONTROL_STARTED', host: HOST, port: PORT, coreUrl: CORE_URL, codingUrl: CODING_URL, pid: process.pid }));
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMainModule) {
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, HOST, resolve);
+  });
+  console.log(JSON.stringify({ event: 'TIGERIQ_WEB_CONTROL_STARTED', host: HOST, port: PORT, coreUrl: CORE_URL, codingUrl: CODING_URL, pid: process.pid }));
 
-process.on('SIGINT', () => server.close());
-process.on('SIGTERM', () => server.close());
+  process.on('SIGINT', () => server.close());
+  process.on('SIGTERM', () => server.close());
+}

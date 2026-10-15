@@ -86,6 +86,15 @@ test('zero-price paying scenario has no ratio or invented margin',()=>{
   assert.equal(x.profitUsdAssumed,'0.000000000');
   assert.equal(x.profitMarginOnDeveloperShare,null);
 });
+test('zero-priced paid event cannot advertise a 30% margin capacity (no denominator)',()=>{
+  for(const customerTier of ['BRONZE','SILVER','GOLD']){
+    const x=run({customerTier,eventPriceUsd:'0',computeUnits:'0',nonCuPlatformCostUsd:'0'});
+    assert.equal(x.developerShareUsd,'0.000000000');
+    assert.equal(x.profitMarginOnDeveloperShare,null);
+    assert.equal(x.maxComputeUnitsFor30PctDeveloperMargin,null);
+    assert.equal(x.breakEvenComputeUnitsAtAssumedNonCuCost,'0.000000000');
+  }
+});
 test('non-zero costs and zero-price tier yield loss and no positive CU capacity',()=>{
   const x=run({eventPriceUsd:'0',nonCuPlatformCostUsd:'0.1',computeUnits:'1'});
   assert.equal(x.profitUsdAssumed,'-0.300000000');
@@ -132,4 +141,33 @@ test('modeled cost consistently rises when CU consumption increases',()=>{
     if(previous!==null)assert.ok(p<=previous);
     previous=p;
   }
+});
+
+test('nano-dollar Bronze maximum CU preserves 30 percent margin after 9-place display',()=>{
+  const first=run({eventPriceUsd:'0.000000001'});
+  assert.equal(first.maxComputeUnitsFor30PctDeveloperMargin,'0.000000002');
+  const atLimit=run({
+    eventPriceUsd:'0.000000001',
+    computeUnits:first.maxComputeUnitsFor30PctDeveloperMargin,
+  });
+  assert.ok(Number(atLimit.profitMarginOnDeveloperShare)>=0.30);
+});
+test('600 bounded microprice scenarios never advertise an optimistic 30%-margin CU cap',()=>{
+  let accepted=0;
+  for(const tier of ['BRONZE','SILVER','GOLD']){
+    for(let n=1;n<=100;n++){
+      const price='0.'+String(n).padStart(9,'0');
+      for(const cost of ['0','0.000000001']){
+        const scenario={customerTier:tier,eventPriceUsd:price,nonCuPlatformCostUsd:cost};
+        const preview=run(scenario);
+        const cap=preview.maxComputeUnitsFor30PctDeveloperMargin;
+        if(cap===null)continue;
+        accepted++;
+        const atCap=run({...scenario,computeUnits:cap});
+        assert.ok(Number(atCap.profitMarginOnDeveloperShare)>=0.30,
+          `tier=${tier} price=${price} nonCu=${cost} cap=${cap} margin=${atCap.profitMarginOnDeveloperShare}`);
+      }
+    }
+  }
+  assert.equal(accepted,597);
 });

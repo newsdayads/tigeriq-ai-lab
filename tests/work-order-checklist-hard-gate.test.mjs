@@ -31,3 +31,27 @@ test('fail closed on malformed snapshots and prevent historical section counting
  assert.equal(workOrderChecklistGate(null).reason,'GITHUB_ISSUE_READBACK_REQUIRED');
  assert.equal(workOrderChecklistGate({number:1,body:'## STRUCTURED_PROGRESS_CHECKLIST\n- [x] M01 — One [receipt]('+url+')\n## OLD\n- [ ] M02 — historical'}).ok,true);
 });
+
+
+test('NV07 #4783 canonical mixed-case stage IDs are included without faking S4b',()=>{
+ const ids=['S1','S2','S3','S4a','S4b','S5a','S5b','S5c','S6','S7'];
+ const checked=new Set(['S1','S2','S3','S4a','S5a','S5c']);
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',...ids.map(id=>
+  '- ['+(checked.has(id)?'x':' ')+'] '+id+' — Stage'+
+  (checked.has(id)?' [Receipt]('+url+')':'')
+ )].join('\n');
+ const parsed=workOrderChecklistSteps(body);
+ assert.equal(parsed.found,true);
+ assert.deepEqual(parsed.steps.map(x=>x.id),ids);
+ assert.equal(parsed.steps.filter(x=>x.checked).length,6);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S4a',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'s5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S4b',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+ assert.equal(workOrderChecklistGate(card(body)).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+
+test('NV07 canonical case-only duplicate IDs are rejected before acceptance',()=>{
+ const body='## STRUCTURED_PROGRESS_CHECKLIST\n- [x] S4a — first [Receipt]('+url+')\n- [x] S4A — duplicate [Receipt]('+url+')';
+ assert.equal(workOrderChecklistSteps(body).steps.length,2);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S4a',requireAll:false}).reason,'DUPLICATE_STEP_ID');
+});

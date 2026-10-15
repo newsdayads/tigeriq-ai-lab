@@ -75,7 +75,7 @@ Bảng liên kết **thiết kế kiểm thử**, không phải biên nhận đ�
 | FR-011 | Nhật ký R/USB/frame/cửa sổ cùng một lượt | CAM-19 |
 | FR-012 | Nút mở thủ công khi đường tự động lỗi | CAM-14 |
 
-Cổng G3 chỉ đủ bằng chứng khi **từng yêu cầu** có kết quả thực tế đúng thiết bị, phiên bản và nhật ký riêng. CAM-19 thuộc khảo sát ban đầu khi chưa có ứng dụng mới chỉ là **đánh giá dữ liệu thu thập**, không chứng minh FR-011 đã được lập trình. Thử nghiệm USB/DeX/xe thật chỉ khi được cho phép và thực hiện lúc xe đứng yên an toàn.
+Cổng G3 nghiệm thu mã nguồn và kiểm thử unit/mock sau khi đáp ứng G1/G2 cùng quyền nguồn hợp lệ; không yêu cầu số đo trên thiết bị thuộc G4/G5 để bắt đầu xây dựng. CAM-19 thuộc khảo sát ban đầu khi chưa có ứng dụng mới chỉ là **đánh giá dữ liệu thu thập**, không chứng minh FR-011 đã được lập trình. Thử nghiệm USB/DeX/xe thật chỉ khi được cho phép và thực hiện lúc xe đứng yên an toàn.
 
 ## 5. Chỉ số chất lượng định lượng
 - **Auto-open rate:** `successful_auto_open / valid_R_events`; R event phải có mốc quan sát hợp lệ; mục tiêu nghiệm thu đề xuất **50/50**.

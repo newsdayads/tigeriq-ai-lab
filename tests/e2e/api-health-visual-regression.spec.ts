@@ -24,13 +24,13 @@ function fixtureStatus(stale=false){
     {employee_id:'NV14',resource_id:'NV14',name:'Mistral',provider:'mistral',model:'small',status:'RATE_LIMITED',cooldown_until:ahead(),last_seen_at:ts,last_latency_ms:900},
     {employee_id:'NV15',resource_id:'NV15',name:'Cloudflare',provider:'cloudflare',status:'ERROR',last_error:'Provider unavailable',last_seen_at:ts,last_latency_ms:300}
    ],
-   workforce:['NV09','NV06','NV14','NV15'].map(employee_id=>({employee_id,name:employee_id,assigned:true,admin_state:'READY'})),
+   workforce:['NV03','NV04','NV09','NV06','NV14','NV15'].map(employee_id=>({employee_id,name:employee_id,assigned:true,admin_state:'READY'})),
    jobs:[],events:Array.from({length:28},(_,i)=>({seq:String(100-i),ts:recent(i+1),type:i===0?'API_DOCTOR_SCAN':'RESOURCE_SUCCESS',employee_id:'NV06',resource_id:'NV06',data:{kind:'health',...(i===0?{repairIssueNumber:3278}:{})}})),
    telemetry:[{ts,employee_id:'NV06',type:'RESOURCE_SUCCESS'}]
  };
 }
 function projection(stale=false){return {ok:true,projection:{generatedAt:recent(stale?7200:1),stale,verifiedGateSource:true,
- openSummary:{open:work.length,actionable:work.length,review:1,waiting:1,done:0},openWork:work,recentWork:[],workers:[]}}}
+ openSummary:{open:work.length,actionable:work.length,review:1,waiting:1,done:0},openWork:work,recentWork:[],workProjection:{stale},nv03MilestoneQaInboxFresh:!stale,nv03MilestoneQaInbox:[{employeeId:'NV03',proofStatus:'REVIEW_REQUEST_DISCOVERED',claimState:'NOT_CLAIMED',receiptCoverage:'COMPLETE',issueNumber:4625}],workers:[{employeeId:'NV03',kind:'ui',state:'idle',uiSessionState:'idle',heartbeatAt:recent(stale?7200:1),currentJobId:null,job:'Không có việc đang chạy',detail:'READY'},{employeeId:'NV04',kind:'ui',state:'idle',uiSessionState:'idle',heartbeatAt:recent(stale?7200:1),currentJobId:null,job:'Không có việc đang chạy',detail:'READY'}]}}}
 async function openFixture(page:Page,stale=false){
  await page.route('https://fonts.googleapis.com/**',r=>r.fulfill({status:200,contentType:'text/css',body:''}));
  await page.route('https://fonts.gstatic.com/**',r=>r.fulfill({status:204,body:''}));
@@ -66,32 +66,19 @@ for(const width of [390,1024,1648]){
   // The health feed may replace employee cards between hover and the next locator call.
   // Assert actual computed hover tint, not a transient boundingBox() that can be null
   // while the card is being rebuilt. A viewport screenshot still records the UI.
-  const normalBackground=await employee.evaluate(el=>getComputedStyle(el).backgroundColor);
+  const normalBorder=await employee.evaluate(el=>getComputedStyle(el).borderColor);
   await employee.hover();
   await expect.poll(async()=>page.locator('.employee-card.state-ready:hover').first()
-    .evaluate(el=>getComputedStyle(el).backgroundColor).catch(()=>normalBackground),{timeout:5000})
-    .not.toBe(normalBackground);
-  const popup=page.locator('#techPopover');
-  await expect(popup).toHaveClass(/open/);
-  await expect.poll(async()=>page.evaluate(()=>{
-    const surface=document.querySelector('#techPopover');
-    const employee=document.querySelector('.employee-card.state-ready');
-    if(!surface||!employee)return false;
-    const surfaceBorder=getComputedStyle(surface).borderColor;
-    const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
-  }),{timeout:5000}).toBe(true);
+    .evaluate(el=>getComputedStyle(el).borderColor).catch(()=>normalBorder),{timeout:5000})
+    .not.toBe(normalBorder);
+  await expect(page.locator('#techPopover')).toHaveCount(0);
+  await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
   await testInfo.attach('api-health-worker-hover-'+width+'.png',{body:await page.screenshot({animations:'disabled'}),contentType:'image/png'});
   await employee.click();
   await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
-  await expect.poll(async()=>page.evaluate(()=>{
-    const surface=document.querySelector('#detailModal');
-    const employee=document.querySelector('.employee-card.state-ready');
-    if(!surface||!employee)return false;
-    const surfaceBorder=getComputedStyle(surface).borderColor;
-    const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
-  }),{timeout:5000}).toBe(true);
+  await expect(page.locator('#detailModal')).toHaveClass(/state-ready/);
+  await expect.poll(()=>page.locator('#detailModal').evaluate(el=>getComputedStyle(el).borderTopColor)).toBe('rgb(59, 130, 246)');
+  expect(await page.locator('#detailModal #detailTitle').evaluate(el=>getComputedStyle(el).color)).toBe('rgb(59, 130, 246)');
   await testInfo.attach('api-health-employee-modal-'+width+'.png',{body:await page.locator('#detailModal').screenshot({animations:'disabled'}),contentType:'image/png'});
   await page.locator('#detailClose').click();
   const card=page.locator('.work-row').filter({hasText:'#3278'}).first();
@@ -134,7 +121,7 @@ test('API Health mobile sorts newly verified finishes first and lets Owner switc
  await expect.poll(order).toEqual([601,602,603]);
  await page.locator('.wo-filter.action').click();
  await expect(page.locator('#workClosedSort')).toHaveCount(0);
- await expect.poll(order).toEqual([2054,3278,4574]);
+ await expect.poll(order).toEqual([3278,4574,2054]);
 });
 
 
@@ -154,12 +141,12 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  const order=()=>page.locator('#workList .work-row').evaluateAll(nodes=>nodes.map(n=>Number((n as HTMLElement).dataset.workNumber)));
  await expect(page.locator('.wo-filter.action')).toContainText('CÒN MỞ');
  await expect(page.locator('.brand')).toContainText('TigerIQ AI');
- await expect(page.locator('#workOpenSort')).toHaveValue('priority');
- await expect.poll(order).toEqual([320,330,310]);
+ await expect(page.locator('#workOpenSort')).toHaveValue('activity_latest');
+ await expect.poll(order).toEqual([320,310,330]);
  await expect(page.locator('#woFilters')).toContainText('Có bình luận nhật ký: 2/3');
  await expect(page.locator('#workList .work-activity')).toHaveCount(2);
  const ranks=()=>page.locator('#workList .work-row .rank').allTextContents();
- await expect.poll(ranks).toEqual(['03','01','02']);
+ await expect.poll(ranks).toEqual(['03','02','01']);
  await page.locator('#workOpenSort').selectOption('rank_asc');
  await expect.poll(order).toEqual([330,310,320]);
  await expect.poll(ranks).toEqual(['01','02','03']);
@@ -369,4 +356,201 @@ test('Ops monitoring: verified source-age, active severity, event history and ev
  await expect(page.locator('#opsEvidenceGithub')).toHaveAttribute('href',/issues\/3278/);
  await page.locator('#opsEvidenceClose').click();
  await expect(page.locator('#opsEvidenceBackdrop')).toBeHidden();
+});
+
+test('NV03/NV04: current UI state, QA inbox, color and filter have distinct evidence',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await openFixture(page);
+ const all=page.locator('.filter[data-filter="all"]');
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveAttribute('aria-pressed','true');
+  await expect(all).toHaveAttribute('aria-pressed','false');
+  await all.click();
+  await expect(all).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveText(/Đang làm/);
+ await expect(page.locator('.filter[data-filter="ready"]')).toHaveText(/Rảnh/);
+ const nv03=page.locator('.employee-card[data-employee="NV03"]');
+ const nv04=page.locator('.employee-card[data-employee="NV04"]');
+ await expect(nv03).toBeVisible();
+ await expect(nv04).toBeVisible();
+ await expect(nv03).toContainText('RẢNH');
+ await expect(nv03).toContainText('1 yêu cầu QA chờ nhận');
+ await expect(nv04).toContainText('RẢNH');
+ await expect(nv04).not.toContainText('ĐANG LÀM');
+ const colors=await page.locator('.filter[data-filter]').evaluateAll(nodes=>Object.fromEntries(nodes.map(el=>[el.getAttribute('data-filter'),getComputedStyle(el).color])));
+ expect(colors.working).toBe('rgb(34, 197, 94)');
+ expect(colors.ready).toBe('rgb(59, 130, 246)');
+ expect(colors.cloud).toBe('rgb(203, 213, 225)');
+ await page.locator('.filter[data-filter="ready"]').click();
+ await expect(page.locator('.filter[data-filter="ready"]')).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.employee-card[data-employee="NV03"]')).toBeVisible();
+ await expect(page.locator('.employee-card[data-employee="NV04"]')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('UI generating response is WORKING only while heartbeat fresh, never a fabricated Core job',async({page})=>{
+ await openFixture(page);
+ const test=await page.evaluate(()=>{
+   const fn=(window as any).applyLiveWorkforce;
+   const row={employee_id:'NV03',status:'UNKNOWN',current_job_id:'STALE-GH',live_job:'STALE'};
+   const working=fn([row],[{employeeId:'NV03',kind:'ui',state:'working',uiSessionState:'working',heartbeatAt:new Date().toISOString(),currentJobId:null,job:'Chat đang trả lời'}])[0];
+   const stale=fn([row],[{employeeId:'NV03',kind:'ui',state:'working',uiSessionState:'working',heartbeatAt:new Date(Date.now()-61000).toISOString(),currentJobId:'OLD-GH',job:'Old job'}])[0];
+   return {working:working.status,workingJob:working.current_job_id,workingLive:working.ui_live,stale:stale.status,staleJob:stale.current_job_id,staleLive:stale.live_job};
+ });
+ expect(test).toEqual({working:'UI_BUSY',workingJob:null,workingLive:true,stale:'UNKNOWN',staleJob:null,staleLive:null});
+});
+
+
+test('Owner P0 flat workforce default and equal work-filter controls with visible progress',async({page})=>{
+ await page.setViewportSize({width:1648,height:900});
+ await openFixture(page);
+ await expect(page.locator('.filter[data-filter="working"]')).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('.filter[data-filter="all"]')).toHaveAttribute('aria-pressed','false');
+ const buttons=page.locator('#woFilters > .wo-filter');
+ await expect(buttons).toHaveCount(4);
+ const widths=await buttons.evaluateAll(els=>els.map(el=>Math.round(el.getBoundingClientRect().width)));
+ expect(new Set(widths).size).toBe(1);
+ const priority=page.locator('#workList .priority.p2').first();
+ await expect(priority).toBeVisible();
+ expect(await priority.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(255, 255, 255)');
+ const row=page.locator('#workList .progress:not(.indeterminate)').first();
+ await expect(row).toBeVisible();
+ const styling=await row.locator('.progress-fill').evaluate(el=>({
+   effect:getComputedStyle(el,'::before').animationName,
+   seconds:getComputedStyle(el,'::before').animationDuration,
+   shadow:getComputedStyle(el).textShadow}));
+ expect(styling.effect).toContain('tiq-owner-flow-fast');
+ expect(styling.seconds).toBe('0.95s');
+ expect(styling.shadow).toBe('none');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ expect(await row.locator('.progress-fill').evaluate(el=>getComputedStyle(el,'::before').animationName)).toBe('none');
+});
+
+test('Owner P0 journal timestamp is green and blocker NONE is hidden',async({page})=>{
+ await openFixture(page);
+ const rows=[{...work[0],lastActivitySource:'github_issue_comment',lastActivityAt:recent(2),lastActivitySummary:'Confirmed progress'},
+   {...work[1],blocker:'NONE',waitReason:'NONE'},work[2]];
+ await page.route(base+'/api/health-live-work',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,projection:{...projection().projection,openWork:rows}})}));
+ await page.reload();
+ const journal=page.locator('#workList .work-activity span:first-child');
+ await expect(journal).toBeVisible();
+ expect(await journal.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(74, 222, 128)');
+ await expect(page.locator('#workList .work-row[data-work-number="4574"] .work-quick.blocked')).toHaveCount(0);
+});
+
+
+test('Owner 3 screen density: compact cards, uniform buttons and usable content at 1664 924 630',async({page})=>{
+ for(const [width,height,minWork,minWorkers] of [[1664,936,5,6],[924,1040,3,4],[630,1040,2,3]] as const){
+  await page.setViewportSize({width,height});
+  await openFixture(page);
+  const metrics=await page.evaluate(()=>{
+   const w=document.querySelector('#workList')!,emp=document.querySelector('#workers')!;
+   const columns=(el:Element)=>getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length;
+   const widths=(sel:string)=>[...document.querySelectorAll(sel)].map(el=>Math.round(el.getBoundingClientRect().width));
+   const wo=widths('#woFilters>.wo-filter'),wf=widths('.workforce-panel .filters .filter[data-filter]');
+   const card=document.querySelector('#workList .tiq-work-card')!;
+   const state=card.querySelector('.work-top .state')!;
+   const title=card.querySelector('.work-title')!;
+   const meta=card.querySelector('.work-hierarchy')!;
+   return {workCols:columns(w),workerCols:columns(emp),wo,wf,
+    titleFont:parseFloat(getComputedStyle(title).fontSize),
+    stateFont:parseFloat(getComputedStyle(state).fontSize),
+    metaFont:parseFloat(getComputedStyle(meta).fontSize),
+    docWidth:document.documentElement.scrollWidth,windowWidth:document.documentElement.clientWidth};
+  });
+  expect(metrics.workCols,'work columns at '+width).toBeGreaterThanOrEqual(minWork);
+  expect(metrics.workerCols,'workforce columns at '+width).toBeGreaterThanOrEqual(minWorkers);
+  expect(new Set(metrics.wo).size,'work button widths at '+width).toBe(1);
+  expect(new Set(metrics.wf).size,'workforce button widths at '+width).toBe(1);
+  expect(metrics.wo[0],'compact work buttons at '+width).toBeLessThanOrEqual(112);
+  expect(metrics.wf[0],'compact workforce buttons at '+width).toBeLessThanOrEqual(114);
+  expect(metrics.titleFont).toBeGreaterThan(metrics.stateFont);
+  expect(metrics.stateFont).toBe(metrics.metaFont);
+  expect(metrics.docWidth,'horizontal overflow at '+width).toBeLessThanOrEqual(metrics.windowWidth);
+ }
+});
+
+test('Owner work-card hover highlights the surface and detail fonts stay uniform',async({page})=>{
+ await page.setViewportSize({width:924,height:980});
+ await openFixture(page);
+ const card=page.locator('#workList .tiq-work-card').first();
+ const first=await card.locator('.work-main').evaluate(el=>getComputedStyle(el).backgroundColor);
+ await card.hover();
+ await expect.poll(()=>card.locator('.work-main').evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(first);
+ await card.click();
+ const modal=page.locator('#workDetailModal');
+ await expect(modal).toBeVisible();
+ const f=await modal.evaluate(el=>({
+  title:parseFloat(getComputedStyle(el.querySelector('.work-detail-title')!).fontSize),
+  line:parseFloat(getComputedStyle(el.querySelector('.work-detail-row')!).fontSize),
+  section:parseFloat(getComputedStyle(el.querySelector('.work-detail-section h3')!).fontSize),
+  kicker:parseFloat(getComputedStyle(el.querySelector('.work-detail-kicker')!).fontSize),
+ }));
+ expect(f.line).toBe(12);
+ expect(f.section).toBe(f.line);
+ expect(f.kicker).toBe(f.line);
+ expect(f.title).toBeGreaterThan(f.line);
+});
+
+test('Owner mobile filter chips use compact four-across layout without oversized padding',async({page})=>{
+ for(const width of [390,414,430,320]){
+  await page.setViewportSize({width,height:844});
+  await openFixture(page);
+  const a=await page.evaluate(()=>{
+   const wf=document.querySelector('.workforce-panel .filters')!;
+   const wo=document.querySelector('#woFilters')!;
+   const tabs=[...wf.querySelectorAll('.filter[data-filter]')] as HTMLElement[];
+   const work=[...wo.querySelectorAll('.wo-filter')] as HTMLElement[];
+   const box=(el:HTMLElement)=>el.getBoundingClientRect();
+   return {
+    wfTracks:getComputedStyle(wf).gridTemplateColumns.split(' ').filter(Boolean).length,
+    workTracks:getComputedStyle(wo).gridTemplateColumns.split(' ').filter(Boolean).length,
+    wfHeights:tabs.map(e=>Math.round(box(e).height)),
+    workHeights:work.map(e=>Math.round(box(e).height)),
+    wfWidths:tabs.map(e=>Math.round(box(e).width)),
+    workWidths:work.map(e=>Math.round(box(e).width)),
+    wfRows:new Set(tabs.map(e=>Math.round(box(e).top))).size,
+    workRows:new Set(work.map(e=>Math.round(box(e).top))).size,
+    overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth
+   };
+  });
+  expect(a.wfTracks).toBe(width>=360?4:3);
+  expect(a.workTracks).toBe(width>=360?4:2);
+  expect(new Set(a.wfHeights)).toEqual(new Set([27]));
+  expect(new Set(a.workHeights)).toEqual(new Set([27]));
+  expect(new Set(a.wfWidths).size).toBe(1);
+  expect(new Set(a.workWidths).size).toBe(1);
+  expect(a.wfRows).toBe(width>=360?2:3);
+  expect(a.workRows).toBe(width>=360?1:2);
+  expect(a.overflow).toBe(false);
+ }
+});
+
+test('Employee card click-only detail inherits verified state palette',async({page})=>{
+ await page.setViewportSize({width:924,height:980});
+ await openFixture(page);
+ await page.locator('.filter[data-filter="all"]').click();
+ await expect(page.locator('#techPopover')).toHaveCount(0);
+ for(const [state,color] of [['working','rgb(34, 197, 94)'],['ready','rgb(59, 130, 246)'],['attention','rgb(251, 113, 133)']] as const){
+  const card=page.locator('.employee-card.state-'+state).first();
+  await expect(card).toBeVisible();
+  await card.hover();
+  await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
+  await card.click();
+  await expect(page.locator('#detailModal')).toHaveClass(new RegExp('state-'+state));
+  expect(await page.locator('#detailModal').evaluate(el=>getComputedStyle(el).borderTopColor)).toBe(color);
+  expect(await page.locator('#detailModal #detailStatus').evaluate(el=>getComputedStyle(el).color)).toBe(color);
+  await page.locator('#detailClose').click();
+ }
+ const card=page.locator('.employee-card.state-ready').first();
+ await card.focus();await card.press('Enter');
+ await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
+ await page.keyboard.press('Escape');
+ await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
+});
+test('Stylesheets are consolidated without obsolete employee-hover inspector',async({page})=>{
+ await openFixture(page);
+ expect(await page.locator('style').count()).toBe(2);
+ await expect(page.locator('#techPopover')).toHaveCount(0);
+ const styles=await page.evaluate(()=>[...document.styleSheets].map(s=>s.href||''));
+ expect(styles.some(x=>x.includes('/work-center-visual.css'))).toBe(true);
 });

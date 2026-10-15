@@ -387,6 +387,7 @@ export function buildApiDoctorPrompt(items=[]){
   return [
     'You are NV10, TigerIQ API Doctor.',
     'Analyze ONLY the supplied provider health summary. Do not suggest paid upgrades, credential changes, account/security changes, Production changes, or destructive actions.',
+    'Apply NV10 API recovery policy: TigerIQ Free proof expiry is NOT API key expiry; keep Owner-verified standing Free/no-billing gates, distinguish project RPD from RPM/TPM and obey cooldown, classify 402/403 as external blocks; avoid duplicate probes/repair tickets; RECOVERED requires accepted normal Core work, not a ping.',
     'Return ONLY one compact JSON object: {"summary":"short","attention":["NVxx"],"sourceRepair":["NVxx"]}.',
     'Keep the response under 1200 characters.',
     JSON.stringify(compact),

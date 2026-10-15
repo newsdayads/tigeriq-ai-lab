@@ -319,6 +319,37 @@ export function trustedBridgeTaskActionReceipt(bridgeCalls,expected=null){
     && trustedTigerIQTaskActionData(result.action,result.data);
 }
 
+// Only a TOOL-origin receipt may prove NV07 gateway execution. A model's
+// final JSON text is untrusted, even when it claims ready:true or SUCCESS.
+export function expectedNv07OperatorActionFromInstruction(instruction=''){
+  const matches=String(instruction||'').match(/\bnv07_(?:preflight|read_metadata_canary(?:_v2|_v3)?)\b/ig)||[];
+  const unique=[...new Set(matches.map(x=>x.toLowerCase()))];
+  return unique.length===1?unique[0]:null;
+}
+
+export function trustedBridgeNv07ActionReceipt(bridgeCalls,expectedAction){
+  if(!['nv07_preflight','nv07_read_metadata_canary','nv07_read_metadata_canary_v2','nv07_read_metadata_canary_v3'].includes(expectedAction)
+    ||!Array.isArray(bridgeCalls))return false;
+  const calls=bridgeCalls.filter(c=>c?.tool==='tigeriq_pc'
+    &&c?.result?.ok===true&&c.result?.target==='pc01-local'
+    &&c.result?.action===expectedAction);
+  if(calls.length!==1)return false;
+  const data=calls[0].result?.data;
+  if(expectedAction==='nv07_preflight')
+    return data?.ready===true
+      &&data?.windowsUser==='wdragons12x'
+      &&data?.reason==='NV07_AGY_MODELS_LISTED_IN_OWNER_SESSION'
+      &&data?.execution==='READ_ONLY';
+  return data?.accepted===true
+    &&(expectedAction!=='nv07_read_metadata_canary_v2'||data?.schema==='NV07_GATEWAY_CANARY_V2')
+    &&(expectedAction!=='nv07_read_metadata_canary_v3'||data?.schema==='NV07_GATEWAY_CANARY_V3')
+    &&data?.state==='GATEWAY_USER_CLI_JSON_VERIFIED_NOT_CORE_LEASE'
+    &&data?.reason==='NV07_READ_METADATA_TRANSPORT_OK'
+    &&data?.coreLeaseVerified===false
+    &&data?.nv07Active===false
+    &&/^[a-f0-9]{64}$/.test(String(data?.outputHash||''));
+}
+
 export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,terminal=null,result=null}={}){
   if(timedOut)return 'OPENCLAW_WORKER_TIMEOUT';
   if(rateLimited)return 'OPENCLAW_RATE_LIMIT';
@@ -327,7 +358,7 @@ export function safeOpenClawFailureMessage({timedOut=false,rateLimited=false,ter
   return `OPENCLAW_DISPATCH_FAILED:status=${status}`;
 }
 
-export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true,expectedTaskAction=null}={}){
+export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=true,expectedTaskAction=null,expectedNv07Action=null}={}){
   const agentStatus=String(result?.agentResult?.status||'').toLowerCase();
   const successAgentStatuses=new Set(['pass','passed','ok','success','completed','done']);
   const failureAgentStatuses=new Set(['error','failed','blocker','blocked']);
@@ -343,20 +374,28 @@ export function openClawTerminalDecision(result,{timedOut=false,parsedPresent=tr
   const bridgeTaskActionReceipt=trustedBridgeTaskActionReceipt(result?.bridgeCalls,expectedTaskAction);
   const trustedReadReceipt=embeddedFileReadReceipt||bridgeFileReadReceipt;
   const trustedToolReceipt=trustedReadReceipt||bridgeTaskActionReceipt;
+  const nv07Receipt=trustedBridgeNv07ActionReceipt(result?.bridgeCalls,expectedNv07Action);
   const standardSuccess=agentSuccess&&(wrapperClean||trustedToolReceipt);
-  const success=!timedOut&&Boolean(parsedPresent)&&(standardSuccess||bridgeTaskActionReceipt);
-  const invalidTerminal=!timedOut&&Boolean(parsedPresent)&&!success&&(
+  const genericSuccess=!timedOut&&Boolean(parsedPresent)&&(standardSuccess||bridgeTaskActionReceipt);
+  // A scoped NV07 work order never passes on model prose alone.
+  const success=expectedNv07Action
+    ? !timedOut&&Boolean(parsedPresent)&&wrapperClean&&nv07Receipt
+    : genericSuccess;
+  const invalidTerminal=expectedNv07Action
+    ? !timedOut&&Boolean(parsedPresent)&&!success
+    : !timedOut&&Boolean(parsedPresent)&&!success&&(
     !agentStructured
     || (!agentSuccess&&!agentFailure)
     || (agentSuccess&&!wrapperClean&&!trustedToolReceipt)
   );
-  const successSource=success
+  const successSource=success&&expectedNv07Action?'trusted_nv07_gateway_tool_receipt'
+    :success
     ?(bridgeTaskActionReceipt&&!agentSuccess?'trusted_task_action_receipt'
       :trustedReadReceipt&&!wrapperClean?'trusted_file_read_receipt'
         :wrapperClean?'agent_terminal'
           :'trusted_tool_receipt')
     :null;
-  return {success,invalidTerminal,successSource,agentStatus,agentStructured,agentSuccess,agentFailure,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt,bridgeTaskActionReceipt};
+  return {success,invalidTerminal,successSource,agentStatus,agentStructured,agentSuccess,agentFailure,wrapperClean,trustedToolReceipt,terminalReceiptTool,embeddedFileReadReceipt,bridgeFileReadReceipt,bridgeTaskActionReceipt,nv07Receipt};
 }
 
 export async function runDispatchWorkerRecord(recordPath,options={}){
@@ -391,7 +430,8 @@ export async function runDispatchWorkerRecord(recordPath,options={}){
   }catch{}
   const result=compactOpenClawCliResult(parsed,exitCode,stderr);
   const expectedTaskAction=expectedTigerIQTaskActionFromInstruction(envelope.instruction);
-  const terminal=openClawTerminalDecision(result,{timedOut,parsedPresent:Boolean(parsed),expectedTaskAction});
+  const expectedNv07Action=expectedNv07OperatorActionFromInstruction(envelope.instruction);
+  const terminal=openClawTerminalDecision(result,{timedOut,parsedPresent:Boolean(parsed),expectedTaskAction,expectedNv07Action});
   const success=terminal.success;
   const finalState=success?'completed':'failed';
   const failureText=String(result.agentResult?.blocker||result.text||result.stderr||'');

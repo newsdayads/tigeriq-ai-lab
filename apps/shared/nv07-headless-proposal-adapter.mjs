@@ -45,9 +45,10 @@ export function prepareNv07CliProposal(job, { sandboxCwd } = {}) {
     ],
   };
   const args = [
-    '-p', JSON.stringify(payload), '--output-format', 'json',
+    '--output-format', 'json',
     '--json-schema', JSON.stringify(NV07_PROPOSAL_SCHEMA),
-    '--print-timeout', '2m', '--sandbox',
+    '--print-timeout', '2m', '--sandbox', '--mode', 'plan', '--disable-slash-commands',
+    '-p', JSON.stringify(payload),
   ];
   return Object.freeze({
     accepted: true, executionState: 'PREPARED_NOT_RUN', employeeId: 'NV07',
@@ -73,7 +74,13 @@ export function verifyNv07CliProposal({ job, invocation, exitCode, stdout, stder
   try { envelope = JSON.parse(stdout); } catch { return denied('NV07_CLI_JSON_INVALID'); }
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)
       || envelope.status !== 'SUCCESS' || envelope.error) return denied('NV07_CLI_STATUS_NOT_SUCCESS');
-  const result = envelope.structured_output;
+  // agy 1.3.x may emit the schema object as a JSON response string.
+  // This is the proven V3 envelope shape, not a rerun of that transport job.
+  let result = envelope.structured_output;
+  if ((!result || typeof result !== 'object' || Array.isArray(result))
+      && typeof envelope.response === 'string') {
+    try { result = JSON.parse(envelope.response); } catch {}
+  }
   if (!result || typeof result !== 'object' || Array.isArray(result)
       || result.job_id !== job.jobId || !textOk(result.summary)
       || !Array.isArray(result.proposed_files) || result.proposed_files.length > MAX_ITEMS

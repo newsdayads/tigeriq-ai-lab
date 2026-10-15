@@ -1415,3 +1415,20 @@ describe('Canonical checklist display across active and historical work', () => 
       .toMatchObject({done: 0, total: 0, verified: false});
   });
 });
+
+
+describe('P0 UI session state survives Work Order evidence gate',()=>{
+  it('preserves raw UI session activity but does not treat it as an accepted job',()=>{
+    const at=new Date().toISOString();
+    const worker={employeeId:'NV02',kind:'ui',label:'ChatGPT Plus',state:'working',status:'ĐANG LÀM',job:'Đang xử lý trong chat hiện tại',heartbeatAt:at,currentJobId:null};
+    const result=sanitizeRuntimePayload({ok:true,generatedAt:at,source:{core:true,uiAutopilot:true},workers:[worker]});
+    expect(result.workers[0]).toMatchObject({employeeId:'NV02',kind:'ui',state:'unknown',uiSessionState:'working',currentJobId:null});
+    expect(result.summary.working).toBe(0);
+    expect(result.summary.unknown).toBe(1);
+  });
+  it('does not grant a non-UI resource fabricated browser presence',()=>{
+    const at=new Date().toISOString();
+    const result=sanitizeRuntimePayload({ok:true,generatedAt:at,workers:[{employeeId:'NV09',kind:'api',state:'idle',heartbeatAt:at}]});
+    expect(result.workers[0].uiSessionState).toBeNull();
+  });
+});
