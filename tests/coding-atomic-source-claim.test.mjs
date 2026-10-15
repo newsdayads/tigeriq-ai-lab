@@ -7,7 +7,7 @@ function db({active=[],failInsert=false}={}){
   const client={
     query:async(sql,args=[])=>{
       statements.push({sql,args});
-      if(sql.startsWith('select id from tigeriq_coding_jobs'))return {rows:active};
+      if(sql.startsWith('select id,paths from tigeriq_coding_jobs'))return {rows:active};
       if(failInsert&&sql.startsWith('insert into tigeriq_coding_jobs'))throw Error('SIMULATED_DB_CONFLICT');
       return {rows:[]};
     },
@@ -25,7 +25,7 @@ test('canonical work order and scoped file lock are acquired before query+insert
   assert.equal(sql[0],'BEGIN');
   assert.equal(sql[1],'select pg_advisory_xact_lock(hashtextextended($1,0))');
   assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,4);
-  assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>sql.findIndex(x=>x.startsWith('select id from tigeriq_coding_jobs')));
+  assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>sql.findIndex(x=>x.startsWith('select id,paths from tigeriq_coding_jobs')));
   assert.equal(sql.at(-1),'COMMIT');
   assert.equal(t.released,true);
   assert.deepEqual(t.statements[2].args,['coding-file:apps/a']);
