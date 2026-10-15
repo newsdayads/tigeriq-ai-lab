@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+// @ts-ignore JS source is an untyped standalone local CLI helper.
 import { inspectB01Json } from '../../projects/dexcam-personal/b01-local-preflight.mjs';
 
 const script = resolve('projects/dexcam-personal/b01-local-preflight.mjs');
