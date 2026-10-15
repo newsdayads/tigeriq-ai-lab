@@ -97,3 +97,35 @@ it('R06 rejects malformed/unsafe entries and excessive package counts',()=>{
   const z=fixture();for(let i=0;i<2000;i++)z.packages['node_modules/p'+i]={};
   expect(inspectR06ConsumerLock(z).reason).toBe('PACKAGE_ENTRIES_INVALID');
 });
+
+
+it('R06 rejects substituted REA tarball from same npm registry despite pinned-looking metadata',()=>{
+  const x=fixture();
+  x.packages['node_modules/rea-agents'].resolved=
+    'https://registry.npmjs.org/rogue/-/rogue-6.4.0.tgz';
+  const r=inspectR06ConsumerLock(x);
+  expect(r.reason).toBe('REA_ARTIFACT_PIN_MISMATCH');safe(r);
+});
+it('R06 rejects transitive registry tarball whose name or version differs from node_modules entry',()=>{
+  for(const resolved of [
+    'https://registry.npmjs.org/rogue/-/rogue-4.4.3.tgz',
+    'https://registry.npmjs.org/zod/-/zod-9.9.9.tgz',
+    'https://registry.npmjs.org/zod/-/rogue-4.4.3.tgz'
+  ]){
+    const x=fixture();x.packages['node_modules/zod'].resolved=resolved;
+    const r=inspectR06ConsumerLock(x);
+    expect(r.reason).toBe('UNVERIFIED_PACKAGE_SOURCE');safe(r);
+  }
+});
+it('R06 detects scoped package substitution while accepting canonical encoded scoped path',()=>{
+  const bad=fixture();
+  bad.packages['node_modules/@babel/parser'].resolved=
+    'https://registry.npmjs.org/@fake/parser/-/parser-8.0.4.tgz';
+  const r=inspectR06ConsumerLock(bad);
+  expect(r.reason).toBe('UNVERIFIED_PACKAGE_SOURCE');safe(r);
+  const ok=fixture();
+  ok.packages['node_modules/@babel/parser'].resolved=
+    'https://registry.npmjs.org/@babel%2fparser/-/parser-8.0.4.tgz';
+  const x=inspectR06ConsumerLock(ok);
+  expect(x.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(x);
+});
