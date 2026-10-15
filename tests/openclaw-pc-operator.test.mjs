@@ -67,7 +67,8 @@ describe('NV07 user-session OpenClaw read-only preflight', () => {
     expect(plugin).toContain("Type.Literal('nv07_preflight')");
     expect(operator).toContain("data = await nv07UserSessionPreflight()");
     expect(operator).toContain("['models']");
-    expect(operator).not.toMatch(/SAFE_SHELL_PATTERNS[^]*agy\\.exe/);
+    const allowlist=operator.slice(operator.indexOf('const SAFE_SHELL_PATTERNS'),operator.indexOf('function normalizeWinPath'));
+    expect(allowlist).not.toContain('agy');
   });
 });
 
