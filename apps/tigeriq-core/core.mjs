@@ -38,7 +38,7 @@ import { withCoreManagerPgLock } from './manager-singleton-pg-lock.mjs';
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -1022,14 +1022,14 @@ async function apiDoctorLatestUnresolvedResourceHandoff(resourceId){
   const handoff=await apiDoctorLatestResourceHandoff(resourceId);
   if(!handoff)return null;
   const signature=String(handoff.data?.signature||'');
-  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and ($3='' or data->>'signature'=$3) and data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff') order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
 async function apiDoctorLatestUnresolvedSignatureHandoff(resourceId,signature){
   if(!signature)return null;
   const handoff=(await pool.query("select ts,data from tigeriq_events where type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2 order by seq desc limit 1",[resourceId,signature])).rows[0]||null;
   if(!handoff)return null;
-  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
+  const recovered=(await pool.query("select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff') order by seq desc limit 1",[resourceId,handoff.ts,signature])).rows[0];
   return recovered?null:handoff;
 }
 async function apiDoctorPostRepairValidationEvidence(resourceId,handoffAt){
@@ -1401,6 +1401,42 @@ async function runApiDoctorScan(){
     let handoffPlan=null;
     let freshRecurrence=null;
     if(handoffCandidate){
+      // A completed, accepted real NV inference can retire historical WAIT_REPAIR
+      // without claiming its source repair issue was ever completed.
+      const normalReceipt=(await pool.query(
+        "select e.ts,e.job_id from tigeriq_events e join tigeriq_jobs j on j.id=e.job_id where e.resource_id=$1 and e.type='RESOURCE_SUCCESS' and e.ts>$2 and coalesce(e.task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and j.resource_id=$1 and j.employee_id=$3 and j.kind='nv_inference' and j.status='done' and j.result->>'ok'='true' and j.result->>'resourceId'=$1 order by e.seq desc limit 1",
+        [resource.resource_id,handoffCandidate.ts,resource.employee_id]
+      )).rows[0]||null;
+      const laterFailure=normalReceipt?(await pool.query(
+        "select ts from tigeriq_events where resource_id=$1 and type='RESOURCE_FAILURE' and coalesce(task_kind,'') not in ('probe','api_doctor','api_doctor_validation') and ts>$2 order by seq desc limit 1",
+        [resource.resource_id,normalReceipt.ts]
+      )).rows[0]||null:null;
+      const liveRecovery=apiDoctorVerifiedNormalWorkRecovery({
+        handoffAt:handoffCandidate.ts,normalWorkAt:normalReceipt?.ts,
+        normalJobDone:Boolean(normalReceipt),normalOutputAccepted:Boolean(normalReceipt),
+        latestNormalFailureAt:laterFailure?.ts,
+        healthState:resource.health_state,credentialState:resource.credential_state,
+        cooldownUntil:resource.cooldown_until,
+      });
+      const recoverySignature=String(handoffCandidate.data?.signature||'');
+      if(recoverySignature&&liveRecovery.recovered){
+        const already=(await pool.query(
+          "select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_normal_work_after_handoff' limit 1",
+          [resource.resource_id,handoffCandidate.ts,recoverySignature]
+        )).rows[0];
+        if(!already)await event('API_DOCTOR_RECOVERED',{
+          employeeId:resource.employee_id,resourceId:resource.resource_id,
+          provider:resource.provider,taskKind:'api_doctor',
+          signature:recoverySignature,evidence:'live_normal_work_after_handoff',
+          normalWorkJobId:normalReceipt.job_id,normalWorkSuccessAt:normalReceipt.ts,
+          historicalRepairIssueNumber:Number(handoffCandidate.data?.repairIssueNumber||0)||null,
+          historicalSourceRepairAccepted:false,
+        });
+        row.action='recovered';row.reason='live_normal_work_after_handoff';
+        row.normalWorkJobId=normalReceipt.job_id;
+        row.historicalSourceRepairAccepted=false;
+        actions.push(row);continue;
+      }
       let lifecycle;
       try{
         lifecycle=await apiDoctorRepairLifecycleEvidence(handoffCandidate);
@@ -1457,7 +1493,7 @@ async function runApiDoctorScan(){
       if(handoffPlan.action==='recovered'){
         const signature=String(handoffCandidate.data?.signature||'');
         const alreadyRecovered=signature?await pool.query(
-          "select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and data->>'signature'=$1 and data->>'evidence'='live_work_success_after_repair_deploy' order by seq desc limit 1",
+          "select 1 from tigeriq_events where type='API_DOCTOR_RECOVERED' and data->>'signature'=$1 and data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff') order by seq desc limit 1",
           [signature]
         ):null;
         if(signature&&!alreadyRecovered?.rows?.[0])await event('API_DOCTOR_RECOVERED',{
