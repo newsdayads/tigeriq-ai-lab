@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest';
+// @ts-ignore JS source is an untyped standalone local emulator module.
 import { ZFold2DeXEmulator, ZFOLD2_PROFILE } from '../../projects/dexcam-personal/zfold2-emulator-runner.mjs';
+// @ts-ignore JS source is an untyped standalone local admission module.
 import { inspectB01 } from '../../projects/dexcam-personal/b01-evidence-admission.mjs';
 
 test('ZFOLD2_PROFILE has standard Samsung Galaxy Z Fold 2 specifications', () => {
