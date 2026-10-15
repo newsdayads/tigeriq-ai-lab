@@ -33,10 +33,10 @@ test('standing zero-cost proof is opt-in, scoped and fail-closed in both launche
     assert.match(source,/standingApprovalSource/);
     assert.match(source,/owner_direct_2026-10-15/);
     assert.match(source,/owner_screenshot_2026-10-15_/);
-    assert.match(source,/paidFallbackAllowed -cne \\$false/);
-    assert.match(source,/Provider -eq 'gemini' -and \\$Proof.billingLinked -cne \\$false/);
-    assert.match(source,/Test-TigerIQFreeProviderProof -Proof \\$groqProof -Provider 'groq'/);
-    assert.match(source,/Test-TigerIQFreeProviderProof -Proof \\$geminiProof -Provider 'gemini'/);
+    assert.match(source,/paidFallbackAllowed -cne \$false/);
+    assert.match(source,/Provider -eq 'gemini' -and \$Proof.billingLinked -cne \$false/);
+    assert.match(source,/Test-TigerIQFreeProviderProof -Proof \$groqProof -Provider 'groq'/);
+    assert.match(source,/Test-TigerIQFreeProviderProof -Proof \$geminiProof -Provider 'gemini'/);
     assert.match(source,/TIGERIQ_ALLOW_PAID_AI='false'/);
   }
 });
