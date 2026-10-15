@@ -161,10 +161,10 @@ const nv07BootstrapResource=Object.freeze({
   costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['nv07_bootstrap'],
 });
 const resources = [
-  ...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[]),
   nv08Resource,
   nv09Resource,
   nv10Resource,
+  ...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[]),
   openclawResource,
   R('NV11','Groq','groq',process.env.TIGERIQ_GROQ_MODEL || 'openai/gpt-oss-120b',[['GROQ_API_KEY'],['TIGERIQ_GROQ_FREE_TIER_VERIFIED','true']],10),
   R('NV12','Gemini','gemini',process.env.TIGERIQ_GEMINI_MODEL || 'gemini-3.5-flash-lite',[['GEMINI_API_KEY'],['TIGERIQ_GEMINI_FREE_TIER_VERIFIED','true']],20),
