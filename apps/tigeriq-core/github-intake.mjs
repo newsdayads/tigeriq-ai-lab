@@ -64,10 +64,10 @@ export function bodyValue(body,key){return policyBodyValue(body,key);}
 // change the revision and invalidate stale live-acceptance evidence.
 export function normalizeWorkOrderChecklistReceiptProgress(body=''){
   return String(body||'').replace(
-    /^([ \\t]*-[ \\t]*)\\[[ xX]\\]([ \\t]+)([^\\r\\n]*)(\\r?)$/gm,
+    /^([ \t]*-[ \t]*)\[[ xX]\]([ \t]+)([^\r\n]*)(\r?)$/gm,
     (_line,leader,spacing,content,cr)=>{
       const instruction=content.replace(
-        /[ \\t]+\\[(?:Bằng chứng|Biên nhận|Evidence|Receipt)\\]\\(https:\\/\\/github\\.com\\/[^)\\s]+\\)[ \\t]*$/iu,
+        /[ \t]+\[(?:Bằng chứng|Biên nhận|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
         '',
       );
       return `${leader}[ ]${spacing}${instruction}${cr}`;
@@ -78,7 +78,7 @@ export function normalizeWorkOrderChecklistReceiptProgress(body=''){
 export function githubIssueSourceRevision(issue={}){
   return createHash('sha256')
     .update(String(issue?.title||''))
-    .update('\\n')
+    .update('\n')
     .update(normalizeWorkOrderChecklistReceiptProgress(issue?.body))
     .digest('hex')
     .slice(0,12);
