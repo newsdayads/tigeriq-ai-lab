@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {nv04IdleAuditGate,readNv04IdleHeartbeat,nv04IdleSourcePacket,buildNv04IdleAuditPrompt,parseNv04IdleAuditResult} from './nv04-idle-audit.mjs';
+import {nv04IdleAuditGate,readNv04IdleHeartbeat,nv04IdleSourcePacket,nv04IdleAuditSlot,buildNv04IdleAuditPrompt,parseNv04IdleAuditResult} from './nv04-idle-audit.mjs';
 import {PRIORITY_RANK,bodyValue,effectiveBacklogPriority} from './github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder} from './work-routing-policy.mjs';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
@@ -404,14 +404,14 @@ async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token,n
   // Bounded source fetch: no issue creation, no direct GitHub writes and no App Chrome mutation.
   nv04IdleNextProbeAt=now+10*60_000;
   let packet;
-  try{packet=await nv04IdleSourcePacket({fetchImpl,owner,repo,token});}
+  try{packet=await nv04IdleSourcePacket({fetchImpl,owner,repo,token,slot:nv04IdleAuditSlot(now)});}
   catch{return null;}
-  const suffix=packet.sha.slice(0,12);
+  const suffix=packet.sha.slice(0,12)+'-'+packet.slot;
   const objectiveId='OBJ-NV04-IDLE-AUDIT-'+suffix,jobId='NV04-AUDIT-'+suffix;
   if((await pool.query('select 1 from tigeriq_objectives where id=$1',[objectiveId])).rowCount)return null;
   const resourceScope='NV04_IDLE_SOURCE_AUDIT';
   const metadata={
-    source:'nv04_idle_audit',sourceSha:packet.sha,sourceUrl:packet.sourceUrl,
+    source:'nv04_idle_audit',sourceSha:packet.sha,auditSlot:packet.slot,sourceUrl:packet.sourceUrl,
     sourcePaths:packet.files.map(file=>file.path),resourceScope,
     executionSurface:'CORE_UI',uiWorkerId:'NV04',currentWorkOrder:'NV04: rà mã nguồn khi rảnh @'+suffix,
     assignmentAuthority:'CORE',readOnly:true,autonomousCode:false,sourceRevision:suffix,
@@ -422,10 +422,10 @@ async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token,n
   if(!inserted)return null;
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[
     jobId,objectiveId,'NV04: rà mã nguồn khi rảnh @'+suffix,buildNv04IdleAuditPrompt(packet),
-    'research','NV04',resourceId('NV04'),JSON.stringify({authority:'NV04_IDLE_AUDIT',workerId:'NV04',sourceSha:packet.sha,sourcePaths:metadata.sourcePaths}),
+    'research','NV04',resourceId('NV04'),JSON.stringify({authority:'NV04_IDLE_AUDIT',workerId:'NV04',sourceSha:packet.sha,auditSlot:packet.slot,sourcePaths:metadata.sourcePaths}),
   ]);
   await pool.query("insert into tigeriq_events(type,objective_id,job_id,employee_id,resource_id,task_kind,data) values('NV04_IDLE_AUDIT_ASSIGNED',$1,$2,$3,$4,'ui',$5)",[
-    objectiveId,jobId,'NV04',resourceId('NV04'),JSON.stringify({sourceSha:packet.sha,sourcePaths:metadata.sourcePaths,resourceScope}),
+    objectiveId,jobId,'NV04',resourceId('NV04'),JSON.stringify({sourceSha:packet.sha,auditSlot:packet.slot,sourcePaths:metadata.sourcePaths,resourceScope}),
   ]);
   return row(pool,{jobId});
 }
@@ -438,6 +438,7 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     prev=await reconcile({pool,fetchImpl,owner,repo,token,item:prev,observedAt});
     const m=prev.metadata||{},n=Number(m.issueNumber||issueNo(prev.job_id));let issue=prev.issue;if(!issue&&n)try{issue=await readIssue(fetchImpl,owner,repo,token,n);}catch{}
     if(prev.status==='done'&&issue)previous=completion({jobId:prev.job_id,workerId:prev.employee_id||m.uiWorkerId||'NV03',priority:prev.priority||'P3',issueRef:m.issueUrl||issue.html_url,closedAt:issue.closed_at||prev.completed_at,updatedAt:issue.updated_at,verifiedAt:observedAt});
+    else if(prev.status==='done'&&String(m.source||'')==='nv04_idle_audit')previous=publicJob(prev,{status:'DONE',executable:false});
     else if(prev.status==='cancelled')previous=publicJob(prev,{status:'CANCELLED',executable:false});
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
@@ -538,13 +539,13 @@ export async function completeCoreUiAssignment({pool,fetchImpl=fetch,token='',ow
       let parsed={accepted:false,reason:'AUDIT_TERMINAL_NO_SOURCE'};
       if(requestedState==='DONE'){
         try{
-          const packet=await nv04IdleSourcePacket({fetchImpl,owner,repo,token,refSha:sourceSha});
+          const packet=await nv04IdleSourcePacket({fetchImpl,owner,repo,token,refSha:sourceSha,slot:String(item?.metadata?.auditSlot||'')});
           parsed=parseNv04IdleAuditResult(terminalResult,packet);
         }catch(error){parsed={accepted:false,reason:String(error?.message||error)};}
       }
       const valid=requestedState==='DONE'&&parsed.accepted===true;
       const jobStatus=valid?'done':requestedState==='BLOCKED'?'blocked':requestedState==='EXTERNAL_WAIT'?'external_wait':'failed';
-      const payload={source:'nv04_idle_audit',terminal:requestedState,sourceSha,validation:parsed.reason,
+      const payload={source:'nv04_idle_audit',terminal:requestedState,sourceSha,auditSlot:String(item?.metadata?.auditSlot||''),validation:parsed.reason,
         findings:parsed.findings||[],findingCount:(parsed.findings||[]).length,
         verified:valid,repairAuthorized:false};
       await client.query("update tigeriq_jobs set status=$2,lease_until=null,completed_at=coalesce(completed_at,now()),result=$3::jsonb,failure=$4::jsonb where id=$1 and status in ('ui_assigned','ui_running')",[
