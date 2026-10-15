@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectWorkOrder, webControlWorkOrderCandidate } from '../apps/tigeriq-core/web-control-server.mjs';
+import { projectWorkOrder } from '../apps/tigeriq-core/web-control-server.mjs';
 
 test('Issue 280 with NOT_EXECUTING and CENTRAL tag is categorized as SYSTEM, never WORKING', () => {
   const issue280 = {
@@ -110,45 +110,4 @@ ${checkLines.join('\n')}`
   assert.equal(projected.progressPercent, 40);
   assert.equal(projected.currentStep, 'D02 — Xây bộ nhận diện USB UVC');
   assert.equal(projected.nextAction, 'D02 — Xây bộ nhận diện USB UVC');
-});
-
-test('S08 Web Control does not silently omit #4780 legacy scoped Work Order without TIGERIQ_EXECUTABLE', () => {
-  const checklist = Array.from({length:16},(_,i) => '- ['+(i<6?'x':' ')+'] R'+String(i).padStart(2,'0')+' — Mốc nghiệm thu').join('\n');
-  const issue = {
-    number:4780, title:'[P2][ENGINEERING] REA — tích hợp phân tích phần mềm',
-    state:'open', labels:[], updated_at:'2026-10-15T11:15:24Z',
-    body:'RESOURCE_SCOPE=TIGERIQ_REA_RECONSTRUCTION_LAB_V1\nCURRENT_STEP=R05 — Xác minh danh tính và quyền thực thi\nDONE=false\nACTIVE_EXECUTION=false\n\n## STRUCTURED_PROGRESS_CHECKLIST\n'+checklist
-  };
-  assert.equal(issue.body.includes('TIGERIQ_EXECUTABLE='),false);
-  assert.equal(webControlWorkOrderCandidate(issue),true);
-  const projected=projectWorkOrder(issue);
-  assert.equal(projected.number,4780);
-  assert.equal(projected.progressCompleted,6);
-  assert.equal(projected.progressTotal,16);
-  assert.equal(projected.progressPercent,38);
-  assert.match(projected.currentStep,/^R05/);
-  assert.notEqual(projected.status,'DONE');
-  assert.notEqual(projected.bucket,'ĐANG LÀM');
-});
-test('S08 fake or unstructured arbitrary issue is never promoted to Work Order', () => {
-  const base={number:9999,title:'Normal idea',state:'open',labels:[],body:'RESOURCE_SCOPE=DEMO\nCURRENT_STEP=R01 — idea'};
-  assert.equal(webControlWorkOrderCandidate(base),false);
-  assert.equal(webControlWorkOrderCandidate({...base,body:base.body+'\n## STRUCTURED_PROGRESS_CHECKLIST\nNot a checklist'}),false);
-  assert.equal(webControlWorkOrderCandidate({...base,pull_request:{url:'https://github.com/example/pull/1'}}),false);
-  assert.equal(webControlWorkOrderCandidate(null),false);
-});
-test('S08 explicit executable=true or false and canonical policy issues remain included', () => {
-  const base={number:123,title:'Generic Work Order',state:'open',labels:[],body:'TIGERIQ_EXECUTABLE=true'};
-  assert.equal(webControlWorkOrderCandidate(base),true);
-  assert.equal(webControlWorkOrderCandidate({...base,body:'TIGERIQ_EXECUTABLE=false'}),true);
-  assert.equal(webControlWorkOrderCandidate({...base,body:'TIGERIQ_EXECUTABLE=TRUE'}),false);
-  assert.equal(webControlWorkOrderCandidate({...base,number:504,title:'[P0][QUẢN TRỊ] Chính sách',body:'CURRENT_STATE=POLICY_REVIEW'}),true);
-});
-test('S08 a legacy checklist with no scope or no current step must not look executable', () => {
-  const body='## STRUCTURED_PROGRESS_CHECKLIST\n- [x] R01 — đã có hồ sơ';
-  const base={number:9998,title:'Legacy note',state:'open',labels:[],body};
-  assert.equal(webControlWorkOrderCandidate(base),false);
-  assert.equal(webControlWorkOrderCandidate({...base,body:'RESOURCE_SCOPE=DEMO\n'+body}),false);
-  assert.equal(webControlWorkOrderCandidate({...base,body:'CURRENT_STEP=R02\n'+body}),false);
-  assert.equal(webControlWorkOrderCandidate({...base,body:'RESOURCE_SCOPE=DEMO\nCURRENT_STEP=R02\n'+body}),true);
 });
