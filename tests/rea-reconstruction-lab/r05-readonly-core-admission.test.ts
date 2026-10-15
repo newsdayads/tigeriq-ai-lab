@@ -6,11 +6,11 @@ import { inspectR05ReadOnly } from '../../projects/rea-reconstruction-lab/r05-re
 const clock = Date.parse('2026-10-15T09:35:53Z');
 const fixture = (): any => ({
   ok: true, core: { time: '2026-10-15T09:35:53Z' },
-  resources: Array.from({length:14}, (_,i)=>({employee_id:i?'NV09':'NV06',resource_id:'r'+i,current_job_id:null})),
+  resources: Array.from({length:14}, (_,i)=>({employee_id:i?'NV09':'NV06',resource_id:'r'+i,status:'READY',current_job_id:null})),
   jobs: [], sharedLeases:[]
 });
 const check = (x:any, time=clock) => inspectR05ReadOnly(x,time);
-const nv02 = (s:any, id='rea-nv02') => s.resources.push({employee_id:'NV02',resource_id:id,current_job_id:null});
+const nv02 = (s:any, id='rea-nv02') => s.resources.push({employee_id:'NV02',resource_id:id,status:'READY',current_job_id:null});
 const safe = (r:any) => {
   expect(r.leaseOwned).toBe(false); expect(r.deviceAuthorized).toBe(false);
   expect(r.installAuthorized).toBe(false); expect(r.sourceAuthenticated).toBe(false);
@@ -167,4 +167,44 @@ it('R05 BUSY status on another employee resource does not block an unrelated NV0
 it('R05 NV02 IDLE status still never grants any lease or device permission',()=>{
   const x=fixture();nv02(x);x.resources.at(-1).status='IDLE';
   const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+
+it('R05 missing or unknown Core status fails closed instead of exposing a claim candidate',()=>{
+  for(const status of [undefined,'AVAILABLE','',false,null]){
+    const x=fixture();nv02(x);
+    if(status === undefined) delete x.resources.at(-1).status;
+    else x.resources.at(-1).status=status;
+    const r=check(x);expect(r.decision).toBe('INVALID_RESOURCE');safe(r);
+  }
+});
+it('R05 unavailable NV02 resource cannot be presented as an atomic-claim candidate',()=>{
+  for(const status of ['WAIT_KEY','RATE_LIMITED','ERROR','OFFLINE','DISABLED']){
+    const x=fixture();nv02(x);x.resources.at(-1).status=status;
+    const r=check(x);expect(r.decision).toBe('NV02_RESOURCE_NOT_READY');
+    expect(r.counts.notReadyRows).toBe(1);safe(r);
+  }
+});
+it('R05 mixed busy and unhealthy rows cannot be treated as claim-ready',()=>{
+  const x=fixture();nv02(x,'a');nv02(x,'b');
+  x.resources.at(-2).status='BUSY';x.resources.at(-1).status='ERROR';
+  const r=check(x);expect(r.decision).toBe('NV02_RESOURCE_NOT_READY');
+  expect(r.counts.busyRows).toBe(1);expect(r.counts.notReadyRows).toBe(1);safe(r);
+});
+it('R05 mixed healthy and unhealthy rows still requires actual independent authorization',()=>{
+  const x=fixture();nv02(x,'a');nv02(x,'b');
+  x.resources.at(-2).status='OFFLINE';x.resources.at(-1).status='READY';
+  const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 ON_DEMAND or IDLE resource never implies an owned Core lease',()=>{
+  for(const status of ['ON_DEMAND','IDLE']){
+    const x=fixture();nv02(x);x.resources.at(-1).status=status;
+    const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+  }
+});
+it('R05 CLI with unhealthy NV02 row never releases any device or install permission',()=>{
+  const x=fixture();nv02(x);x.resources.at(-1).status='WAIT_KEY';x.core.time=new Date().toISOString();
+  const r=run(['--read-only'],JSON.stringify(x));
+  expect(r.status).toBe(0);expect(r.stderr).toBe('');
+  const parsed=JSON.parse(r.stdout);
+  expect(parsed.decision).toBe('NV02_RESOURCE_NOT_READY');safe(parsed);
 });
