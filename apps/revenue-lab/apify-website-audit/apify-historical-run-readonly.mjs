@@ -121,9 +121,15 @@ export async function inspectHistoricalRun({
   if (first.startedAt !== final.startedAt || first.finishedAt !== final.finishedAt ||
       first.defaultKeyValueStoreId !== final.defaultKeyValueStoreId)
     reject('RUN_RECHECK_DRIFT');
-  if (typeof final.usageTotalUsd !== 'number' ||
-      !Number.isFinite(final.usageTotalUsd) || final.usageTotalUsd < 0)
+  // Verify stability across both GETs. A completed run is not proof that
+  // usage or compute totals have settled (nor a final platform invoice).
+  const validUsd = value => typeof value === 'number' &&
+    Number.isFinite(value) && value >= 0;
+  if (!validUsd(first.usageTotalUsd) || !validUsd(final.usageTotalUsd))
     reject('APIFY_USAGE_UNVERIFIED');
+  const firstUnits = getUnits(first), finalUnits = getUnits(final);
+  if (first.usageTotalUsd !== final.usageTotalUsd || firstUnits !== finalUnits)
+    reject('RUN_USAGE_RECHECK_DRIFT');
   const output = await readJson(fetchFn,
     API + '/key-value-stores/' + final.defaultKeyValueStoreId + '/records/OUTPUT', cfg.token);
   if (!object(output) || output.schemaVersion !== '1.0' || output.status !== 'success')
