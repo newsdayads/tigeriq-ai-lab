@@ -547,6 +547,7 @@ describe('GitHub Core intake guardrails',()=>{
 
   it('receipt-only checklist transitions do not create new objectives or invalidate acceptance source SHA',()=>{
     const body=['TIGERIQ_EXECUTABLE=true','PRIORITY=P2','RESOURCE_SCOPE=CANARY_TEST',
+      'CHECKLIST_RECEIPT_STABLE_REVISION=V2',
       'NO_PRODUCTION_RELEASE=true','## STRUCTURED_PROGRESS_CHECKLIST',
       '- [ ] R02 — Verify package source and license.'].join('\n');
     const base={number:4780,title:'REA scope canary',body};
@@ -556,6 +557,10 @@ describe('GitHub Core intake guardrails',()=>{
     )};
     const baseline=githubIssueSourceRevision(base);
     expect(githubIssueSourceRevision(verified)).toBe(baseline);
+    // Legacy tasks do not silently change their stored hashes on rollout.
+    const legacyBase={...base,body:base.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2\\n','')};
+    const legacyVerified={...verified,body:verified.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2\\n','')};
+    expect(githubIssueSourceRevision(legacyVerified)).not.toBe(githubIssueSourceRevision(legacyBase));
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('Verify package source','Install package source')})).not.toBe(baseline);
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false')})).not.toBe(baseline);
     expect(githubIssueSourceRevision({...verified,title:'REA changed scope'})).not.toBe(baseline);
