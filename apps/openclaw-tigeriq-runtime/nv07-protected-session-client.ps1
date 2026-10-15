@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 try {
-  if ($env:COMPUTERNAME -ne 'PC01' -or
+  if ([Environment]::MachineName -ne 'PC01' -or
       [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') {
     throw 'NV07_TRUSTED_CORE_SYSTEM_CLIENT_REQUIRED'
   }
