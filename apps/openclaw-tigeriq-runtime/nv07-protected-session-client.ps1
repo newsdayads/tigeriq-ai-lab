@@ -1,3 +1,4 @@
+param([ValidatePattern('^[a-f0-9-]{36}$')][string]$InvocationId)
 $ErrorActionPreference = 'Stop'
 try {
   if ([Environment]::MachineName -ne 'PC01' -or
@@ -8,6 +9,24 @@ try {
   $brokerPath=$root+'\code\nv07-protected-session-broker.ps1'
   $clientPath=$root+'\code\nv07-protected-session-client.ps1'
   $manifestPath=$root+'\deployment.json'
+  $action='ATTEST_SESSION_ONLY'
+  if($InvocationId){
+    $requestFile=$root+'\ipc\requests\invocation-'+$InvocationId+'.json'
+    $until=[DateTime]::UtcNow.AddSeconds(3)
+    $pinned=$null
+    while([DateTime]::UtcNow -lt $until){
+      try{
+        if((Get-Item -LiteralPath $requestFile -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'NV07_REQUEST_REPARSE'}
+        $candidate=Get-Content -LiteralPath $requestFile -Raw|ConvertFrom-Json
+        if($candidate.authorizedClientPid -eq $PID -and $candidate.invocationId -eq $InvocationId){
+          $pinned=$candidate;break
+        }
+      }catch{}
+      Start-Sleep -Milliseconds 50
+    }
+    if(-not $pinned -or [DateTime]::Parse($pinned.expiresAt).ToUniversalTime() -le [DateTime]::UtcNow){throw 'NV07_CLIENT_PIN_MISSING_OR_EXPIRED'}
+    $action='READ_METADATA_ONCE'
+  }
   Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -64,8 +83,13 @@ public static class Nv07PeerProof {
        [string]$task.Principal.LogonType -ne 'Interactive' -or [string]$task.Principal.RunLevel -ne 'Limited' -or
        @($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $exe -or
        $task.Actions[0].Arguments -ne $arguments){throw 'NV07_TASK_CONFIGURATION_INVALID'}
-    $taskInfo=Get-ScheduledTaskInfo -TaskName $task.TaskName
-    if([Math]::Abs(($process.CreationDate-$taskInfo.LastRunTime).TotalSeconds) -gt 15){throw 'NV07_TASK_PROCESS_TIME_MISMATCH'}
+    # Use the OS task instance's actual execution PID, not a scheduling-time
+    # heuristic: a cold/loaded PC01 may start the action over 15 seconds later.
+    $scheduler=New-Object -ComObject 'Schedule.Service'
+    $scheduler.Connect()
+    $instances=@($scheduler.GetFolder('\').GetTask($task.TaskName).GetInstances(0) |
+      Where-Object { [int]$_.EnginePID -eq $serverPid -and [int]$_.State -eq 4 })
+    if($instances.Count -ne 1){throw 'NV07_TASK_PEER_PID_MISMATCH'}
     foreach($p in @('C:\','C:\ProgramData',$root,($root+'\code'))){
       $item=Get-Item -LiteralPath $p -Force
       if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'NV07_ANCESTOR_REPARSE_DENIED'}
@@ -81,29 +105,35 @@ public static class Nv07PeerProof {
       }
     }
     $nonce=[guid]::NewGuid().ToString()
-    $request=@{schema='NV07_PROTECTED_SESSION_PROBE_V1';action='ATTEST_SESSION_ONLY';nonce=$nonce}|ConvertTo-Json -Compress
+    $request=@{schema='NV07_PROTECTED_SESSION_PROBE_V1';action=$action;nonce=$nonce;invocationId=$InvocationId}|ConvertTo-Json -Compress
     $writer=New-Object IO.StreamWriter($pipe,(New-Object Text.UTF8Encoding($false)),4096,$true)
     $reader=New-Object IO.StreamReader($pipe,(New-Object Text.UTF8Encoding($false)),$false,4096,$true)
     try {
       $writer.AutoFlush=$true;$writer.WriteLine($request)
       $pending=$reader.ReadLineAsync()
-      if(-not $pending.Wait(3000)){throw 'NV07_PEER_RESPONSE_TIMEOUT'}
+      if(-not $pending.Wait($(if($InvocationId){145000}else{3000}))){throw 'NV07_PEER_RESPONSE_TIMEOUT'}
       $line=[string]$pending.Result
-      if($line.Length -gt 4096){throw 'NV07_PEER_RESPONSE_TOO_LARGE'}
+      if($line.Length -gt $(if($InvocationId){1048576}else{4096})){throw 'NV07_PEER_RESPONSE_TOO_LARGE'}
       $reply=$line|ConvertFrom-Json
       if($reply.ok -ne $true -or $reply.nonce -ne $nonce -or
          $reply.schema -ne 'NV07_PROTECTED_SESSION_PROBE_V1' -or
-         $reply.action -ne 'ATTEST_SESSION_ONLY' -or $reply.host -ne 'PC01' -or
+         $reply.action -ne $action -or $reply.host -ne 'PC01' -or
          $reply.pid -ne $serverPid -or $reply.sessionId -ne $process.SessionId -or
          $reply.windowsUser -ne 'wdragons12x' -or
          $reply.codeHash -ne $manifest.brokerSha256){throw 'NV07_PEER_RESPONSE_MISMATCH'}
-      @{
+      $proof=@{
         accepted=$true;code='NV07_OS_PEER_AND_PROTECTED_CODE_VERIFIED'
-        host='PC01';windowsUser='wdragons12x';sessionId=$process.SessionId;pid=$serverPid
+        host='PC01';windowsUser='wdragons12x';sessionId=$process.SessionId;pid=$serverPid;taskInstanceGuid=[string]$instances[0].InstanceGuid
         attestationVerified=$true;deviceIdentityVerified=$true
         sourceSha=$manifest.sourceSha;brokerHash=$manifest.brokerSha256
         coreLeaseVerified=$false;nv07Active=$false;at=[DateTime]::UtcNow.ToString('o')
-      }|ConvertTo-Json -Depth 4 -Compress
+      }
+      if($InvocationId){
+        if($reply.invocationId -ne $InvocationId -or -not $reply.cliResult){throw 'NV07_CLI_REPLY_BINDING_MISMATCH'}
+        $proof.invocationId=$InvocationId
+        $proof.cliResult=$reply.cliResult
+      }
+      $proof|ConvertTo-Json -Depth 6 -Compress
     }finally{$writer.Dispose();$reader.Dispose()}
   }finally{$pipe.Dispose()}
 }catch{
