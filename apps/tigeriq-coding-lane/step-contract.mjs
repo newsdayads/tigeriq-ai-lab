@@ -31,7 +31,8 @@ export function compileCodingStepPacket({objectiveId,sourceRevision,job,allowedP
     paths,deliverable_type:kind,required_changed_paths:required,
     steps:strings(job.steps,'STEPS'),acceptance:strings(job.acceptance,'ACCEPTANCE'),
     evidence_required:strings(job.evidence_required,'EVIDENCE'),
-    skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0}))
+    skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0})),
+    required_checks:job.required_checks?strings(job.required_checks,'FUNCTIONAL_CHECKS',{max:5}):({android:['Android Build Verify'],frontend:['Frontend Functional Verify'],backend:['Backend Contract Verify'],test:['Focused Test Verify'],source:['Focused Test Verify'],documentation:[]}[kind])
   };
   packet.skill_ids=packet.skill_refs.map(x=>x.id);
   packet.prompt_revision=createHash('sha256').update(JSON.stringify(packet)).digest('hex').slice(0,24);
@@ -98,4 +99,14 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
   if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
   return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
+}
+
+export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{
+    if(typeof x==='string')return {name:x,status:'unknown',conclusion:'unknown'};
+    return {name:string(x?.name),status:string(x?.status),conclusion:string(x?.conclusion)};
+  });
+  const missing=packet.required_checks.filter(name=>!rows.some(row=>row.name===name&&row.status==='completed'&&row.conclusion==='success'));
+  return {pass:missing.length===0,code:missing.length?'CODING_FUNCTIONAL_CHECKS_MISSING':'CODING_FUNCTIONAL_CHECKS_PASSED',missing};
 }
