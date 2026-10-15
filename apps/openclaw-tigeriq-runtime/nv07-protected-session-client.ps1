@@ -64,8 +64,13 @@ public static class Nv07PeerProof {
        [string]$task.Principal.LogonType -ne 'Interactive' -or [string]$task.Principal.RunLevel -ne 'Limited' -or
        @($task.Actions).Count -ne 1 -or $task.Actions[0].Execute -ne $exe -or
        $task.Actions[0].Arguments -ne $arguments){throw 'NV07_TASK_CONFIGURATION_INVALID'}
-    $taskInfo=Get-ScheduledTaskInfo -TaskName $task.TaskName
-    if([Math]::Abs(($process.CreationDate-$taskInfo.LastRunTime).TotalSeconds) -gt 15){throw 'NV07_TASK_PROCESS_TIME_MISMATCH'}
+    # Use the OS task instance's actual execution PID, not a scheduling-time
+    # heuristic: a cold/loaded PC01 may start the action over 15 seconds later.
+    $scheduler=New-Object -ComObject 'Schedule.Service'
+    $scheduler.Connect()
+    $instances=@($scheduler.GetFolder('\').GetTask($task.TaskName).GetInstances(0) |
+      Where-Object { [int]$_.EnginePID -eq $serverPid -and [int]$_.State -eq 4 })
+    if($instances.Count -ne 1){throw 'NV07_TASK_PEER_PID_MISMATCH'}
     foreach($p in @('C:\','C:\ProgramData',$root,($root+'\code'))){
       $item=Get-Item -LiteralPath $p -Force
       if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'NV07_ANCESTOR_REPARSE_DENIED'}
@@ -99,7 +104,7 @@ public static class Nv07PeerProof {
          $reply.codeHash -ne $manifest.brokerSha256){throw 'NV07_PEER_RESPONSE_MISMATCH'}
       @{
         accepted=$true;code='NV07_OS_PEER_AND_PROTECTED_CODE_VERIFIED'
-        host='PC01';windowsUser='wdragons12x';sessionId=$process.SessionId;pid=$serverPid
+        host='PC01';windowsUser='wdragons12x';sessionId=$process.SessionId;pid=$serverPid;taskInstanceGuid=[string]$instances[0].InstanceGuid
         attestationVerified=$true;deviceIdentityVerified=$true
         sourceSha=$manifest.sourceSha;brokerHash=$manifest.brokerSha256
         coreLeaseVerified=$false;nv07Active=$false;at=[DateTime]::UtcNow.ToString('o')
