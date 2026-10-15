@@ -69,7 +69,8 @@ test('candidate coding lane wiring is explicit and off by default',async()=>{
   const {readFileSync}=await import('node:fs');
   const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(source,/TIGERIQ_P0_CODING_STEP_CANARY/);
-  assert.match(source,/matchAndLoadSkills/);
+  assert.match(source,/loadRequiredCodingSkills/);
+  assert.match(source,/assertCodingSkillProof/);
   assert.match(source,/compileCodingStepPacket/);
   assert.match(source,/verifyCodingDeliverable/);
   assert.match(source,/verifyCodingFunctionalChecks/);
