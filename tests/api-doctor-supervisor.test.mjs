@@ -731,13 +731,13 @@ describe('#1255 routing/runtime integration',()=>{
     expect(core).not.toContain("evidence:'stale_failure_class_reprobe_success'");
     expect(core).toContain("row.staleHandoffProbe='ok_wait_repair_lifecycle'");
     expect(core).toContain("healthState:resource.health_state");
-    expect(core).toContain("data->>'evidence'='live_work_success_after_repair_deploy'");
+    expect(core).toContain("data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff')");
     expect(core).toContain("const deployedAt=String(runtimeSourceState?.updatedAt||'').trim()");
     expect(core).not.toContain("const deployedAt=String(updaterState?.updatedAt||'').trim()");
     expect(core).toContain("return recovered?null:handoff");
     expect(core).toContain("apiDoctorLatestUnresolvedSignatureHandoff(resource.resource_id,signature)");
     expect(core).toContain("type='API_DOCTOR_REPAIR_HANDOFF' and resource_id=$1 and data->>'signature'=$2");
-    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence'='live_work_success_after_repair_deploy'");
+    expect(core).toContain("type='API_DOCTOR_RECOVERED' and resource_id=$1 and ts>$2 and data->>'signature'=$3 and data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff')");
     expect(core).not.toContain("apiDoctorEventBySignature('API_DOCTOR_REPAIR_HANDOFF',signature)");
 
     expect(core.indexOf("apiDoctorLatestUnresolvedResourceHandoff(resource.resource_id)")).toBeLessThan(core.indexOf("if(plan.action==='wait'||plan.action==='idle')"));
