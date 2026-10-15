@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,repeatedCodingAttemptDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -50,4 +50,28 @@ test('two identical failures stop, material source revision can re-open',()=>{
   assert.equal(repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'A',failureSignature:'NO_OUTPUT',history}).code,'CODING_SAME_FAILURE_STOP');
   assert.equal(repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'B',failureSignature:'NO_OUTPUT',history}).allow,true);
   assert.equal(repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'A',history:[...history,{...history[0],status:'accepted'}]}).code,'CODING_STEP_ALREADY_ACCEPTED');
+});
+
+test('generic green CI alone cannot accept Android, frontend or backend features',()=>{
+  const packet=make();
+  const generic=[
+    {name:'CI Verify',status:'completed',conclusion:'success'},
+    {name:'Queue Hygiene Verify',status:'completed',conclusion:'success'},
+    {name:'Vercel Online Verify',status:'completed',conclusion:'success'}
+  ];
+  const denied=verifyCodingFunctionalChecks({packet,checkRuns:generic});
+  assert.equal(denied.pass,false);
+  assert.deepEqual(denied.missing,['Android Build Verify']);
+  const accepted=verifyCodingFunctionalChecks({packet,checkRuns:[...generic,{name:'Android Build Verify',status:'completed',conclusion:'success'}]});
+  assert.equal(accepted.pass,true);
+});
+test('candidate coding lane wiring is explicit and off by default',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/TIGERIQ_P0_CODING_STEP_CANARY/);
+  assert.match(source,/matchAndLoadSkills/);
+  assert.match(source,/compileCodingStepPacket/);
+  assert.match(source,/verifyCodingDeliverable/);
+  assert.match(source,/verifyCodingFunctionalChecks/);
+  assert.match(source,/repeatedCodingAttemptDecision/);
 });
