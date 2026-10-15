@@ -76,10 +76,16 @@ export function normalizeWorkOrderChecklistReceiptProgress(body=''){
 }
 
 export function githubIssueSourceRevision(issue={}){
+  const body=String(issue?.body||'');
+  // Migration guard: changing the fingerprint algorithm for every existing
+  // Work Order would falsely rearm all historical terminal Core objectives.
+  // Apply stable checklist receipts only when the CURRENT owner-controlled
+  // contract explicitly opts in, never from archived/historical snapshots.
+  const stableProgress=/^CHECKLIST_RECEIPT_STABLE_REVISION=V2$/m.test(currentAutoExecutionHeader(body));
   return createHash('sha256')
     .update(String(issue?.title||''))
     .update('\n')
-    .update(normalizeWorkOrderChecklistReceiptProgress(issue?.body))
+    .update(stableProgress?normalizeWorkOrderChecklistReceiptProgress(body):body)
     .digest('hex')
     .slice(0,12);
 }
