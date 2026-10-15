@@ -12,7 +12,7 @@ import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,inst
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
-import {loadRequiredCodingSkills,assertCodingSkillProof} from './coding-skill-policy.mjs';
+import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from './step-contract.mjs';
 
@@ -1332,6 +1332,9 @@ async function managerTick(){
     });manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
+    if(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'){
+      managerSkills=loadRequiredCodingSkills(o.objective,{requiredIds:requiredCodingSkillIdsForDeliverable(d.job.deliverable_type)});
+    }
     let jobInstruction=String(d.job.instruction||o.objective);
     let replayGuard=null,atomicWorkOrderId=null;
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
@@ -1874,7 +1877,7 @@ async function runJob(j){
   if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
     stepPacket=codingStepPacketFromInstruction(j.instruction);
     if(!stepPacket)throw Error('CODING_STEP_PACKET_MISSING');
-    const activeSkills=loadRequiredCodingSkills(canonicalObjective);
+    const activeSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(stepPacket.deliverable_type)});
     assertCodingSkillProof(stepPacket.skill_refs,activeSkills);
     j.instruction+='\n\n'+codingRolePrompt({role:'implementer',packet:stepPacket,skillContext:activeSkills.contextBlock});
   }
