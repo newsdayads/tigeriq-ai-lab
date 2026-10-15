@@ -1298,3 +1298,4 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 .api-health .worker.employee-card.state-attention .employee-live-dot{background:#fb7185!important;}
 .api-health .worker.employee-card .employee-live-line{color:#94a3b8!important;}
 .api-health .worker.employee-card.changed{animation:none!important;}
+.api-health .tech-popover,.api-health .detail-modal{border-color:#344257!important;box-shadow:0 16px 40px #0009!important;}
