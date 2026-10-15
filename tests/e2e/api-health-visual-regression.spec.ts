@@ -59,18 +59,18 @@ for(const width of [390,1024,1648]){
   await expect(page.locator('.wo-filter.action')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#opsFreshnessRows .ops-age')).toHaveCount(4);
   const css=await page.locator('body').evaluate(el=>{const s=getComputedStyle(el);return {surface:s.getPropertyValue('--tiq-surface').trim(),ready:s.getPropertyValue('--tiq-ready').trim(),working:s.getPropertyValue('--tiq-working').trim()}});
-  expect(css).toEqual({surface:'#111C2E',ready:'#3B82F6',working:'#22C55E'});
+  expect(css).toEqual({surface:'#111C2E',ready:'#A8B7C9',working:'#60A5FA'});
   await page.locator('.filter[data-filter=all]').click();
   const employee=page.locator('.employee-card.state-ready').first();
   await expect(employee).toBeVisible();
   // The health feed may replace employee cards between hover and the next locator call.
   // Assert actual computed hover tint, not a transient boundingBox() that can be null
   // while the card is being rebuilt. A viewport screenshot still records the UI.
-  const normalBackground=await employee.evaluate(el=>getComputedStyle(el).backgroundColor);
+  const normalBorder=await employee.evaluate(el=>getComputedStyle(el).borderColor);
   await employee.hover();
   await expect.poll(async()=>page.locator('.employee-card.state-ready:hover').first()
-    .evaluate(el=>getComputedStyle(el).backgroundColor).catch(()=>normalBackground),{timeout:5000})
-    .not.toBe(normalBackground);
+    .evaluate(el=>getComputedStyle(el).borderColor).catch(()=>normalBorder),{timeout:5000})
+    .not.toBe(normalBorder);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
   await expect.poll(async()=>page.evaluate(()=>{
@@ -79,7 +79,7 @@ for(const width of [390,1024,1648]){
     if(!surface||!employee)return false;
     const surfaceBorder=getComputedStyle(surface).borderColor;
     const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
+    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder==='rgb(52, 66, 87)');
   }),{timeout:5000}).toBe(true);
   await testInfo.attach('api-health-worker-hover-'+width+'.png',{body:await page.screenshot({animations:'disabled'}),contentType:'image/png'});
   await employee.click();
@@ -90,7 +90,7 @@ for(const width of [390,1024,1648]){
     if(!surface||!employee)return false;
     const surfaceBorder=getComputedStyle(surface).borderColor;
     const employeeBorder=getComputedStyle(employee).borderColor;
-    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder===employeeBorder);
+    return Boolean(surfaceBorder&&employeeBorder&&surfaceBorder==='rgb(52, 66, 87)');
   }),{timeout:5000}).toBe(true);
   await testInfo.attach('api-health-employee-modal-'+width+'.png',{body:await page.locator('#detailModal').screenshot({animations:'disabled'}),contentType:'image/png'});
   await page.locator('#detailClose').click();
