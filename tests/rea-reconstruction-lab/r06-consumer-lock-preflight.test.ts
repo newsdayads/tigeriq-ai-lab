@@ -150,7 +150,7 @@ it('R06 reports absent optional native package without claiming binary availabil
   expect(r.counts.missingOptionalDependencies).toBe(1);safe(r);
 });
 it('R06 preserves mandatory dependency fail-closed checks',()=>{
-  const x=fixture();x.packages['node_modules/zod'].dependencies={requiredMissing:'1.0.0'};
+  const x=fixture();x.packages['node_modules/zod'].dependencies={'required-missing':'1.0.0'};
   const r=inspectR06ConsumerLock(x);
   expect(r.reason).toBe('UNRESOLVED_DEPENDENCY_REFERENCE');safe(r);
 });
