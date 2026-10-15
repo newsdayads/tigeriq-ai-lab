@@ -10,7 +10,7 @@ const bridge=read('../apps/tigeriq-live-bridge/server.mjs');
 const expected=new Map([
   ['NV06','PC Operator · OpenClaw'],
   ['NV08','Core AI Manager · Ollama Qwen3 8B'],
-  ['NV09','Core AI Coder · Ollama Qwen3.6 27B'],
+  ['NV09','Core AI Coder · Ollama Qwen3.5 9B'],
   ['NV10','Core API Doctor · Ollama Qwen3 4B'],
 ]);
 

@@ -114,28 +114,32 @@ test('#280 NV08 native JSON Manager and NV09 chat Worker use separate actual loc
   const calls=[];
   const fetchImpl=async(url,init)=>{
     calls.push({url,body:JSON.parse(init.body),signal:init.signal});
-    return {ok:true,status:200,text:async()=>JSON.stringify({response:'{"accepted":true}',choices:[{message:{content:'{"accepted":true}'}}]})};
+    return {ok:true,status:200,text:async()=>JSON.stringify({response:'{"accepted":true}',choices:[{message:{content:'{"accepted":true}'}}],message:{content:'{"accepted":true}'}})};
   };
   const options={fetchImpl,managerUrl:'http://127.0.0.1:11434',workerUrl:'http://127.0.0.1:11435',maxTokens:64};
-  for(const resource of [{id:'NV08',provider:'ollama',model:'qwen3:8b'},{id:'NV09',provider:'ollama',model:'qwen3.6:27b-coding'}]){
+  for(const resource of [{id:'NV08',provider:'ollama',model:'qwen3:8b'},{id:'NV09',provider:'ollama',model:'qwen3.5:9b'}]){
     assert.strictEqual(await invokeCodingOllamaResource(resource,'Return the tiny acceptance JSON.',options),'{"accepted":true}');
   }
-  assert.deepStrictEqual(calls.map(x=>x.url),['http://127.0.0.1:11434/api/generate','http://127.0.0.1:11435/v1/chat/completions']);
-  assert.deepStrictEqual(calls.map(x=>x.body.model),['qwen3:8b','qwen3.6:27b-coding']);
+  assert.deepStrictEqual(calls.map(x=>x.url),['http://127.0.0.1:11434/api/generate','http://127.0.0.1:11435/api/chat']);
+  assert.deepStrictEqual(calls.map(x=>x.body.model),['qwen3:8b','qwen3.5:9b']);
   assert.ok(calls.every(x=>x.body.stream===false&&x.signal instanceof AbortSignal));
   assert.strictEqual(calls[0].body.think,false);
   assert.strictEqual(calls[0].body.format,'json');
   assert.deepStrictEqual(calls[0].body.options,{temperature:0,num_ctx:4096,num_predict:256});
-  assert.strictEqual(calls[1].body.max_tokens,64);
-  assert.ok(!Object.hasOwn(calls[1].body,'think')&&!Object.hasOwn(calls[1].body,'format')&&!Object.hasOwn(calls[1].body,'options'));
+  assert.strictEqual(calls[1].body.options.num_predict,64);
+  assert.strictEqual(calls[1].body.options.num_ctx,8192);
+  assert.strictEqual(calls[1].body.think,false);
+  assert.strictEqual(calls[1].body.keep_alive,'0s');
+  assert.ok(!Object.hasOwn(calls[1].body,'format'));
+  assert.ok(!Object.hasOwn(calls[1].body,'max_tokens'));
 });
 test('#280 configured Manager endpoint does not redirect Worker traffic',async()=>{
   const urls=[];
-  const fetchImpl=async(url)=>{urls.push(url);return {ok:true,status:200,text:async()=>JSON.stringify({response:'ok',choices:[{message:{content:'ok'}}]})};};
+  const fetchImpl=async(url)=>{urls.push(url);return {ok:true,status:200,text:async()=>JSON.stringify({response:'ok',choices:[{message:{content:'ok'}}],message:{content:'ok'}})};};
   const options={fetchImpl,managerUrl:'http://localhost:11444/custom',workerUrl:'http://127.0.0.1:11445'};
   await invokeCodingOllamaResource({id:'NV08',provider:'ollama',model:'qwen3:8b'},'test',options);
-  await invokeCodingOllamaResource({id:'NV09',provider:'ollama',model:'qwen3.6:27b-coding'},'test',options);
-  assert.deepStrictEqual(urls,['http://localhost:11444/api/generate','http://127.0.0.1:11445/v1/chat/completions']);
+  await invokeCodingOllamaResource({id:'NV09',provider:'ollama',model:'qwen3.5:9b'},'test',options);
+  assert.deepStrictEqual(urls,['http://localhost:11444/api/generate','http://127.0.0.1:11445/api/chat']);
   assert.strictEqual(codingOllamaBaseUrlForResource({id:'OTHER',provider:'ollama'},options),'http://127.0.0.1:11445');
 });
 test('#280 endpoint selection rejects nonlocal and wrong-provider requests before transport',()=>{
