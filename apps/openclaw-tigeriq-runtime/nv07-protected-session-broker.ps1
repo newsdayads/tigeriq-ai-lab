@@ -4,7 +4,7 @@ $Root = 'C:\ProgramData\TigerIQNV07'
 $PipeName = 'TigerIQ.NV07.4783'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
-if ($env:COMPUTERNAME -ne 'PC01' -or $identity.Name -ne 'PC01\wdragons12x' -or $session -le 0) {
+if ([Environment]::MachineName -ne 'PC01' -or $identity.Name -ne 'PC01\wdragons12x' -or $session -le 0) {
   throw 'NV07_OWNER_INTERACTIVE_SESSION_REQUIRED'
 }
 $codeHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -36,7 +36,7 @@ try {
       $writer = New-Object IO.StreamWriter($pipe, (New-Object Text.UTF8Encoding($false)), 4096, $true)
       $writer.AutoFlush = $true
       $read = $reader.ReadLineAsync()
-      if (-not $read.Wait(3000)) { continue }
+      if (-not $read.Wait(15000)) { continue }
       $line = [string]$read.Result
       if ($line.Length -gt 4096) { continue }
       $request = $line | ConvertFrom-Json
@@ -54,7 +54,7 @@ try {
         ok=$true
         action='ATTEST_SESSION_ONLY'
         nonce=[string]$request.nonce
-        host=$env:COMPUTERNAME
+        host=[Environment]::MachineName
         windowsUser='wdragons12x'
         userSid=$identity.User.Value
         sessionId=$session
