@@ -1991,7 +1991,11 @@ async function runJob(j){
     const actual=new Set((Array.isArray(changedFiles)?changedFiles:[]).map(x=>String(x.filename||'')));
     const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
     if(absent.length)throw Object.assign(new Error('CODING_REQUIRED_CHANGED_FILES_MISSING:'+absent.join(',')),{code:'CODING_REQUIRED_CHANGED_FILES_MISSING'});
-    const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:gates.states});
+    // gates.states contains only the three generic required checks; inspect
+    // the real exact-SHA check-run collection for domain-specific build/contract checks.
+    const domainCheckReceipt=await ghRepo(targetRepository,`/commits/${encodeURIComponent(gates.sha)}/check-runs?per_page=100`);
+    if(!Array.isArray(domainCheckReceipt?.check_runs))throw Error('CODING_DOMAIN_CHECKS_UNVERIFIED');
+    const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:domainCheckReceipt.check_runs});
     if(!check.pass)throw Object.assign(new Error(check.code+':'+check.missing.join(',')),{code:check.code});
   }
   approvedHead=gates.sha;approvedReviewer=reviewer?.id||null;approvedImplementer=worker.id;
