@@ -8,6 +8,9 @@ const FLAG = 'OWNER_APPROVED_EXISTING_RUN_READ';
 const EXPECTED_HANDLE = 'tigeriq/tigeriq-ai-lab';
 const EXPECTED_DAY = '2026-10-08';
 const EXPECTED_BUILD = '0.0.4';
+// The Oct-08 Owner UI canary output used the harmless example.com URL.
+// Reject another result even if it reuses the expected success schema.
+const EXPECTED_CANARY_URL = 'https://example.com/';
 
 export class HistoricReadError extends Error {
   constructor(code) { super(code); this.name = 'HistoricReadError'; this.code = code; }
@@ -134,6 +137,10 @@ export async function inspectHistoricalRun({
     API + '/key-value-stores/' + final.defaultKeyValueStoreId + '/records/OUTPUT', cfg.token);
   if (!object(output) || output.schemaVersion !== '1.0' || output.status !== 'success')
     reject('HISTORICAL_OUTPUT_INVALID');
+  if (typeof output.requestedUrl !== 'string' || !output.requestedUrl)
+    reject('HISTORICAL_REQUESTED_URL_UNVERIFIED');
+  if (output.requestedUrl !== EXPECTED_CANARY_URL)
+    reject('HISTORICAL_REQUESTED_URL_MISMATCH');
 
   // Minimal evidence only. Never include token, payload content or audited URL.
   return {

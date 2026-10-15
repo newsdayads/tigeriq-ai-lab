@@ -212,3 +212,38 @@ test('R04 equal numeric computeUnits from different supported fields stays valid
   assert.equal(evidence.acceptance.platformFinalInvoiceVerified,false);
   assert.equal(m.calls.length,4);
 });
+
+// The Owner's Oct-08 private canary showed requestedUrl=https://example.com/.
+// Schema success on an unrelated audited site is not this historical output.
+test('R04 output with unrelated audited URL must not masquerade as Owner canary',async()=>{
+  const calls=await rejected('HISTORICAL_REQUESTED_URL_MISMATCH',{
+    result:{schemaVersion:'1.0',status:'success',requestedUrl:'https://different.example/'}
+  });
+  assert.equal(calls.length,4);
+});
+test('R04 lookalike canary host must not be accepted',async()=>{
+  const calls=await rejected('HISTORICAL_REQUESTED_URL_MISMATCH',{
+    result:{schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com.evil/'}
+  });
+  assert.equal(calls.length,4);
+});
+test('R04 missing requestedUrl is unverified, not a historical match',async()=>{
+  const calls=await rejected('HISTORICAL_REQUESTED_URL_UNVERIFIED',{
+    result:{schemaVersion:'1.0',status:'success'}
+  });
+  assert.equal(calls.length,4);
+});
+test('R04 object requestedUrl is unverified, not coerced to a URL',async()=>{
+  const calls=await rejected('HISTORICAL_REQUESTED_URL_UNVERIFIED',{
+    result:{schemaVersion:'1.0',status:'success',requestedUrl:{href:'https://example.com/'}}
+  });
+  assert.equal(calls.length,4);
+});
+test('R04 exact Owner canary URL passes without leaking URL or secret in evidence',async()=>{
+  const m=mocked();
+  const evidence=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(evidence.acceptance.historicalRunMatched,true);
+  assert.equal(evidence.output.status,'success');
+  assert.equal(m.calls.length,4);
+  assert.doesNotMatch(JSON.stringify(evidence),/example\.com|SENSITIVE_SENTINEL_TOKEN/);
+});
