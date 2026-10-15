@@ -22,7 +22,7 @@ export function validNv07ProtectedApproval(a,{sourceSha,nowMs=Date.now()}={}){
  return Boolean(a&&a.schema==='NV07_OWNER_CANARY_APPROVAL_V1'&&a.workOrderId===4783
   &&a.authorizationSource==='OWNER_CURRENT_CHAT_4783'&&a.allowBootstrapResource===true
   &&a.resourceScope===NV07_CANARY_CORE_SCOPE&&a.action==='READ_METADATA'
-  &&/^NV07-4783-CORE-[a-z0-9:_-]{1,90}$/i.test(a.jobId||'')
+  &&/^NV07-4783-CORE-[a-z0-9_-]{1,90}$/i.test(a.jobId||'')
   &&/^[a-f0-9]{40}$/i.test(a.sourceSha||'')&&a.sourceSha===sourceSha
   &&typeof a.idempotencyKey==='string'&&a.idempotencyKey.length>=16&&a.idempotencyKey.length<=128
   &&/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/4783#issuecomment-\d+$/.test(a.evidenceUrl||'')
@@ -76,7 +76,7 @@ async function nativeBoundCli(db,job,approval,input){
     .then(()=>rename(temp,path)).catch(error=>{child.kill();reject(error);});
   });
   const proof=JSON.parse(String(stdout).replace(/^\uFEFF/,'').trim());
-  if(proof.accepted!==true||proof.attestationVerified!==true||proof.sourceSha!==job.sourceSha
+  if(proof.invocationId!==id||proof.accepted!==true||proof.attestationVerified!==true||proof.sourceSha!==job.sourceSha
    ||proof.pid!==session.pid||!proof.cliResult||typeof proof.cliResult.stdout!=='string'
    ||proof.cliResult.stdout.length>262144||typeof proof.cliResult.stderr!=='string'
    ||proof.cliResult.stderr.length>262144)throw new Error('NV07_BOUND_CLI_RESULT_NOT_VERIFIED');
@@ -129,6 +129,10 @@ export async function runNv07ApprovedBootstrap(db){
    "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider,started_at) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','running',1,'NV07',$2,'antigravity',now()) on conflict(id) do nothing returning id",
    [job.jobId,NV07_BOOTSTRAP_RESOURCE_ID]);
   if(created.rowCount!==1)return deny('NV07_JOB_ID_ALREADY_EXISTS');
+  await db.query(
+   "insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) values('NV07_CORE_BOOTSTRAP_DISPATCHED',$1,'NV07',$2,'nv07_bootstrap',$3::jsonb)",
+   [job.jobId,NV07_BOOTSTRAP_RESOURCE_ID,JSON.stringify({workOrderId:4783,sourceSha:job.sourceSha,
+    resourceScope:NV07_CANARY_CORE_SCOPE,command:'7',action:'READ_METADATA',nativePeerPid:session.pid})]);
   timer=setInterval(()=>heartbeatSharedResourceLease(db,{resourceId:NV07_BOOTSTRAP_RESOURCE_ID,
    leaseToken:lease.lease_token,ttlMs:300000}).catch(()=>{}),30000);
   timer.unref?.();
@@ -146,7 +150,7 @@ export async function runNv07ApprovedBootstrap(db){
   resultOut={...result,coreLeaseVerified:result.accepted===true,leaseReleasedAfterRun:false,nv07Active:false};
   return resultOut;
  }catch{
-  if(job&&lease)await db.query("update tigeriq_jobs set status='failed',failure='NV07_BOUNDED_OPERATION_FAILED',completed_at=now() where id=$1 and status='running'",[job.jobId]).catch(()=>{});
+  if(job&&lease)await db.query("update tigeriq_jobs set status='failed',failure=jsonb_build_object('code','NV07_BOUNDED_OPERATION_FAILED'),completed_at=now() where id=$1 and status='running'",[job.jobId]).catch(()=>{});
   return deny('NV07_BOUNDED_OPERATION_FAILED');
  }finally{
   if(timer)clearInterval(timer);
