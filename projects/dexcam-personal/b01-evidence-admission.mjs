@@ -59,7 +59,14 @@ export function inspectB01(x) {
     if (!ref(x.display.source)) err('display.source', 'LOCAL_ONLY_POINTER_REQUIRED');
   }
   if (shape(x.evidence, 'evidence', ['android_settings', 'dex_observation', 'display_readback'])) {
-    for (const k of ['android_settings', 'dex_observation', 'display_readback']) if (!ref(x.evidence[k])) err('evidence.' + k, 'LOCAL_ONLY_POINTER_REQUIRED');
+    // Each evidence category needs its own local reference; distinct labels do not attest to distinct underlying files.
+    const seen = new Set();
+    for (const k of ['android_settings', 'dex_observation', 'display_readback']) {
+      const pointer = x.evidence[k];
+      if (!ref(pointer)) err('evidence.' + k, 'LOCAL_ONLY_POINTER_REQUIRED');
+      else if (seen.has(pointer)) err('evidence.' + k, 'DUPLICATE_EVIDENCE_POINTER');
+      else seen.add(pointer);
+    }
   }
   if (x.redaction_confirmed !== true) err('redaction_confirmed', 'REQUIRED');
   const complete = errors.length === 0;

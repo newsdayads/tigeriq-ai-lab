@@ -50,3 +50,23 @@ it('rejects timestamp claiming a far-future observation', () => { const x = samp
 it('rejects UTC offset beyond plausible civil timezone', () => { const x = sample(); x.observed_at = '2026-10-14T00:00:00+14:30'; reject(x, 'observed_at'); });
 it('rejects sample-model evidence relabeled as real device', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; reject(x, 'android.model'); });
 it('rejects unknown manufacturer posing as real observation', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.manufacturer = 'unknown'; x.android.model = 'SM-X999'; reject(x, 'android.manufacturer'); });
+
+it('rejects Android settings pointer copied to DeX observation', () => {
+  const x = sample(); x.evidence.dex_observation = x.evidence.android_settings;
+  const r = inspectB01(x);
+  expect(r.b01_accepted).toBe(false);
+  expect(r.errors).toContain('evidence.dex_observation:DUPLICATE_EVIDENCE_POINTER');
+});
+it('rejects a DeX pointer copied to display readback', () => {
+  const x = sample(); x.evidence.display_readback = x.evidence.dex_observation;
+  const r = inspectB01(x);
+  expect(r.status).toBe('INCOMPLETE');
+  expect(r.errors).toContain('evidence.display_readback:DUPLICATE_EVIDENCE_POINTER');
+});
+it('a real-device-shaped input with duplicated evidence remains incomplete', () => {
+  const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.model = 'SM-X999';
+  x.evidence.display_readback = x.evidence.android_settings;
+  const r = inspectB01(x);
+  expect(r.b01_accepted).toBe(false);
+  expect(r.errors).toContain('evidence.display_readback:DUPLICATE_EVIDENCE_POINTER');
+});
