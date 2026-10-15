@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
+  nv07UserSessionPreflightIdentity,
   assertShellCommandAllowed,
   assertTigerIQTaskName,
   trustedTigerIQTaskActionData,
@@ -53,6 +54,22 @@ import {
   upgradeLegacyPaperclipLabEnvText,
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
+
+describe('NV07 user-session OpenClaw read-only preflight', () => {
+  it('requires the actual wdragons12x Windows logon, never SYSTEM', () => {
+    expect(nv07UserSessionPreflightIdentity({platform:'win32',windowsUser:'wdragons12x'})).toBe(true);
+    expect(nv07UserSessionPreflightIdentity({platform:'win32',windowsUser:'SYSTEM'})).toBe(false);
+    expect(nv07UserSessionPreflightIdentity({platform:'linux',windowsUser:'wdragons12x'})).toBe(false);
+  });
+  it('exposes only one named PC tool action, not generalized Antigravity shell', async () => {
+    const plugin = await readFile(new URL('../apps/openclaw-tigeriq-runtime/dist/index.js',import.meta.url),'utf8');
+    const operator = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
+    expect(plugin).toContain("Type.Literal('nv07_preflight')");
+    expect(operator).toContain("data = await nv07UserSessionPreflight()");
+    expect(operator).toContain("['models']");
+    expect(operator).not.toMatch(/SAFE_SHELL_PATTERNS[^]*agy\\.exe/);
+  });
+});
 
 describe('runtime Coding Lane loopback contract', () => {
   it('binds Coding Lane to loopback and keeps Web Control internal coding hop on loopback', async () => {
