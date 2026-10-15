@@ -1,4 +1,5 @@
 import {test} from 'vitest';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {effectiveBacklogPriority} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {activeRoleClaim,classifyWorkOrder,roleCanPull} from '../apps/tigeriq-core/work-routing-policy.mjs';
@@ -195,4 +196,18 @@ test('NV02 local GitHub lease projects active work and matching release, never s
   assert.equal(activeRoleClaim([first,second,release(4,'2026-10-15T02:40:00Z',2)],now),null);
   assert.equal(activeRoleClaim([first],Date.parse('2026-10-15T04:01:00Z')),null);
   assert.equal(activeRoleClaim([{id:5,body:'[TIGERIQ_NV02_LEASE_V1]\nWORKER=NV02\nRESOURCE_SCOPE=NV02_LIVE_PROJECTION\nEXPIRES_AT=2026-10-15T04:00:00Z'}],now),null);
+});
+
+
+test('phase-aware lease gate policy regression: R02 read-only does not require R05 writer lease',()=>{
+  const loader=readFileSync(new URL('../bootstrap/00_TIGERIQ_LOADER.md',import.meta.url),'utf8');
+  const skill=readFileSync(new URL('../docs/skills/vy-owner-collaboration/SKILL.md',import.meta.url),'utf8');
+  assert.match(loader,/KHÓA GHI THEO BƯỚC THỰC THI/);
+  assert.match(loader,/R02 nghiên cứu REA 6\.4\.0.*chỉ đọc/);
+  assert.match(loader,/R05 xác minh quyền\/lease/);
+  assert.match(loader,/R06 mới cần cổng cài đặt PC01/);
+  assert.match(loader,/không đòi.*Core writer lease/);
+  assert.match(loader,/MUTATION.*đòi lease/);
+  assert.match(skill,/Gate by action, not by parent task/);
+  assert.match(skill,/Missing.*MUTATION_OWNER.*must not freeze independent R02 read-only work/);
 });

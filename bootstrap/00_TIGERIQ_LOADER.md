@@ -4,6 +4,16 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+## P0 — KHÓA GHI THEO BƯỚC THỰC THI, KHÔNG KHÓA TOÀN WORK ORDER (15/10/2026)
+- Trước khi báo `CORE_LEASE_UNVERIFIED` hay `CHƯA_XÁC_MINH quyền sở hữu`, phân loại **từng bước cụ thể**: `READ_ONLY` (đọc GitHub/API công khai, thẩm định giấy phép, nguồn/metadata, kiểm tra offline cô lập) **không đòi** Core writer lease hoặc MUTATION_OWNER. `MUTATION` (ghi mã qua executor Core thực sự, claim/dispatch job, cập nhật host, cài phần mềm, đổi cấu hình) đòi lease, quyền và receipts của đúng bề mặt. Nếu chưa có, chỉ dừng bước mutation chứ không khóa toàn Issue.
+- `MUTATION_OWNER=NONE` trong văn bản thẻ có nghĩa **chưa có Owner ghi được xác nhận**, không chứng minh Core đang bị một người khác khóa. Không tự giả đã nhận lease, không tự xóa hoặc chiếm lease đang tồn tại. Khi mutation được giao bằng Core, sử dụng claim nguyên tử với job/scope/lease/fencing, kiểm tra quyền kênh thi hành trước khi chạy.
+- Mẫu hồi quy #4780 : R02 nghiên cứu REA 6.4.0 **chỉ đọc** độc lập R05 xác minh quyền/lease; R06 mới cần cổng cài đặt PC01. Blocker thật của R02 là thiếu bytes gói npm/SRI và binary Windows đã đối chiếu; không được bịa `CORE_LEASE` làm cổng vào R02. Không replay bài kiểm thử cũ khi không có nguồn/bytes thay đổi.
+- Nếu không có bước ghi được phép, tiếp tục một bước đọc **mới, có giá trị, không trùng**; nếu mọi bước đều hết đầu vào/hết quyền, kết thúc lần thử với `EXTERNAL_WAIT` và điều kiện đánh thức cụ thể. Không claim DONE, không đánh dấu checklist khi không đủ bằng chứng.
+- Không suy từ việc đọc/viết được bình luận GitHub rằng đã nắm Core atomic lease; `OWNER_PROJECT_AUTONOMY_V2` giải quyết riêng việc ký phát hành nguồn, không phải Core lease hoặc khóa Local App Chrome.
+- Hợp đồng này là **quy tắc nạp nguồn**; ChatGPT/Gemini native đang mở không tự cập nhật theo GitHub. Chỉ báo host-wide enforce khi có biên nhận kiểm thử host thật.
+SOURCE_OF_TRUTH=https://github.com/newsdayads/tigeriq-ai-lab/issues/504|EXAMPLE=https://github.com/newsdayads/tigeriq-ai-lab/issues/4780
+STATE=PHASE_AWARE_OWNER_GATE_CONTRACT|NO_SECURITY_BYPASS|NO_BLANKET_REVIEW_GATE
+
 ## P0 — LIVE GATE RECONCILIATION — NO FALSE BLOCKERS (2026-10-15)
 **Thứ tự kiểm chứng bắt buộc:** đọc main + Issue #504 hiện hành + Work Order/PR cụ thể + runtime có biên nhận. Dữ liệu trong ảnh/chat cũ chỉ là checkpoint, không được dùng làm lý do khóa hiện tại.
 
