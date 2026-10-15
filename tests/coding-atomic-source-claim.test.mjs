@@ -24,13 +24,17 @@ test('canonical work order and scoped file lock are acquired before query+insert
   const sql=t.statements.map(x=>x.sql);
   assert.equal(sql[0],'BEGIN');
   assert.equal(sql[1],'select pg_advisory_xact_lock(hashtextextended($1,0))');
-  assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,4);
+  assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,5);
   assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>sql.findIndex(x=>x.startsWith('select id,paths from tigeriq_coding_jobs')));
   assert.equal(sql.at(-1),'COMMIT');
   assert.equal(t.released,true);
-  assert.deepEqual(t.statements[2].args,['coding-file:apps/a']);
-  assert.deepEqual(t.statements[3].args,['coding-file:apps/a/b.mjs']);
-  assert.deepEqual(t.statements[4].args,['coding-file:apps/a/c.mjs']);
+  assert.deepEqual(t.statements.slice(1,6).map(x=>[x.sql,x.args[0]]),[
+    ['select pg_advisory_xact_lock(hashtextextended($1,0))','coding-work-order:4625'],
+    ['select pg_advisory_xact_lock_shared(hashtextextended($1,0))','coding-file:apps'],
+    ['select pg_advisory_xact_lock_shared(hashtextextended($1,0))','coding-file:apps/a'],
+    ['select pg_advisory_xact_lock(hashtextextended($1,0))','coding-file:apps/a/b.mjs'],
+    ['select pg_advisory_xact_lock(hashtextextended($1,0))','coding-file:apps/a/c.mjs']
+  ]);
 });
 test('an in-flight file writer cannot trigger a second insert, and xact rolls back',async()=>{
   const t=db({active:[{id:'CODE-existing',paths:['apps/a/b.mjs']}]});
@@ -70,4 +74,24 @@ test('malformed or oversized live-writer evidence fails closed',async()=>{
   await assert.rejects(withAtomicCodingSourceClaim(unknown.pool,{workOrderId:'a',paths:['apps/a/file.mjs'],run:async()=>null}),/CODING_ACTIVE_WRITER_PATHS_UNVERIFIED/);
   const huge=db({active:Array.from({length:2001},(_,n)=>({id:String(n),paths:['apps/other/'+n]}))});
   await assert.rejects(withAtomicCodingSourceClaim(huge.pool,{workOrderId:'a',paths:['apps/a/file.mjs'],run:async()=>null}),/CODING_ACTIVE_WRITER_SCAN_INCOMPLETE/);
+});
+
+test('root-level source writer conflicts with nested scope, siblings share only ancestors',async()=>{
+  const root=db(),child=db(),other=db();
+  await withAtomicCodingSourceClaim(root.pool,{workOrderId:'root',paths:['apps'],run:async()=>true});
+  await withAtomicCodingSourceClaim(child.pool,{workOrderId:'child',paths:['apps/module/file.mjs'],run:async()=>true});
+  await withAtomicCodingSourceClaim(other.pool,{workOrderId:'other',paths:['other/file.mjs'],run:async()=>true});
+  const modes=(t,path)=>t.statements.filter(x=>x.args?.[0]==='coding-file:'+path).map(x=>x.sql);
+  assert.deepEqual(modes(root,'apps'),['select pg_advisory_xact_lock(hashtextextended($1,0))']);
+  assert.deepEqual(modes(child,'apps'),['select pg_advisory_xact_lock_shared(hashtextextended($1,0))']);
+  assert.deepEqual(modes(child,'apps/module'),['select pg_advisory_xact_lock_shared(hashtextextended($1,0))']);
+  assert.deepEqual(modes(child,'apps/module/file.mjs'),['select pg_advisory_xact_lock(hashtextextended($1,0))']);
+  assert.deepEqual(modes(other,'apps'),[]);
+});
+test('non-canonical source path segments fail before any DB transaction',async()=>{
+  for(const path of ['apps//file.mjs','apps/./file.mjs','apps/file.mjs/','/apps/file.mjs']){
+    const t=db();
+    await assert.rejects(withAtomicCodingSourceClaim(t.pool,{workOrderId:'scope',paths:[path],run:async()=>true}),/CODING_ATOMIC_CLAIM_SCOPE_INVALID/);
+    assert.equal(t.statements.length,0);
+  }
 });

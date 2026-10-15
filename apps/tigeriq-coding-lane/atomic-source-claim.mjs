@@ -6,21 +6,27 @@ export async function withAtomicCodingSourceClaim(pool,{workOrderId,paths=[],run
   const key=String(workOrderId||'').trim();
   const files=[...new Set((Array.isArray(paths)?paths:[]).map(x=>String(x||'').trim()))].sort();
   if(!key||key.length>180||!files.length||files.length>8||
-     files.some(x=>!x||x.includes('..')||x.startsWith('/')||x.includes('\\')))
+     files.some(x=>!x||x.includes('..')||x.startsWith('/')||x.includes('\\')||x.split('/').some(segment=>!segment||segment==='.' )))
     throw Error('CODING_ATOMIC_CLAIM_SCOPE_INVALID');
   const client=await pool.connect();
   let began=false;
   try{
     await client.query('BEGIN');began=true;
-    // Lock canonical prefixes, too: a legacy "apps/module" writer and
-    // "apps/module/file.mjs" writer overlap even when JSONB path keys differ.
-    const prefixes=new Set();
+    // Shared locks on ancestors preserve sibling concurrency; exact source
+    // scopes take exclusive locks. Include the root to protect "apps" vs "apps/a".
+    const prefixes=new Map();
     for(const f of files){
       const parts=f.split('/');
-      for(let n=2;n<=parts.length;n++)prefixes.add(parts.slice(0,n).join('/'));
+      for(let n=1;n<=parts.length;n++){
+        const prefix=parts.slice(0,n).join('/');
+        const mode=n===parts.length?'exclusive':'shared';
+        if(mode==='exclusive'||!prefixes.has(prefix))prefixes.set(prefix,mode);
+      }
     }
-    for(const lockKey of ['coding-work-order:'+key,...[...prefixes].sort().map(f=>'coding-file:'+f)]){
-      await client.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[lockKey]);
+    await client.query('select pg_advisory_xact_lock(hashtextextended($1,0))',['coding-work-order:'+key]);
+    for(const [prefix,mode] of [...prefixes].sort(([a],[b])=>a.localeCompare(b))){
+      const functionName=mode==='exclusive'?'pg_advisory_xact_lock':'pg_advisory_xact_lock_shared';
+      await client.query(`select ${functionName}(hashtextextended($1,0))`,['coding-file:'+prefix]);
     }
     const active=await client.query(
       "select id,paths from tigeriq_coding_jobs where status in ('queued','running','review','waiting_ci','waiting_resource') order by created_at desc limit 2001"
