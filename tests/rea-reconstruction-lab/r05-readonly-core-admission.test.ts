@@ -208,3 +208,35 @@ it('R05 CLI with unhealthy NV02 row never releases any device or install permiss
   const parsed=JSON.parse(r.stdout);
   expect(parsed.decision).toBe('NV02_RESOURCE_NOT_READY');safe(parsed);
 });
+
+
+it('R05 running NV02 job with unknown resource mapping fails closed',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'unmapped',employee_id:'NV02',resource_id:null,status:'running'}];
+  const r=check(x);
+  expect(r.decision).toBe('NV02_RESOURCE_BUSY');
+  expect(r.counts.busyRows).toBe(1);safe(r);
+});
+it('R05 duplicate resource IDs with conflicting status are rejected',()=>{
+  const x=fixture();nv02(x);
+  x.resources.push({employee_id:'NV02',resource_id:'rea-nv02',status:'BUSY'});
+  const r=check(x);expect(r.decision).toBe('INVALID_RESOURCE');safe(r);
+});
+it('R05 duplicate resource IDs from other employees also reject ambiguous projection',()=>{
+  const x=fixture();nv02(x);
+  x.resources.push({employee_id:'NV09',resource_id:'rea-nv02',status:'READY'});
+  const r=check(x);expect(r.decision).toBe('INVALID_RESOURCE');safe(r);
+});
+it('R05 rejects empty or oversized job resource IDs',()=>{
+  for(const resource_id of ['', 'x'.repeat(257)]){
+    const x=fixture();nv02(x);
+    x.jobs=[{employee_id:'NV02',resource_id,status:'running'}];
+    const r=check(x);expect(r.decision).toBe('INVALID_JOB_PROJECTION');safe(r);
+  }
+});
+it('R05 unrelated running job without resource mapping does not fake ownership',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{employee_id:'NV09',resource_id:null,status:'running'}];
+  const r=check(x);
+  expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
