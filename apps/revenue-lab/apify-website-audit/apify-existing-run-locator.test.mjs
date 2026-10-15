@@ -58,6 +58,17 @@ test('R04 locator refuses missing, wrong-date, wrong-Actor or malformed run rows
  assert.equal((await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({actId:'SOMEOTHER'})])})).length,2);
  assert.equal((await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({id:'not/opaque'})])})).length,2);
 });
+test('R04 locator rejects timezone-less and date-only run list rows',async()=>{
+ for (const startedAt of ['2026-10-08', '2026-10-08T03:00:00', '2026-10-08T03:00:00+99:00']) {
+  const calls=await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({startedAt})])});
+  assert.equal(calls.length,2,startedAt);
+ }
+});
+test('R04 locator accepts the same absolute instant with explicit Vietnam offset',async()=>{
+ const m=mock({runList:list([row({startedAt:'2026-10-08T10:00:00+07:00'})])});
+ const x=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
+ assert.equal(x.runId,'RUN1234567');assert.equal(m.calls.length,2);
+});
 test('R04 locator refuses wrong build instead of guessing latest',async()=>{
  assert.equal((await refuses('OCT08_CANARY_NOT_FOUND',{runList:list([row({buildNumber:'0.0.5'})])})).length,2);
 });

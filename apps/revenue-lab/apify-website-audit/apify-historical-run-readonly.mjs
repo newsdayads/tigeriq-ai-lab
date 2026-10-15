@@ -18,7 +18,10 @@ export class HistoricReadError extends Error {
 const reject = code => { throw new HistoricReadError(code); };
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const actualData = x => object(x) && Object.hasOwn(x, 'data') ? x.data : x;
-const validInstant = x => typeof x === 'string' && /^\d{4}-\d\d-\d\dT/.test(x) &&
+// Apify declares startedAt/finishedAt as ISO 8601 date-time (UTC examples).
+// Offsets are mandatory: an offset-less local time is host-TZ dependent.
+export const validApifyInstant = x => typeof x === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(x) &&
   Number.isFinite(Date.parse(x));
 
 export function historicalRunConfig(env = process.env) {
@@ -92,7 +95,7 @@ function validateRun(run, config, nowMs) {
   if (typeof run.buildNumber !== 'string' || !run.buildNumber)
     reject('HISTORICAL_BUILD_UNVERIFIED');
   if (run.buildNumber !== EXPECTED_BUILD) reject('HISTORICAL_BUILD_MISMATCH');
-  if (!validInstant(run.startedAt) || !validInstant(run.finishedAt))
+  if (!validApifyInstant(run.startedAt) || !validApifyInstant(run.finishedAt))
     reject('RUN_TIMESTAMPS_UNVERIFIED');
   const start = Date.parse(run.startedAt), end = Date.parse(run.finishedAt);
   if (start > end || end > nowMs - 10000) reject('RUN_USAGE_NOT_SETTLED');
