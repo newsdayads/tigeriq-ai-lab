@@ -625,3 +625,69 @@ body.api-health #workDetailModal .work-detail-actions>*{
  }
  body.api-health .layout>.side>.alert-panel{grid-column:1/-1!important}
 }
+
+/* Owner P0 mobile: four tight, equal-width chips per line, not oversized tiles. */
+@media (min-width:360px) and (max-width:599px){
+ body.api-health .workforce-panel .filters{
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  align-items:center!important;gap:4px!important;
+  padding:0!important;margin:0!important;width:100%!important;
+ }
+ body.api-health .workforce-panel .filters .filter-divider{display:none!important}
+ body.api-health .workforce-panel .filters .filter[data-filter]{
+  box-sizing:border-box!important;min-width:0!important;max-width:none!important;
+  width:100%!important;flex:none!important;
+  height:27px!important;min-height:27px!important;
+  padding:2px 2px!important;margin:0!important;
+  border-radius:6px!important;
+  font-size:10px!important;line-height:1.15!important;
+  letter-spacing:-.12px!important;white-space:nowrap!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters{
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:4px!important;padding:5px 8px!important;
+  align-items:center!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters>.wo-filter{
+  box-sizing:border-box!important;min-width:0!important;max-width:none!important;
+  width:100%!important;flex:none!important;
+  height:27px!important;min-height:27px!important;
+  padding:2px 2px!important;margin:0!important;
+  border-radius:6px!important;font-size:10px!important;
+  line-height:1.1!important;letter-spacing:-.12px!important;white-space:nowrap!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters>.work-scope-note{
+  grid-column:1/-1!important;margin:0!important;min-height:27px!important;
+  font-size:10px!important;display:flex!important;align-items:center!important;
+  gap:6px!important;
+ }
+ body.api-health .work-panel #woFilters .work-scope-note select{
+  height:27px!important;min-height:27px!important;
+  padding:2px 6px!important;font-size:10px!important;
+ }
+ body.api-health .workforce-panel .panel-h{
+  padding-bottom:7px!important;gap:7px!important;
+ }
+}
+@media (max-width:359px){
+ body.api-health .workforce-panel .filters{
+  display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:4px!important;padding:0!important;
+ }
+ body.api-health .workforce-panel .filters .filter-divider{display:none!important}
+ body.api-health .workforce-panel .filters .filter[data-filter]{
+  min-width:0!important;width:100%!important;height:27px!important;min-height:27px!important;
+  padding:2px!important;font-size:10px!important;flex:none!important;border-radius:6px!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters{
+  display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:4px!important;padding:5px 8px!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters>.wo-filter{
+  min-width:0!important;width:100%!important;height:27px!important;min-height:27px!important;
+  padding:2px!important;font-size:10px!important;flex:none!important;border-radius:6px!important;
+ }
+ body.api-health .work-panel #woFilters.wo-filters>.work-scope-note{
+  grid-column:1/-1!important;margin:0!important;
+ }
+}
