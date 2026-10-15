@@ -558,8 +558,8 @@ describe('GitHub Core intake guardrails',()=>{
     const baseline=githubIssueSourceRevision(base);
     expect(githubIssueSourceRevision(verified)).toBe(baseline);
     // Legacy tasks do not silently change their stored hashes on rollout.
-    const legacyBase={...base,body:base.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2\\n','')};
-    const legacyVerified={...verified,body:verified.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2\\n','')};
+    const legacyBase={...base,body:base.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};
+    const legacyVerified={...verified,body:verified.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};
     expect(githubIssueSourceRevision(legacyVerified)).not.toBe(githubIssueSourceRevision(legacyBase));
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('Verify package source','Install package source')})).not.toBe(baseline);
     expect(githubIssueSourceRevision({...verified,body:verified.body.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false')})).not.toBe(baseline);
