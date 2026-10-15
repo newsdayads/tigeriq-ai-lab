@@ -35,7 +35,7 @@ const host = (j = job()) => ({
   readOwnerApproval: vi.fn(async () => approval(j)),
   readCoreLease: vi.fn(async () => lease(j)),
   attestSession: vi.fn(async () => session()),
-  reserveOnce: vi.fn(async () => ({ accepted: true, durable: true })),
+  reserveOnce: vi.fn(async () => ({ accepted: true, durable: true, reservationSeq: '11' })),
   runBoundedCli: vi.fn(async () => ({ exitCode: 0, stdout: JSON.stringify(evidence(j)), stderr: '', timedOut: false })),
   storeReceipt: vi.fn(async () => ({ durable: true, evidenceUrl: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/4783' })),
 });
@@ -82,15 +82,23 @@ describe('NV07 bootstrap canary: one-shot, read-only, never ACTIVE', () => {
     expect(h.runBoundedCli).toHaveBeenCalledTimes(1);
     expect(h.runBoundedCli.mock.calls[0][0].command).toBe('agy');
     expect(h.storeReceipt).toHaveBeenCalledWith(expect.objectContaining({
-      workOrderId:4783, state:'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',
+      workOrderId:4783, reservationSeq:'11', state:'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',
     }));
   });
   it('rejects duplicates, invalid CLI JSON, and missing durable evidence', async () => {
     const dup=host();dup.reserveOnce.mockResolvedValue({accepted:false,durable:true});
     expect((await runNv07OneShotCanary(args(),dup)).accepted).toBe(false);
     expect(dup.runBoundedCli).not.toHaveBeenCalled();
+    const missingReservation=host();missingReservation.reserveOnce.mockResolvedValue({accepted:true,durable:true});
+    expect((await runNv07OneShotCanary(args(),missingReservation)).accepted).toBe(false);
+    expect(missingReservation.runBoundedCli).not.toHaveBeenCalled();
     const invalid=host();invalid.runBoundedCli.mockResolvedValue({exitCode:0,stdout:'{}',stderr:''});
     expect((await runNv07OneShotCanary(args(),invalid)).accepted).toBe(false);
+    const coreRef=host();coreRef.storeReceipt.mockResolvedValue({durable:true,evidenceRef:'tigeriq_events:NV07_CANARY_RECEIPT:46'});
+    const readback=await runNv07OneShotCanary(args(),coreRef);
+    expect(readback).toMatchObject({accepted:true,evidenceRef:'tigeriq_events:NV07_CANARY_RECEIPT:46',evidenceUrl:null});
+    const forged=host();forged.storeReceipt.mockResolvedValue({durable:true,evidenceRef:'not-a-core-event'});
+    expect((await runNv07OneShotCanary(args(),forged)).accepted).toBe(false);
     const missing=host();missing.storeReceipt.mockResolvedValue({durable:false});
     expect((await runNv07OneShotCanary(args(),missing)).accepted).toBe(false);
   });
