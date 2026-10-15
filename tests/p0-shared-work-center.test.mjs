@@ -129,6 +129,12 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   for(const source of [live,health,web])expect(source).toContain('ĐÃ KẾT THÚC');
   for(const source of [live,health,web])expect(source).toContain('VỪA HOÀN TẤT ↓');
  });
+ it('bundles required Web Control checklist helper on PC01',()=>{
+  const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
+  const server=readFileSync(new URL('../apps/tigeriq-core/web-control-server.mjs',import.meta.url),'utf8');
+  expect(server).toContain("from './work-order-checklist-hard-gate.mjs'");
+  expect(launcher).toContain("$_.Name -eq 'work-order-checklist-hard-gate.mjs'");
+ });
  it('bundles the three shared Work Center assets for PC01 Web Control',()=>{
   const launcher=readFileSync(new URL('../scripts/tigeriq-core/run-web-control-bundle.ps1',import.meta.url),'utf8');
   const server=readFileSync(new URL('../apps/tigeriq-core/web-control-server.mjs',import.meta.url),'utf8');
