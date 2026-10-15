@@ -58,11 +58,28 @@ export function hasExactFlag(body,key,value='true'){
 
 export function bodyValue(body,key){return policyBodyValue(body,key);}
 
+// A checklist checkmark and the appended canonical GitHub receipt are evidence
+// state, not a new executable specification. Preserve all other body bytes:
+// authorization, resource scope, acceptance text and task content must still
+// change the revision and invalidate stale live-acceptance evidence.
+export function normalizeWorkOrderChecklistReceiptProgress(body=''){
+  return String(body||'').replace(
+    /^([ \t]*-[ \t]*)\[[ xX]\]([ \t]+)([^\r\n]*)(\r?)$/gm,
+    (_line,leader,spacing,content,cr)=>{
+      const instruction=content.replace(
+        /[ \t]+\[(?:Bằng chứng|Biên nhận|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
+        '',
+      );
+      return `${leader}[ ]${spacing}${instruction}${cr}`;
+    },
+  );
+}
+
 export function githubIssueSourceRevision(issue={}){
   return createHash('sha256')
     .update(String(issue?.title||''))
     .update('\n')
-    .update(String(issue?.body||''))
+    .update(normalizeWorkOrderChecklistReceiptProgress(issue?.body))
     .digest('hex')
     .slice(0,12);
 }

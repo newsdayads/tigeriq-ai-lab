@@ -545,6 +545,24 @@ describe('GitHub Core intake guardrails',()=>{
     expect(calls.some(([url,method])=>url.endsWith('/issues/2707/comments')&&method==='POST')).toBe(false);
   });
 
+  it('receipt-only checklist transitions do not create new objectives or invalidate acceptance source SHA',()=>{
+    const body=['TIGERIQ_EXECUTABLE=true','PRIORITY=P2','RESOURCE_SCOPE=CANARY_TEST',
+      'NO_PRODUCTION_RELEASE=true','## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [ ] R02 — Verify package source and license.'].join('\n');
+    const base={number:4780,title:'REA scope canary',body};
+    const verified={...base,body:body.replace(
+      '- [ ] R02 — Verify package source and license.',
+      '- [x] R02 — Verify package source and license. [Bằng chứng](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-1)',
+    )};
+    const baseline=githubIssueSourceRevision(base);
+    expect(githubIssueSourceRevision(verified)).toBe(baseline);
+    expect(githubIssueSourceRevision({...verified,body:verified.body.replace('Verify package source','Install package source')})).not.toBe(baseline);
+    expect(githubIssueSourceRevision({...verified,body:verified.body.replace('NO_PRODUCTION_RELEASE=true','NO_PRODUCTION_RELEASE=false')})).not.toBe(baseline);
+    expect(githubIssueSourceRevision({...verified,title:'REA changed scope'})).not.toBe(baseline);
+    const signedOtherSite={...verified,body:verified.body.replace('github.com','not-github.invalid')};
+    expect(githubIssueSourceRevision(signedOtherSite)).not.toBe(baseline);
+  });
+
   it('keeps source revision stable across lifecycle state_reason changes but changes on title/body edits',()=>{
     const issue={number:1,title:'A',body:'BODY',state_reason:null};
     const revision=githubIssueSourceRevision(issue);
