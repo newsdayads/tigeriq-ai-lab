@@ -76,9 +76,9 @@ test('coding lane scope validation tests',async(t)=>{
 
   await t.test('locks exact TARGET_EMPLOYEE without silent failover',()=>{
     const resources=[{id:'NV09'},{id:'NV12'}];
-    assert.strictEqual(selectCodingWorker(resources,'NV09',()=>resources[1]).id,'NV09');
+    assert.strictEqual(selectCodingWorker(resources,'NV09',()=>resources[1]),null); // cloud still eligible; explicit local target waits
     assert.strictEqual(selectCodingWorker([{id:'NV12'}],'NV09',()=>resources[1]),null);
-    assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV09');
+    assert.strictEqual(selectCodingWorker(resources,'',()=>resources[1]).id,'NV12'); // cloud API first
   });
 
   await t.test('resolves only source or allowlisted TARGET_REPOSITORY',()=>{

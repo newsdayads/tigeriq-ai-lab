@@ -24,6 +24,10 @@ function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_ve
     OLLAMA_EMPLOYEE_ID:'NV10',NV09_EMPLOYEE_ID:'NV09',
     CORE_MANAGER_EMPLOYEE_ID:'NV08',OLLAMA_TIMEOUT_MS:90000,CORE_MANAGER_TIMEOUT_MS:150000,
     runBoundedInferenceNv09:async()=>({text:'nv09'}),
+    // The atomic admission behavior is tested separately; this VM harness
+    // isolates only native-vs-compatible NV10 request selection.
+    pool:{},
+    withPc01LocalInferenceSlot:async(_pool,run)=>run(),
     openAiCompat:async()=>{calls.push('compat');return 'COMPAT_RESULT'},
     invokeNativeStructuredExecution:async options=>{
       calls.push({route:'native',model:options.model,timeoutMs:options.timeoutMs,numPredict:options.numPredict,packet:options.packet});

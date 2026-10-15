@@ -91,8 +91,8 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(gate).toContain("NV09_RESOURCE_BUSY");
     expect(source).toContain("on conflict(id) do nothing returning id");
     expect(source).toContain("if(!created.rowCount)return {ok:false,alreadyRecorded:true");
-    expect(source).toContain("void owner4595CanaryOnce()");
-    expect(source).toContain("if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}");
+    expect(source).not.toContain("void owner4595CanaryOnce();"); // NV09 no longer auto-runs
+    expect(source).toContain("if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}");
   });
 
   it('requires a cross-lane shared lease before starting NV09 canary inference',async()=>{
@@ -113,7 +113,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const build=new Function('deps',`
       const { nv09Resource,randomUUID,buildNv09CanaryPrompt,nv09ModelAvailability,
         acquireSharedResourceLease,releaseSharedResourceLease,pool,event,
-        runBoundedInferenceNv09,NV09_TIMEOUT_MS,NV09_ENDPOINT,NV09_MODEL,fetchJson,markResourceSuccess,markResourceFailure }=deps;
+        runBoundedInferenceNv09,NV09_TIMEOUT_MS,NV09_ENDPOINT,NV09_MODEL,fetchJson,markResourceSuccess,markResourceFailure,withPc01LocalInferenceSlot }=deps;
       ${body}
       return runNv09Canary;
     `);
@@ -140,6 +140,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
       NV09_TIMEOUT_MS:240000,
       NV09_ENDPOINT:'http://127.0.0.1:11435',
       NV09_MODEL:'qwen3.5:9b',
+      withPc01LocalInferenceSlot:async(_db,run)=>run(), // atomicity tested in pc01-local-inference-slot.test
       runBoundedInferenceNv09:async()=>({text:fail?'invalid':'NV09_CORE_CANARY_OK',evalCount:1}),
       fetchJson:async(url,init,timeout)=>{
         const sent=JSON.parse(init.body);
