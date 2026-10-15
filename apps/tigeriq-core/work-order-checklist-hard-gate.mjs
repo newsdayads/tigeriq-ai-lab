@@ -1,6 +1,6 @@
 // Readback-only gate: checklist assertions are not proof of runtime acceptance.
 // Caller MUST supply the fresh GitHub issue fetched after the attempted checkbox write.
-const STEP=/^\s*[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
+const STEP=/^\s*[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
 const MARKDOWN_LINK=/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/g;
 function sectionName(line){
  const m=String(line).match(/^\s{0,3}#{2,6}\s+(.+)$/);
@@ -29,11 +29,11 @@ export function workOrderChecklistGate(issue,{stepId='',expectedEvidenceUrl='',r
   return {ok:false,reason:'GITHUB_ISSUE_READBACK_REQUIRED'};
  const {found,steps}=workOrderChecklistSteps(issue.body);
  if(!found||steps.length<1)return {ok:false,reason:'CHECKLIST_MISSING',steps:steps.length};
- const ids=steps.map(x=>x.id);
+ const ids=steps.map(x=>x.id.toUpperCase());
  if(new Set(ids).size!==ids.length)return {ok:false,reason:'DUPLICATE_STEP_ID'};
  const requested=String(stepId||'').trim().toUpperCase();
  if(requested&&!ids.includes(requested))return {ok:false,reason:'STEP_NOT_FOUND',stepId:requested};
- const selected=requested?steps.filter(x=>x.id===requested):steps;
+ const selected=requested?steps.filter(x=>x.id.toUpperCase()===requested):steps;
  if(!requested&&!requireAll)return {ok:false,reason:'STEP_ID_REQUIRED'};
  const unchecked=selected.filter(x=>!x.checked).map(x=>x.id);
  if(unchecked.length)return {ok:false,reason:'STEP_UNCHECKED_ON_GITHUB',missing:unchecked};
