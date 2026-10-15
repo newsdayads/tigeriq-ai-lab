@@ -150,7 +150,18 @@ const openclawResource={
   id:OPENCLAW_EMPLOYEE_ID,employeeId:OPENCLAW_EMPLOYEE_ID,resourceId:OPENCLAW_RESOURCE_ID,name:'PC Operator · OpenClaw',provider:OPENCLAW_PROVIDER,model:OPENCLAW_MODEL,req:[],rank:5,
   accountBinding:'default',runtimeBinding:'pc01',costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['pc_operator'],
 };
+// Owner-scoped NV07 bootstrap slot is opted in only by PC01 runtime policy.
+// Even when provisioned, keep it OFFLINE for normal inference routing.
+const NV07_BOOTSTRAP_RESOURCE_ENABLED=process.env.TIGERIQ_NV07_BOOTSTRAP_RESOURCE_ENABLED==='1';
+const nv07BootstrapResource=Object.freeze({
+  id:'NV07',employeeId:'NV07',resourceId:'res:antigravity:agy-cli:owner-wdragons12x:pc01',
+  name:'Google Antigravity — scoped bootstrap canary',
+  provider:'antigravity',model:'agy-cli',req:[],rank:999,
+  accountBinding:'owner-wdragons12x',runtimeBinding:'pc01',
+  costTier:'LOCAL',zeroOutOfPocket:true,capabilities:['nv07_bootstrap'],
+});
 const resources = [
+  ...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[]),
   nv08Resource,
   nv09Resource,
   nv10Resource,
@@ -607,7 +618,10 @@ async function refreshResources() {
     let credential = r.provider === 'ollama' ? 'LOCAL' : (!credentialPresent(r) ? 'WAIT_KEY' : (reqReady(r) ? 'READY' : 'BLOCKED'));
     let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
     const old = (await pool.query('select health_state,work_state,last_seen_at,cooldown_until,current_job_id from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0];
-    if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
+    // The Core lease is admitted independently; never mark NV07 routable from
+    // the gateway being online or from the mere presence of this resource row.
+    if(r.id==='NV07'){credential='WAIT_KEY';health='OFFLINE';}
+    else if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
     else if (r.id === NV09_EMPLOYEE_ID) {
       credential='LOCAL';
       const availability=await nv09ModelAvailability();
