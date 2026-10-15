@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {loadRequiredCodingSkills,assertCodingSkillProof} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
+import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
 test('real ACTIVE spec-first-tdd file content and version load into Coding role',()=>{
   const s=loadRequiredCodingSkills('Fix backend API contract bug');
@@ -39,4 +39,14 @@ test('CANDIDATE never satisfies mandatory ACTIVE Skill requirement',()=>{
 
 test('unknown mandatory skill fails instead of silently routing generic coder',()=>{
   assert.throws(()=>loadRequiredCodingSkills('implement backend',{requiredIds:['unknown-skill-id']}),/CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED/);
+});
+
+test('frontend/backend require specialist Skill and cannot silently fall back to generic TDD',()=>{
+  assert.deepEqual(requiredCodingSkillIdsForDeliverable('frontend'),['spec-first-tdd','frontend-engineering']);
+  assert.deepEqual(requiredCodingSkillIdsForDeliverable('backend'),['spec-first-tdd','backend-engineering']);
+  assert.deepEqual(requiredCodingSkillIdsForDeliverable('android'),['spec-first-tdd']);
+  assert.throws(()=>requiredCodingSkillIdsForDeliverable('unknown'),/CODING_SKILL_DELIVERABLE_INVALID/);
+  for(const kind of ['frontend','backend']){
+    assert.throws(()=>loadRequiredCodingSkills('implement '+kind,{requiredIds:requiredCodingSkillIdsForDeliverable(kind)}),/CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED/);
+  }
 });
