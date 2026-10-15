@@ -1,8 +1,14 @@
 import {afterEach,describe,it,expect,vi} from 'vitest';
 const native=vi.hoisted(()=>({attest:vi.fn(async()=>({attestationVerified:false}))}));
+const protectedIo=vi.hoisted(()=>({read:vi.fn(),stat:vi.fn()}));
+const registryIo=vi.hoisted(()=>({fetch:vi.fn(),parse:vi.fn()}));
+vi.mock('node:fs/promises',()=>({readFile:protectedIo.read,lstat:protectedIo.stat,
+ writeFile:vi.fn(),rename:vi.fn(),unlink:vi.fn()}));
+vi.mock('../apps/tigeriq-core/workforce-registry.mjs',()=>({
+ fetchRegistryIssue:registryIo.fetch,parseRegistryBody:registryIo.parse}));
 vi.mock('../apps/openclaw-tigeriq-runtime/nv07-protected-session.mjs',()=>({attestNv07ProtectedSession:native.attest}));
 import {validateNv07ProtectedInvocation} from '../apps/openclaw-tigeriq-runtime/nv07-protected-cli-helper.mjs';
-import {validNv07ProtectedApproval,runNv07ApprovedBootstrap} from '../apps/tigeriq-core/nv07-approved-bootstrap.mjs';
+import {validNv07ProtectedApproval,runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from '../apps/tigeriq-core/nv07-approved-bootstrap.mjs';
 const NOW=Date.parse('2026-10-16T01:00:00Z'),SHA='a'.repeat(40);
 const scope='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783';
 const rules=[
@@ -27,7 +33,7 @@ const approval=(patch={})=>({schema:'NV07_OWNER_CANARY_APPROVAL_V1',workOrderId:
  action:'READ_METADATA',jobId:payload.job_id,sourceSha:SHA,idempotencyKey:'one-shot-0123456789012345',
  evidenceUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4783#issuecomment-123',
  issuedAt:new Date(NOW-1000).toISOString(),expiresAt:new Date(NOW+240000).toISOString(),...patch});
-afterEach(()=>vi.unstubAllGlobals());
+afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();native.attest.mockResolvedValue({attestationVerified:false});});
 describe('protected Core one-shot boundary',()=>{
  it('admits only the pinned bounded metadata envelope',()=>{
   expect(validateNv07ProtectedInvocation(invocation(),{parentPid:76,nowMs:NOW})).toBe(true);
@@ -65,6 +71,49 @@ describe('protected Core one-shot boundary',()=>{
   expect(await runNv07ApprovedBootstrap(db)).toMatchObject({
    accepted:false,code:'NV07_NATIVE_SESSION_UNVERIFIED',nv07Active:false,
   });
+  expect(db.query).not.toHaveBeenCalled();expect(db.connect).not.toHaveBeenCalled();
+ });
+});
+
+describe('canonical NV07 queue admission',()=>{
+ const setup=()=>{
+  vi.stubGlobal('process',{...process,platform:'win32'});
+  native.attest.mockResolvedValue({attestationVerified:true,sourceSha:SHA} as never);
+  protectedIo.stat.mockResolvedValue({isFile:()=>true,isSymbolicLink:()=>false,size:500});
+  protectedIo.read.mockResolvedValue(JSON.stringify(approval({
+   issuedAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+240000).toISOString()})));
+  registryIo.fetch.mockResolvedValue({body:'COMMAND_7=NV07'});
+  registryIo.parse.mockReturnValue({workforce:[{employee_id:'NV07',name:'Google Antigravity',admin_state:'PROVISIONING'}]});
+ };
+ it('fails before any queue write without native proof',async()=>{
+  vi.stubGlobal('process',{...process,platform:'win32'});
+  const db={query:vi.fn()};
+  expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({accepted:false,code:'NV07_NATIVE_SESSION_UNVERIFIED'});
+  expect(db.query).not.toHaveBeenCalled();
+ });
+ it('enqueues the protected exact job once, without CLI or lease claim',async()=>{
+  setup();
+  const db={query:vi.fn().mockResolvedValueOnce({rowCount:1,rows:[{id:payload.job_id}]})};
+  expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({
+   accepted:true,code:'NV07_CANONICAL_QUEUE_ACCEPTED_NOT_EXECUTED',jobId:payload.job_id,coreLeaseVerified:false,nv07Active:false});
+  expect(db.query.mock.calls[0][0]).toContain("'queued'");
+  expect(db.query.mock.calls[0][1][0]).toBe(payload.job_id);
+  expect(db.query.mock.calls[0][0]).toContain('NV07_CORE_BOOTSTRAP_QUEUED');
+  expect(db.query).toHaveBeenCalledTimes(1);
+ });
+ it('does not enqueue twice or route to another employee',async()=>{
+  setup();
+  const db={query:vi.fn().mockResolvedValue({rowCount:0,rows:[]})};
+  expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({accepted:false,code:'NV07_JOB_ALREADY_QUEUED_NO_REPLAY'});
+  expect(db.query).toHaveBeenCalledTimes(1);
+  db.query.mockClear();registryIo.fetch.mockResolvedValue({body:'COMMAND_7=NV03'});
+  expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({accepted:false,code:'NV07_LIVE_QUEUE_REGISTRY_DENIED'});
+  expect(db.query).not.toHaveBeenCalled();
+ });
+ it('rejects a claimed job that differs from protected Owner approval before DB writes',async()=>{
+  setup();const db={query:vi.fn(),connect:vi.fn()};
+  expect(await runNv07ApprovedBootstrap(db,{queuedJobId:'NV07-4783-CORE-OTHER'})).toMatchObject({
+   accepted:false,code:'NV07_QUEUED_JOB_PIN_MISMATCH'});
   expect(db.query).not.toHaveBeenCalled();expect(db.connect).not.toHaveBeenCalled();
  });
 });
