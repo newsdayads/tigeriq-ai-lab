@@ -18,3 +18,9 @@ Tệp `r06-consumer-lock-preflight.mjs` chỉ đọc **đối tượng JSON do b
 4. R06 cài đặt/chạy REA chỉ sau **tất cả** cổng thực; không dùng bản kiểm tra dữ liệu giả để đánh dấu checkbox R06.
 
 **Kiểm thử nguồn:** `tests/rea-reconstruction-lab/r06-consumer-lock-preflight.test.ts` gồm 9 nhóm thử dữ liệu tổng hợp, kiểm tra từ chối dữ liệu nguy hiểm và luôn phủ nhận quyền. CI chính thức chỉ nghiệm thu tính đúng của đoạn mã tại HEAD PR, không chứng minh R05/R06 host.
+
+## R06 URL-to-package binding hardening (15/10/2026)
+
+Chỉ kiểm tra host `registry.npmjs.org`, HTTPS và đuôi `.tgz` **không đủ**: một URL hợp lệ về cú pháp vẫn có thể trỏ tới gói/phiên bản khác. Bộ kiểm tra nguồn nay so khớp đường dẫn tarball với **tên thực tế từ khóa `node_modules` và phiên bản của dòng lock**. Gói REA gốc buộc URL `/rea-agents/-/rea-agents-6.4.0.tgz`. Hỗ trợ dạng scope chuẩn `/@scope/name/-/name-version.tgz` và biến thể scope escape URL khi giải mã đúng tên.
+
+Các trường hợp URL bị thay gói, đổi scope, đổi phiên bản hoặc sai basename bị từ chối, kể cả khi hostname, SRI chuỗi và phiên bản metadata có vẻ hợp lệ. Đây **chỉ là kiểm tra nhất quán URL với metadata không tin cậy**, không phải kiểm chứng bytes, chữ ký, hash đúng nội dung hoặc cây SBOM thực. Mọi cờ quyền thực thi và trạng thái R05/R06 vẫn `false`.
