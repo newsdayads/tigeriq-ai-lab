@@ -93,7 +93,7 @@ async function nativeBoundCli(db,job,approval,input){
 
 // Only Core calls this with its canonical pool. HTTP input supplies no grant,
 // command, path, "verified" field, database handle or execution identity.
-export async function runNv07ApprovedBootstrap(db){
+export async function runNv07ApprovedBootstrap(db,{queuedJobId=null}={}){
  if(process.platform!=='win32'||!db?.query||!db?.connect)return deny('NV07_CORE_RUNTIME_REQUIRED');
  let lease=null,timer=null,job=null,resultOut=null;
  try{
@@ -101,6 +101,7 @@ export async function runNv07ApprovedBootstrap(db){
   if(session.attestationVerified!==true)return deny('NV07_NATIVE_SESSION_UNVERIFIED');
   const a=await readProtectedApproval(session.sourceSha);
   if(!a)return deny('NV07_EXACT_OWNER_APPROVAL_MISSING');
+  if(queuedJobId&&queuedJobId!==a.jobId)return deny('NV07_QUEUED_JOB_PIN_MISMATCH');
   const issue=await fetchRegistryIssue();
   const parsed=parseRegistryBody(issue.body);
   const registry=parsed.workforce.find(x=>x.employee_id==='NV07');
@@ -125,9 +126,11 @@ export async function runNv07ApprovedBootstrap(db){
    metadata:{workOrderId:4783,resourceScope:NV07_CANARY_CORE_SCOPE,sourceSha:job.sourceSha,
     action:'READ_METADATA',idempotencyKey:a.idempotencyKey}});
   if(!lease)return deny('NV07_RESOURCE_BUSY_NOT_CLAIMED');
-  const created=await db.query(
-   "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider,started_at) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','running',1,'NV07',$2,'antigravity',now()) on conflict(id) do nothing returning id",
-   [job.jobId,NV07_BOOTSTRAP_RESOURCE_ID]);
+  const created=queuedJobId
+   ? await db.query("select id from tigeriq_jobs where id=$1 and objective_id is null and kind='nv07_bootstrap' and capability='nv07_bootstrap' and status='running' and attempts=1 and max_attempts=1 and employee_id='NV07' and resource_id=$2 and provider='antigravity'",[job.jobId,NV07_BOOTSTRAP_RESOURCE_ID])
+   : await db.query(
+    "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider,started_at) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','running',1,'NV07',$2,'antigravity',now()) on conflict(id) do nothing returning id",
+    [job.jobId,NV07_BOOTSTRAP_RESOURCE_ID]);
   if(created.rowCount!==1)return deny('NV07_JOB_ID_ALREADY_EXISTS');
   await db.query(
    "insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) values('NV07_CORE_BOOTSTRAP_DISPATCHED',$1,'NV07',$2,'nv07_bootstrap',$3::jsonb)",
@@ -145,7 +148,7 @@ export async function runNv07ApprovedBootstrap(db){
     attestSession:attestNv07ProtectedSession,
     runBoundedCli:input=>nativeBoundCli(db,job,a,input),
    });
-  await db.query("update tigeriq_jobs set status=$2,result=$3,completed_at=now() where id=$1",
+  await db.query("update tigeriq_jobs set status=$2,result=$3,lease_until=null,completed_at=now() where id=$1",
    [job.jobId,result.accepted?'done':'failed',JSON.stringify(result)]);
   resultOut={...result,coreLeaseVerified:result.accepted===true,leaseReleasedAfterRun:false,nv07Active:false};
   return resultOut;
@@ -163,4 +166,31 @@ export async function runNv07ApprovedBootstrap(db){
    }
   }
  }
+}
+
+/** Enqueue in the existing Core ledger. Only the canonical claimJob/runJob loop
+ * may execute it; no new poller, scheduler, queue, caller job or command. */
+export async function queueNv07ApprovedBootstrap(db){
+ if(process.platform!=='win32'||!db?.query)return deny('NV07_CORE_RUNTIME_REQUIRED');
+ try{
+  const session=await attestNv07ProtectedSession();
+  if(session.attestationVerified!==true)return deny('NV07_NATIVE_SESSION_UNVERIFIED');
+  const a=await readProtectedApproval(session.sourceSha);
+  if(!a)return deny('NV07_EXACT_OWNER_APPROVAL_MISSING');
+  const issue=await fetchRegistryIssue();
+  const registry=parseRegistryBody(issue.body).workforce.find(x=>x.employee_id==='NV07');
+  if(issue.body?.match(/COMMAND_7=([A-Z0-9]+)/)?.[1]!=='NV07'
+    ||registry?.name!=='Google Antigravity'||!/PROVISIONING/.test(registry.admin_state||''))
+   return deny('NV07_LIVE_QUEUE_REGISTRY_DENIED');
+  const created=await db.query(
+   "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','queued',1,'NV07',$2,'antigravity') on conflict(id) do nothing returning id",
+   [a.jobId,NV07_BOOTSTRAP_RESOURCE_ID]);
+  if(created.rowCount!==1)return deny('NV07_JOB_ALREADY_QUEUED_NO_REPLAY');
+  await db.query(
+   "insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) values('NV07_CORE_BOOTSTRAP_QUEUED',$1,'NV07',$2,'nv07_bootstrap',$3::jsonb)",
+   [a.jobId,NV07_BOOTSTRAP_RESOURCE_ID,JSON.stringify({workOrderId:4783,sourceSha:a.sourceSha,
+    resourceScope:NV07_CANARY_CORE_SCOPE,command:'7',action:'READ_METADATA'})]);
+  return {accepted:true,code:'NV07_CANONICAL_QUEUE_ACCEPTED_NOT_EXECUTED',jobId:a.jobId,
+   sourceSha:a.sourceSha,coreLeaseVerified:false,nv07Active:false};
+ }catch{return deny('NV07_QUEUE_OPERATION_FAILED');}
 }
