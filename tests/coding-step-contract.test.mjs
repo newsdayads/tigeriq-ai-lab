@@ -175,3 +175,12 @@ test('domain acceptance reads real exact-head GitHub check runs, not generic gat
   assert.match(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:domainCheckReceipt\.check_runs\}\)/);
   assert.doesNotMatch(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:gates\.states\}\)/);
 });
+
+test('held draft PR cannot spawn another identical Work Order step without material change',()=>{
+  const history=[{workOrderId:'4902',stepId:'G4',sourceRevision:'source-A',status:'blocked_unaccepted'}];
+  const same=repeatedCodingAttemptDecision({workOrderId:'4902',stepId:'G4',sourceRevision:'source-A',history});
+  assert.equal(same.allow,false);
+  assert.equal(same.code,'CODING_STEP_BLOCKED_AWAITING_MATERIAL_CHANGE');
+  const changed=repeatedCodingAttemptDecision({workOrderId:'4902',stepId:'G4',sourceRevision:'source-B',history});
+  assert.equal(changed.allow,true);
+});
