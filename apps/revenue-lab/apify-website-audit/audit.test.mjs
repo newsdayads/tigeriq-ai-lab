@@ -19,6 +19,14 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html' });
       return res.end('<title>Large</title>' + 'x'.repeat(8192));
     }
+    if (req.url === '/json-404') {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      return res.end('{"error":"not found"}');
+    }
+    if (req.url === '/text-500') {
+      res.writeHead(500, { 'content-type': 'text/plain' });
+      return res.end('server error');
+    }
     if (req.url === '/json') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end('{"ok":true}');
@@ -180,6 +188,19 @@ test('rejects non HTML and non-2xx responses with stable codes', async () => {
   await assert.rejects(
     () => auditWebsite(`${baseUrl}/missing`, { resolveTargetFn: localResolver }),
     err => err instanceof AuditError && err.code === 'NON_2XX'
+  );
+});
+
+test('preserves HTTP 404/500 errors even for non-HTML error bodies', async () => {
+  for (const [url, status] of [['/json-404', 404], ['/text-500', 500]]) {
+    await assert.rejects(
+      () => auditWebsite(`${baseUrl}${url}`, { resolveTargetFn: localResolver }),
+      err => err instanceof AuditError && err.code === 'NON_2XX' && err.detail === status
+    );
+  }
+  await assert.rejects(
+    () => auditWebsite(`${baseUrl}/json`, { resolveTargetFn: localResolver }),
+    err => err instanceof AuditError && err.code === 'UNSUPPORTED_CONTENT_TYPE'
   );
 });
 
