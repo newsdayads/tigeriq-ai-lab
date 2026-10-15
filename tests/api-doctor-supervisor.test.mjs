@@ -5,6 +5,7 @@ import {
   apiDoctorAction,
   apiDoctorCurrentFailure,
   apiDoctorExistingHandoffAction,
+  apiDoctorVerifiedNormalWorkRecovery,
   apiDoctorFreshRecurrence,
   apiDoctorHandoffMatchesFailureClass,
   apiDoctorHealthEvidenceEvents,
@@ -26,6 +27,34 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('retires a stale provider handoff only from later real accepted normal work',()=>{
+    const handoffAt='2026-10-15T04:00:00Z';
+    const normalWorkAt='2026-10-15T05:00:00Z';
+    const ok={handoffAt,normalWorkAt,normalJobDone:true,normalOutputAccepted:true,healthState:'ONLINE',credentialState:'READY',nowMs:Date.parse('2026-10-15T05:10:00Z')};
+    expect(apiDoctorVerifiedNormalWorkRecovery(ok)).toEqual({recovered:true,reason:'live_normal_work_after_handoff'});
+    for(const invalid of [
+      {normalJobDone:false},
+      {normalOutputAccepted:false},
+      {normalWorkAt:'2026-10-15T03:59:59Z'},
+      {latestNormalFailureAt:'2026-10-15T05:01:00Z'},
+      {healthState:'ERROR'},
+      {credentialState:'WAIT_KEY'},
+      {cooldownUntil:'2026-10-15T05:20:00Z'},
+      {handoffAt:null},
+    ])expect(apiDoctorVerifiedNormalWorkRecovery({...ok,...invalid}).recovered).toBe(false);
+  });
+
+  it('requires accepted NV inference database evidence, not a passing probe or archived issue',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const scan=core.slice(core.indexOf('async function runApiDoctorScan(){'),core.indexOf('async function apiDoctorTelemetry(){'));
+    expect(scan).toContain("j.kind='nv_inference' and j.status='done'");
+    expect(scan).toContain("j.result->>'ok'='true'");
+    expect(scan).toContain("e.type='RESOURCE_SUCCESS'");
+    expect(scan).toContain("historicalSourceRepairAccepted:false");
+    expect(scan).toContain("latestNormalFailureAt:laterFailure?.ts");
+    expect(core).toContain("data->>'evidence' in ('live_work_success_after_repair_deploy','live_normal_work_after_handoff')");
+  });
+
   it('scans only API workers NV11–NV20, never manager/coder/device resources',()=>{
     for(let id=11;id<=20;id++)expect(apiDoctorScannableEmployeeId('NV'+id)).toBe(true);
     for(const id of ['NV00','NV06','NV07','NV08','NV09','NV10','NV21','NV30','NV111','MANAGER',''])expect(apiDoctorScannableEmployeeId(id)).toBe(false);
