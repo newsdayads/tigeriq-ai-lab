@@ -241,9 +241,20 @@ function extractSeo(html) {
 function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   const links = [];
   const seen = new Set();
-  for (const match of html.matchAll(/<a[^>]+href=["']([^"'#]+)["'][^>]*>/gi)) {
+  // Require the exact href attribute; HTML also permits unquoted attribute
+  // values. An attribute such as data-href must not trigger a crawl.
+  for (const tag of html.match(/<a\b[^>]*>/gi) || []) {
+    let href = null;
+    for (const [, name, doubleQuoted, singleQuoted, unquoted] of
+      tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
+      if (name.toLowerCase() === 'href') {
+        href = doubleQuoted ?? singleQuoted ?? unquoted;
+        break;
+      }
+    }
+    if (!href || href.startsWith('#')) continue;
     try {
-      const candidate = new URL(match[1], baseUrl);
+      const candidate = new URL(href, baseUrl);
       candidate.hash = '';
       if (candidate.origin !== rootOrigin || !['http:', 'https:'].includes(candidate.protocol)) continue;
       const normalized = candidate.toString();

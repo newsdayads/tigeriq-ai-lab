@@ -55,6 +55,18 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Only decoy</title><meta data-name="description" content="Not real"></head><body><h1>Audit</h1></body></html>');
     }
+    if (req.url === '/links-unquoted') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Unquoted Links</title></head><body><a href=/page2>Valid link</a></body></html>');
+    }
+    if (req.url === '/links-fragment') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Fragment Links</title></head><body><a href="/page2#details">Valid fragment</a></body></html>');
+    }
+    if (req.url === '/links-decoy') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Decoy Links</title></head><body><a data-href="/missing">Not a link</a><a href="https://external.example/not-ours">External</a></body></html>');
+    }
     if (req.url === '/page2') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Page Two</title></head><body><h1>Second</h1><p>Useful content here.</p></body></html>');
@@ -86,6 +98,36 @@ test('real bounded crawl derives evidence from fetched HTML', async () => {
   assert.equal(result.pages[0].seo.metaDescription, 'Evidence first audit');
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('same-origin crawler discovers valid unquoted href attributes', async () => {
+  const result = await auditWebsite(`${baseUrl}/links-unquoted`, {
+    maxPages: 2,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('same-origin crawler strips fragments from valid quoted href links', async () => {
+  const result = await auditWebsite(`${baseUrl}/links-fragment`, {
+    maxPages: 2,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.pages[1].url.endsWith('/page2'), true);
+});
+
+test('same-origin crawler ignores data-href decoys and external destinations', async () => {
+  const result = await auditWebsite(`${baseUrl}/links-decoy`, {
+    maxPages: 2,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 1);
+  assert.equal(result.metrics.errorCount, 0);
 });
 
 test('SEO extraction accepts valid unquoted HTML meta description attributes', async () => {
