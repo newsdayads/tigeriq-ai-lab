@@ -14,6 +14,14 @@ const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('categorizes PC01 NV06 OpenClaw in Local without changing its operator role', () => {
+    expect(apiHealth).toContain("['ollama','openclaw'].includes(String(live?.provider||'').toLowerCase())");
+    expect(apiHealth).toContain("['NV06','NV09','NV10'].includes(id)");
+    expect(apiHealth).toContain("if(x.employee_id==='NV06')return'AUTO'");
+    expect(truth).toContain("['ollama','openclaw'].includes(provider)");
+    expect(core).toContain("provider:OPENCLAW_PROVIDER");
+  });
+
   it('uses API Health as the visual/function reference without iframe duplication', () => {
     expect(apiHealth).toContain('<title>TigerIQ AI</title>');
     expect(core).toContain('dashboard()');

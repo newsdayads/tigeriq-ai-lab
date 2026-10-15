@@ -142,7 +142,7 @@ function applyPeopleFullFilter() {
     const provider = el.dataset.provider;
     const status = el.dataset.status;
     const text = el.textContent.toLowerCase();
-    const gp = p === 'all' || (p === 'local' && provider === 'ollama') || (p === 'cloud' && provider !== 'ollama');
+    const gp = p === 'all' || (p === 'local' && ['ollama','openclaw'].includes(provider)) || (p === 'cloud' && !['ollama','openclaw'].includes(provider));
     const gs = s === 'all' || (s === 'working' && status === 'BUSY') || (s === 'active' && ['BUSY','IDLE','READY','ONLINE'].includes(status)) || (s === 'problem' && ['AUTH_ERROR','CONFIG_ERROR','CONTRACT_ERROR','ERROR','OFFLINE','RATE_LIMITED','WAIT_KEY'].includes(status));
     el.style.display = gp && gs && (!q || text.includes(q)) ? '' : 'none';
   });
