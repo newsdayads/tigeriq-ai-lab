@@ -1,28 +1,39 @@
-# Frontend Engineering — P0 Core/Coding Lane candidate
+# Frontend Engineering
 
-ID: frontend-engineering
-Version: 0.1.0
-State: CANDIDATE — not runtime loadable until validated, real canary and registry promotion
-Target: coding-lane / frontend
+## Identity
+- ID: frontend-engineering
+- Version: 0.1.0
+- State: CANDIDATE — not runtime loadable until canary, validation and registry promotion
+- Target: coding-lane / frontend
+- Provenance: Owner P0 Core/Coding Lane directive 2026-10-16
 
 ## Trigger
-A scoped frontend, responsive UI, accessibility or client interaction implementation with a canonical design/specification and authorized source paths.
+Implement an approved scoped UI feature, responsive layout, accessibility correction or interactive frontend change.
 
-## Required inputs
-Canonical Work Order, source SHA, permitted file paths, UI states and breakpoints, behavior/data invariants, expected artifacts and executable verification commands.
+## Input
+Canonical Work Order, exact source SHA and files, approved design evidence, behavior invariants, UI states/breakpoints, required artifacts, test commands, forbidden actions.
 
-## Step-by-step prompt
-1. Read the actual components, routes, styles, tests and approved design evidence.
-2. State a minimal change plan and exact component files. Reject a README-only substitute for real frontend code.
-3. Implement behavior and presentation without changing unrelated API/data or permissions.
-4. Check type/build/lint and targeted interaction tests; visually verify mobile/desktop when an authorized browser is available.
-5. Return changed paths, exact head SHA, test invocations/results, screenshot or interaction receipts where applicable, unmet criteria and next step.
+## Steps
+1. Read existing components, styles, tests and approved design source; list concrete changes.
+2. Derive per-step prompt with target files, user behavior, acceptance and evidence.
+3. Implement smallest source changes; reject README/mock-only substitutes for executable code.
+4. Run type/build/lint and targeted interaction tests; verify mobile/desktop and accessibility when authorized.
+5. Return exact commit SHA, modified source files, run/trace/screenshot receipts where appropriate, unresolved criteria and next step.
+
+## Tools / Output
+Existing approved repository and test tools. Output source diff, runnable UI/test evidence and explicit failures only.
 
 ## Acceptance
-The referenced UI really renders, all specified states work, responsive/accessibility checks apply, scoped code and test evidence exist; generic CI success alone is insufficient. If interactive visual tests are unavailable, block only that acceptance criterion without fabricating PASS.
+Specified components render and interact correctly, responsive/accessibility checks apply, required changed files exist and functional evidence matches source SHA. Generic green CI alone is insufficient.
 
-## Security / permissions
-No credential, payment, production, browser login, App Chrome or Core control-plane mutation; isolated branch and required review gates only.
+## Evidence
+Pinned files, tests and screenshots/interaction receipts from a real scoped canary before registry ACTIVE promotion.
 
-## Promotion
-Canary on approved small UI fixture with negative test; deterministic measurements and authorized registry promotion are required before ACTIVE.
+## Fallback
+If browser/visual test is unavailable, stop only visual acceptance and continue independently safe verification. Never claim PASS.
+
+## Safety
+No secret, payment, permission, Production, browser login, App Chrome, Core control-plane or direct main mutation without separate authorization.
+
+## Non-goals
+Not a replacement for backend, browser access governance or project-level acceptance.
