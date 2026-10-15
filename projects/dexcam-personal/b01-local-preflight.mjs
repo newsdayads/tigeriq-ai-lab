@@ -3,7 +3,8 @@
  * This does not inspect Android or attest to physical evidence.
  * It never writes files, accesses the network, or prints input values/paths.
  */
-import { open } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { inspectB01 } from './b01-evidence-admission.mjs';
@@ -52,10 +53,18 @@ export function inspectB01Json(raw) {
 }
 
 async function readSmallLocalFile(filename) {
-  const file = await open(filename, 'r');
+  // Reject symlinks, FIFOs, sockets and devices before open: opening a FIFO can block forever.
+  const before = await lstat(filename);
+  if (!before.isFile()) return { error: 'input:NOT_A_REGULAR_FILE' };
+  if (before.size > MAX_INPUT_BYTES) return { error: 'input:FILE_TOO_LARGE' };
+  // POSIX no-follow prevents symlink swaps; nonblock avoids FIFO hangs in a path-swap race.
+  const flags = constants.O_RDONLY | constants.O_NONBLOCK |
+    (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW);
+  const file = await open(filename, flags);
   try {
     const info = await file.stat();
-    if (!info.isFile()) return { error: 'input:NOT_A_FILE' };
+    if (!info.isFile() || info.dev !== before.dev || info.ino !== before.ino)
+      return { error: 'input:NOT_A_REGULAR_FILE' };
     if (info.size > MAX_INPUT_BYTES) return { error: 'input:FILE_TOO_LARGE' };
     const buffer = Buffer.alloc(MAX_INPUT_BYTES + 1);
     const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
