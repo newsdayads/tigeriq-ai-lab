@@ -1340,7 +1340,7 @@ async function managerTick(){
       const blobMap=new Map(sourceTree.tree.filter(x=>x.type==='blob').map(x=>[x.path,x.sha]));
       const sourceBlobs=Object.fromEntries(paths.map(path=>[path,blobMap.get(path)||null]));
       const materialRevision=codingMaterialSourceRevision({
-        objective:o.objective,liveFingerprint:liveGithubContext?.fingerprint,paths,sourceBlobs
+        objective:o.objective,paths,sourceBlobs
       });
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:materialRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
