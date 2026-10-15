@@ -34,3 +34,17 @@ Trạng thái kiểm tra: INCOMPLETE = thiếu/chưa hợp lệ; SYNTHETIC_FIXTU
 Chạy kiểm thử nguồn, không đụng thiết bị: node --test tests/dexcam-personal/b01-evidence-admission.test.mjs. Các ca chỉ chứng minh bộ kiểm tra dữ liệu hoạt động, không nghiệm thu APK/USB/R/camera.
 
 B02–B05 yêu cầu quan sát thiết bị, USB và số R riêng; không thể suy từ B01 đã đủ. Không yêu cầu thao tác trong lúc lái xe hoặc thử dây điện.
+
+## Chạy công cụ kiểm tra B01 trên máy cục bộ — không tải chứng cứ lên mạng
+
+Sau khi đã **quan sát thực tế** Android/One UI/DeX và đo màn hình trong điều kiện an toàn, tự tạo một tệp JSON **riêng tư** theo cấu trúc ví dụ phía trên. Đổi `capture_kind` thành `REAL_DEVICE_OBSERVATION` **chỉ khi đúng là số đo thực**, thay `SM-TEST` bằng model đã đọc từ thiết bị, điền đầy đủ số liệu thật, giữ ba mã `LOCAL_ONLY:` riêng. Không sao chép ví dụ thành bằng chứng giả.
+
+Chạy tại máy có Node.js 20 trở lên, trong thư mục repository:
+
+```bash
+node projects/dexcam-personal/b01-local-preflight.mjs /duong-dan-rieng/ho-so-b01.json
+```
+
+Công cụ mới chỉ **đọc** tối đa 64 KiB từ đúng một tệp JSON theo đường dẫn nhập, không thay đổi tệp, không gọi USB/ADB/Android, không dùng mạng và chỉ in `status`, `b01_accepted=false`, `errors` theo mã lỗi đã lọc cùng `next`. Không xuất model, mã chứng cứ, tên đường dẫn hay nội dung JSON. Exit code `0` nghĩa là **kiểm tra cấu trúc thành công**, tuyệt đối **không đồng nghĩa B01 đã nghiệm thu**; mã `1` là thiếu/sai dữ liệu, `2` là cú pháp lệnh không hợp lệ. `CANDIDATE_NEEDS_DEVICE_REVIEW` vẫn phải được đối chiếu riêng trên thiết bị thật và cập nhật checklist với bằng chứng đã khử thông tin riêng tư.
+
+Kiểm thử hồi quy công cụ: `npx vitest run tests/dexcam-personal/b01-local-preflight.test.ts`. Đây chỉ là kiểm thử phần mềm ngoại tuyến, không thay cho G1/G2 hoặc cho phép cài APK, thao tác PC01 hay kiểm thử trên xe.
