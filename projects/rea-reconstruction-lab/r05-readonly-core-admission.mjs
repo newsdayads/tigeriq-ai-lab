@@ -39,7 +39,8 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
   if (snapshot.sharedLeases.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256))
     return report('INVALID_LEASE_PROJECTION');
-  if (snapshot.jobs.some(x => !rec(x) || !['running', 'queued'].includes(x.status) ||
+  // /api/status includes bounded historical 'done' rows; they are not active leases.
+  if (snapshot.jobs.some(x => !rec(x) || !['running', 'queued', 'done'].includes(x.status) ||
       !(x.resource_id === null || (typeof x.resource_id === 'string' &&
         x.resource_id.length > 0 && x.resource_id.length <= 256)) ||
       !(x.employee_id === null || typeof x.employee_id === 'string')))
