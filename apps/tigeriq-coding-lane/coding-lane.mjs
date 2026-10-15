@@ -13,7 +13,7 @@ import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof} from './coding-skill-policy.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -1299,7 +1299,7 @@ async function managerTick(){
   const liveContextText=liveGithubContextBlock?`\n\n${liveGithubContextBlock}\n`:'';
   let prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`+formatCodingOwnerReviewPolicy(ownerWaiver);
   let managerSkills={evidence:[],contextBlock:''};
-  const contractRevision=createHash('sha256').update(JSON.stringify({objective:o.objective,sourceHeadSha,context:liveGithubContext?.fingerprint||null})).digest('hex');
+  const contractRevision=createHash('sha256').update(JSON.stringify({objective:o.objective,context:liveGithubContext?.fingerprint||null})).digest('hex');
   try{
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       managerSkills=loadRequiredCodingSkills(o.objective);
@@ -1333,7 +1333,14 @@ async function managerTick(){
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let jobInstruction=String(d.job.instruction||o.objective);
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
-      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
+      const sourceTree=await ghRepo(targetRepository,`/git/trees/${sourceHeadSha}?recursive=1`);
+      if(sourceTree?.truncated||!Array.isArray(sourceTree?.tree))throw Error('CODING_MATERIAL_TREE_INCOMPLETE');
+      const blobMap=new Map(sourceTree.tree.filter(x=>x.type==='blob').map(x=>[x.path,x.sha]));
+      const sourceBlobs=Object.fromEntries(paths.map(path=>[path,blobMap.get(path)||null]));
+      const materialRevision=codingMaterialSourceRevision({
+        objective:o.objective,liveFingerprint:liveGithubContext?.fingerprint,paths,sourceBlobs
+      });
+      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:materialRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
       const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
       const previous=sourceWorkOrder
@@ -1346,7 +1353,7 @@ async function managerTick(){
         if(!previousPacket)continue;
         const failure=typeof row.failure==='string'?JSON.parse(row.failure):row.failure;
         history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||row.source_objective_id),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
-          status:row.status==='done'?'accepted':row.status==='failed'?'failed':String(row.status||''),
+          status:row.status==='done'?'merged_unaccepted':row.status==='failed'?'failed':String(row.status||''),
           failureSignature:codingFailureSignature(failure)});
       }
       const same=history.filter(h=>h.workOrderId===workOrderId&&h.stepId===packet.step_id&&h.sourceRevision===packet.source_revision);
