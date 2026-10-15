@@ -14,6 +14,8 @@ import {
   apiDoctorRepairSignature,
   apiDoctorRepairWorkOrderGate,
   apiDoctorResourceEligibleForCapability,
+  apiDoctorScannableEmployeeId,
+  apiDoctorScanSignature,
   buildApiDoctorPrompt,
   buildApiDoctorRepairWorkOrder,
   classifyApiDoctorFailure,
@@ -24,6 +26,28 @@ import {parseCodingIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {nv02EligibleWorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 describe('#1255 NV10 API Doctor policy',()=>{
+  it('scans only API workers NV11–NV20, never manager/coder/device resources',()=>{
+    for(let id=11;id<=20;id++)expect(apiDoctorScannableEmployeeId('NV'+id)).toBe(true);
+    for(const id of ['NV00','NV06','NV07','NV08','NV09','NV10','NV21','NV30','NV111','MANAGER',''])expect(apiDoctorScannableEmployeeId(id)).toBe(false);
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const scan=core.slice(core.indexOf('async function runApiDoctorScan(){'),core.indexOf('async function apiDoctorTelemetry(){'));
+    expect(scan).toContain('.rows.filter(resource=>apiDoctorScannableEmployeeId(resource.employee_id))');
+    expect(scan).toContain('const scanSignature=apiDoctorScanSignature(analysisCandidates);');
+  });
+
+  it('keeps distinct NV/provider signatures and dedupes only the same API scan state',()=>{
+    const nv11={employeeId:'NV11',provider:'groq',action:'probe',failureClass:'rate_limit'};
+    const nv12={employeeId:'NV12',provider:'cerebras',action:'probe',failureClass:'rate_limit'};
+    const nv20={employeeId:'NV20',provider:'nvidia',action:'probe',failureClass:'rate_limit'};
+    const first=apiDoctorScanSignature([nv11,nv20]);
+    expect(first).toBe(apiDoctorScanSignature([nv20,nv11]));
+    expect(first).not.toBe(apiDoctorScanSignature([nv12,nv20]));
+    expect(first).not.toBe(apiDoctorScanSignature([nv11,{...nv20,action:'wait'}]));
+    expect(first).not.toBe(apiDoctorScanSignature([{...nv11,provider:'alternate'},nv20]));
+    expect(first).toMatch(/^SCAN\\|core\\|state\\|[a-f0-9]{64}$/);
+    expect(apiDoctorScanSignature([{employeeId:'NV09',provider:'ollama',action:'probe',failureClass:'timeout'}])).toBe(apiDoctorScanSignature([]));
+  });
+
   it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf('async function owner4595CanaryOnce(){');
