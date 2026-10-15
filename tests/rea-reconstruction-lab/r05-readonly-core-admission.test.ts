@@ -149,3 +149,22 @@ it('R05 CLI rejects normalized impossible date without exposing job identifiers'
   expect(JSON.parse(r.stdout).decision).toBe('INVALID_TIME');
   expect(r.stdout).not.toContain('PRIVATE_JOB_DO_NOT_ECHO');
 });
+
+it('R05 treats a Core BUSY status as contention even when job and lease IDs are null',()=>{
+  const x=fixture();nv02(x);x.resources.at(-1).status='BUSY';
+  const r=check(x);expect(r.decision).toBe('NV02_RESOURCE_BUSY');
+  expect(r.counts.busyRows).toBe(1);safe(r);
+});
+it('R05 BUSY status wins over a queued-only job projection',()=>{
+  const x=fixture();nv02(x);x.resources.at(-1).status='BUSY';
+  x.jobs=[{id:'pending',employee_id:'NV02',resource_id:'rea-nv02',status:'queued'}];
+  const r=check(x);expect(r.decision).toBe('NV02_RESOURCE_BUSY');safe(r);
+});
+it('R05 BUSY status on another employee resource does not block an unrelated NV02 resource',()=>{
+  const x=fixture();x.resources[0].status='BUSY';nv02(x);x.resources.at(-1).status='READY';
+  const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 NV02 IDLE status still never grants any lease or device permission',()=>{
+  const x=fixture();nv02(x);x.resources.at(-1).status='IDLE';
+  const r=check(x);expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
