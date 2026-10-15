@@ -47,3 +47,13 @@ test('checked different evidence is never overwritten',()=>{
  const v=planAcceptedChecklistStep({issue:checked,stepId:'R00',evidenceUrl:url,resourceScope:'TIGERIQ_CANARY'});
  assert.equal(v.reason,'STEP_ALREADY_CHECKED_DIFFERENT_EVIDENCE');
 });
+test('handles bold markdown step IDs and suffixed section headers',()=>{
+ const boldBody = body.replace('## STRUCTURED_PROGRESS_CHECKLIST', '## STRUCTURED_PROGRESS_CHECKLIST — 30 MỐC')
+                      .replace('- [ ] R00', '- [ ] **R00** — Bước thử nghiệm')
+                      .replace('- [ ] R01', '- [ ] **R01** — Bước tiếp theo');
+ const boldIssue = { ...initial(), body: boldBody };
+ const planned = planAcceptedChecklistStep({ issue: boldIssue, stepId: 'R00', evidenceUrl: url, resourceScope: 'TIGERIQ_CANARY' });
+ assert.equal(planned.ok, true);
+ assert.match(planned.newBody, /- \[x\] \*\*R00\*\*.*— \[Biên nhận nghiệm thu\]/);
+});
+

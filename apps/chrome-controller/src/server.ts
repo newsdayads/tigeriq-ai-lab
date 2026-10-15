@@ -121,6 +121,7 @@ let lastAutopilotStopReason='';
 let selfRunTicking=false;
 let githubTerminalReconcileTicking=false;
 let coreUiTransportTicking=false;
+let lastCoreUiTransportError: string | null = null;
 let selfRunTimer:NodeJS.Timeout|undefined;
 const CORE_UI_TRANSPORT_WORKERS:WorkerId[]=['NV03','NV04'];
 const coreUiTransportEnabled=true;
@@ -291,11 +292,15 @@ function evidence(){
     sessionName:process.env.SESSIONNAME??null,
   });
 }
+let lastPersistEvidenceMode: string | null = null;
 function persistEvidence(){
   const value=evidence();
   try{
     const persisted=persistRuntimeEvidenceJson(runtimeEvidencePath,value);
-    if(persisted.mode==='COPY_FALLBACK')log('PERSIST_EVIDENCE_COPY_FALLBACK',{path:runtimeEvidencePath,code:persisted.code});
+    if(persisted.mode==='COPY_FALLBACK' && lastPersistEvidenceMode!=='COPY_FALLBACK'){
+      log('PERSIST_EVIDENCE_COPY_FALLBACK',{path:runtimeEvidencePath,code:persisted.code});
+    }
+    lastPersistEvidenceMode=persisted.mode;
   }
   catch(error){log('PERSIST_EVIDENCE_FAILED',{path:runtimeEvidencePath,error:String(error),code:fsErrorCode(error)});}
   return value;
@@ -876,7 +881,11 @@ async function coreUiTransportTick(){
       log('CORE_UI_TRANSPORT_DISPATCHED',{workerId,jobId:String(job.jobId),issueRef:String(job.issueRef||'')});
     }
   }catch(error){
-    log('CORE_UI_TRANSPORT_ERROR',{error:String(error)});
+    const errStr = String(error);
+    if(errStr !== lastCoreUiTransportError){
+      lastCoreUiTransportError = errStr;
+      log('CORE_UI_TRANSPORT_ERROR',{error:errStr});
+    }
   }finally{coreUiTransportTicking=false;}
 }
 
