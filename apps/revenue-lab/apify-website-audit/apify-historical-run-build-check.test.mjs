@@ -23,7 +23,7 @@ function mock(first=canonical,second=first){
   assert.doesNotMatch(url,/run-sync|\/builds|\/runs\?/);
   if(url.endsWith('/actors/ACTOR12345'))return Response.json({data:actor});
   if(url.endsWith('/actor-runs/RUN1234567'))return Response.json({data:++getRun===1?first:second});
-  if(url.endsWith('/key-value-stores/STORE12345/records/OUTPUT'))return Response.json({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/hidden'});
+  if(url.endsWith('/key-value-stores/STORE12345/records/OUTPUT'))return Response.json({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'});
   throw Error('OTHER_ENDPOINT_NOT_ALLOWED');
  };
  return {calls,fetchFn};
@@ -40,7 +40,7 @@ test('R04 build identity: exact Owner UI build 0.0.4 accepted; 4 GET, no mutatio
  assert.equal(out.acceptance.historicalRunMatched,true);
  assert.equal(out.cost.ownerBillingConfirmed,false);
  assert.equal(out.action.newRuns,0);assert.equal(m.calls.length,4);
- assert.doesNotMatch(JSON.stringify(out),/SYNTHETIC_TOKEN_DO_NOT_TREAT_AS_SECRET|example\.com\/hidden/);
+ assert.doesNotMatch(JSON.stringify(out),/SYNTHETIC_TOKEN_DO_NOT_TREAT_AS_SECRET|example\.com/);
 });
 test('R04 build identity: wrong build same day is not Owner canary',async()=>expects('HISTORICAL_BUILD_MISMATCH',{...canonical,buildNumber:'0.0.3'}));
 test('R04 build identity: null build cannot claim match',async()=>expects('HISTORICAL_BUILD_UNVERIFIED',{...canonical,buildNumber:null}));
