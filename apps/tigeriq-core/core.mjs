@@ -59,7 +59,7 @@ import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
-import {runNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
+import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
@@ -1807,6 +1807,17 @@ async function reviewerResourceIdsForJob(j){
 async function claimJob() {
   const c=await pool.connect();
   try { await c.query('begin');
+    // Owner-approved canary has no P0 objective. Claim its fixed existing-ledger
+    // kind separately so the normal objective/P0 selector remains unchanged.
+    const nv=await c.query("select j.*,null::jsonb as objective_metadata from tigeriq_jobs j where j.objective_id is null and j.kind='nv07_bootstrap' and j.capability='nv07_bootstrap' and j.employee_id='NV07' and j.resource_id='res:antigravity:agy-cli:owner-wdragons12x:pc01' and j.max_attempts=1 and j.attempts=0 and j.status='queued' order by j.created_at for update skip locked limit 1");
+    if(nv.rows[0]){
+      const j=nv.rows[0];
+      await c.query("update tigeriq_jobs set status='running',attempts=1,started_at=now(),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
+      await c.query('commit');
+      const claimed={...j,attempts:1,started_at:new Date()};
+      await hotPathStage(claimed,'CLAIMED');
+      return claimed;
+    }
     const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
         and j.attempts<j.max_attempts and o.status='active' and o.priority<>'P0'
@@ -1886,6 +1897,15 @@ async function emitSkillEffectivenessObservations({
   }
 }
 async function runJob(j) {
+  if(j.kind==='nv07_bootstrap'){
+    const result=await runNv07ApprovedBootstrap(pool,{queuedJobId:j.id});
+    // Cover pre-lease denials too. They must terminate, never retry a canary.
+    await pool.query("update tigeriq_jobs set status=$2,result=$3,lease_until=null,completed_at=now() where id=$1 and status='running'",
+      [j.id,result.accepted?'done':'failed',JSON.stringify(result)]);
+    await event('NV07_CANONICAL_QUEUE_JOB_FINISHED',{workOrderId:4783,jobId:j.id,
+      accepted:result.accepted===true,code:result.code,nv07Active:false});
+    return;
+  }
   let skillRoutingPreflight=null;
   let jobSkillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
   const skillUseStartedAt=Date.now();
@@ -3130,13 +3150,13 @@ const server=createServer(async(req,res)=>{
       if(!input||Array.isArray(input)||Object.keys(input).some(k=>k!=='action')||input.action!=='READ_METADATA'){
         res.writeHead(400);return res.end('NV07_FIXED_OPERATION_REQUIRED');
       }
-      const result=await runNv07ApprovedBootstrap(pool);
-      res.writeHead(result.accepted?200:409,{'content-type':'application/json','cache-control':'no-store'});
+      const result=await queueNv07ApprovedBootstrap(pool);
+      res.writeHead(result.accepted?202:409,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(result));
     }
     if(req.method==='GET'&&url.pathname==='/api/nv07/bootstrap-receipts'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
-      const rows=await pool.query("select seq,ts,type,job_id,resource_id,data from tigeriq_events where employee_id='NV07' and data->>'workOrderId'='4783' and type in ('NV07_CORE_BOOTSTRAP_DISPATCHED','NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT') order by seq desc limit 10");
+      const rows=await pool.query("select seq,ts,type,job_id,resource_id,data from tigeriq_events where employee_id='NV07' and data->>'workOrderId'='4783' and type in ('NV07_CORE_BOOTSTRAP_QUEUED','NV07_CORE_BOOTSTRAP_DISPATCHED','NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT') order by seq desc limit 10");
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify({receipts:rows.rows,nv07Active:false}));
     }
