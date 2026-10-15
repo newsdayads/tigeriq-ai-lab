@@ -2259,7 +2259,7 @@ export async function runNv07GatewayReadMetadataCanary() {
       paths: ['docs/implementation/nv07-proposal.md'],
       rules: [
         'Do not call tools, run terminal commands, or access files or credentials.',
-        'Return only a structured read-only metadata proposal; do not write files or source.',
+        'Return a structured read-only metadata response with proposed_files exactly []; do not write files or source.',
         'This is a transport canary and does not approve or implement changes.',
       ],
     };
