@@ -86,6 +86,18 @@ function systemWorkOrder(issue,body='') {
       || labels.some(x=>x.includes('SYSTEM')||x.includes('CENTRAL')||x.includes('POLICY'));
 }
 
+// Work Center must include legacy assigned Work Orders without an explicit
+// TIGERIQ_EXECUTABLE field; they remain visible, but this grants NO execution.
+export function webControlWorkOrderCandidate(issue) {
+  if (!issue || typeof issue !== 'object' || issue.pull_request) return false;
+  const body = String(issue.body || '');
+  if (/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body)) return true;
+  if (systemWorkOrder(issue, body)) return true;
+  const checklist = workOrderChecklistSteps(body);
+  return Boolean(machineValue(body, 'RESOURCE_SCOPE') &&
+    machineValue(body, 'CURRENT_STEP') && checklist.found && checklist.steps.length);
+}
+
 export function projectWorkOrder(issue, source = {}) {
   const body=String(issue?.body||'');
   const checklist=workOrderChecklistSteps(body);
@@ -159,12 +171,9 @@ async function githubWorkOrders() {
     const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=all&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
     if(!response.ok) throw new Error('GITHUB_HTTP_'+response.status);
     const rows=await response.json();
-    const candidates=(Array.isArray(rows)?rows:[]).filter(issue=>{
-      if(issue.pull_request)return false;
-      const body=String(issue.body||'');
-      const executable=/(?:^|\n)TIGERIQ_EXECUTABLE=(?:true|false)(?:\r?\n|$)/.test(body);
-      return executable||systemWorkOrder(issue,body);
-    }).map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
+    const candidates=(Array.isArray(rows)?rows:[])
+      .filter(webControlWorkOrderCandidate)
+      .map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
     const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
     const workOrders=candidates.filter(x=>!x.closed)
       .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
