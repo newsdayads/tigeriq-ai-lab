@@ -144,14 +144,16 @@ async function requestOnce(url, options) {
           durationMs: Date.now() - started,
         });
       }
+      // HTTP failures must preserve their status code even when servers
+      // return a JSON or text error page instead of HTML.
+      if (statusCode < 200 || statusCode >= 300) {
+        res.resume();
+        return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
+      }
       const contentType = headerValue(res.headers, 'content-type').toLowerCase();
       if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
         res.resume();
         return done(reject, new AuditError('UNSUPPORTED_CONTENT_TYPE', 'Response is not HTML.', contentType || null));
-      }
-      if (statusCode < 200 || statusCode >= 300) {
-        res.resume();
-        return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
       }
 
       const chunks = [];
