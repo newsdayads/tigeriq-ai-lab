@@ -32,7 +32,7 @@ export function compileCodingStepPacket({objectiveId,sourceRevision,sourceHeadSh
     paths,deliverable_type:kind,required_changed_paths:required,
     steps:strings(job.steps,'STEPS'),acceptance:strings(job.acceptance,'ACCEPTANCE'),
     evidence_required:strings(job.evidence_required,'EVIDENCE'),
-    skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0})),
+    skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0,...(x.context_sha256?{context_sha256:string(x.context_sha256)}:{})})),
     required_checks:[...new Set([
       ...({android:['Android Build Verify'],frontend:['Frontend Functional Verify'],backend:['Backend Contract Verify'],test:['Focused Test Verify'],source:['Focused Test Verify'],documentation:[]}[kind]),
       ...(job.required_checks===undefined?[]:strings(job.required_checks,'FUNCTIONAL_CHECKS',{max:5,allowEmpty:true}))
