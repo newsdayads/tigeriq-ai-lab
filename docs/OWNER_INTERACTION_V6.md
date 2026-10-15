@@ -17,6 +17,10 @@ Mọi phản hồi Owner-facing và bề mặt TigerIQ sở hữu trình bày ng
 - Rà soát dùng xanh dương/clipboard-check với nhãn riêng, không tự tính DONE.
 - Ưu tiên icon vector cùng họ (Lucide) khi bề mặt hỗ trợ; chữ thuần khi không có. Không sinh emoji trạng thái. Màu phải đi cùng chữ, không dựa vào màu duy nhất.
 
+## NGOẠI LỆ OWNER CHO THẺ NHÂN SỰ NV — 15/10/2026
+- **Chỉ thẻ trạng thái nhân sự NV** trên API Health / Web Control: **ĐANG LÀM = xanh lá** khi có hoạt động runtime được xác minh; **RẢNH = xanh dương** khi trạng thái READY/IDLE/ONLINE là hiện hành. Chỉ đổi màu chữ/chấm trạng thái; nền/viền thẻ vẫn trung tính. ON_DEMAND chờ giao việc vẫn xám; CHỜ vàng; LỖI đỏ; CHƯA XÁC MINH xám.
+- Ngoại lệ này do Owner chỉ đạo sau bản chuẩn hóa #4841; **không** áp dụng lên báo cáo công việc/BCCT V6: DONE vẫn cần nghiệm thu, xanh lá trên NV ĐANG LÀM **không** có nghĩa công việc DONE. Giữ văn bản trạng thái đi cùng màu, không suy trạng thái từ màu.
+
 ## TIẾN ĐỘ BẰNG CHỨNG
 - Chỉ tính từ x/y mốc đã xác minh trên nguồn có URL và thời gian kiểm tra. Hiển thị ROUND(100*x/y)% và thanh tương ứng.
 - x=y nhưng chưa có acceptanceVerified: KHÔNG HIỆN 100%; ghi “x/y mốc · CHỜ NGHIỆM THU CUỐI”.
