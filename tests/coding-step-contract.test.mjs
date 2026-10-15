@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -132,4 +132,20 @@ test('Owner-controlled canary always creates draft PRs and never auto-merges',as
   assert.match(lane,/draft:\(process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\)/);
   assert.match(lane,/if\(AUTO_MERGE&&process\.env\.TIGERIQ_P0_CODING_STEP_CANARY!=='1'\)/);
   assert.doesNotMatch(lane,/TIGERIQ_P0_CODING_STEP_OWNER_RELEASE/);
+});
+
+
+test('unrelated main commits cannot reset the retry budget of the same source step',()=>{
+  const input={objective:'Issue #4625 implement D01',paths:['apps/dexcam-personal/app/build.gradle.kts'],sourceBlobs:{'apps/dexcam-personal/app/build.gradle.kts':'a'.repeat(40)}};
+  const first=codingMaterialSourceRevision(input);
+  const unrelatedMainChanged=codingMaterialSourceRevision({...input,unrelatedMainSha:'b'.repeat(40)});
+  assert.equal(first,unrelatedMainChanged);
+  assert.notEqual(first,codingMaterialSourceRevision({...input,sourceBlobs:{'apps/dexcam-personal/app/build.gradle.kts':'b'.repeat(40)}}));
+  assert.notEqual(first,codingMaterialSourceRevision({...input,objective:'Issue #4625 D01 new evidence'}));
+  assert.throws(()=>codingMaterialSourceRevision({...input,sourceBlobs:{}}),/CODING_MATERIAL_BLOB_UNKNOWN/);
+});
+test('a merged step without product acceptance is not replayed or labelled accepted',()=>{
+  const decision=repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'A',history:[{workOrderId:'4625',stepId:'D01',sourceRevision:'A',status:'merged_unaccepted'}]});
+  assert.equal(decision.code,'CODING_STEP_MERGED_AWAITING_ACCEPTANCE');
+  assert.equal(decision.allow,false);
 });
