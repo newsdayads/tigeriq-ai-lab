@@ -62,7 +62,9 @@ describe('NV03 QA-only discovery from canonical milestone work orders',()=>{
   });
   it('exports a read-only QA inbox in the existing PC01 GitHub work projection',()=>{
     const api=readFileSync(new URL('../api/live-status.mjs',import.meta.url),'utf8');
-    expect(api).toContain('const nv03MilestoneQaInbox = discoverNv03MilestoneQa(openIssues)');
+    expect(api).toContain('const nv03MilestoneQaInbox = discoverNv03MilestoneQa(openIssues,{receiptsByIssue:receiptByIssue})');
+    expect(api).toContain('receiptCoverage.get(task.issueNumber)');
+    expect(api).toContain('REVIEW_RECEIPTS_UNVERIFIED');
     expect(api).toContain('nv03MilestoneQaInboxFresh: !projectionStale && issuesComplete === true');
     expect(api).toContain('nv03MilestoneQaInboxFresh: false');
   });
