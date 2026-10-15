@@ -1,6 +1,6 @@
 # 06 — Kế hoạch dự án, danh sách việc và điều kiện chuyển giai đoạn
 
-> **CHỈ LẬP KẾ HOẠCH.** Mọi việc lập trình, cài đặt trên xe hoặc cấp quyền vượt mặc định đều **CHỜ LỆNH OWNER**. Không có nhân sự AI nào đang thực thi ngầm.
+> **CẬP NHẬT 12/10/2026:** Owner cho phép phát triển phần mềm theo từng cổng. Chưa tự cho phép cài APK/thử xe/đổi quyền; trạng thái nhân sự thực thi phải có biên nhận Core riêng.
 
 ## 1. Cấu trúc dự án độc lập
 - **Mã dự án chuẩn (`project.yaml`):** `dexcam-personal`. `TIGERIQ_DEXCAM_PERSONAL` là mã lịch sử đang còn trong Issue, không được tạo một dự án thứ hai khi đồng bộ.
@@ -8,20 +8,20 @@
 - **Tài liệu:** `projects/dexcam-personal/`
 - **Mã nguồn ứng dụng:** **chưa có kho mã riêng**. Khi chuyển sang triển khai, ưu tiên tạo repository **riêng, riêng tư nếu chứa dữ liệu/driver thông tin chủ xe**, không dùng chung build pipeline TigerIQ Core.
 - **Môi trường:** Android/Samsung DeX; không liên quan App Chrome, không thay đổi Core/PC01.
-- **Điều hành hiện hành (Owner 2026-10-10):** P1, NV02 được tiếp tục rà soát và bổ sung tài liệu trong phạm vi có sẵn; chưa có bằng chứng Core tự giao việc và `AUTO_QUEUE=EXCLUDED` vẫn giữ. Chưa cấp quyền lập trình APP, không dùng Codex/RDC hoặc sửa App Chrome.
+- **Điều hành hiện hành (Owner 2026-10-12):** P1; `AUTO_QUEUE=INCLUDED`, phần mềm được phép có điều kiện theo Work Order GH-4625. Chưa có biên nhận Core nhận việc. Không tự dùng Codex/PC01/App Chrome hoặc cấp quyền thiết bị/xe.
 
 ## 2. Giai đoạn và kết quả bàn giao dự kiến
 
-**Quy ước ưu tiên:** Work Order `GH-4625` có ưu tiên điều hành **P1**. Các nhãn `P0`/`P1` trong bảng yêu cầu chức năng và danh sách đầu việc bên dưới **chỉ thể hiện mức độ thiết yếu của tính năng DeXCam sau khi được phép lập trình**; không biến bất kỳ bước con nào thành Work Order P0, không trao quyền thực thi P0 và không dỡ khóa `IMPLEMENTATION_AUTHORIZATION=false`. Mã giai đoạn dùng `G0..G6` để tránh nhầm với lớp ưu tiên TigerIQ.
+**Quy ước ưu tiên:** Work Order `GH-4625` là **P1**. Các nhãn `P0`/`P1` bên dưới chỉ thể hiện độ thiết yếu của tính năng, không cấp Work Order P0. Quyền phát triển có điều kiện không vượt cổng G1/G2, kho nguồn, thiết bị, quyền hoặc nghiệm thu. Mã giai đoạn dùng `G0..G6`.
 | Giai đoạn | Trạng thái | Đầu ra cần có | Điều kiện kết thúc |
 |---|---|---|---|
 | G0: Ghi nhận mục tiêu | HOÀN THÀNH (hồ sơ) | Issue + tài liệu phân tích | GitHub ghi và đọc lại được |
 | G1: Khảo sát thiết bị | CHƯA THỰC HIỆN | USB descriptor, Android/DeX, trigger R, log 5 lượt | Owner cho phép đo/thu log |
 | G2: Khóa đặc tả | CHỜ KẾT QUẢ KHẢO SÁT | Chốt phạm vi giao diện, mode camera, quyền task, độ trễ | Quyết định Owner |
-| G3: Bắt đầu xây dựng | CHƯA ĐƯỢC PHÉP | Repository độc lập, mã nguồn và thử mô phỏng | Lệnh Owner rõ ràng `LÀM APP` |
-| G4: Tích hợp với thiết bị | CHƯA ĐƯỢC PHÉP | APK thử, log USB/DeX, 5 chu kỳ đầu | Thiết bị và quyền thật |
-| G5: Ổn định, kiểm thử | CHƯA ĐƯỢC PHÉP | 50 chu kỳ R, độ trễ, lỗi khôi phục | Số liệu kiểm thử |
-| G6: Phát hành cá nhân | CHƯA ĐƯỢC PHÉP | Bản ký chính chủ và hướng dẫn phục hồi | Owner duyệt cài/phát hành |
+| G3: Bắt đầu xây dựng | CHO PHÉP CÓ ĐIỀU KIỆN / CHƯA BẮT ĐẦU | Kho nguồn, mã và thử mô phỏng | G1/G2, cơ chế camera và quyền nguồn/khóa ghi đã xác minh |
+| G4: Tích hợp với thiết bị | CHỜ QUYỀN THIẾT BỊ | APK thử, log USB/DeX, 5 chu kỳ đầu | G3 nghiệm thu; quyền thao tác máy/xe an toàn có biên nhận |
+| G5: Ổn định, kiểm thử | CHỜ G4 / QUYỀN KIỂM THỬ | 50 chu kỳ R, độ trễ, lỗi khôi phục | G4 nghiệm thu + 50 log thực tế |
+| G6: Phát hành cá nhân | CHỜ NGHIỆM THU / QUYỀN PHÁT HÀNH | Bản ký chính chủ và hướng dẫn phục hồi | G5 nghiệm thu; quyền ký/cài/phát hành đúng phạm vi |
 
 **Lưu ý:** G0 chỉ là hoàn tất **khâu ghi nhận**, không phải hoàn thành phát triển. Tất cả tỷ lệ dự án phải dựa trên danh sách hạng mục đã nghiệm thu, không gán % cho phần chưa kiểm thử.
 
@@ -38,7 +38,7 @@
 | A-06 | P0 | Khóa tiêu chí độ trễ, logic hiện/ẩn | A-03..A-05 | Tiêu chuẩn hiệu năng có số đo |
 | A-07 | P1 | Duyệt đề xuất module mở rộng | Owner yêu cầu tính năng | Danh sách tính năng đã duyệt |
 
-### NHÓM B — CAMERA CORE (chỉ sau lệnh làm app)
+### NHÓM B — CAMERA CORE (sau cổng G1/G2 và quyền nguồn hợp lệ)
 | ID | Ưu tiên | Công việc | Phụ thuộc | Điều kiện nghiệm thu |
 |---|---|---|---|---|
 | B-01 | P0 | USB discovery + reconcile + identify | A-03 | Không bỏ qua USB sau resume |
@@ -49,7 +49,7 @@
 | B-06 | P0 | Recovery bounded + anti-stale-frame | B-03..B-05 | Không treo/khung hình cũ |
 | B-07 | P1 | Flip/rotate/fit/color/guidelines | B-03 | Chỉ làm khi phần cứng cho phép |
 
-### NHÓM C — QUẢN LÝ CỬA SỔ DEX (chỉ sau lệnh làm app)
+### NHÓM C — QUẢN LÝ CỬA SỔ DEX (sau cổng G1/G2 và quyền nguồn hợp lệ)
 | ID | Ưu tiên | Công việc | Phụ thuộc | Điều kiện nghiệm thu |
 |---|---|---|---|---|
 | C-01 | P0 | Capability + display/insets/density probe | A-05 | Có khả năng đo bounds |
