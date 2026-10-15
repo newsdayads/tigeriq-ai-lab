@@ -409,3 +409,26 @@ body.api-health #workList.tiq-work-center>.tiq-work-card>.work-main{
   flex:0 0 auto!important;height:auto!important;min-height:max-content!important;
  }
 }
+
+/* Owner 2026-10-15: compact workforce, status colors, verified progress shimmer. */
+body.api-health #workers.workers{
+ grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr))!important;
+}
+body.api-health #workers.workers>.worker.employee-card{min-width:0!important;padding:6px!important}
+body.api-health #workers.workers .employee-identity{min-width:0!important}
+body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity{
+ color:#4ade80!important;border-color:rgba(74,222,128,.32)!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .work-quick.blocked{
+ color:#f87171!important;border-color:rgba(248,113,113,.4)!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-fill{position:relative!important;overflow:hidden!important}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-fill::after{
+ content:''!important;position:absolute!important;inset:0!important;width:44%!important;
+ background:linear-gradient(100deg,transparent 0%,rgba(255,255,255,.08) 20%,rgba(255,255,255,.62) 50%,rgba(255,255,255,.08) 80%,transparent 100%)!important;
+ transform:translateX(-160%) skewX(-15deg);animation:tiq-owner-shine 2.7s ease-in-out infinite!important;
+ pointer-events:none;
+}
+@keyframes tiq-owner-shine{0%,15%{transform:translateX(-160%) skewX(-15deg)}75%,100%{transform:translateX(360%) skewX(-15deg)}}
+@media(max-width:480px){body.api-health #workers.workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(prefers-reduced-motion:reduce){:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .progress-fill::after{animation:none!important;content:none!important}}
