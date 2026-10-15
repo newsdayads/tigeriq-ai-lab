@@ -4,6 +4,14 @@ import {matchAndLoadSkills} from '../tigeriq-core/skill-loader.mjs';
 const ID=/^[a-z0-9][a-z0-9-]*$/;
 const SHA=/^[a-f0-9]{64}$/;
 
+export function requiredCodingSkillIdsForDeliverable(deliverableType){
+  const kind=String(deliverableType||'').trim().toLowerCase();
+  if(!['source','frontend','backend','android','test','documentation'].includes(kind))
+    throw Object.assign(new Error('CODING_SKILL_DELIVERABLE_INVALID'),{code:'CODING_SKILL_DELIVERABLE_INVALID'});
+  const specialist={frontend:'frontend-engineering',backend:'backend-engineering'}[kind];
+  return specialist?['spec-first-tdd',specialist]:['spec-first-tdd'];
+}
+
 export function loadRequiredCodingSkills(objective,{requiredIds=['spec-first-tdd'],registryPath,baseDir}={}){
   const ids=[...new Set(requiredIds.map(x=>String(x||'').trim()))];
   if(!ids.length||ids.length>3||ids.some(id=>!ID.test(id)))
