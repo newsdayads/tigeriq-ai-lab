@@ -106,6 +106,7 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   if(!string(workOrderId)||!string(stepId)||!string(sourceRevision))return {allow:false,code:'CODING_ATTEMPT_IDENTITY_UNVERIFIED'};
   const comparable=(Array.isArray(history)?history:[]).filter(x=>string(x.workOrderId)===string(workOrderId)&&string(x.stepId)===string(stepId)&&string(x.sourceRevision)===string(sourceRevision));
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
+  if(comparable.some(x=>x.status==='merged_unaccepted'))return {allow:false,code:'CODING_STEP_MERGED_AWAITING_ACCEPTANCE'};
   if(comparable.some(x=>['queued','running','review','waiting_ci','waiting_resource'].includes(x.status)))return {allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'};
   if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
   return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
@@ -157,4 +158,19 @@ export function codingFailureSignature(failure={}){
     .replace(/\b\d{3,}\b/g,'<N>')
     .replace(/\s+/g,' ').slice(0,180);
   return message||'UNKNOWN_FAILURE';
+}
+
+
+// A new unrelated main commit cannot reset two-failure budget. Relevant target
+// blob changes or explicitly changed canonical objective/evidence can.
+export function codingMaterialSourceRevision({objective='',liveFingerprint='',paths=[],sourceBlobs={}}={}){
+  const selected=[...new Set((Array.isArray(paths)?paths:[]).map(string))].sort();
+  if(!selected.length||selected.length>8||selected.some(p=>!safePath(p)))throw Error('CODING_MATERIAL_PATHS_INVALID');
+  const blobs=selected.map(path=>{
+    if(!Object.hasOwn(sourceBlobs,path))throw Error('CODING_MATERIAL_BLOB_UNKNOWN:'+path);
+    const sha=sourceBlobs[path];
+    if(sha!==null&&!/^[a-f0-9]{40}$/i.test(String(sha)))throw Error('CODING_MATERIAL_BLOB_INVALID:'+path);
+    return [path,sha===null?null:String(sha).toLowerCase()];
+  });
+  return createHash('sha256').update(JSON.stringify({objective:string(objective),liveFingerprint:string(liveFingerprint),blobs})).digest('hex');
 }
