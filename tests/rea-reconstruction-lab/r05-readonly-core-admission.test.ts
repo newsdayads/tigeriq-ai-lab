@@ -240,3 +240,50 @@ it('R05 unrelated running job without resource mapping does not fake ownership',
   const r=check(x);
   expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
 });
+
+it('R05 live Core history: 15 resources and 40 done jobs must be processed, not rejected',()=>{
+  const x=fixture();
+  x.resources.push({employee_id:'NV09',resource_id:'r14',status:'IDLE',current_job_id:null});
+  x.jobs=Array.from({length:40},(_,i)=>({id:'historical-'+i,
+    employee_id:'NV09',resource_id:'r'+(i%14),status:'done'}));
+  const r=check(x);
+  expect(r.decision).toBe('NV02_RESOURCE_ABSENT');
+  expect(r.counts).toEqual({resources:15,nv02Rows:0,sharedLeases:0});safe(r);
+});
+it('R05 historical done job does not occupy NV02 or impersonate a lease',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=[{id:'old',employee_id:'NV02',resource_id:'rea-nv02',status:'done'}];
+  const r=check(x);
+  expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+});
+it('R05 actual running NV02 job stays busy amid 40 historical done rows',()=>{
+  const x=fixture();nv02(x);
+  x.jobs=Array.from({length:40},(_,i)=>({id:'old-'+i,
+    employee_id:'NV09',resource_id:'r'+(i%14),status:'done'}));
+  x.jobs.push({id:'active',employee_id:'NV02',resource_id:'rea-nv02',status:'running'});
+  const r=check(x);
+  expect(r.decision).toBe('NV02_RESOURCE_BUSY');safe(r);
+});
+it('R05 unfamiliar status or malformed done row remain invalid, not authorization',()=>{
+  for(const bad of [
+    {id:'bad',employee_id:'NV02',resource_id:'rea-nv02',status:'completed_unknown'},
+    {id:'bad',employee_id:'NV02',resource_id:'',status:'done'},
+    {id:'bad',employee_id:99,resource_id:'rea-nv02',status:'done'}
+  ]){
+    const x=fixture();nv02(x);x.jobs=[bad];
+    const r=check(x);
+    expect(r.decision).toBe('INVALID_JOB_PROJECTION');safe(r);
+  }
+});
+it('R05 actual Node CLI with 40 terminal jobs stays read-only and does not echo identifiers',()=>{
+  const x=fixture();
+  x.core.time=new Date().toISOString();
+  x.jobs=Array.from({length:40},(_,i)=>({id:'PRIVATE_HIST_JOB_'+i,
+    employee_id:'NV09',resource_id:'r'+(i%14),status:'done'}));
+  const p=run(['--read-only'],JSON.stringify(x));
+  expect(p.status).toBe(0);
+  expect(p.stderr).toBe('');
+  const r=JSON.parse(p.stdout);
+  expect(r.decision).toBe('NV02_RESOURCE_ABSENT');safe(r);
+  expect(p.stdout).not.toContain('PRIVATE_HIST_JOB_');
+});
