@@ -6,13 +6,13 @@ Không đánh đồng **có mã nguồn** với **chạy được**, **mở th�
 ## 2. Giai đoạn kiểm chứng
 
 **Nguồn tên giai đoạn duy nhất:** `06_BACKLOG_AND_ROADMAP.md` (G0–G6). Các ca kiểm thử dưới đây chỉ là thiết kế; **không phải bằng chứng sản phẩm/xe thật đã chạy**.
-1. **G0 — Ghi nhận mục tiêu:** Issue, yêu cầu, rủi ro và bộ đặc tả được ghi nhận; **chưa cho phép viết app**.
+1. **G0 — Ghi nhận mục tiêu:** Issue, yêu cầu, rủi ro, đặc tả được ghi nhận; hạn chế chưa cho lập trình là quyết định lịch sử, đã được cập nhật ngày 12/10/2026 theo quyền phần mềm có điều kiện.
 2. **G1 — Khảo sát thiết bị:** ghi USB descriptor, Android/One UI/DeX, mốc R và tối thiểu 5 lượt quan sát **chỉ khi được phép, xe ở trạng thái an toàn**.
 3. **G2 — Khóa đặc tả:** đối chiếu bằng chứng USB/UVC, quyền và giới hạn cửa sổ DeX; quyết định phương án, phạm vi và tiêu chí độ trễ, có chấp thuận của Owner.
-4. **G3 — Bắt đầu xây dựng (chưa được phép):** chỉ sau lệnh Owner riêng về lập trình, xây code/test mock theo FR-001..FR-012; có mã và test chạy đúng bản, không lấy checklist thiết kế làm PASS.
-5. **G4 — Tích hợp với thiết bị (chưa được phép):** thử APK đã được cho phép trên Android/DeX, xác nhận USB/frame/cửa sổ và các lượt R thực khi xe đỗ an toàn.
-6. **G5 — Ổn định, kiểm thử (chưa được phép):** 50 chu kỳ R, mất USB/preview, chuyển ứng dụng, khởi động lại, đo độ trễ và lỗi khôi phục; số liệu có nguồn thật.
-7. **G6 — Phát hành cá nhân (chưa được phép):** chỉ sau nghiệm thu riêng của Owner về bản thử, quyền cài/ký/phát hành, cơ chế sao lưu và phục hồi. Không có nghiệm thu hoặc phát hành ngầm.
+4. **G3 — Bắt đầu xây dựng (được phép có điều kiện):** Work Order ngày 12/10/2026 cho phép phần mềm nhưng chưa chứng minh G1/G2, cơ chế camera, kho nguồn và một người ghi; chỉ khi đủ các cổng mới xây mã + unit/mock theo FR-001..FR-012, không coi mô phỏng là thử xe.
+5. **G4 — Tích hợp với thiết bị (chờ quyền thiết bị cụ thể):** thử APK đã được cho phép trên Android/DeX, xác nhận USB/frame/cửa sổ và các lượt R thực khi xe đỗ an toàn.
+6. **G5 — Ổn định, kiểm thử (chờ G4 và quyền đo xe):** 50 chu kỳ R, mất USB/preview, chuyển ứng dụng, khởi động lại, đo độ trễ và lỗi khôi phục; số liệu có nguồn thật.
+7. **G6 — Phát hành cá nhân (chờ nghiệm thu và quyền ký/cài/phát hành):** chỉ sau nghiệm thu riêng của Owner về bản thử, quyền cài/ký/phát hành, cơ chế sao lưu và phục hồi. Không có nghiệm thu hoặc phát hành ngầm.
 
 ## 3. Ma trận kiểm thử camera
 | ID | Thử nghiệm | Điều kiện đầu | Bằng chứng cần |
