@@ -1,3 +1,20 @@
+# LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI
+Authority: GitHub `main` + Issue #504 (quyền/cổng) + Issue #280 (điều phối) + đúng Work Order/PR + biên nhận PC01 mới nhất. Những đoạn 26/09 và 01/10 phía dưới chỉ là **lịch sử tại thời điểm ghi**, không ghi đè trạng thái hiện hành.
+
+1. **Không có khóa Owner per-SHA chung cho các phát hành TigerIQ đã nằm trong `OWNER_PROJECT_AUTONOMY_V2`**. Trên PC01 phiếu hệ thống V2 `enabled=true` và các phát hành 15/10 đã có `COMMITTED`. Chỉ kiểm lại quyền hiện hành, SHA, CI/main, bảo vệ một writer và release attempt thật. Phiếu V1 expired/disabled không phải bằng chứng bị chặn.
+2. **Phân loại theo thao tác**: đọc GitHub, phân tích nguồn/giấy phép, audit, kiểm thử offline không cần Core DB mutation lease. Ghi source qua Core/job, cài PC01, dispatch, release hoặc thay trạng thái tài nguyên phải dùng quyền và lease của đúng bề mặt. Không suy từ `MUTATION_OWNER=NONE` trong Issue thành “khóa đang bị người khác giữ”.
+3. **GitHub PR/branch không phải Core resource lease**. PR #4800, #4807, #4809 đã merge với biên nhận và waiver hợp lệ; không bắt QA/Owner ký lại vì checkpoint cũ. Quy tắc branch protection/CI thực tế vẫn phải đạt.
+4. **Core runtime snapshot 15/10 08:53 ICT:** 14 AI resources trong danh sách; 4 ở trạng thái phục vụ (NV06/NV08/NV09/NV10), 10 không sẵn sàng do provider credentials, giới hạn, nguồn sửa chưa nghiệm thu hoặc hết ngân sách xác minh; 20 Objective gần nhất được liệt kê ở trạng thái BLOCKED, 0 shared lease sống. Đây chỉ là snapshot 20 gần nhất, **không phải toàn bộ lịch sử** và không cho phép giả rằng mọi việc đã được giải quyết.
+5. **Gốc mã AUTO-RCA:** trước đó generator phát capability ghép `coding,reasoning,review`, không khớp bộ định tuyến capability đơn. PR #4811 đã hợp nhất trên `main` ngày 15/10, đổi sang `CAPABILITY=coding` và `EXECUTION_SURFACE=CODING`, CI exact PR-head đạt. Không tự rearm/tuyên bố DONE các Issue cũ đóng/chặn.
+6. **App Chrome là Local-only**. `active-deploy.json` và NV02 owner lock phải đối chiếu live. Không xóa một lock có tiến trình owner còn chạy; không dùng GitHub Core source release để sửa App Chrome Local.
+7. **Source drift:** Bản 00_TIGERIQ_LOADER.md được đưa vào Project/Drive có thể cũ hơn GitHub main; không sử dụng bản đính kèm hay lịch sử chat lưu trữ để thay cho file `bootstrap/00_TIGERIQ_LOADER.md` mới nhất. GitHub thay đổi **không đồng bộ mọi cửa sổ ChatGPT/Gemini đang mở**.
+8. **Hành động khi chặn:** báo `SURFACE|GATE|CURRENT_SHA|LIVE_RECEIPT|NEXT_ALLOWED_ACTION`, chỉ dừng bước thật sự bị chặn, chuyển ngay việc độc lập an toàn; không lặp thất bại cùng đầu vào, không giả PASS/DONE và không tự cấp credential/chi phí hay phá bảo mật.
+
+Proof: https://github.com/newsdayads/tigeriq-ai-lab/issues/504 ; https://github.com/newsdayads/tigeriq-ai-lab/issues/280 ; https://github.com/newsdayads/tigeriq-ai-lab/pull/4811
+CURRENT_STATE_RULE=SOURCE_FIRST|PHASE_SCOPED_GATES|REAL_PC01_RECEIPTS|NO_CROSS_CHAT_AUTO_SYNC
+
+---
+
 # CURRENT OVERRIDE — APP CHROME LOCAL-ONLY — 2026-10-01
 
 - App Chrome đã tách khỏi TigerIQ/GitHub execution plane. Source authority local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Source`; deploy đang chạy được trỏ bởi `D:\TigerIQ\Apps\ChromeController\Runtime\active-deploy.json`.
