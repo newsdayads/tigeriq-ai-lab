@@ -1807,18 +1807,25 @@ async function reviewerResourceIdsForJob(j){
 async function claimJob() {
   const c=await pool.connect();
   try { await c.query('begin');
-    const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j left join tigeriq_objectives o on o.id=j.objective_id
+    // Owner-approved canary has no P0 objective. Claim its fixed existing-ledger
+    // kind separately so the normal objective/P0 selector remains unchanged.
+    const nv=await c.query("select j.*,null::jsonb as objective_metadata from tigeriq_jobs j where j.objective_id is null and j.kind='nv07_bootstrap' and j.capability='nv07_bootstrap' and j.employee_id='NV07' and j.resource_id='res:antigravity:agy-cli:owner-wdragons12x:pc01' and j.max_attempts=1 and j.attempts=0 and j.status='queued' order by j.created_at for update skip locked limit 1");
+    if(nv.rows[0]){
+      const j=nv.rows[0];
+      await c.query("update tigeriq_jobs set status='running',attempts=1,started_at=now(),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
+      await c.query('commit');
+      const claimed={...j,attempts:1,started_at:new Date()};
+      await hotPathStage(claimed,'CLAIMED');
+      return claimed;
+    }
+    const q=await c.query(`select j.*,o.metadata as objective_metadata from tigeriq_jobs j join tigeriq_objectives o on o.id=j.objective_id
       where (j.status='queued' or (j.status='waiting_resource' and coalesce(j.next_attempt_at,now())<=now()))
-        and j.attempts<j.max_attempts and (
-          (o.status='active' and o.priority<>'P0') or
-          (j.objective_id is null and j.kind='nv07_bootstrap' and j.capability='nv07_bootstrap'
-           and j.employee_id='NV07' and j.resource_id='res:antigravity:agy-cli:owner-wdragons12x:pc01'
-           and j.max_attempts=1 and j.status='queued'))
+        and j.attempts<j.max_attempts and o.status='active' and o.priority<>'P0'
       order by case when j.status='waiting_resource' then 0 else 1 end,
         case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,j.created_at
-      for update of j skip locked limit 1`);
+      for update skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
-    await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+case when kind='nv07_bootstrap' then 1 else 0 end,lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
+    await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
     await c.query('commit');
     const claimed={...j,started_at:j.started_at||new Date()};
     await hotPathStage(claimed,'CLAIMED');
