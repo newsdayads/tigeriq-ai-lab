@@ -47,7 +47,7 @@ export function prepareNv07CliProposal(job, { sandboxCwd } = {}) {
   const args = [
     '-p', JSON.stringify(payload), '--output-format', 'json',
     '--json-schema', JSON.stringify(NV07_PROPOSAL_SCHEMA),
-    '--print-timeout', '2m', '--sandbox',
+    '--print-timeout', '2m', '--sandbox', '--mode', 'plan', '--disable-slash-commands',
   ];
   return Object.freeze({
     accepted: true, executionState: 'PREPARED_NOT_RUN', employeeId: 'NV07',
