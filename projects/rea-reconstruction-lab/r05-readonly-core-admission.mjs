@@ -17,9 +17,11 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
   if ([snapshot.resources, snapshot.jobs, snapshot.sharedLeases].some(v => v.length > 256))
     return report('OVERSIZED_SNAPSHOT');
   const t = snapshot.core.time;
-  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(t) || !Number.isFinite(Date.parse(t)))
+  const parsedTime = Date.parse(t);
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(t) ||
+      !Number.isFinite(parsedTime) || new Date(parsedTime).toISOString().slice(0, 19) !== t.slice(0, 19))
     return report('INVALID_TIME');
-  if (Date.parse(t) < nowMs - 120000 || Date.parse(t) > nowMs + 15000)
+  if (parsedTime < nowMs - 120000 || parsedTime > nowMs + 15000)
     return report('STALE_SNAPSHOT');
   if (snapshot.resources.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256 ||
@@ -28,12 +30,18 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
   if (snapshot.sharedLeases.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256))
     return report('INVALID_LEASE_PROJECTION');
+  if (snapshot.jobs.some(x => !rec(x) || !['running', 'queued'].includes(x.status) ||
+      !(x.resource_id === null || typeof x.resource_id === 'string') ||
+      !(x.employee_id === null || typeof x.employee_id === 'string')))
+    return report('INVALID_JOB_PROJECTION');
   const ownedRows = snapshot.resources.filter(x => x.employee_id === 'NV02');
   const counts = { resources: snapshot.resources.length, nv02Rows: ownedRows.length,
     sharedLeases: snapshot.sharedLeases.length };
   if (!ownedRows.length) return report('NV02_RESOURCE_ABSENT', counts);
   const inUse = new Set(snapshot.sharedLeases.map(x => x.resource_id));
-  const busy = ownedRows.filter(x => inUse.has(x.resource_id) ||
+  const runningJobs = new Set(snapshot.jobs.filter(x => x.status === 'running' &&
+    typeof x.resource_id === 'string').map(x => x.resource_id));
+  const busy = ownedRows.filter(x => inUse.has(x.resource_id) || runningJobs.has(x.resource_id) ||
     (typeof x.current_job_id === 'string' && x.current_job_id.length > 0) ||
     (typeof x.shared_lease_work_id === 'string' && x.shared_lease_work_id.length > 0));
   if (busy.length === ownedRows.length) return report('NV02_RESOURCE_BUSY',
