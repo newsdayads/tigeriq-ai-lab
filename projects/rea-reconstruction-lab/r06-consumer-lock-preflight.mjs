@@ -58,6 +58,37 @@ const resolvedOk=(x,name,version)=>{
       decodeURIComponent(u.pathname)===expected;
   }catch{return false;}
 };
+
+const numericParts = value => {
+  if (typeof value !== 'string' ||
+      !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value))
+    return null;
+  const parts = value.split('.').map(Number);
+  return parts.every(Number.isSafeInteger) ? parts : null;
+};
+// Narrow, fail-closed subset of npm semver syntax found in pinned REA 6.4.0:
+// exact (including prerelease), ^M.m.p, ~M.m.p and major-only "1".
+// This is not a complete npm resolver, nor does it authenticate an SBOM.
+const supportedDependencySpec = spec =>
+  versionOk(spec) || (/^(0|[1-9][0-9]*)$/.test(spec) &&
+    Number.isSafeInteger(Number(spec))) ||
+  ((spec.startsWith('^') || spec.startsWith('~')) &&
+    numericParts(spec.slice(1)) !== null);
+const dependencySpecMatches = (spec, resolved) => {
+  if (versionOk(spec)) return spec === resolved;
+  const actual = numericParts(resolved);
+  if (!actual) return false; // ranged specs do not silently allow prereleases
+  if (/^(0|[1-9][0-9]*)$/.test(spec)) return actual[0] === Number(spec);
+  const min = numericParts(spec.slice(1));
+  if (!min || (spec[0] !== '^' && spec[0] !== '~')) return false;
+  const cmp = actual[0] - min[0] || actual[1] - min[1] || actual[2] - min[2];
+  if (cmp < 0) return false;
+  if (spec[0] === '~') return actual[0] === min[0] && actual[1] === min[1];
+  if (min[0] > 0) return actual[0] === min[0];
+  if (min[1] > 0) return actual[0] === 0 && actual[1] === min[1];
+  return actual[0] === 0 && actual[1] === 0 && actual[2] === min[2];
+};
+
 const locate=(pkgs,path,name)=>{
   let parent=path;
   while(true){
@@ -110,15 +141,17 @@ export function inspectR06ConsumerLock(lock){
       for(const [name,spec] of pairs(deps)){
         if(!nameOk(name)||typeof spec!=='string'||!spec.trim()||spec.length>256)
           return report('REJECTED','INVALID_DEPENDENCY_REFERENCE');
+        if(!supportedDependencySpec(spec))
+          return report('REJECTED','UNSUPPORTED_DEPENDENCY_SPEC');
         const located=locate(pkgs,path,name);
         if(!located){
           if(kind==='optional') { missingOptionalDependencies++; continue; }
           return report('REJECTED','UNRESOLVED_DEPENDENCY_REFERENCE');
         }
-        // Reject exact pin mismatches, including present optional native addons.
-        // Non-exact semver ranges are not checked by this shape-only verifier.
-        if(versionOk(spec) && pkgs[located].version!==spec)
-          return report('REJECTED','DEPENDENCY_EXACT_VERSION_MISMATCH');
+        if(!dependencySpecMatches(spec, pkgs[located].version))
+          return report('REJECTED',versionOk(spec)
+            ? 'DEPENDENCY_EXACT_VERSION_MISMATCH'
+            : 'DEPENDENCY_RANGE_MISMATCH');
       }
     }
   }
