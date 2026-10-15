@@ -1250,3 +1250,52 @@ html,body.api-health,body.api-health{max-width:100%;overflow-x:hidden!important}
 .tiq-work-center .tiq-work-card{margin:8px 0}
 @media(max-width:430px){.tiq-floating-reload{right:16px;bottom:calc(18px + env(safe-area-inset-bottom))}.tiq-audit-grid{gap:6px}.tiq-work-card .work-nv{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.tiq-floating-reload,.tiq-work-card{animation:none!important;transition:none!important}}
+
+
+/* Owner interaction V6: workforce cards are neutral; colors indicate status text/dot, not card chrome. */
+.api-health .worker.employee-card,
+.api-health .worker.employee-card.state-working,
+.api-health .worker.employee-card.state-ready,
+.api-health .worker.employee-card.state-ondemand,
+.api-health .worker.employee-card.state-waiting,
+.api-health .worker.employee-card.state-unknown,
+.api-health .worker.employee-card.state-attention,
+.api-health .worker.employee-card.state-paused{
+  background:#101c2e!important;
+  border:1px solid #344257!important;
+  box-shadow:none!important;
+  animation:none!important;
+  --health-card-accent:#344257;
+}
+.api-health .worker.employee-card::before,
+.api-health .worker.employee-card::after,
+.api-health .state-working .employee-avatar::after{display:none!important;}
+.api-health .worker.employee-card:hover,
+.api-health .worker.employee-card:focus-visible{
+  border-color:#718096!important;
+  box-shadow:0 0 0 1px #53657d44!important;
+  transform:none;
+}
+.api-health .worker.employee-card .employee-id{color:#e2e8f0;background:#19283a;border:1px solid #405069;box-shadow:none;text-shadow:none;}
+.api-health .worker.employee-card .employee-avatar{background:#17273a;border:1px solid #405069;box-shadow:none;}
+.api-health .worker.employee-card .employee-source{color:#a8b7c9;background:#172439;border-color:#405069;}
+.api-health .worker.employee-card .employee-name{color:#f1f5f9;text-shadow:none;}
+.api-health .worker.employee-card .employee-task{color:#b0bfd0;}
+.api-health .worker.employee-card .employee-state{background:none!important;border:0!important;padding:3px 0;color:var(--state-color,#94a3b8)!important;box-shadow:none;}
+.api-health .worker.employee-card.state-working{--state-color:#60a5fa;}
+.api-health .worker.employee-card.state-ready,
+.api-health .worker.employee-card.state-ondemand{--state-color:#a8b7c9;}
+.api-health .worker.employee-card.state-waiting{--state-color:#fbbf24;}
+.api-health .worker.employee-card.state-attention{--state-color:#fb7185;}
+.api-health .worker.employee-card.state-unknown,
+.api-health .worker.employee-card.state-paused{--state-color:#94a3b8;}
+.api-health .worker.employee-card .employee-live-dot,
+.api-health .worker.employee-card.state-ready .employee-live-dot{
+  background:#94a3b8!important;box-shadow:none!important;animation:none!important;
+}
+.api-health .worker.employee-card.state-working .employee-live-dot{background:#60a5fa!important;}
+.api-health .worker.employee-card.state-waiting .employee-live-dot{background:#fbbf24!important;}
+.api-health .worker.employee-card.state-attention .employee-live-dot{background:#fb7185!important;}
+.api-health .worker.employee-card .employee-live-line{color:#94a3b8!important;}
+.api-health .worker.employee-card.changed{animation:none!important;}
+body.api-health #techPopover.tech-popover,body.api-health #detailModal.detail-modal{border:1px solid #344257!important;box-shadow:0 16px 40px #0009!important;}
