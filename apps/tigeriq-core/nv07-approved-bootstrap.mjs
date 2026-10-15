@@ -183,13 +183,10 @@ export async function queueNv07ApprovedBootstrap(db){
     ||registry?.name!=='Google Antigravity'||!/PROVISIONING/.test(registry.admin_state||''))
    return deny('NV07_LIVE_QUEUE_REGISTRY_DENIED');
   const created=await db.query(
-   "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','queued',1,'NV07',$2,'antigravity') on conflict(id) do nothing returning id",
-   [a.jobId,NV07_BOOTSTRAP_RESOURCE_ID]);
-  if(created.rowCount!==1)return deny('NV07_JOB_ALREADY_QUEUED_NO_REPLAY');
-  await db.query(
-   "insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) values('NV07_CORE_BOOTSTRAP_QUEUED',$1,'NV07',$2,'nv07_bootstrap',$3::jsonb)",
+   "with queued as (insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','queued',1,'NV07',$2,'antigravity') on conflict(id) do nothing returning id), logged as (insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) select 'NV07_CORE_BOOTSTRAP_QUEUED',id,'NV07',$2,'nv07_bootstrap',$3::jsonb from queued returning job_id) select job_id as id from logged",
    [a.jobId,NV07_BOOTSTRAP_RESOURCE_ID,JSON.stringify({workOrderId:4783,sourceSha:a.sourceSha,
     resourceScope:NV07_CANARY_CORE_SCOPE,command:'7',action:'READ_METADATA'})]);
+  if(created.rowCount!==1)return deny('NV07_JOB_ALREADY_QUEUED_NO_REPLAY');
   return {accepted:true,code:'NV07_CANONICAL_QUEUE_ACCEPTED_NOT_EXECUTED',jobId:a.jobId,
    sourceSha:a.sourceSha,coreLeaseVerified:false,nv07Active:false};
  }catch{return deny('NV07_QUEUE_OPERATION_FAILED');}
