@@ -100,7 +100,7 @@ test('GitHub closed state without verified DONE, checklist or receipt is not acc
   assert.ok(bad.reasons.includes('DONE_EVIDENCE_MISSING_OR_AMBIGUOUS'));
 });
 test('completed source work order needs coherent terminal evidence',()=>{
-  const good=verifyClosedCodingWorkOrder({body:'DONE=true\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/4858#issuecomment-1\n- [x] G1\n- [x] G2',state:'closed',stateReason:'completed'});
+  const good=verifyClosedCodingWorkOrder({body:'DONE=true\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/4858#issuecomment-1\n- [x] G1\n- [x] G2',state:'closed',stateReason:'completed',externallyVerified:true});
   assert.equal(good.pass,true);
   const ambiguous=verifyClosedCodingWorkOrder({body:'DONE=true\nDONE=false\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://example.com/a\n- [x] G1'});
   assert.equal(ambiguous.pass,false);
@@ -148,4 +148,11 @@ test('a merged step without product acceptance is not replayed or labelled accep
   const decision=repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:'A',history:[{workOrderId:'4625',stepId:'D01',sourceRevision:'A',status:'merged_unaccepted'}]});
   assert.equal(decision.code,'CODING_STEP_MERGED_AWAITING_ACCEPTANCE');
   assert.equal(decision.allow,false);
+});
+
+test('a closed issue with all fields marked DONE but no trusted external verification still fails',()=>{
+  const body='DONE=true\nFINISHED_AT=2026-10-16T05:00:00+07:00\nFINISH_RECEIPT_URL=https://github.com/newsdayads/tigeriq-ai-lab/issues/4858#issuecomment-1\n- [x] G1';
+  const decision=verifyClosedCodingWorkOrder({body,state:'closed',stateReason:'completed'});
+  assert.equal(decision.pass,false);
+  assert.ok(decision.reasons.includes('EXTERNAL_ACCEPTANCE_UNVERIFIED'));
 });
