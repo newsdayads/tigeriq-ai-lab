@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
   nv07UserSessionPreflightIdentity,
+  runNv07GatewayReadMetadataCanary,
   assertShellCommandAllowed,
   assertTigerIQTaskName,
   trustedTigerIQTaskActionData,
@@ -61,10 +62,21 @@ describe('NV07 user-session OpenClaw read-only preflight', () => {
     expect(nv07UserSessionPreflightIdentity({platform:'win32',windowsUser:'SYSTEM'})).toBe(false);
     expect(nv07UserSessionPreflightIdentity({platform:'linux',windowsUser:'wdragons12x'})).toBe(false);
   });
+  it('denies a native CLI launch on non-Windows CI without creating any receipt', async () => {
+    if (process.platform !== 'win32') {
+      expect(await runNv07GatewayReadMetadataCanary()).toMatchObject({
+        accepted:false,state:'DENIED_NOT_RUN',reason:'NV07_WRONG_WINDOWS_LOGON',
+      });
+    }
+  });
   it('exposes only one named PC tool action, not generalized Antigravity shell', async () => {
     const plugin = await readFile(new URL('../apps/openclaw-tigeriq-runtime/dist/index.js',import.meta.url),'utf8');
     const operator = await readFile(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
     expect(plugin).toContain("Type.Literal('nv07_preflight')");
+    expect(plugin).toContain("Type.Literal('nv07_read_metadata_canary')");
+    expect(operator).toContain("data = await runNv07GatewayReadMetadataCanary()");
+    expect(operator).toContain("fs.open(NV07_CANARY_RECEIPT, 'wx')");
+    expect(operator).toContain("'--mode', 'plan', '--disable-slash-commands'");
     expect(operator).toContain("data = await nv07UserSessionPreflight()");
     expect(operator).toContain("['models']");
     const allowlist=operator.slice(operator.indexOf('const SAFE_SHELL_PATTERNS'),operator.indexOf('function normalizeWinPath'));
