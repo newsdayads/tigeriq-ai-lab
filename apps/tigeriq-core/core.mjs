@@ -59,6 +59,7 @@ import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
+import {recordNv07GithubProposalReceipt} from './nv07-github-proposal-receipt.mjs';
 import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
@@ -3144,6 +3145,16 @@ const server=createServer(async(req,res)=>{
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(health));
     }
+    if(req.method==='POST'&&url.pathname==='/api/nv07/proposal-github-receipt'){
+      if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
+      const input=await readBody(req);
+      if(Object.keys(input).some(k=>!['jobId','pullRequestNumber'].includes(k))){
+        res.writeHead(400);return res.end('NV07_RECEIPT_FIELDS_INVALID');
+      }
+      const result=await recordNv07GithubProposalReceipt(pool,input);
+      res.writeHead(result.accepted?200:409,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(result));
+    }
     if(req.method==='POST'&&url.pathname==='/api/nv07/bootstrap-read-metadata'){
       if(!auth(req)||!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const input=await readBody(req);
@@ -3156,7 +3167,7 @@ const server=createServer(async(req,res)=>{
     }
     if(req.method==='GET'&&url.pathname==='/api/nv07/bootstrap-receipts'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
-      const rows=await pool.query("select seq,ts,type,job_id,resource_id,data from tigeriq_events where employee_id='NV07' and data->>'workOrderId'='4783' and type in ('NV07_CORE_BOOTSTRAP_QUEUED','NV07_CORE_BOOTSTRAP_DISPATCHED','NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT') order by seq desc limit 10");
+      const rows=await pool.query("select seq,ts,type,job_id,resource_id,data from tigeriq_events where employee_id='NV07' and data->>'workOrderId'='4783' and type in ('NV07_GITHUB_PROPOSAL_APPLIED','NV07_CORE_BOOTSTRAP_QUEUED','NV07_CORE_BOOTSTRAP_DISPATCHED','NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT') order by seq desc limit 10");
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify({receipts:rows.rows,nv07Active:false}));
     }
