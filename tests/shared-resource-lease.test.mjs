@@ -226,6 +226,7 @@ test('source integration covers manager implementer reviewer, Core status and re
 
 const NV07_SOURCE_SHA='a'.repeat(40);
 const NV07_JOB_ID='NV07-4783-CANARY';
+const NV07_RESOURCE_ID='nv07:pc01';
 const NV07_NOW=Date.now();
 function nv07LeaseFixture(overrides={}){
   const metadata={
@@ -234,7 +235,7 @@ function nv07LeaseFixture(overrides={}){
     ...(overrides.metadata||{}),
   };
   const row={
-    resource_id:'nv07:pc01',employee_id:'NV07',resource_employee_id:'NV07',
+    resource_id:NV07_RESOURCE_ID,employee_id:'NV07',resource_employee_id:'NV07',
     work_id:NV07_JOB_ID,current_job_id:NV07_JOB_ID,enabled:true,
     lane:'nv07_bootstrap',role:'canary',
     lease_token:'NEVER_LEAK_THIS_CORE_TOKEN',
@@ -249,7 +250,7 @@ function nv07LeaseFixture(overrides={}){
 test('NV07 verified Core receipt maps DB lease without exposing lease bearer token',async()=>{
   const {db,calls}=nv07LeaseFixture();
   const got=await readVerifiedNv07CanaryCoreLease(db,{
-    jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,nowMs:NV07_NOW,
+    jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,resourceId:NV07_RESOURCE_ID,nowMs:NV07_NOW,
   });
   assert.deepStrictEqual(got,{
     verifiedByCore:true,job_id:NV07_JOB_ID,employee_id:'NV07',
@@ -259,16 +260,18 @@ test('NV07 verified Core receipt maps DB lease without exposing lease bearer tok
   assert.strictEqual(Object.isFrozen(got),true);
   assert.ok(!JSON.stringify(got).includes('NEVER_LEAK_THIS_CORE_TOKEN'));
   assert.strictEqual(calls.length,1);
-  assert.deepStrictEqual(calls[0].args,['NV07',NV07_JOB_ID]);
+  assert.deepStrictEqual(calls[0].args,['NV07',NV07_JOB_ID,NV07_RESOURCE_ID]);
+   assert.ok(calls[0].sql.includes('l.resource_id=$3'));
   assert.ok(calls[0].sql.includes('join tigeriq_ai_resources'));
   assert.ok(calls[0].sql.includes('l.lease_until>now()'));
   assert.ok(calls[0].sql.includes('r.current_job_id=l.work_id'));
 });
 
 test('NV07 Core lease reader fails closed for missing, wrong and expired DB authority',async()=>{
-  const options={jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,nowMs:NV07_NOW};
+  const options={jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceScope:NV07_CANARY_CORE_SCOPE,resourceId:NV07_RESOURCE_ID,nowMs:NV07_NOW};
   for(const override of [
     {enabled:false},{employee_id:'NV09'},{resource_employee_id:'NV08'},
+     {resource_id:'nv07:another-host'},
     {current_job_id:'OTHER-WORK'},{lane:'coding_lane'},{role:'implementer'},
     {lease_until:new Date(NV07_NOW-1).toISOString()},
     {metadata:{workOrderId:1111}},{metadata:{resourceScope:'ANOTHER_SCOPE'}},
@@ -281,6 +284,9 @@ test('NV07 Core lease reader fails closed for missing, wrong and expired DB auth
   const{db}=nv07LeaseFixture();
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,resourceScope:'OTHER'}),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,sourceSha:'latest'}),null);
+   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,resourceId:undefined}),null);
+   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,resourceId:'nv07:other'}),null);
+   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(db,{...options,resourceId:'../other'}),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease(null,options),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[]})},options),null);
   assert.strictEqual(await readVerifiedNv07CanaryCoreLease({query:async()=>({rows:[{},{}]})},options),null);
@@ -288,7 +294,7 @@ test('NV07 Core lease reader fails closed for missing, wrong and expired DB auth
 
 test('NV07 Core host callback binds pinned job and SHA, rejects caller substitutions',async()=>{
   const {db,calls}=nv07LeaseFixture();
-  const cb=bindNv07CanaryCoreLeaseCallback(db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  const cb=bindNv07CanaryCoreLeaseCallback(db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceId:NV07_RESOURCE_ID});
   assert.strictEqual(await cb({jobId:'OTHER-JOB',resourceScope:NV07_CANARY_CORE_SCOPE}),null);
   assert.strictEqual(await cb({jobId:NV07_JOB_ID,resourceScope:'OTHER-SCOPE'}),null);
   assert.strictEqual(await cb({resourceScope:NV07_CANARY_CORE_SCOPE}),null);
@@ -306,12 +312,15 @@ test('NV07 Core host callback binds pinned job and SHA, rejects caller substitut
 test('NV07 Core host callback fails closed when pinned source, DB or fresh lease is invalid',async()=>{
   const fixture=nv07LeaseFixture();
   const args={jobId:NV07_JOB_ID,resourceScope:NV07_CANARY_CORE_SCOPE};
-  const untrusted=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:'latest'});
+  const untrusted=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:'latest',resourceId:NV07_RESOURCE_ID});
   assert.strictEqual(await untrusted(args),null);
   assert.strictEqual(fixture.calls.length,0);
-  const missing=bindNv07CanaryCoreLeaseCallback(null,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  const missing=bindNv07CanaryCoreLeaseCallback(null,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceId:NV07_RESOURCE_ID});
   assert.strictEqual(await missing(args),null);
-  const valid=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+  const missingPin=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA});
+   assert.strictEqual(await missingPin(args),null,'Core must pin resource identity');
+   assert.strictEqual(fixture.calls.length,0);
+   const valid=bindNv07CanaryCoreLeaseCallback(fixture.db,{jobId:NV07_JOB_ID,sourceSha:NV07_SOURCE_SHA,resourceId:NV07_RESOURCE_ID});
   fixture.row.lease_until=new Date(Date.now()-1000).toISOString();
   assert.strictEqual(await valid(args),null,'expired DB lease must invalidate callback receipt');
 });
