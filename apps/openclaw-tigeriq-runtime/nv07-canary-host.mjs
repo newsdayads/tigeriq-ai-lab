@@ -22,7 +22,8 @@ export async function runNv07OneShotCanary({ registry, commands, job, sandboxCwd
     // Durable, atomic one-shot reservation prevents a duplicate execution under a reused job id.
     const reserved = await host.reserveOnce({ jobId: job.jobId, idempotencyKey: gate.idempotencyKey,
       sourceSha: gate.sourceSha, resourceScope: gate.resourceScope });
-    if (reserved?.accepted !== true || reserved?.durable !== true)
+    if (reserved?.accepted !== true || reserved?.durable !== true
+      || typeof reserved?.reservationSeq !== 'string' || !/^[1-9]\d{0,15}$/.test(reserved.reservationSeq))
       return denied('NV07_CANARY_ATOMIC_RESERVATION_REQUIRED');
     // Re-read Core immediately before invocation; do not trust a stale or caller-supplied lease.
     const freshLease = await host.readCoreLease({ resourceScope: gate.resourceScope, jobId: gate.jobId });
@@ -44,16 +45,23 @@ export async function runNv07OneShotCanary({ registry, commands, job, sandboxCwd
     // Only persist non-secret, hash-based evidence. A canary does not activate/routably register NV07.
     const receipt = {
       workOrderId: 4783, jobId: gate.jobId, sourceSha: gate.sourceSha,
-      idempotencyKey: gate.idempotencyKey, outputHash: verified.outputHash,
+      idempotencyKey: gate.idempotencyKey, reservationSeq: reserved.reservationSeq,
+      outputHash: verified.outputHash,
       proposedFileCount: verified.proposedFiles.length,
       state: 'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',
     };
     const saved = await host.storeReceipt(receipt);
-    if (saved?.durable !== true || typeof saved?.evidenceUrl !== 'string' || !saved.evidenceUrl)
+    const hasValidRef=typeof saved?.evidenceRef === 'string'
+      && /^tigeriq_events:NV07_CANARY_RECEIPT:[1-9]\d{0,15}$/.test(saved.evidenceRef);
+    const hasExternalUrl=typeof saved?.evidenceUrl === 'string'
+      && /^https:\/\//.test(saved.evidenceUrl);
+    if (saved?.durable !== true || (!hasValidRef && !hasExternalUrl))
       return denied('NV07_CANARY_DURABLE_RECEIPT_MISSING');
     return Object.freeze({ accepted: true, code: 'NV07_CANARY_RECEIPT_VERIFIED',
       state: 'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',
-      evidenceUrl: saved.evidenceUrl, outputHash: verified.outputHash,
+      evidenceUrl: hasExternalUrl ? saved.evidenceUrl : null,
+      evidenceRef: hasValidRef ? saved.evidenceRef : null,
+      outputHash: verified.outputHash,
       jobId: gate.jobId, sourceSha: gate.sourceSha });
   } catch {
     // No repeated invocation or secret-bearing exception text. Never report DONE/ACTIVE.
