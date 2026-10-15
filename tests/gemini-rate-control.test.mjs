@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import {createGeminiRateController,exponentialBackoffDelay,isGeminiRateLimitError} from '../apps/shared/gemini-rate-control.mjs';
+import {createGeminiRateController,exponentialBackoffDelay,isGeminiRateLimitError,isGeminiDailyQuotaError,nextGeminiDailyResetUtc} from '../apps/shared/gemini-rate-control.mjs';
 
 test('Gemini rate controller enforces at least 4500ms between calls',async()=>{
   let now=0;const starts=[];const sleeps=[];
@@ -41,4 +41,26 @@ test('Gemini controller propagates non-rate-limit errors unchanged',async()=>{
   const controller=createGeminiRateController({maxAttempts:4});
   const original=new Error('AUTH_FAILURE');original.status=401;
   await assert.rejects(()=>controller.run(async()=>{throw original;}),e=>e===original&&e.geminiRetryExhausted!==true);
+});
+
+test('Gemini daily RPD 429 does not retry or call again before Pacific reset',async()=>{
+  let now=Date.parse('2026-10-15T05:00:00Z'),calls=0;
+  const reset='2026-10-15T07:00:00.000Z';
+  assert.equal(nextGeminiDailyResetUtc(now),reset);
+  const controller=createGeminiRateController({maxAttempts:4,nowFn:()=>now,sleepFn:async ms=>{now+=ms;}});
+  const quotaError=Object.assign(new Error('HTTP_429'),{status:429,kind:'rate_limit',body:{error:{details:[{quotaId:'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}]}}});
+  assert.equal(isGeminiDailyQuotaError(quotaError),true);
+  await assert.rejects(()=>controller.run(async()=>{calls++;throw quotaError;}),e=>e.geminiDailyQuota===true&&e.cooldownUntil===reset);
+  await assert.rejects(()=>controller.run(async()=>{calls++;return 'forbidden';}),e=>e.message==='GEMINI_DAILY_QUOTA_WAIT'&&e.cooldownUntil===reset);
+  assert.equal(calls,1,'no repeated paid-or-quota-consuming request during RPD block');
+  now=Date.parse(reset)+1000;
+  assert.equal(await controller.run(async()=>{calls++;return 'free-again';}),'free-again');
+  assert.equal(calls,2);
+});
+
+test('Gemini Pacific quota reset handles DST and rejects generic minute-limit as daily',()=>{
+  assert.equal(nextGeminiDailyResetUtc(Date.parse('2026-11-01T10:00:00Z')),'2026-11-02T08:00:00.000Z');
+  const minute=Object.assign(new Error('HTTP_429'),{status:429,body:{error:{details:[{quotaId:'GenerateContentInputTokensPerMinutePerProjectPerModel'}]}}});
+  assert.equal(isGeminiDailyQuotaError(minute),false);
+  assert.equal(isGeminiDailyQuotaError({status:401,message:'RequestsPerDay'}),false);
 });

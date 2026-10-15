@@ -17,6 +17,28 @@ function Set-SecretEnv([string]$EnvName,[string]$SecretName,[string]$Entropy){
   $value=Get-TigerIQSecret $SecretName $Entropy
   if(-not[string]::IsNullOrWhiteSpace($value)){[Environment]::SetEnvironmentVariable($EnvName,$value,'Process')}
 }
+# Owner-approved standing Free proof: no synthetic monthly expiry extension.
+# Fail closed for missing scope/approval or unsafe paid/billing flags.
+# Only NV11 Groq and NV12 Gemini are admitted by this standing gate.
+function Test-TigerIQFreeProviderProof([object]$Proof,[string]$Provider) {
+  if($null -eq $Proof -or $Provider -notin @('groq','gemini')){return $false}
+  if(-not $Proof.PSObject.Properties['provider'] -or [string]$Proof.provider -cne $Provider){return $false}
+  if([string]$Proof.plan -cne 'Free' -or [double]$Proof.priceUsd -ne 0 -or $Proof.ownerConfirmed -cne $true -or $Proof.paidFallbackAllowed -cne $false){return $false}
+  if($Provider -eq 'gemini' -and $Proof.billingLinked -cne $false){return $false}
+  $now=[DateTime]::UtcNow
+  $expires=[DateTime]::MinValue
+  if($Proof.PSObject.Properties['expiresAtUtc']){try{$expires=[DateTime]::Parse([string]$Proof.expiresAtUtc).ToUniversalTime()}catch{return $false}}
+  if($expires -gt $now){return $true}
+  # Current screenshot and explicit Owner scope permit continued free-only use;
+  # any paid-account setting change must revoke this standing authorization.
+  if(-not $Proof.PSObject.Properties['standingZeroCostApproved'] -or $Proof.standingZeroCostApproved -cne $true){return $false}
+  if(-not $Proof.PSObject.Properties['standingApprovalSource'] -or [string]$Proof.standingApprovalSource -cne 'owner_direct_2026-10-15'){return $false}
+  if(-not $Proof.PSObject.Properties['verifiedAtUtc']){return $false}
+  try{$verified=[DateTime]::Parse([string]$Proof.verifiedAtUtc).ToUniversalTime()}catch{return $false}
+  if($verified -gt $now -or $verified -lt [DateTime]'2026-10-15T00:00:00Z'){return $false}
+  if(-not $Proof.PSObject.Properties['source'] -or [string]$Proof.source -notlike 'owner_screenshot_2026-10-15_*'){return $false}
+  return $true
+}
 function Clear-ProviderEnvironment {
   foreach($name in @('GROQ_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY','MISTRAL_API_KEY','CLOUDFLARE_AUTH_TOKEN','CLOUDFLARE_ACCOUNT_ID','HF_TOKEN','COHERE_API_KEY','INCEPTION_API_KEY','NVIDIA_API_KEY','TIGERIQ_GROQ_FREE_TIER_VERIFIED','TIGERIQ_GEMINI_FREE_TIER_VERIFIED','TIGERIQ_COHERE_TRIAL_CONFIRMED','TIGERIQ_INCEPTION_FREE_TIER_VERIFIED','TIGERIQ_CLOUDFLARE_FREE_CONFIRMED','TIGERIQ_NVIDIA_FREE_DEV_CONFIRMED','TIGERIQ_INCEPTION_MODEL','TIGERIQ_NVIDIA_MODEL','TIGERIQ_GEMINI_MODEL','TIGERIQ_GEMINI_MIN_INTERVAL_MS','TIGERIQ_GEMINI_BACKOFF_BASE_MS','TIGERIQ_GEMINI_MAX_ATTEMPTS','TIGERIQ_CODING_MAX_PARALLEL')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
 }
@@ -45,8 +67,8 @@ function Load-Environment {
   $env:TIGERIQ_CODING_FAST_CORE_HEALTH='true'
   $groqProof=Get-Content -Raw 'D:\TigerIQ\Secrets\groq-free-tier-proof.json'|ConvertFrom-Json
   $geminiProof=Get-Content -Raw 'D:\TigerIQ\Secrets\gemini-free-tier-proof.json'|ConvertFrom-Json
-  if($groqProof.plan -eq 'Free' -and $groqProof.priceUsd -eq 0 -and $groqProof.ownerConfirmed -and -not $groqProof.paidFallbackAllowed -and [DateTime]::Parse($groqProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GROQ_API_KEY' 'groq-api-key' 'TigerIQ-Groq-PC01-v1';$env:TIGERIQ_GROQ_FREE_TIER_VERIFIED='true'}
-  if($geminiProof.plan -eq 'Free' -and $geminiProof.priceUsd -eq 0 -and $geminiProof.ownerConfirmed -and -not $geminiProof.billingLinked -and -not $geminiProof.paidFallbackAllowed -and [DateTime]::Parse($geminiProof.expiresAtUtc) -gt [DateTime]::UtcNow){Set-SecretEnv 'GEMINI_API_KEY' 'gemini-api-key' 'TigerIQ-Gemini-PC01-v1';$env:TIGERIQ_GEMINI_FREE_TIER_VERIFIED='true'}
+  if(Test-TigerIQFreeProviderProof -Proof $groqProof -Provider 'groq'){Set-SecretEnv 'GROQ_API_KEY' 'groq-api-key' 'TigerIQ-Groq-PC01-v1';$env:TIGERIQ_GROQ_FREE_TIER_VERIFIED='true'}
+  if(Test-TigerIQFreeProviderProof -Proof $geminiProof -Provider 'gemini'){Set-SecretEnv 'GEMINI_API_KEY' 'gemini-api-key' 'TigerIQ-Gemini-PC01-v1';$env:TIGERIQ_GEMINI_FREE_TIER_VERIFIED='true'}
   $co=Get-TigerIQConfig 'cohere-proof'
   if($co -and $co.PSObject.Properties['trialConfirmed'] -and $co.trialConfirmed){Set-SecretEnv 'COHERE_API_KEY' 'cohere-api-key' 'TigerIQ-Cohere-PC01-v1';$env:TIGERIQ_COHERE_TRIAL_CONFIRMED='true'}
   # #572 established the existing Cloudflare Workers AI allocation as Free with no paid fallback.

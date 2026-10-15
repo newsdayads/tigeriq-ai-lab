@@ -553,7 +553,19 @@ async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',re
   const kind=error?.kind||'outage',policy=failurePolicy(kind),health=failureHealth(kind);
   const rateLimited=kind==='rate_limit';
   let cooldownUntil=new Date(Date.now()+policy.cooldownMs).toISOString(),quotaPatch=null;
-  if(rateLimited){const currentQuota=(await pool.query('select quota_state from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0]?.quota_state||{};const state=rateLimitFailureState(currentQuota,policy.cooldownMs);cooldownUntil=state.cooldownUntil;quotaPatch=state.quotaPatch;}
+  if(rateLimited){
+    const currentQuota=(await pool.query('select quota_state from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0]?.quota_state||{};
+    const state=rateLimitFailureState(currentQuota,policy.cooldownMs);
+    cooldownUntil=state.cooldownUntil;quotaPatch=state.quotaPatch;
+    // RPD exhausted: Gemini resets at Pacific midnight, not after 30 minutes.
+    const dailyReset=Date.parse(String(error?.cooldownUntil||''));
+    if(r.provider==='gemini'&&error?.geminiDailyQuota===true
+      &&Number.isFinite(dailyReset)&&dailyReset>Date.now()
+      &&dailyReset<=Date.now()+26*60*60*1000){
+      cooldownUntil=new Date(dailyReset).toISOString();
+      quotaPatch={...quotaPatch,usable:false,cooldownUntil,resetAt:cooldownUntil};
+    }
+  }
   await pool.query("update tigeriq_ai_resources set current_job_id=case when $5 then null else current_job_id end,work_state=case when $5 then $2 else case when current_job_id is null then $2 else 'BUSY' end end,health_state=$3,cooldown_until=$4,last_seen_at=now(),failure_count=failure_count+1,quota_state=case when $6::jsonb is null then quota_state else coalesce(quota_state,'{}'::jsonb)||$6::jsonb end,last_429_at=case when $7 then now() else last_429_at end,updated_at=now() where resource_id=$1",[r.resourceId,health,health,cooldownUntil,releaseJob,quotaPatch?JSON.stringify(quotaPatch):null,rateLimited]);
   await pool.query("update tigeriq_resources set current_job_id=case when $5 then null else current_job_id end,work_state=case when $5 then $2 else case when current_job_id is null then $2 else 'BUSY' end end,health_state=$3,cooldown_until=$4,last_seen_at=now(),failure_count=failure_count+1,updated_at=now() where employee_id=$1",[r.id,health,health,cooldownUntil,releaseJob]);
   await event(eventType,{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(error?.code||error?.message||error).slice(0,300),cooldownUntil,taskKind:context.taskKind||null,routingProfile:context.profile||null,quota:quotaPatch});
