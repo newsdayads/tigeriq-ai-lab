@@ -10,8 +10,9 @@ function strings(values,field,{max=8,allowEmpty=false}={}){
   if(out.some(x=>!x||x.length>1200)||new Set(out).size!==out.length)throw Error('CODING_STEP_'+field+'_INVALID');
   return out;
 }
-export function compileCodingStepPacket({objectiveId,sourceRevision,job,allowedPaths=[],skillEvidence=[]}={}){
+export function compileCodingStepPacket({objectiveId,sourceRevision,sourceHeadSha='',job,allowedPaths=[],skillEvidence=[]}={}){
   if(!string(objectiveId)||!string(sourceRevision))throw Error('CODING_STEP_IDENTITY_MISSING');
+  if(sourceHeadSha&&!/^[a-f0-9]{40}$/i.test(string(sourceHeadSha)))throw Error('CODING_STEP_SOURCE_HEAD_INVALID');
   if(!job||typeof job!=='object'||Array.isArray(job))throw Error('CODING_STEP_JOB_INVALID');
   if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(string(job.step_id)))throw Error('CODING_STEP_STEP_ID_INVALID');
   if(!string(job.title)||!string(job.instruction)||string(job.instruction).length>12000)throw Error('CODING_STEP_INSTRUCTION_INVALID');
@@ -26,7 +27,7 @@ export function compileCodingStepPacket({objectiveId,sourceRevision,job,allowedP
   if(kind==='frontend'&&!required.some(p=>/\.(tsx?|jsx?|vue|svelte|html|css)$/.test(p)))throw Error('CODING_STEP_FRONTEND_SOURCE_REQUIRED');
   if(kind==='backend'&&!required.some(p=>/\.(mjs|cjs|js|ts|py|go|rs|java|kt)$/.test(p)))throw Error('CODING_STEP_BACKEND_SOURCE_REQUIRED');
   const packet={
-    schema:CODING_STEP_PACKET_VERSION,objective_id:string(objectiveId),source_revision:string(sourceRevision),
+    schema:CODING_STEP_PACKET_VERSION,objective_id:string(objectiveId),source_revision:string(sourceRevision),source_head_sha:string(sourceHeadSha).toLowerCase()||null,
     step_id:string(job.step_id),title:string(job.title),instruction:string(job.instruction),
     paths,deliverable_type:kind,required_changed_paths:required,
     steps:strings(job.steps,'STEPS'),acceptance:strings(job.acceptance,'ACCEPTANCE'),
@@ -74,6 +75,7 @@ export function codingRolePrompt({role,packet,skillContext='',context='',diff=''
     'STEP_ID='+packet.step_id,
     'PROMPT_REVISION='+packet.prompt_revision,
     'SOURCE_REVISION='+packet.source_revision,
+    'SOURCE_HEAD_SHA='+String(packet.source_head_sha||'NOT_PINNED'),
     'SKILLS='+packet.skill_ids.join(','),
     'PACKET_JSON='+JSON.stringify(packet),
     'CONTEXT='+string(context).slice(0,14000),
