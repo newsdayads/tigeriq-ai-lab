@@ -2949,9 +2949,9 @@ function issueBucket(issue){
   const state=issueField(body,'CURRENT_STATE').toUpperCase();
   const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
   if(issue.state==='closed') return 'HOÀN THÀNH';
+  if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK'))) return 'BLOCKED';
   if(isSystemIssue(issue,body)) return 'HỆ THỐNG';
   if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state))) return 'CHỜ ANH SƠN';
-  if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK'))) return 'BLOCKED';
   if(/(?<!NOT_)\b(?:REVIEW|RÀ SOÁT)\b/.test(state)) return 'RÀ SOÁT';
   if(!/\bNOT_(?:EXECUTING|WORKING)\b/.test(state) && /\b(?:WORKING|IMPLEMENTING|EXECUTING|ACTIVE)\b/.test(state)) return 'ĐANG LÀM';
   return 'CẦN XỬ LÝ';

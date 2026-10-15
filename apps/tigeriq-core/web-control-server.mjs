@@ -110,11 +110,12 @@ export function projectWorkOrder(issue, source = {}) {
   const working=!isSystem && !/\bNOT_(?:EXECUTING|WORKING)\b/.test(marker) && (machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/\b(?:CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING)\b/.test(marker));
   let bucket='CẦN XỬ LÝ';
   if(closed) bucket=proof.verified?'HOÀN THÀNH':'CHỜ NGHIỆM THU';
-  else if(isSystem||ownerControlled||!executable) bucket='HỆ THỐNG';
+  else if(blocked) bucket=ownerStatusLabel('BLOCKED');
+  else if(isSystem||ownerControlled) bucket='HỆ THỐNG';
   else if(ownerGate) bucket='CHỜ ANH SƠN';
   else if(review) bucket='RÀ SOÁT';
-  else if(blocked) bucket=ownerStatusLabel('BLOCKED');
   else if(working&&executable) bucket=ownerStatusLabel('WORKING');
+  else if(!executable) bucket='HỆ THỐNG';
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
   else if(bucket==='CHỜ NGHIỆM THU') state='CHỜ NGHIỆM THU';
