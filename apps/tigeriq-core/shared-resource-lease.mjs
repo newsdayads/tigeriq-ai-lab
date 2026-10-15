@@ -283,12 +283,15 @@ export async function activeSharedResourceLeases(db){
 // Call ONLY inside trusted Core with its DB pool. Never build this receipt from a
 // job payload, LLM result, device connector or the public live-status projection.
 // This reader does not acquire, extend, release or expose a bearer lease token.
+// Require exact Core-pinned resource identity, not employee/job-only matching.
 export const NV07_CANARY_CORE_SCOPE='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783';
-export async function readVerifiedNv07CanaryCoreLease(db,{jobId,sourceSha,resourceScope,nowMs=Date.now()}={}){
+export async function readVerifiedNv07CanaryCoreLease(db,{jobId,sourceSha,resourceScope,resourceId,nowMs=Date.now()}={}){
   if(!db||typeof db.query!=='function')return null;
   if(typeof jobId!=='string'||!/^[a-z0-9:_-]{6,128}$/i.test(jobId)
     ||typeof sourceSha!=='string'||!/^[a-f0-9]{40}$/i.test(sourceSha)
-    ||resourceScope!==NV07_CANARY_CORE_SCOPE||!Number.isFinite(nowMs))return null;
+    ||resourceScope!==NV07_CANARY_CORE_SCOPE
+    ||typeof resourceId!=='string'||!/^[a-z0-9:_-]{6,128}$/i.test(resourceId)
+    ||!Number.isFinite(nowMs))return null;
   // The acquisition path serializes claims; this read only observes the same
   // canonical DB rows and rejects inactive, disabled or unrelated resource slots.
   const result=await db.query(
@@ -296,16 +299,16 @@ export async function readVerifiedNv07CanaryCoreLease(db,{jobId,sourceSha,resour
             r.current_job_id,r.enabled,r.employee_id as resource_employee_id
        from tigeriq_ai_resource_leases l
        join tigeriq_ai_resources r on r.resource_id=l.resource_id
-      where l.employee_id=$1 and l.work_id=$2 and l.lease_until>now()
+      where l.employee_id=$1 and l.work_id=$2 and l.resource_id=$3 and l.lease_until>now()
         and r.employee_id=$1 and r.enabled=true and r.current_job_id=l.work_id`,
-    ['NV07',jobId],
+    ['NV07',jobId,resourceId],
   );
   const rows=result?.rows;
   if(!Array.isArray(rows)||rows.length!==1)return null;
   const row=rows[0];
   const meta=row?.metadata;
   const expires=Date.parse(String(row?.lease_until||''));
-  if(row?.employee_id!=='NV07'||row?.resource_employee_id!=='NV07'
+  if(row?.resource_id!==resourceId||row?.employee_id!=='NV07'||row?.resource_employee_id!=='NV07'
     ||row?.current_job_id!==jobId||row?.enabled!==true
     ||row?.lane!=='nv07_bootstrap'||row?.role!=='canary'
     ||!meta||typeof meta!=='object'||Array.isArray(meta)
@@ -328,16 +331,17 @@ export async function readVerifiedNv07CanaryCoreLease(db,{jobId,sourceSha,resour
 // keep the pinned source SHA and job ID inside the trusted Core closure.
 // This is the lease-reader callback ONLY, not device/session authority, a
 // lease claim, a CLI launch, or a durable reservation.
-export function bindNv07CanaryCoreLeaseCallback(db,{jobId,sourceSha}={}){
+export function bindNv07CanaryCoreLeaseCallback(db,{jobId,sourceSha,resourceId}={}){
   const valid=Boolean(db&&typeof db.query==='function'
     &&typeof jobId==='string'&&/^[a-z0-9:_-]{6,128}$/i.test(jobId)
-    &&typeof sourceSha==='string'&&/^[a-f0-9]{40}$/i.test(sourceSha));
+    &&typeof sourceSha==='string'&&/^[a-f0-9]{40}$/i.test(sourceSha)
+    &&typeof resourceId==='string'&&/^[a-z0-9:_-]{6,128}$/i.test(resourceId));
   return async ({resourceScope,jobId:requestedJobId}={})=>{
     if(!valid||requestedJobId!==jobId||resourceScope!==NV07_CANARY_CORE_SCOPE)return null;
     // Read the canonical DB on each invocation: the bootstrap host rechecks
     // lease freshness immediately before a single bounded CLI invocation.
     return readVerifiedNv07CanaryCoreLease(db,{
-      jobId,sourceSha,resourceScope,nowMs:Date.now(),
+      jobId,sourceSha,resourceScope,resourceId,nowMs:Date.now(),
     });
   };
 }
