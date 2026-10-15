@@ -7,6 +7,7 @@ const OPAQUE = /^[A-Za-z0-9]{6,64}$/;
 const FLAG = 'OWNER_APPROVED_EXISTING_RUN_READ';
 const EXPECTED_HANDLE = 'tigeriq/tigeriq-ai-lab';
 const EXPECTED_DAY = '2026-10-08';
+const EXPECTED_BUILD = '0.0.4';
 
 export class HistoricReadError extends Error {
   constructor(code) { super(code); this.name = 'HistoricReadError'; this.code = code; }
@@ -76,6 +77,9 @@ function validateRun(run, config, nowMs) {
   if (!object(run) || run.id !== config.runId || run.actId !== config.actorId)
     reject('RUN_IDENTITY_MISMATCH');
   if (run.status !== 'SUCCEEDED') reject('HISTORICAL_RUN_NOT_SUCCEEDED');
+  if (typeof run.buildNumber !== 'string' || !run.buildNumber)
+    reject('HISTORICAL_BUILD_UNVERIFIED');
+  if (run.buildNumber !== EXPECTED_BUILD) reject('HISTORICAL_BUILD_MISMATCH');
   if (!validInstant(run.startedAt) || !validInstant(run.finishedAt))
     reject('RUN_TIMESTAMPS_UNVERIFIED');
   const start = Date.parse(run.startedAt), end = Date.parse(run.finishedAt);
@@ -125,6 +129,7 @@ export async function inspectHistoricalRun({
       actorPermissionLevel: 'LIMITED_PERMISSIONS' },
     run: { id: cfg.runId, actId: final.actId, status: final.status,
       startedAt: final.startedAt, finishedAt: final.finishedAt,
+      buildNumber: final.buildNumber,
       computeUnits: getUnits(final), usageTotalUsd: final.usageTotalUsd },
     output: { schemaVersion: output.schemaVersion, status: output.status },
     cost: { source: 'APIFY_API_INFORMATIONAL_NOT_FINAL_INVOICE',
