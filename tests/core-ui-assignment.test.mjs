@@ -738,15 +738,15 @@ test('Core NV04 idle audit is created only after normal work absence; terminal f
   const snapshot=await buildCoreUiAssignmentSnapshot(args);
   assert.equal(snapshot.nextJobs.length,1);
   assert.equal(snapshot.nextJobs[0].workerId,'NV04');
-  assert.equal(snapshot.nextJobs[0].jobId,'NV04-AUDIT-'+sha.slice(0,12));
+  assert.match(snapshot.nextJobs[0].jobId,/^NV04-AUDIT-0{12}-\d{8}T(?:00|06|12|18)$/);
   assert.match(snapshot.nextJobs[0].prompt,/KHONG_SUA_CODE/);
   assert.equal(pool.jobs.length,1);
   const repeated=await buildCoreUiAssignmentSnapshot(args);
   assert.equal(repeated.nextJobs.length,1);
   assert.equal(pool.jobs.length,1);
-  const finding={path:'apps/tigeriq-core/core-ui-assignment.mjs',line:1,quote:'export function auditRoute()',
+  const finding={path:pool.objectives[0].metadata.sourcePaths[0],line:1,quote:'export function auditRoute()',
     description:'Có nguy cơ sai định tuyến trong trường hợp đầu vào biên',repro:'Tạo test cho dữ liệu đầu vào không hợp lệ',severity:'P2'};
-  const result=['NV04_IDLE_AUDIT_RESULT_V1','SOURCE_SHA='+sha,'FINDINGS_JSON='+JSON.stringify([finding])].join('\n');
+  const result=['NV04_IDLE_AUDIT_RESULT_V1','SOURCE_SHA='+sha,'AUDIT_SLOT='+pool.objectives[0].metadata.auditSlot,'FINDINGS_JSON='+JSON.stringify([finding])].join('\n');
   const completed=await completeCoreUiAssignment({pool,fetchImpl,token:'test',jobId:snapshot.nextJobs[0].jobId,workerId:'NV04',terminal:'DONE',result});
   assert.equal(completed.accepted,true);
   assert.equal(completed.repairAuthorized,false);
@@ -756,6 +756,9 @@ test('Core NV04 idle audit is created only after normal work absence; terminal f
   const after=await buildCoreUiAssignmentSnapshot(args);
   assert.equal(after.nextJobs.length,0);
   assert.equal(pool.jobs.length,1);
+  const previous=await buildCoreUiAssignmentSnapshot({...args,previousJobId:snapshot.nextJobs[0].jobId});
+  assert.equal(previous.previousJob.status,'DONE');
+  assert.equal(previous.previousJob.executable,false);
 });
 
 test('Core NV04 idle audit does not preempt a real P1-P5 research task',async()=>{
