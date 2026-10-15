@@ -47,3 +47,36 @@ it('S08 scoped legacy checklist requires both scope and current step', () => {
   expect(webControlWorkOrderCandidate({...base,body:'CURRENT_STEP=R02\n'+body})).toBe(false);
   expect(webControlWorkOrderCandidate({...base,body:'RESOURCE_SCOPE=DEMO\nCURRENT_STEP=R02\n'+body})).toBe(true);
 });
+
+it('S08 legacy #4780 without executable flag is a WORK, never SYSTEM', () => {
+  const x=sample();
+  x.body='CURRENT_STATE=PLANNED_AWAITING_SCOPED_DEVICE_AND_WRITER_VERIFICATION\n'+x.body;
+  const r=projectWorkOrder(x);
+  expect(webControlWorkOrderCandidate(x)).toBe(true);
+  expect(r.workKind).toBe('WORK');
+  expect(r.bucket).toBe('CẦN XỬ LÝ');
+  expect(r.status).toBe('OPEN');
+  expect(r.progressCompleted).toBe(6);expect(r.progressTotal).toBe(16);
+  expect(r.completionVerified).toBe(false);
+});
+it('S08 #504 policy title remains SYSTEM even if legacy STATE contains UNBLOCKED', () => {
+  const x:any={number:504,title:'[P0][QUẢN TRỊ] Chính sách tương tác',state:'open',labels:[],
+    body:'TIGERIQ_EXECUTABLE=true\nCURRENT_STATE=P0_SOURCE_PATCH_DRAFT_PR_PENDING_TEST_REVIEW\nSTATE=READ_ONLY_PATH_UNBLOCKED_BY_POLICY\nDONE=false'};
+  const r=projectWorkOrder(x);
+  expect(r.workKind).toBe('SYSTEM');expect(r.bucket).toBe('HỆ THỐNG');
+  expect(r.status).toBe('SYSTEM');
+  expect(r.completionVerified).toBe(false);
+});
+it('S08 UNBLOCKED does not match BLOCKED while actual blocked state remains blocked', () => {
+  const base:any={...sample(),body:'TIGERIQ_EXECUTABLE=true\nRESOURCE_SCOPE=TIGERIQ_P1\nCURRENT_STATE=READY_UNBLOCKED_AFTER_CHECK\nDONE=false'};
+  expect(projectWorkOrder(base).bucket).not.toBe('BỊ CHẶN');
+  expect(projectWorkOrder({...base,body:base.body.replace('READY_UNBLOCKED_AFTER_CHECK','BLOCKED_EXTERNAL_DEPENDENCY')}).bucket).toBe('BỊ CHẶN');
+});
+it('S08 explicit false remains non-executable; absent flag with real checklist is distinct', () => {
+  const x:any=sample();
+  const legacy=projectWorkOrder(x);
+  const disabled=projectWorkOrder({...x,body:'TIGERIQ_EXECUTABLE=false\n'+x.body});
+  expect(legacy.bucket).not.toBe('HỆ THỐNG');
+  expect(disabled.bucket).toBe('HỆ THỐNG');
+  expect(disabled.status).not.toBe('WORKING');
+});
