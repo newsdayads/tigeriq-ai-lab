@@ -63,6 +63,14 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Only decoy</title><meta data-name="description" content="Not real"></head><body><h1>Audit</h1></body></html>');
     }
+    if (req.url === '/inert-seo') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><head><!-- <title>Comment Title</title><meta name=\"description\" content=\"Decoy\"> -->\n<script>const inject = '<h1>Script Fake</h1><a href=\"/missing\">';</script>\n<style>.rule:after { content:'<h1>Style Fake</h1>'; }</style>\n<title>Actual Title</title><meta name=\"description\" content=\"Actual Description\"></head>\n<body><!-- <h1>Comment Fake</h1> --><h1>Actual H1</h1></body></html>");
+    }
+    if (req.url === '/inert-links') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><body><!-- <a href=\"/missing\">Ghost Comment</a> -->\n<script>const fake = '<a href=\"/missing\">Ghost Script</a>';</script>\n<style>div:after { content:'<a href=\"/missing\">Ghost Style</a>'; }</style>\n<a href=\"/page2\">Actual Link</a></body></html>");
+    }
     if (req.url === '/links-unquoted') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Unquoted Links</title></head><body><a href=/page2>Valid link</a></body></html>');
@@ -150,6 +158,26 @@ test('SEO extraction does not mistake data-name for exact name attribute', async
   const onlyDecoy = await auditWebsite(`${baseUrl}/meta-only-decoy`, { resolveTargetFn: localResolver });
   assert.equal(decoy.pages[0].seo.metaDescription, 'Actual description');
   assert.equal(onlyDecoy.pages[0].seo.metaDescription, null);
+});
+
+test('SEO extraction ignores commented and script/style fake title, meta and H1', async () => {
+  const result = await auditWebsite(`${baseUrl}/inert-seo`, { resolveTargetFn: localResolver });
+  const seo = result.pages[0].seo;
+  assert.equal(seo.title, 'Actual Title');
+  assert.equal(seo.metaDescription, 'Actual Description');
+  assert.equal(seo.h1Count, 1);
+  assert.deepEqual(seo.h1, ['Actual H1']);
+});
+
+test('same-origin crawler ignores fake anchor tags in inert HTML regions', async () => {
+  const result = await auditWebsite(`${baseUrl}/inert-links`, {
+    maxPages: 3,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.metrics.errorCount, 0);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
 });
 
 test('rejects invalid, unsupported, credential-bearing, and literal private targets', async () => {
