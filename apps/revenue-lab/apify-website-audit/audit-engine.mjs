@@ -205,6 +205,15 @@ async function fetchBounded(startUrl, options) {
 
 const cleanText = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
+// HTML comments, script data and CSS are not live DOM markup. Ignore tags
+// embedded in these regions before deriving SEO fields or crawl targets.
+// Keep the original response bytes/cost metrics untouched.
+function stripInertHtml(html) {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+}
+
 function extractSeo(html) {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   // Extract exact attribute names from <meta>, not substrings such as
@@ -301,7 +310,8 @@ export async function auditWebsite(inputUrl, options = {}) {
 
     try {
       const response = await fetchBounded(current, requestOptions);
-      const seo = extractSeo(response.body);
+      const documentHtml = stripInertHtml(response.body);
+      const seo = extractSeo(documentHtml);
       totalBytes += response.bytes;
       pages.push({
         url: response.finalUrl,
@@ -312,7 +322,7 @@ export async function auditWebsite(inputUrl, options = {}) {
         redirectCount: response.redirectCount,
         seo,
       });
-      for (const link of extractSameOriginLinks(response.body, response.finalUrl, root.origin)) {
+      for (const link of extractSameOriginLinks(documentHtml, response.finalUrl, root.origin)) {
         if (!visited.has(link) && !queue.includes(link) && queue.length + pages.length + errors.length < maxPages) queue.push(link);
       }
     } catch (error) {
