@@ -4,6 +4,17 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+## P0 — LIVE GATE RECONCILIATION — NO FALSE BLOCKERS (2026-10-15)
+**Thứ tự kiểm chứng bắt buộc:** đọc main + Issue #504 hiện hành + Work Order/PR cụ thể + runtime có biên nhận. Dữ liệu trong ảnh/chat cũ chỉ là checkpoint, không được dùng làm lý do khóa hiện tại.
+
+- **GitHub source write/merge:** GitHub yêu cầu quyền repo, branch/PR, exact-head checks và GitHub branch protection thực tế. `Core DB resource lease` (khóa job/nhân sự NV07 trong `tigeriq_ai_resource_leases`) KHÔNG phải điều kiện tiên quyết chung cho sửa/hợp nhất GitHub source qua executor độc lập có quyền, trừ khi công việc thật được giao qua Core và contract của job đó đòi lease. Không dựng `CORE_WRITE_LEASE_REQUIRED` nếu không có lỗi thực từ đúng bề mặt.
+- **Owner review waiver:** với repo canonical `newsdayads/tigeriq-ai-lab`, quyền miễn independent-AI-review đã được xác nhận ở Issue #504 `#issuecomment-6180609154`, nghiệm thu runtime `#issuecomment-6180937518`. Với việc đủ phạm vi, ghi `OWNER_WAIVED_NOT_INDEPENDENT_PASS`, **không chờ reviewer NV03/NV04 chỉ vì text/checkpoint cũ**. Vẫn tuân thủ GitHub protected branch rule nếu được chính GitHub trả về; không giả native APPROVED.
+- **PC01 source release:** `OWNER_PROJECT_AUTONOMY_V2` đã được kích hoạt, với phiếu protected `core-runtime-owner-project-policy.json` `enabled=true` tại PC01; việc phát hành trong phạm vi policy không cần Owner ký mỗi SHA. Bộ V1 `core-runtime-standing-policy.json enabled=false` và ticket V1/V2 cũ hết hạn **không** chứng minh bản mới bị khóa. Xác minh `currentSha`, `candidateSha`, `releaseGateReason`, CI trên `main` và biên nhận `COMMITTED` cho mỗi mục tiêu.
+- **App Chrome LOCAL-only:** không lấy GitHub Core source release hoặc policy V2 làm quyền sửa App Chrome local. `ACTIVE` của phiếu khóa cũ dù quá hạn phải được đọc cùng owner/TTL/lease state; không tự xóa hoặc chiếm lease đang có người ghi. Nếu chặn thật, báo gate cụ thể và handoff/safe recovery bằng executor hợp lệ, không mặc định cần Owner ký GitHub.
+- **PR #4800 là ca hồi quy:** đã merge `b9ffd188a6081074de2a3d6bb710320b72710292`, exact-head CI/Queue/Vercel SUCCESS, source readback `main` đạt; đừng tiếp tục báo `PR #4800 chưa đẩy/chưa review/chưa merge`. Mức hoàn tất của NV07 #4783 vẫn phải nghiệm thu PC01/CLI/host/lease thật, không tự báo NV07 ACTIVE.
+- **Chống vòng chặn giả:** nếu đã có grant/waiver hợp lệ và các gate thật đạt thì hành động ngay; không hỏi xin quyền lặp lại, không tự thêm bước reviewer/khóa giả. Nếu thực sự bị chặn, nêu `SURFACE|ERROR_CODE|CURRENT_SHA|EVIDENCE|NEXT_ALLOWED_ACTION`; không dùng blocker chung chung hoặc giả DONE.
+- **Giới hạn hiệu lực:** GitHub/Loader cập nhật không tự thay nội dung của các cuộc chat ChatGPT/Gemini đã mở, cũng không ép native host tự đọc lại. Cần kiểm tra phiên mới hoặc nạp nguồn thật trước khi kết luận đã sửa mọi chat. Không thay đổi quyền nền tảng, credential, charge, khóa writer hợp lệ hoặc lớp bảo vệ độc lập.
+
 ## PREBOOT PROMPT COPY — MỘT KHUNG, MỘT DÒNG (OWNER 2026-10-12)
 - Với yêu cầu xuất câu lệnh sao chép (`prompt`, `đưa prompt`, `qua Work`, `giao NV`): **CHỈ 01 code block native ngôn ngữ text**, bên trong **CHỈ 01 dòng vật lý**, bắt đầu chính xác `LÀM — NO YAPPING.`; **không lời dẫn hoặc kết ngoài khung**.
 - Đây là hợp đồng hiển thị, không đồng nghĩa rút ngắn bỏ nhiệm vụ, an toàn hoặc bằng chứng. Chi tiết: `docs/OWNER_PROMPT_COPY_V1.md` + Workflow §11–12 + Issue #504.
