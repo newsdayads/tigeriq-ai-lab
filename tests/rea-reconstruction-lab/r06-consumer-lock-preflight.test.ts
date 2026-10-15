@@ -57,6 +57,10 @@ it('R06 detects direct manifest drift and resolved dependency version drift',()=
 });
 it('R06 detects a missing pinned package and an unresolved nested dependency',()=>{
   const x=fixture();delete x.packages['node_modules/playwright-core'];
+  expect(inspectR06ConsumerLock(x).reason).toBe('PACKAGE_ENTRIES_INVALID');
+  // Keep row count in range so the separate dependency-resolution guard is exercised.
+  x.packages['node_modules/unrelated-example']={version:'1.0.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/unrelated-example/-/unrelated-example-1.0.0.tgz'};
   expect(inspectR06ConsumerLock(x).reason).toBe('REA_LOCK_RESOLUTION_MISMATCH');
   const y=fixture();y.packages['node_modules/zod'].dependencies={absent:'1.0.0'};
   const r=inspectR06ConsumerLock(y);
