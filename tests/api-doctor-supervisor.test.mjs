@@ -86,7 +86,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
       event:async()=>{},
       NV09_TIMEOUT_MS:240000,
       NV09_ENDPOINT:'http://127.0.0.1:11435',
-      NV09_MODEL:'qwen3.6:27b-coding',
+      NV09_MODEL:'qwen3.5:9b',
       runBoundedInferenceNv09:async()=>({text:fail?'invalid':'NV09_CORE_CANARY_OK',evalCount:1}),
       fetchJson:async(url,init,timeout)=>{
         const sent=JSON.parse(init.body);
