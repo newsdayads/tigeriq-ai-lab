@@ -41,7 +41,8 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
   const inUse = new Set(snapshot.sharedLeases.map(x => x.resource_id));
   const runningJobs = new Set(snapshot.jobs.filter(x => x.status === 'running' &&
     typeof x.resource_id === 'string').map(x => x.resource_id));
-  const busy = ownedRows.filter(x => inUse.has(x.resource_id) || runningJobs.has(x.resource_id) ||
+  // Core live-status marks BUSY for work_state even when the job/lease IDs are null.
+  const busy = ownedRows.filter(x => x.status === 'BUSY' || inUse.has(x.resource_id) || runningJobs.has(x.resource_id) ||
     (typeof x.current_job_id === 'string' && x.current_job_id.length > 0) ||
     (typeof x.shared_lease_work_id === 'string' && x.shared_lease_work_id.length > 0));
   if (busy.length === ownedRows.length) return report('NV02_RESOURCE_BUSY',
