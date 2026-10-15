@@ -150,7 +150,17 @@ function renderOwnerApprovalCards(d){
       r.ownerApproval?.requestId&&r.ownerApproval?.issueUrl&&
       /^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+$/.test(r.ownerApproval.issueUrl)).slice(0,5):[];
   panel.replaceChildren();
-  panel.hidden=pending.length===0;
+  panel.hidden=verified&&pending.length===0;
+  if(!verified){
+    const warning=document.createElement('p');
+    warning.textContent='CHƯA XÁC MINH DANH SÁCH DUYỆT — '+String(meta.error||'DỮ LIỆU NGUỒN QUÁ HẠN')+'.';
+    panel.appendChild(warning);
+    const retry=document.createElement('button');
+    retry.type='button';retry.textContent='KIỂM TRA LẠI';
+    retry.onclick=()=>void refresh();
+    panel.appendChild(retry);
+    return;
+  }
   if(!pending.length)return;
   const heading=document.createElement('h2');heading.textContent='CẦN ANH SƠN DUYỆT · '+pending.length+' YÊU CẦU';
   panel.appendChild(heading);
@@ -165,6 +175,15 @@ function renderOwnerApprovalCards(d){
       '<p><strong>Chi phí:</strong> '+esc(a.cost)+'</p>'+
       '<p><strong>Hoàn tác:</strong> '+esc(a.reversibility)+'</p>';
     const actions=document.createElement('div');actions.className='owner-approval-actions';
+    // PC01 is not an authenticated decision backend. Open the existing
+    // Vercel Owner OAuth screen; the click here never grants a permission.
+    const issueNumber=Number(row.number);
+    if(Number.isSafeInteger(issueNumber)&&issueNumber>0){
+      const decide=document.createElement('button');
+      decide.type='button';decide.textContent='MỞ DUYỆT / TỪ CHỐI';
+      decide.onclick=()=>window.open('https://tigeriq-ai-lab.vercel.app/owner-approval.html?issue='+issueNumber,'_blank','noopener,noreferrer');
+      actions.appendChild(decide);
+    }
     const open=document.createElement('button');
     open.type='button';open.textContent='MỞ HỒ SƠ DUYỆT';
     open.onclick=()=>window.open(a.issueUrl,'_blank','noopener,noreferrer');
@@ -180,7 +199,7 @@ function renderOwnerApprovalCards(d){
     };
     actions.appendChild(copy);
     const note=document.createElement('p');note.className='owner-approval-note';
-    note.textContent='Nút mở hồ sơ và sao chép KHÔNG tự cấp quyền. Chỉ hoàn tất khi có xác nhận của hệ thống đích.';
+    note.textContent='Nút DUYỆT/TỪ CHỐI mở trang Owner có xác thực. Bấm tại đây KHÔNG tự cấp quyền; cần biên nhận quyết định và xác minh hệ thống đích.';
     card.appendChild(actions);card.appendChild(note);panel.appendChild(card);
   }
 }

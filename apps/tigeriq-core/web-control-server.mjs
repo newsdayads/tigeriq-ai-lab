@@ -123,7 +123,9 @@ async function githubWorkOrders() {
   const now=Date.now();
   if (now-workOrderCache.at < WORK_ORDER_CACHE_MS) return workOrderCache;
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),1500);
+  // Owner decisions must not vanish because the GitHub issues read took >1.5s.
+  // Keep a finite timeout; failure remains stale (no actions), never a fake approval.
+  const timer=setTimeout(()=>controller.abort(),6000);
   try {
     const headers={Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Web-Control/1'};
     if(GITHUB_TOKEN) headers.Authorization='Bearer '+GITHUB_TOKEN;
