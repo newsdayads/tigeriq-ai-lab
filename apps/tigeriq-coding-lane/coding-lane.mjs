@@ -13,7 +13,7 @@ import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {matchAndLoadSkills} from '../tigeriq-core/skill-loader.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -1335,7 +1335,11 @@ async function managerTick(){
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
-      const previous=await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id order by j.created_at desc limit 500");
+      const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
+      const previous=sourceWorkOrder
+        ?await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.objective ilike $1 order by j.created_at desc limit 5000",['%issue #'+sourceWorkOrder+'%'])
+        :await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.id=$1 order by j.created_at desc limit 5000",[o.id]);
+      if(previous.rows.length>=5000)throw Error('CODING_ATTEMPT_HISTORY_INCOMPLETE');
       const history=[];
       for(const row of previous.rows||[]){
         const previousPacket=codingStepPacketFromInstruction(row.instruction);
@@ -1343,7 +1347,7 @@ async function managerTick(){
         const failure=typeof row.failure==='string'?JSON.parse(row.failure):row.failure;
         history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||row.source_objective_id),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
           status:row.status==='done'?'accepted':row.status==='failed'?'failed':String(row.status||''),
-          failureSignature:String(failure?.code||failure?.message||'UNKNOWN_FAILURE')});
+          failureSignature:codingFailureSignature(failure)});
       }
       const same=history.filter(h=>h.workOrderId===workOrderId&&h.stepId===packet.step_id&&h.sourceRevision===packet.source_revision);
       const accepted=repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,history:same});
