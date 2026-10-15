@@ -34,9 +34,11 @@ App Chrome KHÔNG phải scheduler, dispatcher, backlog reader hoặc work alloc
 
 ### Prompt
 Prompt chỉ là câu ngắn local, ví dụ:
-- `02 - Làm tiếp`
-- `03 - Tiếp tục`
-- `04 - Xử lý tiếp`
+- `NV02 - Làm tiếp`
+- `NV03 - Tiếp tục`
+- `NV04 - Xử lý tiếp`
+
+Owner Direct 15/10/2026: chuẩn hóa tiền tố mã nhân sự `NV02/NV03/NV04` trong câu ngắn, giữ nguyên 21 câu, nhịp UI, F5, archive và App Chrome LOCAL-only. Tiền tố chỉ xác định vai trò trong prompt; không tự chứng minh claim/lease, GitHub evidence hoặc DONE.
 
 Dùng pool local 21 câu. Không prompt điều phối dài. Không giao việc mới qua App Chrome.
 
