@@ -69,7 +69,7 @@ for(const width of [390,1024,1648]){
   const normalBackground=await employee.evaluate(el=>getComputedStyle(el).backgroundColor);
   await employee.hover();
   await expect.poll(async()=>page.locator('.employee-card.state-ready:hover').first()
-    .evaluate(el=>getComputedStyle(el).backgroundColor).catch(()=>null),{timeout:5000})
+    .evaluate(el=>getComputedStyle(el).backgroundColor).catch(()=>normalBackground),{timeout:5000})
     .not.toBe(normalBackground);
   const popup=page.locator('#techPopover');
   await expect(popup).toHaveClass(/open/);
