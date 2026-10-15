@@ -140,6 +140,10 @@ test('unrelated main commits cannot reset the retry budget of the same source st
   const first=codingMaterialSourceRevision(input);
   const unrelatedMainChanged=codingMaterialSourceRevision({...input,unrelatedMainSha:'b'.repeat(40)});
   assert.equal(first,unrelatedMainChanged);
+  const issueStatusChurn=codingMaterialSourceRevision({...input,liveFingerprint:'status=blocked,updatedAt=2026-10-16T08:00'});
+  const latestComment=codingMaterialSourceRevision({...input,liveFingerprint:'status=running,updatedAt=2026-10-16T08:05'});
+  assert.equal(first,issueStatusChurn);
+  assert.equal(first,latestComment);
   assert.notEqual(first,codingMaterialSourceRevision({...input,sourceBlobs:{'apps/dexcam-personal/app/build.gradle.kts':'b'.repeat(40)}}));
   assert.notEqual(first,codingMaterialSourceRevision({...input,objective:'Issue #4625 D01 new evidence'}));
   assert.throws(()=>codingMaterialSourceRevision({...input,sourceBlobs:{}}),/CODING_MATERIAL_BLOB_UNKNOWN/);
