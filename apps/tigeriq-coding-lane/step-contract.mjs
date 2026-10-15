@@ -104,6 +104,7 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   if(!string(workOrderId)||!string(stepId)||!string(sourceRevision))return {allow:false,code:'CODING_ATTEMPT_IDENTITY_UNVERIFIED'};
   const comparable=(Array.isArray(history)?history:[]).filter(x=>string(x.workOrderId)===string(workOrderId)&&string(x.stepId)===string(stepId)&&string(x.sourceRevision)===string(sourceRevision));
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
+  if(comparable.some(x=>['queued','running','review','waiting_ci','waiting_resource'].includes(x.status)))return {allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'};
   if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
   return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
 }
@@ -136,4 +137,21 @@ export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason=
   if(receipt.length!==1||!/^https:\/\/[a-z0-9.-]+\/\S+/i.test(receipt[0]))reasons.push('FINISH_RECEIPT_UNVERIFIED');
   if(checkboxes.length===0||incomplete.length)reasons.push('CHECKLIST_NOT_ACCEPTED');
   return {pass:reasons.length===0,code:reasons.length?'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED':'SOURCE_WORK_ORDER_COMPLETION_EVIDENCED',reasons,completedChecklist:checkboxes.length-incomplete.length,totalChecklist:checkboxes.length};
+}
+
+
+// Prefer stable machine error codes. Normalize incidental IDs, numbers and
+// timestamps so retry budgets cannot reset merely from different log text.
+export function codingFailureSignature(failure={}){
+  const source=failure&&typeof failure==='object'?failure:{message:String(failure)};
+  const code=string(source.code).toUpperCase();
+  if(/^[A-Z][A-Z0-9_.:-]{1,119}$/.test(code))return code;
+  const message=string(source.message).toUpperCase()
+    .replace(/\b[0-9A-F]{8}-[0-9A-F-]{27,}\b/g,'<ID>')
+    .replace(/\b[0-9A-F]{40,64}\b/g,'<SHA>')
+    .replace(/\b20\d{2}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)?\b/g,'<TIME>')
+    .replace(/\b(?:PR|JOB|CODE)\s*#?[0-9A-F-]{4,}\b/g,'<ID>')
+    .replace(/\b\d{3,}\b/g,'<N>')
+    .replace(/\s+/g,' ').slice(0,180);
+  return message||'UNKNOWN_FAILURE';
 }
