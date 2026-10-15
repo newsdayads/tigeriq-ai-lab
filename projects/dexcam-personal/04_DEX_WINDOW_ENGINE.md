@@ -9,6 +9,7 @@ Quản lý **các cửa sổ ứng dụng thật**, không dựng hình giả c�
 - Việc chỉnh cửa sổ của **ứng dụng khác đã chạy** thường cần quyền hệ thống/quyền gỡ lỗi thích hợp; app thường không được phép tùy tiện resize mọi task.
 - Trong APK tham khảo thấy chuỗi `am task resize`, nhưng **không có chứng cứ rằng bản cá nhân có thể chạy lệnh đó chỉ nhờ cài APK**.
 - Phân biệt: hiển thị cửa sổ **của chính app camera** (trong quyền app) và điều khiển task **của app thứ ba** (phụ thuộc quyền ngoài ứng dụng).
+- **Android 16 (API 36):** trên màn hình có `smallestWidthDp >= 600`, hệ thống có thể bỏ qua giới hạn hướng, tỉ lệ và resize do app đặt; OEM có thể tùy chỉnh. Điều đó **không** tự cấp quyền chỉnh cửa sổ app khác. Trên DeX thật cần lưu `android_api`, `target_sdk`, `smallest_width_dp`, `one_ui`, `display_id`, `requested_bounds`, `actual_bounds`; không có readback thì `NOT_MEASURED`. [Nguồn Android](https://developer.android.com/develop/ui/compose/layouts/adaptive/support-multi-window-mode).
 
 ## 3. Các cấp độ thực thi theo quyền
 | Cấp | Công cụ | Khả năng dự kiến | Hạn chế |
