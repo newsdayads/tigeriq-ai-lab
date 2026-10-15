@@ -5,6 +5,7 @@ import {codingChatRequestBody,codingChatContent} from '../shared/nvidia-coding-r
 import {validateCodingFastHealthResponse} from '../shared/coding-core-health-response.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
+import {withPc01LocalInferenceSlot} from '../tigeriq-core/pc01-local-inference-slot.mjs';
 import {branchName,checkGateState,extractCanonicalAllowedPaths,isRetryableAiError,parseJsonObject,safeRepoPath,validateChanges} from './policy.mjs';
 import {assertSafeFileChange} from './safety-guard.mjs';
 import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,installAiJsonTransport,parseModelJson} from './ai-json-transport.mjs';
@@ -293,13 +294,19 @@ export function validateObjectiveRoutingInput({targetEmployee=null,currentPr=nul
   return {targetEmployee:employee||null,currentPr:pr,targetHead:head||null};
 }
 
+// Cloud API workers are first choice. The on-demand NV09 Coder is the
+// last fallback only after no usable cloud Coding worker remains.
 export function selectCodingWorker(available=[],targetEmployee='',fallback=()=>null){
-  const pool=Array.isArray(available)?available:[];
+  const resources=Array.isArray(available)?available:[];
   const target=String(targetEmployee||'').trim().toUpperCase();
-  if(target)return pool.find(resource=>String(resource?.id||'').toUpperCase()===target)||null;
-  const nv09=pool.find(resource=>String(resource?.id||'').toUpperCase()==='NV09');
-  if(nv09)return nv09;
-  return typeof fallback==='function'?fallback():null;
+  const remote=resources.filter(r=>r?.id!=='NV09'&&r?.provider!=='ollama');
+  if(target==='NV09'&&remote.length)return null; // do not override Owner API-first gate
+  if(target)return resources.find(resource=>String(resource?.id||'').toUpperCase()===target)||null;
+  if(remote.length){
+    const selected=typeof fallback==='function'?fallback():null;
+    return selected&&remote.some(r=>r.id===selected.id)?selected:remote[0];
+  }
+  return resources.find(r=>r?.id==='NV09')||null;
 }
 
 export function validateExistingPrResume(pr,{number=null,targetHead=null,repoFullName=''}={}){
@@ -666,7 +673,8 @@ function coreResourceEligible(resource,nowMs=Date.now()){
 
 function selectableResources(exclude=[]){
   const blocked=new Set((exclude||[]).map(String));
-  return resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
+  const eligible=resources.filter(x=>!blocked.has(x.id)&&!busyAiResources.has(x.id)&&coreResourceEligible(x));
+  return eligible.sort((a,b)=>Number(a.id==='NV09')-Number(b.id==='NV09'));
 }
 
 // Guarded fallback: fail closed on stale Core health, occupied shared leases,
@@ -829,7 +837,10 @@ export function invokeCodingOllamaResource(resource,prompt,{
 }
 async function invoke(r,prompt,{ollamaTimeoutMs=null}={}){
   const outputTokens=codingOutputTokenLimit(prompt);
-  if(r.provider==='ollama')return invokeCodingOllamaResource(r,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS});
+  if(r.provider==='ollama')return withPc01LocalInferenceSlot(pool,
+    ()=>invokeCodingOllamaResource(r,prompt,{maxTokens:outputTokens,timeoutMs:ollamaTimeoutMs??OLLAMA_TIMEOUT_MS}),
+    {waitMs:r.id==='NV08'?90000:120000}
+  );
   if(r.provider==='groq')return openAi('https://api.groq.com/openai/v1/chat/completions',process.env.GROQ_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='openrouter')return openAi('https://openrouter.ai/api/v1/chat/completions',process.env.OPENROUTER_API_KEY,r.model,prompt,outputTokens);
   if(r.provider==='mistral')return openAi('https://api.mistral.ai/v1/chat/completions',process.env.MISTRAL_API_KEY,r.model,prompt,outputTokens);
@@ -922,7 +933,8 @@ export async function invokeJsonWithFailover(initialResource,prompt,{
   const eligible=poolResources.filter(r=>r&&!exclude.includes(r.id)&&!busyAiResources.has(r.id));
   const initial=eligible.find(r=>r.id===initialResource?.id)||eligible[0];
   if(!initial){const e=new Error('AI_RESOURCES_BUSY');e.code='AI_RESOURCES_BUSY';throw e;}
-  const ordered=[initial,...eligible.filter(r=>r?.id!==initial.id)];
+  // Always exhaust eligible remote providers before attempting NV09 locally.
+  const ordered=[initial,...eligible.filter(r=>r?.id!==initial.id&&r?.id!=='NV09'),...eligible.filter(r=>r?.id!==initial.id&&r?.id==='NV09')];
   const unique=[];const ids=new Set();
   const resourceLimit=maxResources===null?poolResources.length:Math.max(1,Math.min(poolResources.length,Number(maxResources)||1));
   for(const r of ordered){if(!r||exclude.includes(r.id)||ids.has(r.id)||busyAiResources.has(r.id))continue;ids.add(r.id);unique.push(r);if(unique.length>=resourceLimit)break;}

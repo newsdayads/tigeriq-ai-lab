@@ -91,12 +91,15 @@ test('NV09 native worker rejects reasoning-only EMPTY_RESPONSE without rerouting
   assert.deepStrictEqual(urls,['http://127.0.0.1:11435/api/chat']);
 });
 
-test('NV09 is preferred for untargeted Coding Lane implementation when healthy and available',()=>{
-  const nv11={id:'NV11'},nv09={id:'NV09'},nv12={id:'NV12'};
+test('NV API cloud workers run before on-demand NV09',()=>{
+  const nv11={id:'NV11',provider:'groq'},nv09={id:'NV09',provider:'ollama'},nv12={id:'NV12',provider:'gemini'};
   let fallbackCalls=0;
-  const chosen=selectCodingWorker([nv11,nv09,nv12],'',()=>{fallbackCalls++;return nv11});
-  assert.strictEqual(chosen,nv09);
-  assert.strictEqual(fallbackCalls,0);
+  const chosen=selectCodingWorker([nv09,nv11,nv12],'',()=>{fallbackCalls++;return nv11});
+  assert.strictEqual(chosen,nv11);
+  assert.strictEqual(fallbackCalls,1);
+  assert.strictEqual(selectCodingWorker([nv09,nv11],'NV09',()=>nv09),null);
+  assert.strictEqual(selectCodingWorker([nv09],'',()=>null),nv09);
+  assert.strictEqual(selectCodingWorker([nv09],'NV09',()=>null),nv09);
 });
 
 test('explicit coding target takes precedence over NV09 preference',()=>{
