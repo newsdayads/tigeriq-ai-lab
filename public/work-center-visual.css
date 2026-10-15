@@ -433,3 +433,56 @@ body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterm
 @keyframes tiq-owner-shine{0%,15%{transform:translateX(-160%) skewX(-15deg)}75%,100%{transform:translateX(360%) skewX(-15deg)}}
 @media(max-width:480px){body.api-health #workers.workers{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(prefers-reduced-motion:reduce){body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::after{animation:none!important;content:none!important}}
+
+/* OWNER P0 2026-10-15: Flat UI, equal filter controls, strong verified-progress motion.
+   Animation is decorative, not evidence that a job is executing. */
+body.api-health,body.api-health *,body.api-health *::before,body.api-health *::after{
+ text-shadow:none!important;
+}
+body.api-health .work-panel .wo-filters{align-items:center!important;gap:8px!important}
+body.api-health .work-panel .wo-filters>.wo-filter{
+ box-sizing:border-box!important;flex:0 0 134px!important;width:134px!important;
+ min-width:134px!important;min-height:36px!important;height:36px!important;
+ padding:6px 8px!important;display:inline-flex!important;align-items:center!important;
+ justify-content:center!important;gap:5px!important;border-radius:9px!important;
+ background-image:none!important;box-shadow:none!important;white-space:nowrap!important;
+}
+body.api-health .work-panel .wo-filters>.wo-filter.on{
+ background-image:none!important;box-shadow:none!important;
+}
+@media(max-width:650px){body.api-health .work-panel .wo-filters>.wo-filter{
+ flex:1 1 calc(50% - 8px)!important;width:auto!important;min-width:0!important;
+}}
+body.api-health #workList.tiq-work-center>.tiq-work-card :is(.priority.p0,.priority.p1,.priority.p2,.priority.p3,.priority.p4,.priority.p5){
+ box-sizing:border-box!important;min-width:48px!important;height:27px!important;
+ color:#fff!important;text-shadow:none!important;box-shadow:none!important;background-image:none!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .priority.p1{background-color:#C2410C!important}
+body.api-health #workList.tiq-work-center>.tiq-work-card .priority.p2{background-color:#A65305!important;background:#A65305!important;color:#fff!important}
+body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity,
+body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity span,
+body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity span:first-child{
+ color:#4ADE80!important;
+}
+/* A fast moving highlight stays clipped to the verified portion of the bar. */
+body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-track{
+ height:9px!important;background:#1B3149!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-fill{
+ position:relative!important;overflow:hidden!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-fill::before{
+ content:""!important;position:absolute!important;z-index:2!important;
+ top:0!important;bottom:0!important;left:0!important;width:55%!important;
+ background:linear-gradient(90deg,transparent,rgba(255,255,255,.90) 48%,transparent)!important;
+ transform:translateX(-120%) skewX(-13deg);animation:tiq-owner-flow-fast .95s linear infinite!important;
+ pointer-events:none!important;
+}
+@keyframes tiq-owner-flow-fast{from{transform:translateX(-120%) skewX(-13deg)}to{transform:translateX(240%) skewX(-13deg)}}
+/* No duplicate slower sheen competing with the fast beam. */
+body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::after{content:none!important;animation:none!important}
+@media(prefers-reduced-motion:reduce){
+ body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::before{
+  content:none!important;animation:none!important;
+ }
+}
