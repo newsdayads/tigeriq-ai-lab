@@ -178,7 +178,11 @@ export function buildImprovementWorkOrder(rca={}){
     `SOURCE=SELF_AUDIT:${rca.anomalySignature}`,
     'PARENT=#2708 - Tự phân tích nguyên nhân và sinh Improvement Work Order',
     `PRIORITY=${priority}`,
-    'CAPABILITY=coding,reasoning,review',
+    // The execution router accepts one capability per assignment. The RCA
+    // lifecycle still sequences analysis, coding and independent QA, but
+    // a combined CAPABILITY string has no matching AI resource.
+    'CAPABILITY=coding',
+    'EXECUTION_SURFACE=CODING',
     `RESOURCE_SCOPE=${scope}`,
     'ZERO_COST=true',
     'NO_DIRECT_MAIN=true',
