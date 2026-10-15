@@ -46,11 +46,16 @@ const versionOk=x=>typeof x==='string' && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.
 const sriOk=x=>typeof x==='string' && /^sha512-[A-Za-z0-9+/]{86}==$/.test(x);
 const pathOk=x=>x==='' || (typeof x==='string' && x.length<1024 &&
   /^(?:node_modules\/(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+)(?:\/node_modules\/(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+)*$/.test(x));
-const resolvedOk=x=>{
-  if(typeof x!=='string'||x.length>1024)return false;
-  try{const u=new URL(x);return u.protocol==='https:' &&
-    u.hostname==='registry.npmjs.org' && u.port==='' && !u.username &&
-    !u.password && !u.search && !u.hash && u.pathname.endsWith('.tgz');
+const resolvedOk=(x,name,version)=>{
+  if(typeof x!=='string'||x.length>1024||!nameOk(name)||!versionOk(version))return false;
+  try{
+    const u=new URL(x);
+    // A trusted registry hostname alone cannot bind a tarball to its package.
+    // Percent-encoded scoped names may be present, but must decode to an exact path.
+    const expected='/'+name+'/-/'+name.split('/').at(-1)+'-'+version+'.tgz';
+    return u.protocol==='https:' && u.hostname==='registry.npmjs.org' &&
+      u.port==='' && !u.username && !u.password && !u.search && !u.hash &&
+      decodeURIComponent(u.pathname)===expected;
   }catch{return false;}
 };
 const locate=(pkgs,path,name)=>{
@@ -81,7 +86,8 @@ export function inspectR06ConsumerLock(lock){
     return report('REJECTED','PACKAGE_ENTRIES_INVALID');
   const root=pkgs[''],rea=pkgs['node_modules/rea-agents'];
   if(!rec(root.dependencies)||root.dependencies['rea-agents']!=='6.4.0'||
-      rea.version!=='6.4.0'||rea.integrity!==REA_SRI||!resolvedOk(rea.resolved))
+      rea.version!=='6.4.0'||rea.integrity!==REA_SRI||
+      !resolvedOk(rea.resolved,'rea-agents',rea.version))
     return report('REJECTED','REA_ARTIFACT_PIN_MISMATCH');
   if(!rec(rea.dependencies)||pairs(rea.dependencies).length!==35||
       pairs(DIRECT).some(([name,v])=>rea.dependencies[name]!==v))
@@ -93,7 +99,8 @@ export function inspectR06ConsumerLock(lock){
   for(const [path,p] of rows){
     if(!path)continue;
     if(p.link===true||!versionOk(p.version)||!sriOk(p.integrity)||
-        !resolvedOk(p.resolved))return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
+        !resolvedOk(p.resolved,path.slice(path.lastIndexOf('node_modules/')+13),p.version))
+      return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
     for(const deps of [p.dependencies,p.optionalDependencies]){
       if(deps===undefined)continue;
       if(!rec(deps))return report('REJECTED','INVALID_DEPENDENCY_MAP');
