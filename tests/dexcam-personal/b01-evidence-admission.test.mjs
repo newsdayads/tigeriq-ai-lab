@@ -48,3 +48,23 @@ test('rejects timestamp claiming a far-future observation', () => { const x = sa
 test('rejects UTC offset beyond plausible civil timezone', () => { const x = sample(); x.observed_at = '2026-10-14T00:00:00+14:30'; reject(x, 'observed_at'); });
 test('rejects sample-model evidence relabeled as real device', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; reject(x, 'android.model'); });
 test('rejects unknown manufacturer posing as real observation', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.manufacturer = 'unknown'; x.android.model = 'SM-X999'; reject(x, 'android.manufacturer'); });
+
+test('rejects Android settings evidence aliased as DeX observation', () => {
+  const x = sample(); x.evidence.dex_observation = x.evidence.android_settings;
+  const r = inspectB01(x);
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('evidence.dex_observation:DUPLICATE_EVIDENCE_POINTER'));
+});
+test('rejects a duplicated DeX pointer reused for display readback', () => {
+  const x = sample(); x.evidence.display_readback = x.evidence.dex_observation;
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.ok(r.errors.includes('evidence.display_readback:DUPLICATE_EVIDENCE_POINTER'));
+});
+test('duplicate evidence remains invalid when labeled as a real device', () => {
+  const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.model = 'SM-X999';
+  x.evidence.display_readback = x.evidence.android_settings;
+  const r = inspectB01(x);
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('evidence.display_readback:DUPLICATE_EVIDENCE_POINTER'));
+});
