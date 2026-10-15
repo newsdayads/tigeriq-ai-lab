@@ -21,6 +21,12 @@ Mọi phản hồi Owner-facing và bề mặt TigerIQ sở hữu trình bày ng
 - **Chỉ thẻ trạng thái nhân sự NV** trên API Health / Web Control: **ĐANG LÀM = xanh lá** khi có hoạt động runtime được xác minh; **RẢNH = xanh dương** khi trạng thái READY/IDLE/ONLINE là hiện hành. Chỉ đổi màu chữ/chấm trạng thái; nền/viền thẻ vẫn trung tính. ON_DEMAND chờ giao việc vẫn xám; CHỜ vàng; LỖI đỏ; CHƯA XÁC MINH xám.
 - Ngoại lệ này do Owner chỉ đạo sau bản chuẩn hóa #4841; **không** áp dụng lên báo cáo công việc/BCCT V6: DONE vẫn cần nghiệm thu, xanh lá trên NV ĐANG LÀM **không** có nghĩa công việc DONE. Giữ văn bản trạng thái đi cùng màu, không suy trạng thái từ màu.
 
+## NGỮ NGHĨA NHÂN SỰ NV / NHÃN LỌC — 15/10/2026
+- Phải phân biệt 3 dòng bằng chứng: `UI session` (Chrome Controller heartbeat thực), `Core job` (running + resource/lease), và `GitHub QA inbox/receipt` (việc đang chờ / đã nhận xét). Không biến *có QA* hay *vừa phản hồi* thành **ĐANG LÀM** khi phiên UI hiện READY; không biến trình duyệt có tab mở thành job Core.
+- UI heartbeat mới và `uiBusy=true` / `WORKING` → `UI_BUSY`, xanh lá, nhãn **UI ĐANG PHẢN HỒI**; nếu không có Core job receipt, phải ghi rõ chưa có bằng chứng Core. UI `READY` mới → `RẢNH`, xanh dương; việc QA đang chờ chỉ là thông tin bổ sung, không đổi màu. UI stale / thiếu heartbeat → `UNKNOWN` xám, không giữ job cũ.
+- Bộ lọc nhân viên dùng cùng hợp đồng trạng thái như thẻ: **ĐANG LÀM** xanh lá, **RẢNH** xanh dương, **Tất cả / Cần kiểm tra** trung tính, và **Local AI / Cloud API / UI-Manual** trung tính vì là nguồn, không phải trạng thái. `Cần kiểm tra` gồm chờ/chưa rõ/lỗi, nên không nhuộm đỏ toàn bộ.
+- Mở mặc định **Tất cả** (không che NV03/NV04 rảnh); số nút lọc tính từ đúng danh sách NV hiện lên. Nếu chưa có biên nhận Work Order đang chạy thì Dashboard không được nói đã nhận việc dù có lịch sử QA.
+
 ## TIẾN ĐỘ BẰNG CHỨNG
 - Chỉ tính từ x/y mốc đã xác minh trên nguồn có URL và thời gian kiểm tra. Hiển thị ROUND(100*x/y)% và thanh tương ứng.
 - x=y nhưng chưa có acceptanceVerified: KHÔNG HIỆN 100%; ghi “x/y mốc · CHỜ NGHIỆM THU CUỐI”.
