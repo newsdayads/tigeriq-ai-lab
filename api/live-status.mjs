@@ -315,6 +315,10 @@ function sanitizeRuntimeWorker(worker = {}) {
     label: cleanText(worker.label || employeeId, 80),
     kind: worker.kind === 'ui' ? 'ui' : 'api',
     state,
+    // UI presence is independent of Work Order acceptance. Retain the bounded,
+    // original Chrome Controller UI phase before the job-evidence gate demotes
+    // an unassigned working chat to UNKNOWN.
+    uiSessionState: worker.kind === 'ui' ? state : null,
     status: cleanText(worker.status || 'CHƯA RÕ', 32),
     job: cleanText(worker.job || 'Không có dữ liệu việc hiện tại', 220),
     detail: cleanText(worker.detail || '', 220),
