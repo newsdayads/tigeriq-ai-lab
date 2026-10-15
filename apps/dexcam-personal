@@ -1,0 +1,25 @@
+# DeXCam Personal Android Application
+
+This is an independent Android application for managing USB/UVC cameras in Samsung DeX environment.
+
+## Structure
+- app/src/main/AndroidManifest.xml
+- app/src/main/java/ai/tigeriq/dexcam/
+- app/src/main/res/
+- app/build.gradle.kts
+- settings.gradle.kts
+
+## Permissions Required
+- USB_HOST
+- CAMERA
+- ACCESS_FINE_LOCATION (for USB serial debugging)
+
+## Features
+- USB UVC device detection
+- Camera preview with surface view
+- DeX window management
+- Auto-launch on Reverse Charge signal
+- Safe recovery on USB/camera disconnect
+
+--- 
+*Initialized for D01 milestone*
