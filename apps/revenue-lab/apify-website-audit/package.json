@@ -13,7 +13,8 @@
     "apify:e2e": "node apify-private-e2e.mjs",
     "test:apify-preflight": "node --test apify-private-preflight.test.mjs",
     "apify:preflight": "node apify-private-preflight.mjs",
-    "test:apify-historical": "node --test apify-historical-run-readonly.test.mjs apify-historical-run-build-check.test.mjs apify-existing-run-locator.test.mjs",
+    "test:apify-historical": "node --test apify-historical-run-readonly.test.mjs apify-historical-run-build-check.test.mjs apify-existing-run-locator.test.mjs apify-existing-run-cli.test.mjs",
+    "apify:historical-discover": "node apify-existing-run-cli.mjs",
     "apify:historical-readonly": "node apify-historical-run-readonly.mjs"
   },
   "dependencies": {
