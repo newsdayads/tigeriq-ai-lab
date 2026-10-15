@@ -44,7 +44,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(first).not.toBe(apiDoctorScanSignature([nv12,nv20]));
     expect(first).not.toBe(apiDoctorScanSignature([nv11,{...nv20,action:'wait'}]));
     expect(first).not.toBe(apiDoctorScanSignature([{...nv11,provider:'alternate'},nv20]));
-    expect(first).toMatch(/^SCAN\\|core\\|state\\|[a-f0-9]{64}$/);
+    expect(first).toMatch(/^SCAN\|core\|state\|[a-f0-9]{64}$/);
     expect(apiDoctorScanSignature([{employeeId:'NV09',provider:'ollama',action:'probe',failureClass:'timeout'}])).toBe(apiDoctorScanSignature([]));
   });
 
