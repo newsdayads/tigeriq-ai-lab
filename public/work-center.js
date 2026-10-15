@@ -56,7 +56,7 @@ function sortClosed(rows,mode){
    is the only accepted status-event timestamp. Missing evidence stays below
    attested rows in the existing Owner/priority order. */
 function sortOpen(rows,mode){
- const kind=String(mode||'priority');
+ const kind=String(mode||'activity_latest');
  if(kind==='number_asc')return [...rows].sort((a,b)=>Number(a.number||0)-Number(b.number||0));
  if(kind==='number_desc')return [...rows].sort((a,b)=>Number(b.number||0)-Number(a.number||0));
  if(kind==='activity_latest')return [...rows].sort((a,b)=>{
@@ -117,7 +117,8 @@ function renderCards(container,rows,options){
   const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'');
   el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
-  const blocker=txt(row.blocker||row.waitReason||'').trim();
+  const rawBlocker=txt(row.blocker||row.waitReason||'').trim();
+   const blocker=/^(?:none|no(?:ne)?|null|undefined|không(?: có)?|khong(?: co)?|n\/?a|[-—–])$/i.test(rawBlocker)?'':rawBlocker;
   const summary=blocker?'Bị chặn: '+blocker:txt(row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
   const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
