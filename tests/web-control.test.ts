@@ -14,6 +14,19 @@ const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf
 const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
+  it('shows NV102 Mobile Core presence without registering a fake generic AI resource',()=>{
+    expect(core).toContain('projectMobileWorkerPresence');
+    expect(core).toContain('resources:rr,mobileWorkers,workforce');
+    expect(core).toContain("from tigeriq_mobile_devices where revoked=false");
+    expect(apiHealth).toContain('function applyMobileWorkers(rows,mobileWorkers)');
+    expect(apiHealth).toContain("d.mobileWorkers||[]");
+    expect(apiHealth).toContain("status:fresh?'MOBILE_ONLINE':'MOBILE_OFFLINE'");
+    expect(apiHealth).toContain("resource_class:'mobile_worker'");
+    expect(apiHealth).toContain("Chờ nghiệm thu 20 tác vụ");
+    expect(apiHealth).toContain("if(x.resource_class==='mobile_worker')return'MOBILE'");
+    expect(apiHealth).not.toContain("NV102','ollama'");
+  });
+
   it('categorizes PC01 NV06 OpenClaw in Local without changing its operator role', () => {
     expect(apiHealth).toContain("['ollama','openclaw'].includes(String(live?.provider||'').toLowerCase())");
     expect(apiHealth).toContain("['NV06','NV09','NV10'].includes(id)");
