@@ -1,28 +1,39 @@
-# Backend Engineering — P0 Core/Coding Lane candidate
+# Backend Engineering
 
-ID: backend-engineering
-Version: 0.1.0
-State: CANDIDATE — not runtime loadable until validated, real canary and registry promotion
-Target: coding-lane / backend
+## Identity
+- ID: backend-engineering
+- Version: 0.1.0
+- State: CANDIDATE — not runtime loadable until canary, validation and registry promotion
+- Target: coding-lane / backend
+- Provenance: Owner P0 Core/Coding Lane directive 2026-10-16
 
 ## Trigger
-A bounded API, service, worker, database migration or backend correctness change under an explicit Work Order.
+Implement a scoped backend API, worker, service, data-contract or database correctness change.
 
-## Required inputs
-Canonical specification, endpoint/data contract, real failure evidence, source SHA, exact file scope, tests and permitted mutation boundary.
+## Input
+Canonical Work Order, exact source SHA and allowed files, contract, observed failure, security boundaries, lease/transaction invariants and test commands.
 
-## Step-by-step prompt
-1. Identify existing endpoint, input/output schemas, service dependencies, and data or writer ownership.
-2. Reproduce reported defect with RED or document why reproduction is not feasible; do not claim an unobserved root cause.
-3. Implement minimal schema-compatible code; preserve idempotency, timeouts, quotas, authorization, transaction and lease fencing.
-4. Run focused unit/integration/negative tests including concurrent claim, stale writer, retry exhaustion and restart when applicable.
-5. Return changed file evidence, exact SHA, reproducible commands, test results, unresolved blockers and the next safe step.
+## Steps
+1. Read real endpoint/data schemas and dependencies, identify writer scope and current behavior.
+2. Reproduce defect where applicable; rank falsifiable hypotheses, avoid claiming root cause without evidence.
+3. Compile per-step prompt with exact files, source and behavior invariants, acceptance and failure conditions.
+4. Implement minimal compatible code preserving idempotency, concurrency, timeout and existing authorization.
+5. Run focused unit/integration/negative tests (including stale writer/restart when relevant) and return source SHA, commands, receipts, limitations and next step.
+
+## Tools / Output
+Existing approved repository and isolated test tools; code diff, contract test output and traceable evidence.
 
 ## Acceptance
-Contract and negative tests must pass for the actual target version. A mock result does not prove real PostgreSQL or PC01 runtime behavior. No feature DONE based merely on a fast model response or generic CI.
+Source-level and actual contract tests meet the scoped specification. Mock tests do not imply real PostgreSQL or live PC01 runtime success. No feature DONE on fast model reply or green generic CI alone.
 
-## Security / permissions
-No secrets, payment, production, authorization change, App Chrome or direct main write without separate scoped approval. Never infer Core resource lease from GitHub branch permission.
+## Evidence
+Pinned diff, negative and functional tests, external dependency receipts where authorized, real scoped canary before ACTIVE promotion.
 
-## Promotion
-Canary on a bounded API fixture with real source contract test, independent review or documented Owner waiver and authorized registry promotion required before ACTIVE.
+## Fallback
+If runtime/credential/lease is missing, park only affected step with explicit wake trigger and continue safe independent steps.
+
+## Safety
+No secrets, payment, security boundary, Production, App Chrome, device write or direct main mutation without separate authorization.
+
+## Non-goals
+Not a license for Core scheduler rewrite, automatic release or permission broadening.
