@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest';
 // @ts-ignore Standalone JS module intentionally has no TypeScript declarations.
-import { inspectR06ConsumerLock, REA_DIRECT_DEPENDENCIES, REA_EXPECTED_SRI }
-  from '../../projects/rea-reconstruction-lab/r06-consumer-lock-preflight.mjs';
+import { inspectR06ConsumerLock, REA_DIRECT_DEPENDENCIES, REA_EXPECTED_SRI } from '../../projects/rea-reconstruction-lab/r06-consumer-lock-preflight.mjs';
 const sri='sha512-'+('A'.repeat(86))+'==';
 const fixture=():any=>{
   const deps=structuredClone(REA_DIRECT_DEPENDENCIES);
