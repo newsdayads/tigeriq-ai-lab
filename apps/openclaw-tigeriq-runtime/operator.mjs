@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import net from 'node:net';
@@ -2177,6 +2178,43 @@ export async function readClineBenchmarkPreflight({lstatImpl=fs.lstat,fetchImpl=
   };
 }
 
+const NV07_OWNER_WINDOWS_USER = 'wdragons12x';
+const NV07_AGY_EXE = 'C:\\Users\\wdragons12x\\AppData\\Local\\agy\\bin\\agy.exe';
+
+// Read-only diagnostic in the ACTUAL OpenClaw gateway logon context.
+// It cannot create Core authority, configure CLI credentials, or enable NV07 routing.
+export function nv07UserSessionPreflightIdentity({ platform, windowsUser } = {}) {
+  return platform === 'win32' && String(windowsUser || '').toLowerCase() === NV07_OWNER_WINDOWS_USER;
+}
+
+export async function nv07UserSessionPreflight() {
+  const windowsUser = os.userInfo().username;
+  if (!nv07UserSessionPreflightIdentity({ platform: process.platform, windowsUser })) {
+    return { ready: false, reason: 'NV07_WRONG_WINDOWS_LOGON', execution: 'NOT_RUN' };
+  }
+  try {
+    const bin = await fs.stat(NV07_AGY_EXE);
+    if (!bin.isFile() || bin.size < 1024 * 1024) {
+      return { ready: false, reason: 'NV07_AGY_BINARY_INVALID', execution: 'NOT_RUN' };
+    }
+    // Model listing does not submit a prompt. Explicitly use the gateway user's
+    // own profile variables; never read, return, or copy OAuth/token files.
+    const out = await spawnBounded(NV07_AGY_EXE, ['models'], {
+      cwd: 'D:\\TigerIQ', timeoutSec: 20,
+      extraEnvKeys: ['USERPROFILE', 'APPDATA', 'LOCALAPPDATA'],
+    });
+    if (out.timedOut) return { ready: false, reason: 'NV07_AGY_MODELS_TIMEOUT', execution: 'READ_ONLY' };
+    if (out.exitCode !== 0) return { ready: false, reason: 'NV07_AGY_MODELS_UNAVAILABLE', execution: 'READ_ONLY' };
+    const models = String(out.stdout || '').split(/\r?\n/).filter(line =>
+      /^\s*[A-Za-z0-9_.:/ -]{2,120}\s*$/.test(line) && /gemini|claude|model/i.test(line)
+    ).slice(0, 12).map(line => line.trim());
+    return { ready: true, reason: 'NV07_AGY_MODELS_LISTED_IN_OWNER_SESSION',
+      execution: 'READ_ONLY', windowsUser: NV07_OWNER_WINDOWS_USER, models };
+  } catch {
+    return { ready: false, reason: 'NV07_AGY_LOCAL_PREFLIGHT_ERROR', execution: 'NOT_VERIFIED' };
+  }
+}
+
 export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
@@ -2184,6 +2222,8 @@ export async function executePcAction(input, options = {}) {
   let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
+  } else if (action === 'nv07_preflight') {
+    data = await nv07UserSessionPreflight();
   } else if (action === 'task_list') {
     data = await listTigerIQTasks();
   } else if (action === 'android_worker_release_build') {
