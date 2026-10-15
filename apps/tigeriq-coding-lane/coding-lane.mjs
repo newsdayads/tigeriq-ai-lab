@@ -1330,13 +1330,13 @@ async function managerTick(){
     if(OWNER_P0_CODING_STEP_CANARY){
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
-      const previous=await pool.query("select x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id order by j.created_at desc limit 500");
+      const previous=await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id order by j.created_at desc limit 500");
       const history=[];
       for(const row of previous.rows||[]){
         const previousPacket=codingStepPacketFromInstruction(row.instruction);
         if(!previousPacket)continue;
         const failure=typeof row.failure==='string'?JSON.parse(row.failure):row.failure;
-        history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||''),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
+        history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||row.source_objective_id),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
           status:row.status==='done'?'accepted':row.status==='failed'?'failed':String(row.status||''),
           failureSignature:String(failure?.code||failure?.message||'UNKNOWN_FAILURE')});
       }
@@ -1835,7 +1835,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
-async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){const prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
+async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if(OWNER_P0_CODING_STEP_CANARY){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');prompt+='\n'+codingRolePrompt({role:'reviewer',packet,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
   await refreshCoreResourceHealth();
@@ -1964,6 +1964,10 @@ async function runJob(j){
   });
   review=lifecycle.review;gates=lifecycle.gates;
   if(OWNER_P0_CODING_STEP_CANARY){
+    const changedFiles=await ghRepo(targetRepository,`/pulls/${pr.number}/files?per_page=100`);
+    const actual=new Set((Array.isArray(changedFiles)?changedFiles:[]).map(x=>String(x.filename||'')));
+    const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
+    if(absent.length)throw Object.assign(new Error('CODING_REQUIRED_CHANGED_FILES_MISSING:'+absent.join(',')),{code:'CODING_REQUIRED_CHANGED_FILES_MISSING'});
     const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:gates.states});
     if(!check.pass)throw Object.assign(new Error(check.code+':'+check.missing.join(',')),{code:check.code});
   }
@@ -1975,7 +1979,7 @@ async function runJob(j){
   if(ownerWaiver)assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
   else assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE){
+  if(AUTO_MERGE&&(!OWNER_P0_CODING_STEP_CANARY||process.env.TIGERIQ_P0_CODING_STEP_OWNER_RELEASE==='1')){
     try{
       await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
       // merge=await mergePr(pr.number,approvedHead,j.title)
