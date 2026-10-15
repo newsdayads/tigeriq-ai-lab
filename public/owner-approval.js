@@ -24,7 +24,7 @@ async function load(){
     message('Cần đăng nhập đúng tài khoản Owner. Sau khi đăng nhập, quay lại và tải lại trang này.');
     return;
   }
-  const data=await getJson('/api/control?operation=owner-decision?issue='+encodeURIComponent(issue));
+  const data=await getJson('/api/control?operation=owner-decision&issue='+encodeURIComponent(issue));
   if(!data.ok){message('Không thể xác minh yêu cầu: '+String(data.error||data.httpStatus));return}
   if(!data.pending){
     message('Yêu cầu này đã có quyết định được ghi nhận. Không cho gửi trùng.');

@@ -53,6 +53,12 @@ test('Web Control action is conspicuous, but never treats the local browser as O
   const ui=readFileSync(new URL('../public/owner-approval.js',import.meta.url),'utf8');
   assert.match(ui,/api\/owner-auth\?action=status/);
   assert.match(ui,/api\/control\?operation=owner-decision/);
+  // Verify GET query parsing, not just a substring; a second '?' corrupts operation.
+  assert.match(ui,/operation=owner-decision&issue='\+encodeURIComponent\(issue\)/);
+  assert.doesNotMatch(ui,/operation=owner-decision\?issue=/);
+  const url = new URL('/api/control?operation=owner-decision&issue=142','https://tigeriq-ai-lab.vercel.app');
+  assert.equal(url.searchParams.get('operation'),'owner-decision');
+  assert.equal(url.searchParams.get('issue'),'142');
   assert.match(ui,/data\.ok/);
 });
 
