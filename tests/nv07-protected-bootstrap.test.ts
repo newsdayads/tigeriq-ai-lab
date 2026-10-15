@@ -93,12 +93,13 @@ describe('canonical NV07 queue admission',()=>{
  });
  it('enqueues the protected exact job once, without CLI or lease claim',async()=>{
   setup();
-  const db={query:vi.fn().mockResolvedValueOnce({rowCount:1,rows:[{id:payload.job_id}]}).mockResolvedValueOnce({rowCount:1})};
+  const db={query:vi.fn().mockResolvedValueOnce({rowCount:1,rows:[{id:payload.job_id}]})};
   expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({
    accepted:true,code:'NV07_CANONICAL_QUEUE_ACCEPTED_NOT_EXECUTED',jobId:payload.job_id,coreLeaseVerified:false,nv07Active:false});
   expect(db.query.mock.calls[0][0]).toContain("'queued'");
   expect(db.query.mock.calls[0][1][0]).toBe(payload.job_id);
-  expect(db.query.mock.calls[1][0]).toContain('NV07_CORE_BOOTSTRAP_QUEUED');
+  expect(db.query.mock.calls[0][0]).toContain('NV07_CORE_BOOTSTRAP_QUEUED');
+  expect(db.query).toHaveBeenCalledTimes(1);
  });
  it('does not enqueue twice or route to another employee',async()=>{
   setup();
