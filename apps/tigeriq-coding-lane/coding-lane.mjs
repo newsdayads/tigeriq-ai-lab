@@ -13,6 +13,7 @@ import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof} from './coding-skill-policy.mjs';
+import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
@@ -1332,6 +1333,7 @@ async function managerTick(){
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let jobInstruction=String(d.job.instruction||o.objective);
+    let replayGuard=null,atomicWorkOrderId=null;
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       const sourceTree=await ghRepo(targetRepository,`/git/trees/${sourceHeadSha}?recursive=1`);
       if(sourceTree?.truncated||!Array.isArray(sourceTree?.tree))throw Error('CODING_MATERIAL_TREE_INCOMPLETE');
@@ -1343,9 +1345,10 @@ async function managerTick(){
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:materialRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
       const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
+      replayGuard=async db=>{
       const previous=sourceWorkOrder
-        ?await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.objective ilike $1 order by j.created_at desc limit 5000",['%issue #'+sourceWorkOrder+'%'])
-        :await pool.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.id=$1 order by j.created_at desc limit 5000",[o.id]);
+        ?await db.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.objective ilike $1 order by j.created_at desc limit 5000",['%issue #'+sourceWorkOrder+'%'])
+        :await db.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.id=$1 order by j.created_at desc limit 5000",[o.id]);
       if(previous.rows.length>=5000)throw Error('CODING_ATTEMPT_HISTORY_INCOMPLETE');
       const history=[];
       for(const row of previous.rows||[]){
@@ -1360,10 +1363,9 @@ async function managerTick(){
       const accepted=repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,history:same});
       const seenFailures=[...new Set(same.filter(h=>h.status==='failed').map(h=>h.failureSignature))];
       const stop=accepted.allow?seenFailures.map(failureSignature=>repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,failureSignature,history:same})).find(x=>!x.allow):accepted;
-      if(stop&&!stop.allow){
-        await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,next_attempt_at=null,updated_at=now() where id=$1",[o.id,stop.code+': unchanged source+step; wait for material evidence']);
-        return;
-      }
+      if(stop&&!stop.allow)throw Object.assign(new Error(stop.code),{code:stop.code});
+      };
+      atomicWorkOrderId=workOrderId;
       jobInstruction=codingStepInstruction(packet);
       if(jobInstruction.length>12000)throw Error('CODING_STEP_STORED_INSTRUCTION_TOO_LONG');
     }
@@ -1375,11 +1377,16 @@ async function managerTick(){
       resumeBranch=resume.branch;resumePr=resume.number;resumeHead=resume.headSha;
     }
     const id=`CODE-${randomUUID()}`;
-    await pool.query(
-      'insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,target_employee_id,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-      [id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),jobInstruction.slice(0,12000),JSON.stringify(paths),o.target_employee||null,resumeBranch,resumePr,resumeHead]
-    );
-    await pool.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
+    const persist=async db=>{
+      if(replayGuard)await replayGuard(db);
+      await db.query(
+        'insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,target_employee_id,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [id,o.id,canonicalCodingJobTitle(o.objective,d.job.title),jobInstruction.slice(0,12000),JSON.stringify(paths),o.target_employee||null,resumeBranch,resumePr,resumeHead]
+      );
+      await db.query("update tigeriq_coding_objectives set manager_employee_id=$2,summary=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,manager.id,String(d.summary||'coding job created').slice(0,1000)]);
+    };
+    if(replayGuard)await withAtomicCodingSourceClaim(pool,{workOrderId:atomicWorkOrderId,paths,run:persist});
+    else await persist(pool);
   }catch(e){
     const plan=managerResourceFailurePlan(e,o);
     if(plan.transient&&plan.wait){
