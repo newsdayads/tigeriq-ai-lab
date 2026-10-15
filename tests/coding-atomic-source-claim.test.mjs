@@ -24,15 +24,16 @@ test('canonical work order and scoped file lock are acquired before query+insert
   const sql=t.statements.map(x=>x.sql);
   assert.equal(sql[0],'BEGIN');
   assert.equal(sql[1],'select pg_advisory_xact_lock(hashtextextended($1,0))');
-  assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,3);
+  assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,4);
   assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>sql.findIndex(x=>x.startsWith('select id from tigeriq_coding_jobs')));
   assert.equal(sql.at(-1),'COMMIT');
   assert.equal(t.released,true);
-  assert.deepEqual(t.statements[2].args,['coding-file:apps/a/b.mjs']);
-  assert.deepEqual(t.statements[3].args,['coding-file:apps/a/c.mjs']);
+  assert.deepEqual(t.statements[2].args,['coding-file:apps/a']);
+  assert.deepEqual(t.statements[3].args,['coding-file:apps/a/b.mjs']);
+  assert.deepEqual(t.statements[4].args,['coding-file:apps/a/c.mjs']);
 });
 test('an in-flight file writer cannot trigger a second insert, and xact rolls back',async()=>{
-  const t=db({active:[{id:'CODE-existing'}]});
+  const t=db({active:[{id:'CODE-existing',paths:['apps/a/b.mjs']}]});
   await assert.rejects(withAtomicCodingSourceClaim(t.pool,{workOrderId:'new-objective',paths:['apps/a/b.mjs'],run:async()=>{
     throw Error('MUST_NOT_RUN');
   }}),/CODING_MUTATION_PATH_ALREADY_IN_FLIGHT/);
@@ -48,4 +49,25 @@ test('DB insert failure rolls back without partial claimed job',async()=>{
   }}),/SIMULATED_DB_CONFLICT/);
   assert.equal(t.statements.at(-1).sql,'ROLLBACK');
   assert.equal(t.released,true);
+});
+
+test('legacy directory scope overlaps nested file, no second writer may start',async()=>{
+  const t=db({active:[{id:'legacy-dir',paths:['apps/module']}]});
+  await assert.rejects(withAtomicCodingSourceClaim(t.pool,{
+    workOrderId:'new',paths:['apps/module/handler.mjs'],run:async()=>{throw Error('MUST_NOT_RUN')}
+  }),/CODING_MUTATION_PATH_ALREADY_IN_FLIGHT/);
+  assert.equal(t.statements.at(-1).sql,'ROLLBACK');
+});
+test('unrelated project files remain independently eligible',async()=>{
+  const t=db({active:[{id:'other',paths:['apps/another/file.mjs']}]});
+  let wrote=false;
+  await withAtomicCodingSourceClaim(t.pool,{workOrderId:'new',paths:['apps/module/handler.mjs'],run:async()=>{wrote=true}});
+  assert.equal(wrote,true);
+  assert.equal(t.statements.at(-1).sql,'COMMIT');
+});
+test('malformed or oversized live-writer evidence fails closed',async()=>{
+  const unknown=db({active:[{id:'unknown',paths:null}]});
+  await assert.rejects(withAtomicCodingSourceClaim(unknown.pool,{workOrderId:'a',paths:['apps/a/file.mjs'],run:async()=>null}),/CODING_ACTIVE_WRITER_PATHS_UNVERIFIED/);
+  const huge=db({active:Array.from({length:2001},(_,n)=>({id:String(n),paths:['apps/other/'+n]}))});
+  await assert.rejects(withAtomicCodingSourceClaim(huge.pool,{workOrderId:'a',paths:['apps/a/file.mjs'],run:async()=>null}),/CODING_ACTIVE_WRITER_SCAN_INCOMPLETE/);
 });
