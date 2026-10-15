@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { inspectB01 } from '../../projects/dexcam-personal/b01-evidence-admission.mjs';
 
 const sample = () => ({
-  schema: 'dexcam-b01-v1', capture_kind: 'SYNTHETIC_FIXTURE', observed_at: '2026-10-15T12:00:00+07:00',
+  schema: 'dexcam-b01-v1', capture_kind: 'SYNTHETIC_FIXTURE', observed_at: '2026-10-14T12:00:00+07:00',
   android: { manufacturer: 'Samsung', model: 'SM-TEST', android_version: '16', api_level: 36, one_ui_version: '8.0' },
   dex: { mode: 'EXTERNAL_DISPLAY', source: 'LOCAL_ONLY:dex-screenshot-01' },
   display: { display_id: 1, logical_width_px: 1920, logical_height_px: 1080, density_dpi: 240,
@@ -24,7 +24,7 @@ test('complete synthetic record is never accepted as B01', () => {
   assert.equal(r.b01_accepted, false); assert.deepEqual(r.errors, []);
 });
 test('real-device-shaped record remains only a candidate pending private independent readback', () => {
-  const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION';
+  const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.model = 'SM-X999';
   const r = inspectB01(x);
   assert.equal(r.status, 'CANDIDATE_NEEDS_DEVICE_REVIEW'); assert.equal(r.b01_accepted, false);
 });
@@ -40,3 +40,11 @@ test('reject unsupported fields and authentication artifacts', () => { const x =
 test('reject invalid screen rotation', () => { const x = sample(); x.display.rotation_deg = 45; reject(x, 'display.rotation_deg'); });
 test('valid records cannot override admission status with forged property', () => { const x = sample(); x.b01_accepted = true; reject(x, 'root.b01_accepted'); });
 test('reject unredacted evidence', () => { const x = sample(); x.redaction_confirmed = false; reject(x, 'redaction_confirmed'); });
+
+test('rejects normalized nonexistent February 30', () => { const x = sample(); x.observed_at = '2026-02-30T10:00:00+07:00'; reject(x, 'observed_at'); });
+test('rejects invalid leap day in a nonleap year', () => { const x = sample(); x.observed_at = '2025-02-29T10:00:00+07:00'; reject(x, 'observed_at'); });
+test('accepts a genuine Gregorian leap-day date in a synthetic fixture', () => { const x = sample(); x.observed_at = '2024-02-29T10:00:00+07:00'; assert.equal(inspectB01(x).status, 'SYNTHETIC_FIXTURE_ONLY'); });
+test('rejects timestamp claiming a far-future observation', () => { const x = sample(); x.observed_at = '2099-01-01T00:00:00+07:00'; reject(x, 'observed_at'); });
+test('rejects UTC offset beyond plausible civil timezone', () => { const x = sample(); x.observed_at = '2026-10-14T00:00:00+14:30'; reject(x, 'observed_at'); });
+test('rejects sample-model evidence relabeled as real device', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; reject(x, 'android.model'); });
+test('rejects unknown manufacturer posing as real observation', () => { const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.manufacturer = 'unknown'; x.android.model = 'SM-X999'; reject(x, 'android.manufacturer'); });

@@ -8,6 +8,23 @@ const ref = v => typeof v === 'string' && /^LOCAL_ONLY:[A-Za-z0-9._-]{3,64}$/.te
 const num = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
 const measured = v => typeof v === 'string' && v !== 'NOT_MEASURED' && v.trim().length > 0;
 const safeText = v => measured(v) && /^[A-Za-z0-9 ._()+/-]{2,48}$/.test(v);
+// Date.parse normalizes 2026-02-30 into March: verify Gregorian date and real offset.
+const observedTime = value => {
+  if (typeof value !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):([0-5]\d))$/.exec(value);
+  if (!m) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 ||
+    day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return false;
+  const zoneHour = Number(m[10] || 0), zoneMinute = Number(m[11] || 0);
+  if (zoneHour > 14 || (zoneHour === 14 && zoneMinute !== 0)) return false;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) && ms <= Date.now() + 5 * 60 * 1000;
+};
+// Plain-text device metadata can still contain placeholder labels. Reject these
+// for a self-declared real observation without claiming the remainder is genuine.
+const sampleMarker = value => typeof value === 'string' &&
+  /(?:^|[^A-Z0-9])(?:NOT[_ -]?MEASURED|UNKNOWN|UNVERIFIED|TBD|TEST|MOCK|SAMPLE|DEMO|PLACEHOLDER|FAKE|N\/A)(?:$|[^A-Z0-9])/i.test(value);
 
 /** Return a preflight assessment, not B01 acceptance or a device attestation. */
 export function inspectB01(x) {
@@ -22,11 +39,14 @@ export function inspectB01(x) {
     return { status: 'INCOMPLETE', b01_accepted: false, errors };
   if (x.schema !== schema) err('schema', 'UNKNOWN_VERSION');
   if (!['REAL_DEVICE_OBSERVATION', 'SYNTHETIC_FIXTURE'].includes(x.capture_kind)) err('capture_kind', 'INVALID');
-  if (typeof x.observed_at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(x.observed_at) || Number.isNaN(Date.parse(x.observed_at)))
-    err('observed_at', 'OFFSET_TIMESTAMP_REQUIRED');
+  if (!observedTime(x.observed_at)) err('observed_at', 'REAL_CALENDAR_OFFSET_PAST_OR_CURRENT_REQUIRED');
   if (shape(x.android, 'android', ['manufacturer', 'model', 'android_version', 'api_level', 'one_ui_version'])) {
     for (const k of ['manufacturer', 'model', 'android_version', 'one_ui_version']) if (!safeText(x.android[k])) err('android.' + k, 'MEASURED_SAFE_TEXT_REQUIRED');
     if (!num(x.android.api_level, 23, 50)) err('android.api_level', 'INTEGER_REQUIRED');
+    if (x.capture_kind === 'REAL_DEVICE_OBSERVATION') {
+      for (const k of ['manufacturer', 'model', 'android_version', 'one_ui_version'])
+        if (sampleMarker(x.android[k])) err('android.' + k, 'PLACEHOLDER_NOT_REAL_EVIDENCE');
+    }
   }
   if (shape(x.dex, 'dex', ['mode', 'source'])) {
     if (!['EXTERNAL_DISPLAY', 'ON_DEVICE'].includes(x.dex.mode)) err('dex.mode', 'ACTIVE_OBSERVED_MODE_REQUIRED');
