@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Buffer} from 'node:buffer';
 import {
   NV04_IDLE_AUDIT_PATHS,nv04IdleAuditGate,nv04IdleSourcePacket,
-  buildNv04IdleAuditPrompt,parseNv04IdleAuditResult,
+  buildNv04IdleAuditPrompt,parseNv04IdleAuditResult,nv04IdleAuditSlot,
 } from '../apps/tigeriq-core/nv04-idle-audit.mjs';
 
 const now=Date.parse('2026-10-15T12:00:00Z');
@@ -38,24 +38,27 @@ test('NV04 idle audit fail-closed gate requires enabled fresh truly idle Gemini;
 });
 
 test('only bounded, allowlisted source files are fetched and pinned to exact main SHA',async()=>{
-  const calls=[],packet=await nv04IdleSourcePacket({fetchImpl:fixtureFetch(calls)});
+  const calls=[],packet=await nv04IdleSourcePacket({fetchImpl:fixtureFetch(calls),slot:'20261015T00'});
   assert.equal(packet.sha,sha);
   assert.equal(packet.files.length,2);
   assert.deepEqual(packet.files.map(x=>x.path),NV04_IDLE_AUDIT_PATHS.slice(0,2));
   assert.ok(calls.every(x=>x.includes('api.github.com/repos/newsdayads/tigeriq-ai-lab')));
   assert.ok(calls.slice(1).every(x=>x.endsWith('?ref='+sha)));
   const pinned=[];
-  await nv04IdleSourcePacket({fetchImpl:fixtureFetch(pinned),refSha:sha});
+  await nv04IdleSourcePacket({fetchImpl:fixtureFetch(pinned),refSha:sha,slot:'20261015T00'});
   assert.ok(!pinned.some(x=>x.includes('/commits/main')));
   assert.match(buildNv04IdleAuditPrompt(packet),/PHAM_VI=Chỉ hai file/);
   assert.match(buildNv04IdleAuditPrompt(packet),/KHONG_SUA_CODE/);
   assert.match(buildNv04IdleAuditPrompt(packet),new RegExp('SOURCE_SHA='+sha));
+  const later=await nv04IdleSourcePacket({fetchImpl:fixtureFetch(),slot:'20261015T06'});
+  assert.notDeepEqual(later.files.map(x=>x.path),packet.files.map(x=>x.path));
+  assert.equal(nv04IdleAuditSlot(Date.UTC(2026,9,15,23)), '20261015T18');
 });
 
 test('NV04 audit results require exact source SHA, allowlisted file, true quoted line and reproducibility',async()=>{
-  const packet=await nv04IdleSourcePacket({fetchImpl:fixtureFetch()});
+  const packet=await nv04IdleSourcePacket({fetchImpl:fixtureFetch(),slot:'20261015T00'});
   const finding={path:packet.files[0].path,line:1,quote:'export function testRoute()',description:'Hàm định tuyến có thể sai khi kiểm tra điều kiện biên',repro:'Viết unit test cho đầu vào null và dạng không hợp lệ',severity:'P2'};
-  const envelope=f=>['NV04_IDLE_AUDIT_RESULT_V1','SOURCE_SHA='+sha,'FINDINGS_JSON='+JSON.stringify(f)].join('\n');
+  const envelope=f=>['NV04_IDLE_AUDIT_RESULT_V1','SOURCE_SHA='+sha,'AUDIT_SLOT='+packet.slot,'FINDINGS_JSON='+JSON.stringify(f)].join('\n');
   const ok=parseNv04IdleAuditResult(envelope([finding]),packet);
   assert.equal(ok.accepted,true);
   assert.equal(ok.findings[0].verification,'SOURCE_LINE_CONFIRMED_LOGIC_UNVERIFIED');
@@ -66,6 +69,7 @@ test('NV04 audit results require exact source SHA, allowlisted file, true quoted
   assert.equal(parseNv04IdleAuditResult(envelope([{...finding,line:99999}]),packet).accepted,false);
   assert.equal(parseNv04IdleAuditResult(envelope(Array.from({length:6},()=>finding)),packet).reason,'AUDIT_FINDINGS_LIMIT');
   assert.equal(parseNv04IdleAuditResult(envelope([finding]).replace(sha,'f'.repeat(40)),packet).reason,'AUDIT_SOURCE_SHA_MISMATCH');
+  assert.equal(parseNv04IdleAuditResult(envelope([finding]).replace('AUDIT_SLOT='+packet.slot,'AUDIT_SLOT=20261015T06'),packet).reason,'AUDIT_SLOT_MISMATCH');
   assert.equal(parseNv04IdleAuditResult('DONE',packet).accepted,false);
 });
 
