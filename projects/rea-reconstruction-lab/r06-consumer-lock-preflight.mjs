@@ -110,10 +110,15 @@ export function inspectR06ConsumerLock(lock){
       for(const [name,spec] of pairs(deps)){
         if(!nameOk(name)||typeof spec!=='string'||!spec.trim()||spec.length>256)
           return report('REJECTED','INVALID_DEPENDENCY_REFERENCE');
-        if(!locate(pkgs,path,name)){
+        const located=locate(pkgs,path,name);
+        if(!located){
           if(kind==='optional') { missingOptionalDependencies++; continue; }
           return report('REJECTED','UNRESOLVED_DEPENDENCY_REFERENCE');
         }
+        // Reject exact pin mismatches, including present optional native addons.
+        // Non-exact semver ranges are not checked by this shape-only verifier.
+        if(versionOk(spec) && pkgs[located].version!==spec)
+          return report('REJECTED','DEPENDENCY_EXACT_VERSION_MISMATCH');
       }
     }
   }

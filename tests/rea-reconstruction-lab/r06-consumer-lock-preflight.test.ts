@@ -163,3 +163,28 @@ it('R06 rejects invalid optional specs and suspicious optional package tarball s
   const r=inspectR06ConsumerLock(y);
   expect(r.reason).toBe('UNVERIFIED_PACKAGE_SOURCE');safe(r);
 });
+
+it('R06 rejects exact optional native pin mismatching an internally consistent registry row',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.1',integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.1.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
+it('R06 rejects mandatory exact pin mismatch even when tarball filename matches row',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'1.1.0'};
+  x.packages['node_modules/extra']={version:'1.1.1',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-1.1.1.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
+it('R06 matching exact optional addon stays shape-only, never install-approved',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(r);
+});
+it('R06 exact prerelease pins are compared rather than silently bypassed',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'2.0.0-alpha.4'};
+  x.packages['node_modules/extra']={version:'2.0.0-alpha.5',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-2.0.0-alpha.5.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
