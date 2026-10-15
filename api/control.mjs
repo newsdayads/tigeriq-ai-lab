@@ -1,6 +1,7 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
+import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -446,6 +447,9 @@ function formatStatusReply(snapshot) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
+      // Reuse the existing API function quota; still require Owner session in handler.
+      if (new URL(req.url || '/', 'https://tigeriq-ai-lab.vercel.app').searchParams.get('operation') === 'owner-decision')
+        return ownerDecisionHandler(req, res);
       const snapshot = await statusSnapshot(clientGithubToken(req));
       return json(res, 200, snapshot);
     }
@@ -455,6 +459,7 @@ export default async function handler(req, res) {
     const operation = String(payload.operation || 'status');
     const optionalToken = clientGithubToken(req);
 
+    if (operation === 'owner-decision') return ownerDecisionHandler(req, res, payload);
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity((await writeCredential(req)).token));
     if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));

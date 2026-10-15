@@ -1,8 +1,8 @@
 // Owner decision inbox for the existing TigerIQ Web Control.
 // Records an authenticated, scoped Owner decision. NEVER treats the note as
 // a signed PC01 release, a new provider permission, or completed execution.
-import {isOwnerAuthorized} from './owner-auth.mjs';
-import {projectOwnerApprovalIssue} from '../apps/shared/owner-one-tap-approval.mjs';
+import {isOwnerAuthorized} from '../../api/owner-auth.mjs';
+import {projectOwnerApprovalIssue} from '../shared/owner-one-tap-approval.mjs';
 
 const REPO='newsdayads/tigeriq-ai-lab';
 const TOKEN=String(process.env.TIGERIQ_GITHUB_TOKEN||'').trim();
@@ -84,7 +84,7 @@ async function readBody(req){
   for await(const chunk of req){raw+=chunk;if(raw.length>MAX_BODY)denied('BODY_TOO_LARGE',413)}
   try{return JSON.parse(raw)}catch{denied('INVALID_JSON',400)}
 }
-export default async function handler(req,res){
+export default async function handler(req,res,payload=null){
   try{
     if(!['GET','POST'].includes(req.method))return reply(res,405,{ok:false,error:'METHOD_NOT_ALLOWED'});
     if(!isOwnerAuthorized(req))return reply(res,401,{ok:false,error:'OWNER_LOGIN_REQUIRED'});
@@ -100,7 +100,7 @@ export default async function handler(req,res){
     if(!ownerDecisionOriginAllowed(req.headers)||
        !/^application\/json(?:;|$)/i.test(String(req.headers['content-type']||'')))
       return reply(res,403,{ok:false,error:'SAME_ORIGIN_JSON_REQUIRED'});
-    const input=validateOwnerDecisionInput(await readBody(req));
+    const input=validateOwnerDecisionInput(payload ?? await readBody(req));
     const {issue,card}=await issueAndCard(input.issueNumber);
     if(card.requestId!==input.requestId||issue.updated_at!==input.expectedUpdatedAt)
       denied('ISSUE_CHANGED_RELOAD_REQUIRED',409);
