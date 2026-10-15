@@ -107,6 +107,7 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   const comparable=(Array.isArray(history)?history:[]).filter(x=>string(x.workOrderId)===string(workOrderId)&&string(x.stepId)===string(stepId)&&string(x.sourceRevision)===string(sourceRevision));
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
   if(comparable.some(x=>x.status==='merged_unaccepted'))return {allow:false,code:'CODING_STEP_MERGED_AWAITING_ACCEPTANCE'};
+  if(comparable.some(x=>x.status==='blocked_unaccepted'))return {allow:false,code:'CODING_STEP_BLOCKED_AWAITING_MATERIAL_CHANGE'};
   if(comparable.some(x=>['queued','running','review','waiting_ci','waiting_resource'].includes(x.status)))return {allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'};
   if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
   return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
