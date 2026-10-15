@@ -42,6 +42,10 @@ describe('App Chrome GitHub self-run policy',()=>{
     expect(workerEligibleForIssue('NV02',coding)).toBe(true);
     expect(workerEligibleForIssue('NV03',coding)).toBe(false);
     expect(workerEligibleForIssue('NV04',coding)).toBe(false);
+    const forbiddenChrome=issue(3,'news',SAFE+'\nRESOURCE_SCOPE=NEWS\nAPP_CHROME_MUTATION=FORBIDDEN');
+    expect(workerEligibleForIssue('NV02',forbiddenChrome)).toBe(true);
+    const mutateChrome=issue(4,'mutate',SAFE+'\nRESOURCE_SCOPE=APP\nAPP_CHROME_MUTATION=true');
+    expect(workerEligibleForIssue('NV02',mutateChrome)).toBe(false);
   });
 
   it('routes execution to NV02, review to NV03/NV04, research to NV04',()=>{
