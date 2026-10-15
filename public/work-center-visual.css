@@ -489,7 +489,7 @@ body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::after{c
 /* OWNER P0 2026-10-15: adaptive information density across 1664 / 924 / 630 widths. */
 /* Responsive 5 / 3 / 2 work-card columns where usable content width allows. */
 body.api-health #workList.wo-list.work-list.tiq-work-center{
- grid-template-columns:repeat(auto-fill,minmax(min(100%,222px),1fr))!important;
+ grid-template-columns:repeat(auto-fill,minmax(min(100%,205px),1fr))!important;
  gap:9px!important;align-items:stretch!important;
 }
 body.api-health #workList.tiq-work-center>.tiq-work-card{
