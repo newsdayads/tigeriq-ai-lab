@@ -33,7 +33,7 @@ public static class Nv07PeerProof {
  }
 }
 '@
-  foreach($p in @($root,$root+'\code',$brokerPath,$clientPath,$manifestPath)){
+  foreach($p in @($root,($root+'\code'),$brokerPath,$clientPath,$manifestPath)){
     $item=Get-Item -LiteralPath $p -Force
     if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'NV07_DEPLOYMENT_REPARSE_DENIED'}
     $acl=Get-Acl -LiteralPath $p
@@ -66,7 +66,7 @@ public static class Nv07PeerProof {
        $task.Actions[0].Arguments -ne $arguments){throw 'NV07_TASK_CONFIGURATION_INVALID'}
     $taskInfo=Get-ScheduledTaskInfo -TaskName $task.TaskName
     if([Math]::Abs(($process.CreationDate-$taskInfo.LastRunTime).TotalSeconds) -gt 15){throw 'NV07_TASK_PROCESS_TIME_MISMATCH'}
-    foreach($p in @('C:\','C:\ProgramData',$root,$root+'\code')){
+    foreach($p in @('C:\','C:\ProgramData',$root,($root+'\code'))){
       $item=Get-Item -LiteralPath $p -Force
       if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'NV07_ANCESTOR_REPARSE_DENIED'}
       $sd=(Get-Acl -LiteralPath $p).GetSecurityDescriptorBinaryForm()
@@ -74,7 +74,7 @@ public static class Nv07PeerProof {
         if([Nv07PeerProof]::Can($sd,$serverPid,$right)){throw 'NV07_NAMESPACE_REPLACE_OR_DACL_PERMISSION'}
       }
     }
-    foreach($p in @($root,$root+'\code',$brokerPath,$clientPath,$manifestPath)){
+    foreach($p in @($root,($root+'\code'),$brokerPath,$clientPath,$manifestPath)){
       $sd=(Get-Acl -LiteralPath $p).GetSecurityDescriptorBinaryForm()
       foreach($right in @(2,0x10000,0x40000,0x80000)){
         if([Nv07PeerProof]::Can($sd,$serverPid,$right)){throw 'NV07_CODE_OR_ROOT_WRITABLE_BY_USER'}
@@ -108,6 +108,11 @@ public static class Nv07PeerProof {
   }finally{$pipe.Dispose()}
 }catch{
   # Stable, non-secret denial. Callers cannot turn a failed native read into trust.
-  @{accepted=$false;code='NV07_NATIVE_TRUST_NOT_VERIFIED';attestationVerified=$false;coreLeaseVerified=$false;nv07Active=$false}|ConvertTo-Json -Compress
+  $reason='NV07_NATIVE_IO_ERROR'
+  if($_.Exception.Message -match '^NV07_[A-Z_]+$false;coreLeaseVerified=$false;nv07Active=$false}|ConvertTo-Json -Compress
+  exit 1
+}
+){$reason=$_.Exception.Message}
+  @{accepted=$false;code='NV07_NATIVE_TRUST_NOT_VERIFIED';reason=$reason;attestationVerified=$false;coreLeaseVerified=$false;nv07Active=$false}|ConvertTo-Json -Compress
   exit 1
 }
