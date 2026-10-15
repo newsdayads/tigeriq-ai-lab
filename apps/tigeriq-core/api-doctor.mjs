@@ -111,6 +111,30 @@ export function apiDoctorAction({
   return {action:'idle',failureClass:cls,reason:'healthy_or_no_action'};
 }
 
+// A terminal or archived repair issue must not leave an actually-working
+// provider in permanent WAIT_REPAIR. This gate requires a separate, completed,
+// normal Core inference receipt after the handoff; a probe or an issue close
+// alone is never sufficient, and the historical issue stays not-completed.
+export function apiDoctorVerifiedNormalWorkRecovery({
+  handoffAt=null,normalWorkAt=null,normalJobDone=false,normalOutputAccepted=false,
+  latestNormalFailureAt=null,healthState='ERROR',credentialState='READY',
+  cooldownUntil=null,nowMs=Date.now(),
+}={}){
+  const handoffMs=Date.parse(String(handoffAt||''));
+  const successMs=Date.parse(String(normalWorkAt||''));
+  const failureMs=Date.parse(String(latestNormalFailureAt||''));
+  const coolingMs=Date.parse(String(cooldownUntil||''));
+  if(!normalJobDone||!normalOutputAccepted
+      ||!Number.isFinite(handoffMs)||!Number.isFinite(successMs)||successMs<=handoffMs
+      ||!['READY','ONLINE'].includes(String(healthState||'').toUpperCase())
+      ||!['LOCAL','READY'].includes(String(credentialState||'').toUpperCase())
+      ||(Number.isFinite(failureMs)&&failureMs>successMs)
+      ||(Number.isFinite(coolingMs)&&coolingMs>Number(nowMs))){
+    return {recovered:false,reason:'no_accepted_new_normal_work'};
+  }
+  return {recovered:true,reason:'live_normal_work_after_handoff'};
+}
+
 export function apiDoctorExistingHandoffAction({
   existingHandoff=false,
   successAfterHandoff=false,
