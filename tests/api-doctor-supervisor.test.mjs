@@ -126,11 +126,11 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(busy).toBe(false);
     expect(calls.filter(row=>row[0]==='release')).toHaveLength(4);
     expect(calls.filter(row=>row[0]==='transport')).toHaveLength(2);
-    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.6:27b-coding',false,240000]);
+    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.5:9b',false,240000]);
     const slowerCanary=build({...deps,NV09_TIMEOUT_MS:3600000});
     const capped=await slowerCanary('','json');
     expect(capped.ok).toBe(false); // jsonFailure remains true
-    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.6:27b-coding',false,240000]);
+    expect(calls).toContainEqual(['transport','http://127.0.0.1:11435/v1/chat/completions','qwen3.5:9b',false,240000]);
     expect(busy).toBe(false);
   });
 
