@@ -39,6 +39,22 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    if (req.url === '/meta-unquoted-name') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Unquoted Name</title><meta name=description content="Quoted content valid"></head><body><h1>Audit</h1></body></html>');
+    }
+    if (req.url === '/meta-unquoted-content') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><head><title>Unquoted Content</title><meta content=Unquoted name=description></head><body><h1>Audit</h1></body></html>");
+    }
+    if (req.url === '/meta-decoy') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Decoy</title><meta data-name="description" content="Fake description"><meta content="Actual description" name="description"></head><body><h1>Audit</h1></body></html>');
+    }
+    if (req.url === '/meta-only-decoy') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Only decoy</title><meta data-name="description" content="Not real"></head><body><h1>Audit</h1></body></html>');
+    }
     if (req.url === '/page2') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Page Two</title></head><body><h1>Second</h1><p>Useful content here.</p></body></html>');
@@ -70,6 +86,20 @@ test('real bounded crawl derives evidence from fetched HTML', async () => {
   assert.equal(result.pages[0].seo.metaDescription, 'Evidence first audit');
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('SEO extraction accepts valid unquoted HTML meta description attributes', async () => {
+  const name = await auditWebsite(`${baseUrl}/meta-unquoted-name`, { resolveTargetFn: localResolver });
+  const content = await auditWebsite(`${baseUrl}/meta-unquoted-content`, { resolveTargetFn: localResolver });
+  assert.equal(name.pages[0].seo.metaDescription, 'Quoted content valid');
+  assert.equal(content.pages[0].seo.metaDescription, 'Unquoted');
+});
+
+test('SEO extraction does not mistake data-name for exact name attribute', async () => {
+  const decoy = await auditWebsite(`${baseUrl}/meta-decoy`, { resolveTargetFn: localResolver });
+  const onlyDecoy = await auditWebsite(`${baseUrl}/meta-only-decoy`, { resolveTargetFn: localResolver });
+  assert.equal(decoy.pages[0].seo.metaDescription, 'Actual description');
+  assert.equal(onlyDecoy.pages[0].seo.metaDescription, null);
 });
 
 test('rejects invalid, unsupported, credential-bearing, and literal private targets', async () => {

@@ -205,9 +205,24 @@ const cleanText = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(
 
 function extractSeo(html) {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const metaMatch =
-    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i) ||
-    html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i);
+  // Extract exact attribute names from <meta>, not substrings such as
+  // data-name. HTML permits unquoted attribute values and either order.
+  let metaDescription = null;
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const attributes = Object.create(null);
+    for (const [, key, doubleQuoted, singleQuoted, unquoted] of
+      tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
+      const normalized = key.toLowerCase();
+      if (!Object.hasOwn(attributes, normalized)) {
+        attributes[normalized] = doubleQuoted ?? singleQuoted ?? unquoted;
+      }
+    }
+    if (attributes.name?.toLowerCase() === 'description' &&
+        Object.hasOwn(attributes, 'content')) {
+      metaDescription = attributes.content;
+      break;
+    }
+  }
   const h1Matches = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)];
   const visible = cleanText(
     html
@@ -216,7 +231,7 @@ function extractSeo(html) {
   );
   return {
     title: titleMatch ? cleanText(titleMatch[1]) : null,
-    metaDescription: metaMatch ? cleanText(metaMatch[1]) : null,
+    metaDescription: metaDescription === null ? null : cleanText(metaDescription),
     h1Count: h1Matches.length,
     h1: h1Matches.map(match => cleanText(match[1])).filter(Boolean),
     wordCount: visible ? visible.split(/\s+/).length : 0,
