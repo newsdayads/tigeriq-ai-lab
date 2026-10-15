@@ -128,3 +128,36 @@ describe('#1600 full API Health workforce roster',()=>{
   });
 
 });
+
+
+describe('P0 NV02 UI presence must stay separate from work acceptance',()=>{
+  const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
+  const start=dashboard.indexOf('function applyLiveWorkforce(');
+  const end=dashboard.indexOf('function applyCoreJobs(',start);
+  const mapper=Function(dashboard.slice(start,end)+';return applyLiveWorkforce;')();
+  const row={employee_id:'NV02',name:'ChatGPT Plus',status:'UNKNOWN',resource_class:'ui_manual'};
+  const presence=(state,heartbeatAt)=>({
+    employeeId:'NV02',kind:'ui',state:'unknown',uiSessionState:state,
+    heartbeatAt,currentJobId:null,job:'Đang xử lý trong chat hiện tại'
+  });
+  it('shows a fresh working UI session without inventing a Core/GitHub job',()=>{
+    const [v]=mapper([row],[presence('working',new Date().toISOString())]);
+    expect(v).toMatchObject({employee_id:'NV02',status:'UI_BUSY',ui_live:true,current_job_id:null,ui_session_state:'working'});
+    expect(dashboard).toContain("label:'UI ĐANG PHẢN HỒI'");
+    expect(dashboard).toContain('Chưa xác minh Work Order Core/GitHub');
+  });
+  it('does not keep UI status online when the heartbeat becomes stale',()=>{
+    const [v]=mapper([row],[presence('working',new Date(Date.now()-30000).toISOString())]);
+    expect(v).toMatchObject({status:'UNKNOWN',ui_live:false,current_job_id:null,ui_session_state:null});
+  });
+  it('does not turn an unknown UI session into an unverified running job',()=>{
+    const [v]=mapper([row],[{...presence('unknown',new Date().toISOString()),currentJobId:null}]);
+    expect(v.status).toBe('UNKNOWN');
+  });
+  it('keeps non-UI Core employees unchanged and reapplies UI after the 1s Core poll',()=>{
+    const api={employee_id:'NV09',status:'READY'};
+    const next=mapper([row,api],[presence('working',new Date().toISOString())]);
+    expect(next.find(x=>x.employee_id==='NV09')).toEqual(api);
+    expect(dashboard).toContain("applyCoreJobs(applyLiveWorkforce(allResources,workProjection?.workers||[]),d.jobs||[])");
+  });
+});
