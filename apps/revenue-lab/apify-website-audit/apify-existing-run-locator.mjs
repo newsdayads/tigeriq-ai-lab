@@ -1,6 +1,6 @@
 // GH-2293 R04: discover the Owner's existing Oct-08 Apify canary, GET-only.
 // Never start, build, publish, or pay for an Actor; no credential in URL/logs.
-import { inspectHistoricalRun } from './apify-historical-run-readonly.mjs';
+import { inspectHistoricalRun, validApifyInstant } from './apify-historical-run-readonly.mjs';
 
 const API = 'https://api.apify.com/v2';
 const HANDLE = 'tigeriq~tigeriq-ai-lab';
@@ -18,7 +18,7 @@ export class RunLocatorError extends Error {
 const fail = code => { throw new RunLocatorError(code); };
 const obj = x => !!x && typeof x === 'object' && !Array.isArray(x);
 function oct8(instant) {
-  if (typeof instant !== 'string' || !Number.isFinite(Date.parse(instant))) return false;
+  if (!validApifyInstant(instant)) return false;
   const stamp = Date.parse(instant);
   return stamp >= Date.parse(START_UTC) && stamp <= Date.parse(END_UTC);
 }
@@ -78,7 +78,7 @@ export async function locateOwnerCanaryRun({ env = process.env, fetchFn = global
   // Never choose the "last" run: the Owner may have run this Actor again later.
   // All rows need valid provenance so a malformed second record cannot be skipped.
   if (data.items.some(row => !obj(row) || !OPAQUE.test(row.id || '') ||
-      row.actId !== actor.id || !Number.isFinite(Date.parse(row.startedAt))))
+      row.actId !== actor.id || !validApifyInstant(row.startedAt)))
     fail('RUN_LIST_IDENTITY_UNVERIFIED');
   if (data.items.some(row => !oct8(row.startedAt))) fail('RUN_LIST_DATE_MISMATCH');
   const candidates = data.items.filter(row => row.status === 'SUCCEEDED' && row.buildNumber === BUILD);

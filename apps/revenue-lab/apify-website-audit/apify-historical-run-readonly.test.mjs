@@ -106,6 +106,21 @@ test('R04 full Actor permission level rejected',async()=>{
 test('R04 wrong run ID refused',async()=>{await rejected('RUN_IDENTITY_MISMATCH',{first:{...run(),id:'ANOTHER_RUN'}})});
 test('R04 wrong actId refused',async()=>{await rejected('RUN_IDENTITY_MISMATCH',{first:{...run(),actId:'OTHER_ACTOR'}})});
 test('R04 non SUCCEEDED run refused',async()=>{await rejected('HISTORICAL_RUN_NOT_SUCCEEDED',{first:{...run(),status:'FAILED'}})});
+test('R04 date-time must include explicit timezone; no host-local day ambiguity',async()=>{
+  for (const value of ['2026-10-08T03:00:00', '2026-10-08', '2026-10-08T03:00:00+99:00']) {
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2, value);
+  }
+  const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),finishedAt:'2026-10-08T03:00:02'}});
+  assert.equal(calls.length,2);
+});
+test('R04 explicit +07:00 offset is valid for the Owner Oct-08 canary',async()=>{
+  const local={...run(),startedAt:'2026-10-08T10:00:00+07:00',finishedAt:'2026-10-08T10:00:02+07:00'};
+  const m=mocked({first:local,final:local});
+  const x=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(x.acceptance.historicalRunMatched,true);
+  assert.equal(m.calls.length,4);
+});
 test('R04 incomplete run timestamp refused',async()=>{await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),finishedAt:null}})});
 test('R04 settle gate rejects near-future finished time',async()=>{await rejected('RUN_USAGE_NOT_SETTLED',{first:{...run(),finishedAt:'2026-10-15T11:59:55.000Z'}})});
 test('R04 exact Oct 8 Vietnam day enforced',async()=>{await rejected('HISTORICAL_RUN_DAY_MISMATCH',{first:{...run(),startedAt:'2026-10-07T03:00:00.000Z'}})});
