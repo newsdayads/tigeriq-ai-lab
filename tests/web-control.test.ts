@@ -16,18 +16,18 @@ const core = readFileSync(resolve('apps/tigeriq-core/core.mjs'), 'utf8');
 
 describe('TigerIQ Web Control owner dashboard', () => {
   it('uses muted NV cards and evidence-based V6 status colors on both surfaces', () => {
-    expect(apiHealth).toContain('--tiq-working:#60A5FA;--tiq-ready:#A8B7C9');
+    expect(apiHealth).toContain('--tiq-working:#22C55E;--tiq-ready:#3B82F6');
     expect(apiHealth).toContain('--tiq-done:#4ADE80');
     expect(apiHealth).toContain("if(s==='MOBILE_OFFLINE')return{group:'unknown',label:'CHƯA CÓ HEARTBEAT',rank:4}");
     expect(apiHealth).toContain('function stateBadge(state){return esc(state.label)}');
-    expect(apiHealth).toContain('.worker.employee-card.state-ready,.worker.employee-card.state-ondemand{--state-color:#a8b7c9;}');
-    expect(apiHealth).toContain('.worker.employee-card.state-working{--state-color:#60a5fa;}');
+    expect(apiHealth).toContain('.worker.employee-card.state-ready{--state-color:#3b82f6;}');
+    expect(apiHealth).toContain('.worker.employee-card.state-working{--state-color:#22c55e;}');
     expect(apiHealth).toContain('background:#101c2e!important;border:1px solid #344257!important;');
     expect(apiHealth).not.toContain('const STATE_ICON=');
     expect(workforceCss).toContain('/* Owner interaction V6: workforce cards are neutral;');
     expect(workforceCss).toContain('.api-health .worker.employee-card.state-ready,');
     expect(workforceCss).toContain('background:#101c2e!important;');
-    expect(workforceCss).toContain('.api-health .worker.employee-card.state-working{--state-color:#60a5fa;}');
+    expect(workforceCss).toContain('.api-health .worker.employee-card.state-working{--state-color:#22c55e;}');
     expect(workforceCss).toContain('.api-health .worker.employee-card.state-attention{--state-color:#fb7185;}');
   });
 

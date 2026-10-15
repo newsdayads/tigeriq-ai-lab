@@ -59,7 +59,7 @@ for(const width of [390,1024,1648]){
   await expect(page.locator('.wo-filter.action')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#opsFreshnessRows .ops-age')).toHaveCount(4);
   const css=await page.locator('body').evaluate(el=>{const s=getComputedStyle(el);return {surface:s.getPropertyValue('--tiq-surface').trim(),ready:s.getPropertyValue('--tiq-ready').trim(),working:s.getPropertyValue('--tiq-working').trim()}});
-  expect(css).toEqual({surface:'#111C2E',ready:'#A8B7C9',working:'#60A5FA'});
+  expect(css).toEqual({surface:'#111C2E',ready:'#3B82F6',working:'#22C55E'});
   await page.locator('.filter[data-filter=all]').click();
   const employee=page.locator('.employee-card.state-ready').first();
   await expect(employee).toBeVisible();
