@@ -457,7 +457,6 @@ body.api-health #workList.tiq-work-center>.tiq-work-card :is(.priority.p0,.prior
  box-sizing:border-box!important;min-width:48px!important;height:27px!important;
  color:#fff!important;text-shadow:none!important;box-shadow:none!important;background-image:none!important;
 }
-body.api-health #workList.tiq-work-center>.tiq-work-card .priority.p1{background-color:#C2410C!important}
 body.api-health #workList.tiq-work-center>.tiq-work-card .priority.p2{background-color:#A65305!important;background:#A65305!important;color:#fff!important}
 body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity,
 body.api-health #workList.tiq-work-center>.tiq-work-card .work-activity span,
@@ -482,7 +481,7 @@ body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterm
 /* No duplicate slower sheen competing with the fast beam. */
 body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::after{content:none!important;animation:none!important}
 @media(prefers-reduced-motion:reduce){
- body.api-health #workList.tiq-work-center>.tiq-work-card .progress-fill::before{
+ body.api-health #workList.tiq-work-center>.tiq-work-card .progress:not(.indeterminate) .progress-fill::before{
   content:none!important;animation:none!important;
  }
 }
