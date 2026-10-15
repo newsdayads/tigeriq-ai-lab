@@ -18,7 +18,7 @@
 | G0: Ghi nhận mục tiêu | HOÀN THÀNH (hồ sơ) | Issue + tài liệu phân tích | GitHub ghi và đọc lại được |
 | G1: Khảo sát thiết bị | CHƯA THỰC HIỆN | USB descriptor, Android/DeX, trigger R, log 5 lượt | Owner cho phép đo/thu log |
 | G2: Khóa đặc tả | CHỜ KẾT QUẢ KHẢO SÁT | Chốt phạm vi giao diện, mode camera, quyền task, độ trễ | Quyết định Owner |
-| G3: Bắt đầu xây dựng | CHO PHÉP CÓ ĐIỀU KIỆN / CHƯA BẮT ĐẦU | Kho nguồn, mã và thử mô phỏng | G1/G2, cơ chế camera và quyền nguồn/khóa ghi đã xác minh |
+| G3: Bắt đầu xây dựng | CHO PHÉP CÓ ĐIỀU KIỆN / CHƯA BẮT ĐẦU | Kho nguồn, mã và kiểm thử unit/mock | G1/G2, phương án camera và quyền nguồn/khóa ghi đã xác minh; không đòi kết quả thiết bị G4/G5 |
 | G4: Tích hợp với thiết bị | CHỜ QUYỀN THIẾT BỊ | APK thử, log USB/DeX, 5 chu kỳ đầu | G3 nghiệm thu; quyền thao tác máy/xe an toàn có biên nhận |
 | G5: Ổn định, kiểm thử | CHỜ G4 / QUYỀN KIỂM THỬ | 50 chu kỳ R, độ trễ, lỗi khôi phục | G4 nghiệm thu + 50 log thực tế |
 | G6: Phát hành cá nhân | CHỜ NGHIỆM THU / QUYỀN PHÁT HÀNH | Bản ký chính chủ và hướng dẫn phục hồi | G5 nghiệm thu; quyền ký/cài/phát hành đúng phạm vi |
