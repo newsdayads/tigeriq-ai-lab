@@ -901,12 +901,12 @@ async function runNv09Canary(inputPrompt='',requestedContract='marker',options={
     try{
       // JSON acceptance must exercise the Coding Lane's actual local OpenAI-compatible
       // chat/completions transport, not the unrelated native /api/generate path.
-      const inference=contract==='json'
+      const inference=await withPc01LocalInferenceSlot(pool,async()=>contract==='json'
         ? {text:String((await fetchJson(`${NV09_ENDPOINT}/v1/chat/completions`,{
           method:'POST',headers:{'content-type':'application/json'},
           body:JSON.stringify({model:NV09_MODEL,messages:[{role:'user',content:prompt}],temperature:0,max_tokens:256,stream:false}),
         },canaryTimeoutMs))?.choices?.[0]?.message?.content||'').trim()}
-        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'});
+        : await runBoundedInferenceNv09(prompt,{timeoutMs:canaryTimeoutMs,numCtx:1024,numPredict:96,keepAlive:'10m'}),{waitMs:canaryTimeoutMs});
       const latency=Date.now()-started;
       if(contract==='json'){
         let json;
@@ -3814,7 +3814,7 @@ async function loop(){
       if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
-      if(t-lastProbe>60000){await probeReadyResources();void owner4595CanaryOnce();lastProbe=t;}
+      if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
       const runtimeTrigger=observeRuntimeContinuousVerify();
@@ -3891,7 +3891,7 @@ const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('requ
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
 void probeReadyResources();
-void owner4595CanaryOnce();
+// NV09 is on-demand only after cloud Coding APIs are unavailable. No automatic canary.
 console.log(JSON.stringify({event:'TIGERIQ_CORE_STARTED',host:HOST,loopbackHost:'127.0.0.1',loopbackListener:Boolean(loopbackServer),port:PORT,pid:process.pid,resources:resources.length}));
 const closeCoreServers=()=>{stop=true;server.close();loopbackServer?.close();};
 process.on('SIGINT',closeCoreServers);process.on('SIGTERM',closeCoreServers);
