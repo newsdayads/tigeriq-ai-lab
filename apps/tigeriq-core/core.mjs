@@ -1816,7 +1816,7 @@ async function claimJob() {
            and j.max_attempts=1 and j.status='queued'))
       order by case when j.status='waiting_resource' then 0 else 1 end,
         case o.priority when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 when 'P3' then 3 when 'P4' then 4 when 'P5' then 5 else 6 end,j.created_at
-      for update skip locked limit 1`);
+      for update of j skip locked limit 1`);
     if(!q.rows[0]){await c.query('commit');return null;} const j=q.rows[0];
     await c.query("update tigeriq_jobs set status='running',started_at=coalesce(started_at,now()),attempts=attempts+case when kind='nv07_bootstrap' then 1 else 0 end,lease_until=now()+interval '5 minutes' where id=$1",[j.id]);
     await c.query('commit');
