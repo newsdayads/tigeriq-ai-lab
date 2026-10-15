@@ -1294,11 +1294,12 @@ async function managerTick(){
   const liveGithubContextBlock=formatAuthoritativeGithubContext(liveGithubContext);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(o.objective));
   const tree=await repoTree(targetRepository);
+  const sourceHeadSha=(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')?await mainSha(targetRepository):null;
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
   const liveContextText=liveGithubContextBlock?`\n\n${liveGithubContextBlock}\n`:'';
   let prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`+formatCodingOwnerReviewPolicy(ownerWaiver);
   let managerSkills={evidence:[],contextBlock:''};
-  const contractRevision=liveGithubContext?.fingerprint||createHash('sha256').update(String(o.objective||'')).digest('hex');
+  const contractRevision=createHash('sha256').update(JSON.stringify({objective:o.objective,sourceHeadSha,context:liveGithubContext?.fingerprint||null})).digest('hex');
   try{
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
       managerSkills=matchAndLoadSkills(o.objective+'\n coding-lane spec-first-tdd');
@@ -1316,7 +1317,7 @@ async function managerTick(){
       validateManagerJobTitle(d,o.objective);
       const scoped=validateManagerJobPaths(d,canonical,mutationAuth);
       if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&d?.status==='continue'){
-        compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.evidence});
+        compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.evidence});
       }
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{
@@ -1333,7 +1334,7 @@ async function managerTick(){
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let jobInstruction=String(d.job.instruction||o.objective);
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
-      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
+      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
       const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
       const previous=sourceWorkOrder
@@ -1360,6 +1361,7 @@ async function managerTick(){
       jobInstruction=codingStepInstruction(packet);
       if(jobInstruction.length>12000)throw Error('CODING_STEP_STORED_INSTRUCTION_TOO_LONG');
     }
+    if(sourceHeadSha&&await mainSha(targetRepository)!==sourceHeadSha)throw Error('CODING_STEP_SOURCE_HEAD_CHANGED_DURING_PLANNING');
     let resumeBranch=null,resumePr=null,resumeHead=null;
     if(o.current_pr){
       const livePr=await ghRepo(targetRepository,`/pulls/${Number(o.current_pr)}`);
@@ -1884,6 +1886,7 @@ async function runJob(j){
   j.employee_id=worker.id;
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
+  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&!shouldResumeExistingPr(j)&&stepPacket.source_head_sha!==await mainSha(targetRepository))throw Error('CODING_STEP_SOURCE_HEAD_STALE_REPLAN_REQUIRED');
   if(shouldResumeExistingPr(j)){
     const livePr=await ghRepo(targetRepository,`/pulls/${pr.number}`);
     const reconciled=await reconcileExistingPrBranch(livePr,j.head_sha,targetRepository);
