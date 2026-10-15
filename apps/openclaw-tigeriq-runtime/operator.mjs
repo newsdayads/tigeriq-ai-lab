@@ -2217,9 +2217,9 @@ export async function nv07UserSessionPreflight() {
 }
 
 
-const NV07_CANARY_STATE_DIR = 'D:\TigerIQ\State\NV07';
-const NV07_CANARY_SANDBOX = 'D:\TigerIQ\State\NV07\proposal-sandbox';
-const NV07_CANARY_RECEIPT = 'D:\TigerIQ\State\NV07\gateway-read-metadata-once.json';
+export const NV07_CANARY_STATE_DIR = String.raw`D:\TigerIQ\State\NV07`;
+export const NV07_CANARY_SANDBOX = String.raw`D:\TigerIQ\State\NV07\proposal-sandbox`;
+export const NV07_CANARY_RECEIPT = String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-once.json`;
 const NV07_CANARY_JOB = 'NV07-4783-GW-CANARY';
 const NV07_CANARY_SOURCE_SHA = '83078f5c6dfc6a1abb2c14f225c747bb9dee97a8';
 
