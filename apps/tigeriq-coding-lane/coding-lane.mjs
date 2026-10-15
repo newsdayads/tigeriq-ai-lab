@@ -12,7 +12,7 @@ import {compactPromptForChanges,currentFilesFromPrompt,expandCompactChanges,inst
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../shared/control-plane-lock.mjs';
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
-import {matchAndLoadSkills} from '../tigeriq-core/skill-loader.mjs';
+import {loadRequiredCodingSkills,assertCodingSkillProof} from './coding-skill-policy.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
@@ -1302,8 +1302,7 @@ async function managerTick(){
   const contractRevision=createHash('sha256').update(JSON.stringify({objective:o.objective,sourceHeadSha,context:liveGithubContext?.fingerprint||null})).digest('hex');
   try{
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
-      managerSkills=matchAndLoadSkills(o.objective+'\n coding-lane spec-first-tdd');
-      if(!managerSkills.evidence.some(skill=>skill.id==='spec-first-tdd'))throw Error('CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED');
+      managerSkills=loadRequiredCodingSkills(o.objective);
       prompt+='\n\nOWNER_P0_CODING_STEP_PACKET_REQUIRED=true\n';
       prompt+='Return job.step_id, job.deliverable_type (source|frontend|backend|android|test|documentation), job.required_changed_paths, job.steps, job.acceptance, job.evidence_required, and job.required_checks. job.paths and required_changed_paths MUST identify EXACT FILES rather than a directory or a proposed README. For Android require actual Gradle/Manifest/Kotlin source files and Android Build Verify; frontend and backend require their domain-specific functional CI. One real implementation step only. No invented tests or PASS.\n';
       prompt+=managerSkills.contextBlock;
@@ -1317,7 +1316,7 @@ async function managerTick(){
       validateManagerJobTitle(d,o.objective);
       const scoped=validateManagerJobPaths(d,canonical,mutationAuth);
       if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&d?.status==='continue'){
-        compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.evidence});
+        compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.proof});
       }
     };
     const invoked=await invokeJsonWithFailover(manager,prompt,{
@@ -1334,7 +1333,7 @@ async function managerTick(){
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
     let jobInstruction=String(d.job.instruction||o.objective);
     if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
-      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.evidence});
+      const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
       const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
       const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
       const previous=sourceWorkOrder
@@ -1861,10 +1860,8 @@ async function runJob(j){
   if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
     stepPacket=codingStepPacketFromInstruction(j.instruction);
     if(!stepPacket)throw Error('CODING_STEP_PACKET_MISSING');
-    const activeSkills=matchAndLoadSkills(canonicalObjective+'\n coding-lane spec-first-tdd');
-    if(!activeSkills.evidence.some(skill=>skill.id==='spec-first-tdd'))throw Error('CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED');
-    const missingSkills=stepPacket.skill_refs.filter(expected=>!activeSkills.evidence.some(actual=>actual.id===expected.id&&actual.version===expected.version));
-    if(missingSkills.length)throw Error('CODING_STEP_SKILL_VERSION_CHANGED');
+    const activeSkills=loadRequiredCodingSkills(canonicalObjective);
+    assertCodingSkillProof(stepPacket.skill_refs,activeSkills);
     j.instruction+='\n\n'+codingRolePrompt({role:'implementer',packet:stepPacket,skillContext:activeSkills.contextBlock});
   }
   j.liveGithubContext=generatedGithubContext;
