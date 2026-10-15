@@ -22,7 +22,7 @@ export function projectMobileWorkerPresence(rows=[],{nowMs=Date.now()}={}){
       connectionStatus:online?'ONLINE':'OFFLINE',
       source:'core_mobile_devices',
       // Not a statement about 20 consecutive Core tasks or auto-dispatch readiness.
-      coreWorkAccepted:false,
+      acceptanceStatus:'NOT_VERIFIED_20_TASKS',
     });
   }
   return result;
