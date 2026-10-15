@@ -55,6 +55,7 @@ import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-a
 import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
 import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
+import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
@@ -3834,6 +3835,7 @@ async function loop(){
 await initDb();
 await ensureSharedResourceLeaseTable(pool);
 await ensureNv07CanaryReservationIndex(pool);
+await ensureNv07CanaryReceiptIndex(pool);
 await recoverExpiredSharedResourceLeases(pool);
 await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
