@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import {
   nv07UserSessionPreflightIdentity,
+  NV07_CANARY_STATE_DIR,
+  NV07_CANARY_SANDBOX,
+  NV07_CANARY_RECEIPT,
   runNv07GatewayReadMetadataCanary,
   assertShellCommandAllowed,
   assertTigerIQTaskName,
@@ -56,6 +59,17 @@ import {
 } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 
+describe('NV07 Windows canary filesystem path regression #4783', () => {
+  it('preserves drive-root absolute paths with backslash delimiters', () => {
+    expect(NV07_CANARY_STATE_DIR).toBe(String.raw`D:\TigerIQ\State\NV07`);
+    expect(NV07_CANARY_SANDBOX).toBe(String.raw`D:\TigerIQ\State\NV07\proposal-sandbox`);
+    expect(NV07_CANARY_RECEIPT).toBe(String.raw`D:\TigerIQ\State\NV07\gateway-read-metadata-once.json`);
+    for (const pathname of [NV07_CANARY_STATE_DIR,NV07_CANARY_SANDBOX,NV07_CANARY_RECEIPT]) {
+      expect(pathname).toMatch(/^D:\\TigerIQ\\State\\NV07(?:\\|$)/);
+      expect(pathname).not.toContain('D:TigerIQState');
+    }
+  });
+});
 describe('NV07 user-session OpenClaw read-only preflight', () => {
   it('requires the actual wdragons12x Windows logon, never SYSTEM', () => {
     expect(nv07UserSessionPreflightIdentity({platform:'win32',windowsUser:'wdragons12x'})).toBe(true);
