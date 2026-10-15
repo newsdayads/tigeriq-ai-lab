@@ -628,7 +628,7 @@ body.api-health #workDetailModal .work-detail-actions>*{
 
 /* Owner P0 mobile: four tight, equal-width chips per line, not oversized tiles. */
 @media (min-width:360px) and (max-width:599px){
- body.api-health .workforce-panel .filters{
+ body.api-health .workforce-panel>.panel-h .filters{
   display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
   align-items:center!important;gap:4px!important;
   padding:0!important;margin:0!important;width:100%!important;
@@ -670,7 +670,7 @@ body.api-health #workDetailModal .work-detail-actions>*{
  }
 }
 @media (max-width:359px){
- body.api-health .workforce-panel .filters{
+ body.api-health .workforce-panel>.panel-h .filters{
   display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
   gap:4px!important;padding:0!important;
  }
