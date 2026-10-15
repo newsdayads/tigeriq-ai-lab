@@ -70,9 +70,11 @@ async function runAsync(args){
   }finally{rmSync(dir,{recursive:true,force:true});}
 }
 const pwshPresent=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command','$true'],{encoding:'utf8'}).status===0;
-it.skipIf(!pwshPresent)('live PowerShell guard rejects absence of independent local ticket',()=>{
-  expect(run().reason).toBe('RELEASE_LOCAL_APPROVAL_MISSING');
-});
+it.skipIf(!pwshPresent)('live PowerShell guard rejects absence of independent local ticket',async()=>{
+  // Hosted runners can contend on PowerShell process startup; keep the genuine
+  // guard execution and exact fail-closed assertion with a bounded child (20s).
+  expect((await runAsync()).reason).toBe('RELEASE_LOCAL_APPROVAL_MISSING');
+},25000);
 it.skipIf(!pwshPresent)('accepts only matching local release ticket (preflight, not identity proof)',()=>{
   expect(run({approval:template()}).approved).toBe(true);
 });
