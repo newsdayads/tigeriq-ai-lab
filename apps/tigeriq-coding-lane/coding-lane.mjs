@@ -1175,11 +1175,13 @@ export function codingP0CanaryApplies(objective=''){
   return (Number.isSafeInteger(objective)&&objective>0?objective:sourceWorkOrderNumber(objective))===issue;
 }
 export function sourceWorkOrderNumber(objective=''){
-  const text=String(objective||'');
+  const text=String(objective||'').trimStart();
+  // Only the authoritative objective header may select a canary Issue.
+  // Quoted instructions, later Markdown or past-history text cannot re-scope it.
   const patterns=[
-    /\bGitHub autonomous coding\s+issue\s+#(\d+)\b/i,
-    /\bGitHub autonomous coding\s+retry\s+\d+\/\d+\s+for\s+issue\s+#(\d+)\b/i,
-    /\bGitHub autonomous coding\s+(?:recovery|retry|repair)(?:\s+for)?\s+issue\s+#(\d+)\b/i,
+    /^GitHub autonomous coding\s+issue\s+#(\d+)\b/i,
+    /^GitHub autonomous coding\s+retry\s+\d+\/\d+\s+for\s+issue\s+#(\d+)\b/i,
+    /^GitHub autonomous coding\s+(?:recovery|retry|repair)(?:\s+for)?\s+issue\s+#(\d+)\b/i,
   ];
   for(const pattern of patterns){
     const match=text.match(pattern);
