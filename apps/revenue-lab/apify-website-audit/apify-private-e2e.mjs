@@ -146,6 +146,16 @@ function assertSameResourceId(item, expectedId, kind) {
   }
 }
 
+function assertSameBuildId(item, expectedBuildId, stage) {
+  // A mutable build tag such as "latest" may be repointed between the
+  // successful build and the run. Successful status alone is not proof that
+  // the newly built Actor was executed. Apify run objects expose buildId.
+  if (typeof item?.buildId !== 'string' || item.buildId !== expectedBuildId) {
+    throw new ApifyE2EError('BUILD_ID_MISMATCH',
+      `${stage} did not attest the exact Actor build created in this E2E attempt.`);
+  }
+}
+
 async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4 }) {
   const expectedId = requireResourceId(initial, kind);
   let item = initial;
@@ -253,7 +263,9 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actors/${encode(config.actorId)}/runs?${runParams}`,
     { token: config.token, method: 'POST', body: runInput },
   ));
+  assertSameBuildId(runInitial, build.id, 'run-start');
   const run = await waitTerminal({ kind: 'run', initial: runInitial, fetchFn, config });
+  assertSameBuildId(run, build.id, 'run-terminal');
   if (run.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FAILED', `Private Actor run finished with status ${run.status}.`, {
       runId: run.id ?? null,
@@ -267,6 +279,7 @@ export async function runPrivateApifyE2E({
     { token: config.token },
   ));
   assertSameResourceId(finalizedRun, run.id, 'run');
+  assertSameBuildId(finalizedRun, build.id, 'run-final');
   if (finalizedRun?.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FINAL_STATE_INVALID', 'Finalized run no longer reports SUCCEEDED.', {
       runId: run.id ?? null,
@@ -307,6 +320,7 @@ export async function runPrivateApifyE2E({
     },
     run: {
       id: run.id ?? null,
+      buildId: finalizedRun.buildId,
       status: run.status,
       computeUnits: runComputeUnits,
       usageTotalUsd: runCost,
