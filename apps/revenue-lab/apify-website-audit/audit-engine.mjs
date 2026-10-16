@@ -28,7 +28,7 @@ const clamp = (value, min, max, fallback) => {
 function ipv4Blocked(ip) {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   return (
     a === 0 ||
     a === 10 ||
@@ -38,18 +38,39 @@ function ipv4Blocked(ip) {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 198 && (b === 18 || b === 19)) ||
+    // Exclude IANA special-purpose/documentation/transition ranges. A URL
+    // audit must not treat non-global or reserved destinations as websites.
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 192 && b === 88 && c === 99) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
     a >= 224
   );
 }
 
 function ipv6Blocked(ip) {
-  const lower = ip.toLowerCase();
+  // Canonicalize IPv6 hextets: leading zeros can otherwise bypass textual
+  // prefix checks (e.g. 2001:0db8::1). The caller already checks net.isIP.
+  let lower;
+  try {
+    lower = new URL('http://[' + ip + ']/').hostname.slice(1, -1).toLowerCase();
+  } catch {
+    return true;
+  }
   if (lower === '::' || lower === '::1') return true;
   if (lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('ff')) return true;
   const first = parseInt(lower.split(':')[0] || '0', 16);
   if (Number.isFinite(first) && first >= 0xfe80 && first <= 0xfebf) return true;
-  const mapped = lower.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  return mapped ? ipv4Blocked(mapped[1]) : false;
+  // IPv4-mapped addresses also have a hex representation (::ffff:7f00:1).
+  // Block the entire transition namespace instead of relying on dotted
+  // decimal notation or accidentally reaching a loopback/private service.
+  if (lower.startsWith('::ffff:')) return true;
+  return lower.startsWith('2001:db8:') ||  // RFC 3849 documentation
+    lower.startsWith('3fff:') ||         // RFC 9637 documentation
+    lower.startsWith('2002:') ||         // 6to4 IPv4 tunnelling
+    lower.startsWith('2001::') || lower.startsWith('2001:0:') || // Teredo
+    lower.startsWith('64:ff9b::') || lower.startsWith('64:ff9b:1:') || // NAT64
+    lower.startsWith('100::');          // discard-only
 }
 
 export function isBlockedAddress(address) {
