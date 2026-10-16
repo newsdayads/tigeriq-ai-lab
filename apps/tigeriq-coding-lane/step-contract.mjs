@@ -225,7 +225,7 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha=
   // check a verified, all-success exact-head GitHub Actions receipt.
   const pinned=!!sourceHeadSha||!!repositoryFullName;
   if(pinned&&(!/^[a-f0-9]{40}$/i.test(string(sourceHeadSha))||
-      !/^[a-zA-Z0-9._-]+\\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName))||
+      !/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName))||
       !Array.isArray(checkRuns)))
     return {pass:false,code:'CODING_FUNCTIONAL_CHECKS_UNVERIFIED',missing:[...required]};
   const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{
@@ -244,7 +244,7 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha=
       (!pinned||(row.head_sha.toLowerCase()===string(sourceHeadSha).toLowerCase()&&
          Number.isSafeInteger(row.id)&&row.id>0&&
          row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&
-         /^\\d+\\/job\\/\\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
+         /^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
     if(!valid)unverified.push(name);
   }
   return {pass:missing.length===0&&unverified.length===0,
