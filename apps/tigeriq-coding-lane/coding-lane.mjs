@@ -2099,7 +2099,13 @@ async function runJob(j){
       merge=await mergePr(pr.number,approvedHead,j.title,targetRepository);
     }catch(e){merge={merged:false,message:String(e.message||e)}}
   }
-  const handoff=codingVerifiedCanaryOwnerHandoff({canary,merge,gates,productAcceptance,review,ownerWaiver,headSha:finalSha});
+  // Do not require the P0-only handoff adapter on legacy workers, including
+  // self-contained runJob harnesses that exercise the pre-existing path.
+  const handoff=canary
+    ?codingVerifiedCanaryOwnerHandoff({canary,merge,gates,productAcceptance,review,ownerWaiver,headSha:finalSha})
+    :{jobStatus:merge?.merged?'done':'blocked',objectiveStatus:merge?.merged?'completed':'blocked',
+      code:merge?.merged?'CODING_LEGACY_MERGED':'CODING_LEGACY_MERGE_BLOCKED',
+      summary:merge?.merged?'Merged PR #{PR}':'PR #{PR} ready but merge blocked: '+String(merge?.message||'unknown').slice(0,500)};
   const status=handoff.jobStatus;
   await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,productAcceptance,merge,ownerHandoff:handoff})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,handoff.objectiveStatus,handoff.summary.replace('{PR}',String(pr.number))]);
