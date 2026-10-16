@@ -71,6 +71,69 @@ test('success path uses finalized build/run usage after settle refetch', async (
   }
 });
 
+// R08-specific trust boundary: an HTTP 200 is not a successful audited result.
+test('R08 invalid OUTPUT must never become accepted E2E evidence', async () => {
+  for (const badOutput of [
+    { schemaVersion: '9000', status: 'success' },
+    { schemaVersion: '1.0', status: 'error' },
+    { schemaVersion: '1.0', status: 'success', error: 'not-empty' },
+    null,
+  ]) {
+    const normal = successFetch();
+    const fetchFn = async (url, options) =>
+      String(url).endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')
+        ? response(200, badOutput)
+        : normal.fetchFn(url, options);
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      error => error instanceof ApifyE2EError && error.code === 'OUTPUT_INVALID',
+      JSON.stringify(badOutput),
+    );
+  }
+});
+
+// The already-merged historical reader refuses false CU numbers; the paid
+// E2E evidence must apply the same check instead of claiming measured units.
+test('R08 negative build computeUnits must not enter evidence', async () => {
+  const normal = successFetch();
+  const fetchFn = async (url, options) =>
+    String(url).endsWith('/actor-builds/build1')
+      ? response(200, { data: { id: 'build1', status: 'SUCCEEDED',
+          stats: { computeUnits: -1 }, usage: { ACTOR_COMPUTE_UNITS: 0.01 },
+          usageTotalUsd: 0.002 } })
+      : normal.fetchFn(url, options);
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'COMPUTE_UNITS_UNVERIFIED',
+  );
+  assert.equal(normal.calls.some(call => call.url.includes('/runs?')), false);
+});
+test('R08 contradictory run computeUnits must not enter evidence', async () => {
+  const normal = successFetch();
+  const fetchFn = async (url, options) =>
+    String(url).endsWith('/actor-runs/run1')
+      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+          stats: { computeUnits: 0 }, usage: { ACTOR_COMPUTE_UNITS: 0.02 },
+          usageTotalUsd: 0.004 } })
+      : normal.fetchFn(url, options);
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'COMPUTE_UNITS_UNVERIFIED',
+  );
+});
+test('R08 valid equal secondary computeUnits accepted', async () => {
+  const normal = successFetch();
+  const fetchFn = async (url, options) =>
+    String(url).endsWith('/actor-runs/run1')
+      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+          stats: { computeUnits: 0.02 }, usage: { ACTOR_COMPUTE_UNITS: 0.02 },
+          usageTotalUsd: 0.004 } })
+      : normal.fetchFn(url, options);
+  const verified = await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
+  assert.equal(verified.run.computeUnits, 0.02);
+  assert.equal(verified.output.status, 'success');
+});
+
 test('auth failure is fail-closed and redacts token', async () => {
   const fetchFn = async () => response(401, { error: { message: 'bad token secret-token-value' } });
   await assert.rejects(
