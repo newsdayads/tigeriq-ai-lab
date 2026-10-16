@@ -89,6 +89,27 @@ const dependencySpecMatches = (spec, resolved) => {
   return actual[0] === 0 && actual[1] === 0 && actual[2] === min[2];
 };
 
+// Immutable REA 6.4.0 upstream production-lock peers: exactly three optional
+// declarations in two packages. These are metadata admission bounds, not
+// authentication of a consumer SBOM or permission to run npm.
+const OPTIONAL_SOURCE_PEERS=Object.freeze({
+  'node_modules/ajv-formats': Object.freeze({ajv:'^8.0.0'}),
+  'node_modules/ws': Object.freeze({bufferutil:'^4.0.1','utf-8-validate':'>=5.0.2'})
+});
+
+const peerVersionMatches=(spec,resolved)=>{
+  if(spec.startsWith('>=')){
+    const minimum=numericParts(spec.slice(2)),actual=numericParts(resolved);
+    if(!minimum||!actual)return false;
+    for(let i=0;i<3;i++){
+      if(actual[i]>minimum[i])return true;
+      if(actual[i]<minimum[i])return false;
+    }
+    return true;
+  }
+  return supportedDependencySpec(spec)&&dependencySpecMatches(spec,resolved);
+};
+
 const locate=(pkgs,path,name)=>{
   let parent=path;
   while(true){
@@ -142,12 +163,31 @@ export function inspectR06ConsumerLock(lock){
     const path=locate(pkgs,'node_modules/rea-agents',name);
     return !path||pkgs[path]?.version!==v;
   }))return report('REJECTED','REA_LOCK_RESOLUTION_MISMATCH');
-  let missingOptionalDependencies=0;
+  let missingOptionalDependencies=0,missingOptionalPeers=0,peerDeclarations=0;
   for(const [path,p] of rows){
     if(!path)continue;
     if(p.link===true||!versionOk(p.version)||!sriOk(p.integrity)||
         !resolvedOk(p.resolved,path.slice(path.lastIndexOf('node_modules/')+13),p.version))
       return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
+    // Only the three audited upstream optional peer edges are admitted.
+    // Unknown required peers may cause npm to resolve additional packages.
+    const declaredPeers=p.peerDependencies===undefined?{}:p.peerDependencies;
+    const peerMeta=p.peerDependenciesMeta===undefined?{}:p.peerDependenciesMeta;
+    if(!rec(declaredPeers)||!rec(peerMeta))
+      return report('REJECTED','PEER_DEPENDENCY_SCOPE_DRIFT');
+    const allowed=OPTIONAL_SOURCE_PEERS[path]||{};
+    if(pairs(declaredPeers).some(([name,spec])=>!own(allowed,name)||allowed[name]!==spec||
+       !rec(peerMeta[name])||peerMeta[name].optional!==true||
+       Object.keys(peerMeta[name]).length!==1)||
+       pairs(peerMeta).some(([name])=>!own(declaredPeers,name)))
+      return report('REJECTED','PEER_DEPENDENCY_SCOPE_DRIFT');
+    for(const [name,spec] of pairs(declaredPeers)){
+      peerDeclarations++;
+      const located=locate(pkgs,path,name);
+      if(!located){missingOptionalPeers++;continue;}
+      if(!peerVersionMatches(spec,pkgs[located].version))
+        return report('REJECTED','PEER_DEPENDENCY_VERSION_MISMATCH');
+    }
     // npm optionalDependencies may be absent (e.g. non-target OS binaries).
     // Strictly reject missing required edges. Never treat shape as host acceptance.
     for(const [kind,deps] of [['required',p.dependencies],['optional',p.optionalDependencies]]){
@@ -174,6 +214,7 @@ export function inspectR06ConsumerLock(lock){
   return report('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED',
     'R05_AND_HOST_AND_CONSUMER_PROVENANCE_STILL_REQUIRED',{
       packageRows:rows.length-1,directDependencies:35,missingOptionalDependencies,
+      peerDeclarations,missingOptionalPeers,
       packagesWithInstallScriptFlag:rows.filter(([path,p])=>path&&p.hasInstallScript===true).length
     });
 }
