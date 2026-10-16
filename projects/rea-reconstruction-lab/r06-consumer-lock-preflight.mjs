@@ -137,7 +137,8 @@ function inspectR06ConsumerLockUnchecked(lock){
       rows.some(([path,p])=>!pathOk(path)||!rec(p)))
     return report('REJECTED','PACKAGE_ENTRIES_INVALID');
   const root=pkgs[''],rea=pkgs['node_modules/rea-agents'];
-  if(!rec(root.dependencies)||root.dependencies['rea-agents']!=='6.4.0'||
+  if(!rec(root.dependencies)||!own(root.dependencies,'rea-agents')||
+      root.dependencies['rea-agents']!=='6.4.0'||
       rea.version!=='6.4.0'||rea.integrity!==REA_SRI||
       !resolvedOk(rea.resolved,'rea-agents',rea.version))
     return report('REJECTED','REA_ARTIFACT_PIN_MISMATCH');
@@ -149,7 +150,7 @@ function inspectR06ConsumerLockUnchecked(lock){
   const rootListEmptyOrAbsent=key=>!own(root,key)||
     (Array.isArray(root[key])&&root[key].length===0);
   if(Object.keys(root.dependencies).length!==1||
-      ['devDependencies','optionalDependencies','peerDependencies','scripts']
+      ['devDependencies','optionalDependencies','peerDependencies','scripts','overrides']
         .some(key=>!rootMapEmptyOrAbsent(key))||
       ['workspaces','bundleDependencies','bundledDependencies']
         .some(key=>!rootListEmptyOrAbsent(key))||
