@@ -396,3 +396,28 @@ test('G6 live caller rejects incomplete check pages and binds exact repository +
   assert.match(source,/sourceHeadSha:gates\.sha,repositoryFullName:targetRepository\.fullName/);
   assert.match(source,/domainCheckReceipt\.check_runs\.length>=100/);
 });
+
+
+test('G6 manager cannot downgrade Android/Frontend source into generic docs or tests to evade G5',()=>{
+  for(const type of ['source','test','documentation','frontend','backend']){
+    assert.throws(()=>make({...job,deliverable_type:type}),/CODING_STEP_PRODUCT_TYPE_DOWNGRADE/);
+  }
+  const uiPaths=['apps/tigeriq-ui/src/App.tsx','docs/implementation/view.md'];
+  const ui={
+    step_id:'UI-D01',title:'Tạo màn hình giao diện',instruction:'Tạo ứng dụng giao diện thật.',
+    paths:uiPaths,required_changed_paths:uiPaths,
+    steps:['Đọc mã','Xây UI','Chạy kiểm thử'],acceptance:['Giao diện hoạt động'],evidence_required:['Biên nhận chức năng']
+  };
+  const compile=(kind,paths=uiPaths)=>compileCodingStepPacket({
+    objectiveId:'GH-4902',sourceRevision:'source-v1',sourceHeadSha:'a'.repeat(40),
+    job:{...ui,paths,required_changed_paths:paths,deliverable_type:kind},
+    allowedPaths:paths,skillEvidence:[]
+  });
+  for(const type of ['source','test','documentation','backend','android'])
+    assert.throws(()=>compile(type),/CODING_STEP_PRODUCT_TYPE_DOWNGRADE/);
+  assert.equal(compile('frontend').deliverable_type,'frontend');
+  const mdOnly=['docs/guide.md'];
+  assert.equal(compile('documentation',mdOnly).deliverable_type,'documentation');
+  const mixed=['apps/demo/app/build.gradle.kts','apps/demo/src/App.tsx'];
+  assert.throws(()=>compile('android',mixed),/CODING_STEP_PRODUCT_TYPE_DOWNGRADE/);
+});
