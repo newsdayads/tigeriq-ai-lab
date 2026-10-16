@@ -15,14 +15,31 @@ export function workOrderChecklistSteps(body=''){
  // Read only canonical root checklist entries, never checkbox illustrations in
  // fenced/indented Markdown code. Match CommonMark's 0-3-space fence boundary;
  // a longer opening fence cannot be closed by a shorter marker.
- let fence=null;
- for(const line of lines){
-  const marker=line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+ let fence=null,htmlComment=false;
+ for(const rawLine of lines){
+  // Markdown fenced code is literal: its comment markers are not HTML syntax.
   if(fence){
-   if(marker&&marker[1][0]===fence.char&&marker[1].length>=fence.length&&
-      marker[2].trim()==='')fence=null;
+   const closing=rawLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+   if(closing&&closing[1][0]===fence.char&&closing[1].length>=fence.length&&
+      closing[2].trim()==='')fence=null;
    continue;
   }
+  // Strip HTML comments, including multiline blocks, before considering a
+  // heading or checked receipt. Never count hidden examples as acceptance.
+  let line='',rest=rawLine;
+  while(rest.length){
+   if(htmlComment){
+    const end=rest.indexOf('-->');
+    if(end<0)break;
+    rest=rest.slice(end+3);htmlComment=false;
+   }else{
+    const begin=rest.indexOf('<!--');
+    if(begin<0){line+=rest;break;}
+    line+=rest.slice(0,begin);
+    rest=rest.slice(begin+4);htmlComment=true;
+   }
+  }
+  const marker=line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if(marker){fence={char:marker[1][0],length:marker[1].length};continue;}
   const heading=sectionName(line);
   if(heading!==null){if(inside)break;if(!found&&heading==='checklist'){found=true;inside=true;}continue;}

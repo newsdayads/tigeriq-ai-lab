@@ -92,3 +92,27 @@ test('long tilde fenced code cannot be closed by a shorter marker',()=>{
  assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6','S7']);
  assert.equal(workOrderChecklistGate(card(body)).reason,'STEP_UNCHECKED_ON_GITHUB');
 });
+
+test('NV07 rejects a checked S6 hidden inside a Markdown HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--',
+  '- [x] S6 — hidden fake [Receipt]('+url+')','-->','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKLIST_MISSING');
+});
+test('NV07 rejects a forged checklist heading hidden inside an HTML comment',()=>{
+ const body=['<!--','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — hidden [Receipt]('+url+')','-->',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.checked),[false]);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('NV07 ignores a fake fence marker inside an HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--','```md',
+  '-->','- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6']);
+});
+test('NV07 preserves visible checked S5c with an inline HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — accepted <!-- note --> [Receipt]('+url+')',
+  '- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+});

@@ -48,3 +48,30 @@ it('NV07 real checked S5c remains linked while real S6 stays unaccepted',()=>{
  expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
 });
+
+it('NV07 rejects fake S6 acceptance hidden inside an HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--',
+  '- [x] S6 — hidden fake [Receipt]('+proof+')','-->','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistSteps(body).steps).toEqual([]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('CHECKLIST_MISSING');
+});
+it('NV07 ignores a forged checklist heading inside an HTML comment',()=>{
+ const body=['<!--','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — invisible forged row [Receipt]('+proof+')','-->',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 does not let a fenced opener hidden in an HTML comment swallow the real S6 row',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--',tick+'md',
+  '-->','- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 preserves a visible linked step with an inline HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — accepted <!-- annotation --> [Receipt]('+proof+')',
+  '- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});
