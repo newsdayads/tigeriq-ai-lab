@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   build:
+    name: Android Build Verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
