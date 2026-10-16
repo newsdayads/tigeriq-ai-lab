@@ -148,6 +148,18 @@ test('preflight accepts correctly delimited JSON with charset', async () => {
   assert.equal(calls.length,2);
 });
 
+test('preflight GET operations have bounded timeout signals', async () => {
+  const { fetchFn, calls } = successFetch();
+  await runPrivateApifyPreflight({ env, fetchFn });
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.options.method, 'GET');
+    assert.ok(call.options.signal instanceof AbortSignal,
+      'each authenticated GET must include a native abort signal');
+    assert.equal(call.options.signal.aborted, false);
+  }
+});
+
 test('public Actor fails closed', async () => {
   const fetchFn = async url => String(url).endsWith('/users/me')
     ? response(200, { data: { id: 'user1', username: 'owner' } })
