@@ -106,3 +106,36 @@ it('NV07 preserves visible legitimate receipt after a raw HTML block',()=>{
  expect(view(body)).toEqual([{id:'S5c',checked:true},{id:'S6',checked:false}]);
  expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
 });
+
+it('NV07 rejects Markdown image, escaped, and inline-code receipt spoofing',()=>{
+ const tick=String.fromCharCode(96);
+ const forged=[
+  tick+'[Receipt]('+proof+')'+tick,
+  tick+tick+'[Receipt]('+proof+')'+tick+tick,
+  '\[Receipt]('+proof+')',
+  '![Receipt]('+proof+')',
+  '<code>[Receipt]('+proof+')</code>'
+ ];
+ for(const fragment of forged){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+   '- [x] S6 — '+fragment,'## ACCEPTANCE'].join('\n');
+  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+   .toBe('CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+});
+it('NV07 accepts visible receipt after inline code, not the code example',()=>{
+ const tick=String.fromCharCode(96);
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — '+tick+'literal example'+tick+' [Receipt]('+proof+')',
+  '- [ ] S6 — pending','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok)
+  .toBe(true);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+  .toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 honors escaped backtick without suppressing real receipt link',()=>{
+ const tick=String.fromCharCode(96);
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — \\'+tick+' [Receipt]('+proof+')','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+});

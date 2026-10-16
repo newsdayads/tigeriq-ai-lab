@@ -2,6 +2,43 @@
 // Caller MUST supply the fresh GitHub issue fetched after the attempted checkbox write.
 const STEP=/^ {0,3}[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
 const MARKDOWN_LINK=/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/g;
+
+function markdownEscaped(text,index){
+ let n=0;
+ for(let i=index-1;i>=0&&text[i]==='\\';i--)n++;
+ return n%2===1;
+}
+// Evidence links must be visible Markdown hyperlinks, not inline code,
+// literal escaped link syntax, image embeds, or raw HTML code samples.
+function receiptLinksFromLine(line){
+ const input=String(line||'').replace(/<code\b[^>]*>[\s\S]*?<\/code\s*>/gi,'');
+ let visible='';
+ for(let i=0;i<input.length;){
+  if(input[i]!=='\x60'||markdownEscaped(input,i)){visible+=input[i++];continue;}
+  let endOpen=i;
+  while(input[endOpen]==='\x60')endOpen++;
+  const width=endOpen-i;
+  let k=endOpen,close=-1,closeEnd=-1;
+  while(k<input.length){
+   const at=input.indexOf('\x60',k);
+   if(at<0)break;
+   let end=at;
+   while(input[end]==='\x60')end++;
+   if(end-at===width&&!markdownEscaped(input,at)){close=at;closeEnd=end;break;}
+   k=end;
+  }
+  if(close<0){visible+=input.slice(i,endOpen);i=endOpen;}
+  else{visible+=' '.repeat(closeEnd-i);i=closeEnd;}
+ }
+ const found=[];
+ for(const match of visible.matchAll(MARKDOWN_LINK)){
+  if(markdownEscaped(visible,match.index))continue;
+  const image=match.index>0&&visible[match.index-1]==='!'&&!markdownEscaped(visible,match.index-1);
+  if(!image)found.push(match[1]);
+ }
+ return found;
+}
+
 function sectionName(line){
  const m=String(line).match(/^\s{0,3}#{2,6}\s+(.+)$/);
  if(!m)return null;
@@ -76,7 +113,7 @@ export function workOrderChecklistSteps(body=''){
   const m=line.match(STEP);
   if(!m)continue;
   steps.push({id:m[2],checked:m[1].toLowerCase()==='x',
-   evidenceUrls:[...line.matchAll(MARKDOWN_LINK)].map(v=>v[1]),line});
+   evidenceUrls:receiptLinksFromLine(line),line});
  }
  return {found,steps};
 }

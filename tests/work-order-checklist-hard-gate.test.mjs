@@ -132,3 +132,26 @@ test('NV07 forged HTML heading and nested div cannot be accepted',()=>{
   '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
   assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
 });
+
+test('NV07 inline code, escaped link, image and HTML code cannot spoof checked S6 receipt',()=>{
+ const proof='https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-6171872076';
+ const tick=String.fromCharCode(96);
+ for(const fake of [
+  tick+'[Receipt]('+proof+')'+tick,
+  tick+tick+'[Receipt]('+proof+')'+tick+tick,
+  '\\[Receipt]('+proof+')',
+  '![Receipt]('+proof+')',
+  '<code>[Receipt]('+proof+')</code>'
+ ]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST','- [x] S6 — '+fake,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+});
+test('NV07 linked S5c after inline literal still accepted; unchecked S6 is not',()=>{
+ const tick=String.fromCharCode(96);
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — '+tick+'example'+tick+' [Receipt]('+url+')',
+  '- [ ] S6 — pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
