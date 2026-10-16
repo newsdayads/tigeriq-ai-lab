@@ -21,6 +21,17 @@ export function compileCodingStepPacket({objectiveId,sourceRevision,sourceHeadSh
   if(paths.some(p=>!safePath(p)||!allowed.has(p)))throw Error('CODING_STEP_SCOPE_MISMATCH');
   const kind=string(job.deliverable_type);
   if(!TYPES.has(kind))throw Error('CODING_STEP_DELIVERABLE_INVALID');
+  // The manager must not relabel an Android/frontend artifact as documentation,
+  // tests or generic source to evade the mandatory G5 product acceptance gate.
+  // Only unambiguous artifact signatures are inferred here: ambiguous .js/.ts,
+  // .kt or backend scripts must be classified by the canonical step specification.
+  const inferred=new Set();
+  for(const path of paths){
+    if(/(?:^|\/)AndroidManifest\.xml$|\.gradle(?:\.kts)?$/i.test(path))inferred.add('android');
+    if(/\.(?:tsx|jsx|vue|svelte)$/i.test(path))inferred.add('frontend');
+  }
+  if(inferred.size>1||inferred.size===1&&!inferred.has(kind))
+    throw Error('CODING_STEP_PRODUCT_TYPE_DOWNGRADE');
   const required=strings(job.required_changed_paths,'REQUIRED_PATHS');
   if(required.some(p=>!safePath(p)||!paths.includes(p)))throw Error('CODING_STEP_REQUIRED_PATH_OUT_OF_SCOPE');
   if(kind==='android'&&!required.some(p=>/(\.kt|\.java|\.gradle\.kts|AndroidManifest\.xml)$/.test(p)))throw Error('CODING_STEP_ANDROID_SOURCE_REQUIRED');
