@@ -1374,7 +1374,7 @@ async function managerTick(){
           status:row.status==='done'?'merged_unaccepted':row.status==='blocked'?'blocked_unaccepted':row.status==='failed'?'failed':String(row.status||''),
           failureSignature:codingFailureSignature(failure)});
       }
-      const same=history.filter(h=>h.workOrderId===workOrderId&&h.stepId===packet.step_id&&h.sourceRevision===packet.source_revision);
+      const same=history.filter(h=>h.workOrderId===workOrderId&&h.sourceRevision===packet.source_revision); // preserve cross-step aliases for replay guard
       const accepted=repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,history:same});
       const seenFailures=[...new Set(same.filter(h=>h.status==='failed').map(h=>h.failureSignature))];
       const stop=accepted.allow?seenFailures.map(failureSignature=>repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,failureSignature,history:same})).find(x=>!x.allow):accepted;
