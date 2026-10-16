@@ -1,0 +1,68 @@
+name: P0 G6 Work Isolated E2E
+on:
+  push:
+    branches: [p0/4902-g6-work-e2e]
+    paths:
+      - tests/g6-work/**
+      - .github/workflows/p0-4902-g6-work-e2e.yml
+      - docs/implementation/p0-4902-g6-work-evidence.md
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p0-g6-work-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  g6-work:
+    if: github.repository == 'newsdayads/tigeriq-ai-lab' && github.event.repository.private == false && github.ref == 'refs/heads/p0/4902-g6-work-e2e'
+    name: G6 Work Real Process PG Model Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      G6_PUBLIC_ZERO_COST: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate G6 only before downloading models
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check tests/g6-work/run.mjs
+          node --check tests/g6-work/worker.mjs
+          node --test tests/g6-work/receipt-policy.test.mjs
+      - name: Install lockfile dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare same authorized zero-cost local model and unprivileged tool
+        run: |
+          set -euo pipefail
+          docker pull ollama/ollama@sha256:3d8a05e3432d50ea57594fabe971e46cc8fe963a0f9f8c40400bd56cd5388e47
+          docker tag ollama/ollama@sha256:3d8a05e3432d50ea57594fabe971e46cc8fe963a0f9f8c40400bd56cd5388e47 ollama/ollama:0.12.11
+          docker pull node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+          docker tag node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 node:22-bookworm-slim
+          docker run -d --rm --name p0-g6-work-ollama --memory 12g --cpus 4 --pids-limit 256 -p 127.0.0.1:11435:11434 ollama/ollama:0.12.11
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:11435/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS --max-time 660 http://127.0.0.1:11435/api/pull -H 'content-type: application/json' -d '{"model":"qwen2.5-coder:7b","stream":false}'
+      - name: Run G6 real process PostgreSQL model sandbox
+        run: node tests/g6-work/run.mjs
+      - name: Preserve exact SHA receipts even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-g6-work-e2e-${{ github.sha }}
+          path: p0-g6-work-evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove isolated model and verify cleanup
+        if: always()
+        run: |
+          docker rm -f p0-g6-work-ollama || true
+          test -z "$(docker ps -aq --filter name=g6-work-tool-)"
+          test -z "$(docker ps -aq --filter name=p0-g6-work-ollama)"
