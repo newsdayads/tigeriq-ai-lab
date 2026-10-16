@@ -1,99 +1,92 @@
-# P0 #4902 — G5 Nghiệm thu sản phẩm thực (Product Acceptance Evidence)
+# P0 #4902 — G5 Nghiệm thu sản phẩm thực (Product Acceptance Evidence — Vòng 2)
 
 - **Date:** 2026-10-16
-- **Assignee:** Antigravity (NV04 - Nghiên cứu sâu & Cổng nghiệm thu độc lập G5)
-- **Authority:** Explicit Owner Instruction (P0 #4902)
+- **Assignee:** Gemini Pro (NV04 - nghiên cứu sâu và kiểm tra chéo) / Antigravity
+- **Authority:** Explicit Owner Instruction (P0 #4902 Vòng 2)
 - **Base Ref:** PR #4898 HEAD (`a50bde489214ece6d7ee1eb1f635cf8c6fe24a9e`), branch `p0/owner-vy-core-coding-contract-20261016`
 - **Target Branch:** `p0/4902-g5-antigravity`
-- **Target PR Direction:** PR NHÁP hướng vào nhánh P0 của Vy (`p0/owner-vy-core-coding-contract-20261016`)
+- **Target Pull Request:** [PR #4912 - [P0 #4902][G5] Cổng nghiệm thu sản phẩm thực độc lập — Antigravity (BẢN NHÁP)](https://github.com/newsdayads/tigeriq-ai-lab/pull/4912)
 - **Status:** DRAFT / PENDING REVIEW (No merge to main, no deploy, no PC01 mutations)
 
 ---
 
-## 1. Bối cảnh & Mục tiêu (Context & Objectives)
-Theo chỉ đạo P0 #4902 và quy chuẩn kiểm soát sản phẩm TigerIQ:
-- G5 chịu trách nhiệm xây dựng cổng nghiệm thu sản phẩm thực độc lập, bảo đảm chất lượng phần mềm được kiểm chứng bằng sản phẩm cụ thể và biên nhận kiểm thử thực tế, không chấp nhận báo cáo bằng lời, văn bản tự nhận, hoặc đóng Issue làm bằng chứng hoàn tất.
-- Cổng được thiết kế dưới dạng module chuyên biệt `apps/tigeriq-coding-lane/product-acceptance.mjs`, kiểm thử độc lập tại `tests/coding-product-acceptance.test.mjs`, và cung cấp API rõ ràng để Vy (`NV00 - Trợ lý điều phối`) tích hợp vào luồng điều phối Coding Lane.
+## 1. Bối cảnh & Khắc phục rà soát Vòng 2 (Review Round 2 Fixes)
+Theo phản hồi rà soát từ Vy (`Trợ lý điều phối`) và Owner tại [PR #4912](https://github.com/newsdayads/tigeriq-ai-lab/pull/4912), Antigravity đã vá triệt để 5 kẽ hở nghiệm thu giả:
+
+1. **Bắt buộc Source SHA trên mọi biên nhận (Strict Head SHA Enforcement):**
+   - Loại bỏ hoàn toàn điều kiện lỏng `if (matchingCheck.head_sha && ...)`.
+   - Bắt buộc mọi `checkRun` và `receipt` phải có `head_sha` 40 ký tự hex hợp lệ và khớp chính xác `sourceHeadSha`. Thiếu `head_sha` bị chặn ngay lập tức với mã `ACCEPTANCE_BLOCKED_MISSING_HEAD_SHA` (`CHECK_HEAD_SHA_MISSING`, `RECEIPT_HEAD_SHA_MISSING`).
+2. **Khắc phục logic trạng thái biên nhận (Strict Status & Conclusion Conjunction):**
+   - Thay thế điều kiện lỏng cũ bằng kiểm tra nghiêm ngặt: yêu cầu đồng thời `status === 'completed'` VÀ `conclusion === 'success'`.
+   - Chặn đứng các trường hợp giả mạo như `completed + failure` hoặc `in_progress + success` với mã `ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED`.
+3. **Chống che giấu lỗi bằng bản ghi trùng tên (Anti-Shadowing for Duplicate Checks):**
+   - Quét toàn bộ danh sách `checkRuns` và `receipts` có cùng tên yêu cầu; không dùng `.find()` lấy bản ghi đầu.
+   - Nếu bất kỳ lượt chạy nào cùng tên bị thất bại, đang chạy, thiếu SHA, hoặc sai SHA, toàn bộ cổng sẽ bị `BLOCKED` (không cho phép một check PASS che giấu một check FAIL hoặc sai SHA).
+4. **Chặn tệp nguồn rỗng nội dung (Empty Content Rejection):**
+   - `verifyProductArtifacts` không chỉ kiểm tra đường dẫn mà bắt buộc nội dung tệp phải có dữ liệu thực (`content.trim().length > 0`).
+   - Nếu các tệp bắt buộc (Gradle, Manifest, Kotlin, UI code, API code) chỉ có tên hoặc nội dung rỗng, cổng trả về `BLOCKED` kèm lý do chi tiết (`ANDROID_GRADLE_EMPTY`, `ANDROID_MANIFEST_EMPTY`, `ANDROID_KOTLIN_EMPTY`, `FRONTEND_UI_CODE_EMPTY`, `BACKEND_API_CODE_EMPTY`, `PRODUCT_ARTIFACTS_EMPTY`).
+5. **Xác thực nguồn runner của biên nhận (Runner Trustworthiness):**
+   - Biên nhận từ các runner giả định, không xác định hoặc bị đánh dấu `unverified`, `fake`, `mock`, `unknown` sẽ bị từ chối với mã `ACCEPTANCE_BLOCKED_RUNNER_UNVERIFIED`.
 
 ---
 
-## 2. Quy tắc nghiệm thu theo loại sản phẩm (Deliverable-Specific Acceptance Gates)
+## 2. Quy tắc nghiệm thu theo loại sản phẩm (Deliverable Acceptance Matrix)
 
-### 2.1. Android (`android`)
-- **Bắt buộc cấu hình xây dựng (Build Configuration):** Tệp Gradle hợp lệ (`build.gradle`, `build.gradle.kts`, hoặc `settings.gradle.kts`).
-- **Bắt buộc Manifest:** `AndroidManifest.xml`.
-- **Bắt buộc mã nguồn ứng dụng:** Tệp mã nguồn Kotlin hoặc Java (`.kt`, `.java`).
-- **Bắt buộc kiểm chứng xây dựng thực (Real Build Verification):** Check run hoặc biên nhận `Android Build Verify` với trạng thái `completed` và kết luận `success`.
-- **Xử lý thiếu sót:** Nếu thiếu bất kỳ tệp nào hoặc thiếu kiểm chứng build, trạng thái trả về là `BLOCKED` kèm mã lỗi cụ thể (`ANDROID_GRADLE_MISSING`, `ANDROID_MANIFEST_MISSING`, `ANDROID_KOTLIN_MISSING`, hoặc `ANDROID_REAL_BUILD_MISSING`). Tuyệt đối không giả PASS.
-
-### 2.2. Frontend (`frontend`)
-- **Bắt buộc mã giao diện (UI Source Code):** Tệp thành phần giao diện / kiểu dáng (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.html`, `.css`).
-- **Bắt buộc kiểm thử chức năng (Functional Test Verification):** Check run hoặc biên nhận `Frontend Functional Verify` với trạng thái `completed` và kết luận `success`.
-- **Xử lý thiếu sót:** Nếu thiếu mã giao diện hoặc thiếu kết quả kiểm thử chức năng, trạng thái trả về là `BLOCKED` (`FRONTEND_UI_CODE_MISSING`, `FRONTEND_FUNCTIONAL_TEST_MISSING`).
-
-### 2.3. Backend (`backend`)
-- **Bắt buộc mã API/Service:** Tệp mã nguồn backend (`.mjs`, `.cjs`, `.js`, `.ts`, `.py`, `.go`, `.rs`, `.java`, `.kt`).
-- **Bắt buộc kiểm thử hợp đồng API (Contract Test Verification):** Check run hoặc biên nhận `Backend Contract Verify` với trạng thái `completed` và kết luận `success`.
-- **Xử lý thiếu sót:** Nếu thiếu mã API hoặc thiếu kết quả kiểm thử hợp đồng, trạng thái trả về là `BLOCKED` (`BACKEND_API_CODE_MISSING`, `BACKEND_CONTRACT_TEST_MISSING`).
+| Loại sản phẩm | Tệp mã nguồn bắt buộc (Non-empty) | Kiểm chứng thực thi bắt buộc | Tiêu chí hợp lệ |
+|---|---|---|---|
+| **Android (`android`)** | Gradle (`build.gradle`, `build.gradle.kts`, `settings.gradle.kts`) + Manifest (`AndroidManifest.xml`) + Kotlin/Java (`.kt`, `.java`) | `Android Build Verify` (CheckRun / Receipt) | `status: 'completed'`, `conclusion: 'success'`, `head_sha === targetSha`, runner tin cậy |
+| **Frontend (`frontend`)** | UI Components & Styles (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.html`, `.css`) | `Frontend Functional Verify` (CheckRun / Receipt) | `status: 'completed'`, `conclusion: 'success'`, `head_sha === targetSha`, runner tin cậy |
+| **Backend (`backend`)** | API / Service handlers (`.mjs`, `.cjs`, `.js`, `.ts`, `.py`, `.go`, `.rs`, `.java`, `.kt`) | `Backend Contract Verify` (CheckRun / Receipt) | `status: 'completed'`, `conclusion: 'success'`, `head_sha === targetSha`, runner tin cậy |
 
 ---
 
-## 3. Quy tắc chống gian lận & đường tắt (Anti-Cheat & Prohibited Shortcuts)
-
-1. **Markdown mô tả không phải sản phẩm (Documentation-Only Prohibited):**
-   - Chỉ sửa/tạo tệp Markdown (`.md`, `.txt`, `.rst`) mà không có mã nguồn sản phẩm thực thi sẽ bị chặn ngay lập tức với mã `DOCUMENTATION_ONLY_NOT_PRODUCT` và lý do `MARKDOWN_DESCRIPTION_NOT_PRODUCT_DONE`.
-2. **CI chung không thay thế kiểm thử chuyên biệt (Generic CI Prohibited):**
-   - Các kiểm tra CI tổng thể (như `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify`) chỉ chứng minh tính toàn vẹn của repo, không được dùng để tính nghiệm thu cho sản phẩm chức năng nếu thiếu check run chuyên biệt tương ứng (`GENERIC_CI_CANNOT_SUBSTITUTE_PRODUCT_ACCEPTANCE`).
-3. **Đóng Issue GitHub không thay thế nghiệm thu (Closed Issue Prohibited):**
-   - Trạng thái đóng Issue (kể cả có ghi `DONE=true` hay `FINISH_RECEIPT_URL`) không được tự động công nhận hoàn tất sản phẩm nếu thiếu kiểm chứng biên nhận độc lập (`CLOSED_ISSUE_CANNOT_SUBSTITUTE_PRODUCT_ACCEPTANCE`).
-4. **Đối chiếu đúng Source SHA (Exact SHA Match):**
-   - Mọi biên nhận thực thi và check run phải khớp chính xác với `sourceHeadSha` (40 ký tự hex). Bất kỳ sai lệch SHA nào đều bị chặn với mã `ACCEPTANCE_BLOCKED_SHA_MISMATCH`.
-   - Nếu SHA không hợp lệ (rỗng, sai định dạng), lập tức chặn `SOURCE_HEAD_SHA_INVALID`.
+## 3. Các đường tắt bị cấm (Prohibited Anti-Patterns)
+1. **Chỉ có tài liệu Markdown:** Chặn ngay `DOCUMENTATION_ONLY_NOT_PRODUCT`.
+2. **Chỉ có CI tổng quát (Generic CI):** `CI Verify`, `Queue Hygiene Verify`, `Vercel Online Verify` không thể thay thế kiểm thử chuyên biệt -> Chặn `GENERIC_CI_CANNOT_SUBSTITUTE_PRODUCT_ACCEPTANCE`.
+3. **Đóng Issue GitHub:** Tự động đóng issue hoặc ghi text `DONE=true` không thay thế được nghiệm thu sản phẩm thực -> Chặn `CLOSED_ISSUE_CANNOT_SUBSTITUTE_PRODUCT_ACCEPTANCE`.
+4. **Sai lệch SHA:** Bất kỳ check nào không khớp exact `sourceHeadSha` -> Chặn `ACCEPTANCE_BLOCKED_SHA_MISMATCH`.
 
 ---
 
-## 4. Giao diện API xuất cho Vy tích hợp (Exported Integration Interface)
+## 4. Kết quả kiểm thử tự động (Test Suite Results)
+Bộ kiểm thử gồm **30 bài kiểm thử** (tăng cường 10 bài âm mới cho các lỗi rà soát Vòng 2):
+- `API contract: exports all required constants and functions for Vy` — **PASS**
+- `Android positive: Gradle + Manifest + Kotlin + real build verify -> ACCEPTED` — **PASS**
+- `Android negative: missing Kotlin/Java code -> BLOCKED` — **PASS**
+- `Android negative: missing AndroidManifest.xml -> BLOCKED` — **PASS**
+- `Android negative: missing Gradle configuration -> BLOCKED` — **PASS**
+- `Android negative: empty content in Gradle/Manifest/Kotlin files -> BLOCKED` — **PASS**
+- `Android negative: missing real build check -> BLOCKED` — **PASS**
+- `Android negative: build check SHA mismatch -> BLOCKED` — **PASS**
+- `Frontend positive: UI code + functional test verify -> ACCEPTED` — **PASS**
+- `Frontend negative: missing UI code -> BLOCKED` — **PASS**
+- `Frontend negative: empty content in UI files -> BLOCKED` — **PASS**
+- `Frontend negative: missing functional test check -> BLOCKED` — **PASS**
+- `Frontend negative: functional check in progress or failed -> BLOCKED` — **PASS**
+- `Backend positive: API code + contract test verify -> ACCEPTED` — **PASS**
+- `Backend negative: missing API code -> BLOCKED` — **PASS**
+- `Backend negative: empty content in API code -> BLOCKED` — **PASS**
+- `Backend negative: missing contract test check -> BLOCKED` — **PASS**
+- `Security check: checkRun missing head_sha must be BLOCKED` — **PASS**
+- `Security check: receipt missing head_sha must be BLOCKED` — **PASS**
+- `Security check: receipt with completed + failure must be BLOCKED` — **PASS**
+- `Security check: receipt with in_progress + success must be BLOCKED` — **PASS**
+- `Duplicate check shadowing: duplicate check where one failed cannot be masked by a passing check` — **PASS**
+- `Duplicate check shadowing: duplicate check where one has different SHA cannot pass` — **PASS**
+- `Security check: unverified / fake runner in receipt must be BLOCKED` — **PASS**
+- `Anti-cheat: markdown / documentation only changes cannot claim product DONE` — **PASS**
+- `Anti-cheat: generic CI alone cannot substitute product-specific verification` — **PASS**
+- `Anti-cheat: closed GitHub Issue cannot substitute product acceptance` — **PASS**
+- `Receipt object support: supports typed receipt objects matching exact SHA` — **PASS**
+- `SHA validation: invalid or non-40-hex SHA is immediately BLOCKED` — **PASS**
+- `assertProductAcceptance throws structured error when BLOCKED` — **PASS**
 
-Mọi hàm và hằng số được xuất tại `apps/tigeriq-coding-lane/product-acceptance.mjs`:
-- `PRODUCT_ACCEPTANCE_SCHEMA = 'TIGERIQ_PRODUCT_ACCEPTANCE_V1'`
-- `SUPPORTED_PRODUCT_TYPES = ['android', 'frontend', 'backend']`
-- `PRODUCT_REQUIRED_CHECKS = { android: ['Android Build Verify'], frontend: ['Frontend Functional Verify'], backend: ['Backend Contract Verify'] }`
-- `verifyProductArtifacts({ productType, changes })`: Kiểm tra tính đầy đủ của các tệp mã nguồn theo loại sản phẩm.
-- `verifyProductExecutionReceipts({ productType, sourceHeadSha, checkRuns, receipts })`: Kiểm tra biên nhận thực thi và khớp SHA.
-- `evaluateProductAcceptance({ productType, sourceHeadSha, changes, checkRuns, receipts, issue, externallyVerified })`: Cổng nghiệm thu tổng thể trả về `{ pass, status, code, reasons, deliverableType, sourceHeadSha, details }`.
-- `assertProductAcceptance(params)`: Ném lỗi `Error` có cấu trúc nếu nghiệm thu bị `BLOCKED`.
-
----
-
-## 5. Kết quả kiểm thử (Test Results)
-
-Bộ kiểm thử tại `tests/coding-product-acceptance.test.mjs` bao gồm 20 bài kiểm thử tích cực, tiêu cực và biên:
-1. `API contract: exports all required constants and functions for Vy` - PASS
-2. `Android positive: Gradle + Manifest + Kotlin + real build verify -> ACCEPTED` - PASS
-3. `Android negative: missing Kotlin/Java code -> BLOCKED` - PASS
-4. `Android negative: missing AndroidManifest.xml -> BLOCKED` - PASS
-5. `Android negative: missing Gradle configuration -> BLOCKED` - PASS
-6. `Android negative: missing real build check -> BLOCKED` - PASS
-7. `Android negative: build check SHA mismatch -> BLOCKED` - PASS
-8. `Frontend positive: UI code + functional test verify -> ACCEPTED` - PASS
-9. `Frontend negative: missing UI code -> BLOCKED` - PASS
-10. `Frontend negative: missing functional test check -> BLOCKED` - PASS
-11. `Frontend negative: functional check in progress or failed -> BLOCKED` - PASS
-12. `Backend positive: API code + contract test verify -> ACCEPTED` - PASS
-13. `Backend negative: missing API code -> BLOCKED` - PASS
-14. `Backend negative: missing contract test check -> BLOCKED` - PASS
-15. `Anti-cheat: markdown / documentation only changes cannot claim product DONE` - PASS
-16. `Anti-cheat: generic CI alone cannot substitute product-specific verification` - PASS
-17. `Anti-cheat: closed GitHub Issue cannot substitute product acceptance` - PASS
-18. `Receipt object support: supports typed receipt objects matching exact SHA` - PASS
-19. `SHA validation: invalid or non-40-hex SHA is immediately BLOCKED` - PASS
-20. `assertProductAcceptance throws structured error when BLOCKED` - PASS
-
-Tổng số bài kiểm thử: **20/20 PASS (0 fail, 0 skipped)**.
+**Kết quả tổng kết:** 30/30 PASS (100%), 0 fail, 0 skipped.
 
 ---
 
-## 6. Tuân thủ ranh giới thực thi (Boundary Compliance)
-- Nhánh làm việc: `p0/4902-g5-antigravity` (tách riêng từ HEAD PR #4898, không ghi đè nhánh của Vy hay Work).
-- Không sửa các tệp: `coding-lane.mjs`, `step-contract.mjs`, `package.json` hoặc tệp của AI khác.
-- Không merge vào `main`, không deploy Vercel, không chạy build pipeline trên PC01.
+## 5. Giới hạn & Phần chưa nghiệm thu (Known Limits & Unaccepted Scope)
+- Đây là cổng nghiệm thu mã nguồn (source contract gate) trong phạm vi G5.
+- Chưa nghiệm thu G6 (end-to-end runtime canary trên PC01).
+- PR #4912 duy trì ở chế độ **DRAFT / NOT MERGED**.
+- Không merge vào `main`, không kích hoạt phát hành Production, không sửa đổi runtime PC01.

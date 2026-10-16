@@ -1,4 +1,4 @@
-export const PRODUCT_ACCEPTANCE_SCHEMA = 'TIGERIQ_PRODUCT_ACCEPTANCE_V1';
+export const PRODUCT_ACCEPTANCE_SCHEMA = 'TIGERIQ_PRODUCT_ACCEPTANCE_V2';
 
 export const SUPPORTED_PRODUCT_TYPES = Object.freeze(['android', 'frontend', 'backend']);
 
@@ -26,9 +26,6 @@ const FRONTEND_UI_PATTERN = /\.(tsx|jsx|vue|svelte|html|css)$/i;
 // Backend required file pattern
 const BACKEND_API_PATTERN = /\.(mjs|cjs|js|ts|py|go|rs|java|kt)$/i;
 
-/**
- * Normalizes changes array: [{path: string, content?: string}]
- */
 function normalizeChanges(changes = []) {
   if (!Array.isArray(changes)) return [];
   return changes
@@ -40,9 +37,6 @@ function normalizeChanges(changes = []) {
     .filter(c => safePath(c.path));
 }
 
-/**
- * Normalizes check runs: [{name: string, status: string, conclusion: string, head_sha?: string}]
- */
 function normalizeCheckRuns(checkRuns = []) {
   if (!Array.isArray(checkRuns)) return [];
   return checkRuns
@@ -53,33 +47,32 @@ function normalizeCheckRuns(checkRuns = []) {
       }
       return {
         name: string(x.name),
-        status: string(x.status),
-        conclusion: string(x.conclusion),
+        status: string(x.status).toLowerCase(),
+        conclusion: string(x.conclusion).toLowerCase(),
         head_sha: string(x.head_sha || x.headSha || x.sha).toLowerCase()
       };
     });
 }
 
-/**
- * Normalizes receipts: [{type: string, status: string, conclusion?: string, head_sha: string, url?: string}]
- */
 function normalizeReceipts(receipts = []) {
   if (!Array.isArray(receipts)) return [];
   return receipts
     .filter(r => r && typeof r === 'object')
     .map(r => ({
       type: string(r.type || r.name),
-      status: string(r.status),
-      conclusion: string(r.conclusion || (r.status === 'success' || r.status === 'completed' ? 'success' : '')),
+      status: string(r.status).toLowerCase(),
+      conclusion: string(r.conclusion || (['success', 'completed'].includes(string(r.status).toLowerCase()) ? 'success' : '')).toLowerCase(),
       head_sha: string(r.head_sha || r.headSha || r.sha).toLowerCase(),
-      url: string(r.url || r.receipt_url || r.receiptUrl)
+      url: string(r.url || r.receipt_url || r.receiptUrl),
+      runner: string(r.runner || r.runner_id || r.runnerId),
+      details: r.details && typeof r.details === 'object' ? r.details : {}
     }));
 }
 
 /**
  * Verifies whether deliverables contain genuine product source code,
  * enforcing Android (Gradle + Manifest + Kotlin), Frontend (UI code),
- * and Backend (API code), while strictly blocking markdown-only changes.
+ * and Backend (API code), strictly blocking markdown-only and empty-content files.
  */
 export function verifyProductArtifacts({ productType, changes = [] } = {}) {
   const type = string(productType).toLowerCase();
@@ -116,32 +109,48 @@ export function verifyProductArtifacts({ productType, changes = [] } = {}) {
     };
   }
 
-  const paths = normalized.map(c => c.path);
   const missing = [];
+  const emptyReasons = [];
 
   if (type === 'android') {
-    const hasGradle = paths.some(p => ANDROID_GRADLE_PATTERN.test(p));
-    const hasManifest = paths.some(p => ANDROID_MANIFEST_PATTERN.test(p));
-    const hasKotlin = paths.some(p => ANDROID_KOTLIN_PATTERN.test(p));
+    const gradleFiles = normalized.filter(p => ANDROID_GRADLE_PATTERN.test(p.path));
+    const manifestFiles = normalized.filter(p => ANDROID_MANIFEST_PATTERN.test(p.path));
+    const kotlinFiles = normalized.filter(p => ANDROID_KOTLIN_PATTERN.test(p.path));
 
-    if (!hasGradle) missing.push('ANDROID_GRADLE_MISSING');
-    if (!hasManifest) missing.push('ANDROID_MANIFEST_MISSING');
-    if (!hasKotlin) missing.push('ANDROID_KOTLIN_MISSING');
+    if (gradleFiles.length === 0) missing.push('ANDROID_GRADLE_MISSING');
+    else if (!gradleFiles.some(f => f.content.trim().length > 0)) emptyReasons.push('ANDROID_GRADLE_EMPTY');
+
+    if (manifestFiles.length === 0) missing.push('ANDROID_MANIFEST_MISSING');
+    else if (!manifestFiles.some(f => f.content.trim().length > 0)) emptyReasons.push('ANDROID_MANIFEST_EMPTY');
+
+    if (kotlinFiles.length === 0) missing.push('ANDROID_KOTLIN_MISSING');
+    else if (!kotlinFiles.some(f => f.content.trim().length > 0)) emptyReasons.push('ANDROID_KOTLIN_EMPTY');
   } else if (type === 'frontend') {
-    const hasUI = paths.some(p => FRONTEND_UI_PATTERN.test(p));
-    if (!hasUI) missing.push('FRONTEND_UI_CODE_MISSING');
+    const uiFiles = normalized.filter(p => FRONTEND_UI_PATTERN.test(p.path));
+    if (uiFiles.length === 0) missing.push('FRONTEND_UI_CODE_MISSING');
+    else if (!uiFiles.some(f => f.content.trim().length > 0)) emptyReasons.push('FRONTEND_UI_CODE_EMPTY');
   } else if (type === 'backend') {
-    const hasApi = paths.some(p => BACKEND_API_PATTERN.test(p));
-    if (!hasApi) missing.push('BACKEND_API_CODE_MISSING');
+    const apiFiles = normalized.filter(p => BACKEND_API_PATTERN.test(p.path));
+    if (apiFiles.length === 0) missing.push('BACKEND_API_CODE_MISSING');
+    else if (!apiFiles.some(f => f.content.trim().length > 0)) emptyReasons.push('BACKEND_API_CODE_EMPTY');
   }
 
-  if (missing.length > 0) {
+  // If all non-doc changes have empty content
+  if (nonDocChanges.every(c => !c.content.trim())) {
+    emptyReasons.push('SOURCE_FILES_HAVE_NO_CONTENT');
+  }
+
+  const reasons = [...missing, ...emptyReasons];
+  if (reasons.length > 0) {
+    const code = emptyReasons.length > 0 && missing.length === 0
+      ? 'PRODUCT_ARTIFACTS_EMPTY'
+      : 'PRODUCT_ARTIFACTS_INCOMPLETE';
     return {
       pass: false,
       status: 'BLOCKED',
-      code: 'PRODUCT_ARTIFACTS_INCOMPLETE',
-      reasons: missing,
-      missingArtifacts: missing
+      code,
+      reasons,
+      missingArtifacts: reasons
     };
   }
 
@@ -158,7 +167,13 @@ export function verifyProductArtifacts({ productType, changes = [] } = {}) {
 /**
  * Verifies execution receipts and required checks against the exact source head SHA.
  * Enforces real build verification for Android, functional test for Frontend,
- * and contract test for Backend. Blocks missing, failed, or SHA-mismatched receipts.
+ * and contract test for Backend.
+ * Strictly blocks:
+ *  - Missing head_sha
+ *  - SHA mismatch
+ *  - Failed or in_progress status/conclusion
+ *  - Duplicate checks shadowing a failed or mismatched check
+ *  - Unverified runner/receipt sources
  */
 export function verifyProductExecutionReceipts({
   productType,
@@ -191,12 +206,11 @@ export function verifyProductExecutionReceipts({
   const requiredChecks = PRODUCT_REQUIRED_CHECKS[type] || [];
   const reasons = [];
 
-  // Check required checks against checkRuns and receipts
   for (const checkName of requiredChecks) {
-    const matchingCheck = normalizedChecks.find(c => c.name === checkName);
-    const matchingReceipt = normalizedReceipts.find(r => r.type === checkName);
+    const matchingChecks = normalizedChecks.filter(c => c.name === checkName);
+    const matchingReceipts = normalizedReceipts.filter(r => r.type === checkName);
 
-    if (!matchingCheck && !matchingReceipt) {
+    if (matchingChecks.length === 0 && matchingReceipts.length === 0) {
       const missingReasonMap = {
         android: 'ANDROID_REAL_BUILD_MISSING',
         frontend: 'FRONTEND_FUNCTIONAL_TEST_MISSING',
@@ -206,22 +220,48 @@ export function verifyProductExecutionReceipts({
       continue;
     }
 
-    if (matchingCheck) {
-      if (matchingCheck.status !== 'completed' || matchingCheck.conclusion !== 'success') {
-        reasons.push(`CHECK_NOT_SUCCEEDED:${checkName}:${matchingCheck.status}/${matchingCheck.conclusion}`);
+    // Evaluate ALL matching checkRuns - NO SHADOWING
+    let hasPassingCheck = false;
+    for (const c of matchingChecks) {
+      if (!c.head_sha) {
+        reasons.push(`CHECK_HEAD_SHA_MISSING:${checkName}`);
+        continue;
       }
-      if (matchingCheck.head_sha && matchingCheck.head_sha !== targetSha) {
-        reasons.push(`CHECK_SHA_MISMATCH:${checkName}:expected=${targetSha},actual=${matchingCheck.head_sha}`);
+      if (!isSha(c.head_sha) || c.head_sha !== targetSha) {
+        reasons.push(`CHECK_SHA_MISMATCH:${checkName}:expected=${targetSha},actual=${c.head_sha}`);
+        continue;
       }
+      if (c.status !== 'completed' || c.conclusion !== 'success') {
+        reasons.push(`CHECK_NOT_SUCCEEDED:${checkName}:${c.status}/${c.conclusion}`);
+        continue;
+      }
+      hasPassingCheck = true;
     }
 
-    if (matchingReceipt) {
-      if (matchingReceipt.status !== 'completed' && matchingReceipt.conclusion !== 'success') {
-        reasons.push(`RECEIPT_NOT_SUCCEEDED:${checkName}:${matchingReceipt.status}/${matchingReceipt.conclusion}`);
+    // Evaluate ALL matching receipts - NO SHADOWING
+    let hasPassingReceipt = false;
+    for (const r of matchingReceipts) {
+      if (!r.head_sha) {
+        reasons.push(`RECEIPT_HEAD_SHA_MISSING:${checkName}`);
+        continue;
       }
-      if (matchingReceipt.head_sha && matchingReceipt.head_sha !== targetSha) {
-        reasons.push(`RECEIPT_SHA_MISMATCH:${checkName}:expected=${targetSha},actual=${matchingReceipt.head_sha}`);
+      if (!isSha(r.head_sha) || r.head_sha !== targetSha) {
+        reasons.push(`RECEIPT_SHA_MISMATCH:${checkName}:expected=${targetSha},actual=${r.head_sha}`);
+        continue;
       }
+      if (r.status !== 'completed' || r.conclusion !== 'success') {
+        reasons.push(`RECEIPT_NOT_SUCCEEDED:${checkName}:${r.status}/${r.conclusion}`);
+        continue;
+      }
+      if (r.runner && ['unverified', 'unknown', 'none', 'fake', 'mock'].includes(r.runner.toLowerCase())) {
+        reasons.push(`RECEIPT_RUNNER_UNVERIFIED:${checkName}:${r.runner}`);
+        continue;
+      }
+      hasPassingReceipt = true;
+    }
+
+    if (!hasPassingCheck && !hasPassingReceipt && reasons.length === 0) {
+      reasons.push(`EXECUTION_VERIFICATION_FAILED:${checkName}`);
     }
   }
 
@@ -236,10 +276,23 @@ export function verifyProductExecutionReceipts({
   }
 
   if (reasons.length > 0) {
+    const hasShaMissing = reasons.some(r => r.includes('HEAD_SHA_MISSING'));
     const hasShaMismatch = reasons.some(r => r.includes('SHA_MISMATCH'));
-    const code = hasShaMismatch
-      ? 'ACCEPTANCE_BLOCKED_SHA_MISMATCH'
-      : (reasons.some(r => r.includes('MISSING')) ? 'ACCEPTANCE_BLOCKED_MISSING_VERIFICATION' : 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED');
+    const hasRunnerUnverified = reasons.some(r => r.includes('RUNNER_UNVERIFIED'));
+    const hasNotSucceeded = reasons.some(r => r.includes('NOT_SUCCEEDED'));
+
+    let code = 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED';
+    if (hasShaMissing) {
+      code = 'ACCEPTANCE_BLOCKED_MISSING_HEAD_SHA';
+    } else if (hasShaMismatch) {
+      code = 'ACCEPTANCE_BLOCKED_SHA_MISMATCH';
+    } else if (hasRunnerUnverified) {
+      code = 'ACCEPTANCE_BLOCKED_RUNNER_UNVERIFIED';
+    } else if (hasNotSucceeded) {
+      code = 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED';
+    } else if (reasons.some(r => r.includes('MISSING'))) {
+      code = 'ACCEPTANCE_BLOCKED_MISSING_VERIFICATION';
+    }
 
     return {
       pass: false,

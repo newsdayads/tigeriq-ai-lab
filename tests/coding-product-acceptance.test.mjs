@@ -14,7 +14,7 @@ const VALID_SHA_A = 'a'.repeat(40);
 const VALID_SHA_B = 'b'.repeat(40);
 
 test('API contract: exports all required constants and functions for Vy', () => {
-  assert.equal(PRODUCT_ACCEPTANCE_SCHEMA, 'TIGERIQ_PRODUCT_ACCEPTANCE_V1');
+  assert.equal(PRODUCT_ACCEPTANCE_SCHEMA, 'TIGERIQ_PRODUCT_ACCEPTANCE_V2');
   assert.deepEqual(SUPPORTED_PRODUCT_TYPES, ['android', 'frontend', 'backend']);
   assert.deepEqual(PRODUCT_REQUIRED_CHECKS, {
     android: ['Android Build Verify'],
@@ -92,6 +92,41 @@ test('Android negative: missing Gradle configuration -> BLOCKED', () => {
   assert.ok(result.reasons.includes('ANDROID_GRADLE_MISSING'));
 });
 
+test('Android negative: empty content in Gradle/Manifest/Kotlin files -> BLOCKED', () => {
+  // Empty Gradle file
+  const emptyGradle = [
+    { path: 'android/app/build.gradle.kts', content: '   ' },
+    { path: 'android/app/src/main/AndroidManifest.xml', content: '<manifest package="com.tigeriq" />' },
+    { path: 'android/app/src/main/kotlin/MainActivity.kt', content: 'class MainActivity' }
+  ];
+  const res1 = verifyProductArtifacts({ productType: 'android', changes: emptyGradle });
+  assert.equal(res1.pass, false);
+  assert.equal(res1.status, 'BLOCKED');
+  assert.ok(res1.reasons.includes('ANDROID_GRADLE_EMPTY'));
+
+  // Empty Manifest file
+  const emptyManifest = [
+    { path: 'android/app/build.gradle.kts', content: 'plugins { id("com.android.application") }' },
+    { path: 'android/app/src/main/AndroidManifest.xml', content: '' },
+    { path: 'android/app/src/main/kotlin/MainActivity.kt', content: 'class MainActivity' }
+  ];
+  const res2 = verifyProductArtifacts({ productType: 'android', changes: emptyManifest });
+  assert.equal(res2.pass, false);
+  assert.equal(res2.status, 'BLOCKED');
+  assert.ok(res2.reasons.includes('ANDROID_MANIFEST_EMPTY'));
+
+  // Empty Kotlin file
+  const emptyKotlin = [
+    { path: 'android/app/build.gradle.kts', content: 'plugins { id("com.android.application") }' },
+    { path: 'android/app/src/main/AndroidManifest.xml', content: '<manifest package="com.tigeriq" />' },
+    { path: 'android/app/src/main/kotlin/MainActivity.kt', content: '\n\t  ' }
+  ];
+  const res3 = verifyProductArtifacts({ productType: 'android', changes: emptyKotlin });
+  assert.equal(res3.pass, false);
+  assert.equal(res3.status, 'BLOCKED');
+  assert.ok(res3.reasons.includes('ANDROID_KOTLIN_EMPTY'));
+});
+
 test('Android negative: missing real build check -> BLOCKED', () => {
   const result = verifyProductExecutionReceipts({
     productType: 'android',
@@ -151,6 +186,16 @@ test('Frontend negative: missing UI code -> BLOCKED', () => {
   assert.ok(result.reasons.includes('FRONTEND_UI_CODE_MISSING'));
 });
 
+test('Frontend negative: empty content in UI files -> BLOCKED', () => {
+  const changes = [
+    { path: 'apps/web/src/App.tsx', content: '   \n  ' }
+  ];
+  const result = verifyProductArtifacts({ productType: 'frontend', changes });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.ok(result.reasons.includes('FRONTEND_UI_CODE_EMPTY'));
+});
+
 test('Frontend negative: missing functional test check -> BLOCKED', () => {
   const result = verifyProductExecutionReceipts({
     productType: 'frontend',
@@ -208,6 +253,16 @@ test('Backend negative: missing API code -> BLOCKED', () => {
   assert.ok(result.reasons.includes('BACKEND_API_CODE_MISSING'));
 });
 
+test('Backend negative: empty content in API code -> BLOCKED', () => {
+  const changes = [
+    { path: 'apps/api/src/server.mjs', content: '   ' }
+  ];
+  const result = verifyProductArtifacts({ productType: 'backend', changes });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.ok(result.reasons.includes('BACKEND_API_CODE_EMPTY'));
+});
+
 test('Backend negative: missing contract test check -> BLOCKED', () => {
   const result = verifyProductExecutionReceipts({
     productType: 'backend',
@@ -217,6 +272,113 @@ test('Backend negative: missing contract test check -> BLOCKED', () => {
   assert.equal(result.pass, false);
   assert.equal(result.status, 'BLOCKED');
   assert.ok(result.reasons.includes('BACKEND_CONTRACT_TEST_MISSING'));
+});
+
+// --- STRICT EXECUTION RECEIPT SECURITY TESTS (REVIEW FEEDBACK FIXES) ---
+test('Security check: checkRun missing head_sha must be BLOCKED', () => {
+  const checkRuns = [
+    { name: 'Android Build Verify', status: 'completed', conclusion: 'success' } // no head_sha!
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'android',
+    sourceHeadSha: VALID_SHA_A,
+    checkRuns
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_MISSING_HEAD_SHA');
+  assert.ok(result.reasons.includes('CHECK_HEAD_SHA_MISSING:Android Build Verify'));
+});
+
+test('Security check: receipt missing head_sha must be BLOCKED', () => {
+  const receipts = [
+    { type: 'Backend Contract Verify', status: 'completed', conclusion: 'success' } // no head_sha!
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'backend',
+    sourceHeadSha: VALID_SHA_A,
+    receipts
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_MISSING_HEAD_SHA');
+  assert.ok(result.reasons.includes('RECEIPT_HEAD_SHA_MISSING:Backend Contract Verify'));
+});
+
+test('Security check: receipt with completed + failure must be BLOCKED', () => {
+  const receipts = [
+    { type: 'Backend Contract Verify', status: 'completed', conclusion: 'failure', head_sha: VALID_SHA_A }
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'backend',
+    sourceHeadSha: VALID_SHA_A,
+    receipts
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED');
+  assert.ok(result.reasons.some(r => r.includes('RECEIPT_NOT_SUCCEEDED')));
+});
+
+test('Security check: receipt with in_progress + success must be BLOCKED', () => {
+  const receipts = [
+    { type: 'Backend Contract Verify', status: 'in_progress', conclusion: 'success', head_sha: VALID_SHA_A }
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'backend',
+    sourceHeadSha: VALID_SHA_A,
+    receipts
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED');
+});
+
+test('Duplicate check shadowing: duplicate check where one failed cannot be masked by a passing check', () => {
+  const checkRuns = [
+    { name: 'Frontend Functional Verify', status: 'completed', conclusion: 'failure', head_sha: VALID_SHA_A },
+    { name: 'Frontend Functional Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_A }
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'frontend',
+    sourceHeadSha: VALID_SHA_A,
+    checkRuns
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_EXECUTION_UNVERIFIED');
+  assert.ok(result.reasons.some(r => r.includes('CHECK_NOT_SUCCEEDED')));
+});
+
+test('Duplicate check shadowing: duplicate check where one has different SHA cannot pass', () => {
+  const checkRuns = [
+    { name: 'Frontend Functional Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_B },
+    { name: 'Frontend Functional Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_A }
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'frontend',
+    sourceHeadSha: VALID_SHA_A,
+    checkRuns
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_SHA_MISMATCH');
+  assert.ok(result.reasons.some(r => r.includes('CHECK_SHA_MISMATCH')));
+});
+
+test('Security check: unverified / fake runner in receipt must be BLOCKED', () => {
+  const receipts = [
+    { type: 'Android Build Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_A, runner: 'fake' }
+  ];
+  const result = verifyProductExecutionReceipts({
+    productType: 'android',
+    sourceHeadSha: VALID_SHA_A,
+    receipts
+  });
+  assert.equal(result.pass, false);
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.code, 'ACCEPTANCE_BLOCKED_RUNNER_UNVERIFIED');
+  assert.ok(result.reasons.some(r => r.includes('RECEIPT_RUNNER_UNVERIFIED')));
 });
 
 // --- ANTI-CHEAT & PROHIBITED SHORTCUT TESTS ---
@@ -231,7 +393,6 @@ test('Anti-cheat: markdown / documentation only changes cannot claim product DON
   assert.equal(result.code, 'DOCUMENTATION_ONLY_NOT_PRODUCT');
   assert.ok(result.reasons.includes('MARKDOWN_DESCRIPTION_NOT_PRODUCT_DONE'));
 
-  // Also in evaluateProductAcceptance
   const fullResult = evaluateProductAcceptance({
     productType: 'backend',
     sourceHeadSha: VALID_SHA_A,
@@ -246,7 +407,6 @@ test('Anti-cheat: generic CI alone cannot substitute product-specific verificati
   const changes = [
     { path: 'apps/api/src/server.mjs', content: 'export const server = {};' }
   ];
-  // Only generic CI checks provided (no Backend Contract Verify)
   const checkRuns = [
     { name: 'CI Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_A },
     { name: 'Queue Hygiene Verify', status: 'completed', conclusion: 'success', head_sha: VALID_SHA_A },
@@ -280,7 +440,6 @@ test('Anti-cheat: closed GitHub Issue cannot substitute product acceptance', () 
     body: 'DONE=true\nFINISHED_AT=2026-10-16T08:00:00Z\nFINISH_RECEIPT_URL=https://ci.example.com/receipt\n- [x] All done'
   };
 
-  // Without external verification, closed issue is rejected as shortcut
   const result = evaluateProductAcceptance({
     productType: 'backend',
     sourceHeadSha: VALID_SHA_A,
@@ -295,7 +454,6 @@ test('Anti-cheat: closed GitHub Issue cannot substitute product acceptance', () 
   assert.equal(result.code, 'CLOSED_ISSUE_NOT_ACCEPTANCE');
   assert.ok(result.reasons.includes('CLOSED_ISSUE_CANNOT_SUBSTITUTE_PRODUCT_ACCEPTANCE'));
 
-  // With external verification explicitly confirmed
   const verifiedResult = evaluateProductAcceptance({
     productType: 'backend',
     sourceHeadSha: VALID_SHA_A,
