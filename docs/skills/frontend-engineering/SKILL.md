@@ -29,6 +29,16 @@ Specified components render and interact correctly, responsive/accessibility che
 ## Evidence
 Pinned files, tests and screenshots/interaction receipts from a real scoped canary before registry ACTIVE promotion.
 
+## G3 — Loading and capability evidence
+This Skill remains CANDIDATE 0.1.0. Required loading must return `CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED`. Generic TDD and synthetic fixtures cannot promote it.
+
+Before separately authorized registry promotion, require independent validation and a scoped canary receipt: ID/version, matching registry/document state, exact UTF-8 bytes, file/context SHA-256, source commit and actual role/model/tool identity. Missing or changed evidence denies execution.
+
+Rendered component, real interaction, responsive breakpoint and accessibility receipts must match the tested source SHA; screenshots alone do not prove interaction.
+Instruction injection proves content access only; model/tool competence, product acceptance and PC01 installation need separate receipts.
+
+Procedure and open gates: `docs/implementation/p0-4902-g3-work-evidence.md`.
+
 ## Fallback
 If browser/visual test is unavailable, stop only visual acceptance and continue independently safe verification. Never claim PASS.
 
