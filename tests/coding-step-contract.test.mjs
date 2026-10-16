@@ -205,10 +205,32 @@ test('canary is allowlisted per source Issue; missing issue scope fails closed',
   assert.match(source,/export function codingP0CanaryApplies\(objective=''\)/);
   assert.match(source,/TIGERIQ_P0_CODING_STEP_CANARY_ISSUE/);
   assert.match(source,/CODING_CANARY_ISSUE_SCOPE_REQUIRED/);
-  assert.match(source,/return sourceWorkOrderNumber\(objective\)===issue/);
+  assert.match(source,/Number\.isSafeInteger\(objective\).*sourceWorkOrderNumber\(objective\).*===issue/);
+  assert.match(source,/codingP0CanaryApplies\(Number\(issueNumber\)/);
+  assert.match(source,/codingP0CanaryApplies\(Number\(error\?\.detail\?\.issueNumber\)/);
   assert.match(source,/const canary=codingP0CanaryApplies\(o\.objective\)/);
   assert.match(source,/const canary=codingP0CanaryApplies\(canonicalObjective\)/);
   assert.match(source,/draft:canary/);
   assert.match(source,/if\(AUTO_MERGE&&!canary\)/);
   assert.match(source,/if\(storedCanaryPacket&&!canary\)throw Object\.assign\(new Error\('CODING_STEP_PACKET_OUTSIDE_CANARY_SCOPE'\)/);
+});
+
+test('canary is effective only for explicitly authorized canonical Issue; close preflight handles numeric Issue',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {runInNewContext}=await import('node:vm');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  const helper=source.match(/export function codingP0CanaryApplies\(objective=''\)\{[\s\S]*?(?=\nexport function sourceWorkOrderNumber)/)?.[0];
+  const parser=source.match(/export function sourceWorkOrderNumber\(objective=''\)\{[\s\S]*?(?=\n\/\/ The GitHub Coding Intake)/)?.[0];
+  assert.ok(helper&&parser);
+  const fakeProcess={env:{TIGERIQ_P0_CODING_STEP_CANARY:'1',TIGERIQ_P0_CODING_STEP_CANARY_ISSUE:'4902'}};
+  const fn=runInNewContext((helper+'\n'+parser).replaceAll('export function ','function ')+'\ncodingP0CanaryApplies',{process:fakeProcess});
+  assert.equal(fn('GitHub autonomous coding issue #4902: P0 scoped'),true);
+  assert.equal(fn('GitHub autonomous coding issue #4903: unrelated'),false);
+  assert.equal(fn(4902),true);
+  assert.equal(fn(4903),false);
+  assert.equal(fn('ordinary legacy job'),false);
+  fakeProcess.env.TIGERIQ_P0_CODING_STEP_CANARY_ISSUE='';
+  assert.throws(()=>fn('GitHub autonomous coding issue #4902'),/CODING_CANARY_ISSUE_SCOPE_REQUIRED/);
+  fakeProcess.env.TIGERIQ_P0_CODING_STEP_CANARY='0';
+  assert.equal(fn('GitHub autonomous coding issue #4902'),false);
 });
