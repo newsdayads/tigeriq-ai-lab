@@ -2,6 +2,20 @@ import { expect, it } from 'vitest';
 import original from '../../projects/rea-reconstruction-lab/r06-real-upstream-production-closure.json' with { type: 'json' };
 import inventory from '../../projects/rea-reconstruction-lab/r02-tagged-upstream-license-inventory.json' with { type: 'json' };
 
+// Authenticated tagged-repository LICENSE blobs already verified for GH-4780.
+// Do not accept any arbitrary 40-hex value as proof of the pinned source text.
+const PINNED_NOTICE_PROVENANCE: Record<string, {
+  repository: string; tag: string; licenseTextPath: string; gitBlob: string;
+}> = {
+  'node_modules/glob': { repository: 'isaacs/node-glob', tag: 'v13.0.6', licenseTextPath: 'LICENSE.md', gitBlob: '881248b6d7f0ca2c4f65c41c0af5e02bb0680601' },
+  'node_modules/lru-cache': { repository: 'isaacs/node-lru-cache', tag: 'v11.5.2', licenseTextPath: 'LICENSE.md', gitBlob: 'c5402b9577a8cdd966c0974e5b74cc7b85f536c5' },
+  'node_modules/minimatch': { repository: 'isaacs/minimatch', tag: 'v10.2.5', licenseTextPath: 'LICENSE.md', gitBlob: '8cb5cc6e616c0d9259b4965f9d2ce8528e4d2828' },
+  'node_modules/minipass': { repository: 'isaacs/minipass', tag: 'v7.1.3', licenseTextPath: 'LICENSE.md', gitBlob: 'c5402b9577a8cdd966c0974e5b74cc7b85f536c5' },
+  'node_modules/path-scurry': { repository: 'isaacs/path-scurry', tag: 'v2.0.2', licenseTextPath: 'LICENSE.md', gitBlob: 'c5402b9577a8cdd966c0974e5b74cc7b85f536c5' },
+  'node_modules/pako': { repository: 'nodeca/pako', tag: '1.0.11', licenseTextPath: 'LICENSE', gitBlob: 'a934ef8db478453e38b2f29af67610916fa9fc99' },
+  'node_modules/sha.js': { repository: 'browserify/sha.js', tag: 'v2.4.12', licenseTextPath: 'LICENSE', gitBlob: '11888c13502a50ad98371cb5bc48acff9d210aa6' },
+};
+
 function auditSnapshot(data: typeof inventory): string[] {
   const issues: string[] = [];
   if (data.source.repository !== 'morluto/rea' ||
@@ -25,9 +39,12 @@ function auditSnapshot(data: typeof inventory): string[] {
   if (flagged.length !== 7 || notices.size !== 7 || data.noticeCases.length !== 7) issues.push('NOTICE_COUNT');
   for (const item of flagged) {
     const n = notices.get(item.path);
-    if (!n || n.version !== item.version || n.licenseDeclaration !== item.license ||
+    const pin = PINNED_NOTICE_PROVENANCE[item.path];
+    if (!n || !pin || n.version !== item.version || n.licenseDeclaration !== item.license ||
         !n.noticeReviewRequired || !n.taggedPackageVersionAndLicenseMatch ||
-        !n.taggedSourceLicenseTextRead || !/^[a-f0-9]{40}$/.test(n.taggedLicenseTextGitBlob))
+        !n.taggedSourceLicenseTextRead || n.repository !== pin.repository ||
+        n.tag !== pin.tag || n.licenseTextPath !== pin.licenseTextPath ||
+        n.taggedLicenseTextGitBlob !== pin.gitBlob)
       issues.push('NOTICE_PROVENANCE_DRIFT');
   }
   // Also walk pinned notices in reverse: a tampered AND license disappears
@@ -85,4 +102,20 @@ it('R02 rejects dropped license notices and forged installation approvals', () =
   expect(auditSnapshot(missingNotice)).toContain('NOTICE_COUNT');
   const leak=structuredClone(inventory);leak.gates.leaseOwned=true;leak.gates.installAuthorized=true;
   expect(auditSnapshot(leak)).toContain('UNAUTHORIZED_ACCEPTANCE_FLAG');
+});
+
+it('R02 rejects valid-shaped forged LICENSE blob, tag, source repo, and filename', () => {
+  const mutations: Array<(item: (typeof inventory.noticeCases)[number]) => void> = [
+    item => { item.taggedLicenseTextGitBlob = 'a'.repeat(40); },
+    item => { item.tag = 'v0.0.0'; },
+    item => { item.repository = 'attacker/sha.js'; },
+    item => { item.licenseTextPath = 'OTHER_LICENSE'; },
+  ];
+  for (const mutation of mutations) {
+    const forged = structuredClone(inventory);
+    const item = forged.noticeCases.find(x => x.path === 'node_modules/sha.js');
+    expect(item).toBeDefined();
+    mutation(item!);
+    expect(auditSnapshot(forged)).toContain('NOTICE_PROVENANCE_DRIFT');
+  }
 });
