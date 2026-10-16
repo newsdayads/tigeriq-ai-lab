@@ -1429,7 +1429,14 @@ export function restartRecoveryDecision(job,pr){
     return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE'};
   }
   const prState=String(pr?.state||'').toLowerCase();
-  if(pr?.merged===true||pr?.merged_at)return{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber};
+  if(pr?.merged===true||pr?.merged_at){
+    // G6: a merged PR is not proof of G5 acceptance. Crash recovery must
+    // never promote an unfinished P0 step packet to DONE on merge alone.
+    // Include corrupt/partial packet markers in the fail-closed gate.
+    if(/(?:^|\n)CODING_STEP_PACKET_JSON=/.test(String(job?.instruction||'')))
+      return{action:'fail',code:'CODING_RESTART_CANARY_MERGED_UNACCEPTED',prNumber};
+    return{action:'done',code:'CODING_RESTART_PR_ALREADY_MERGED',prNumber};
+  }
   if(prState==='closed')return{action:'fail',code:'CODING_RESTART_PR_CLOSED',prNumber};
   if(prState==='open'){
     if(!String(job?.branch||'').trim())return{action:'fail',code:'CODING_RESTART_RESUME_IDENTITY_INCOMPLETE',prNumber};
@@ -1494,7 +1501,7 @@ export async function recoverAfterCodingRestart({db=pool,fetchPr=async(number)=>
       }
       continue;
     }
-    const failure={code:decision.code,message:decision.code==='CODING_RESTART_PR_CLOSED'?`PR #${decision.prNumber} is closed and unmerged; stale runtime job terminalized after restart.`:'Restart recovery cannot safely resume this orphaned coding job.'};
+    const failure={code:decision.code,message:decision.code==='CODING_RESTART_PR_CLOSED'?`PR #${decision.prNumber} is closed and unmerged; stale runtime job terminalized after restart.`:decision.code==='CODING_RESTART_CANARY_MERGED_UNACCEPTED'?`Merged P0 canary PR #${decision.prNumber} has no verified G5 acceptance receipt; restart recovery refused DONE.`:'Restart recovery cannot safely resume this orphaned coding job.'};
     const changed=await db.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now(),next_attempt_at=null where id=$1 and status=$3",[job.id,JSON.stringify(failure),job.status]);
     if(changed.rowCount){
       await db.query("update tigeriq_coding_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[job.objective_id,failure.message]);
@@ -1612,7 +1619,9 @@ export async function recoverStaleRunningJobs({
         ?'In-process stale-running recovery budget exhausted; coding job terminalized.'
         :decision.code==='CODING_RESTART_PR_CLOSED'
           ?`PR #${decision.prNumber} is closed and unmerged; stale coding job terminalized.`
-          :'In-process stale-running watchdog cannot safely resume this orphaned coding job.';
+          :decision.code==='CODING_RESTART_CANARY_MERGED_UNACCEPTED'
+            ?`Merged P0 canary PR #${decision.prNumber} has no verified G5 acceptance receipt; watchdog refused DONE.`
+            :'In-process stale-running watchdog cannot safely resume this orphaned coding job.';
     const failure={code:decision.code,message,staleRecovery:evidence};
     const changed=await db.query("update tigeriq_coding_jobs set status='failed',failure=$2,completed_at=now(),next_attempt_at=null where id=$1 and status='running' and started_at=$3",[job.id,JSON.stringify(failure),job.started_at]);
     if(changed.rowCount){
