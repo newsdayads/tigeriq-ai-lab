@@ -121,11 +121,12 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   // with identical canonical Work Order and source blobs cannot re-arm a failed
   // or unaccepted step. A genuinely accepted D01 may proceed to D02.
   if(revisionPeers.some(x=>string(x.stepId)!==string(stepId)&&
-     ['failed','queued','running','review','waiting_ci','waiting_resource','merged_unaccepted','blocked_unaccepted'].includes(x.status)))
+     ['failed','queued','running','review','waiting_ci','waiting_resource','merged_unaccepted','blocked_unaccepted','waiting_owner'].includes(x.status)))
     return {allow:false,code:'CODING_STEP_ALIAS_REPLAY_BLOCKED'};
   const comparable=revisionPeers.filter(x=>string(x.stepId)===string(stepId));
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
   if(comparable.some(x=>x.status==='merged_unaccepted'))return {allow:false,code:'CODING_STEP_MERGED_AWAITING_ACCEPTANCE'};
+  if(comparable.some(x=>x.status==='waiting_owner'))return {allow:false,code:'CODING_STEP_AWAITING_OWNER_RELEASE'};
   if(comparable.some(x=>x.status==='blocked_unaccepted'))return {allow:false,code:'CODING_STEP_BLOCKED_AWAITING_MATERIAL_CHANGE'};
   if(comparable.some(x=>['queued','running','review','waiting_ci','waiting_resource'].includes(x.status)))return {allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'};
   if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
@@ -141,7 +142,7 @@ export function codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows=[]
   if(!Array.isArray(legacyRows))return {allow:false,code:'CODING_LEGACY_HISTORY_UNVERIFIED'};
   const unresolved=legacyRows.filter(row=>
     string(row.workOrderId)===key&&
-    ['queued','running','review','waiting_ci','waiting_resource','failed','blocked','done'].includes(string(row.status)));
+    ['queued','running','review','waiting_ci','waiting_resource','waiting_owner','failed','blocked','done'].includes(string(row.status)));
   if(unresolved.length)return {allow:false,code:'CODING_PRE_CANARY_HISTORY_UNVERIFIED',legacyCount:unresolved.length};
   return {allow:true,code:'CODING_LEGACY_HISTORY_CLEAR'};
 }

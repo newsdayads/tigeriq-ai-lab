@@ -7,9 +7,9 @@ import {tmpdir,userInfo} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {Pool} from 'pg';
-import {ensureSharedResourceLeaseTable,recoverExpiredSharedResourceLeases,heartbeatSharedResourceLease} from '../../../apps/tigeriq-core/shared-resource-lease.mjs';
-import {compileCodingStepPacket,codingRolePrompt,verifyCodingDeliverable,repeatedCodingAttemptDecision,verifyCodingCanaryProductGate} from '../../../apps/tigeriq-coding-lane/step-contract.mjs';
-import {loadRequiredCodingSkills} from '../../../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
+import {ensureSharedResourceLeaseTable,recoverExpiredSharedResourceLeases,heartbeatSharedResourceLease} from '../../apps/tigeriq-core/shared-resource-lease.mjs';
+import {compileCodingStepPacket,codingRolePrompt,verifyCodingDeliverable,repeatedCodingAttemptDecision,verifyCodingCanaryProductGate} from '../../apps/tigeriq-coding-lane/step-contract.mjs';
+import {loadRequiredCodingSkills} from '../../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 import {sha256,verifySandboxReceipt} from './receipt-policy.mjs';
 
 const source=process.env.GITHUB_SHA||'';
@@ -20,7 +20,7 @@ assert.equal(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),s
 // Explicitly scrub remote DB/provider credentials; every child gets an allowlist.
 delete process.env.DATABASE_URL;
 process.env.NODE_ENV='test';
-const {assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision}=await import('../../../apps/tigeriq-coding-lane/coding-lane.mjs');
+const {assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision}=await import('../../apps/tigeriq-coding-lane/coding-lane.mjs');
 const out='p0-g6-work-evidence';mkdirSync(out,{recursive:true});
 const receipt={source_sha:source,base_sha:'d57ae78f77d720bc7be1fa875b5328a2af700ba7',run_id:process.env.GITHUB_RUN_ID,
  status:'RUNNING',production_runtime_accepted:false,permission:{surface:'GITHUB_BRANCH_ISOLATED_ONLY',new_cost:0,no_pc01_shell:true},
@@ -64,6 +64,8 @@ try{
  create table tigeriq_resources(employee_id text primary key,current_job_id text,work_state text,health_state text,updated_at timestamptz default now());
  create table tigeriq_coding_jobs(id text primary key,paths text[],status text,created_at timestamptz default now());
  create table g6_effects(id text primary key,value text);
+ create table g6_retry(id int primary key,history jsonb);
+ insert into g6_retry values(1,'[]'::jsonb);
  insert into tigeriq_ai_resources values('g6-shared','NV01',true,1,null,'READY','READY',now());
  insert into tigeriq_resources values('NV01',null,'READY','READY',now());`);
  await ensureSharedResourceLeaseTable(pool);
@@ -111,17 +113,14 @@ try{
   return {dead_worker:open.worker_id,restarted_worker:r.worker_id,expired_lease_id:lease.lease_token,new_lease_id:r.lease.lease_token,real_ttl_wait:true,committed_rows:0};
  });
  await scenario('bounded_retry_persisted_across_restart',async()=>{
-  const history=[];
+  const receipts=[];
   for(let n=0;n<3;n++){
-   const persisted=JSON.parse(JSON.stringify(history));
-   const decision=repeatedCodingAttemptDecision({workOrderId:'4902',stepId:'G6',sourceRevision:source,failureSignature:'G6_INJECTED_FAILURE',history:persisted});
-   if(n===2){assert.equal(decision.code,'CODING_SAME_FAILURE_STOP');assert.equal(decision.allow,false);break;}
-   assert.equal(decision.allow,true);history.push({workOrderId:'4902',stepId:'G6',sourceRevision:source,failureSignature:'G6_INJECTED_FAILURE',status:'failed'});
-   await pool.query('insert into g6_effects values($1,$2)',['retry-'+n,JSON.stringify(history)]);
-   const actual=await row('select value from g6_effects where id=$1',['retry-'+n]);assert.deepEqual(JSON.parse(actual.value),history);
+   const w=await ready(),r=await w.ask({action:'retry'});receipts.push(r);await kill(w);
+   if(n===2){assert.equal(r.decision.code,'CODING_SAME_FAILURE_STOP');assert.equal(r.decision.allow,false);assert.equal(r.attempts,2);}
+   else{assert.equal(r.decision.allow,true);assert.equal(r.attempts,n+1);}
   }
   assert.equal(staleRunningRecoveryDecision({status:'running',started_at:'2020-01-01',stale_recovery_count:2},{maxRequeues:2,active:false}).code,'CODING_STALE_RUNNING_RETRY_EXHAUSTED');
-  return {failed_attempts:2,third_dispatch:false,scope:'canonical retry decision + durable PG history; not production scheduler restart'};
+  return {failed_attempts:2,third_dispatch:false,receipts,scope:'real worker restarts + canonical retry decision + durable PG history; not production scheduler restart'};
  });
  await scenario('postgres_read_only_permission_denied',async()=>{
   await pool.query('create role g6_readonly login');await pool.query('grant connect on database '+db+' to g6_readonly');

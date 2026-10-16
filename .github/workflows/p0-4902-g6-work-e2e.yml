@@ -37,6 +37,11 @@ jobs:
           node --test tests/g6-work/receipt-policy.test.mjs
       - name: Install lockfile dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Resolve canonical runtime dependencies before model download
+        env:
+          NODE_ENV: test
+        run: |
+          node --input-type=module -e 'await import("./apps/tigeriq-coding-lane/coding-lane.mjs"); await import("./apps/tigeriq-core/shared-resource-lease.mjs");'
       - name: Prepare same authorized zero-cost local model and unprivileged tool
         run: |
           set -euo pipefail

@@ -1,8 +1,9 @@
 // Real OS subprocess, real PostgreSQL transport. No production worker impersonation.
 import {Pool} from 'pg';
 import {randomUUID,createHash} from 'node:crypto';
-import {acquireSharedResourceLease,releaseSharedResourceLease} from '../../../apps/tigeriq-core/shared-resource-lease.mjs';
-import {withAtomicCodingSourceClaim} from '../../../apps/tigeriq-coding-lane/atomic-source-claim.mjs';
+import {acquireSharedResourceLease,releaseSharedResourceLease} from '../../apps/tigeriq-core/shared-resource-lease.mjs';
+import {withAtomicCodingSourceClaim} from '../../apps/tigeriq-coding-lane/atomic-source-claim.mjs';
+import {repeatedCodingAttemptDecision} from '../../apps/tigeriq-coding-lane/step-contract.mjs';
 
 if(!process.send||!/^g6_work_[a-f0-9]+$/.test(process.env.PGDATABASE||'')||
    !String(process.env.PGHOST||'').startsWith('/tmp/tigeriq-g6-work-'))throw Error('G6_WORKER_SCOPE_DENIED');
@@ -30,6 +31,19 @@ process.on('message',async m=>{
       const pid=(await c.query('select pg_backend_pid() as pid')).rows[0].pid;
       emit({event:'transaction_open',backend_pid:pid});
       // Parent deliberately terminates this connection or SIGKILLs the process.
+    }else if(m.action==='retry'){
+      const c=await pool.connect();
+      try{
+        await c.query('begin');
+        const r=(await c.query('select history from g6_retry where id=1 for update')).rows[0];
+        const history=r.history;
+        const decision=repeatedCodingAttemptDecision({workOrderId:'4902',stepId:'G6',sourceRevision:process.env.G6_SOURCE_SHA,failureSignature:'G6_INJECTED_FAILURE',history});
+        if(decision.allow){
+          history.push({workOrderId:'4902',stepId:'G6',sourceRevision:process.env.G6_SOURCE_SHA,failureSignature:'G6_INJECTED_FAILURE',status:'failed'});
+          await c.query('update g6_retry set history=$1::jsonb where id=1',[JSON.stringify(history)]);
+        }
+        await c.query('commit');emit({event:'retry',decision,attempts:history.length});
+      }catch(e){await c.query('rollback');throw e;}finally{c.release();}
     }else if(m.action==='model'){
       if(!['manager','implementer','reviewer','acceptor'].includes(m.role))throw Error('G6_MODEL_ROLE_DENIED');
       const employeeId={manager:'NV02',implementer:'NV03',reviewer:'NV04',acceptor:'NV05'}[m.role];

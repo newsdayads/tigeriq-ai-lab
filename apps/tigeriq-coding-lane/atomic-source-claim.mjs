@@ -34,7 +34,7 @@ export async function withAtomicCodingSourceClaim(pool,{workOrderId,paths=[],run
     // reading the writer set and remains held until our INSERT commits.
     await client.query('LOCK TABLE tigeriq_coding_jobs IN SHARE ROW EXCLUSIVE MODE');
     const active=await client.query(
-      "select id,paths from tigeriq_coding_jobs where status in ('queued','running','review','waiting_ci','waiting_resource') order by created_at desc limit 2001"
+      "select id,paths from tigeriq_coding_jobs where status in ('queued','running','review','waiting_ci','waiting_resource','waiting_owner') order by created_at desc limit 2001"
     );
     if((active.rows||[]).length>=2001)throw Error('CODING_ACTIVE_WRITER_SCAN_INCOMPLETE');
     const conflicting=(active.rows||[]).find(row=>{

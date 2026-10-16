@@ -37,7 +37,9 @@ Missing permissions/models/tools/Skill hashes/lease/evidence, CANDIDATE, self-re
 
 ## Results
 
-Pending first exact-HEAD run. `receipt.json` artifact is authoritative for each scenario, live role receipts, failures and cleanup. CI success means only the scoped imported-component sandbox passed; `production_runtime_accepted=false`, G6 not DONE.
+Local G6 policy tests: 24/24 PASS; syntax PASS. Initial source `043c3830529a5daa4a3109e47af9c056ce0f2e7d` failed before worker/model invocation: G6 harness relative imports traversed one directory too far. Root cause and fix confined to G6 runner/worker; dependency import preflight added before downloads. Failed run preserved at https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/38870947509 . Model container cleanup passed; no PostgreSQL cluster was started. This is a G6 harness defect, not a regression of G1–G5.
+
+The next exact-HEAD run must establish live evidence. `receipt.json` artifact is authoritative for each scenario, live role receipts, failures and cleanup. CI success means only the scoped imported-component sandbox passed; `production_runtime_accepted=false`, G6 not DONE.
 
 ## Open audit items and next action
 
