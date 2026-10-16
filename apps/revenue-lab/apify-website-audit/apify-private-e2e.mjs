@@ -114,15 +114,34 @@ function dataOf(payload) {
   return payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
 }
 
+function requireResourceId(item, kind) {
+  const id = item?.id;
+  if (typeof id !== 'string' || !id.trim() || id.length > 256) {
+    throw new ApifyE2EError('RESOURCE_ID_INVALID',
+      `${kind} response has no bounded canonical resource ID.`);
+  }
+  return id;
+}
+
+function assertSameResourceId(item, expectedId, kind) {
+  // POST, every polling step and finalized usage reads must refer to the
+  // same Core-unrelated Apify resource. Never silently follow a swapped id.
+  if (item?.id !== expectedId) {
+    throw new ApifyE2EError('RESOURCE_ID_MISMATCH',
+      `${kind} resource ID changed across authenticated API responses.`);
+  }
+}
+
 async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4 }) {
+  const expectedId = requireResourceId(initial, kind);
   let item = initial;
   for (let attempt = 0; attempt <= maxPolls; attempt += 1) {
+    assertSameResourceId(item, expectedId, kind);
     if (TERMINAL.has(item?.status)) return item;
-    if (!item?.id) throw new ApifyE2EError('MISSING_RESOURCE_ID', `${kind} response did not contain an id.`);
-    const path = kind === 'build' ? 'actor-builds' : 'actor-runs';
+    const resourcePath = kind === 'build' ? 'actor-builds' : 'actor-runs';
     item = dataOf(await requestJson(
       fetchFn,
-      `${config.apiBase}/${path}/${encode(item.id)}?waitForFinish=60`,
+      `${config.apiBase}/${resourcePath}/${encode(expectedId)}?waitForFinish=60`,
       { token: config.token },
     ));
   }
@@ -188,6 +207,7 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actor-builds/${encode(build.id)}`,
     { token: config.token },
   ));
+  assertSameResourceId(finalizedBuild, build.id, 'build');
   if (finalizedBuild?.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('BUILD_FINAL_STATE_INVALID', 'Finalized build no longer reports SUCCEEDED.', {
       buildId: build.id ?? null,
@@ -231,6 +251,7 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actor-runs/${encode(run.id)}`,
     { token: config.token },
   ));
+  assertSameResourceId(finalizedRun, run.id, 'run');
   if (finalizedRun?.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FINAL_STATE_INVALID', 'Finalized run no longer reports SUCCEEDED.', {
       runId: run.id ?? null,
