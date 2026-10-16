@@ -2026,7 +2026,7 @@ async function runJob(j){
     // the real exact-SHA check-run collection for domain-specific build/contract checks.
     const domainCheckReceipt=await ghRepo(targetRepository,`/commits/${encodeURIComponent(gates.sha)}/check-runs?per_page=100`);
     if(!Array.isArray(domainCheckReceipt?.check_runs))throw Error('CODING_DOMAIN_CHECKS_UNVERIFIED');
-    const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:domainCheckReceipt.check_runs});
+    const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:domainCheckReceipt.check_runs,sourceHeadSha:gates.sha,repositoryFullName:targetRepository.fullName});
     if(!check.pass)throw Object.assign(new Error(check.code+':'+check.missing.join(',')),{code:check.code});
     // G6: verify the PR HEAD against exact-SHA GitHub file bytes. A pending
     // G5 module fails closed and cannot become a waived/implicit PASS.
