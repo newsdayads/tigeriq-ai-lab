@@ -60,7 +60,9 @@ function ipv6Blocked(ip) {
   if (lower === '::' || lower === '::1') return true;
   if (lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('ff')) return true;
   const first = parseInt(lower.split(':')[0] || '0', 16);
-  if (Number.isFinite(first) && first >= 0xfe80 && first <= 0xfebf) return true;
+  // IANA: fe00::/9 reserved, fe80::/10 link-local and fec0::/10
+  // deprecated site-local (RFC 3879). None may be audited as public IPs.
+  if (Number.isFinite(first) && first >= 0xfe00 && first <= 0xfeff) return true;
   // IPv4-mapped addresses also have a hex representation (::ffff:7f00:1).
   // Block the entire transition namespace instead of relying on dotted
   // decimal notation or accidentally reaching a loopback/private service.
