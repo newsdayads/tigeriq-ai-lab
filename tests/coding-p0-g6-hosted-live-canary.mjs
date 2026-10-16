@@ -60,7 +60,7 @@ const host={
         'import {normalizePort} from "./candidate.mjs";\n'+
         'const inputs='+JSON.stringify(input.cases)+';\n'+
         'const outputs=inputs.map(value=>normalizePort(value));\n'+
-        'process.stdout.write(JSON.stringify({outputs}));\\n',{mode:0o644});
+        'process.stdout.write(JSON.stringify({outputs}));\n',{mode:0o644});
       const args=['run','--rm','--network','none','--read-only','--cap-drop','ALL',
         '--security-opt','no-new-privileges','--pids-limit','32','--memory','256m',
         '--cpus','1','--user','65534:65534','--mount','type=bind,src='+dir+',dst=/work,readonly',
