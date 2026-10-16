@@ -63,6 +63,18 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Only decoy</title><meta data-name="description" content="Not real"></head><body><h1>Audit</h1></body></html>');
     }
+    if (req.url === '/marker-script') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><script>const marker = "<!--";</script><title>Script Marker Live</title><meta name="description" content="script marker valid"></head><body><h1>Script Marker H1</h1><a href="/page2">Go</a><!-- trailing comment --></body></html>');
+    }
+    if (req.url === '/marker-style') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><head><style>.test::before{content:'<!--'}</style><title>Style Marker Live</title></head><body><h1>Style Marker H1</h1><a href=\"/page2\">Go</a><!-- trailing comment --></body></html>");
+    }
+    if (req.url === '/marker-comment') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><!-- <script>const injected = "<h1>Fake</h1>";</script><title>Fake</title> --><title>Comment Marker Live</title></head><body><h1>Comment Marker H1</h1><a href="/page2">Go</a></body></html>');
+    }
     if (req.url === '/inert-seo') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><head><!-- <title>Comment Title</title><meta name=\"description\" content=\"Decoy\"> -->\n<script>const inject = '<h1>Script Fake</h1><a href=\"/missing\">';</script>\n<style>.rule:after { content:'<h1>Style Fake</h1>'; }</style>\n<title>Actual Title</title><meta name=\"description\" content=\"Actual Description\"></head>\n<body><!-- <h1>Comment Fake</h1> --><h1>Actual H1</h1></body></html>");
@@ -158,6 +170,31 @@ test('SEO extraction does not mistake data-name for exact name attribute', async
   const onlyDecoy = await auditWebsite(`${baseUrl}/meta-only-decoy`, { resolveTargetFn: localResolver });
   assert.equal(decoy.pages[0].seo.metaDescription, 'Actual description');
   assert.equal(onlyDecoy.pages[0].seo.metaDescription, null);
+});
+
+test('literal HTML comment opener inside script and style cannot erase live SEO or links', async () => {
+  for (const [path, title, heading] of [
+    ['/marker-script', 'Script Marker Live', 'Script Marker H1'],
+    ['/marker-style', 'Style Marker Live', 'Style Marker H1'],
+  ]) {
+    const result = await auditWebsite(`${baseUrl}${path}`, { maxPages: 2, resolveTargetFn: localResolver });
+    assert.equal(result.status, 'success');
+    assert.equal(result.metrics.pagesAudited, 2);
+    assert.equal(result.pages[0].seo.title, title);
+    assert.deepEqual(result.pages[0].seo.h1, [heading]);
+    assert.equal(result.pages[1].seo.title, 'Page Two');
+  }
+});
+
+test('HTML comment containing fake script and title remains inert', async () => {
+  const result = await auditWebsite(`${baseUrl}/marker-comment`, {
+    maxPages: 2, resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.pages[0].seo.title, 'Comment Marker Live');
+  assert.deepEqual(result.pages[0].seo.h1, ['Comment Marker H1']);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
 });
 
 test('SEO extraction ignores commented and script/style fake title, meta and H1', async () => {
