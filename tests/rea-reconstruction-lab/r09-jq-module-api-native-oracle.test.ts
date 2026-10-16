@@ -1,10 +1,6 @@
 import {expect, it} from 'vitest';
 // @ts-ignore Standalone source is .mjs and deliberately has no type declarations.
-import {
-  pinnedR09ModuleAPICases, inspectR09ModuleAPICases,
-  replayR09ModuleAPIIsolated,
-  R09_MODULE_API_UPSTREAM_COMMIT, R09_MODULE_API_FIXTURE_SHA256,
-} from '../../projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs';
+import {pinnedR09ModuleAPICases, inspectR09ModuleAPICases, replayR09ModuleAPIIsolated, R09_MODULE_API_UPSTREAM_COMMIT, R09_MODULE_API_FIXTURE_SHA256} from '../../projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs';
 
 const cases=()=>pinnedR09ModuleAPICases();
 const noRuntimeClaims=(r:any)=>{
