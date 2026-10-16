@@ -14,7 +14,17 @@ const report = (decision, counts) => ({
   deviceAuthorized: false, installAuthorized: false, mutated: false,
   ...(counts ? { counts } : {})
 });
+const validOptionalWorkId = value => value == null ||
+  (typeof value === 'string' && value.length > 0 && value.length <= 256);
+
+// The projection is untrusted: proxy traps/accessors may throw during any shape
+// check. Never let caller text, tokens or a stack trace escape as an authority
+// or an error diagnostic.
 export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
+  try { return inspectR05ReadOnlyUnchecked(snapshot, nowMs); }
+  catch { return report('INVALID_UNTRUSTED_SNAPSHOT'); }
+}
+function inspectR05ReadOnlyUnchecked(snapshot, nowMs) {
   if (!Number.isFinite(nowMs) || !rec(snapshot) || snapshot.ok !== true ||
       !rec(snapshot.core) || typeof snapshot.core.time !== 'string' ||
       !Array.isArray(snapshot.resources) || !Array.isArray(snapshot.sharedLeases) ||
@@ -31,6 +41,8 @@ export function inspectR05ReadOnly(snapshot, nowMs = Date.now()) {
   if (snapshot.resources.some(x => !rec(x) || typeof x.resource_id !== 'string' ||
       x.resource_id.length < 1 || x.resource_id.length > 256 ||
       !(typeof x.employee_id === 'string' || x.employee_id === null) ||
+      !validOptionalWorkId(x.current_job_id) ||
+      !validOptionalWorkId(x.shared_lease_work_id) ||
       !coreStatuses.has(x.status)))
     return report('INVALID_RESOURCE');
   // Duplicate resource IDs make Core's resource-to-lease projection ambiguous.
