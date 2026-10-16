@@ -56,3 +56,19 @@ Work Order #4780, cùng nhánh P2; đây là **bộ kiểm tra cấu trúc lockf
 **Quy tắc mới cho consumer tối giản dành riêng REA:** phần dependencies của root chứa duy nhất `rea-agents@6.4.0`; các map bổ sung của root (`devDependencies`, `optionalDependencies`, `peerDependencies`, `scripts`) phải vắng hoặc rỗng; không có danh sách workspace/bundled dependency; cờ `hasInstallScript` và `gypfile` không được true hoặc giá trị lạ. Nếu lệch, trả `REJECTED / CONSUMER_ROOT_SCOPE_DRIFT`, không xuất raw command, không thực thi bất kỳ script nào.
 
 **Ranh giới:** `package-lock.json` có thể không đủ dữ liệu để chứng minh mọi `package.json` script; đầu vào bất kỳ vẫn không được xác thực bằng byte/hash SBOM của consumer. Cờ `sourceAuthenticated=false`, `lockByteDigestVerified=false`, `installed=false`, `actualSbomVerified=false`, `leaseOwned=false`, `deviceAuthorized=false`, `hostIsolationVerified=false`, `installAuthorized=false` giữ nguyên. R05 và R06 còn NO-GO; không npm install, không PC01, không sửa quyền hay production.
+
+## R06 — Peer dependency source-bound admission (16/10/2026)
+
+**Bằng chứng nguồn mới, không lặp kiểm thử R09 hoặc R06 root:** Đọc lại [morluto/rea `package-lock.json` ở commit cố định](https://github.com/morluto/rea/blob/a56f7bb668ab23fec8d33f7af353ac7ed2fe1895/package-lock.json), Git blob chính xác `3b28f2d827f3a7baad04e36ea2f4302427b5f567`. Lấy 148 dòng thuộc cây sản xuất đã được xác minh trước đó từ `r06-real-upstream-production-closure.json` và đối chiếu từng `path` với upstream: chỉ **2 package** có `peerDependencies` và tổng **3 peer edges**; cả 3 đều có `peerDependenciesMeta.optional=true`.
+
+| Gói khai báo | Peer | Version spec | Metadata |
+| --- | --- | --- | --- |
+| `node_modules/ajv-formats` | `ajv` | `^8.0.0` | optional=true |
+| `node_modules/ws` | `bufferutil` | `^4.0.1` | optional=true |
+| `node_modules/ws` | `utf-8-validate` | `>=5.0.2` | optional=true |
+
+**Lỗi thực đã tái hiện:** R06 source checker bỏ qua toàn bộ `peerDependencies` / `peerDependenciesMeta`; một package bị cấy thêm peer bắt buộc vẫn nhận quyết định `STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED`. Test-first [PR #4938](https://github.com/newsdayads/tigeriq-ai-lab/pull/4938) và CI RED chứng minh lỗi.
+
+**Bản sửa:** Chỉ chấp nhận tối đa ba cạnh peer tùy chọn ghim ở đúng package; peer có mặt phải có metadata `optional:true` chính xác; mọi khai báo lạ hoặc metadata mồ côi trả `REJECTED / PEER_DEPENDENCY_SCOPE_DRIFT`. Với optional peer đã có dòng resolved, kiểm tra phiên bản `^8.0.0`, `^4.0.1` hoặc `>=5.0.2`; lệch trả `PEER_DEPENDENCY_VERSION_MISMATCH`. Thiếu peer tùy chọn được đếm trong `missingOptionalPeers` chứ không chứng minh có binary/runtime. Trình kiểm tra không triển khai semver tổng quát hoặc cài ứng dụng.
+
+**Không thay đổi cổng phát hành:** Đây là kiểm tra cú pháp/metadata của JSON không đáng tin; dữ liệu giả lập pass **không** xác thực consumer lock/SBOM, npm tarball bytes, tính hợp pháp, an toàn scripts, quyền PC01/Core lease, sandbox hay khả năng dùng native addon. Tất cả cờ `sourceAuthenticated`, `lockByteDigestVerified`, `actualSbomVerified`, `installed`, `deviceAuthorized`, `leaseOwned`, `hostIsolationVerified`, `installAuthorized` và `releaseAuthorized` tiếp tục `false`. Work Order #4780 vẫn 6/16, R05/R06 chưa nghiệm thu.

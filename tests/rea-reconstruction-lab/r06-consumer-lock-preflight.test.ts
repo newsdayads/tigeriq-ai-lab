@@ -274,3 +274,58 @@ it('R06 minimal locked root still never claims install safety after scope-closur
     actualSbomVerified:false,leaseOwned:false,installAuthorized:false});
   safe(r);
 });
+
+it('R06 rejects injected required peer edge on an otherwise pinned transitive package',()=>{
+  const x=fixture();
+  x.packages['node_modules/zod'].peerDependencies={untrusted:'^1.0.0'};
+  x.packages['node_modules/untrusted']={version:'1.2.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/untrusted/-/untrusted-1.2.0.tgz'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'PEER_DEPENDENCY_SCOPE_DRIFT'});
+  safe(r);
+});
+it('R06 accepts only the three optional upstream peer declarations as source shape',()=>{
+  const x=fixture();
+  x.packages['node_modules/ajv-formats'].peerDependencies={ajv:'^8.0.0'};
+  x.packages['node_modules/ajv-formats'].peerDependenciesMeta={ajv:{optional:true}};
+  x.packages['node_modules/ws'].peerDependencies={'bufferutil':'^4.0.1',
+    'utf-8-validate':'>=5.0.2'};
+  x.packages['node_modules/ws'].peerDependenciesMeta={
+    bufferutil:{optional:true},'utf-8-validate':{optional:true}};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  expect(r.counts).toMatchObject({peerDeclarations:3,missingOptionalPeers:2});
+  safe(r);
+});
+it('R06 rejects required or undeclared optional peer metadata in pinned packages',()=>{
+  for(const mutate of [
+    (x:any)=>{x.packages['node_modules/ws'].peerDependencies={bufferutil:'^4.0.1'};},
+    (x:any)=>{x.packages['node_modules/ws'].peerDependencies={bufferutil:'^4.0.1'};x.packages['node_modules/ws'].peerDependenciesMeta={bufferutil:{optional:false}};},
+    (x:any)=>{x.packages['node_modules/ws'].peerDependenciesMeta={unknown:{optional:true}};},
+    (x:any)=>{x.packages['node_modules/zod'].peerDependenciesMeta={hidden:{optional:true}};}
+  ]){
+    const x=fixture();mutate(x);
+    const r=inspectR06ConsumerLock(x);
+    expect(r).toMatchObject({decision:'REJECTED',reason:'PEER_DEPENDENCY_SCOPE_DRIFT'});safe(r);
+  }
+});
+it('R06 rejects present optional peer with incompatible resolved version',()=>{
+  const x=fixture();
+  x.packages['node_modules/ws'].peerDependencies={'utf-8-validate':'>=5.0.2'};
+  x.packages['node_modules/ws'].peerDependenciesMeta={'utf-8-validate':{optional:true}};
+  x.packages['node_modules/utf-8-validate']={
+    version:'5.0.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/utf-8-validate/-/utf-8-validate-5.0.0.tgz'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'PEER_DEPENDENCY_VERSION_MISMATCH'});safe(r);
+});
+it('R06 >=5.0.2 optional peer admits matching synthetic row without host proof',()=>{
+  const x=fixture();
+  x.packages['node_modules/ws'].peerDependencies={'utf-8-validate':'>=5.0.2'};
+  x.packages['node_modules/ws'].peerDependenciesMeta={'utf-8-validate':{optional:true}};
+  x.packages['node_modules/utf-8-validate']={version:'5.0.2',integrity:sri,
+    resolved:'https://registry.npmjs.org/utf-8-validate/-/utf-8-validate-5.0.2.tgz'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  expect(r.counts).toMatchObject({peerDeclarations:1,missingOptionalPeers:0});safe(r);
+});
