@@ -134,6 +134,54 @@ test('R08 valid equal secondary computeUnits accepted', async () => {
   assert.equal(verified.output.status, 'success');
 });
 
+// R08 private E2E can emit real build/run costs only from bounded authenticated JSON.
+test('R08 E2E refuses oversized OUTPUT JSON rather than accepting an unbounded 200', async () => {
+  const normal = successFetch();
+  const fetchFn = async (url, options) =>
+    String(url).endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')
+      ? response(200, { schemaVersion: '1.0', status: 'success', padding: 'x'.repeat(160000) })
+      : normal.fetchFn(url, options);
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'RESPONSE_TOO_LARGE',
+  );
+  assert.equal(normal.calls.filter(call => call.options.method === 'POST').length, 2);
+});
+
+test('R08 E2E refuses non-JSON success content before attempting an Actor run', async () => {
+  const normal = successFetch();
+  const fetchFn = async (url, options) =>
+    String(url).includes('/actors/actor123/builds?')
+      ? new Response(JSON.stringify({ data: { id: 'build1', status: 'SUCCEEDED' } }),
+          { status: 201, headers: { 'content-type': 'text/html' } })
+      : normal.fetchFn(url, options);
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'JSON_CONTENT_TYPE_REQUIRED',
+  );
+  assert.equal(normal.calls.length, 0);
+});
+
+test('R08 E2E pins redirect error mode for all authenticated GET and POST requests', async () => {
+  const { fetchFn, calls } = successFetch();
+  await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
+  assert.equal(calls.length, 5);
+  for (const { url, options } of calls) {
+    assert.equal(options.redirect, 'error');
+    assert.ok(!url.includes(env.APIFY_TOKEN));
+  }
+});
+
+test('R08 E2E refuses malformed JSON without persisting a false build failure', async () => {
+  const fetchFn = async () => new Response('not-valid-json', {
+    status: 201, headers: { 'content-type': 'application/json' },
+  });
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'APIFY_JSON_INVALID',
+  );
+});
+
 test('auth failure is fail-closed and redacts token', async () => {
   const fetchFn = async () => response(401, { error: { message: 'bad token secret-token-value' } });
   await assert.rejects(
