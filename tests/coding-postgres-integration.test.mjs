@@ -11,7 +11,7 @@ const url=process.env.TIGERIQ_TEST_POSTGRES_URL;
 if(!url)throw Error('ISOLATED_POSTGRES_URL_REQUIRED');
 const target=new URL(url);
 if(target.protocol!=='postgres:'&&target.protocol!=='postgresql:')throw Error('ISOLATED_POSTGRES_SCHEME_INVALID');
-const databaseName=decodeURIComponent(target.pathname.replace(/^\\//,''));
+const databaseName=decodeURIComponent(target.pathname.startsWith('/')?target.pathname.slice(1):target.pathname);
 if(!['127.0.0.1','localhost','::1','[::1]'].includes(target.hostname)||
    !/^tigeriq_test(?:_|$)/i.test(databaseName))
   throw Error('ISOLATED_POSTGRES_LOCAL_TEST_DB_REQUIRED');
