@@ -232,3 +232,45 @@ it('R06 rejects ranged prerelease resolutions without a prerelease-aware full np
     resolved:'https://registry.npmjs.org/extra/-/extra-2.1.0-beta.1.tgz'};
   const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_RANGE_MISMATCH');safe(r);
 });
+
+it('R06 minimal consumer root rejects additional resolved top-level dependencies',()=>{
+  const x=fixture();
+  // Zod already has a valid row. Previously this extra install request passed.
+  x.packages[''].dependencies.zod='4.4.3';
+  const r=inspectR06ConsumerLock(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'CONSUMER_ROOT_SCOPE_DRIFT'});
+  safe(r);
+});
+it('R06 minimal consumer root rejects top-level optional, dev and peer request maps',()=>{
+  for(const kind of ['optionalDependencies','devDependencies','peerDependencies']){
+    const x=fixture();
+    x.packages[''][kind]={zod:'4.4.3'};
+    const r=inspectR06ConsumerLock(x);
+    expect(r).toMatchObject({decision:'REJECTED',reason:'CONSUMER_ROOT_SCOPE_DRIFT'});
+    safe(r);
+  }
+});
+it('R06 minimal consumer root rejects install scripts and workspace/bundled inputs',()=>{
+  for(const extra of [
+    {hasInstallScript:true},
+    {scripts:{preinstall:'echo NEVER_EXECUTE'}},
+    {workspaces:['./untrusted']},
+    {bundleDependencies:['zod']},
+    {bundledDependencies:['zod']}
+  ]){
+    const x=fixture();
+    Object.assign(x.packages[''],extra);
+    const r=inspectR06ConsumerLock(x);
+    expect(r).toMatchObject({decision:'REJECTED',reason:'CONSUMER_ROOT_SCOPE_DRIFT'});
+    expect(JSON.stringify(r)).not.toContain('NEVER_EXECUTE');
+    safe(r);
+  }
+});
+it('R06 minimal locked root still never claims install safety after scope-closure checks',()=>{
+  const x=fixture();
+  const r=inspectR06ConsumerLock(x);
+  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  expect(r).toMatchObject({sourceAuthenticated:false,installed:false,
+    actualSbomVerified:false,leaseOwned:false,installAuthorized:false});
+  safe(r);
+});
