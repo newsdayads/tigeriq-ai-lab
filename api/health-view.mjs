@@ -45,7 +45,7 @@ export async function readFallbackIssues(fetchImpl = fetch, token = process.env.
   for (let page = 1; page <= 5; page++) {
     const url = GITHUB_OPEN_ISSUES + '?state=open&per_page=100&sort=updated&direction=desc&page=' + page;
     const response = await fetchImpl(url, {
-      method:'GET', redirect:'error', signal:AbortSignal.timeout(3200),
+      method:'GET', redirect:'error', signal:AbortSignal.timeout(2400),
       headers:{Accept:'application/vnd.github+json',Authorization:'Bearer ' + token,'User-Agent':'TigerIQ-Web-ReadOnly-Fallback'},
     });
     if (!response.ok) throw new Error('GITHUB_FALLBACK_HTTP_' + response.status);
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(target, {
       method:'GET', headers: { authorization:'Bearer ' + key },
-      redirect:'error', signal:AbortSignal.timeout(12000), cache:'no-store',
+      redirect:'error', signal:AbortSignal.timeout(5500), cache:'no-store',
     });
     const raw = Buffer.from(await upstream.arrayBuffer());
     if (raw.length > 5 * 1024 * 1024) { res.status(502).send('upstream_too_large'); return; }
