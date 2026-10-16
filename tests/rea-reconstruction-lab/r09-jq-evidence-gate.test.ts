@@ -39,6 +39,10 @@ it('R09 duplicate, missing cases and false REA/build/PC01 claims fail closed',()
     const r=inspectR09Snapshot(x);expect(r.decision).toBe('REJECTED');safe(r);
   }
 });
+it('R09 changed exit code fails on full immutable hash even when stdout SHA stays intact',()=>{
+  const x=structuredClone(fixture);x.cases[0].exit_code=0;
+  const r=inspectR09Snapshot(x);expect(r.reason).toBe('BUNDLE_DIGEST_MISMATCH');safe(r);
+});
 it('R09 modified evidence still fails immutable bundle SHA even if internally self-consistent',()=>{
   const x=structuredClone(fixture);x.cases[0].exit_code=0;
   const modified=deflateSync(Buffer.from(JSON.stringify(x))).toString('base64');
