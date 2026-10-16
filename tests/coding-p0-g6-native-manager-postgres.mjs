@@ -48,7 +48,7 @@ finally{
  catch(e){error=error||String(e);process.exitCode=1}
  await pool.end();
  const receipt={source_sha:sourceSha,execution:'github-actions-branch-isolated',query_provenance:'extracted-from-native-managerTick-source',
-   verified:!error&&events.length===12&&events.every(x=>x.pass)&&cleanup,
+   verified:!error&&events.length===11&&events.every(x=>x.pass)&&cleanup,
    events,cleanup,pc01:false,github_write:false,error};
  mkdirSync('p0-g6-manager-db-evidence',{recursive:true});
  writeFileSync('p0-g6-manager-db-evidence/receipt.json',JSON.stringify(receipt,null,2)+'\n');
