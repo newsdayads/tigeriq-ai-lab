@@ -166,7 +166,7 @@ it('R06 rejects invalid optional specs and suspicious optional package tarball s
 
 it('R06 rejects exact optional native pin mismatching an internally consistent registry row',()=>{
   const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
-  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.1',integrity:sri,
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.1',optional:true,os:['win32'],cpu:['x64'],integrity:sri,
     resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.1.tgz'};
   const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
 });
@@ -178,7 +178,7 @@ it('R06 rejects mandatory exact pin mismatch even when tarball filename matches 
 });
 it('R06 matching exact optional addon stays shape-only, never install-approved',()=>{
   const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
-  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',integrity:sri,
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',optional:true,os:['win32'],cpu:['x64'],integrity:sri,
     resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
   const r=inspectR06ConsumerLock(x);expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(r);
 });
@@ -405,4 +405,75 @@ it('R06 still accepts null-prototype REA dependency map when all pins are own',(
  const r=inspectR06ConsumerLock(x);
  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
  safe(r);
+});
+
+
+// New exact-source R06 metadata regressions: the upstream frozen production
+// closure carries no dev/bundle hints and only six platform native optional rows.
+// These synthetic tests do NOT prove real npm resolution or host isolation.
+it('R06 rejects root bundle/dev/optional metadata without broadening install scope',()=>{
+  for(const [field,value] of [
+    ['inBundle',false],['bundled',false],['bundleDependencies',[]],
+    ['bundledDependencies',[]],['dev',false],['devOptional',true],
+    ['optional',false],['os',['win32']],['cpu',['x64']]
+  ] as const){
+    const x=fixture();
+    x.packages[''][field]=value;
+    const r=inspectR06ConsumerLock(x);
+    expect(r.reason,field).toBe('CONSUMER_ROOT_SCOPE_DRIFT');
+    safe(r);
+  }
+});
+it('R06 rejects unpinned production metadata on REA and transitive rows',()=>{
+  for(const row of ['node_modules/rea-agents','node_modules/zod']){
+    for(const [field,value] of [
+      ['inBundle',true],['bundled',false],['bundleDependencies',[]],
+      ['bundledDependencies',[]],['dev',false],['devOptional',true],
+      ['optional',false],['os',['win32']],['cpu',['x64']]
+    ] as const){
+      const x=fixture();
+      x.packages[row][field]=value;
+      const r=inspectR06ConsumerLock(x);
+      expect(r.reason,`${row} / ${field}`).toBe('CONSUMER_PACKAGE_METADATA_DRIFT');
+      safe(r);
+    }
+  }
+});
+it('R06 pins optional native target, CPU and flags while preserving absence',()=>{
+  const native='node_modules/@lydell/node-pty-win32-x64';
+  const make=()=>{
+    const x=fixture();
+    x.packages['node_modules/@lydell/node-pty'].optionalDependencies={
+      '@lydell/node-pty-win32-x64':'1.1.0'
+    };
+    x.packages[native]={version:'1.1.0',optional:true,os:['win32'],cpu:['x64'],
+      integrity:sri,resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
+    return x;
+  };
+  const valid=inspectR06ConsumerLock(make());
+  expect(valid.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  safe(valid);
+  const absent=make();delete absent.packages[native];
+  const missing=inspectR06ConsumerLock(absent);
+  expect(missing.counts.missingOptionalDependencies).toBe(1);
+  safe(missing);
+  for(const modify of [
+    (p:any)=>delete p.optional,
+    (p:any)=>p.optional=false,
+    (p:any)=>p.optional='true',
+    (p:any)=>p.os=['linux'],
+    (p:any)=>p.os=['win32','linux'],
+    (p:any)=>delete p.os,
+    (p:any)=>p.cpu=['arm64'],
+    (p:any)=>p.cpu=['x64','arm64'],
+    (p:any)=>delete p.cpu,
+    (p:any)=>p.dev=false,
+    (p:any)=>p.devOptional=true,
+    (p:any)=>p.bundleDependencies=[]
+  ]){
+    const x=make();modify(x.packages[native]);
+    const r=inspectR06ConsumerLock(x);
+    expect(r.reason).toBe('CONSUMER_PACKAGE_METADATA_DRIFT');
+    safe(r);
+  }
 });
