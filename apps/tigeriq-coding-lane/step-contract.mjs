@@ -188,6 +188,19 @@ export function codingFailureSignature(failure={}){
 
 // A new unrelated main commit cannot reset two-failure budget. Relevant target
 // blob changes or explicitly changed canonical objective/evidence can.
+// A manager-generated path subset cannot become a new source epoch. For P0
+// claims the authoritative canonical file set is pinned before step planning.
+export function codingSourceRevisionPaths({canonicalPaths=[],proposedPaths=[]}={}){
+  const fixed=Array.isArray(canonicalPaths)?canonicalPaths.map(string):[];
+  const proposed=Array.isArray(proposedPaths)?proposedPaths.map(string):[];
+  if(!fixed.length||fixed.length>8||fixed.some(p=>!safePath(p)||p.endsWith('/')||!p)||
+     new Set(fixed).size!==fixed.length)
+    throw Error('CODING_CANARY_EXACT_SOURCE_SCOPE_REQUIRED');
+  if(!proposed.length||proposed.some(p=>!fixed.includes(p)))
+    throw Error('CODING_CANARY_STEP_SOURCE_SCOPE_MISMATCH');
+  return [...fixed].sort();
+}
+
 export function codingMaterialSourceRevision({objective='',canonicalWorkOrderId='',materialSpecRevision='',paths=[],sourceBlobs={}}={}){
   const selected=[...new Set((Array.isArray(paths)?paths:[]).map(string))].sort();
   if(!selected.length||selected.length>8||selected.some(p=>!safePath(p)))throw Error('CODING_MATERIAL_PATHS_INVALID');

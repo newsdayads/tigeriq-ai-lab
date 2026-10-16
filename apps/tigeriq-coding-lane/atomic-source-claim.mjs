@@ -28,6 +28,11 @@ export async function withAtomicCodingSourceClaim(pool,{workOrderId,paths=[],run
       const functionName=mode==='exclusive'?'pg_advisory_xact_lock':'pg_advisory_xact_lock_shared';
       await client.query(`select ${functionName}(hashtextextended($1,0))`,['coding-file:'+prefix]);
     }
+    // Serialize the check+insert against unmodified legacy INSERTs too. A
+    // PostgreSQL advisory lock alone cannot fence a writer that ignores it.
+    // This short xact table lock waits for uncommitted legacy inserts before
+    // reading the writer set and remains held until our INSERT commits.
+    await client.query('LOCK TABLE tigeriq_coding_jobs IN SHARE ROW EXCLUSIVE MODE');
     const active=await client.query(
       "select id,paths from tigeriq_coding_jobs where status in ('queued','running','review','waiting_ci','waiting_resource') order by created_at desc limit 2001"
     );

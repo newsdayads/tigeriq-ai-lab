@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingUnverifiedLegacyHistoryDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -322,4 +322,29 @@ test('legacy-historical retry gate is wired before creating the next Coding job'
   const legacyPos=source.indexOf('const legacy=codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows})');
   const persistPos=source.indexOf('if(replayGuard)await replayGuard(db);');
   assert.ok(legacyPos>=0&&persistPos>legacyPos);
+});
+
+
+test('canary material fingerprint stays pinned when manager changes step file subset',()=>{
+  const canonical=['apps/a/main.mjs','apps/a/main.test.mjs'];
+  const a=codingSourceRevisionPaths({canonicalPaths:canonical,proposedPaths:[canonical[0]]});
+  const b=codingSourceRevisionPaths({canonicalPaths:canonical,proposedPaths:[canonical[1]]});
+  assert.deepEqual(a,b);
+  const blobs=Object.fromEntries(canonical.map(p=>[p,'a'.repeat(40)]));
+  const first=codingMaterialSourceRevision({canonicalWorkOrderId:'4625',paths:a,sourceBlobs:blobs});
+  const second=codingMaterialSourceRevision({canonicalWorkOrderId:'4625',paths:b,sourceBlobs:blobs});
+  assert.equal(first,second);
+  assert.equal(repeatedCodingAttemptDecision({
+    workOrderId:'4625',stepId:'D02',sourceRevision:second,
+    history:[{workOrderId:'4625',stepId:'D01',sourceRevision:first,status:'failed',failureSignature:'OUTPUT_CONTRACT_EXHAUSTED'}]
+  }).code,'CODING_STEP_ALIAS_REPLAY_BLOCKED');
+  assert.throws(()=>codingSourceRevisionPaths({canonicalPaths:[],proposedPaths:canonical}),/EXACT_SOURCE_SCOPE_REQUIRED/);
+  assert.throws(()=>codingSourceRevisionPaths({canonicalPaths:['apps/a/'],proposedPaths:[canonical[0]]}),/EXACT_SOURCE_SCOPE_REQUIRED/);
+  assert.throws(()=>codingSourceRevisionPaths({canonicalPaths,proposedPaths:['apps/b/foreign.mjs']}),/STEP_SOURCE_SCOPE_MISMATCH/);
+});
+test('canary lane pins revision to canonical allowed files, never model-selected subset',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(src,/codingSourceRevisionPaths\(\{canonicalPaths:canonical,proposedPaths:paths\}\)/);
+  assert.match(src,/paths:materialPaths,sourceBlobs/);
 });

@@ -14,7 +14,7 @@ import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../sha
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingUnverifiedLegacyHistoryDecision} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -1352,11 +1352,12 @@ async function managerTick(){
       const sourceTree=await ghRepo(targetRepository,`/git/trees/${sourceHeadSha}?recursive=1`);
       if(sourceTree?.truncated||!Array.isArray(sourceTree?.tree))throw Error('CODING_MATERIAL_TREE_INCOMPLETE');
       const blobMap=new Map(sourceTree.tree.filter(x=>x.type==='blob').map(x=>[x.path,x.sha]));
-      const sourceBlobs=Object.fromEntries(paths.map(path=>[path,blobMap.get(path)||null]));
+      const materialPaths=codingSourceRevisionPaths({canonicalPaths:canonical,proposedPaths:paths});
+      const sourceBlobs=Object.fromEntries(materialPaths.map(path=>[path,blobMap.get(path)||null]));
       const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
       const materialSpecRevision=String(o.objective||'').match(/^WORK_SPEC_REVISION=([A-Za-z0-9._-]{1,80})$/m)?.[1]||'';
       const materialRevision=codingMaterialSourceRevision({
-        objective:o.objective,canonicalWorkOrderId:sourceWorkOrder?String(sourceWorkOrder):'',materialSpecRevision,paths,sourceBlobs
+        objective:o.objective,canonicalWorkOrderId:sourceWorkOrder?String(sourceWorkOrder):'',materialSpecRevision,paths:materialPaths,sourceBlobs
       });
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:materialRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
       const workOrderId=String(sourceWorkOrder||o.id);

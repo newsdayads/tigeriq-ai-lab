@@ -25,7 +25,10 @@ test('canonical work order and scoped file lock are acquired before query+insert
   assert.equal(sql[0],'BEGIN');
   assert.equal(sql[1],'select pg_advisory_xact_lock(hashtextextended($1,0))');
   assert.equal(sql.filter(x=>x.startsWith('select pg_advisory_xact_lock')).length,5);
-  assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>sql.findIndex(x=>x.startsWith('select id,paths from tigeriq_coding_jobs')));
+  const tableLock=sql.indexOf('LOCK TABLE tigeriq_coding_jobs IN SHARE ROW EXCLUSIVE MODE');
+  const writerScan=sql.findIndex(x=>x.startsWith('select id,paths from tigeriq_coding_jobs'));
+  assert.ok(tableLock>0&&tableLock<writerScan);
+  assert.ok(sql.indexOf('insert into tigeriq_coding_jobs(id) values($1)')>writerScan);
   assert.equal(sql.at(-1),'COMMIT');
   assert.equal(t.released,true);
   assert.deepEqual(t.statements.slice(1,6).map(x=>[x.sql,x.args[0]]),[
@@ -94,4 +97,12 @@ test('non-canonical source path segments fail before any DB transaction',async()
     await assert.rejects(withAtomicCodingSourceClaim(t.pool,{workOrderId:'scope',paths:[path],run:async()=>true}),/CODING_ATOMIC_CLAIM_SCOPE_INVALID/);
     assert.equal(t.statements.length,0);
   }
+});
+
+test('legacy INSERTs must serialize with atomic source claim across DB sessions',async()=>{
+  const t=db();
+  await withAtomicCodingSourceClaim(t.pool,{workOrderId:'4625',paths:['apps/a/file.mjs'],run:async()=>true});
+  const steps=t.statements.map(x=>x.sql);
+  assert.ok(steps.indexOf('LOCK TABLE tigeriq_coding_jobs IN SHARE ROW EXCLUSIVE MODE')<steps.findIndex(x=>x.startsWith('select id,paths from tigeriq_coding_jobs')));
+  assert.ok(steps.includes('COMMIT'));
 });
