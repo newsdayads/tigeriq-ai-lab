@@ -329,3 +329,29 @@ it('R06 >=5.0.2 optional peer admits matching synthetic row without host proof',
   expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
   expect(r.counts).toMatchObject({peerDeclarations:1,missingOptionalPeers:0});safe(r);
 });
+
+it('R06 hostile getter/proxy input is rejected instead of throwing or leaking',()=>{
+ const poisoned=(message:string)=>{throw new Error(message);};
+ const top=Object.defineProperty({},'lockfileVersion',{get(){return poisoned('SENSITIVE_LOCKFIELD');}});
+ const packages=Object.defineProperty({lockfileVersion:3},'packages',{get(){return poisoned('SENSITIVE_PACKAGES');}});
+ const proxied=new Proxy({}, {get(){return poisoned('SENSITIVE_PROXY');}});
+ const nested=fixture();
+ Object.defineProperty(nested.packages,'node_modules/rea-agents',{
+  get(){return poisoned('SENSITIVE_ROW');}
+ });
+ for(const input of [top,packages,proxied,nested]){
+  let result:any;
+  expect(()=>{result=inspectR06ConsumerLock(input);}).not.toThrow();
+  expect(result).toMatchObject({decision:'REJECTED',reason:'INVALID_UNTRUSTED_LOCK_OBJECT'});
+  expect(JSON.stringify(result)).not.toMatch(/SENSITIVE_/);
+  safe(result);
+ }
+});
+it('R06 hostile packages ownKeys Proxy is rejected before lock can be trusted',()=>{
+ const hostile=fixture();
+ hostile.packages=new Proxy(hostile.packages,{ownKeys(){throw new Error('SENSITIVE_KEYS');}});
+ let r:any;
+ expect(()=>{r=inspectR06ConsumerLock(hostile);}).not.toThrow();
+ expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_UNTRUSTED_LOCK_OBJECT'});
+ safe(r);
+});
