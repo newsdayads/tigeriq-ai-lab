@@ -337,3 +337,79 @@ test('safeError never exposes token', () => {
   assert.ok(!serialized.includes(env.APIFY_TOKEN));
   assert.ok(serialized.includes('[REDACTED]'));
 });
+
+
+// GH-2293: API resource identity must be stable across POST, poll and finalized GET.
+// All inputs here are injected mock fetches: NO authenticated API and NO paid Actor.
+test('R08 terminal build without id must not start another paid operation', async () => {
+  const urls = [];
+  const fetchFn = async (url) => {
+    urls.push(String(url));
+    return response(201, {data:{status:'SUCCEEDED',usageTotalUsd:0}});
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_INVALID',
+  );
+  assert.equal(urls.length,1);
+  assert.ok(urls[0].includes('/builds?'));
+});
+
+test('R08 build poll must refuse id substitution before following another resource', async () => {
+  const urls = [];
+  const fetchFn = async (url) => {
+    const u = String(url);urls.push(u);
+    if(u.includes('/actors/actor123/builds?'))
+      return response(201,{data:{id:'build1',status:'RUNNING'}});
+    if(u.includes('/actor-builds/build1?waitForFinish=60'))
+      return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED'}});
+    throw new Error('unexpected resource access');
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+  );
+  assert.equal(urls.length,2);
+  assert.ok(!urls.some(u=>u.includes('OTHER_BUILD')));
+  assert.ok(!urls.some(u=>u.includes('/runs?')));
+});
+
+test('R08 finalized build cannot borrow cost evidence from a different build id', async () => {
+  const urls=[];
+  const fetchFn=async url=>{
+    const u=String(url);urls.push(u);
+    if(u.includes('/actors/actor123/builds?'))
+      return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
+    if(u.endsWith('/actor-builds/build1'))
+      return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED',usageTotalUsd:0}});
+    throw new Error('unexpected resource access');
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+  );
+  assert.equal(urls.length,2);
+  assert.ok(!urls.some(u=>u.includes('/runs?')));
+});
+
+test('R08 run poll cannot swap run identity or accept evidence from another run', async () => {
+  const urls=[];
+  const fetchFn=async url=>{
+    const u=String(url);urls.push(u);
+    if(u.includes('/actors/actor123/builds?'))
+      return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
+    if(u.endsWith('/actor-builds/build1'))
+      return response(200,{data:{id:'build1',status:'SUCCEEDED',usageTotalUsd:0}});
+    if(u.includes('/actors/actor123/runs?'))
+      return response(201,{data:{id:'run1',status:'RUNNING'}});
+    if(u.includes('/actor-runs/run1?waitForFinish=60'))
+      return response(200,{data:{id:'OTHER_RUN',status:'SUCCEEDED'}});
+    throw new Error('unexpected resource access');
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+  );
+  assert.equal(urls.length,4);
+  assert.ok(!urls.some(u=>u.includes('OTHER_RUN')||u.includes('/records/OUTPUT')));
+});
