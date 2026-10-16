@@ -275,3 +275,21 @@ test('R04 streaming oversized authenticated Actor JSON is stopped before full bu
   assert.equal(cancelled,1);
   assert.ok(chunks<=5,'oversized JSON must stop during streaming');
 });
+
+
+test('R04 historical GET refuses lookalike application/jsonp and related media types before subsequent requests',async()=>{
+  for(const contentType of ['application/jsonp','application/json-seq','text/application/json','application/jsonxyz']){
+    const payload = new Response(JSON.stringify({data:actor()}), {headers:{'content-type':contentType}});
+    const calls=await rejected('JSON_CONTENT_TYPE_REQUIRED',{responses:{actor:payload}});
+    assert.equal(calls.length,1,contentType+': must fail at first Actor GET');
+  }
+});
+test('R04 historical GET accepts properly delimited JSON with parameters and mixed case',async()=>{
+  const m=mocked({responses:{actor:new Response(JSON.stringify({data:actor()}),{
+    headers:{'content-type':'Application/JSON; charset=UTF-8'}
+  })}});
+  const evidence=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(evidence.acceptance.historicalRunMatched,true);
+  assert.equal(m.calls.length,4);
+  assert.equal(evidence.acceptance.platformFinalInvoiceVerified,false);
+});

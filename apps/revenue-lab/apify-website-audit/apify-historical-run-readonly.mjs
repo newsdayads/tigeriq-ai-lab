@@ -55,7 +55,9 @@ async function readJson(fetchFn, url, token) {
   if (response.status === 401 || response.status === 403) reject('SCOPED_READ_DENIED');
   if (!response.ok) reject('APIFY_READ_FAILED');
   const ct = response.headers?.get?.('content-type') || '';
-  if (!ct.toLowerCase().includes('application/json')) reject('JSON_CONTENT_TYPE_REQUIRED');
+  // Check the media-type token, not a substring (application/jsonp is not JSON).
+  // Permit a case-insensitive media type with an optional parameter section.
+  if (!/^application\/json(?:\s*;|$)/i.test(ct.trim())) reject('JSON_CONTENT_TYPE_REQUIRED');
   let body;
   try {
     const raw = await readBoundedApifyJsonText(response, reject);

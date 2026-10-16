@@ -126,3 +126,20 @@ test('R04 locator aborts streaming oversized Actor JSON before full buffering',a
   assert.equal(cancelled,1);
   assert.ok(chunks<=5,'locator response must stop reading at 128KiB');
 });
+
+
+test('R04 run locator rejects application/jsonp and media-type lookalikes on first GET',async()=>{
+  for(const contentType of ['application/jsonp','application/json-seq','text/application/json','application/jsonxyz']){
+    const response=new Response(JSON.stringify({data:actor}),{headers:{'content-type':contentType}});
+    const calls=await refuses('JSON_CONTENT_TYPE_REQUIRED',{responses:{actor:response}});
+    assert.equal(calls.length,1,contentType+': never follow up on wrong media type');
+  }
+});
+test('R04 run locator permits JSON Content-Type with charset parameters',async()=>{
+  const m=mock({responses:{actor:new Response(JSON.stringify({data:actor}),{
+    headers:{'content-type':'Application/JSON; charset=UTF-8'}
+  })}});
+  const result=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
+  assert.equal(result.runId,'RUN1234567');
+  assert.equal(m.calls.length,2);
+});
