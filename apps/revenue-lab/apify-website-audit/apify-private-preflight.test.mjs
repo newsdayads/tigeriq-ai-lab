@@ -224,3 +224,34 @@ test('safe error never exposes token', () => {
   assert.ok(!serialized.includes(env.APIFY_TOKEN));
   assert.ok(serialized.includes('[REDACTED]'));
 });
+
+test('preflight refuses declared oversized private Actor API JSON before a second GET', async () => {
+  let count = 0;
+  const fetchFn = async () => {
+    count++;
+    return new Response(JSON.stringify({data:{id:'u',username:'owner'}}), {
+      headers:{'content-type':'application/json','content-length':'131073'},
+    });
+  };
+  await assert.rejects(
+    () => runPrivateApifyPreflight({env,fetchFn}),
+    error => error instanceof ApifyPreflightError && error.code==='RESPONSE_TOO_LARGE',
+  );
+  assert.equal(count,1);
+});
+
+test('preflight aborts streaming oversized JSON before third 64KiB chunk is retained', async () => {
+  let chunks=0,cancelled=0,calls=0;
+  const payload=new ReadableStream({
+    pull(controller){if(chunks>=4){controller.close();return;}chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;},
+  });
+  const fetchFn=async()=>{calls++;return new Response(payload,{headers:{'content-type':'application/json'}})};
+  await assert.rejects(
+    () => runPrivateApifyPreflight({env,fetchFn}),
+    error => error instanceof ApifyPreflightError && error.code==='RESPONSE_TOO_LARGE',
+  );
+  assert.equal(calls,1);
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'stream must be bounded before buffering untrusted body');
+});
