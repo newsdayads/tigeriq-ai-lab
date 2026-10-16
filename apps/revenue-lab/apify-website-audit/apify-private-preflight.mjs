@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API_BASE = 'https://api.apify.com/v2';
 
@@ -59,7 +60,19 @@ async function requestJson(fetchFn, url, token, { allowForbidden = false } = {})
     );
   }
 
-  const raw = await response.text();
+  // A successful private API response must declare JSON, not JSONP or HTML.
+  // Reject before reading any response body or calling the next endpoint.
+  if (response.ok) {
+    const contentType = String(response.headers?.get?.('content-type') || '').trim();
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+      throw new ApifyPreflightError('JSON_CONTENT_TYPE_REQUIRED', 'Private Apify API response must be JSON.');
+    }
+  }
+
+  // Bound all authenticated responses (including errors) before buffering.
+  const raw = await readBoundedApifyJsonText(response, code => {
+    throw new ApifyPreflightError(code, 'Apify API response exceeds the permitted JSON size.');
+  });
   let parsed = null;
   try {
     parsed = raw ? JSON.parse(raw) : null;
@@ -115,6 +128,10 @@ export async function runPrivateApifyPreflight({
   );
   if (!actor?.id || !actor?.name || !actor?.username) {
     throw new ApifyPreflightError('ACTOR_IDENTITY_MISSING', 'Actor response is missing id, name, or username.');
+  }
+  // Never accept data for a different Actor than the exact requested opaque ID.
+  if (actor.id !== config.actorId) {
+    throw new ApifyPreflightError('ACTOR_IDENTITY_MISMATCH', 'Returned Actor ID does not match the requested Actor.');
   }
   if (actor.isPublic !== false) {
     throw new ApifyPreflightError('ACTOR_NOT_PRIVATE', 'Actor must remain private before E2E.', {

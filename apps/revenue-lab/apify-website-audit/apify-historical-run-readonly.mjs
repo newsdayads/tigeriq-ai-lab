@@ -21,9 +21,20 @@ const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const actualData = x => object(x) && Object.hasOwn(x, 'data') ? x.data : x;
 // Apify declares startedAt/finishedAt as ISO 8601 date-time (UTC examples).
 // Offsets are mandatory: an offset-less local time is host-TZ dependent.
-export const validApifyInstant = x => typeof x === 'string' &&
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(x) &&
-  Number.isFinite(Date.parse(x));
+export function validApifyInstant(x) {
+  if (typeof x !== 'string') return false;
+  // Date.parse alone normalizes nonexistent calendar days and 24:00.
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(x);
+  if (!match) return false;
+  const [, y, m, d, h, min, sec, tzH, tzM] = match;
+  const year = Number(y), month = Number(m), day = Number(d);
+  if (month < 1 || month > 12 || Number(h) > 23 || Number(min) > 59 || Number(sec) > 59 ||
+      (tzH !== undefined && (Number(tzH) > 14 || Number(tzM) > 59 ||
+        (Number(tzH) === 14 && Number(tzM) !== 0)))) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1] && Number.isFinite(Date.parse(x));
+}
 
 export function historicalRunConfig(env = process.env) {
   // Deny before using any credentials or touching network.
