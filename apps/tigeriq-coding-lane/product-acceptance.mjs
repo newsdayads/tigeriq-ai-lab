@@ -49,7 +49,10 @@ function normalizeCheckRuns(checkRuns = []) {
         name: string(x.name),
         status: string(x.status).toLowerCase(),
         conclusion: string(x.conclusion).toLowerCase(),
-        head_sha: string(x.head_sha || x.headSha || x.sha).toLowerCase()
+        head_sha: string(x.head_sha || x.headSha || x.sha).toLowerCase(),
+        id: x.id,
+        appSlug: string(x.app?.slug),
+        detailsUrl: string(x.details_url)
       };
     });
 }
@@ -61,7 +64,7 @@ function normalizeReceipts(receipts = []) {
     .map(r => ({
       type: string(r.type || r.name),
       status: string(r.status).toLowerCase(),
-      conclusion: string(r.conclusion || (['success', 'completed'].includes(string(r.status).toLowerCase()) ? 'success' : '')).toLowerCase(),
+      conclusion: string(r.conclusion).toLowerCase(),
       head_sha: string(r.head_sha || r.headSha || r.sha).toLowerCase(),
       url: string(r.url || r.receipt_url || r.receiptUrl),
       runner: string(r.runner || r.runner_id || r.runnerId),
@@ -178,6 +181,7 @@ export function verifyProductArtifacts({ productType, changes = [] } = {}) {
 export function verifyProductExecutionReceipts({
   productType,
   sourceHeadSha,
+  repositoryFullName = '',
   checkRuns = [],
   receipts = []
 } = {}) {
@@ -220,6 +224,9 @@ export function verifyProductExecutionReceipts({
       continue;
     }
 
+    // Only check runs whose immutable IDs and URLs are independently checked
+    // by the G6 GitHub API caller may confer product acceptance. A bare
+    // 40-hex SHA or self-proclaimed runner never establishes provenance.
     // Evaluate ALL matching checkRuns - NO SHADOWING
     let hasPassingCheck = false;
     for (const c of matchingChecks) {
@@ -233,6 +240,14 @@ export function verifyProductExecutionReceipts({
       }
       if (c.status !== 'completed' || c.conclusion !== 'success') {
         reasons.push(`CHECK_NOT_SUCCEEDED:${checkName}:${c.status}/${c.conclusion}`);
+        continue;
+      }
+      const prefix = `https://github.com/${repositoryFullName}/actions/runs/`;
+      if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repositoryFullName) ||
+          !Number.isSafeInteger(c.id) || c.id <= 0 || c.appSlug !== 'github-actions' ||
+          !c.detailsUrl.startsWith(prefix) ||
+          !/^\d+\/job\/\d+(?:[?#].*)?$/.test(c.detailsUrl.slice(prefix.length))) {
+        reasons.push(`CHECK_PROVENANCE_UNVERIFIED:${checkName}`);
         continue;
       }
       hasPassingCheck = true;
@@ -257,7 +272,9 @@ export function verifyProductExecutionReceipts({
         reasons.push(`RECEIPT_RUNNER_UNVERIFIED:${checkName}:${r.runner}`);
         continue;
       }
-      hasPassingReceipt = true;
+      // A receipt without a trusted external provider fetch is only an
+      // assertion. G6 passes receipts: [] and authentic check runs instead.
+      reasons.push(`RECEIPT_PROVENANCE_UNVERIFIED:${checkName}`);
     }
 
     if (!hasPassingCheck && !hasPassingReceipt && reasons.length === 0) {
@@ -321,6 +338,7 @@ export function verifyProductExecutionReceipts({
 export function evaluateProductAcceptance({
   productType,
   sourceHeadSha,
+  repositoryFullName = '',
   changes = [],
   checkRuns = [],
   receipts = [],
@@ -375,6 +393,7 @@ export function evaluateProductAcceptance({
   const executionResult = verifyProductExecutionReceipts({
     productType: type,
     sourceHeadSha: targetSha,
+    repositoryFullName,
     checkRuns,
     receipts
   });
