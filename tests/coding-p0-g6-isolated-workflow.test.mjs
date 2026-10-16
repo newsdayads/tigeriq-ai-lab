@@ -4,7 +4,7 @@ import {
   compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,
   verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,
   codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,
-  codingUnverifiedLegacyHistoryDecision,verifyClosedCodingWorkOrder
+  codingUnverifiedLegacyHistoryDecision,verifyClosedCodingWorkOrder,verifyCodingCanaryProductGate
 } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
@@ -134,4 +134,24 @@ test('G6 source lifecycle runs re-review after repair and invalidates approval o
     implementerId:'worker-A',reviewerId:'reviewer-B',
     targetHead:heads[1],expectedHead:heads[1],decision:'approve'
   }),true);
+});
+
+// This source-only interface test stubs G5 on purpose; real acceptance requires
+// the independently reviewed G5 module plus actual GitHub check-run receipts.
+test('G6 product gate rejects SHA drift, missing source bytes, off-scope and absent G5',async()=>{
+  const loaded=loadRequiredCodingSkills('GitHub autonomous coding issue #4625');
+  const packet=compileCodingStepPacket({objectiveId:'CODEOBJ-4625',sourceRevision:revision,
+    sourceHeadSha:head,allowedPaths:files,job:job('D01'),skillEvidence:loaded.proof});
+  const opts={packet,sourceHeadSha:head,prHeadSha:head,changedPaths:files,
+    checkRuns:checks,readSource:async path=>({sha:'1'.repeat(40),content:changes.find(c=>c.path===path).content})};
+  await assert.rejects(verifyCodingCanaryProductGate({...opts,prHeadSha:'b'.repeat(40)}),/SOURCE_HEAD_DRIFT/);
+  await assert.rejects(verifyCodingCanaryProductGate({...opts,changedPaths:[...files,'apps/outside.mjs']}),/CHANGED_SCOPE_INVALID/);
+  await assert.rejects(verifyCodingCanaryProductGate({...opts,readSource:async()=>({content:'code'})}),/SOURCE_BYTES_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate(opts),/PRODUCT_GATE_DEPENDENCY_MISSING/);
+  await assert.rejects(verifyCodingCanaryProductGate({
+    ...opts,evaluateProduct:()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})
+  }),/ACCEPTANCE_NOT_VERIFIED/);
+  const verified=await verifyCodingCanaryProductGate({...opts,
+    evaluateProduct:({sourceHeadSha})=>({pass:true,status:'ACCEPTED',sourceHeadSha,code:'MOCK_ONLY'})});
+  assert.equal(verified.code,'CODING_PRODUCT_GATE_VERIFIED');
 });

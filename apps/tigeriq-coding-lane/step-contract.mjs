@@ -135,6 +135,49 @@ export function codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows=[]
   return {allow:true,code:'CODING_LEGACY_HISTORY_CLEAR'};
 }
 
+// G6 interface owned by Vy: only accepts exact-HEAD source bytes and delegates
+// product-specific correctness to G5. The delegated validator must return a
+// verified receipt; this interface never invents a successful build or review.
+export async function verifyCodingCanaryProductGate({
+  packet,sourceHeadSha,prHeadSha,changedPaths=[],checkRuns=[],
+  readSource,evaluateProduct
+}={}){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const source=string(sourceHeadSha).toLowerCase(),pr=string(prHeadSha).toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(source)||pr!==source)
+    throw Error('CODING_PRODUCT_SOURCE_HEAD_DRIFT');
+  if(!Array.isArray(changedPaths)||changedPaths.length<1||changedPaths.length>=100||
+     new Set(changedPaths).size!==changedPaths.length||
+     changedPaths.some(p=>!safePath(p)||!packet.paths.includes(p)))
+    throw Error('CODING_PRODUCT_CHANGED_SCOPE_INVALID');
+  if(packet.required_changed_paths.some(p=>!changedPaths.includes(p)))
+    throw Error('CODING_PRODUCT_REQUIRED_SOURCE_MISSING');
+  if(!Array.isArray(checkRuns)||!checkRuns.length)
+    throw Error('CODING_PRODUCT_CHECKS_UNVERIFIED');
+  const kind=packet.deliverable_type;
+  if(!['android','frontend','backend'].includes(kind))
+    return {pass:true,code:'CODING_NON_PRODUCT_STEP_STRUCTURAL_GATE_ONLY',sourceHeadSha:source};
+  if(typeof readSource!=='function'||typeof evaluateProduct!=='function')
+    throw Error('CODING_PRODUCT_GATE_DEPENDENCY_MISSING');
+  const changes=[];
+  for(const path of changedPaths){
+    const data=await readSource(path,source);
+    if(!data||!string(data.sha)||typeof data.content!=='string')
+      throw Error('CODING_PRODUCT_SOURCE_BYTES_UNVERIFIED:'+path);
+    changes.push({path,content:data.content});
+  }
+  const verdict=evaluateProduct({
+    productType:kind,sourceHeadSha:source,changes,checkRuns
+  });
+  if(verdict?.pass!==true||verdict?.status!=='ACCEPTED'||
+     verdict?.sourceHeadSha!==source)
+    throw Object.assign(new Error('CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED'),{
+      code:'CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED',detail:verdict||null
+    });
+  return {pass:true,code:'CODING_PRODUCT_GATE_VERIFIED',sourceHeadSha:source,
+    productReceipt:verdict};
+}
+
 export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
   if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
   const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{

@@ -14,7 +14,7 @@ import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../sha
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision,verifyCodingCanaryProductGate} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -2013,9 +2013,12 @@ async function runJob(j){
     },
   });
   review=lifecycle.review;gates=lifecycle.gates;
+  let productAcceptance=null;
   if((canary)){
     const changedFiles=await ghRepo(targetRepository,`/pulls/${pr.number}/files?per_page=100`);
-    const actual=new Set((Array.isArray(changedFiles)?changedFiles:[]).map(x=>String(x.filename||'')));
+    if(!Array.isArray(changedFiles)||changedFiles.length>=100)
+      throw Error('CODING_CHANGED_FILES_LIST_UNVERIFIED');
+    const actual=new Set(changedFiles.map(x=>String(x.filename||'')));
     const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
     if(absent.length)throw Object.assign(new Error('CODING_REQUIRED_CHANGED_FILES_MISSING:'+absent.join(',')),{code:'CODING_REQUIRED_CHANGED_FILES_MISSING'});
     // gates.states contains only the three generic required checks; inspect
@@ -2024,6 +2027,17 @@ async function runJob(j){
     if(!Array.isArray(domainCheckReceipt?.check_runs))throw Error('CODING_DOMAIN_CHECKS_UNVERIFIED');
     const check=verifyCodingFunctionalChecks({packet:stepPacket,checkRuns:domainCheckReceipt.check_runs});
     if(!check.pass)throw Object.assign(new Error(check.code+':'+check.missing.join(',')),{code:check.code});
+    // G6: verify the PR HEAD against exact-SHA GitHub file bytes. A pending
+    // G5 module fails closed and cannot become a waived/implicit PASS.
+    const prHeadSha=await headSha(branch,targetRepository);
+    const productModule=['android','frontend','backend'].includes(stepPacket.deliverable_type)
+      ?await import('./product-acceptance.mjs'):null;
+    productAcceptance=await verifyCodingCanaryProductGate({
+      packet:stepPacket,sourceHeadSha:gates.sha,prHeadSha,
+      changedPaths:[...actual],checkRuns:domainCheckReceipt.check_runs,
+      readSource:async(path,sha)=>readRepoFile(path,sha,targetRepository),
+      evaluateProduct:productModule?.evaluateProductAcceptance
+    });
   }
   approvedHead=gates.sha;approvedReviewer=reviewer?.id||null;approvedImplementer=worker.id;
   if(!ownerWaiver&&review?.decision!=='approve')throw new Error('REVIEW_NOT_APPROVED');
@@ -2041,7 +2055,7 @@ async function runJob(j){
     }catch(e){merge={merged:false,message:String(e.message||e)}}
   }
   const status=merge?.merged?'done':'blocked';
-  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,merge})]);
+  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,productAcceptance,merge})]);
   await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
   return {prNumber:pr.number,branch,merge};
 }
