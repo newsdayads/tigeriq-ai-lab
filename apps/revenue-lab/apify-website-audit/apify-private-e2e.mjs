@@ -156,11 +156,12 @@ function assertSameBuildId(item, expectedBuildId, stage) {
   }
 }
 
-async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4 }) {
+async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4, expectedBuildId = null }) {
   const expectedId = requireResourceId(initial, kind);
   let item = initial;
   for (let attempt = 0; attempt <= maxPolls; attempt += 1) {
     assertSameResourceId(item, expectedId, kind);
+    if (kind === 'run') assertSameBuildId(item, expectedBuildId, 'run-poll');
     if (TERMINAL.has(item?.status)) return item;
     const resourcePath = kind === 'build' ? 'actor-builds' : 'actor-runs';
     item = dataOf(await requestJson(
@@ -264,7 +265,7 @@ export async function runPrivateApifyE2E({
     { token: config.token, method: 'POST', body: runInput },
   ));
   assertSameBuildId(runInitial, build.id, 'run-start');
-  const run = await waitTerminal({ kind: 'run', initial: runInitial, fetchFn, config });
+  const run = await waitTerminal({ kind: 'run', initial: runInitial, fetchFn, config, expectedBuildId: build.id });
   assertSameBuildId(run, build.id, 'run-terminal');
   if (run.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FAILED', `Private Actor run finished with status ${run.status}.`, {
