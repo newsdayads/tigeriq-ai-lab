@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import pg from 'pg';
 import {withAtomicCodingSourceClaim} from '../apps/tigeriq-coding-lane/atomic-source-claim.mjs';
-import {repeatedCodingAttemptDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {repeatedCodingAttemptDecision,codingUnverifiedLegacyHistoryDecision,codingMaterialSourceRevision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const url=process.env.TIGERIQ_TEST_POSTGRES_URL;
 if(!url)throw Error('ISOLATED_POSTGRES_URL_REQUIRED');
@@ -96,6 +96,71 @@ test('real isolated PostgreSQL: writers, replay, crash recovery, rollback',async
         await client.query("insert into tigeriq_coding_jobs(id,paths,status) values('replayed','[]'::jsonb,'queued')");
       }}),/CODING_STEP_ALIAS_REPLAY_BLOCKED/);
       assert.equal(Number((await pool.query('SELECT count(*)::int n FROM tigeriq_coding_jobs')).rows[0].n),2);
+    });
+    await t.test('two workers with the SAME Work Order cannot commit duplicate jobs',async()=>{
+      await pool.query('DELETE FROM tigeriq_coding_jobs');
+      const attempts=await Promise.allSettled([
+        attempt('same-wo-a','4625',['apps/x/source.mjs']),
+        attempt('same-wo-b','4625',['apps/x/source.mjs'],{stepId:'D02'})
+      ]);
+      assert.equal(attempts.filter(x=>x.status==='fulfilled').length,1);
+      assert.equal(attempts.filter(x=>x.status==='rejected').length,1);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM tigeriq_coding_jobs')).rows[0].n,1);
+      await pool.query('DELETE FROM tigeriq_coding_jobs');
+    });
+    await t.test('database connection crash rolls back uncommitted job and releases PostgreSQL locks',async()=>{
+      const broken=await pool.connect();
+      try{
+        await broken.query('BEGIN');
+        await broken.query('INSERT INTO tigeriq_coding_jobs(id,paths,status) VALUES($1,$2::jsonb,$3)',
+          ['crashed-uncommitted',JSON.stringify(['apps/crash/file.mjs']),'running']);
+      }finally{broken.release(true)}
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM tigeriq_coding_jobs WHERE id='crashed-uncommitted'")).rows[0].n,0);
+      await attempt('resumed-after-crash','4625',['apps/crash/file.mjs']);
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM tigeriq_coding_jobs WHERE id='resumed-after-crash'")).rows[0].n,1);
+      await pool.query('DELETE FROM tigeriq_coding_jobs');
+    });
+    await t.test('same-failure retry 1/2 and retry 2/2 share DB history and reject third',async()=>{
+      const workOrderId='4625',scope=['apps/retry/api.mjs'];
+      const insertWithHistory=(id,stepId)=>withAtomicCodingSourceClaim(pool,{workOrderId,paths:scope,run:async client=>{
+        const rows=(await client.query('SELECT work_order_id,step_id,source_revision,status,failure_signature FROM tigeriq_coding_jobs')).rows;
+        const decision=repeatedCodingAttemptDecision({
+          workOrderId,stepId,sourceRevision:'source-abc',
+          failureSignature:'OUTPUT_CONTRACT_EXHAUSTED',
+          history:rows.map(x=>({workOrderId:x.work_order_id,stepId:x.step_id,sourceRevision:x.source_revision,
+            status:x.status,failureSignature:x.failure_signature}))
+        });
+        if(!decision.allow)throw Error(decision.code);
+        await client.query('INSERT INTO tigeriq_coding_jobs(id,paths,status,work_order_id,step_id,source_revision,failure_signature) VALUES($1,$2::jsonb,$3,$4,$5,$6,$7)',
+          [id,JSON.stringify(scope),'failed',workOrderId,stepId,'source-abc','OUTPUT_CONTRACT_EXHAUSTED']);
+      }});
+      await insertWithHistory('retry1','D01');
+      await insertWithHistory('retry2','D01');
+      await assert.rejects(insertWithHistory('retry3','D01'),/CODING_SAME_FAILURE_STOP/);
+      await assert.rejects(insertWithHistory('renamed_step','D02'),/CODING_STEP_ALIAS_REPLAY_BLOCKED/);
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM tigeriq_coding_jobs WHERE work_order_id='4625'")).rows[0].n,2);
+      const p=['apps/retry/api.mjs'],blobs={ [p[0]]:null };
+      const x=codingMaterialSourceRevision({canonicalWorkOrderId:workOrderId,paths:p,sourceBlobs:blobs});
+      const y=codingMaterialSourceRevision({canonicalWorkOrderId:workOrderId,paths:p,sourceBlobs:blobs,
+        objective:'Renamed retry 2/2 for issue #4625'});
+      assert.equal(x,y);
+      await pool.query('DELETE FROM tigeriq_coding_jobs');
+    });
+    await t.test('legacy failed job is not silently upgraded into clean G4 history',async()=>{
+      await attempt('legacy-row','4870',['apps/legacy/source.mjs'],{status:'failed'});
+      await assert.rejects(withAtomicCodingSourceClaim(pool,{
+        workOrderId:'4870',paths:['apps/legacy/source.mjs'],
+        run:async client=>{
+          const rows=(await client.query('SELECT work_order_id,status FROM tigeriq_coding_jobs')).rows;
+          const decision=codingUnverifiedLegacyHistoryDecision({
+            workOrderId:'4870',legacyRows:rows.map(x=>({workOrderId:x.work_order_id,status:x.status}))
+          });
+          if(!decision.allow)throw Error(decision.code);
+          await client.query("INSERT INTO tigeriq_coding_jobs(id,paths,status) VALUES('duplicate','[]'::jsonb,'queued')");
+        }
+      }),/CODING_PRE_CANARY_HISTORY_UNVERIFIED/);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM tigeriq_coding_jobs')).rows[0].n,1);
+      await pool.query('DELETE FROM tigeriq_coding_jobs');
     });
   }finally{
     if(pool)await pool.end();
