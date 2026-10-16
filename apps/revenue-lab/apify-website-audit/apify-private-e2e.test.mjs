@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runPrivateApifyE2E, ApifyE2EError, safeError } from './apify-private-e2e.mjs';
+import { runPrivateApifyE2E, ApifyE2EError, safeError, apifyE2ERequestTimeoutMs } from './apify-private-e2e.mjs';
 
 const env = {
   APIFY_TOKEN: 'secret-token-value',
@@ -180,6 +180,38 @@ test('R08 E2E refuses malformed JSON without persisting a false build failure', 
     () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
     error => error instanceof ApifyE2EError && error.code === 'APIFY_JSON_INVALID',
   );
+});
+
+test('R08 E2E bounds all network waits at the exact known API deadline', async () => {
+  const { fetchFn, calls } = successFetch();
+  await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
+  assert.equal(calls.length, 5);
+  for (const { options } of calls) {
+    assert.ok(options.signal instanceof AbortSignal, 'every authenticated request must be abortable');
+  }
+  assert.equal(apifyE2ERequestTimeoutMs('https://api.apify.com/v2/actors/A/builds?waitForFinish=60'), 75000);
+  assert.equal(apifyE2ERequestTimeoutMs('https://api.apify.com/v2/actor-runs/R?waitForFinish=60'), 75000);
+  assert.equal(apifyE2ERequestTimeoutMs('https://api.apify.com/v2/actor-runs/R'), 8000);
+  assert.equal(apifyE2ERequestTimeoutMs('https://api.apify.com/v2/actors/A/runs?waitForFinish=0'), 8000);
+});
+
+test('R08 E2E terminal polling error is fail closed without retrying a paid run', async () => {
+  const endpoints = [];
+  const fetchFn = async (url, options) => {
+    const u = String(url);
+    endpoints.push({ url: u, method: options.method });
+    assert.ok(options.signal instanceof AbortSignal);
+    if (u.includes('/actors/actor123/builds?')) return response(201, { data: { id: 'build1', status: 'RUNNING' } });
+    throw new Error('PRIVATE_TIMEOUT_MARKER_' + env.APIFY_TOKEN);
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    e => e instanceof ApifyE2EError && e.code === 'NETWORK_FAILURE' &&
+      !JSON.stringify(e).includes(env.APIFY_TOKEN),
+  );
+  assert.equal(endpoints.length, 2);
+  assert.equal(endpoints.filter(x => x.method === 'POST').length, 1);
+  assert.equal(endpoints.filter(x => x.url.includes('/runs?')).length, 0);
 });
 
 test('auth failure is fail-closed and redacts token', async () => {
