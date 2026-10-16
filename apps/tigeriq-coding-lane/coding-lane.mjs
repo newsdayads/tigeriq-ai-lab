@@ -1178,6 +1178,7 @@ export function sourceWorkOrderNumber(objective=''){
   const text=String(objective||'');
   const patterns=[
     /\bGitHub autonomous coding\s+issue\s+#(\d+)\b/i,
+    /\bGitHub autonomous coding\s+retry\s+\d+\/\d+\s+for\s+issue\s+#(\d+)\b/i,
     /\bGitHub autonomous coding\s+(?:recovery|retry|repair)(?:\s+for)?\s+issue\s+#(\d+)\b/i,
   ];
   for(const pattern of patterns){
@@ -1350,12 +1351,13 @@ async function managerTick(){
       if(sourceTree?.truncated||!Array.isArray(sourceTree?.tree))throw Error('CODING_MATERIAL_TREE_INCOMPLETE');
       const blobMap=new Map(sourceTree.tree.filter(x=>x.type==='blob').map(x=>[x.path,x.sha]));
       const sourceBlobs=Object.fromEntries(paths.map(path=>[path,blobMap.get(path)||null]));
+      const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
+      const materialSpecRevision=String(o.objective||'').match(/^WORK_SPEC_REVISION=([A-Za-z0-9._-]{1,80})$/m)?.[1]||'';
       const materialRevision=codingMaterialSourceRevision({
-        objective:o.objective,paths,sourceBlobs
+        objective:o.objective,canonicalWorkOrderId:sourceWorkOrder?String(sourceWorkOrder):'',materialSpecRevision,paths,sourceBlobs
       });
       const packet=compileCodingStepPacket({objectiveId:o.id,sourceRevision:materialRevision,sourceHeadSha,job:d.job,allowedPaths:paths,skillEvidence:managerSkills.proof});
-      const workOrderId=String(sourceWorkOrderNumber(o.objective)||o.id);
-      const sourceWorkOrder=sourceWorkOrderNumber(o.objective);
+      const workOrderId=String(sourceWorkOrder||o.id);
       replayGuard=async db=>{
       const previous=sourceWorkOrder
         ?await db.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.objective ilike $1 order by j.created_at desc limit 5000",['%issue #'+sourceWorkOrder+'%'])
