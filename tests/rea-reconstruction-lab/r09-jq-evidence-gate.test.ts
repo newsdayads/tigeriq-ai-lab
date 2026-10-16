@@ -56,3 +56,35 @@ it('R09 malformed base64, excessive input and invalid compression fail without e
     expect(JSON.stringify(r)).not.toContain('PRIVATE_SECRET');
   }
 });
+
+it('R09 cyclic caller-supplied evidence is rejected without an uncaught stack overflow',()=>{
+  const x:any=structuredClone(fixture);x.extra=x;
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 unsupported BigInt evidence is rejected rather than throwing',()=>{
+  const x:any=structuredClone(fixture);x.extra=1n;
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 deep evidence nesting is rejected before recursion can exhaust the call stack',()=>{
+  const x:any=structuredClone(fixture);let child:any=x;
+  for(let i=0;i<80;i++)child=child.extra={};
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 excessive evidence-node breadth is rejected within a bounded visit budget',()=>{
+  const x:any=structuredClone(fixture);x.extra=Array.from({length:4100},()=>0);
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 small JSON-compatible additions fail immutable digest, not structural safety',()=>{
+  const x:any=structuredClone(fixture);x.extra={safe:true};
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'BUNDLE_DIGEST_MISMATCH'});
+  safe(r);
+});
