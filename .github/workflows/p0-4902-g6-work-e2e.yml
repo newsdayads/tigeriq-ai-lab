@@ -35,6 +35,8 @@ jobs:
       - name: Install locked runtime dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify Work G6 receipt policy and Vy Owner handoff
+        env:
+          NODE_ENV: test
         run: |
           node --test tests/g6-work/receipt-policy.test.mjs tests/coding-p0-g6-vy-owner-handoff.test.mjs
   g6-work:
