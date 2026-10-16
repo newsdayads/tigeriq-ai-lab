@@ -30,6 +30,11 @@ function receiptLinksFromLine(line){
   if(close<0){visible+=input.slice(i,endOpen);i=endOpen;}
   else{visible+=' '.repeat(closeEnd-i);i=closeEnd;}
  }
+ // A Markdown-looking link within raw inline HTML is not reliable visible
+ // evidence. Reject the whole row on ambiguous inline HTML; the canonical
+ // checklist can be rewritten as plain Markdown with an explicit receipt.
+ // Inline <code>...</code> samples were already removed above.
+ if(/<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])[^>]*>/.test(visible))return [];
  const found=[];
  for(const match of visible.matchAll(MARKDOWN_LINK)){
   if(markdownEscaped(visible,match.index))continue;
