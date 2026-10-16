@@ -4,6 +4,16 @@ import { fileURLToPath } from 'node:url';
 import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
+const APIFY_E2E_STANDARD_TIMEOUT_MS = 8000;
+const APIFY_E2E_WAIT_FINISH_TIMEOUT_MS = 75000;
+
+// Apify waitForFinish=60 can block for 60 seconds on an authorized request.
+// Allow bounded response overhead without leaving GET or POST indefinite.
+export function apifyE2ERequestTimeoutMs(url) {
+  return /(?:[?&])waitForFinish=60(?:&|$)/.test(String(url))
+    ? APIFY_E2E_WAIT_FINISH_TIMEOUT_MS
+    : APIFY_E2E_STANDARD_TIMEOUT_MS;
+}
 
 export class ApifyE2EError extends Error {
   constructor(code, message, detail = null) {
@@ -50,6 +60,8 @@ async function requestJson(fetchFn, url, { token, method = 'GET', body } = {}) {
       method,
       // Never follow an authenticated 3xx hop (especially POST redirects).
       redirect: 'error',
+      // A timeout does not cancel a remote paid job; fail closed without auto-retry.
+      signal: AbortSignal.timeout(apifyE2ERequestTimeoutMs(url)),
       headers: {
         accept: 'application/json',
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
