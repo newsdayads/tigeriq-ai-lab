@@ -166,7 +166,7 @@ export function codingFailureSignature(failure={}){
 
 // A new unrelated main commit cannot reset two-failure budget. Relevant target
 // blob changes or explicitly changed canonical objective/evidence can.
-export function codingMaterialSourceRevision({objective='',paths=[],sourceBlobs={}}={}){
+export function codingMaterialSourceRevision({objective='',canonicalWorkOrderId='',materialSpecRevision='',paths=[],sourceBlobs={}}={}){
   const selected=[...new Set((Array.isArray(paths)?paths:[]).map(string))].sort();
   if(!selected.length||selected.length>8||selected.some(p=>!safePath(p)))throw Error('CODING_MATERIAL_PATHS_INVALID');
   const blobs=selected.map(path=>{
@@ -175,5 +175,12 @@ export function codingMaterialSourceRevision({objective='',paths=[],sourceBlobs=
     if(sha!==null&&!/^[a-f0-9]{40}$/i.test(String(sha)))throw Error('CODING_MATERIAL_BLOB_INVALID:'+path);
     return [path,sha===null?null:String(sha).toLowerCase()];
   });
-  return createHash('sha256').update(JSON.stringify({objective:string(objective),blobs})).digest('hex');
+  const workOrder=string(canonicalWorkOrderId);
+  if(workOrder&&!/^[0-9]{1,12}$/.test(workOrder))throw Error('CODING_CANONICAL_WORK_ORDER_INVALID');
+  const revision=string(materialSpecRevision);
+  if(revision&&!/^[a-zA-Z0-9._-]{1,80}$/.test(revision))throw Error('CODING_MATERIAL_SPEC_REVISION_INVALID');
+  // Generated "retry 1/2", "retry 2/2" and changing dispatch metadata
+  // are NOT new acceptance input for the same canonical Work Order.
+  const identity=workOrder?'GH-ISSUE-'+workOrder:string(objective);
+  return createHash('sha256').update(JSON.stringify({objective:identity,specRevision:revision||null,blobs})).digest('hex');
 }
