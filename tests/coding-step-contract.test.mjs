@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingUnverifiedLegacyHistoryDecision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 const root='apps/dexcam-personal';
 const job={
@@ -299,4 +299,27 @@ test('Coding Lane atomic replay guard receives all same-revision step IDs',async
   const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(source,/const same=history\.filter\(h=>h\.workOrderId===workOrderId&&h\.sourceRevision===packet\.source_revision\)/);
   assert.doesNotMatch(source,/const same=history\.filter\(h=>h\.workOrderId===workOrderId&&h\.stepId===packet\.step_id/);
+});
+
+
+test('live-observed pre-canary retry failures require evidence before fresh canary dispatch',()=>{
+  const rows=[
+    {workOrderId:'4625',status:'blocked'},
+    {workOrderId:'4625',status:'failed'},
+    {workOrderId:'4870',status:'failed'}
+  ];
+  const blocked=codingUnverifiedLegacyHistoryDecision({workOrderId:'4625',legacyRows:rows});
+  assert.deepEqual(blocked,{allow:false,code:'CODING_PRE_CANARY_HISTORY_UNVERIFIED',legacyCount:2});
+  assert.equal(codingUnverifiedLegacyHistoryDecision({workOrderId:'4902',legacyRows:rows}).allow,true);
+  assert.equal(codingUnverifiedLegacyHistoryDecision({workOrderId:'4625',legacyRows:[{workOrderId:'4625',status:'cancelled'}]}).allow,true);
+  assert.equal(codingUnverifiedLegacyHistoryDecision({workOrderId:'',legacyRows:rows}).allow,false);
+  assert.equal(codingUnverifiedLegacyHistoryDecision({workOrderId:'4625',legacyRows:null}).allow,false);
+});
+test('legacy-historical retry gate is wired before creating the next Coding job',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/codingUnverifiedLegacyHistoryDecision\(\{workOrderId,legacyRows\}\)/);
+  const legacyPos=source.indexOf('const legacy=codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows})');
+  const persistPos=source.indexOf('if(replayGuard)await replayGuard(db);');
+  assert.ok(legacyPos>=0&&persistPos>legacyPos);
 });
