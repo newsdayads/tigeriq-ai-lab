@@ -120,6 +120,21 @@ export function inspectR06ConsumerLock(lock){
       rea.version!=='6.4.0'||rea.integrity!==REA_SRI||
       !resolvedOk(rea.resolved,'rea-agents',rea.version))
     return report('REJECTED','REA_ARTIFACT_PIN_MISMATCH');
+  // This check is deliberately for a dedicated, single-package REA consumer.
+  // Extra root requests or lifecycle/workspace hints can change what npm installs
+  // without changing the 35 pinned REA edges. Keep this a shape check, not approval.
+  const rootMapEmptyOrAbsent=key=>!own(root,key)||
+    (rec(root[key])&&Object.keys(root[key]).length===0);
+  const rootListEmptyOrAbsent=key=>!own(root,key)||
+    (Array.isArray(root[key])&&root[key].length===0);
+  if(Object.keys(root.dependencies).length!==1||
+      ['devDependencies','optionalDependencies','peerDependencies','scripts']
+        .some(key=>!rootMapEmptyOrAbsent(key))||
+      ['workspaces','bundleDependencies','bundledDependencies']
+        .some(key=>!rootListEmptyOrAbsent(key))||
+      (own(root,'hasInstallScript')&&root.hasInstallScript!==false)||
+      (own(root,'gypfile')&&root.gypfile!==false))
+    return report('REJECTED','CONSUMER_ROOT_SCOPE_DRIFT');
   if(!rec(rea.dependencies)||pairs(rea.dependencies).length!==35||
       pairs(DIRECT).some(([name,v])=>rea.dependencies[name]!==v))
     return report('REJECTED','REA_DIRECT_DEPENDENCIES_MISMATCH');
