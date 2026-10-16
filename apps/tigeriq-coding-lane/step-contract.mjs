@@ -121,6 +121,20 @@ export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision
   return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
 }
 
+// Old jobs without a signed step packet cannot be classified as a clean
+// retry history. In particular, a legacy failed/blocked job is not permission
+// to start an equivalent P0 canary job on the same Issue.
+export function codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows=[]}={}){
+  const key=string(workOrderId);
+  if(!key)return {allow:false,code:'CODING_LEGACY_WORK_ORDER_UNVERIFIED'};
+  if(!Array.isArray(legacyRows))return {allow:false,code:'CODING_LEGACY_HISTORY_UNVERIFIED'};
+  const unresolved=legacyRows.filter(row=>
+    string(row.workOrderId)===key&&
+    ['queued','running','review','waiting_ci','waiting_resource','failed','blocked','done'].includes(string(row.status)));
+  if(unresolved.length)return {allow:false,code:'CODING_PRE_CANARY_HISTORY_UNVERIFIED',legacyCount:unresolved.length};
+  return {allow:true,code:'CODING_LEGACY_HISTORY_CLEAR'};
+}
+
 export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
   if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
   const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{
