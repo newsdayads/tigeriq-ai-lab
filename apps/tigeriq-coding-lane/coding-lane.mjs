@@ -1672,7 +1672,7 @@ async function claimJob(){
   const c=await pool.connect();
   try{
     await c.query('begin');
-    const activeRows=(await c.query("select paths from tigeriq_coding_jobs where status in ('running','review','waiting_ci')")).rows||[];
+    const activeRows=(await c.query("select paths from tigeriq_coding_jobs where status in ('running','review','waiting_ci','waiting_owner')")).rows||[];
     const candidates=(await c.query("select * from tigeriq_coding_jobs where status='queued' or (status='waiting_resource' and coalesce(next_attempt_at,now())<=now()) order by case when status='waiting_resource' then 0 else 1 end,created_at for update skip locked limit 20")).rows||[];
     const j=candidates.find(candidate=>!activeRows.some(active=>codingPathsOverlap(candidate.paths,active.paths)));
     if(!j){await c.query('commit');return null}
@@ -1883,6 +1883,32 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
 }
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if(codingP0CanaryApplies(canonicalObjective)){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');const reviewSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(packet.deliverable_type)});assertCodingSkillProof(packet.skill_refs,reviewSkills);prompt+='\n'+codingRolePrompt({role:'reviewer',packet,skillContext:reviewSkills.contextBlock,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
+
+ // A technically verified draft is NOT a failed job. A separate held status
+ // preserves the Owner release gate and prevents the queue from re-dispatching
+ // the identical Work Order just because automatic merge is disabled.
+ export function codingVerifiedCanaryOwnerHandoff({canary=false,merge={},gates=null,productAcceptance=null,review=null,ownerWaiver=null,headSha=''}={}){
+   if(!canary){
+     const merged=merge?.merged===true;
+     return {jobStatus:merged?'done':'blocked',objectiveStatus:merged?'completed':'blocked',
+       code:merged?'CODING_LEGACY_MERGED':'CODING_LEGACY_MERGE_BLOCKED',
+       summary:merged?'Merged PR #{PR}':'PR #{PR} ready but merge blocked: '+String(merge?.message||'unknown').slice(0,500)};
+   }
+   if(merge?.merged)throw Error('CODING_CANARY_OWNER_RELEASE_GATE_BYPASSED');
+   const sha=String(headSha||'').toLowerCase();
+   if(!/^[a-f0-9]{40}$/.test(sha)||String(gates?.sha||'').toLowerCase()!==sha)
+     throw Error('CODING_CANARY_HANDOFF_HEAD_UNVERIFIED');
+   if(productAcceptance?.pass!==true||
+      !['CODING_PRODUCT_GATE_VERIFIED','CODING_NON_PRODUCT_STEP_STRUCTURAL_ONLY'].includes(productAcceptance?.code))
+     throw Error('CODING_CANARY_HANDOFF_PRODUCT_UNVERIFIED');
+   if(!ownerWaiver&&review?.decision!=='approve')
+     throw Error('CODING_CANARY_HANDOFF_REVIEW_UNVERIFIED');
+   const waiver=Boolean(ownerWaiver);
+   return {jobStatus:'waiting_owner',objectiveStatus:'waiting_owner',
+     code:'CODING_CANARY_VERIFIED_AWAITING_OWNER_RELEASE',
+     sourceHeadSha:sha,reviewMode:waiver?'OWNER_WAIVED_NOT_INDEPENDENT_PASS':'INDEPENDENT_APPROVED',
+     summary:'PR #{PR} technically verified at '+sha+'; waiting for Owner release authorization'};
+ }
 async function runJob(j){
   await refreshCoreResourceHealth();
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
@@ -2073,9 +2099,10 @@ async function runJob(j){
       merge=await mergePr(pr.number,approvedHead,j.title,targetRepository);
     }catch(e){merge={merged:false,message:String(e.message||e)}}
   }
-  const status=merge?.merged?'done':'blocked';
-  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,productAcceptance,merge})]);
-  await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,merge?.merged?'completed':'blocked',merge?.merged?`Merged PR #${pr.number}`:`PR #${pr.number} ready but merge blocked: ${String(merge?.message||'unknown').slice(0,500)}`]);
+  const handoff=codingVerifiedCanaryOwnerHandoff({canary,merge,gates,productAcceptance,review,ownerWaiver,headSha:finalSha});
+  const status=handoff.jobStatus;
+  await pool.query("update tigeriq_coding_jobs set status=$2,head_sha=$3,result=$4,completed_at=now(),next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null where id=$1",[j.id,status,finalSha,JSON.stringify({summary:gen.summary,prNumber:pr.number,branch,gates,review,productAcceptance,merge,ownerHandoff:handoff})]);
+  await pool.query("update tigeriq_coding_objectives set status=$2,summary=$3,updated_at=now() where id=$1",[j.objective_id,handoff.objectiveStatus,handoff.summary.replace('{PR}',String(pr.number))]);
   return {prNumber:pr.number,branch,merge};
 }
 async function failJob(j,e){
