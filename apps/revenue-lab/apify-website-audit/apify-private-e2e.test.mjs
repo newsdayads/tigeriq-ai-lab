@@ -8,6 +8,8 @@ const env = {
   APIFY_ACTOR_VERSION: '0.1',
   APIFY_BUILD_TAG: 'latest',
   APIFY_E2E_EXECUTE: 'OWNER_APPROVED_PRIVATE_TEST',
+  // Synthetic input, not a real spend authorization.
+  APIFY_E2E_MAX_TOTAL_CHARGE_USD: '0.05',
 };
 const noSleep = async () => {};
 
@@ -65,6 +67,9 @@ test('success path uses finalized build/run usage after settle refetch', async (
   assert.ok(calls.some(call => call.url.endsWith('/actor-builds/build1')));
   assert.ok(calls.some(call => call.url.endsWith('/actor-runs/run1')));
   assert.equal(calls.filter(call => call.options.method === 'POST').length, 2);
+  const actorRunPost = calls.find(call => call.url.includes('/actors/actor123/runs?'));
+  assert.ok(actorRunPost, 'must submit a run request with a bounded cost envelope');
+  assert.equal(new URL(actorRunPost.url).searchParams.get('maxTotalChargeUsd'), '0.05');
   for (const call of calls) {
     assert.ok(!call.url.includes(env.APIFY_TOKEN));
     assert.equal(call.options.headers.authorization, 'Bearer ' + env.APIFY_TOKEN);
@@ -316,6 +321,23 @@ test('execution gate is required before any API request', async () => {
     error => error instanceof ApifyE2EError && error.code === 'EXECUTION_GATE_REQUIRED',
   );
   assert.equal(called, false);
+
+  // Cost allowance is NOT inferred from waitForFinish/timeout or a fixture
+  // execution flag; the gate runs before any potentially billable build POST.
+  for (const budget of [undefined, '', '0', '0.000', '-1', '1.01',
+    'NaN', 'Infinity', '2e1', '0.00001', '1.001', '00.05']) {
+    called = false;
+    const candidate = {...env};
+    if (budget === undefined) delete candidate.APIFY_E2E_MAX_TOTAL_CHARGE_USD;
+    else candidate.APIFY_E2E_MAX_TOTAL_CHARGE_USD = budget;
+    await assert.rejects(
+      () => runPrivateApifyE2E({env:candidate,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError &&
+        error.code === 'EXPLICIT_COST_ENVELOPE_REQUIRED',
+      'must fail closed for invalid budget ' + String(budget),
+    );
+    assert.equal(called, false, 'invalid cost envelope must cause zero API requests');
+  }
 });
 
 test('production API origin remains pinned despite hostile env override', async () => {
