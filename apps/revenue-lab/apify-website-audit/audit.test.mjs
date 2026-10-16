@@ -241,6 +241,32 @@ test('IANA documentation, transition and reserved IPs are not publicly auditable
   }
 });
 
+
+test('IPv6 fe00 reserved, link-local and deprecated fec0 site-local never pass public-target screening', async () => {
+  // IANA IPv6 Address Space: fe00::/9 reserved, fe80::/10 link-local,
+  // fec0::/10 deprecated site-local (RFC 3879). Include both range edges.
+  const nonGlobal = [
+    'fe00::1', 'fe7f::1', 'fe80::1', 'febf::1',
+    'fec0::1', 'fec0:0000::7', 'fedf::1', 'feff::1',
+  ];
+  for (const address of nonGlobal) {
+    assert.equal(isBlockedAddress(address), true,
+      'non-global IPv6 was accepted: ' + address);
+  }
+  for (const address of ['fe00::1', 'fec0::1', 'feff::1']) {
+    await assert.rejects(
+      () => resolveSafeTarget('https://public-audit.invalid/', {
+        lookupFn: async () => [
+          { address: '2606:4700:4700::1111', family: 6 },
+          { address, family: 6 },
+        ],
+      }),
+      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
+      'mixed public + reserved IPv6 DNS answer must fail: ' + address,
+    );
+  }
+});
+
 test('mixed DNS answers fail closed if any resolved address is IANA reserved', async () => {
   for (const address of ['192.0.2.4', '198.51.100.2', '203.0.113.42', '2001:db8::1', '::ffff:7f00:1', '64:ff9b::7f00:1']) {
     await assert.rejects(
