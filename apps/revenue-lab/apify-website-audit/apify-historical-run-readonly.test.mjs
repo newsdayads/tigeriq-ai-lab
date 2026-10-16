@@ -262,3 +262,16 @@ test('R04 exact Owner canary URL passes without leaking URL or secret in evidenc
   assert.equal(m.calls.length,4);
   assert.doesNotMatch(JSON.stringify(evidence),/example\.com|SENSITIVE_SENTINEL_TOKEN/);
 });
+
+test('R04 streaming oversized authenticated Actor JSON is stopped before full buffering',async()=>{
+  let chunks=0,cancelled=0;
+  const stream=new ReadableStream({
+    pull(controller){chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;}
+  });
+  await rejected('RESPONSE_TOO_LARGE',{
+    responses:{actor:new Response(stream,{headers:{'content-type':'application/json'}})}
+  });
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'oversized JSON must stop during streaming');
+});

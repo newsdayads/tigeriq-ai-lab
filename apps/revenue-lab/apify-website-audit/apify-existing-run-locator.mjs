@@ -1,6 +1,7 @@
 // GH-2293 R04: discover the Owner's existing Oct-08 Apify canary, GET-only.
 // Never start, build, publish, or pay for an Actor; no credential in URL/logs.
 import { inspectHistoricalRun, validApifyInstant } from './apify-historical-run-readonly.mjs';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API = 'https://api.apify.com/v2';
 const HANDLE = 'tigeriq~tigeriq-ai-lab';
@@ -47,8 +48,7 @@ async function getJson(fetchFn, url, token) {
     fail('JSON_CONTENT_TYPE_REQUIRED');
   let raw, body;
   try {
-    raw = await res.text();
-    if (raw.length > 131072) fail('RESPONSE_TOO_LARGE');
+    raw = await readBoundedApifyJsonText(res, fail);
     body = JSON.parse(raw);
   } catch (e) {
     if (e instanceof RunLocatorError) throw e;

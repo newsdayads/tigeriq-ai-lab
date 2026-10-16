@@ -112,3 +112,17 @@ test('R04 full locator refuses actor/run confusion on exact recheck',async()=>{
  await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),e=>e.code==='RUN_IDENTITY_MISMATCH');
  assert.equal(m.calls.length,4);
 });
+
+test('R04 locator aborts streaming oversized Actor JSON before full buffering',async()=>{
+  let chunks=0,cancelled=0;
+  const stream=new ReadableStream({
+    pull(controller){chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;}
+  });
+  const calls=await refuses('RESPONSE_TOO_LARGE',{
+    responses:{actor:new Response(stream,{headers:{'content-type':'application/json'}})}
+  });
+  assert.equal(calls.length,1);
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'locator response must stop reading at 128KiB');
+});

@@ -1,6 +1,7 @@
 // GH-2293 R04: inspect one OWNER-NAMED EXISTING private Apify run.
 // Pure GET-only evidence, with no Actor execution, build, run-sync, mutation or billing claim.
 import { fileURLToPath } from 'node:url';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API = 'https://api.apify.com/v2';
 const OPAQUE = /^[A-Za-z0-9]{6,64}$/;
@@ -57,8 +58,7 @@ async function readJson(fetchFn, url, token) {
   if (!ct.toLowerCase().includes('application/json')) reject('JSON_CONTENT_TYPE_REQUIRED');
   let body;
   try {
-    const raw = await response.text();
-    if (raw.length > 131072) reject('RESPONSE_TOO_LARGE');
+    const raw = await readBoundedApifyJsonText(response, reject);
     body = JSON.parse(raw);
   } catch (e) {
     if (e instanceof HistoricReadError) throw e;
