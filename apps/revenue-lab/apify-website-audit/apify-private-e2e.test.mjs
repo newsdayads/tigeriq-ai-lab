@@ -492,3 +492,26 @@ test('successful synthetic E2E evidence explicitly binds run to the newly create
   assert.equal(evidence.run.buildId, evidence.build.id);
   assert.equal(evidence.run.buildId, 'build1');
 });
+
+test('intermediate polling refuses build drift even if a later poll could recover', async () => {
+  const normal = successFetch();
+  let runPolls = 0;
+  const fetchFn = (url, options) => {
+    const u = String(url);
+    if (u.includes('/actors/actor123/runs?'))
+      return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
+    if (u.includes('/actor-runs/run1?waitForFinish=60')) {
+      runPolls += 1;
+      return response(200, { data: { id: 'run1',
+        buildId: runPolls === 1 ? 'other-build' : 'build1',
+        status: runPolls === 1 ? 'RUNNING' : 'SUCCEEDED' } });
+    }
+    return normal.fetchFn(url, options);
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+  );
+  assert.equal(runPolls, 1, 'wrong build must stop before any subsequent polling');
+  assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
+});
