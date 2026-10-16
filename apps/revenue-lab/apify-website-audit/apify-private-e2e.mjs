@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
 
@@ -47,7 +48,8 @@ async function requestJson(fetchFn, url, { token, method = 'GET', body } = {}) {
   try {
     response = await fetchFn(url, {
       method,
-      redirect: 'follow',
+      // Never follow an authenticated 3xx hop (especially POST redirects).
+      redirect: 'error',
       headers: {
         accept: 'application/json',
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -59,12 +61,28 @@ async function requestJson(fetchFn, url, { token, method = 'GET', body } = {}) {
     throw new ApifyE2EError('NETWORK_FAILURE', 'Apify API request failed.', redactText(error?.message, [token]));
   }
 
-  const raw = await response.text();
-  let parsed = null;
+  if (response.status >= 300 && response.status < 400) {
+    throw new ApifyE2EError('APIFY_REDIRECT_BLOCKED',
+      'Authenticated Apify API redirect was not allowed.');
+  }
+  if (response.ok) {
+    const contentType = String(response.headers?.get?.('content-type') || '').trim();
+    if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+      throw new ApifyE2EError('JSON_CONTENT_TYPE_REQUIRED',
+        'Authenticated Apify API response must declare JSON.');
+    }
+  }
+
+  let raw, parsed;
   try {
+    raw = await readBoundedApifyJsonText(response, code => {
+      throw new ApifyE2EError(code, 'Authenticated Apify API JSON exceeds the response limit.');
+    });
     parsed = raw ? JSON.parse(raw) : null;
-  } catch {
-    parsed = raw;
+  } catch (error) {
+    if (error instanceof ApifyE2EError) throw error;
+    throw new ApifyE2EError('APIFY_JSON_INVALID',
+      'Authenticated Apify API response is not valid bounded JSON.');
   }
 
   if (!response.ok) {
