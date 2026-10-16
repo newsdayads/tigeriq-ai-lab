@@ -55,3 +55,40 @@ test('NV07 canonical case-only duplicate IDs are rejected before acceptance',()=
  assert.equal(workOrderChecklistSteps(body).steps.length,2);
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S4a',requireAll:false}).reason,'DUPLICATE_STEP_ID');
 });
+
+test('NV07 S6 cannot be completed by a forged checked checkbox inside a fenced example',()=>{
+ for(const [open,close] of [['```md','```'],['~~~markdown','~~~']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',open,
+   '- [x] S6 — illustrative only [Receipt]('+url+')',close,
+   '- [ ] S6 — actual pending GitHub to Core receipt','## ACCEPTANCE'].join('\\n');
+  const parsed=workOrderChecklistSteps(body);
+  assert.deepEqual(parsed.steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,
+   'STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+test('NV07 indented Markdown code may not impersonate canonical S6 evidence',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '    - [x] S6 — code sample [Receipt]('+url+')',
+  '- [ ] S6 — real protected Core step','## ACCEPTANCE'].join('\\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6']);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('fenced pseudo-checklist heading before real checklist is not a Work Order',()=>{
+ const body=['```md','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — fake checked [Receipt]('+url+')','```',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — only authoritative row',
+  '## ACCEPTANCE'].join('\\n');
+ const parsed=workOrderChecklistSteps(body);
+ assert.equal(parsed.found,true);
+ assert.deepEqual(parsed.steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('long tilde fenced code cannot be closed by a shorter marker',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','~~~~mjs',
+  '- [x] S6 — fake code [Receipt]('+url+')','~~~',
+  '- [x] S7 — still code [Receipt]('+url+')','~~~~',
+  '- [ ] S6 — pending','- [ ] S7 — pending','## ACCEPTANCE'].join('\\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6','S7']);
+ assert.equal(workOrderChecklistGate(card(body)).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
