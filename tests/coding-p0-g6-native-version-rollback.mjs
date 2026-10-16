@@ -74,8 +74,10 @@ try{
  check('ROLLBACK_NATIVE_HEALTH_RESTORED',(await boot(known)).ok===true);
  const a=(await db.query('select status from tigeriq_coding_objectives where id=$1',[id])).rows;
  check('OWNER_HOLD_DURABLE',a.length===1&&a[0].status==='waiting_owner');
- const jobs=(await db.query('select count(*)::int n from tigeriq_coding_jobs')).rows[0].n;
- check('NO_NATIVE_WORKER_DISPATCH',jobs===0);
+ const jobs=(await db.query('select id,title from tigeriq_coding_jobs')).rows;
+ check('ONLY_BUILTIN_STALE_WATCHDOG_PRESENT',jobs.length===1&&
+   jobs[0].id==='CODE-CANARY-A8-2068'&&jobs[0].title==='Canary A8 stale-running watchdog');
+ check('NO_NATIVE_WORKER_DISPATCH',jobs.every(row=>row.id==='CODE-CANARY-A8-2068'));
  rec.status='NATIVE_ISOLATED_VERSION_ROLLBACK_VERIFIED';
 }catch(e){rec.error=String(e.message||e);process.exitCode=1}
 finally{
