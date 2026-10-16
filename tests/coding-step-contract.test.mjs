@@ -172,7 +172,7 @@ test('domain acceptance reads real exact-head GitHub check runs, not generic gat
   const {readFileSync}=await import('node:fs');
   const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(source,/commits\/\$\{encodeURIComponent\(gates\.sha\)\}\/check-runs\?per_page=100/);
-  assert.match(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:domainCheckReceipt\.check_runs\}\)/);
+  assert.match(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:domainCheckReceipt\.check_runs,sourceHeadSha:gates\.sha,repositoryFullName:targetRepository\.fullName\}\)/);
   assert.doesNotMatch(source,/verifyCodingFunctionalChecks\(\{packet:stepPacket,checkRuns:gates\.states\}\)/);
 });
 
@@ -347,4 +347,52 @@ test('canary lane pins revision to canonical allowed files, never model-selected
   const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(src,/codingSourceRevisionPaths\(\{canonicalPaths:canonical,proposedPaths:paths\}\)/);
   assert.match(src,/paths:materialPaths,sourceBlobs/);
+});
+
+test('G6 real domain receipts require exact SHA, provenance and every duplicate to be successful',()=>{
+  const sha='a'.repeat(40);
+  const packet=make();
+  const check={
+    name:'Android Build Verify',id:9001,head_sha:sha,
+    app:{slug:'github-actions'},status:'completed',conclusion:'success',
+    details_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/123/job/9001'
+  };
+  const verify=checkRuns=>verifyCodingFunctionalChecks({
+    packet,checkRuns,sourceHeadSha:sha,repositoryFullName:'newsdayads/tigeriq-ai-lab'
+  });
+  assert.equal(verify([check]).pass,true);
+  assert.equal(verify([check,{...check,id:9002,details_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/123/job/9002'}]).pass,true);
+  for(const invalid of [
+    {...check,head_sha:'b'.repeat(40)},
+    {...check,head_sha:''},
+    {...check,id:null},
+    {...check,app:{slug:'unknown'}},
+    {...check,details_url:'https://evil.invalid/actions/runs/123/job/9001'},
+    {...check,details_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/123/job/9001-extra'},
+    {...check,status:'in_progress'},
+    {...check,conclusion:'failure'},
+    {...check,conclusion:null},
+  ]){
+    const verdict=verify([check,invalid]);
+    assert.equal(verdict.pass,false);
+    assert.equal(verdict.code,'CODING_FUNCTIONAL_CHECKS_UNVERIFIED');
+    assert.deepEqual(verdict.missing,['Android Build Verify']);
+  }
+  assert.equal(verify([]).pass,false);
+  assert.equal(verify(null).code,'CODING_FUNCTIONAL_CHECKS_UNVERIFIED');
+  assert.equal(verifyCodingFunctionalChecks({
+    packet,checkRuns:[check],sourceHeadSha:sha,repositoryFullName:'other/repo'
+  }).pass,false);
+  // Contract-only tests remain independent from GitHub connectivity.
+  assert.equal(verifyCodingFunctionalChecks({packet,checkRuns:[
+    {name:'Android Build Verify',status:'completed',conclusion:'success'}
+  ]}).pass,true);
+});
+
+test('G6 live caller rejects incomplete check pages and binds exact repository + SHA',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/domainCheckReceipt\.total_count!==domainCheckReceipt\.check_runs\.length/);
+  assert.match(source,/sourceHeadSha:gates\.sha,repositoryFullName:targetRepository\.fullName/);
+  assert.match(source,/domainCheckReceipt\.check_runs\.length>=100/);
 });
