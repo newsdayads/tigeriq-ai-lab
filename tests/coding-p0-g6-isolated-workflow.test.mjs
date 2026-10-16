@@ -265,3 +265,28 @@ test('G6 Owner waiver requires source policy and exact-SHA GitHub receipt, never
   // Waiver authorizes only the optional review route, NOT product acceptance.
   await assert.rejects(verifyCodingCanaryProductGate({...g6Fixture(),evaluateProduct:undefined}),/ACCEPTOR_UNAVAILABLE/);
 });
+
+test('G6 delegates to real G5 policy with authenticated provider-shaped evidence (isolated transport mock)',async()=>{
+  const {evaluateProductAcceptance}=await import('../apps/tigeriq-coding-lane/product-acceptance.mjs');
+  const args=g6Fixture();
+  const accepted=await verifyCodingCanaryProductGate({...args,evaluateProduct:evaluateProductAcceptance});
+  assert.equal(accepted.code,'CODING_PRODUCT_GATE_VERIFIED');
+  assert.equal(accepted.productReceipt.code,'PRODUCT_ACCEPTANCE_PASSED');
+  assert.deepEqual(accepted.verifiedCheckRunIds,[911]);
+
+  // A direct policy call without the G6-verified repository or check-run
+  // provenance must reject this product; a human/AI cannot assert success.
+  const bare=evaluateProductAcceptance({
+    productType:'android',sourceHeadSha:head,changes,
+    checkRuns:[{name:'Android Build Verify',head_sha:head,status:'completed',conclusion:'success'}]
+  });
+  assert.equal(bare.pass,false);
+  assert.equal(bare.status,'BLOCKED');
+  assert.ok(bare.reasons.some(x=>x.includes('CHECK_PROVENANCE_UNVERIFIED')));
+
+  const rejected=await verifyCodingCanaryProductGate({
+    ...args,evaluateProduct:evaluateProductAcceptance,
+    fetchEvidence:async()=>receipt([{...goodCheck,head_sha:'b'.repeat(40)}])
+  }).then(()=>null,error=>error);
+  assert.match(String(rejected?.message),/CODING_PRODUCT_PROVIDER_CHECK_UNTRUSTED/);
+});
