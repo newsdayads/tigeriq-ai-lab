@@ -268,3 +268,35 @@ test('P0 manager derives retry identity from canonical Issue, not mutable dispat
   assert.match(source,/WORK_SPEC_REVISION/);
   assert.match(source,/workOrderId=String\(sourceWorkOrder\|\|o\.id\)/);
 });
+
+
+test('changing AI-generated step_id cannot bypass an unchanged Work Order failure',()=>{
+  const revision='material-sha-same';
+  const history=[{workOrderId:'4625',stepId:'D01',sourceRevision:revision,status:'failed',failureSignature:'OUTPUT_CONTRACT_EXHAUSTED'}];
+  const renamed=repeatedCodingAttemptDecision({
+    workOrderId:'4625',stepId:'D02',sourceRevision:revision,
+    failureSignature:'OUTPUT_CONTRACT_EXHAUSTED',history
+  });
+  assert.deepEqual(renamed,{allow:false,code:'CODING_STEP_ALIAS_REPLAY_BLOCKED'});
+  // A material source change gives a different revision and permits re-planning.
+  assert.equal(repeatedCodingAttemptDecision({
+    workOrderId:'4625',stepId:'D02',sourceRevision:'material-sha-new',history
+  }).allow,true);
+  // A genuinely accepted previous step may advance to the next named step.
+  assert.equal(repeatedCodingAttemptDecision({
+    workOrderId:'4625',stepId:'D02',sourceRevision:revision,
+    history:[{...history[0],status:'accepted'}]
+  }).allow,true);
+  for(const status of ['queued','running','blocked_unaccepted','merged_unaccepted']){
+    assert.equal(repeatedCodingAttemptDecision({
+      workOrderId:'4625',stepId:'D02',sourceRevision:revision,
+      history:[{...history[0],status}]
+    }).code,'CODING_STEP_ALIAS_REPLAY_BLOCKED');
+  }
+});
+test('Coding Lane atomic replay guard receives all same-revision step IDs',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/const same=history\.filter\(h=>h\.workOrderId===workOrderId&&h\.sourceRevision===packet\.source_revision\)/);
+  assert.doesNotMatch(source,/const same=history\.filter\(h=>h\.workOrderId===workOrderId&&h\.stepId===packet\.step_id/);
+});
