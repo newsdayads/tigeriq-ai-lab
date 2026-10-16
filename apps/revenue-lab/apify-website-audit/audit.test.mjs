@@ -406,3 +406,32 @@ test('streaming HTTP early exits abort discarded response bodies', async () => {
     }
   }
 });
+
+test('DNS resolver stalls are bounded before an HTTP request can exist', async () => {
+  const failure = new Error('DNS never returned within audit timeout');
+  const deadline = new Promise((_, reject) => setTimeout(() => reject(failure), 450));
+  const timed = auditWebsite('http://dns-delay.test/', {
+    timeoutMs: 250,
+    resolveTargetFn: () => new Promise(() => {}),
+  });
+  await assert.rejects(Promise.race([timed, deadline]), error =>
+    error instanceof AuditError && error.code === 'TIMEOUT',
+  );
+});
+
+test('one timeout budget covers DNS lookup and subsequent HTTP response', async () => {
+  const started = Date.now();
+  const timed = auditWebsite(`${baseUrl}/slow`, {
+    timeoutMs: 250,
+    resolveTargetFn: async () => {
+      await new Promise(resolve => setTimeout(resolve, 230));
+      return localResolver();
+    },
+  });
+  const failure = new Error('Combined DNS + HTTP exceeded 400ms bound');
+  await assert.rejects(
+    Promise.race([timed, new Promise((_, reject) => setTimeout(() => reject(failure), 400))]),
+    error => error instanceof AuditError && error.code === 'TIMEOUT',
+  );
+  assert.ok(Date.now() - started < 400, 'Shared budget was not applied before the HTTP response');
+});
