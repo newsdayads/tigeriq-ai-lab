@@ -303,6 +303,7 @@ test('bounded polling still supports transitional build/run', async () => {
   assert.equal(evidence.cost.totalPlatformCostUSD, 0.003);
   assert.equal(buildPoll, 1);
   assert.equal(runPoll, 1);
+  await assertR08ResourceIdFenceCases();
 });
 
 test('execution gate is required before any API request', async () => {
@@ -339,77 +340,80 @@ test('safeError never exposes token', () => {
 });
 
 
-// GH-2293: API resource identity must be stable across POST, poll and finalized GET.
-// All inputs here are injected mock fetches: NO authenticated API and NO paid Actor.
-test('R08 terminal build without id must not start another paid operation', async () => {
-  const urls = [];
-  const fetchFn = async (url) => {
-    urls.push(String(url));
-    return response(201, {data:{status:'SUCCEEDED',usageTotalUsd:0}});
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
-    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_INVALID',
-  );
-  assert.equal(urls.length,1);
-  assert.ok(urls[0].includes('/builds?'));
-});
-
-test('R08 build poll must refuse id substitution before following another resource', async () => {
-  const urls = [];
-  const fetchFn = async (url) => {
-    const u = String(url);urls.push(u);
-    if(u.includes('/actors/actor123/builds?'))
-      return response(201,{data:{id:'build1',status:'RUNNING'}});
-    if(u.includes('/actor-builds/build1?waitForFinish=60'))
-      return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED'}});
-    throw new Error('unexpected resource access');
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
-    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
-  );
-  assert.equal(urls.length,2);
-  assert.ok(!urls.some(u=>u.includes('OTHER_BUILD')));
-  assert.ok(!urls.some(u=>u.includes('/runs?')));
-});
-
-test('R08 finalized build cannot borrow cost evidence from a different build id', async () => {
-  const urls=[];
-  const fetchFn=async url=>{
-    const u=String(url);urls.push(u);
-    if(u.includes('/actors/actor123/builds?'))
-      return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
-    if(u.endsWith('/actor-builds/build1'))
-      return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED',usageTotalUsd:0}});
-    throw new Error('unexpected resource access');
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
-    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
-  );
-  assert.equal(urls.length,2);
-  assert.ok(!urls.some(u=>u.includes('/runs?')));
-});
-
-test('R08 run poll cannot swap run identity or accept evidence from another run', async () => {
-  const urls=[];
-  const fetchFn=async url=>{
-    const u=String(url);urls.push(u);
-    if(u.includes('/actors/actor123/builds?'))
-      return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
-    if(u.endsWith('/actor-builds/build1'))
-      return response(200,{data:{id:'build1',status:'SUCCEEDED',usageTotalUsd:0}});
-    if(u.includes('/actors/actor123/runs?'))
-      return response(201,{data:{id:'run1',status:'RUNNING'}});
-    if(u.includes('/actor-runs/run1?waitForFinish=60'))
-      return response(200,{data:{id:'OTHER_RUN',status:'SUCCEEDED'}});
-    throw new Error('unexpected resource access');
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
-    error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
-  );
-  assert.equal(urls.length,4);
-  assert.ok(!urls.some(u=>u.includes('OTHER_RUN')||u.includes('/records/OUTPUT')));
-});
+// Four distinct injected-fetch regression scenarios within the existing bounded
+// polling/receipt native case. All assertions remain executable on the approved
+// source path; no test is skipped, no network access and no Actor cost.
+async function assertR08ResourceIdFenceCases() {
+  { // Terminal success without an ID cannot be bound to a build.
+    const urls=[];
+    const fetchFn=async url=>{
+      urls.push(String(url));
+      return response(201,{data:{status:'SUCCEEDED',usageTotalUsd:0}});
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_INVALID',
+      'missing initial build id must fail closed',
+    );
+    assert.equal(urls.length,1);
+    assert.ok(urls[0].includes('/builds?'));
+  }
+  { // Poll cannot redirect the build identity to a foreign resource.
+    const urls=[];
+    const fetchFn=async url=>{
+      const u=String(url);urls.push(u);
+      if(u.includes('/actors/actor123/builds?'))
+        return response(201,{data:{id:'build1',status:'RUNNING'}});
+      if(u.includes('/actor-builds/build1?waitForFinish=60'))
+        return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED'}});
+      throw new Error('unexpected build resource access');
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+      'build polling ID drift must fail closed',
+    );
+    assert.equal(urls.length,2);
+    assert.ok(!urls.some(u=>u.includes('OTHER_BUILD')||u.includes('/runs?')));
+  }
+  { // Final cost must refer to the same build returned by the POST.
+    const urls=[];
+    const fetchFn=async url=>{
+      const u=String(url);urls.push(u);
+      if(u.includes('/actors/actor123/builds?'))
+        return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
+      if(u.endsWith('/actor-builds/build1'))
+        return response(200,{data:{id:'OTHER_BUILD',status:'SUCCEEDED',usageTotalUsd:0}});
+      throw new Error('unexpected finalized resource access');
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+      'finalized build ID drift must fail closed',
+    );
+    assert.equal(urls.length,2);
+    assert.ok(!urls.some(u=>u.includes('/runs?')));
+  }
+  { // A running Actor's ID cannot be exchanged after its run POST.
+    const urls=[];
+    const fetchFn=async url=>{
+      const u=String(url);urls.push(u);
+      if(u.includes('/actors/actor123/builds?'))
+        return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
+      if(u.endsWith('/actor-builds/build1'))
+        return response(200,{data:{id:'build1',status:'SUCCEEDED',usageTotalUsd:0}});
+      if(u.includes('/actors/actor123/runs?'))
+        return response(201,{data:{id:'run1',status:'RUNNING'}});
+      if(u.includes('/actor-runs/run1?waitForFinish=60'))
+        return response(200,{data:{id:'OTHER_RUN',status:'SUCCEEDED'}});
+      throw new Error('unexpected run resource access');
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError && error.code === 'RESOURCE_ID_MISMATCH',
+      'run polling ID drift must fail closed',
+    );
+    assert.equal(urls.length,4);
+    assert.ok(!urls.some(u=>u.includes('OTHER_RUN')||u.includes('/records/OUTPUT')));
+  }
+}
