@@ -1,0 +1,50 @@
+import { expect, it } from 'vitest';
+// @ts-ignore Pure ESM acceptance gate intentionally has no TS declarations.
+import { workOrderChecklistGate, workOrderChecklistSteps } from '../apps/tigeriq-core/work-order-checklist-hard-gate.mjs';
+
+const proof='https://github.com/newsdayads/tigeriq-ai-lab/issues/4783#issuecomment-6199127865';
+const issue=(body: string): any=>({number:4783,state:'open',body});
+const view=(body:string)=>workOrderChecklistSteps(body).steps.map((x:any)=>({id:x.id,checked:x.checked}));
+const tick=String.fromCharCode(96).repeat(3);
+
+it('NV07 excludes checked S6 examples in backtick and tilde fenced code',()=>{
+ for(const [opener,closer] of [[tick+'md',tick],['~~~markdown','~~~']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',opener,
+   '- [x] S6 — FORGED evidence [Receipt]('+proof+')',closer,
+   '- [ ] S6 — actual protected write still pending','## ACCEPTANCE'].join('\n');
+  expect(view(body)).toEqual([{id:'S6',checked:false}]);
+  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+   .toBe('STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+it('NV07 does not parse indented code as checked S6 Work Order progress',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '    - [x] S6 — fake example [Receipt]('+proof+')',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+  .toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 skips an entire fabricated checklist heading inside fenced Markdown',()=>{
+ const body=[tick+'md','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — fake [Receipt]('+proof+')',tick,
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — canonical pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+  .toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('long tilde fence requires at least the same number of closing tildes',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','~~~~mjs',
+  '- [x] S6 — fake in code [Receipt]('+proof+')','~~~',
+  '- [x] S7 — still code [Receipt]('+proof+')','~~~~',
+  '- [ ] S6 — pending','- [ ] S7 — pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false},{id:'S7',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{requireAll:true}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 real checked S5c remains linked while real S6 stays unaccepted',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — source gate previously accepted [Receipt]('+proof+')',
+  '- [ ] S6 — protected write pending','- [ ] S7 — runtime pending','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});
