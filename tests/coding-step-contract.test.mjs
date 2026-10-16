@@ -210,4 +210,5 @@ test('canary is allowlisted per source Issue; missing issue scope fails closed',
   assert.match(source,/const canary=codingP0CanaryApplies\(canonicalObjective\)/);
   assert.match(source,/draft:canary/);
   assert.match(source,/if\(AUTO_MERGE&&!canary\)/);
+  assert.match(source,/if\(storedCanaryPacket&&!canary\)throw Object\.assign\(new Error\('CODING_STEP_PACKET_OUTSIDE_CANARY_SCOPE'\)/);
 });
