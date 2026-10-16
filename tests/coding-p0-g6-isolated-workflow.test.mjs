@@ -141,7 +141,7 @@ test('G6 source lifecycle runs re-review after repair and invalidates approval o
 import {createHash} from 'node:crypto';
 const blobSha=content=>{
   const bytes=Buffer.from(content,'utf8');
-  return createHash('sha1').update(Buffer.concat([Buffer.from('blob '+bytes.length+'\\0'),bytes])).digest('hex');
+  return createHash('sha1').update(Buffer.concat([Buffer.from('blob '+bytes.length+'\0'),bytes])).digest('hex');
 };
 const goodCheck={id:911,head_sha:head,...checks[0],app:{slug:'github-actions'},
   details_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/42/job/91'};

@@ -197,7 +197,7 @@ export async function verifyCodingCanaryProductGate({
       throw Error('CODING_PRODUCT_SOURCE_BYTES_UNVERIFIED:'+path);
     const bytes=Buffer.from(data.content,'utf8');
     const actual=createHash('sha1').update(Buffer.concat([
-      Buffer.from('blob '+bytes.length+'\\0'),bytes
+      Buffer.from('blob '+bytes.length+'\0'),bytes
     ])).digest('hex');
     if(actual!==string(data.sha).toLowerCase())
       throw Error('CODING_PRODUCT_SOURCE_GIT_BLOB_MISMATCH:'+path);
