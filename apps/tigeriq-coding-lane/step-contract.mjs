@@ -217,7 +217,7 @@ export async function verifyCodingCanaryProductGate({
   // G5 is a pure product-quality policy. Input receipts are strictly GitHub
   // check runs just re-fetched by G6; no AI-provided receipts or waiver flags.
   const verdict=await evaluateProduct({
-    productType:kind,sourceHeadSha:source,changes,checkRuns:trusted,receipts:[]
+    productType:kind,sourceHeadSha:source,repositoryFullName:string(repositoryFullName),changes,checkRuns:trusted,receipts:[]
   });
   if(verdict?.pass!==true||verdict?.status!=='ACCEPTED'||verdict.sourceHeadSha!==source)
     throw Object.assign(new Error('CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED'),{
