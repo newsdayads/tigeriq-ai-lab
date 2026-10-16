@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectHistoricalRun, historicalRunConfig, HistoricReadError } from './apify-historical-run-readonly.mjs';
+import { inspectHistoricalRun, historicalRunConfig, HistoricReadError, validApifyInstant } from './apify-historical-run-readonly.mjs';
 
 const env = {
   APIFY_READONLY_EXECUTE: 'OWNER_APPROVED_EXISTING_RUN_READ',
@@ -114,6 +114,22 @@ test('R04 date-time must include explicit timezone; no host-local day ambiguity'
   const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),finishedAt:'2026-10-08T03:00:02'}});
   assert.equal(calls.length,2);
 });
+test('R04 rejects impossible calendar dates and overflowing 24-hour timestamps', async()=>{
+  for (const value of [
+    '2026-02-30T03:00:00.000Z', '2026-04-31T03:00:00Z',
+    '2026-10-08T24:00:00Z', '2026-02-29T00:00:00Z',
+    '1900-02-29T00:00:00Z', '2026-10-08T01:00:00+24:00',
+  ]) {
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2,value);
+  }
+});
+test('R04 exact ISO timestamp accepts leap days, Vietnam offset and fractions',()=>{
+  assert.equal(validApifyInstant('2024-02-29T23:59:59Z'),true);
+  assert.equal(validApifyInstant('2000-02-29T00:00:00Z'),true);
+  assert.equal(validApifyInstant('2026-10-08T10:00:00.123+07:00'),true);
+});
+
 test('R04 explicit +07:00 offset is valid for the Owner Oct-08 canary',async()=>{
   const local={...run(),startedAt:'2026-10-08T10:00:00+07:00',finishedAt:'2026-10-08T10:00:02+07:00'};
   const m=mocked({first:local,final:local});
