@@ -265,6 +265,10 @@ export function annotatePortfolioRows(rows = [], issues = []) {
       row.workPackageId = 'mobile-v0-' + currentMobileMinor;
       row.workPackageName = 'Live Worker v0.' + currentMobileMinor;
       row.workPackageOrder = 1000 - currentMobileMinor;
+      // Portfolio grouping reads workstream first; keep both aliases in sync.
+      row.workstreamId = row.workPackageId;
+      row.workstreamName = row.workPackageName;
+      row.workstreamOrder = row.workPackageOrder;
     }
   }
 
