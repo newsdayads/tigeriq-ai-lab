@@ -15,7 +15,17 @@ export function workOrderChecklistSteps(body=''){
  // Read only canonical root checklist entries, never checkbox illustrations in
  // fenced/indented Markdown code. Match CommonMark's 0-3-space fence boundary;
  // a longer opening fence cannot be closed by a shorter marker.
- let fence=null,htmlComment=false;
+ let fence=null,htmlComment=false,rawHtmlTag=null,rawHtmlDepth=0;
+ // HTML blocks contain literal content, not authorized Markdown checklist
+ // receipts. Track nested same-tag elements so an inner close cannot release
+ // a forged checked stage before the outer HTML block closes.
+ const HTML_BLOCK_OPEN=/^ {0,3}<(pre|script|style|textarea|code|details|div|section|article|aside|template|table|blockquote|ul|ol|main|nav|header|footer|form)(?=[\s/>])[^>]*>/i;
+ const htmlTagMatches=(line,tag)=>{
+  const pattern=new RegExp('<(/?)'+tag+'(?=[\\s/>])[^>]*>','gi');
+  return [...line.matchAll(pattern)].map(match=>({
+   closing:match[1]==='/',selfClosing:/\/\s*>$/.test(match[0])
+  }));
+ };
  for(const rawLine of lines){
   // Markdown fenced code is literal: its comment markers are not HTML syntax.
   if(fence){
@@ -38,6 +48,25 @@ export function workOrderChecklistSteps(body=''){
     line+=rest.slice(0,begin);
     rest=rest.slice(begin+4);htmlComment=true;
    }
+  }
+  if(rawHtmlTag){
+   for(const tag of htmlTagMatches(line,rawHtmlTag)){
+    if(tag.closing)rawHtmlDepth--;
+    else if(!tag.selfClosing)rawHtmlDepth++;
+   }
+   if(rawHtmlDepth<=0){rawHtmlTag=null;rawHtmlDepth=0;}
+   continue;
+  }
+  const htmlOpener=line.match(HTML_BLOCK_OPEN);
+  if(htmlOpener){
+   rawHtmlTag=htmlOpener[1].toLowerCase();
+   rawHtmlDepth=0;
+   for(const tag of htmlTagMatches(line,rawHtmlTag)){
+    if(tag.closing)rawHtmlDepth--;
+    else if(!tag.selfClosing)rawHtmlDepth++;
+   }
+   if(rawHtmlDepth<=0){rawHtmlTag=null;rawHtmlDepth=0;}
+   continue;
   }
   const marker=line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if(marker){fence={char:marker[1][0],length:marker[1].length};continue;}

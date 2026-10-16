@@ -116,3 +116,19 @@ test('NV07 preserves visible checked S5c with an inline HTML comment',()=>{
   '- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
 });
+
+test('NV07 raw HTML script/pre/details cannot spoof checked S6',()=>{
+ for(const [open,close] of [['<pre>','</pre>'],['<script>','</script>'],['<details>','</details>']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',open,
+   '- [x] S6 — fake [Receipt]('+url+')',close,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKLIST_MISSING');
+ }
+});
+test('NV07 forged HTML heading and nested div cannot be accepted',()=>{
+ const body=['<div>','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — false [Receipt]('+url+')','</div>',
+  '## STRUCTURED_PROGRESS_CHECKLIST','<div>','<div>','</div>',
+  '- [x] S6 — false [Receipt]('+url+')','</div>',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+  assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+});

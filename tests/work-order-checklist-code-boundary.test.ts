@@ -75,3 +75,34 @@ it('NV07 preserves a visible linked step with an inline HTML comment',()=>{
  expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
 });
+
+it('NV07 raw HTML block examples never count as accepted S6',()=>{
+ for(const [open,close] of [['<pre>','</pre>'],['<script type="text/plain">','</script>'],['<details>','</details>']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',open,
+   '- [x] S6 — forged [Receipt]('+proof+')',close,'## ACCEPTANCE'].join('\n');
+  expect(workOrderChecklistSteps(body).steps).toEqual([]);
+  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('CHECKLIST_MISSING');
+ }
+});
+it('NV07 skips a forged checklist heading inside a raw HTML block',()=>{
+ const body=['<div>','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — forged [Receipt]('+proof+')','</div>',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+});
+it('NV07 nested HTML cannot close early and expose forged S6',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<div>','<div>','</div>',
+  '- [x] S6 — still hidden [Receipt]('+proof+')','</div>',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+  .toBe('STEP_UNCHECKED_ON_GITHUB');
+});
+it('NV07 preserves visible legitimate receipt after a raw HTML block',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<pre>',
+  '- [x] S6 — hidden [Receipt]('+proof+')','</pre>',
+  '- [x] S5c — real [Receipt]('+proof+')',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+ expect(view(body)).toEqual([{id:'S5c',checked:true},{id:'S6',checked:false}]);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+});
