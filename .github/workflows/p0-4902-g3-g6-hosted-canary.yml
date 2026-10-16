@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate canary executable syntax before model download
+        run: node --check tests/coding-p0-g6-hosted-live-canary.mjs
       - name: Verify source SHA and public zero-cost scope
         run: |
           set -euo pipefail

@@ -65,8 +65,8 @@ const host={
       chmodSync(dir,0o755);
       // No repository mount, tokens, network or writable container filesystem.
       const rawCode=String(input.code||'').trim();
-      const plain=/^function\\s+normalizePort\\s*\\(/.test(rawCode);
-      const exported=/^export\\s+function\\s+normalizePort\\s*\\(/.test(rawCode);
+      const plain=/^function\s+normalizePort\s*\(/.test(rawCode);
+      const exported=/^export\s+function\s+normalizePort\s*\(/.test(rawCode);
       if(!plain&&!exported)fail('G3_MODEL_CODE_NOT_FUNCTION_DECLARATION');
       // Preserve the raw model source and hash: the one-line export shim
       // affects only ESM linkage inside the unprivileged Docker evaluator.
