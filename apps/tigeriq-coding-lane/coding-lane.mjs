@@ -1137,7 +1137,7 @@ async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
   }
 }
 async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
-async function openPr(branch,title,body,repository=SOURCE_REPOSITORY){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'),maintainer_can_modify:true})})}
+async function openPr(branch,title,body,repository=SOURCE_REPOSITORY,{canary=false}={}){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:canary,maintainer_can_modify:true})})}
 async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
 async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkRepositoryGateState(x.check_runs||[],repository);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
 async function mergePr(number,sha,title='',repository=SOURCE_REPOSITORY){return ghRepo(repository,`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
@@ -1167,6 +1167,13 @@ async function persistIndependentReviewArtifact(prNumber,data,repository=SOURCE_
   return {id:out.id,body};
 }
 
+export function codingP0CanaryApplies(objective=''){
+  if(process.env.TIGERIQ_P0_CODING_STEP_CANARY!=='1')return false;
+  const issue=Number(process.env.TIGERIQ_P0_CODING_STEP_CANARY_ISSUE||0);
+  if(!Number.isSafeInteger(issue)||issue<=0)
+    throw Object.assign(new Error('CODING_CANARY_ISSUE_SCOPE_REQUIRED'),{code:'CODING_CANARY_ISSUE_SCOPE_REQUIRED'});
+  return sourceWorkOrderNumber(objective)===issue;
+}
 export function sourceWorkOrderNumber(objective=''){
   const text=String(objective||'');
   const patterns=[
@@ -1206,7 +1213,7 @@ export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
     error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy,
-      completionEvidence:((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&state==='closed')?verifyClosedCodingWorkOrder({body,state,stateReason}):null};
+      completionEvidence:(codingP0CanaryApplies(objective)&&state==='closed')?verifyClosedCodingWorkOrder({body,state,stateReason}):null};
     throw error;
   }
   return true;
@@ -1234,7 +1241,7 @@ export function codingObjectiveSourcePreflightDecision(error){
   const state=String(error?.detail?.state||'').toLowerCase();
   const stateReason=String(error?.detail?.stateReason||'').toLowerCase();
   if(state==='closed'&&stateReason==='completed'){
-    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&error?.detail?.completionEvidence?.pass!==true)
+    if(codingP0CanaryApplies(objective)&&error?.detail?.completionEvidence?.pass!==true)
       return {action:'block',code:'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED'};
     return {action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'};
   }
@@ -1295,14 +1302,15 @@ async function managerTick(){
   const liveGithubContextBlock=formatAuthoritativeGithubContext(liveGithubContext);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(o.objective));
   const tree=await repoTree(targetRepository);
-  const sourceHeadSha=(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')?await mainSha(targetRepository):null;
+  const canary=codingP0CanaryApplies(o.objective);
+  const sourceHeadSha=canary?await mainSha(targetRepository):null;
   const scopeText=canonical.length?`\nCANONICAL ALLOWED PATHS (MUST NOT EXPAND):\n${canonical.join('\n')}\n`:'';
   const liveContextText=liveGithubContextBlock?`\n\n${liveGithubContextBlock}\n`:'';
   let prompt=`You are TigerIQ Coding Manager. Decompose this repository objective into ONE safe coding job. Repository files:\n${tree.join('\n').slice(0,45000)}\n\nOBJECTIVE: ${o.objective}${scopeText}${liveContextText}\nDependencies and backlog eligibility were already validated by Core before this objective reached Coding Lane. When AUTHORITATIVE_GITHUB_CONTEXT is present, it is the authoritative bounded snapshot for referenced issue/PR facts; do not infer different live state. Do NOT block because a DEPENDS_ON issue is not represented in repository files or because you cannot independently confirm a GitHub dependency that is not required by the live-context marker. Decompose only the repository implementation requested here. Use status=blocked ONLY for a concrete hard safety/policy condition such as security, credential, paid cost, Production, destructive action, browser authentication, authorization required, canonical out-of-scope, or unavailable required live GitHub context. Uncertainty, preference, placeholder text, inability to independently reconfirm eligibility outside required live context, or "reason for blocking" are NOT valid blockers. Return ONLY JSON {"status":"continue|blocked","summary":"short","job":{"title":"short Vietnamese work title","instruction":"standalone implementation instruction","paths":["exact/repo/path"]}}. job.title MUST be Vietnamese, concise, and preserve only necessary technical codes such as P0, CORE, API, NVxx, OpenClaw. Max 8 paths. Include relevant tests only when they are inside canonical scope. Never select .github/workflows, credentials/secrets, production/deploy config, docs/EXECUTION_BOUNDARY.md, docs/SECURITY.md, scripts/tigeriq-core/run-core.ps1, or main/release controls.`+formatCodingOwnerReviewPolicy(ownerWaiver);
   let managerSkills={evidence:[],contextBlock:''};
   const contractRevision=createHash('sha256').update(JSON.stringify({objective:o.objective,context:liveGithubContext?.fingerprint||null})).digest('hex');
   try{
-    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
+    if((canary)){
       managerSkills=loadRequiredCodingSkills(o.objective);
       prompt+='\n\nOWNER_P0_CODING_STEP_PACKET_REQUIRED=true\n';
       prompt+='Return job.step_id, job.deliverable_type (source|frontend|backend|android|test|documentation), job.required_changed_paths, job.steps, job.acceptance, job.evidence_required, and job.required_checks. job.paths and required_changed_paths MUST identify EXACT FILES rather than a directory or a proposed README. For Android require actual Gradle/Manifest/Kotlin source files and Android Build Verify; frontend and backend require their domain-specific functional CI. One real implementation step only. No invented tests or PASS.\n';
@@ -1316,7 +1324,7 @@ async function managerTick(){
       }
       validateManagerJobTitle(d,o.objective);
       const scoped=validateManagerJobPaths(d,canonical,mutationAuth);
-      if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&d?.status==='continue'){
+      if((canary)&&d?.status==='continue'){
         compileCodingStepPacket({objectiveId:o.id,sourceRevision:contractRevision,sourceHeadSha,job:d.job,allowedPaths:scoped,skillEvidence:managerSkills.proof});
       }
     };
@@ -1332,12 +1340,12 @@ async function managerTick(){
     });manager=invoked.resource;const d=invoked.data;
     if(d.status!=='continue'||!d.job){await pool.query("update tigeriq_coding_objectives set status='blocked',summary=$2,manager_employee_id=$3,next_attempt_at=null,resource_retry_count=0,resource_retry_started_at=null,updated_at=now() where id=$1",[o.id,String(d.summary||'manager blocked').slice(0,1000),manager.id]);return}
     const paths=validateManagerJobPaths(d,canonical,mutationAuth);
-    if(process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'){
+    if(canary){
       managerSkills=loadRequiredCodingSkills(o.objective,{requiredIds:requiredCodingSkillIdsForDeliverable(d.job.deliverable_type)});
     }
     let jobInstruction=String(d.job.instruction||o.objective);
     let replayGuard=null,atomicWorkOrderId=null;
-    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
+    if((canary)){
       const sourceTree=await ghRepo(targetRepository,`/git/trees/${sourceHeadSha}?recursive=1`);
       if(sourceTree?.truncated||!Array.isArray(sourceTree?.tree))throw Error('CODING_MATERIAL_TREE_INCOMPLETE');
       const blobMap=new Map(sourceTree.tree.filter(x=>x.type==='blob').map(x=>[x.path,x.sha]));
@@ -1795,7 +1803,7 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],lea
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
   const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
-  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'?1:2,leaseContext});
+  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:codingP0CanaryApplies(leaseContext?.objective)?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
 export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCount=0){
@@ -1816,7 +1824,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
   for(const batch of batches){
     const scopedJob={...j,paths:batch.paths};
     const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext);
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer'});
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
@@ -1853,7 +1861,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   let selected=worker;const changes=[];const summaries=[];
   for(const batch of batches){
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer'});
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
@@ -1862,19 +1870,20 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
   validateAggregatedGenerationChanges(changes,j.paths,batches.length);
   return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
 }
-async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');const reviewSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(packet.deliverable_type)});assertCodingSkillProof(packet.skill_refs,reviewSkills);prompt+='\n'+codingRolePrompt({role:'reviewer',packet,skillContext:reviewSkills.contextBlock,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
+async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if(codingP0CanaryApplies(canonicalObjective)){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');const reviewSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(packet.deliverable_type)});assertCodingSkillProof(packet.skill_refs,reviewSkills);prompt+='\n'+codingRolePrompt({role:'reviewer',packet,skillContext:reviewSkills.contextBlock,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
 async function runJob(j){
   await refreshCoreResourceHealth();
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
+  const canary=codingP0CanaryApplies(canonicalObjective);
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
   const ownerWaiver=codingOwnerReviewWaiver(targetRepository);
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
   const generatedGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
   let stepPacket=null;
-  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
+  if((canary)){
     stepPacket=codingStepPacketFromInstruction(j.instruction);
     if(!stepPacket)throw Error('CODING_STEP_PACKET_MISSING');
     const activeSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(stepPacket.deliverable_type)});
@@ -1900,7 +1909,7 @@ async function runJob(j){
   j.employee_id=worker.id;
   let context=null,generated=null,gen={summary:'resumed existing PR'},reviewer=null;
   let branch=j.branch||null,pr=j.pr_number?{number:Number(j.pr_number)}:null;
-  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')&&!shouldResumeExistingPr(j)&&stepPacket.source_head_sha!==await mainSha(targetRepository))throw Error('CODING_STEP_SOURCE_HEAD_STALE_REPLAN_REQUIRED');
+  if((canary)&&!shouldResumeExistingPr(j)&&stepPacket.source_head_sha!==await mainSha(targetRepository))throw Error('CODING_STEP_SOURCE_HEAD_STALE_REPLAN_REQUIRED');
   if(shouldResumeExistingPr(j)){
     const livePr=await ghRepo(targetRepository,`/pulls/${pr.number}`);
     const reconciled=await reconcileExistingPrBranch(livePr,j.head_sha,targetRepository);
@@ -1917,7 +1926,7 @@ async function runJob(j){
     // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
     validateJobScope(j.paths,gen.changes);
-    if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
+    if((canary)){
       const artifactGate=verifyCodingDeliverable({packet:stepPacket,changes:gen.changes});
       if(!artifactGate.pass)throw Object.assign(new Error(artifactGate.code+':'+artifactGate.reasons.join(';')),{code:artifactGate.code});
     }
@@ -1933,7 +1942,7 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,branch=$4,next_attempt_at=null where id=$1",[j.id,worker.id,reviewer?.id||null,branch]);
     for(const ch of gen.changes)await writeFile(branch,ch,mutationAuth,targetRepository);
     await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
-    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nReview: ${ownerWaiver?'OWNER_WAIVER (not independent PASS)':reviewer.id}\nTarget repository: ${targetRepository.fullName}\nDirect writes to main are forbidden. Merge is attempted only after exact-head CI and an applicable independent approval or explicit Owner waiver.`,targetRepository);
+    pr=await openPr(branch,`[${worker.id}] ${j.title}`,`Automated TigerIQ Coding Lane job \`${j.id}\`.\n\nImplementer: ${worker.id}\nReview: ${ownerWaiver?'OWNER_WAIVER (not independent PASS)':reviewer.id}\nTarget repository: ${targetRepository.fullName}\nDirect writes to main are forbidden. Merge is attempted only after exact-head CI and an applicable independent approval or explicit Owner waiver.`,targetRepository,{canary});
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
   let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
@@ -1951,7 +1960,7 @@ async function runJob(j){
         if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
         await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
       },
-      maxRepairCycles:process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'?2:3,
+      maxRepairCycles:canary?2:3,
       timeoutRetries:1,
     });
   const onGatesPassed=async({gates:cycleGates})=>{
@@ -1966,7 +1975,7 @@ async function runJob(j){
       return persistOwnerReviewWaiverArtifact(pr.number,{implementerId:worker.id,targetHead:gates.sha,waiver},targetRepository);
     },
   }):await runReviewReworkLifecycle({
-    maxCycles:process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'?2:3,waitGatesFn,onGatesPassed,
+    maxCycles:canary?2:3,waitGatesFn,onGatesPassed,
     reviewFn:async({gates:cycleGates})=>{
       if(reviewer?.id===worker.id){reviewer=pickResource([worker.id,...cooldownExcludes]);if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE')}
       const reviewGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);assertLiveGithubContextFresh(generatedGithubContext,reviewGithubContext);j.liveGithubContext=reviewGithubContext;
@@ -1989,7 +1998,7 @@ async function runJob(j){
     },
   });
   review=lifecycle.review;gates=lifecycle.gates;
-  if((process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1')){
+  if((canary)){
     const changedFiles=await ghRepo(targetRepository,`/pulls/${pr.number}/files?per_page=100`);
     const actual=new Set((Array.isArray(changedFiles)?changedFiles:[]).map(x=>String(x.filename||'')));
     const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
@@ -2009,7 +2018,7 @@ async function runJob(j){
   if(ownerWaiver)assertCodingReviewAcceptance({repository:targetRepository,implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,review});
   else assertIndependentReviewApproval({implementerId:approvedImplementer,reviewerId:approvedReviewer,targetHead:approvedHead,expectedHead:finalSha,decision:review?.decision});
   let merge={merged:false,message:'AUTO_MERGE_DISABLED'};
-  if(AUTO_MERGE&&process.env.TIGERIQ_P0_CODING_STEP_CANARY!=='1'){
+  if(AUTO_MERGE&&!canary){
     try{
       await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
       // merge=await mergePr(pr.number,approvedHead,j.title)
