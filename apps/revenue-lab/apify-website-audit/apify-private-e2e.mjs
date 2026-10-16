@@ -67,7 +67,7 @@ async function requestJson(fetchFn, url, { token, method = 'GET', body } = {}) {
   }
   if (response.ok) {
     const contentType = String(response.headers?.get?.('content-type') || '').trim();
-    if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
       throw new ApifyE2EError('JSON_CONTENT_TYPE_REQUIRED',
         'Authenticated Apify API response must declare JSON.');
     }
