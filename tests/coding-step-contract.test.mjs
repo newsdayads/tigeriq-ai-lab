@@ -340,7 +340,7 @@ test('canary material fingerprint stays pinned when manager changes step file su
   }).code,'CODING_STEP_ALIAS_REPLAY_BLOCKED');
   assert.throws(()=>codingSourceRevisionPaths({canonicalPaths:[],proposedPaths:canonical}),/EXACT_SOURCE_SCOPE_REQUIRED/);
   assert.throws(()=>codingSourceRevisionPaths({canonicalPaths:['apps/a/'],proposedPaths:[canonical[0]]}),/EXACT_SOURCE_SCOPE_REQUIRED/);
-  assert.throws(()=>codingSourceRevisionPaths({canonicalPaths,proposedPaths:['apps/b/foreign.mjs']}),/STEP_SOURCE_SCOPE_MISMATCH/);
+  assert.throws(()=>codingSourceRevisionPaths({canonicalPaths:canonical,proposedPaths:['apps/b/foreign.mjs']}),/STEP_SOURCE_SCOPE_MISMATCH/);
 });
 test('canary lane pins revision to canonical allowed files, never model-selected subset',async()=>{
   const {readFileSync}=await import('node:fs');
