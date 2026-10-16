@@ -139,3 +139,31 @@ it('NV07 honors escaped backtick without suppressing real receipt link',()=>{
   '- [x] S5c — \\'+tick+' [Receipt]('+proof+')','## ACCEPTANCE'].join('\n');
  expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
 });
+
+it('NV07 QA #4940: iframe, figure and unknown HTML blocks cannot inject S6 evidence',()=>{
+ for(const tag of ['iframe','figure','custom-widget']){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST','<'+tag+'>',
+   '- [x] S6 — fake [Receipt]('+proof+')','</'+tag+'>',
+   '- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+  expect(view(body)).toEqual([{id:'S6',checked:false}]);
+  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+   .toBe('STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+it('NV07 QA #4940: nested iframe and forged HTML heading remain fail closed',()=>{
+ const nested=['## STRUCTURED_PROGRESS_CHECKLIST','<iframe>','<iframe>',
+  '</iframe>','- [x] S6 — false [Receipt]('+proof+')','</iframe>',
+  '- [ ] S6 — actual pending','## ACCEPTANCE'].join('\n');
+ expect(view(nested)).toEqual([{id:'S6',checked:false}]);
+ const heading=['<iframe>','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — false [Receipt]('+proof+')','</iframe>',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — real pending'].join('\n');
+ expect(view(heading)).toEqual([{id:'S6',checked:false}]);
+});
+it('NV07 QA #4940: void HTML followed by valid S5c and pending S6 remains visible',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<br>',
+  '- [x] S5c — valid [Receipt]('+proof+')',
+  '- [ ] S6 — still pending','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+ expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
+});

@@ -56,7 +56,9 @@ export function workOrderChecklistSteps(body=''){
  // HTML blocks contain literal content, not authorized Markdown checklist
  // receipts. Track nested same-tag elements so an inner close cannot release
  // a forged checked stage before the outer HTML block closes.
- const HTML_BLOCK_OPEN=/^ {0,3}<(pre|script|style|textarea|code|details|div|section|article|aside|template|table|blockquote|ul|ol|main|nav|header|footer|form)(?=[\s/>])[^>]*>/i;
+ // Protect every standalone opening HTML element, not a selective tag list.
+ // Fail closed even for uncommon CommonMark/raw/custom tags such as iframe.
+ const HTML_BLOCK_OPEN=/^ {0,3}<([a-z][a-z0-9:-]*)(?=[\s/>])[^>]*>/i;
  const htmlTagMatches=(line,tag)=>{
   const pattern=new RegExp('<(/?)'+tag+'(?=[\\s/>])[^>]*>','gi');
   return [...line.matchAll(pattern)].map(match=>({
@@ -96,7 +98,10 @@ export function workOrderChecklistSteps(body=''){
   }
   const htmlOpener=line.match(HTML_BLOCK_OPEN);
   if(htmlOpener){
-   rawHtmlTag=htmlOpener[1].toLowerCase();
+   const tagName=htmlOpener[1].toLowerCase();
+   // Void elements do not hide subsequent canonical checklist rows.
+   if(new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']).has(tagName))continue;
+   rawHtmlTag=tagName;
    rawHtmlDepth=0;
    for(const tag of htmlTagMatches(line,rawHtmlTag)){
     if(tag.closing)rawHtmlDepth--;

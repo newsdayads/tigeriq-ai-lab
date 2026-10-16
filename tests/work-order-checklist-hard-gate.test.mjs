@@ -155,3 +155,19 @@ test('NV07 linked S5c after inline literal still accepted; unchecked S6 is not',
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
 });
+
+test('NV07 QA #4940: unlisted iframe/figure HTML blocks cannot forge checked S6',()=>{
+ for(const tag of ['iframe','figure','custom-widget']){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST','<'+tag+'>',
+   '- [x] S6 — forged [Receipt]('+url+')','</'+tag+'>',
+   '- [ ] S6 — authoritative pending','## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+test('NV07 QA #4940: standalone void tag does not hide authorized prior receipt',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<hr>',
+  '- [x] S5c — valid [Receipt]('+url+')',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
