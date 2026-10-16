@@ -310,10 +310,24 @@ export async function runPrivateApifyE2E({
     { token: config.token },
   );
 
-  // HTTP 200 only proves that OUTPUT was retrieved, not that the audit passed.
+  // HTTP 200 + success alone does not prove the paid run audited *our*
+  // requested target. Bind OUTPUT to the fixed E2E input and require the
+  // minimum real audit payload before writing a product/cost receipt.
+  const expectedAuditUrl = new URL(runInput.url).toString();
   if (!output || typeof output !== 'object' || Array.isArray(output) ||
       output.schemaVersion !== '1.0' || output.status !== 'success' ||
-      Boolean(output.error)) {
+      Boolean(output.error) || output.requestedUrl !== expectedAuditUrl ||
+      !Array.isArray(output.pages) || output.pages.length === 0 ||
+      output.pages.length > runInput.maxPages ||
+      !output.pages.every(page => typeof page?.url === 'string' &&
+        /^https?:\/\//.test(page.url) &&
+        Number.isInteger(page.statusCode) &&
+        page.statusCode >= 200 && page.statusCode < 300) ||
+      !output.metrics || output.metrics.pagesAudited !== output.pages.length ||
+      output.metrics.errorCount !== 0 ||
+      !Array.isArray(output.errors) || output.errors.length !== 0 ||
+      !output.summary || typeof output.summary !== 'object' ||
+      Array.isArray(output.summary)) {
     throw new ApifyE2EError('OUTPUT_INVALID',
       'Authenticated OUTPUT is not a successful Website Audit schema 1.0 result.');
   }
@@ -343,8 +357,10 @@ export async function runPrivateApifyE2E({
       usageTotalUsd: runCost,
     },
     output: {
-      status: output?.status ?? null,
-      schemaVersion: output?.schemaVersion ?? null,
+      status: output.status,
+      schemaVersion: output.schemaVersion,
+      requestedUrl: output.requestedUrl,
+      pagesAudited: output.pages.length,
     },
     cost: {
       buildUsageTotalUsd: buildCost,
