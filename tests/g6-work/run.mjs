@@ -10,6 +10,7 @@ import {Pool} from 'pg';
 import {ensureSharedResourceLeaseTable,recoverExpiredSharedResourceLeases,heartbeatSharedResourceLease} from '../../apps/tigeriq-core/shared-resource-lease.mjs';
 import {compileCodingStepPacket,codingRolePrompt,verifyCodingDeliverable,repeatedCodingAttemptDecision,verifyCodingCanaryProductGate} from '../../apps/tigeriq-coding-lane/step-contract.mjs';
 import {loadRequiredCodingSkills} from '../../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
+import {evaluateProductAcceptance} from '../../apps/tigeriq-coding-lane/product-acceptance.mjs';
 import {sha256,verifySandboxReceipt} from './receipt-policy.mjs';
 
 const source=process.env.GITHUB_SHA||'';
@@ -23,12 +24,13 @@ process.env.NODE_ENV='test';
 const {assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision}=await import('../../apps/tigeriq-coding-lane/coding-lane.mjs');
 const out='p0-g6-work-evidence';mkdirSync(out,{recursive:true});
 const receipt={source_sha:source,base_sha:'d57ae78f77d720bc7be1fa875b5328a2af700ba7',run_id:process.env.GITHUB_RUN_ID,
- status:'RUNNING',production_runtime_accepted:false,permission:{surface:'GITHUB_BRANCH_ISOLATED_ONLY',new_cost:0,no_pc01_shell:true},
+ status:'RUNNING',production_runtime_accepted:false,permission:{surface:'GITHUB_BRANCH_ISOLATED_ONLY',new_cost:0,no_pc01_shell:true,
+ authority:'Owner explicit P0 #4902 G6 Work isolated E2E instruction',receipt_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/'+process.env.GITHUB_RUN_ID},
  scenarios:[],models:[],workers:[],leases:[],cleanup:{verified:false},open_issues:[]};
 const save=()=>writeFileSync(join(out,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');
 const scenario=async(name,run)=>{
- try{const evidence=await run();receipt.scenarios.push({name,status:'PASS',evidence});}
- catch(e){receipt.scenarios.push({name,status:'FAIL',error:e.code||e.message});throw e;}
+ try{const evidence=await run();receipt.scenarios.push({name,status:'PASS',evidence});console.log('G6_SCENARIO_PASS='+name);}
+ catch(e){receipt.scenarios.push({name,status:'FAIL',error:e.code||e.message,message:e.message});throw e;}
  finally{save();}
 };
 const dir=mkdtempSync(join(tmpdir(),'tigeriq-g6-work-')),data=join(dir,'data'),socket=join(dir,'socket');
@@ -63,6 +65,7 @@ try{
  await pool.query(`create table tigeriq_ai_resources(resource_id text primary key,employee_id text,enabled boolean,rank int,current_job_id text,work_state text,health_state text,updated_at timestamptz default now());
  create table tigeriq_resources(employee_id text primary key,current_job_id text,work_state text,health_state text,updated_at timestamptz default now());
  create table tigeriq_coding_jobs(id text primary key,paths text[],status text,created_at timestamptz default now());
+ create table tigeriq_jobs(id text primary key,status text);
  create table g6_effects(id text primary key,value text);
  create table g6_retry(id int primary key,history jsonb);
  insert into g6_retry values(1,'[]'::jsonb);
@@ -129,11 +132,32 @@ try{
   try{await assert.rejects(readOnly.query("insert into g6_effects values('unauthorized','x')"),e=>e.code==='42501');}
   finally{await readOnly.end();}return {postgres_sqlstate:'42501',mutation_denied:true};
  });
+ await scenario('real_worker_unauthorized_role_denied_before_model',async()=>{
+  const w=await ready();
+  await assert.rejects(w.ask({action:'model',role:'root',prompt:'DENIED_CANARY',schema:{}}),e=>e.code==='G6_MODEL_ROLE_DENIED');
+  await kill(w);return {code:'G6_MODEL_ROLE_DENIED',model_invoked:false};
+ });
+ await scenario('native_service_missing_scoped_credential_fails_closed',async()=>{
+  // Probe the unchanged service entrypoint, with only the disposable DB.
+  // Do not export connector credentials or broaden workflow write permissions.
+  let stderr='';
+  try{execFileSync(process.execPath,['apps/tigeriq-coding-lane/coding-lane.mjs'],{
+   env:{...env,NODE_ENV:'production',DATABASE_URL:'postgresql://'+username+'@localhost/'+db+'?host='+encodeURIComponent(socket)+'&port=15439'},encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});}
+  catch(e){stderr=String(e.stderr||'');}
+  assert.match(stderr,/GITHUB_TOKEN_MISSING/);
+  receipt.native_dispatch={status:'REAL_WORKER_E2E_BLOCKED',code:'GITHUB_TOKEN_MISSING',
+   detail:'Native service requires a GitHub writer token and native eligible independent reviewer. This read-only public workflow has no branch-scoped writer adapter; the connector credential cannot be exported. Native source also plans/writes against main, outside this isolated branch contract. No privilege or source bypass performed.'};
+  return {expected_admission:'DENIED',code:'GITHUB_TOKEN_MISSING',native_runtime_accepted:false};
+ });
  // Actual model calls, each in a distinct OS process and stateless model context.
  // The model has no shell, PG connection, credentials or repository mounts.
  const skills=loadRequiredCodingSkills('P0 #4902 isolated G6',{requiredIds:['spec-first-tdd']});
  const skillBytes=readFileSync('docs/skills/spec-first-tdd/SKILL.md');
- receipt.skill={id:'spec-first-tdd',version:'1.1.0',status:'ACTIVE',bytes:skillBytes.length,content_sha256:sha256(skillBytes),proof:skills.proof};
+ assert.equal(skills.proof[0].bytes,skillBytes.length);
+ receipt.skill={id:skills.proof[0].id,version:skills.proof[0].version,status:'ACTIVE',bytes:skillBytes.length,content_sha256:sha256(skillBytes),proof:skills.proof};
+ const tags=await fetch('http://127.0.0.1:11435/api/tags',{signal:AbortSignal.timeout(5000)}).then(r=>{assert.equal(r.ok,true);return r.json();});
+ const installed=tags.models.find(x=>x.name==='qwen2.5-coder:7b');assert.match(installed?.digest||'',/^[a-f0-9]{64}$/);
+ receipt.model_weights={id:installed.name,digest:installed.digest,size:installed.size};
  receipt.images={model:execFileSync('docker',['image','inspect','ollama/ollama:0.12.11','--format','{{index .RepoDigests 0}}'],{encoding:'utf8'}).trim(),tool:execFileSync('docker',['image','inspect','node:22-bookworm-slim','--format','{{index .RepoDigests 0}}'],{encoding:'utf8'}).trim()};
  const spec='Implement export function total(values). Return null unless values is an array of at most 100 integers, each between 0 and 1000 inclusive. Return the sum for valid arrays, including zero for empty. No coercion. Only sandbox/candidate.mjs may change.';
  const job={step_id:'G6',title:'Isolated technical product',instruction:spec,paths:['sandbox/candidate.mjs'],deliverable_type:'source',required_changed_paths:['sandbox/candidate.mjs'],steps:['Read Skill and specification','Implement total','Run independent checks'],acceptance:['Exact integer-array semantics','Independent review and functional evidence'],evidence_required:['Candidate bytes','Docker execution receipt']};
@@ -167,10 +191,18 @@ try{
  const acceptor=await call('acceptor','Decide sandbox functional acceptance only, not Production or full G6. Candidate SHA256='+sha256(code)+'\nCODE:\n'+code+'\nHost-executed independent functional evidence: '+JSON.stringify(receipt.functional)+'\nReview: '+JSON.stringify(reviewer.parsed),schema({decision:{type:'string',enum:['accept','reject']},summary:{type:'string'}}));
  assert.equal(acceptor.parsed.decision,'accept');
  await scenario('four_actual_model_roles_functional_handoff',async()=>{const result=verifySandboxReceipt(receipt);assert.equal(result.pass,true);return result;});
+ await scenario('all_role_leases_released',async()=>{
+  let remaining=1;
+  for(let n=0;n<20;n++){
+   remaining=Number((await row('select count(*) from tigeriq_ai_resource_leases')).count);
+   if(!remaining)break;await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(remaining,0);return {remaining_leases:remaining};
+ });
  await scenario('canonical_product_gate_does_not_accept_sandbox_receipt',async()=>{
   const productPacket={...packet,deliverable_type:'backend',required_checks:['Backend Contract Verify']};
-  await assert.rejects(verifyCodingCanaryProductGate({packet:productPacket,sourceHeadSha:source,prHeadSha:source,changedPaths:packet.paths,repositoryFullName:'newsdayads/tigeriq-ai-lab'}),/CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE/);
-  return {accepted:false,code:'CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE',reason:'Generated temporary source has no exact-source GitHub product check; no fake provider adapter supplied'};
+  await assert.rejects(verifyCodingCanaryProductGate({packet:productPacket,sourceHeadSha:source,prHeadSha:source,changedPaths:packet.paths,repositoryFullName:'newsdayads/tigeriq-ai-lab',evaluateProduct:evaluateProductAcceptance}),/CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE/);
+  return {accepted:false,code:'CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE',reason:'Real G5 module is present and unchanged. Generated temporary source has no exact-source GitHub product check; no fake provider adapter supplied'};
  });
  await scenario('sandbox_artifact_rollback_preserves_source',async()=>{
   const before=sha256(readFileSync('apps/tigeriq-coding-lane/coding-lane.mjs'));
@@ -181,7 +213,7 @@ try{
  });
  receipt.status='IMPORTED_COMPONENT_SANDBOX_VERIFIED';
  receipt.open_issues.push({code:'REAL_WORKER_E2E_BLOCKED',detail:'Production Core intake/manager dispatch and native runJob lifecycle are not started by this isolated harness. Four real local model processes plus canonical imported components are verified separately. No installed runtime/release rollback acceptance.'});
-}catch(e){receipt.status='FAIL';receipt.error=e.code||e.message;process.exitCode=1;}
+}catch(e){receipt.status='FAIL';receipt.error=e.code||e.message;receipt.error_message=e.message;process.exitCode=1;}
 finally{
  for(const child of children)child.kill('SIGKILL');
  await Promise.all([...children].map(c=>new Promise(resolve=>c.once('exit',resolve))));

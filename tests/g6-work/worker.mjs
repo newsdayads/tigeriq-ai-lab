@@ -15,7 +15,7 @@ const hash=x=>createHash('sha256').update(x).digest('hex');
 process.on('message',async m=>{
   try{
     if(m.action==='lease'){
-      const lease=await acquireSharedResourceLease(pool,{employeeId:'NV01',resourceId:'g6-shared',workId:m.work,role:'implementer',metadata:{workerId,source:process.env.G6_SOURCE_SHA}});
+      const lease=await acquireSharedResourceLease(pool,{employeeId:'NV01',resourceId:'g6-shared',workId:m.work,role:'implementer',ttlMs:30000,metadata:{workerId,source:process.env.G6_SOURCE_SHA}});
       emit({event:'lease',lease});
     }else if(m.action==='claim'){
       const id=await withAtomicCodingSourceClaim(pool,{workOrderId:'G6-4902',paths:['sandbox/candidate.mjs'],run:async c=>{
