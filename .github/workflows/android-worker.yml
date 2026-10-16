@@ -20,6 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision for Android APKs
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          echo "ANDROID_EXACT_SOURCE_SHA_VERIFIED=$EXPECTED_HEAD"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
