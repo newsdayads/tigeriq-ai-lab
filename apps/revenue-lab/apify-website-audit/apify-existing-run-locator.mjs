@@ -44,7 +44,9 @@ async function getJson(fetchFn, url, token) {
   if (res.status >= 300 && res.status < 400) fail('APIFY_REDIRECT_BLOCKED');
   if (res.status === 401 || res.status === 403) fail('SCOPED_READ_DENIED');
   if (!res.ok) fail('APIFY_READ_FAILED');
-  if (!String(res.headers?.get?.('content-type') || '').toLowerCase().includes('application/json'))
+  // Do not accept lookalike media types such as application/jsonp.
+  const contentType = String(res.headers?.get?.('content-type') || '').trim();
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType))
     fail('JSON_CONTENT_TYPE_REQUIRED');
   let raw, body;
   try {
