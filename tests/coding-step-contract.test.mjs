@@ -226,6 +226,10 @@ test('canary is effective only for explicitly authorized canonical Issue; close 
   const fn=runInNewContext((helper+'\n'+parser).replaceAll('export function ','function ')+'\ncodingP0CanaryApplies',{process:fakeProcess});
   assert.equal(fn('GitHub autonomous coding issue #4902: P0 scoped'),true);
   assert.equal(fn('GitHub autonomous coding issue #4903: unrelated'),false);
+  // These exact retry formats were observed in live PC01 Coding Lane objectives.
+  assert.equal(fn('GitHub autonomous coding retry 1/2 for issue #4902: same work'),true);
+  assert.equal(fn('GitHub autonomous coding retry 2/2 for issue #4902: same work'),true);
+  assert.equal(fn('GitHub autonomous coding retry 1/2 for issue #4903: other work'),false);
   assert.equal(fn(4902),true);
   assert.equal(fn(4903),false);
   assert.equal(fn('ordinary legacy job'),false);
@@ -233,4 +237,32 @@ test('canary is effective only for explicitly authorized canonical Issue; close 
   assert.throws(()=>fn('GitHub autonomous coding issue #4902'),/CODING_CANARY_ISSUE_SCOPE_REQUIRED/);
   fakeProcess.env.TIGERIQ_P0_CODING_STEP_CANARY='0';
   assert.equal(fn('GitHub autonomous coding issue #4902'),false);
+});
+
+
+test('PC01 retry 1/2 and 2/2 for same Work Order share material source revision',()=>{
+  const base={canonicalWorkOrderId:'4625',paths:['apps/dexcam-personal/app/build.gradle.kts'],sourceBlobs:{'apps/dexcam-personal/app/build.gradle.kts':'a'.repeat(40)}};
+  const one=codingMaterialSourceRevision({...base,objective:'GitHub autonomous coding issue #4625: DeXCam\nDISPATCH_KEY=GITHUB-I-4625'});
+  const two=codingMaterialSourceRevision({...base,objective:'GitHub autonomous coding retry 1/2 for issue #4625: DeXCam\nRETRY_KEY=run-1'});
+  const three=codingMaterialSourceRevision({...base,objective:'GitHub autonomous coding retry 2/2 for issue #4625: DeXCam\nRETRY_KEY=run-2'});
+  assert.equal(one,two);
+  assert.equal(two,three);
+  const other=codingMaterialSourceRevision({...base,canonicalWorkOrderId:'4870',objective:'GitHub autonomous coding retry 1/2 for issue #4870'});
+  assert.notEqual(other,one);
+  const sourceChanged=codingMaterialSourceRevision({...base,objective:'GitHub autonomous coding issue #4625',sourceBlobs:{'apps/dexcam-personal/app/build.gradle.kts':'b'.repeat(40)}});
+  assert.notEqual(sourceChanged,one);
+  const approvedRevision=codingMaterialSourceRevision({...base,materialSpecRevision:'owner-rearmed-v2'});
+  assert.notEqual(approvedRevision,one);
+  assert.throws(()=>codingMaterialSourceRevision({...base,canonicalWorkOrderId:'BAD/4625'}),/CODING_CANONICAL_WORK_ORDER_INVALID/);
+  const failureHistory=Array.from({length:2},()=>({workOrderId:'4625',stepId:'D01',sourceRevision:one,status:'failed',failureSignature:'OUTPUT_CONTRACT_EXHAUSTED'}));
+  const decision=repeatedCodingAttemptDecision({workOrderId:'4625',stepId:'D01',sourceRevision:three,failureSignature:'OUTPUT_CONTRACT_EXHAUSTED',history:failureHistory});
+  assert.equal(decision.code,'CODING_SAME_FAILURE_STOP');
+});
+
+test('P0 manager derives retry identity from canonical Issue, not mutable dispatch metadata',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/canonicalWorkOrderId:sourceWorkOrder\?String\(sourceWorkOrder\):''/);
+  assert.match(source,/WORK_SPEC_REVISION/);
+  assert.match(source,/workOrderId=String\(sourceWorkOrder\|\|o\.id\)/);
 });
