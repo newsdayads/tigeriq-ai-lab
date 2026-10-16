@@ -167,3 +167,24 @@ it('NV07 QA #4940: void HTML followed by valid S5c and pending S6 remains visibl
  expect(workOrderChecklistGate(issue(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason).toBe('STEP_UNCHECKED_ON_GITHUB');
 });
+
+it('NV07 QA rejects receipt links wrapped in inline HTML or mixed with inline HTML',()=>{
+ for(const fragment of [
+  '<span>[Receipt]('+proof+')</span>',
+  '<span class="note">[Receipt]('+proof+')</span>',
+  '<a href="'+proof+'">[Receipt]('+proof+')</a>',
+  '<span>untrusted</span> [Receipt]('+proof+')',
+  '[Receipt]('+proof+') <span>untrusted</span>'
+ ]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+   '- [x] S6 — '+fragment,'## ACCEPTANCE'].join('\n');
+  expect(workOrderChecklistGate(issue(body),{stepId:'S6',requireAll:false}).reason)
+   .toBe('CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+ const actual=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — plain Markdown [Receipt]('+proof+')',
+  '- [ ] S6 — not yet accepted','## ACCEPTANCE'].join('\n');
+ expect(workOrderChecklistGate(issue(actual),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:proof}).ok).toBe(true);
+ expect(workOrderChecklistGate(issue(actual),{stepId:'S6',requireAll:false}).reason)
+  .toBe('STEP_UNCHECKED_ON_GITHUB');
+});
