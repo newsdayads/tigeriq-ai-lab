@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, CANONICAL_PORTFOLIO_GROUPS, classifyProject, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
+import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, CANONICAL_PORTFOLIO_GROUPS, classifyProject, androidMinorVersion, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 describe('TigerIQ LIVE project portfolio', () => {
   it('does not let cross-project descriptions reassign portfolio issue ownership', () => {
@@ -23,6 +23,39 @@ describe('TigerIQ LIVE project portfolio', () => {
     const rows = annotatePortfolioRows([{ number: 3033, title: '[P1][TIGERIQ MEDIA][SECURITY] Admin auth', workKind: 'WORK', status: 'WORKING' }]);
     expect(rows[0].projectId).toBe('tigeriq-news');
     expect(rows[0].projectName).toBe('TigerIQ News');
+  });
+
+  it('ignores version-like registry metadata and reads Android releases from titles', () => {
+    const row = { number: 2949, title: '[P2][ANDROID] TigerIQ Mobile Worker' };
+    for (const body of [
+      'REGISTRY=registry-335-live|v53|stale=false', 'LAST_REPORT=v51',
+      'CACHE=v33', 'CURRENT_TARGET=v0.21',
+    ]) {
+      expect(androidMinorVersion(row, { ...row, body })).toBeNull();
+    }
+    expect(androidMinorVersion({ title: '[P2][ANDROID] v0.22' }, {
+      title: '[P2][ANDROID] v0.22', body: 'OLD_BUILD=v0.99|REGISTRY=v53',
+    })).toBe(22);
+    expect(androidMinorVersion({ title: '[P2][ANDROID] v0.21' })).toBe(21);
+    expect(androidMinorVersion({ title: '[P2][ANDROID] release v53' })).toBeNull();
+  });
+
+  it('groups a versionless Mobile Worker parent with the current real release, not v53 metadata', () => {
+    const issues = [
+      { number: 2949, title: '[P2][ANDROID] TigerIQ Mobile Worker', body: 'REGISTRY=registry-335-live|v53|stale=false' },
+      { number: 3683, title: '[P2][ANDROID] v0.22 Live Worker', body: '' },
+      { number: 3597, title: '[P2][ANDROID] v0.21 legacy release', body: '' },
+    ];
+    const rows = annotatePortfolioRows(issues.map((issue, i) => ({
+      number: issue.number, title: issue.title, workKind: 'WORK',
+      status: i === 1 ? 'WORKING' : 'WAITING',
+    })), issues);
+    expect(rows[0]).toMatchObject({ androidVersionMinor: null, workPackageId: 'mobile-v0-22', portfolioHidden: false });
+    expect(rows[1]).toMatchObject({ androidVersionMinor: 22, workPackageId: 'mobile-v0-22', portfolioHidden: false });
+    expect(rows[2]).toMatchObject({ androidVersionMinor: 21, portfolioHidden: true });
+    const mobile = buildProjectPortfolio(rows).find(project => project.id === 'tigeriq-mobile-worker');
+    expect(mobile.workPackageCount).toBe(1);
+    expect(mobile.hiddenTechnicalItems).toBe(1);
   });
 
   it('collapses v0.22 Android work and hides older technical versions from primary view', () => {
