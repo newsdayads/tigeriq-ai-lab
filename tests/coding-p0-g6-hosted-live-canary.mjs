@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {loadRequiredCodingSkills,runCodingSkillCapabilityCanary} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
 const sha=x=>createHash('sha256').update(x).digest('hex');
-const modelName='qwen2.5-coder:1.5b', toolName='docker:node:22-bookworm-slim:network-none';
+const modelName='qwen2.5-coder:3b', toolName='docker:node:22-bookworm-slim:network-none';
 const sourceSha=process.env.GITHUB_SHA||'', repo=process.env.GITHUB_REPOSITORY||'';
 const runId=process.env.GITHUB_RUN_ID||'';
 const fail=(code)=>{throw Object.assign(new Error(code),{code});};
@@ -36,11 +36,20 @@ const modelResponses=new WeakSet(), toolResponses=new WeakSet();
 const host={
   inspect:async()=>authority,
   invokeModel:async request=>{
-    const payload={model:modelName,prompt:request.prompt,stream:false,think:false,format:'json',
-      keep_alive:'0s',options:{temperature:0,num_ctx:8192,num_predict:500}};
+    const schema={type:'object',additionalProperties:false,
+      required:['run_id','step_id','source_sha','skill_context_sha256','code'],
+      properties:{
+        run_id:{type:'string',const:request.run_id},
+        step_id:{type:'string',const:request.step_id},
+        source_sha:{type:'string',const:request.source_sha},
+        skill_context_sha256:{type:'string',const:request.skill_context_sha256},
+        code:{type:'string',minLength:30,maxLength:1800}
+      }};
+    const payload={model:modelName,prompt:request.prompt,stream:false,think:false,
+      format:schema,keep_alive:'0s',options:{temperature:0,num_ctx:8192,num_predict:420}};
     const result=await fetch('http://127.0.0.1:11435/api/generate',{
       method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),
-      signal:AbortSignal.timeout(120000)});
+      signal:AbortSignal.timeout(180000)});
     if(!result.ok)fail('G3_MODEL_HTTP_'+result.status);
     const json=await result.json();
     if(json.done!==true||json.model!==modelName||!String(json.response||'').trim())fail('G3_MODEL_RESPONSE_UNVERIFIED');
