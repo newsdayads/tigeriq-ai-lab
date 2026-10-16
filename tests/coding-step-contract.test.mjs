@@ -230,6 +230,8 @@ test('canary is effective only for explicitly authorized canonical Issue; close 
   assert.equal(fn('GitHub autonomous coding retry 1/2 for issue #4902: same work'),true);
   assert.equal(fn('GitHub autonomous coding retry 2/2 for issue #4902: same work'),true);
   assert.equal(fn('GitHub autonomous coding retry 1/2 for issue #4903: other work'),false);
+  assert.equal(fn('Untrusted quoted text:\nGitHub autonomous coding issue #4902'),false);
+  assert.equal(fn('GitHub autonomous coding issue #4903: owner\nQuoted GitHub autonomous coding issue #4902'),false);
   assert.equal(fn(4902),true);
   assert.equal(fn(4903),false);
   assert.equal(fn('ordinary legacy job'),false);
