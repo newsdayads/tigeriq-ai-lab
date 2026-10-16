@@ -32,10 +32,10 @@ function successFetch() {
       return response(200, { data: { id: 'build1', status: 'SUCCEEDED', stats: { computeUnits: 0.01 }, usageTotalUsd: 0.002 } });
     }
     if (u.includes('/actors/actor123/runs?')) {
-      return response(201, { data: { id: 'run1', status: 'SUCCEEDED', usageTotalUsd: null } });
+      return response(201, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', usageTotalUsd: null } });
     }
     if (u.endsWith('/actor-runs/run1')) {
-      return response(200, { data: { id: 'run1', status: 'SUCCEEDED', stats: { computeUnits: 0.02 }, usageTotalUsd: 0.004 } });
+      return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', stats: { computeUnits: 0.02 }, usageTotalUsd: 0.004 } });
     }
     if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) {
       return response(200, { schemaVersion: '1.0', status: 'success' });
@@ -117,7 +117,7 @@ test('R08 contradictory run computeUnits must not enter evidence', async () => {
   const normal = successFetch();
   const fetchFn = async (url, options) =>
     String(url).endsWith('/actor-runs/run1')
-      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+      ? response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED',
           stats: { computeUnits: 0 }, usage: { ACTOR_COMPUTE_UNITS: 0.02 },
           usageTotalUsd: 0.004 } })
       : normal.fetchFn(url, options);
@@ -130,7 +130,7 @@ test('R08 valid equal secondary computeUnits accepted', async () => {
   const normal = successFetch();
   const fetchFn = async (url, options) =>
     String(url).endsWith('/actor-runs/run1')
-      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+      ? response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED',
           stats: { computeUnits: 0.02 }, usage: { ACTOR_COMPUTE_UNITS: 0.02 },
           usageTotalUsd: 0.004 } })
       : normal.fetchFn(url, options);
@@ -260,7 +260,7 @@ test('run terminal failure stops before finalized run/output', async () => {
     const u = String(url);
     if (u.includes('/actors/actor123/builds?')) return response(201, { data: { id: 'build1', status: 'SUCCEEDED' } });
     if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
-    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', status: 'FAILED', usageTotalUsd: 0.002 } });
+    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'FAILED', usageTotalUsd: 0.002 } });
     throw new Error('unexpected URL ' + u);
   };
   await assert.rejects(
@@ -274,8 +274,8 @@ test('finalized run usage is required after settle', async () => {
     const u = String(url);
     if (u.includes('/actors/actor123/builds?')) return response(201, { data: { id: 'build1', status: 'SUCCEEDED' } });
     if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
-    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', status: 'SUCCEEDED' } });
-    if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', status: 'SUCCEEDED' } });
+    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
+    if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     throw new Error('should not continue');
   };
   await assert.rejects(
@@ -295,12 +295,12 @@ test('bounded polling still supports transitional build/run', async () => {
       return response(200, { data: { id: 'build1', status: 'SUCCEEDED' } });
     }
     if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
-    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', status: 'RUNNING' } });
+    if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
     if (u.includes('/actor-runs/run1?waitForFinish=60')) {
       runPoll += 1;
-      return response(200, { data: { id: 'run1', status: 'SUCCEEDED' } });
+      return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     }
-    if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', status: 'SUCCEEDED', usageTotalUsd: 0.002 } });
+    if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.002 } });
     if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) return response(200, { status: 'success', schemaVersion: '1.0' });
     throw new Error('unexpected URL ' + u);
   };
@@ -425,7 +425,7 @@ async function assertR08ResourceIdFenceCases() {
       if(u.endsWith('/actor-builds/build1'))
         return response(200,{data:{id:'build1',status:'SUCCEEDED',usageTotalUsd:0}});
       if(u.includes('/actors/actor123/runs?'))
-        return response(201,{data:{id:'run1',status:'RUNNING'}});
+        return response(201,{data:{id:'run1',buildId: 'build1', status:'RUNNING'}});
       if(u.includes('/actor-runs/run1?waitForFinish=60'))
         return response(200,{data:{id:'OTHER_RUN',status:'SUCCEEDED'}});
       throw new Error('unexpected run resource access');
@@ -439,3 +439,56 @@ async function assertR08ResourceIdFenceCases() {
     assert.ok(!urls.some(u=>u.includes('OTHER_RUN')||u.includes('/records/OUTPUT')));
   }
 }
+
+test('run-start refuses a different buildId before poll, final GET or OUTPUT', async () => {
+  const normal = successFetch();
+  const fetchFn = (url, options) => String(url).includes('/actors/actor123/runs?')
+    ? response(201, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } })
+    : normal.fetchFn(url, options);
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+  );
+  assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
+});
+
+test('run terminal polling refuses a swapped buildId on the same run resource', async () => {
+  const normal = successFetch();
+  const fetchFn = (url, options) => {
+    const u = String(url);
+    if (u.includes('/actors/actor123/runs?'))
+      return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
+    if (u.includes('/actor-runs/run1?waitForFinish=60'))
+      return response(200, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } });
+    return normal.fetchFn(url, options);
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+  );
+  assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
+});
+
+test('finalized run refuses mismatched or missing buildId without fetching OUTPUT', async () => {
+  for (const candidate of ['other-build', undefined]) {
+    const normal = successFetch();
+    const fetchFn = (url, options) => String(url).endsWith('/actor-runs/run1')
+      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+          ...(candidate === undefined ? {} : { buildId: candidate }),
+          usageTotalUsd: 0.004 } })
+      : normal.fetchFn(url, options);
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+      String(candidate),
+    );
+    assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
+  }
+});
+
+test('successful synthetic E2E evidence explicitly binds run to the newly created build', async () => {
+  const normal = successFetch();
+  const evidence = await runPrivateApifyE2E({ env, fetchFn: normal.fetchFn, sleepFn: noSleep });
+  assert.equal(evidence.run.buildId, evidence.build.id);
+  assert.equal(evidence.run.buildId, 'build1');
+});
