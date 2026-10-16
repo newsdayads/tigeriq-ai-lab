@@ -100,6 +100,54 @@ test('scoped token may skip users/me on 403 but must still verify Actor access',
   assert.equal(calls.length, 2);
 });
 
+test('preflight rejects mismatched Actor ID after authenticated GET', async () => {
+  const calls=[];
+  const fetchFn=async url=>{
+    calls.push(String(url));
+    return String(url).endsWith('/users/me')
+      ? response(200,{data:{id:'user1',username:'owner'}})
+      : response(200,{data:{id:'impostor123',name:'website-audit',username:'owner',
+        isPublic:false,actorPermissionLevel:'LIMITED_PERMISSIONS',
+        versions:[{versionNumber:'0.1'}]}});
+  };
+  await assert.rejects(()=>runPrivateApifyPreflight({env,fetchFn}),
+    error=>error instanceof ApifyPreflightError && error.code==='ACTOR_IDENTITY_MISMATCH');
+  assert.equal(calls.length,2);
+});
+
+test('preflight rejects JSONP/HTML MIME before a second GET or valid Actor acceptance', async () => {
+  for(const contentType of ['application/jsonp','application/json-seq','text/html',
+                             'text/application/json','application/jsonxyz']) {
+    let calls=0;
+    const fetchFn=async url=>{
+      calls++;
+      const data=String(url).endsWith('/users/me')
+        ? {id:'user1',username:'owner'}
+        : {id:'actor123',name:'website-audit',username:'owner',isPublic:false,
+           actorPermissionLevel:'LIMITED_PERMISSIONS',versions:[{versionNumber:'0.1'}]};
+      return new Response(JSON.stringify({data}),{headers:{'content-type':contentType}});
+    };
+    await assert.rejects(()=>runPrivateApifyPreflight({env,fetchFn}),
+      error=>error instanceof ApifyPreflightError && error.code==='JSON_CONTENT_TYPE_REQUIRED');
+    assert.equal(calls,1,contentType);
+  }
+});
+
+test('preflight accepts correctly delimited JSON with charset', async () => {
+  const calls=[];
+  const fetchFn=async url=>{
+    calls.push(String(url));
+    const data=String(url).endsWith('/users/me')
+      ? {id:'user1',username:'owner'}
+      : {id:'actor123',name:'website-audit',username:'owner',isPublic:false,
+         actorPermissionLevel:'LIMITED_PERMISSIONS',versions:[{versionNumber:'0.1'}]};
+    return new Response(JSON.stringify({data}),{headers:{'content-type':'Application/JSON; charset=UTF-8'}});
+  };
+  const evidence=await runPrivateApifyPreflight({env,fetchFn});
+  assert.equal(evidence.actor.id,env.APIFY_ACTOR_ID);
+  assert.equal(calls.length,2);
+});
+
 test('public Actor fails closed', async () => {
   const fetchFn = async url => String(url).endsWith('/users/me')
     ? response(200, { data: { id: 'user1', username: 'owner' } })
