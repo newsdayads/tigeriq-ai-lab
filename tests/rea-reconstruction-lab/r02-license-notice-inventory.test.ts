@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import original from '../../projects/rea-reconstruction-lab/r06-real-upstream-production-closure.json';
-import inventory from '../../projects/rea-reconstruction-lab/r02-tagged-upstream-license-inventory.json';
+import original from '../../projects/rea-reconstruction-lab/r06-real-upstream-production-closure.json' with { type: 'json' };
+import inventory from '../../projects/rea-reconstruction-lab/r02-tagged-upstream-license-inventory.json' with { type: 'json' };
 
 function auditSnapshot(data: typeof inventory): string[] {
   const issues: string[] = [];
