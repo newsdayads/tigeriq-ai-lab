@@ -14,7 +14,7 @@ import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../sha
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
-import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision} from './step-contract.mjs';
+import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingUnverifiedLegacyHistoryDecision} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
 // The canary gate is evaluated inline so isolated runJob VM tests stay faithful to the default-off runtime.
@@ -1365,15 +1365,21 @@ async function managerTick(){
         ?await db.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.objective ilike $1 order by j.created_at desc limit 5000",['%issue #'+sourceWorkOrder+'%'])
         :await db.query("select x.id as source_objective_id,x.objective,j.instruction,j.status,j.failure from tigeriq_coding_jobs j join tigeriq_coding_objectives x on x.id=j.objective_id where x.id=$1 order by j.created_at desc limit 5000",[o.id]);
       if(previous.rows.length>=5000)throw Error('CODING_ATTEMPT_HISTORY_INCOMPLETE');
-      const history=[];
+      const history=[],legacyRows=[];
       for(const row of previous.rows||[]){
+        const previousWorkOrderId=String(sourceWorkOrderNumber(row.objective)||row.source_objective_id);
         const previousPacket=codingStepPacketFromInstruction(row.instruction);
-        if(!previousPacket)continue;
+        if(!previousPacket){
+          legacyRows.push({workOrderId:previousWorkOrderId,status:row.status});
+          continue;
+        }
         const failure=typeof row.failure==='string'?JSON.parse(row.failure):row.failure;
         history.push({workOrderId:String(sourceWorkOrderNumber(row.objective)||row.source_objective_id),stepId:previousPacket.step_id,sourceRevision:previousPacket.source_revision,
           status:row.status==='done'?'merged_unaccepted':row.status==='blocked'?'blocked_unaccepted':row.status==='failed'?'failed':String(row.status||''),
           failureSignature:codingFailureSignature(failure)});
       }
+      const legacy=codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows});
+      if(!legacy.allow)throw Object.assign(new Error(legacy.code),{code:legacy.code});
       const same=history.filter(h=>h.workOrderId===workOrderId&&h.sourceRevision===packet.source_revision); // preserve cross-step aliases for replay guard
       const accepted=repeatedCodingAttemptDecision({workOrderId,stepId:packet.step_id,sourceRevision:packet.source_revision,history:same});
       const seenFailures=[...new Set(same.filter(h=>h.status==='failed').map(h=>h.failureSignature))];
