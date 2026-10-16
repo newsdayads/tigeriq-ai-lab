@@ -1,0 +1,66 @@
+# P0 — Owner-controlled Core + Coding Lane execution contract
+
+Approval: Owner direct, 2026-10-16. **Scope A only**: Core + Coding Lane first; expand only after final acceptance.
+Authoritative source: GitHub main, Bootstrap, Issue 280 (central queue), Issue 504 (interaction/authority), Issue 1456 (execution lifecycle).
+Baseline at branch creation: `cdec13873c63004fb8761a932bf9a26804b35f24`.
+GitHub working branch: `p0/owner-vy-core-coding-contract-20261016`.
+
+## Hard freeze and authority
+
+- **Owner controls P0**; Vy coordinates. Workers including NV02 may only perform explicitly bounded execution, not autonomous P0 project decomposition/release.
+- Branch-only source changes and isolated tests are authorized. **NO merge to main, NO PC01 installation/restart/release, NO Production, NO App Chrome changes** without Owner's later review and explicit approval.
+- No new scheduler/queue/control plane. No new cost, secrets, permission changes, unauthorized machine writes, release/branch-protection bypass, or claim of live Core lease from GitHub write authority.
+- Any independent GitHub source write uses branch/PR. For qualified scope the existing Owner waiver permits review *waiver*, not a fabricated independent approval; exact-head required checks and additional task-specific functional acceptance remain mandatory.
+- Existing unfinished PRs remain untouched; one verified writer per mutation scope. Read-only audit does not require the Core writer lease.
+- No percentage or DONE without accepted checklist evidence. Do not confuse 40 API Doctor/bootstrap jobs marked `done` with shipped software features.
+
+## Verified root-cause snapshot, not current full-system statistics
+
+PC01 read on 2026-10-16 (previous Owner audit): Coding Lane most recent 30 jobs: 29 failed, 1 done; most recent 20 coding objectives: 19 blocked, 1 completed. Failure classes included output-contract exhaustion (15), resources unavailable (6), all-batches-noop (3), no implementer (2), busy (1), HTTP 422, and a null-class failure. Core 40 recent jobs consisted of 38 API Doctor analysis jobs and 2 NV07 read-only/bootstrap canaries.
+
+The merged DeXCam PR 4856 changed only a 25-line markdown-style file `apps/dexcam-personal`, not the Gradle/Manifest/Kotlin files required for a functioning Android module. All three generic CI checks passed; that is not Android functional acceptance. The DeXCam source Work Order 4625 was closed completed while its checklist/body still indicated unfinished work. Another Core objective reached 30 manager cycles on the old source. The same NVIDIA repair family spawned multiple failed coding jobs.
+
+Code-read findings: Core `task-prompt-compiler.mjs` supports step/acceptance/evidence packets for compiled tasks, but `coding-lane.mjs` currently asks its manager to emit only title/instruction/paths for ONE job and does not call the active Skill loader. Existing Core Skill matcher is lexical with a maximum of 3 skills and 6000 characters. Generic CI/checks or review waiver are insufficient to prove product function. Existing retry guards are local and may not prevent repeated objectives across source epochs. Preserve legitimate progress and do not regress existing Core routing.
+
+## G1–G6 — one acceptance package, incremental branch edits
+
+| Gate | Required product | Deterministic acceptance |
+|---|---|---|
+| G1 Baseline | Frozen source/runtime snapshot, overlapping PR check, defined allowed paths, rollback path | SHA, current issues and actual service evidence; no live mutation |
+| G2 Prompt contracts | Role-specific planning, implementation, independent review and acceptance prompts per step | Stable step_id, source_revision, skill refs, actions, required real artifacts, tests/evidence, terminal criteria; invalid packets rejected |
+| G3 Skill & capability | Verified ACTIVE skills injected into Coding Lane, per-role capability and explicit skip/fallback | Actual skill ids/versions/bytes persisted; never claim CANDIDATE ACTIVE; no generic fallback for mandatory absent skill |
+| G4 Dispatch/anti-loop | Cross-attempt identity based on canonical work order, step, source revision, failure signature | No duplicate writer, no replay same accepted step; max 2 same-failure attempts without material change; clear parked/wake event; other eligible independent work continues |
+| G5 Product acceptance | Deterministic, deliverable-specific source and test verification | Markdown placeholder cannot pass Android source gate; checks cannot substitute build/e2e; Owner waiver is not QA pass; closed issue with unaccepted checklist is not DONE |
+| G6 Full integration | Isolated regression suite + representative multi-step workflow + negative cases + rollback drill | CI exact SHA, live authorized E2E *only after separate Owner approval*, no false DONE/merges/production claims |
+
+## Evidence requirements before asking Owner for merge/release
+
+- Branch commits, explicit source diff, automated tests with run identifiers and exact head SHA.
+- Offline negative regression: DeXCam markdown-only changes must be rejected; valid required source paths must survive structural gate but still require real build/test.
+- Offline anti-loop: same step+revision+failure no more than two attempts; new source revision/evidence explicitly allows reconsideration; accepted step cannot replay.
+- Skill: active version/content truly loaded in bounded prompt; log applied and skipped skill reasons; capability match is explicit.
+- Integration: verified worker output and independent acceptance; evidence-bound step advancement; no repeat of closed/accepted issue; restart/lease invariants tested.
+- Record any P0 runtime capability, PC01 exact installed SHA and release ticket only as **NOT_VERIFIED** until separately authorized and read back.
+- **Owner gate:** stop at draft PR and result packet for Owner; no merge or deployment in this authorization.
+
+## Entry and exit
+
+Owner-approved scope is G1–G6 on this isolated branch. Work cannot be called G6 DONE from generic green CI or schema-only tests. In absence of a legitimate isolated multi-step E2E, report G6 BLOCKED_WITH_EVIDENCE and require further scoped test authorization, rather than endless retries or false success.
+
+## G1 source-only audit addendum — 2026-10-16
+
+- Canonical P0 tracking: https://github.com/newsdayads/tigeriq-ai-lab/issues/4902. Draft code: https://github.com/newsdayads/tigeriq-ai-lab/pull/4898. None merged or released.
+- Most recently inspected `main` SHA: `82e27e9ff96cdb97a131d089eca26bb4458d303d`; G1 original branch baseline `cdec13873c63004fb8761a932bf9a26804b35f24`. Source diff of intervening main changes affected `apps/revenue-lab/`, `projects/rea-reconstruction-lab/` and related tests, **not** the current P0 candidate files. This is an observation, not a waiver of future rebasing/conflict checks.
+- Existing overlapping open PR **#4487 (NV09 local Ollama)** modifies the same `apps/tigeriq-coding-lane/coding-lane.mjs`. Preserve it and resolve overlap before any source merge; do not silently overwrite its work. Other open PRs #4737, #4573, #4061 currently have disjoint file lists to the P0 change set but affect adjacent Core services.
+- **Superseded G1 quota note:** original main RDC link was exhausted; another already authorized RDC link has 54% available calls. On 2026-10-16 06:49–06:51 ICT, PC01 read-only queries returned Core :8795 and Coding Lane :8797 `ok`, `sharedLeases=[]`, policy `OWNER_PROJECT_AUTONOMY_V2 enabled=true`. The release-attempt record is `COMMITTED`, target `bfedeaa481e5af26aaa775fb1b403d513bc0407e`, previous `77c08a88bd00e76384a6d1875c5954b6b281ed0c`; this historical receipt is NOT an independent installed binary SHA attestation. Runtime `coding-lane.mjs` is 141472 bytes and lacks P0 imports, proving this candidate has NOT been installed. G1 read-only evidence complete; no PC01 source installation, service restart, writer lease claim or rollback test.
+- GitHub code branch write succeeded; no Core DB lease is claimed. GitHub writer permission, Core resource lease, and production deployment permission remain separate.
+- Recovery plan is branch-only revert/close PR without modifying `main`; an installed-runtime rollback plan cannot be signed off without current PC01 state.
+- Do not use this GitHub snapshot to assert service health or a real coding job has executed. Environment / G6 remain unverified.
+
+## G1 acceptance addendum — 2026-10-16 06:51 ICT
+
+- Authoritative Work Order: [#4902 — P0 Core + Coding Lane](https://github.com/newsdayads/tigeriq-ai-lab/issues/4902). Its G1 checkbox is accepted solely for source/runtime READ-ONLY baseline and governance audit, not for experimental run or release.
+- Current inspected GitHub main: `fb4dc013c1913c5485756b24b9e1c31bbbe92fbd`; draft P0 branch SHA: `b7bc5743f7f050d5cec3e2d6ebd322e7a4f6487a`. 3/3 exact-head CI checks on that branch were successful.
+- PC01 sample: Core 15 resources / 40 recent jobs (39 done / 1 failed), Coding Lane 7 resources / 30 recent jobs (1 done / 29 failed). Sample only. `sharedLeases=[]` means no shared lease at the instant observed, not perpetual unclaimed ownership.
+- Overlap: still-open PR #4487 edits the same Coding Lane module (different hunk). Reconcile before any source merge. Rollback candidate previous SHA is recorded; **no rollback command executed**.
+- Remaining: G3 actual Skill runtime activation, G4 real PostgreSQL concurrency run, G5 product build/acceptance receipts, G6 multi-step worker and rollback drill. Preserve explicit Owner approval gate before merging or deploying P0.
