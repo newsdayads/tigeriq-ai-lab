@@ -9,7 +9,7 @@ import {
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
 process.env.NODE_ENV='test';
-const {runGateWithRepair,restartRecoveryDecision,staleRunningRecoveryDecision,sourceWorkOrderNumber}=await import('../apps/tigeriq-coding-lane/coding-lane.mjs');
+const {runGateWithRepair,runReviewReworkLifecycle,assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision,sourceWorkOrderNumber}=await import('../apps/tigeriq-coding-lane/coding-lane.mjs');
 
 const files=['apps/demo/app/build.gradle.kts','apps/demo/app/src/main/AndroidManifest.xml','apps/demo/app/src/main/java/MainActivity.kt'];
 const sourceBlobs=Object.fromEntries(files.map(x=>[x,null]));
@@ -106,4 +106,32 @@ test('G6 simulated crash/restart: preserve PR identity, fail closed for unknown/
   assert.equal(staleRunningRecoveryDecision({
     status:'running',started_at:'2026-01-01T00:00:00Z',stale_recovery_count:2
   },{nowMs:Date.parse('2026-01-02T00:00:00Z'),staleMs:1000,maxRequeues:2,active:true}).code,'CODING_STALE_ACTIVE_LEASE');
+});
+
+test('G6 source lifecycle runs re-review after repair and invalidates approval on changed HEAD',async()=>{
+  const heads=['a'.repeat(40),'b'.repeat(40)];
+  let checkCalls=0,reviewCalls=0,fixCalls=0,waitingCalls=0;
+  const result=await runReviewReworkLifecycle({
+    maxCycles:2,
+    waitGatesFn:async()=>({sha:heads[checkCalls++],states:[{name:'CI Verify',conclusion:'success'}]}),
+    reviewFn:async({gates})=>{
+      reviewCalls++;
+      return reviewCalls===1
+        ?{decision:'changes_requested',issues:['Functional regression'],sha:gates.sha}
+        :{decision:'approve',issues:[],sha:gates.sha};
+    },
+    repairFn:async()=>{fixCalls++;},
+    onWaitingCi:async()=>{waitingCalls++}
+  });
+  assert.equal(checkCalls,2);assert.equal(reviewCalls,2);assert.equal(fixCalls,1);assert.equal(waitingCalls,1);
+  assert.equal(result.gates.sha,heads[1]);
+  assert.equal(result.review.sha,heads[1]);
+  assert.throws(()=>assertIndependentReviewApproval({
+    implementerId:'worker-A',reviewerId:'reviewer-B',
+    targetHead:heads[0],expectedHead:heads[1],decision:'approve'
+  }),/HEAD|SHA|STALE|MISMATCH/i);
+  assert.equal(assertIndependentReviewApproval({
+    implementerId:'worker-A',reviewerId:'reviewer-B',
+    targetHead:heads[1],expectedHead:heads[1],decision:'approve'
+  }),true);
 });
