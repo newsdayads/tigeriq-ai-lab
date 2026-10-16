@@ -104,7 +104,15 @@ export function verifyCodingDeliverable({packet,changes=[]}={}){
 }
 export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision,failureSignature='',history=[],maxSameFailure=2}={}){
   if(!string(workOrderId)||!string(stepId)||!string(sourceRevision))return {allow:false,code:'CODING_ATTEMPT_IDENTITY_UNVERIFIED'};
-  const comparable=(Array.isArray(history)?history:[]).filter(x=>string(x.workOrderId)===string(workOrderId)&&string(x.stepId)===string(stepId)&&string(x.sourceRevision)===string(sourceRevision));
+  const revisionPeers=(Array.isArray(history)?history:[]).filter(x=>
+    string(x.workOrderId)===string(workOrderId)&&string(x.sourceRevision)===string(sourceRevision));
+  // Manager-generated step_id is NOT a trusted replay key. Switching D01 to D02
+  // with identical canonical Work Order and source blobs cannot re-arm a failed
+  // or unaccepted step. A genuinely accepted D01 may proceed to D02.
+  if(revisionPeers.some(x=>string(x.stepId)!==string(stepId)&&
+     ['failed','queued','running','review','waiting_ci','waiting_resource','merged_unaccepted','blocked_unaccepted'].includes(x.status)))
+    return {allow:false,code:'CODING_STEP_ALIAS_REPLAY_BLOCKED'};
+  const comparable=revisionPeers.filter(x=>string(x.stepId)===string(stepId));
   if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
   if(comparable.some(x=>x.status==='merged_unaccepted'))return {allow:false,code:'CODING_STEP_MERGED_AWAITING_ACCEPTANCE'};
   if(comparable.some(x=>x.status==='blocked_unaccepted'))return {allow:false,code:'CODING_STEP_BLOCKED_AWAITING_MATERIAL_CHANGE'};
