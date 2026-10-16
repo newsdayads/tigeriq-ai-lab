@@ -1277,7 +1277,7 @@ export function managerBlockKind(summary=''){
 }
 
 async function managerTick(){
-  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and (next_attempt_at is null or next_attempt_at<=now()) and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
+  const q=await pool.query("select * from tigeriq_coding_objectives where status='active' and (next_attempt_at is null or next_attempt_at<=now()) and not exists(select 1 from tigeriq_coding_jobs j where j.objective_id=tigeriq_coding_objectives.id and j.status in ('queued','running','review','waiting_ci','waiting_resource','waiting_owner')) order by case priority when 'P0' then 0 when 'P1' then 1 else 2 end,created_at limit 1");
   const o=q.rows[0];if(!o)return;
   try{
     await assertCanonicalSourceWorkOrderExecutable(o.objective);

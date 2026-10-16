@@ -62,6 +62,10 @@ test('G6 writer claim must hold pending Owner step and real job must persist han
   const core=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(a,/where status in \('queued','running','review','waiting_ci','waiting_resource','waiting_owner'\)/);
   assert.match(core,/status in \('running','review','waiting_ci','waiting_owner'\)/);
+  // Even when a stale objective is reactivated, the native Manager
+  // must not emit a fresh job while the prior job awaits Owner release.
+  assert.match(core,/not exists\(select 1 from tigeriq_coding_jobs j where j\.objective_id=tigeriq_coding_objectives\.id and j\.status in \('queued','running','review','waiting_ci','waiting_resource','waiting_owner'\)\)/);
+
   assert.match(core,/\?codingVerifiedCanaryOwnerHandoff\(\{canary,merge,gates,productAcceptance,review,ownerWaiver,headSha:finalSha\}\)/);
   assert.match(core,/result=\$4,[^\n]*ownerHandoff:handoff/);
   assert.doesNotMatch(core,/if\(AUTO_MERGE\s*\&\&\s*canary\)/);
