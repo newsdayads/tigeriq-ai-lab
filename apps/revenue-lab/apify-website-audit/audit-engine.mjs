@@ -205,13 +205,12 @@ async function fetchBounded(startUrl, options) {
 
 const cleanText = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-// HTML comments, script data and CSS are not live DOM markup. Ignore tags
-// embedded in these regions before deriving SEO fields or crawl targets.
-// Keep the original response bytes/cost metrics untouched.
+// Strip inert regions in DOCUMENT ORDER, not in two independent passes:
+// a JS/CSS string can contain literal "<!--" and HTML comments can contain
+// mock script/style tags. The leftmost token owns its entire inert region.
+// Keep raw response bytes/cost metrics and network validation unchanged.
 function stripInertHtml(html) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+  return html.replace(/<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
 }
 
 function extractSeo(html) {
