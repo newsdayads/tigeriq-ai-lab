@@ -1,6 +1,6 @@
 // Readback-only gate: checklist assertions are not proof of runtime acceptance.
 // Caller MUST supply the fresh GitHub issue fetched after the attempted checkbox write.
-const STEP=/^\s*[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
+const STEP=/^ {0,3}[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
 const MARKDOWN_LINK=/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/g;
 function sectionName(line){
  const m=String(line).match(/^\s{0,3}#{2,6}\s+(.+)$/);
@@ -12,7 +12,18 @@ export function workOrderChecklistSteps(body=''){
  const lines=String(body||'').split(/\r?\n/);
  let found=false,inside=false;
  const steps=[];
+ // Read only canonical root checklist entries, never checkbox illustrations in
+ // fenced/indented Markdown code. Match CommonMark's 0-3-space fence boundary;
+ // a longer opening fence cannot be closed by a shorter marker.
+ let fence=null;
  for(const line of lines){
+  const marker=line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  if(fence){
+   if(marker&&marker[1][0]===fence.char&&marker[1].length>=fence.length&&
+      marker[2].trim()==='')fence=null;
+   continue;
+  }
+  if(marker){fence={char:marker[1][0],length:marker[1].length};continue;}
   const heading=sectionName(line);
   if(heading!==null){if(inside)break;if(!found&&heading==='checklist'){found=true;inside=true;}continue;}
   if(!inside)continue;
