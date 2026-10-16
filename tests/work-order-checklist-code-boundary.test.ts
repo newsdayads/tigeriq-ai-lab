@@ -112,7 +112,7 @@ it('NV07 rejects Markdown image, escaped, and inline-code receipt spoofing',()=>
  const forged=[
   tick+'[Receipt]('+proof+')'+tick,
   tick+tick+'[Receipt]('+proof+')'+tick+tick,
-  '\[Receipt]('+proof+')',
+  '\\[Receipt]('+proof+')',
   '![Receipt]('+proof+')',
   '<code>[Receipt]('+proof+')</code>'
  ];
