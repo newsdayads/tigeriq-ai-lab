@@ -136,23 +136,97 @@ test('G6 source lifecycle runs re-review after repair and invalidates approval o
   }),true);
 });
 
-// This source-only interface test stubs G5 on purpose; real acceptance requires
-// the independently reviewed G5 module plus actual GitHub check-run receipts.
-test('G6 product gate rejects SHA drift, missing source bytes, off-scope and absent G5',async()=>{
-  const loaded=loadRequiredCodingSkills('GitHub autonomous coding issue #4625');
-  const packet=compileCodingStepPacket({objectiveId:'CODEOBJ-4625',sourceRevision:revision,
-    sourceHeadSha:head,allowedPaths:files,job:job('D01'),skillEvidence:loaded.proof});
-  const opts={packet,sourceHeadSha:head,prHeadSha:head,changedPaths:files,
-    checkRuns:checks,readSource:async path=>({sha:'1'.repeat(40),content:changes.find(c=>c.path===path).content}),
-    evaluateProduct:()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})};
-  await assert.rejects(verifyCodingCanaryProductGate({...opts,prHeadSha:'b'.repeat(40)}),/SOURCE_HEAD_DRIFT/);
-  await assert.rejects(verifyCodingCanaryProductGate({...opts,changedPaths:[...files,'apps/outside.mjs']}),/CHANGED_SCOPE_INVALID/);
-  await assert.rejects(verifyCodingCanaryProductGate({...opts,readSource:async()=>({content:'code'})}),/SOURCE_BYTES_UNVERIFIED/);
-  await assert.rejects(verifyCodingCanaryProductGate({...opts,evaluateProduct:undefined}),/PRODUCT_GATE_DEPENDENCY_MISSING/);
-  await assert.rejects(verifyCodingCanaryProductGate({
-    ...opts,evaluateProduct:()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})
-  }),/ACCEPTANCE_NOT_VERIFIED/);
-  const verified=await verifyCodingCanaryProductGate({...opts,
-    evaluateProduct:({sourceHeadSha})=>({pass:true,status:'ACCEPTED',sourceHeadSha,code:'MOCK_ONLY'})});
-  assert.equal(verified.code,'CODING_PRODUCT_GATE_VERIFIED');
+// Deliberately isolated tests: simulated GitHub REST, never live product
+// acceptance or authorization to promote G5/Skill.
+import {createHash} from 'node:crypto';
+const blobSha=content=>{
+  const bytes=Buffer.from(content,'utf8');
+  return createHash('sha1').update(Buffer.concat([Buffer.from('blob '+bytes.length+'\\0'),bytes])).digest('hex');
+};
+const goodCheck={id:911,head_sha:head,...checks[0],app:{slug:'github-actions'},
+  details_url:'https://github.com/newsdayads/tigeriq-ai-lab/actions/runs/42/job/91'};
+const receipt=(rows=[goodCheck],extra={})=>({
+  provider:'github_rest_authenticated',repository:'newsdayads/tigeriq-ai-lab',
+  sourceHeadSha:head,totalCount:rows.length,checkRuns:rows,...extra
+});
+const sourceReader=async path=>({
+  sha:blobSha(changes.find(c=>c.path===path).content),
+  content:changes.find(c=>c.path===path).content
+});
+const packetFixture=()=>{
+  const skills=loadRequiredCodingSkills('GitHub autonomous coding issue #4625');
+  return compileCodingStepPacket({
+    objectiveId:'CODEOBJ-4625',sourceRevision:revision,sourceHeadSha:head,
+    allowedPaths:files,job:job('D01'),skillEvidence:skills.proof
+  });
+};
+const validG5=async({sourceHeadSha})=>({pass:true,status:'ACCEPTED',
+  sourceHeadSha,code:'MOCK_POLICY_PASS'});
+const g6Fixture=()=>({
+  packet:packetFixture(),sourceHeadSha:head,prHeadSha:head,
+  changedPaths:files,repositoryFullName:'newsdayads/tigeriq-ai-lab',
+  readSource:sourceReader,fetchEvidence:async()=>receipt(),
+  evaluateProduct:validG5
+});
+
+test('G6 gate fails closed if G5 missing; does not relabel missing dependency as acceptance',async()=>{
+  const args=g6Fixture();
+  await assert.rejects(verifyCodingCanaryProductGate({...args,evaluateProduct:undefined}),
+    /CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:undefined}),
+    /CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,checkRuns:[goodCheck]}),
+    /CODING_PRODUCT_SELF_REPORTED_CHECKS_REJECTED/);
+});
+
+test('G6 trusted provider gate rejects forged and unproven check receipts',async()=>{
+  const args=g6Fixture();
+  await assert.rejects(verifyCodingCanaryProductGate({...args,prHeadSha:'b'.repeat(40)}),/SOURCE_HEAD_DRIFT/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,changedPaths:[...files,'apps/outside.mjs']}),/CHANGED_SCOPE_INVALID/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([])}),/PROVIDER_RECEIPT_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([goodCheck],{sourceHeadSha:'b'.repeat(40)})}),/PROVIDER_RECEIPT_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([goodCheck],{repository:'attacker/repo'})}),/PROVIDER_RECEIPT_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([goodCheck],{provider:'ai_self_reported'})}),/PROVIDER_RECEIPT_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,head_sha:'b'.repeat(40)}])}),/PROVIDER_CHECK_UNTRUSTED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,conclusion:'failure'}])}),/PROVIDER_CHECK_UNTRUSTED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,app:{slug:'unverified'}}])}),/PROVIDER_CHECK_UNTRUSTED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,details_url:'https://attacker.invalid/job/91'}])}),/PROVIDER_CHECK_UNTRUSTED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([goodCheck,{...goodCheck,id:912,conclusion:'failure'}])}),/PROVIDER_CHECK_UNTRUSTED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([goodCheck],{totalCount:101})}),/PROVIDER_RECEIPT_UNVERIFIED/);
+});
+
+test('G6 rejects Git blob mismatch, empty bytes, erased required files and G5 false pass',async()=>{
+  const args=g6Fixture();
+  await assert.rejects(verifyCodingCanaryProductGate({...args,readSource:async()=>({content:'fake',sha:'1'.repeat(40)})}),/GIT_BLOB_MISMATCH/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,readSource:async()=>({content:'fake'})}),/SOURCE_BYTES_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,readSource:async()=>({content:' ',sha:blobSha(' ')})}),/SOURCE_BYTES_UNVERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,changedPaths:[files[0],files[1]]}),/REQUIRED_SOURCE_MISSING/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,evaluateProduct:async()=>({pass:true,status:'ACCEPTED',sourceHeadSha:'b'.repeat(40)})}),/ACCEPTANCE_NOT_VERIFIED/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,evaluateProduct:async()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})}),/ACCEPTANCE_NOT_VERIFIED/);
+});
+
+test('G6 exact GitHub check runs + verifiable git blobs reach G5 policy; AI receipts cannot be injected',async()=>{
+  const args=g6Fixture(),calls=[];
+  args.evaluateProduct=async data=>{
+    calls.push(data);
+    return validG5(data);
+  };
+  const result=await verifyCodingCanaryProductGate(args);
+  assert.equal(result.code,'CODING_PRODUCT_GATE_VERIFIED');
+  assert.deepEqual(result.verifiedCheckRunIds,[911]);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].sourceHeadSha,head);
+  assert.deepEqual(calls[0].receipts,[]);
+  assert.deepEqual(calls[0].changes.map(x=>x.path),files);
+  assert.equal(calls[0].checkRuns[0].id,911);
+});
+
+test('G6 product runner cannot be bypassed by review waiver; independent review head remains bound',async()=>{
+  const args=g6Fixture();
+  const review={kind:'owner_waiver',authority:'SCOPED_OWNER_POLICY',targetHead:head};
+  assert.equal(review.kind,'owner_waiver');
+  await assert.rejects(verifyCodingCanaryProductGate({...args,evaluateProduct:undefined}),/ACCEPTOR_UNAVAILABLE/);
+  await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,conclusion:'failure'}])}),/CHECK_UNTRUSTED/);
+  assert.throws(()=>assertIndependentReviewApproval({implementerId:'agent',reviewerId:'agent',
+    targetHead:head,expectedHead:head,decision:'approve'}),/REVIEWER_IMPLEMENTER_COLLISION/);
 });

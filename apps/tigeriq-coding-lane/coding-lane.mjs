@@ -2018,6 +2018,7 @@ async function runJob(j){
     const changedFiles=await ghRepo(targetRepository,`/pulls/${pr.number}/files?per_page=100`);
     if(!Array.isArray(changedFiles)||changedFiles.length>=100)
       throw Error('CODING_CHANGED_FILES_LIST_UNVERIFIED');
+    if(changedFiles.some(x=>x.status==='removed'||!x.filename))throw Error('CODING_CHANGED_FILES_REMOVED_OR_INVALID');
     const actual=new Set(changedFiles.map(x=>String(x.filename||'')));
     const absent=stepPacket.required_changed_paths.filter(path=>!actual.has(path));
     if(absent.length)throw Object.assign(new Error('CODING_REQUIRED_CHANGED_FILES_MISSING:'+absent.join(',')),{code:'CODING_REQUIRED_CHANGED_FILES_MISSING'});
@@ -2030,12 +2031,30 @@ async function runJob(j){
     // G6: verify the PR HEAD against exact-SHA GitHub file bytes. A pending
     // G5 module fails closed and cannot become a waived/implicit PASS.
     const prHeadSha=await headSha(branch,targetRepository);
-    const productModule=['android','frontend','backend'].includes(stepPacket.deliverable_type)
-      ?await import('./product-acceptance.mjs'):null;
+    let productModule=null;
+    if(['android','frontend','backend'].includes(stepPacket.deliverable_type)){
+      try{productModule=await import('./product-acceptance.mjs')}
+      catch(error){
+        if(error?.code==='ERR_MODULE_NOT_FOUND')
+          throw Object.assign(new Error('CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE'),{code:'CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE'});
+        throw error;
+      }
+    }
     productAcceptance=await verifyCodingCanaryProductGate({
       packet:stepPacket,sourceHeadSha:gates.sha,prHeadSha,
-      changedPaths:[...actual],checkRuns:domainCheckReceipt.check_runs,
+      repositoryFullName:targetRepository.fullName,
+      changedPaths:[...actual],
       readSource:async(path,sha)=>readRepoFile(path,sha,targetRepository),
+      fetchEvidence:async(sha,repositoryFullName)=>{
+        if(repositoryFullName!==targetRepository.fullName)
+          throw Error('CODING_PRODUCT_REPOSITORY_DRIFT');
+        // Never accept a caller-supplied check run; this is an authenticated
+        // GitHub REST read performed by the execution plane on pinned SHA.
+        const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+        return {provider:'github_rest_authenticated',sourceHeadSha:sha,
+          repository:repositoryFullName,totalCount:raw?.total_count,
+          checkRuns:raw?.check_runs};
+      },
       evaluateProduct:productModule?.evaluateProductAcceptance
     });
   }

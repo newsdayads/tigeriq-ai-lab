@@ -135,46 +135,85 @@ export function codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows=[]
   return {allow:true,code:'CODING_LEGACY_HISTORY_CLEAR'};
 }
 
-// G6 interface owned by Vy: only accepts exact-HEAD source bytes and delegates
-// product-specific correctness to G5. The delegated validator must return a
-// verified receipt; this interface never invents a successful build or review.
+// G6 source adapter. Provider evidence MUST come from authenticated GitHub
+// REST on the intended exact commit; never accept AI-supplied check-run arrays,
+// human comments, or a self-asserted "trusted" status as test execution proof.
 export async function verifyCodingCanaryProductGate({
-  packet,sourceHeadSha,prHeadSha,changedPaths=[],checkRuns=[],
-  readSource,evaluateProduct
+  packet,sourceHeadSha,prHeadSha,changedPaths=[],readSource,
+  fetchEvidence,evaluateProduct,repositoryFullName,checkRuns
 }={}){
   if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
-  const source=string(sourceHeadSha).toLowerCase(),pr=string(prHeadSha).toLowerCase();
-  if(!/^[a-f0-9]{40}$/.test(source)||pr!==source)
+  const source=string(sourceHeadSha).toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(source)||string(prHeadSha).toLowerCase()!==source)
     throw Error('CODING_PRODUCT_SOURCE_HEAD_DRIFT');
+  if(!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName)))
+    throw Error('CODING_PRODUCT_REPOSITORY_UNVERIFIED');
   if(!Array.isArray(changedPaths)||changedPaths.length<1||changedPaths.length>=100||
      new Set(changedPaths).size!==changedPaths.length||
      changedPaths.some(p=>!safePath(p)||!packet.paths.includes(p)))
     throw Error('CODING_PRODUCT_CHANGED_SCOPE_INVALID');
   if(packet.required_changed_paths.some(p=>!changedPaths.includes(p)))
     throw Error('CODING_PRODUCT_REQUIRED_SOURCE_MISSING');
-  if(!Array.isArray(checkRuns)||!checkRuns.length)
-    throw Error('CODING_PRODUCT_CHECKS_UNVERIFIED');
+  // Even real checks shown in an AI response are NOT trusted. Only an injected
+  // transport function owned by the Coding Lane can fetch GitHub REST evidence.
+  if(checkRuns!==undefined)throw Error('CODING_PRODUCT_SELF_REPORTED_CHECKS_REJECTED');
   const kind=packet.deliverable_type;
   if(!['android','frontend','backend'].includes(kind))
-    return {pass:true,code:'CODING_NON_PRODUCT_STEP_STRUCTURAL_GATE_ONLY',sourceHeadSha:source};
-  if(typeof readSource!=='function'||typeof evaluateProduct!=='function')
-    throw Error('CODING_PRODUCT_GATE_DEPENDENCY_MISSING');
+    return {pass:true,code:'CODING_NON_PRODUCT_STEP_STRUCTURAL_ONLY',sourceHeadSha:source};
+  if(typeof evaluateProduct!=='function')throw Error('CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE');
+  if(typeof readSource!=='function'||typeof fetchEvidence!=='function')
+    throw Error('CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE');
+  const proof=await fetchEvidence(source,string(repositoryFullName));
+  const sourceChecks=proof?.checkRuns;
+  if(proof?.provider!=='github_rest_authenticated'||
+     proof?.sourceHeadSha!==source||proof?.repository!==string(repositoryFullName)||
+     !Number.isInteger(proof?.totalCount)||!Array.isArray(sourceChecks)||
+     !sourceChecks.length||proof.totalCount!==sourceChecks.length||sourceChecks.length>=100)
+    throw Error('CODING_PRODUCT_PROVIDER_RECEIPT_UNVERIFIED');
+  const trusted=[];
+  const required=new Set(packet.required_checks||[]);
+  for(const check of sourceChecks){
+    const name=string(check?.name);
+    if(!required.has(name))continue;
+    const slug=string(check?.app?.slug);
+    const url=string(check?.details_url);
+    const urlPrefix='https://github.com/'+string(repositoryFullName)+'/actions/runs/';
+    if(!/^[a-f0-9]{40}$/.test(string(check?.head_sha))||
+       string(check.head_sha).toLowerCase()!==source||
+       !Number.isSafeInteger(check?.id)||check.id<=0||
+       slug!=='github-actions'||!url.startsWith(urlPrefix)||
+       !/^\d+\/job\/\d+(?:[?#].*)?$/.test(url.slice(urlPrefix.length))||
+       check.status!=='completed'||check.conclusion!=='success')
+      throw Error('CODING_PRODUCT_PROVIDER_CHECK_UNTRUSTED:'+name);
+    trusted.push(check);
+  }
+  if([...required].some(name=>!trusted.some(x=>x.name===name)))
+    throw Error('CODING_PRODUCT_REQUIRED_PROVIDER_CHECK_MISSING');
   const changes=[];
   for(const path of changedPaths){
     const data=await readSource(path,source);
-    if(!data||!string(data.sha)||typeof data.content!=='string')
+    if(!data||typeof data.content!=='string'||!data.content.trim()||
+       !/^[a-f0-9]{40}$/i.test(string(data.sha)))
       throw Error('CODING_PRODUCT_SOURCE_BYTES_UNVERIFIED:'+path);
+    const bytes=Buffer.from(data.content,'utf8');
+    const actual=createHash('sha1').update(Buffer.concat([
+      Buffer.from('blob '+bytes.length+'\\0'),bytes
+    ])).digest('hex');
+    if(actual!==string(data.sha).toLowerCase())
+      throw Error('CODING_PRODUCT_SOURCE_GIT_BLOB_MISMATCH:'+path);
     changes.push({path,content:data.content});
   }
-  const verdict=evaluateProduct({
-    productType:kind,sourceHeadSha:source,changes,checkRuns
+  // G5 is a pure product-quality policy. Input receipts are strictly GitHub
+  // check runs just re-fetched by G6; no AI-provided receipts or waiver flags.
+  const verdict=await evaluateProduct({
+    productType:kind,sourceHeadSha:source,changes,checkRuns:trusted,receipts:[]
   });
-  if(verdict?.pass!==true||verdict?.status!=='ACCEPTED'||
-     verdict?.sourceHeadSha!==source)
+  if(verdict?.pass!==true||verdict?.status!=='ACCEPTED'||verdict.sourceHeadSha!==source)
     throw Object.assign(new Error('CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED'),{
       code:'CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED',detail:verdict||null
     });
   return {pass:true,code:'CODING_PRODUCT_GATE_VERIFIED',sourceHeadSha:source,
+    verifiedSourcePaths:changes.map(c=>c.path),verifiedCheckRunIds:trusted.map(c=>c.id),
     productReceipt:verdict};
 }
 
