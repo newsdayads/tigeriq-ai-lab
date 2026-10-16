@@ -11,7 +11,7 @@ const sourceSha=process.env.GITHUB_SHA||'', repo=process.env.GITHUB_REPOSITORY||
 const runId=process.env.GITHUB_RUN_ID||'';
 const fail=(code)=>{throw Object.assign(new Error(code),{code});};
 if(process.env.GITHUB_ACTIONS!=='true'||repo!=='newsdayads/tigeriq-ai-lab'||
-   !/^[a-f0-9]{40}$/.test(sourceSha)||!/^\\d+$/.test(runId)||
+   !/^[a-f0-9]{40}$/.test(sourceSha)||!/^\d+$/.test(runId)||
    process.env.RUNNER_OS!=='Linux'||process.env.GITHUB_REF!=='refs/heads/p0/owner-vy-core-coding-contract-20261016')
   fail('G3_GITHUB_ACTIONS_IDENTITY_MISSING');
 const verifiedSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -57,9 +57,9 @@ const host={
       // No repository mount, tokens, network or writable container filesystem.
       writeFileSync(join(dir,'candidate.mjs'),input.code,{mode:0o644});
       writeFileSync(join(dir,'runner.mjs'),
-        'import {normalizePort} from "./candidate.mjs";\\n'+
-        'const inputs='+JSON.stringify(input.cases)+';\\n'+
-        'const outputs=inputs.map(value=>normalizePort(value));\\n'+
+        'import {normalizePort} from "./candidate.mjs";\n'+
+        'const inputs='+JSON.stringify(input.cases)+';\n'+
+        'const outputs=inputs.map(value=>normalizePort(value));\n'+
         'process.stdout.write(JSON.stringify({outputs}));\\n',{mode:0o644});
       const args=['run','--rm','--network','none','--read-only','--cap-drop','ALL',
         '--security-opt','no-new-privileges','--pids-limit','32','--memory','256m',
