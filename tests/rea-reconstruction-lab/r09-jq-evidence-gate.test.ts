@@ -56,3 +56,57 @@ it('R09 malformed base64, excessive input and invalid compression fail without e
     expect(JSON.stringify(r)).not.toContain('PRIVATE_SECRET');
   }
 });
+
+it('R09 cyclic caller-supplied evidence is rejected without an uncaught stack overflow',()=>{
+  const x:any=structuredClone(fixture);x.extra=x;
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 unsupported BigInt evidence is rejected rather than throwing',()=>{
+  const x:any=structuredClone(fixture);x.extra=1n;
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 deep evidence nesting is rejected before recursion can exhaust the call stack',()=>{
+  const x:any=structuredClone(fixture);let child:any=x;
+  for(let i=0;i<80;i++)child=child.extra={};
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 excessive evidence-node breadth is rejected within a bounded visit budget',()=>{
+  const x:any=structuredClone(fixture);x.extra=Array.from({length:4100},()=>0);
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  safe(r);
+});
+it('R09 small JSON-compatible additions fail immutable digest, not structural safety',()=>{
+  const x:any=structuredClone(fixture);x.extra={safe:true};
+  const r=inspectR09Snapshot(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'BUNDLE_DIGEST_MISMATCH'});
+  safe(r);
+});
+
+it('R09 hostile top-level accessors fail closed before evidence hashing',()=>{
+  const x:any=structuredClone(fixture);
+  Object.defineProperty(x,'case_count',{enumerable:true,get(){throw new Error('PRIVATE_MARKER');}});
+  const result=inspectR09Snapshot(x);
+  expect(result).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_MARKER');
+  safe(result);
+});
+it('R09 hostile per-case proxy accessors fail closed without leaking diagnostics',()=>{
+  const x:any=structuredClone(fixture);
+  x.cases[0]=new Proxy(x.cases[0],{
+    get(target,key,receiver){
+      if(key==='id')throw new Error('PRIVATE_CASE_MARKER');
+      return Reflect.get(target,key,receiver);
+    }
+  });
+  const result=inspectR09Snapshot(x);
+  expect(result).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_CASE_MARKER');
+  safe(result);
+});

@@ -11,9 +11,28 @@ export const R09_ORIGINAL_EVIDENCE_SHA256 = 'c8bfee3f8720a10bd117a984e37a3a03219
 const field = (o,k) => Object.prototype.hasOwnProperty.call(o,k);
 const record = x => x && typeof x === 'object' && !Array.isArray(x);
 const boundedHex = v => typeof v==='string' && v.length <= 131072 && v.length % 2===0 && /^[0-9a-f]*$/.test(v);
-const canonical = v => Array.isArray(v) ? '['+v.map(canonical).join(',')+']' :
-  record(v) ? '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}' : JSON.stringify(v);
+// Bounded, deterministic serialization for the SHA-pinned evidence. Snapshot callers may
+// supply cyclic, non-JSON or excessively nested objects; none may escape as an exception.
+const canonical = root => {
+  let nodes = 0;
+  const visit = (v, depth) => {
+    if (++nodes > 4096 || depth > 64) throw new RangeError('INVALID_EVIDENCE_COMPLEXITY');
+    if (Array.isArray(v)) return '[' + v.map(x => visit(x, depth + 1)).join(',') + ']';
+    if (record(v)) return '{' + Object.keys(v).sort().map(k =>
+      JSON.stringify(k) + ':' + visit(v[k], depth + 1)).join(',') + '}';
+    if (v !== null && !['string', 'number', 'boolean'].includes(typeof v))
+      throw new TypeError('INVALID_EVIDENCE_VALUE');
+    return JSON.stringify(v);
+  };
+  return visit(root, 0);
+};
+// Public callers may supply getters/proxies, not only JSON.parse output.
+// Reject accessor failures before the immutable hash stage without disclosing inputs.
 export function inspectR09Snapshot(s) {
+  try { return inspectR09SnapshotUnchecked(s); }
+  catch { return fail('INVALID_BUNDLE_STRUCTURE'); }
+}
+function inspectR09SnapshotUnchecked(s) {
   if (!record(s) || s.case_count!==16 || !Array.isArray(s.cases) || s.cases.length!==16 ||
       s.binary!=='/usr/bin/jq' || s.version!=='jq-1.7' ||
       s.binary_sha256!=='5e1dcc8c21b9362013a1f30acb24c69a128cbd5238364b88803f4c60cd9376dd' ||
@@ -38,7 +57,11 @@ export function inspectR09Snapshot(s) {
     }
   }
   // Stream hashes alone cannot bind exit codes, arguments or source metadata.
-  if(sha(Buffer.from(canonical(s),'utf8'))!==R09_NORMALIZED_EVIDENCE_SHA256)
+  let encoded;
+  try { encoded = canonical(s); }
+  catch { return fail('INVALID_BUNDLE_STRUCTURE'); }
+  if (encoded.length > 262144) return fail('INVALID_BUNDLE_STRUCTURE');
+  if(sha(Buffer.from(encoded,'utf8'))!==R09_NORMALIZED_EVIDENCE_SHA256)
     return fail('BUNDLE_DIGEST_MISMATCH');
   return { decision:'SOURCE_OBSERVATION_BYTES_VERIFIED_NOT_RUNTIME_ATTESTATION',
     observationIntegrityOnly:true, count:ids.size, sourceAuthenticated:false,
