@@ -45,6 +45,7 @@ import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
+import { collectGithubWorkOrderIssues, closedWorkOrderBucket } from './github-work-orders-pages.mjs';
 import { acceptPc01OwnerApprovalEvent } from './pc01-release-approval.mjs';
 import { enablePc01StandingRelease, acceptPc01StandingWorkflowRelease } from './pc01-standing-release.mjs';
 import { publishGithubEvent, subscribeGithubEvents } from './github-event-bus.mjs';
@@ -2985,7 +2986,7 @@ function issueBucket(issue){
   const body=String(issue.body||'');
   const state=issueField(body,'CURRENT_STATE').toUpperCase();
   const labels=(issue.labels||[]).map(x=>String(x?.name||x).toUpperCase());
-  if(issue.state==='closed') return 'HOÀN THÀNH';
+  if(issue.state==='closed') return closedWorkOrderBucket(issue,workOrderChecklistSteps(body).steps);
   if(/BLOCK/.test(state)||labels.some(x=>x.includes('BLOCK'))) return 'BLOCKED';
   if(isSystemIssue(issue,body)) return 'HỆ THỐNG';
   if(/OWNER_REVIEW_REQUIRED|WAIT_OWNER|CHỜ ANH SƠN/.test(state)||(/OWNER_ACCEPTANCE_REQUIRED=true/i.test(body)&&/OWNER_ACCEPTED=false/i.test(body)&&/REVIEW|VERIFY|LIVE/i.test(state))) return 'CHỜ ANH SƠN';
@@ -3000,9 +3001,13 @@ async function githubWorkOrders(){
   if(now-workOrdersCache.at<30000) return workOrdersCache.value;
   if(!GITHUB_TOKEN){const value={ok:false,updatedAt:nowIso(),reason:'GITHUB_TOKEN_MISSING',items:[]};workOrdersCache={at:now,value};return value}
   try{
-    const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=all&per_page=100&sort=updated&direction=desc`;
-    const raw=await fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);
-    const items=(Array.isArray(raw)?raw:[]).filter(x=>!x.pull_request).map(x=>{
+    const {items:raw,sourceScope}=await collectGithubWorkOrderIssues({
+      fetchPage:async(state,page)=>{
+        const u=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues?state=${state}&per_page=100&sort=updated&direction=desc&page=${page}`;
+        return fetchJson(u,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-API-Health'}},5000);
+      },
+    });
+    const items=raw.map(x=>{
       const body=String(x.body||'');
       const checklist=workOrderChecklistSteps(body);
       const checkedCount=checklist.steps.filter(s=>s.checked).length;
@@ -3027,7 +3032,7 @@ async function githubWorkOrders(){
         html_url:x.html_url
       };
     });
-    const value={ok:true,updatedAt:nowIso(),items};
+    const value={ok:sourceScope.openComplete&&sourceScope.closedHistoryComplete,updatedAt:nowIso(),sourceScope,reason:sourceScope.openComplete&&sourceScope.closedHistoryComplete?null:'GITHUB_ISSUE_PAGE_LIMIT_REACHED',items};
     workOrdersCache={at:now,value};
     return value;
   }catch(error){
