@@ -171,3 +171,23 @@ test('NV07 QA #4940: standalone void tag does not hide authorized prior receipt'
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
 });
+
+test('NV07 inline HTML wrapping or adjacent to receipt cannot certify S6',()=>{
+ for(const fragment of [
+  '<span>[Receipt]('+url+')</span>',
+  '<span class="proof">[Receipt]('+url+')</span>',
+  '<a href="'+url+'">[Receipt]('+url+')</a>',
+  '<span>raw</span> [Receipt]('+url+')',
+  '[Receipt]('+url+') <span>raw</span>'
+ ]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+   '- [x] S6 — '+fragment,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,
+   'CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+ const real=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — [Receipt]('+url+')',
+  '- [ ] S6 — pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(real),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(real),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
