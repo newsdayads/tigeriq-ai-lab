@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API_BASE = 'https://api.apify.com/v2';
+const API_REQUEST_TIMEOUT_MS = 8000;
 
 export class ApifyPreflightError extends Error {
   constructor(code, message, detail = null) {
@@ -47,6 +48,8 @@ async function requestJson(fetchFn, url, token, { allowForbidden = false } = {})
     response = await fetchFn(url, {
       method: 'GET',
       redirect: 'error',
+      // Bound network waits; native fetch cancels a stalled response/body on abort.
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${token}`,
