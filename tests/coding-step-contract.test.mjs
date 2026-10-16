@@ -164,8 +164,8 @@ test('a closed issue with all fields marked DONE but no trusted external verific
 test('P0 canary caps CI repair and independent review to two cycles',async()=>{
   const {readFileSync}=await import('node:fs');
   const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-  assert.match(lane,/maxRepairCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
-  assert.match(lane,/maxCycles:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?2:3/);
+  assert.match(lane,/maxRepairCycles:canary\?2:3/);
+  assert.match(lane,/maxCycles:canary\?2:3/);
 });
 
 test('domain acceptance reads real exact-head GitHub check runs, not generic gate projection',async()=>{
