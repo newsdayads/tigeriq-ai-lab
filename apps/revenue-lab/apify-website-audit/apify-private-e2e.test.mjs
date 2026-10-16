@@ -309,6 +309,7 @@ test('bounded polling still supports transitional build/run', async () => {
   assert.equal(buildPoll, 1);
   assert.equal(runPoll, 1);
   await assertR08ResourceIdFenceCases();
+  await assertR08BuildIdAffinityCases();
 });
 
 test('execution gate is required before any API request', async () => {
@@ -440,78 +441,97 @@ async function assertR08ResourceIdFenceCases() {
   }
 }
 
-test('run-start refuses a different buildId before poll, final GET or OUTPUT', async () => {
-  const normal = successFetch();
-  const fetchFn = (url, options) => String(url).includes('/actors/actor123/runs?')
-    ? response(201, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } })
-    : normal.fetchFn(url, options);
-  await assert.rejects(
-    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
-    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
-  );
-  assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
-});
 
-test('run terminal polling refuses a swapped buildId on the same run resource', async () => {
-  const normal = successFetch();
-  const fetchFn = (url, options) => {
-    const u = String(url);
-    if (u.includes('/actors/actor123/runs?'))
-      return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
-    if (u.includes('/actor-runs/run1?waitForFinish=60'))
-      return response(200, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } });
-    return normal.fetchFn(url, options);
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
-    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
-  );
-  assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
-});
-
-test('finalized run refuses mismatched or missing buildId without fetching OUTPUT', async () => {
-  for (const candidate of ['other-build', undefined]) {
+// The canonical root Vitest native bridge guards exactly 20 top-level Node
+// tests. Keep five additional build-affinity scenarios as assertions inside
+// that already-covered native lifecycle test so CI exercises all of them
+// without changing the bridge outside the Work Order's path allowlist.
+async function assertR08BuildIdAffinityCases() {
+  const cases = [];
+  const check = (name, run) => { cases.push({ name, run }); };
+  check('run-start refuses a different buildId before poll, final GET or OUTPUT', async () => {
     const normal = successFetch();
-    const fetchFn = (url, options) => String(url).endsWith('/actor-runs/run1')
-      ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
-          ...(candidate === undefined ? {} : { buildId: candidate }),
-          usageTotalUsd: 0.004 } })
+    const fetchFn = (url, options) => String(url).includes('/actors/actor123/runs?')
+      ? response(201, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } })
       : normal.fetchFn(url, options);
     await assert.rejects(
       () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
       error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
-      String(candidate),
     );
-    assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
-  }
-});
-
-test('successful synthetic E2E evidence explicitly binds run to the newly created build', async () => {
-  const normal = successFetch();
-  const evidence = await runPrivateApifyE2E({ env, fetchFn: normal.fetchFn, sleepFn: noSleep });
-  assert.equal(evidence.run.buildId, evidence.build.id);
-  assert.equal(evidence.run.buildId, 'build1');
-});
-
-test('intermediate polling refuses build drift even if a later poll could recover', async () => {
-  const normal = successFetch();
-  let runPolls = 0;
-  const fetchFn = (url, options) => {
-    const u = String(url);
-    if (u.includes('/actors/actor123/runs?'))
-      return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
-    if (u.includes('/actor-runs/run1?waitForFinish=60')) {
-      runPolls += 1;
-      return response(200, { data: { id: 'run1',
-        buildId: runPolls === 1 ? 'other-build' : 'build1',
-        status: runPolls === 1 ? 'RUNNING' : 'SUCCEEDED' } });
+    assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
+  });
+  
+  check('run terminal polling refuses a swapped buildId on the same run resource', async () => {
+    const normal = successFetch();
+    const fetchFn = (url, options) => {
+      const u = String(url);
+      if (u.includes('/actors/actor123/runs?'))
+        return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
+      if (u.includes('/actor-runs/run1?waitForFinish=60'))
+        return response(200, { data: { id: 'run1', buildId: 'other-build', status: 'SUCCEEDED' } });
+      return normal.fetchFn(url, options);
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+    );
+    assert.equal(normal.calls.filter(c => c.url.includes('/actor-runs/run1')).length, 0);
+  });
+  
+  check('finalized run refuses mismatched or missing buildId without fetching OUTPUT', async () => {
+    for (const candidate of ['other-build', undefined]) {
+      const normal = successFetch();
+      const fetchFn = (url, options) => String(url).endsWith('/actor-runs/run1')
+        ? response(200, { data: { id: 'run1', status: 'SUCCEEDED',
+            ...(candidate === undefined ? {} : { buildId: candidate }),
+            usageTotalUsd: 0.004 } })
+        : normal.fetchFn(url, options);
+      await assert.rejects(
+        () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+        error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+        String(candidate),
+      );
+      assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
     }
-    return normal.fetchFn(url, options);
-  };
-  await assert.rejects(
-    () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
-    error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
-  );
-  assert.equal(runPolls, 1, 'wrong build must stop before any subsequent polling');
-  assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
-});
+  });
+  
+  check('successful synthetic E2E evidence explicitly binds run to the newly created build', async () => {
+    const normal = successFetch();
+    const evidence = await runPrivateApifyE2E({ env, fetchFn: normal.fetchFn, sleepFn: noSleep });
+    assert.equal(evidence.run.buildId, evidence.build.id);
+    assert.equal(evidence.run.buildId, 'build1');
+  });
+  
+  check('intermediate polling refuses build drift even if a later poll could recover', async () => {
+    const normal = successFetch();
+    let runPolls = 0;
+    const fetchFn = (url, options) => {
+      const u = String(url);
+      if (u.includes('/actors/actor123/runs?'))
+        return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
+      if (u.includes('/actor-runs/run1?waitForFinish=60')) {
+        runPolls += 1;
+        return response(200, { data: { id: 'run1',
+          buildId: runPolls === 1 ? 'other-build' : 'build1',
+          status: runPolls === 1 ? 'RUNNING' : 'SUCCEEDED' } });
+      }
+      return normal.fetchFn(url, options);
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      error => error instanceof ApifyE2EError && error.code === 'BUILD_ID_MISMATCH',
+    );
+    assert.equal(runPolls, 1, 'wrong build must stop before any subsequent polling');
+    assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
+  });
+
+  assert.equal(cases.length, 5, 'all five distinct build-affinity checks must execute');
+  for (const entry of cases) {
+    try {
+      await entry.run();
+    } catch (error) {
+      error.message = entry.name + ': ' + String(error.message);
+      throw error;
+    }
+  }
+}
