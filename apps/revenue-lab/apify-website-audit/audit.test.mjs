@@ -267,6 +267,63 @@ test('IPv6 fe00 reserved, link-local and deprecated fec0 site-local never pass p
   }
 });
 
+test('literal IPv6 private and reserved targets reject before any DNS or injected resolver', async () => {
+  const blocked = [
+    'http://[::1]/', 'http://[fe80::1]/', 'http://[fec0::1]/',
+    'http://[::ffff:7f00:1]/', 'https://[2001:db8::1]/',
+  ];
+  for (const url of blocked) {
+    let lookups = 0;
+    await assert.rejects(
+      () => resolveSafeTarget(url, { lookupFn: async () => {
+        lookups++;
+        return [{ address: '8.8.8.8', family: 4 }];
+      }}),
+      e => e instanceof AuditError && e.code === 'PRIVATE_TARGET',
+      url + ': DNS lookup cannot authorize an IP literal',
+    );
+    assert.equal(lookups, 0, url + ': IP literal must not query DNS');
+    await assert.rejects(
+      () => resolveSafeTarget(new URL(url), { lookupFn: async () => {
+        throw new Error('never call this');
+      }}),
+      e => e instanceof AuditError && e.code === 'PRIVATE_TARGET',
+    );
+    await assert.rejects(
+      () => auditWebsite(url, {
+        resolveTargetFn: async () => ({ address: '8.8.8.8', family: 4 }),
+      }),
+      e => e instanceof AuditError && e.code === 'PRIVATE_TARGET',
+      url + ': injected resolver cannot bypass literal IP validation',
+    );
+  }
+});
+
+test('public IPv6 URL literal resolves directly, never using DNS or a mismatched family', async () => {
+  let lookups = 0;
+  for (const url of [
+    'https://[2606:4700:4700::1111]/',
+    'https://[2001:4860:4860::8888]/',
+  ]) {
+    const result = await resolveSafeTarget(new URL(url), { lookupFn: async () => {
+      lookups++;
+      return [{ address: '127.0.0.1', family: 4 }];
+    }});
+    assert.equal(result.family, 6);
+    assert.equal(result.address, new URL(url).hostname.slice(1, -1));
+  }
+  assert.equal(lookups, 0, 'IPv6 literals must never be treated as DNS names');
+});
+
+test('IPv4 private literal rejects before custom resolver reaches a socket', async () => {
+  await assert.rejects(
+    () => auditWebsite('http://127.0.0.1/', {
+      resolveTargetFn: async () => ({ address: '8.8.8.8', family: 4 }),
+    }),
+    e => e instanceof AuditError && e.code === 'PRIVATE_TARGET',
+  );
+});
+
 test('mixed DNS answers fail closed if any resolved address is IANA reserved', async () => {
   for (const address of ['192.0.2.4', '198.51.100.2', '203.0.113.42', '2001:db8::1', '::ffff:7f00:1', '64:ff9b::7f00:1']) {
     await assert.rejects(
