@@ -217,14 +217,40 @@ export async function verifyCodingCanaryProductGate({
     productReceipt:verdict};
 }
 
-export function verifyCodingFunctionalChecks({packet,checkRuns=[]}={}){
+export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha='',repositoryFullName=''}={}){
   if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const required=packet.required_checks||[];
+  // Legacy pure contract tests can supply synthetic records. The *live canary*
+  // supplies a pinned GitHub SHA + repository, making every required matching
+  // check a verified, all-success exact-head GitHub Actions receipt.
+  const pinned=!!sourceHeadSha||!!repositoryFullName;
+  if(pinned&&(!/^[a-f0-9]{40}$/i.test(string(sourceHeadSha))||
+      !/^[a-zA-Z0-9._-]+\\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName))||
+      !Array.isArray(checkRuns)))
+    return {pass:false,code:'CODING_FUNCTIONAL_CHECKS_UNVERIFIED',missing:[...required]};
   const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{
     if(typeof x==='string')return {name:x,status:'unknown',conclusion:'unknown'};
-    return {name:string(x?.name),status:string(x?.status),conclusion:string(x?.conclusion)};
+    return {name:string(x?.name),status:string(x?.status),conclusion:string(x?.conclusion),
+      head_sha:string(x?.head_sha),id:x?.id,appSlug:string(x?.app?.slug),
+      detailsUrl:string(x?.details_url)};
   });
-  const missing=packet.required_checks.filter(name=>!rows.some(row=>row.name===name&&row.status==='completed'&&row.conclusion==='success'));
-  return {pass:missing.length===0,code:missing.length?'CODING_FUNCTIONAL_CHECKS_MISSING':'CODING_FUNCTIONAL_CHECKS_PASSED',missing};
+  const missing=[],unverified=[];
+  const prefix='https://github.com/'+repositoryFullName+'/actions/runs/';
+  for(const name of required){
+    const matches=rows.filter(row=>row.name===name);
+    if(!matches.length){missing.push(name);continue;}
+    const valid=matches.every(row=>
+      row.status==='completed'&&row.conclusion==='success'&&
+      (!pinned||(row.head_sha.toLowerCase()===string(sourceHeadSha).toLowerCase()&&
+         Number.isSafeInteger(row.id)&&row.id>0&&
+         row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&
+         /^\\d+\\/job\\/\\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
+    if(!valid)unverified.push(name);
+  }
+  return {pass:missing.length===0&&unverified.length===0,
+    code:unverified.length?'CODING_FUNCTIONAL_CHECKS_UNVERIFIED':
+      missing.length?'CODING_FUNCTIONAL_CHECKS_MISSING':'CODING_FUNCTIONAL_CHECKS_PASSED',
+    missing:[...missing,...unverified]};
 }
 
 
