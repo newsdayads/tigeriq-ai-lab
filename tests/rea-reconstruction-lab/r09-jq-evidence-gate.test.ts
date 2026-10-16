@@ -88,3 +88,25 @@ it('R09 small JSON-compatible additions fail immutable digest, not structural sa
   expect(r).toMatchObject({decision:'REJECTED',reason:'BUNDLE_DIGEST_MISMATCH'});
   safe(r);
 });
+
+it('R09 hostile top-level accessors fail closed before evidence hashing',()=>{
+  const x:any=structuredClone(fixture);
+  Object.defineProperty(x,'case_count',{enumerable:true,get(){throw new Error('PRIVATE_MARKER');}});
+  const result=inspectR09Snapshot(x);
+  expect(result).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_MARKER');
+  safe(result);
+});
+it('R09 hostile per-case proxy accessors fail closed without leaking diagnostics',()=>{
+  const x:any=structuredClone(fixture);
+  x.cases[0]=new Proxy(x.cases[0],{
+    get(target,key,receiver){
+      if(key==='id')throw new Error('PRIVATE_CASE_MARKER');
+      return Reflect.get(target,key,receiver);
+    }
+  });
+  const result=inspectR09Snapshot(x);
+  expect(result).toMatchObject({decision:'REJECTED',reason:'INVALID_BUNDLE_STRUCTURE'});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_CASE_MARKER');
+  safe(result);
+});
