@@ -1795,7 +1795,7 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],lea
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
   const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
   const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
-  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,leaseContext});
+  const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:process.env.TIGERIQ_P0_CODING_STEP_CANARY==='1'?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
 export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCount=0){
