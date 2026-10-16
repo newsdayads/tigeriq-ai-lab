@@ -32,6 +32,8 @@ jobs:
           node --check tests/g6-work/run.mjs
           node --check tests/g6-work/worker.mjs
           node --check tests/g6-work/receipt-policy.mjs
+      - name: Install locked runtime dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify Work G6 receipt policy and Vy Owner handoff
         run: |
           node --test tests/g6-work/receipt-policy.test.mjs tests/coding-p0-g6-vy-owner-handoff.test.mjs
