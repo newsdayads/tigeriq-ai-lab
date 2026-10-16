@@ -128,7 +128,7 @@ const report=(decision,reason,counts={})=>({
 });
 export const REA_DIRECT_DEPENDENCIES=DIRECT;
 export const REA_EXPECTED_SRI=REA_SRI;
-export function inspectR06ConsumerLock(lock){
+function inspectR06ConsumerLockUnchecked(lock){
   if(!rec(lock)||lock.lockfileVersion!==3||!rec(lock.packages)||
       !rec(lock.packages[''])||!rec(lock.packages['node_modules/rea-agents']))
     return report('REJECTED','LOCK_V3_SHAPE_MISSING');
@@ -217,4 +217,12 @@ export function inspectR06ConsumerLock(lock){
       peerDeclarations,missingOptionalPeers,
       packagesWithInstallScriptFlag:rows.filter(([path,p])=>path&&p.hasInstallScript===true).length
     });
+}
+
+// Boundary for caller-controlled objects. JSON.parse produces ordinary data, but
+// plugin/test callers can supply getters and Proxies that throw on inspection.
+// A malicious accessor must never leak an exception or turn into install approval.
+export function inspectR06ConsumerLock(lock){
+  try{return inspectR06ConsumerLockUnchecked(lock);}
+  catch{return report('REJECTED','INVALID_UNTRUSTED_LOCK_OBJECT');}
 }
