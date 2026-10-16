@@ -37,6 +37,8 @@ Before separately authorized registry promotion, require independent validation 
 Rendered component, real interaction, responsive breakpoint and accessibility receipts must match the tested source SHA; screenshots alone do not prove interaction.
 Instruction injection proves content access only; model/tool competence, product acceptance and PC01 installation need separate receipts.
 
+One-step canary needs trusted host receipts: run/source/model/tool IDs, grants, zero new cost, prompt/response/code/input/output hashes and functional outputs. Missing evidence is BLOCKED; fixtures cannot prove live capability.
+
 Procedure and open gates: `docs/implementation/p0-4902-g3-work-evidence.md`.
 
 ## Fallback
