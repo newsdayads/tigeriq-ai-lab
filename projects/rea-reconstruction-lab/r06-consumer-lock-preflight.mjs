@@ -58,6 +58,37 @@ const resolvedOk=(x,name,version)=>{
       decodeURIComponent(u.pathname)===expected;
   }catch{return false;}
 };
+
+const numericParts = value => {
+  if (typeof value !== 'string' ||
+      !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value))
+    return null;
+  const parts = value.split('.').map(Number);
+  return parts.every(Number.isSafeInteger) ? parts : null;
+};
+// Narrow, fail-closed subset of npm semver syntax found in pinned REA 6.4.0:
+// exact (including prerelease), ^M.m.p, ~M.m.p and major-only "1".
+// This is not a complete npm resolver, nor does it authenticate an SBOM.
+const supportedDependencySpec = spec =>
+  versionOk(spec) || (/^(0|[1-9][0-9]*)$/.test(spec) &&
+    Number.isSafeInteger(Number(spec))) ||
+  ((spec.startsWith('^') || spec.startsWith('~')) &&
+    numericParts(spec.slice(1)) !== null);
+const dependencySpecMatches = (spec, resolved) => {
+  if (versionOk(spec)) return spec === resolved;
+  const actual = numericParts(resolved);
+  if (!actual) return false; // ranged specs do not silently allow prereleases
+  if (/^(0|[1-9][0-9]*)$/.test(spec)) return actual[0] === Number(spec);
+  const min = numericParts(spec.slice(1));
+  if (!min || (spec[0] !== '^' && spec[0] !== '~')) return false;
+  const cmp = actual[0] - min[0] || actual[1] - min[1] || actual[2] - min[2];
+  if (cmp < 0) return false;
+  if (spec[0] === '~') return actual[0] === min[0] && actual[1] === min[1];
+  if (min[0] > 0) return actual[0] === min[0];
+  if (min[1] > 0) return actual[0] === 0 && actual[1] === min[1];
+  return actual[0] === 0 && actual[1] === 0 && actual[2] === min[2];
+};
+
 const locate=(pkgs,path,name)=>{
   let parent=path;
   while(true){
@@ -96,25 +127,38 @@ export function inspectR06ConsumerLock(lock){
     const path=locate(pkgs,'node_modules/rea-agents',name);
     return !path||pkgs[path]?.version!==v;
   }))return report('REJECTED','REA_LOCK_RESOLUTION_MISMATCH');
+  let missingOptionalDependencies=0;
   for(const [path,p] of rows){
     if(!path)continue;
     if(p.link===true||!versionOk(p.version)||!sriOk(p.integrity)||
         !resolvedOk(p.resolved,path.slice(path.lastIndexOf('node_modules/')+13),p.version))
       return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
-    for(const deps of [p.dependencies,p.optionalDependencies]){
+    // npm optionalDependencies may be absent (e.g. non-target OS binaries).
+    // Strictly reject missing required edges. Never treat shape as host acceptance.
+    for(const [kind,deps] of [['required',p.dependencies],['optional',p.optionalDependencies]]){
       if(deps===undefined)continue;
       if(!rec(deps))return report('REJECTED','INVALID_DEPENDENCY_MAP');
       for(const [name,spec] of pairs(deps)){
-        if(!nameOk(name)||typeof spec!=='string'||spec.length>256||
-            !locate(pkgs,path,name))
+        if(!nameOk(name)||typeof spec!=='string'||!spec.trim()||spec.length>256)
+          return report('REJECTED','INVALID_DEPENDENCY_REFERENCE');
+        if(!supportedDependencySpec(spec))
+          return report('REJECTED','UNSUPPORTED_DEPENDENCY_SPEC');
+        const located=locate(pkgs,path,name);
+        if(!located){
+          if(kind==='optional') { missingOptionalDependencies++; continue; }
           return report('REJECTED','UNRESOLVED_DEPENDENCY_REFERENCE');
+        }
+        if(!dependencySpecMatches(spec, pkgs[located].version))
+          return report('REJECTED',versionOk(spec)
+            ? 'DEPENDENCY_EXACT_VERSION_MISMATCH'
+            : 'DEPENDENCY_RANGE_MISMATCH');
       }
     }
   }
   // Never equate caller-controlled lock data with actual npm-installed artifacts.
   return report('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED',
     'R05_AND_HOST_AND_CONSUMER_PROVENANCE_STILL_REQUIRED',{
-      packageRows:rows.length-1,directDependencies:35,
+      packageRows:rows.length-1,directDependencies:35,missingOptionalDependencies,
       packagesWithInstallScriptFlag:rows.filter(([path,p])=>path&&p.hasInstallScript===true).length
     });
 }

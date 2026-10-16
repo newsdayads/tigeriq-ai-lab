@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   ownerDecisionOriginAllowed,validateOwnerDecisionInput,ownerDecisionReceipt,
-} from '../api/owner-decision.mjs';
+} from '../apps/tigeriq-core/owner-decision-handler.mjs';
 const approved={issueNumber:142,requestId:'GH-142-approval-001',decision:'APPROVE',expectedUpdatedAt:'2026-10-15T05:00:00Z'};
 const card={action:'Bàn giao bước khảo sát',scope:'Chỉ hồ sơ GH-142, không có phí'};
 test('accepts precisely scoped decision with a strict request id and revision',()=>{
@@ -35,7 +35,7 @@ test('recorded Owner choice never substitutes external permission or execution r
   assert.doesNotMatch(text,/^OWNER_APPROVAL=APPROVED$/m);
 });
 test('Vercel actions require Owner auth, fresh issue checks and never dispatch Core directly',()=>{
-  const code=readFileSync(new URL('../api/owner-decision.mjs',import.meta.url),'utf8');
+  const code=readFileSync(new URL('../apps/tigeriq-core/owner-decision-handler.mjs',import.meta.url),'utf8');
   assert.match(code,/isOwnerAuthorized\(req\)/);
   assert.match(code,/projectOwnerApprovalIssue\(issue,\{verified:true,fresh:true\}\)/);
   assert.match(code,/card\.requestId!==input\.requestId\|\|issue\.updated_at!==input\.expectedUpdatedAt/);
@@ -52,6 +52,21 @@ test('Web Control action is conspicuous, but never treats the local browser as O
   assert.match(page,/DUYỆT/);assert.match(page,/TỪ CHỐI/);
   const ui=readFileSync(new URL('../public/owner-approval.js',import.meta.url),'utf8');
   assert.match(ui,/api\/owner-auth\?action=status/);
-  assert.match(ui,/api\/owner-decision/);
+  assert.match(ui,/api\/control\?operation=owner-decision/);
+  // Verify GET query parsing, not just a substring; a second '?' corrupts operation.
+  assert.match(ui,/operation=owner-decision&issue='\+encodeURIComponent\(issue\)/);
+  assert.doesNotMatch(ui,/operation=owner-decision\?issue=/);
+  const url = new URL('/api/control?operation=owner-decision&issue=142','https://tigeriq-ai-lab.vercel.app');
+  assert.equal(url.searchParams.get('operation'),'owner-decision');
+  assert.equal(url.searchParams.get('issue'),'142');
   assert.match(ui,/data\.ok/);
+});
+
+test('Owner decisions use one existing Vercel function instead of a 13th Hobby function',()=>{
+  const api=readFileSync(new URL('../api/control.mjs',import.meta.url),'utf8');
+  assert.match(api,/import ownerDecisionHandler from '\.\.\/apps\/tigeriq-core\/owner-decision-handler\.mjs'/);
+  assert.match(api,/if \(operation === 'owner-decision'\) return ownerDecisionHandler\(req, res, payload\)/);
+  assert.match(api,/searchParams\.get\('operation'\) === 'owner-decision'/);
+  const ui=readFileSync(new URL('../public/owner-approval.js',import.meta.url),'utf8');
+  assert.match(ui,/JSON\.stringify\(\{\.\.\.current,decision,operation:'owner-decision'\}\)/);
 });

@@ -19,10 +19,24 @@ export function verifyNv07GithubProposalEvidence({pr,files,runs,headFile,mergedF
   ||!['added','modified'].includes(files[0].status))return denied('NV07_EXACT_MERGED_PROPOSAL_PR_REQUIRED');
  if(typeof waiverBody!=='string'||!waiverBody.includes('OWNER_WAIVED_NOT_INDEPENDENT_PASS')
   ||!waiverBody.includes('4783'))return denied('NV07_CANONICAL_REVIEW_WAIVER_UNVERIFIED');
+// GitHub Actions may clear run.pull_requests after a PR merges. Preserve exact
+// commit, workflow, repository, branch and PR-lifetime checks in that case.
+function runBelongsToPr(run,pr){
+ if(!Array.isArray(run.pull_requests))return false;
+ if(run.pull_requests.length)return run.pull_requests.some(p=>p.number===pr.number);
+ const created=Date.parse(run.created_at||'');
+ const opened=Date.parse(pr.created_at||'');
+ const merged=Date.parse(pr.merged_at||'');
+ return Number.isFinite(created)&&Number.isFinite(opened)&&Number.isFinite(merged)
+  &&opened<=created&&created<=merged
+  &&run.head_branch===pr.head.ref
+  &&run.repository?.full_name===REPO
+  &&run.head_repository?.full_name===REPO;
+}
  if(!Array.isArray(runs))return denied('NV07_EXACT_PR_CHECKS_REQUIRED');
  for(const name of required){
   const r=runs.filter(x=>x.name===name&&x.head_sha===pr.head.sha&&x.event==='pull_request'
-   &&x.pull_requests?.some(p=>p.number===pr.number)).sort((a,b)=>b.run_number-a.run_number)[0];
+   &&runBelongsToPr(x,pr)).sort((a,b)=>b.run_number-a.run_number)[0];
   if(!r||r.status!=='completed'||r.conclusion!=='success')return denied('NV07_EXACT_PR_CHECKS_REQUIRED');
  }
  if(headFile?.path!==FILE||mergedFile?.path!==FILE||headFile.encoding!=='base64'

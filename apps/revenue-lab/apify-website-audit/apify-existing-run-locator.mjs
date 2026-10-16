@@ -1,6 +1,7 @@
 // GH-2293 R04: discover the Owner's existing Oct-08 Apify canary, GET-only.
 // Never start, build, publish, or pay for an Actor; no credential in URL/logs.
-import { inspectHistoricalRun } from './apify-historical-run-readonly.mjs';
+import { inspectHistoricalRun, validApifyInstant } from './apify-historical-run-readonly.mjs';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API = 'https://api.apify.com/v2';
 const HANDLE = 'tigeriq~tigeriq-ai-lab';
@@ -18,7 +19,7 @@ export class RunLocatorError extends Error {
 const fail = code => { throw new RunLocatorError(code); };
 const obj = x => !!x && typeof x === 'object' && !Array.isArray(x);
 function oct8(instant) {
-  if (typeof instant !== 'string' || !Number.isFinite(Date.parse(instant))) return false;
+  if (!validApifyInstant(instant)) return false;
   const stamp = Date.parse(instant);
   return stamp >= Date.parse(START_UTC) && stamp <= Date.parse(END_UTC);
 }
@@ -43,12 +44,13 @@ async function getJson(fetchFn, url, token) {
   if (res.status >= 300 && res.status < 400) fail('APIFY_REDIRECT_BLOCKED');
   if (res.status === 401 || res.status === 403) fail('SCOPED_READ_DENIED');
   if (!res.ok) fail('APIFY_READ_FAILED');
-  if (!String(res.headers?.get?.('content-type') || '').toLowerCase().includes('application/json'))
+  // Do not accept lookalike media types such as application/jsonp.
+  const contentType = String(res.headers?.get?.('content-type') || '').trim();
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType))
     fail('JSON_CONTENT_TYPE_REQUIRED');
   let raw, body;
   try {
-    raw = await res.text();
-    if (raw.length > 131072) fail('RESPONSE_TOO_LARGE');
+    raw = await readBoundedApifyJsonText(res, fail);
     body = JSON.parse(raw);
   } catch (e) {
     if (e instanceof RunLocatorError) throw e;
@@ -78,7 +80,7 @@ export async function locateOwnerCanaryRun({ env = process.env, fetchFn = global
   // Never choose the "last" run: the Owner may have run this Actor again later.
   // All rows need valid provenance so a malformed second record cannot be skipped.
   if (data.items.some(row => !obj(row) || !OPAQUE.test(row.id || '') ||
-      row.actId !== actor.id || !Number.isFinite(Date.parse(row.startedAt))))
+      row.actId !== actor.id || !validApifyInstant(row.startedAt)))
     fail('RUN_LIST_IDENTITY_UNVERIFIED');
   if (data.items.some(row => !oct8(row.startedAt))) fail('RUN_LIST_DATE_MISMATCH');
   const candidates = data.items.filter(row => row.status === 'SUCCEEDED' && row.buildNumber === BUILD);

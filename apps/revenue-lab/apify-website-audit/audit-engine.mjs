@@ -28,7 +28,7 @@ const clamp = (value, min, max, fallback) => {
 function ipv4Blocked(ip) {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   return (
     a === 0 ||
     a === 10 ||
@@ -38,18 +38,41 @@ function ipv4Blocked(ip) {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 198 && (b === 18 || b === 19)) ||
+    // Exclude IANA special-purpose/documentation/transition ranges. A URL
+    // audit must not treat non-global or reserved destinations as websites.
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 192 && b === 88 && c === 99) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
     a >= 224
   );
 }
 
 function ipv6Blocked(ip) {
-  const lower = ip.toLowerCase();
+  // Canonicalize IPv6 hextets: leading zeros can otherwise bypass textual
+  // prefix checks (e.g. 2001:0db8::1). The caller already checks net.isIP.
+  let lower;
+  try {
+    lower = new URL('http://[' + ip + ']/').hostname.slice(1, -1).toLowerCase();
+  } catch {
+    return true;
+  }
   if (lower === '::' || lower === '::1') return true;
   if (lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('ff')) return true;
   const first = parseInt(lower.split(':')[0] || '0', 16);
-  if (Number.isFinite(first) && first >= 0xfe80 && first <= 0xfebf) return true;
-  const mapped = lower.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  return mapped ? ipv4Blocked(mapped[1]) : false;
+  // IANA: fe00::/9 reserved, fe80::/10 link-local and fec0::/10
+  // deprecated site-local (RFC 3879). None may be audited as public IPs.
+  if (Number.isFinite(first) && first >= 0xfe00 && first <= 0xfeff) return true;
+  // IPv4-mapped addresses also have a hex representation (::ffff:7f00:1).
+  // Block the entire transition namespace instead of relying on dotted
+  // decimal notation or accidentally reaching a loopback/private service.
+  if (lower.startsWith('::ffff:')) return true;
+  return lower.startsWith('2001:db8:') ||  // RFC 3849 documentation
+    lower.startsWith('3fff:') ||         // RFC 9637 documentation
+    lower.startsWith('2002:') ||         // 6to4 IPv4 tunnelling
+    lower.startsWith('2001::') || lower.startsWith('2001:0:') || // Teredo
+    lower.startsWith('64:ff9b::') || lower.startsWith('64:ff9b:1:') || // NAT64
+    lower.startsWith('100::');          // discard-only
 }
 
 export function isBlockedAddress(address) {
@@ -57,6 +80,14 @@ export function isBlockedAddress(address) {
   if (family === 4) return ipv4Blocked(address);
   if (family === 6) return ipv6Blocked(address);
   return true;
+}
+
+// WHATWG URL.hostname wraps IPv6 literals in [], but node:net.isIP does not
+// recognize the brackets. The socket layer treats them as IP literals, so
+// unwrap BEFORE safety classification and never route them through DNS.
+function normalizedTargetHost(url) {
+  const host = url.hostname;
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
 }
 
 function parseTarget(raw) {
@@ -72,20 +103,20 @@ function parseTarget(raw) {
   if (url.username || url.password) {
     throw new AuditError('CREDENTIALS_REJECTED', 'Credential-bearing URLs are not allowed.');
   }
-  if (url.hostname.toLowerCase() === 'localhost') {
-    throw new AuditError('PRIVATE_TARGET', 'Localhost targets are forbidden.');
+  const host = normalizedTargetHost(url);
+  if (host.toLowerCase() === 'localhost' ||
+      (net.isIP(host) && isBlockedAddress(host))) {
+    throw new AuditError('PRIVATE_TARGET', 'Localhost, private or reserved IP targets are forbidden.');
   }
   return url;
 }
 
 export async function resolveSafeTarget(url, { lookupFn = dns.lookup } = {}) {
-  const parsed = url instanceof URL ? url : parseTarget(url);
-  if (net.isIP(parsed.hostname)) {
-    if (isBlockedAddress(parsed.hostname)) {
-      throw new AuditError('PRIVATE_TARGET', 'Private, loopback, link-local, carrier-grade NAT, multicast, or reserved targets are forbidden.');
-    }
-    return { address: parsed.hostname, family: net.isIP(parsed.hostname) };
-  }
+  // Revalidate even when the caller supplies a URL object, not only text.
+  const parsed = parseTarget(url);
+  const literal = normalizedTargetHost(parsed);
+  const family = net.isIP(literal);
+  if (family) return { address: literal, family };
   let answers;
   try {
     answers = await lookupFn(parsed.hostname, { all: true, verbatim: true });
@@ -106,10 +137,27 @@ function headerValue(headers, name) {
 
 async function requestOnce(url, options) {
   const parsed = parseTarget(url);
+  const deadline = Date.now() + options.timeoutMs;
   const resolver = typeof options.resolveTargetFn === 'function'
     ? options.resolveTargetFn
     : (target => resolveSafeTarget(target, { lookupFn: options.lookupFn }));
-  const resolved = await resolver(parsed);
+  // DNS resolution and HTTP response share one bounded per-hop deadline.
+  // A resolver that stalls must not evade the configured timeout.
+  let resolutionTimer;
+  let resolved;
+  try {
+    resolved = await Promise.race([
+      Promise.resolve().then(() => resolver(parsed)),
+      new Promise((_, reject) => {
+        resolutionTimer = setTimeout(
+          () => reject(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })),
+          Math.max(1, deadline - Date.now()),
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(resolutionTimer);
+  }
   if (!resolved?.address || !resolved?.family) {
     throw new AuditError('DNS_FAILURE', 'Resolver returned no usable address.');
   }
@@ -137,21 +185,23 @@ async function requestOnce(url, options) {
     }, res => {
       const statusCode = Number(res.statusCode || 0);
       if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
-        res.resume();
+        res.destroy();
         return done(resolve, {
           redirect: new URL(res.headers.location, parsed).toString(),
           statusCode,
           durationMs: Date.now() - started,
         });
       }
+      // HTTP failures must preserve their status code even when servers
+      // return a JSON or text error page instead of HTML.
+      if (statusCode < 200 || statusCode >= 300) {
+        res.destroy();
+        return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
+      }
       const contentType = headerValue(res.headers, 'content-type').toLowerCase();
       if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
-        res.resume();
+        res.destroy();
         return done(reject, new AuditError('UNSUPPORTED_CONTENT_TYPE', 'Response is not HTML.', contentType || null));
-      }
-      if (statusCode < 200 || statusCode >= 300) {
-        res.resume();
-        return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
       }
 
       const chunks = [];
@@ -177,7 +227,7 @@ async function requestOnce(url, options) {
       }));
     });
 
-    const timer = setTimeout(() => req.destroy(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })), options.timeoutMs);
+    const timer = setTimeout(() => req.destroy(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })), Math.max(1, deadline - Date.now()));
     req.on('close', () => clearTimeout(timer));
     req.on('error', error => {
       clearTimeout(timer);
@@ -203,11 +253,34 @@ async function fetchBounded(startUrl, options) {
 
 const cleanText = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
+// Strip inert regions in DOCUMENT ORDER, not in two independent passes:
+// a JS/CSS string can contain literal "<!--" and HTML comments can contain
+// mock script/style tags. The leftmost token owns its entire inert region.
+// Keep raw response bytes/cost metrics and network validation unchanged.
+function stripInertHtml(html) {
+  return html.replace(/<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+}
+
 function extractSeo(html) {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const metaMatch =
-    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i) ||
-    html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i);
+  // Extract exact attribute names from <meta>, not substrings such as
+  // data-name. HTML permits unquoted attribute values and either order.
+  let metaDescription = null;
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const attributes = Object.create(null);
+    for (const [, key, doubleQuoted, singleQuoted, unquoted] of
+      tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
+      const normalized = key.toLowerCase();
+      if (!Object.hasOwn(attributes, normalized)) {
+        attributes[normalized] = doubleQuoted ?? singleQuoted ?? unquoted;
+      }
+    }
+    if (attributes.name?.toLowerCase() === 'description' &&
+        Object.hasOwn(attributes, 'content')) {
+      metaDescription = attributes.content;
+      break;
+    }
+  }
   const h1Matches = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)];
   const visible = cleanText(
     html
@@ -216,7 +289,7 @@ function extractSeo(html) {
   );
   return {
     title: titleMatch ? cleanText(titleMatch[1]) : null,
-    metaDescription: metaMatch ? cleanText(metaMatch[1]) : null,
+    metaDescription: metaDescription === null ? null : cleanText(metaDescription),
     h1Count: h1Matches.length,
     h1: h1Matches.map(match => cleanText(match[1])).filter(Boolean),
     wordCount: visible ? visible.split(/\s+/).length : 0,
@@ -226,9 +299,20 @@ function extractSeo(html) {
 function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   const links = [];
   const seen = new Set();
-  for (const match of html.matchAll(/<a[^>]+href=["']([^"'#]+)["'][^>]*>/gi)) {
+  // Require the exact href attribute; HTML also permits unquoted attribute
+  // values. An attribute such as data-href must not trigger a crawl.
+  for (const tag of html.match(/<a\b[^>]*>/gi) || []) {
+    let href = null;
+    for (const [, name, doubleQuoted, singleQuoted, unquoted] of
+      tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
+      if (name.toLowerCase() === 'href') {
+        href = doubleQuoted ?? singleQuoted ?? unquoted;
+        break;
+      }
+    }
+    if (!href || href.startsWith('#')) continue;
     try {
-      const candidate = new URL(match[1], baseUrl);
+      const candidate = new URL(href, baseUrl);
       candidate.hash = '';
       if (candidate.origin !== rootOrigin || !['http:', 'https:'].includes(candidate.protocol)) continue;
       const normalized = candidate.toString();
@@ -273,7 +357,8 @@ export async function auditWebsite(inputUrl, options = {}) {
 
     try {
       const response = await fetchBounded(current, requestOptions);
-      const seo = extractSeo(response.body);
+      const documentHtml = stripInertHtml(response.body);
+      const seo = extractSeo(documentHtml);
       totalBytes += response.bytes;
       pages.push({
         url: response.finalUrl,
@@ -284,7 +369,7 @@ export async function auditWebsite(inputUrl, options = {}) {
         redirectCount: response.redirectCount,
         seo,
       });
-      for (const link of extractSameOriginLinks(response.body, response.finalUrl, root.origin)) {
+      for (const link of extractSameOriginLinks(documentHtml, response.finalUrl, root.origin)) {
         if (!visited.has(link) && !queue.includes(link) && queue.length + pages.length + errors.length < maxPages) queue.push(link);
       }
     } catch (error) {

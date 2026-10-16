@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectHistoricalRun, historicalRunConfig, HistoricReadError } from './apify-historical-run-readonly.mjs';
+import { inspectHistoricalRun, historicalRunConfig, HistoricReadError, validApifyInstant } from './apify-historical-run-readonly.mjs';
 
 const env = {
   APIFY_READONLY_EXECUTE: 'OWNER_APPROVED_EXISTING_RUN_READ',
@@ -106,6 +106,60 @@ test('R04 full Actor permission level rejected',async()=>{
 test('R04 wrong run ID refused',async()=>{await rejected('RUN_IDENTITY_MISMATCH',{first:{...run(),id:'ANOTHER_RUN'}})});
 test('R04 wrong actId refused',async()=>{await rejected('RUN_IDENTITY_MISMATCH',{first:{...run(),actId:'OTHER_ACTOR'}})});
 test('R04 non SUCCEEDED run refused',async()=>{await rejected('HISTORICAL_RUN_NOT_SUCCEEDED',{first:{...run(),status:'FAILED'}})});
+test('R04 date-time must include explicit timezone; no host-local day ambiguity',async()=>{
+  for (const value of ['2026-10-08T03:00:00', '2026-10-08', '2026-10-08T03:00:00+99:00']) {
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2, value);
+  }
+  const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),finishedAt:'2026-10-08T03:00:02'}});
+  assert.equal(calls.length,2);
+});
+test('R04 rejects impossible calendar dates and overflowing 24-hour timestamps', async()=>{
+  for (const value of [
+    '2026-02-30T03:00:00.000Z', '2026-04-31T03:00:00Z',
+    '2026-10-08T24:00:00Z', '2026-02-29T00:00:00Z',
+    '1900-02-29T00:00:00Z', '2026-10-08T01:00:00+24:00',
+  ]) {
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2,value);
+  }
+});
+test('R04 exact ISO timestamp accepts leap days, Vietnam offset and fractions',()=>{
+  assert.equal(validApifyInstant('2024-02-29T23:59:59Z'),true);
+  assert.equal(validApifyInstant('2000-02-29T00:00:00Z'),true);
+  assert.equal(validApifyInstant('2026-10-08T10:00:00.123+07:00'),true);
+});
+
+test('R04 rejects timezone offsets beyond conservative real-world +/-14:00',async()=>{
+  // This is an Apify evidence validation policy, not an RFC 3339 ABNF claim.
+  for(const value of [
+    '2026-10-08T03:00:00+14:01',
+    '2026-10-08T03:00:00+15:00',
+    '2026-10-08T03:00:00+23:59',
+    '2026-10-08T03:00:00-14:01',
+    '2026-10-08T03:00:00-15:00',
+    '2026-10-08T03:00:00-23:59',
+  ]) {
+    assert.equal(validApifyInstant(value),false,value);
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2,value);
+  }
+  for(const value of [
+    '2026-10-08T03:00:00+14:00',
+    '2026-10-08T03:00:00-14:00',
+    '2026-10-08T03:00:00+13:59',
+    '2026-10-08T03:00:00-13:59',
+    '2026-10-08T10:00:00.123+07:00',
+  ]) assert.equal(validApifyInstant(value),true,value);
+});
+
+test('R04 explicit +07:00 offset is valid for the Owner Oct-08 canary',async()=>{
+  const local={...run(),startedAt:'2026-10-08T10:00:00+07:00',finishedAt:'2026-10-08T10:00:02+07:00'};
+  const m=mocked({first:local,final:local});
+  const x=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(x.acceptance.historicalRunMatched,true);
+  assert.equal(m.calls.length,4);
+});
 test('R04 incomplete run timestamp refused',async()=>{await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),finishedAt:null}})});
 test('R04 settle gate rejects near-future finished time',async()=>{await rejected('RUN_USAGE_NOT_SETTLED',{first:{...run(),finishedAt:'2026-10-15T11:59:55.000Z'}})});
 test('R04 exact Oct 8 Vietnam day enforced',async()=>{await rejected('HISTORICAL_RUN_DAY_MISMATCH',{first:{...run(),startedAt:'2026-10-07T03:00:00.000Z'}})});
@@ -246,4 +300,35 @@ test('R04 exact Owner canary URL passes without leaking URL or secret in evidenc
   assert.equal(evidence.output.status,'success');
   assert.equal(m.calls.length,4);
   assert.doesNotMatch(JSON.stringify(evidence),/example\.com|SENSITIVE_SENTINEL_TOKEN/);
+});
+
+test('R04 streaming oversized authenticated Actor JSON is stopped before full buffering',async()=>{
+  let chunks=0,cancelled=0;
+  const stream=new ReadableStream({
+    pull(controller){chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;}
+  });
+  await rejected('RESPONSE_TOO_LARGE',{
+    responses:{actor:new Response(stream,{headers:{'content-type':'application/json'}})}
+  });
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'oversized JSON must stop during streaming');
+});
+
+
+test('R04 historical GET refuses lookalike application/jsonp and related media types before subsequent requests',async()=>{
+  for(const contentType of ['application/jsonp','application/json-seq','text/application/json','application/jsonxyz']){
+    const payload = new Response(JSON.stringify({data:actor()}), {headers:{'content-type':contentType}});
+    const calls=await rejected('JSON_CONTENT_TYPE_REQUIRED',{responses:{actor:payload}});
+    assert.equal(calls.length,1,contentType+': must fail at first Actor GET');
+  }
+});
+test('R04 historical GET accepts properly delimited JSON with parameters and mixed case',async()=>{
+  const m=mocked({responses:{actor:new Response(JSON.stringify({data:actor()}),{
+    headers:{'content-type':'Application/JSON; charset=UTF-8'}
+  })}});
+  const evidence=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(evidence.acceptance.historicalRunMatched,true);
+  assert.equal(m.calls.length,4);
+  assert.equal(evidence.acceptance.platformFinalInvoiceVerified,false);
 });

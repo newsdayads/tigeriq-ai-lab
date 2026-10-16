@@ -58,6 +58,17 @@ test('R04 locator refuses missing, wrong-date, wrong-Actor or malformed run rows
  assert.equal((await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({actId:'SOMEOTHER'})])})).length,2);
  assert.equal((await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({id:'not/opaque'})])})).length,2);
 });
+test('R04 locator rejects timezone-less and date-only run list rows',async()=>{
+ for (const startedAt of ['2026-10-08', '2026-10-08T03:00:00', '2026-10-08T03:00:00+99:00']) {
+  const calls=await refuses('RUN_LIST_IDENTITY_UNVERIFIED',{runList:list([row({startedAt})])});
+  assert.equal(calls.length,2,startedAt);
+ }
+});
+test('R04 locator accepts the same absolute instant with explicit Vietnam offset',async()=>{
+ const m=mock({runList:list([row({startedAt:'2026-10-08T10:00:00+07:00'})])});
+ const x=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
+ assert.equal(x.runId,'RUN1234567');assert.equal(m.calls.length,2);
+});
 test('R04 locator refuses wrong build instead of guessing latest',async()=>{
  assert.equal((await refuses('OCT08_CANARY_NOT_FOUND',{runList:list([row({buildNumber:'0.0.5'})])})).length,2);
 });
@@ -100,4 +111,35 @@ test('R04 full locator refuses actor/run confusion on exact recheck',async()=>{
  const m=mock({run:{...row(),actId:'OTHER_ACTOR'}});
  await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),e=>e.code==='RUN_IDENTITY_MISMATCH');
  assert.equal(m.calls.length,4);
+});
+
+test('R04 locator aborts streaming oversized Actor JSON before full buffering',async()=>{
+  let chunks=0,cancelled=0;
+  const stream=new ReadableStream({
+    pull(controller){chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;}
+  });
+  const calls=await refuses('RESPONSE_TOO_LARGE',{
+    responses:{actor:new Response(stream,{headers:{'content-type':'application/json'}})}
+  });
+  assert.equal(calls.length,1);
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'locator response must stop reading at 128KiB');
+});
+
+
+test('R04 run locator rejects application/jsonp and media-type lookalikes on first GET',async()=>{
+  for(const contentType of ['application/jsonp','application/json-seq','text/application/json','application/jsonxyz']){
+    const response=new Response(JSON.stringify({data:actor}),{headers:{'content-type':contentType}});
+    const calls=await refuses('JSON_CONTENT_TYPE_REQUIRED',{responses:{actor:response}});
+    assert.equal(calls.length,1,contentType+': never follow up on wrong media type');
+  }
+});
+test('R04 run locator permits JSON Content-Type with charset parameters',async()=>{
+  const m=mock({responses:{actor:new Response(JSON.stringify({data:actor}),{
+    headers:{'content-type':'Application/JSON; charset=UTF-8'}
+  })}});
+  const result=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
+  assert.equal(result.runId,'RUN1234567');
+  assert.equal(m.calls.length,2);
 });

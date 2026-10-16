@@ -100,6 +100,66 @@ test('scoped token may skip users/me on 403 but must still verify Actor access',
   assert.equal(calls.length, 2);
 });
 
+test('preflight rejects mismatched Actor ID after authenticated GET', async () => {
+  const calls=[];
+  const fetchFn=async url=>{
+    calls.push(String(url));
+    return String(url).endsWith('/users/me')
+      ? response(200,{data:{id:'user1',username:'owner'}})
+      : response(200,{data:{id:'impostor123',name:'website-audit',username:'owner',
+        isPublic:false,actorPermissionLevel:'LIMITED_PERMISSIONS',
+        versions:[{versionNumber:'0.1'}]}});
+  };
+  await assert.rejects(()=>runPrivateApifyPreflight({env,fetchFn}),
+    error=>error instanceof ApifyPreflightError && error.code==='ACTOR_IDENTITY_MISMATCH');
+  assert.equal(calls.length,2);
+});
+
+test('preflight rejects JSONP/HTML MIME before a second GET or valid Actor acceptance', async () => {
+  for(const contentType of ['application/jsonp','application/json-seq','text/html',
+                             'text/application/json','application/jsonxyz']) {
+    let calls=0;
+    const fetchFn=async url=>{
+      calls++;
+      const data=String(url).endsWith('/users/me')
+        ? {id:'user1',username:'owner'}
+        : {id:'actor123',name:'website-audit',username:'owner',isPublic:false,
+           actorPermissionLevel:'LIMITED_PERMISSIONS',versions:[{versionNumber:'0.1'}]};
+      return new Response(JSON.stringify({data}),{headers:{'content-type':contentType}});
+    };
+    await assert.rejects(()=>runPrivateApifyPreflight({env,fetchFn}),
+      error=>error instanceof ApifyPreflightError && error.code==='JSON_CONTENT_TYPE_REQUIRED');
+    assert.equal(calls,1,contentType);
+  }
+});
+
+test('preflight accepts correctly delimited JSON with charset', async () => {
+  const calls=[];
+  const fetchFn=async url=>{
+    calls.push(String(url));
+    const data=String(url).endsWith('/users/me')
+      ? {id:'user1',username:'owner'}
+      : {id:'actor123',name:'website-audit',username:'owner',isPublic:false,
+         actorPermissionLevel:'LIMITED_PERMISSIONS',versions:[{versionNumber:'0.1'}]};
+    return new Response(JSON.stringify({data}),{headers:{'content-type':'Application/JSON; charset=UTF-8'}});
+  };
+  const evidence=await runPrivateApifyPreflight({env,fetchFn});
+  assert.equal(evidence.actor.id,env.APIFY_ACTOR_ID);
+  assert.equal(calls.length,2);
+});
+
+test('preflight GET operations have bounded timeout signals', async () => {
+  const { fetchFn, calls } = successFetch();
+  await runPrivateApifyPreflight({ env, fetchFn });
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.options.method, 'GET');
+    assert.ok(call.options.signal instanceof AbortSignal,
+      'each authenticated GET must include a native abort signal');
+    assert.equal(call.options.signal.aborted, false);
+  }
+});
+
 test('public Actor fails closed', async () => {
   const fetchFn = async url => String(url).endsWith('/users/me')
     ? response(200, { data: { id: 'user1', username: 'owner' } })
@@ -175,4 +235,35 @@ test('safe error never exposes token', () => {
   const serialized = JSON.stringify(safe);
   assert.ok(!serialized.includes(env.APIFY_TOKEN));
   assert.ok(serialized.includes('[REDACTED]'));
+});
+
+test('preflight refuses declared oversized private Actor API JSON before a second GET', async () => {
+  let count = 0;
+  const fetchFn = async () => {
+    count++;
+    return new Response(JSON.stringify({data:{id:'u',username:'owner'}}), {
+      headers:{'content-type':'application/json','content-length':'131073'},
+    });
+  };
+  await assert.rejects(
+    () => runPrivateApifyPreflight({env,fetchFn}),
+    error => error instanceof ApifyPreflightError && error.code==='RESPONSE_TOO_LARGE',
+  );
+  assert.equal(count,1);
+});
+
+test('preflight aborts streaming oversized JSON before third 64KiB chunk is retained', async () => {
+  let chunks=0,cancelled=0,calls=0;
+  const payload=new ReadableStream({
+    pull(controller){if(chunks>=4){controller.close();return;}chunks++;controller.enqueue(new Uint8Array(65536).fill(120));},
+    cancel(){cancelled++;},
+  });
+  const fetchFn=async()=>{calls++;return new Response(payload,{headers:{'content-type':'application/json'}})};
+  await assert.rejects(
+    () => runPrivateApifyPreflight({env,fetchFn}),
+    error => error instanceof ApifyPreflightError && error.code==='RESPONSE_TOO_LARGE',
+  );
+  assert.equal(calls,1);
+  assert.equal(cancelled,1);
+  assert.ok(chunks<=5,'stream must be bounded before buffering untrusted body');
 });

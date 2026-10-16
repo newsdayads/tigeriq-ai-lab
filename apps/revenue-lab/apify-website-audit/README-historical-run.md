@@ -34,3 +34,7 @@ Tài liệu: [Get Actor](https://docs.apify.com/api/v2/actor-get), [Get Run](htt
 `npm run test:apify-historical` dùng mocked Response và **không có request Apify thật**. Nó kiểm tra gate, URL allowlist GET, tránh run-sync/POST, đối chiếu identity và ngày, từ chối redirect/HTTP 403, usage null/negative/NaN, không rò token, không báo doanh thu/chi phí chốt giả.
 
 Không có token scoped/Actor ID/Run ID thì **R04 chưa nghiệm thu**. Bộ đọc không tạo run, build, Actor, không bật paid/public, không sửa Core, PC01, Chrome, secrets hoặc Production. Giữ checklist R04/R05 unchecked và Work Order DONE=false đến khi có biên nhận quyền đọc thật và kết quả đối chiếu.
+
+## R04 — Chống lệch ngày do múi giờ (nguồn-only)
+
+Apify trả `startedAt` và `finishedAt` theo kiểu ISO 8601 date-time, ví dụ hậu tố `Z`; bộ đọc chỉ chấp nhận timestamp có UTC `Z` hoặc offset rõ ràng (`+07:00`, `-04:00`). Các chuỗi chỉ có ngày hoặc không có timezone bị bác, thay vì để `Date.parse` ngầm chọn múi giờ host. Bộ locator cũng kiểm tra UTC absolute instant trong cửa sổ ngày 08/10/2026 giờ Việt Nam. Đây là sửa kiểm chứng nguồn, không xác nhận lại run thật và không cấp quyền mới. Nguồn schema: https://docs.apify.com/api/v2/actor-run-get và https://docs.apify.com/api/v2/actor-runs-get.

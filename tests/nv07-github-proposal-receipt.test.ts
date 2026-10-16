@@ -8,7 +8,7 @@ function evidence(){
   content:Buffer.from(JOB+' '+SHA+' '+OUT+' NV07_CANARY_RECEIPT:123').toString('base64')};
  return {
   receipt:{seq:'123',job_id:JOB,data:{sourceSha:SHA,outputHash:OUT,proposedFileCount:1}},
-  pr:{number:4893,merged:true,state:'closed',base:{repo,ref:'main'},head:{repo,sha:HEAD},merge_commit_sha:MERGE},
+  pr:{number:4893,merged:true,state:'closed',created_at:'2026-10-15T18:06:49Z',merged_at:'2026-10-15T18:16:54Z',base:{repo,ref:'main'},head:{repo,sha:HEAD,ref:'docs/nv07-live-proposal-4783'},merge_commit_sha:MERGE},
   files:[{filename:FILE,status:'added'}],
   runs:['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'].map(name=>({
    name,head_sha:HEAD,event:'pull_request',pull_requests:[{number:4893}],run_number:1,status:'completed',conclusion:'success'})),
@@ -39,6 +39,32 @@ describe('Core GitHub proposal receipt evidence',()=>{
    (v:ReturnType<typeof evidence>)=>{v.runs[0].pull_requests[0].number=1;},
    (v:ReturnType<typeof evidence>)=>{v.runs.push({...v.runs[0],run_number:2,conclusion:'failure'});},
   ]){const v=evidence();mutate(v);expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(false);}
+ });
+ it('accepts GitHub PR checks whose pull_requests are empty after a merge only with exact provenance',()=>{
+  const v=evidence();
+  for(const run of v.runs){
+   run.pull_requests=[];
+   Object.assign(run,{created_at:'2026-10-15T18:06:52Z',head_branch:v.pr.head.ref,
+    repository:{full_name:'newsdayads/tigeriq-ai-lab'},
+    head_repository:{full_name:'newsdayads/tigeriq-ai-lab'}});
+  }
+  expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(true);
+  for(const mutate of [
+   (r:Record<string,unknown>)=>{r.head_branch='another-branch';},
+   (r:Record<string,unknown>)=>{r.repository={full_name:'attacker/repo'};},
+   (r:Record<string,unknown>)=>{r.head_repository={full_name:'attacker/repo'};},
+   (r:Record<string,unknown>)=>{r.created_at='2026-10-15T18:30:00Z';},
+   (r:Record<string,unknown>)=>{r.created_at='2026-10-15T18:00:00Z';},
+   (r:Record<string,unknown>)=>{r.pull_requests=[{number:9999}];},
+  ]){
+   const bad=evidence();
+   for(const run of bad.runs){run.pull_requests=[];Object.assign(run,{
+    created_at:'2026-10-15T18:06:52Z',head_branch:bad.pr.head.ref,
+    repository:{full_name:'newsdayads/tigeriq-ai-lab'},
+    head_repository:{full_name:'newsdayads/tigeriq-ai-lab'}});}
+   mutate(bad.runs[0]);
+   expect(verifyNv07GithubProposalEvidence(bad).accepted).toBe(false);
+  }
  });
  it('rejects altered merge bytes, missing output binding and unsupported review claim',()=>{
   for(const mutate of [

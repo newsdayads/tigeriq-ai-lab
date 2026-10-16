@@ -86,6 +86,15 @@ test('zero-price paying scenario has no ratio or invented margin',()=>{
   assert.equal(x.profitUsdAssumed,'0.000000000');
   assert.equal(x.profitMarginOnDeveloperShare,null);
 });
+test('zero-priced paid event cannot advertise a 30% margin capacity (no denominator)',()=>{
+  for(const customerTier of ['BRONZE','SILVER','GOLD']){
+    const x=run({customerTier,eventPriceUsd:'0',computeUnits:'0',nonCuPlatformCostUsd:'0'});
+    assert.equal(x.developerShareUsd,'0.000000000');
+    assert.equal(x.profitMarginOnDeveloperShare,null);
+    assert.equal(x.maxComputeUnitsFor30PctDeveloperMargin,null);
+    assert.equal(x.breakEvenComputeUnitsAtAssumedNonCuCost,'0.000000000');
+  }
+});
 test('non-zero costs and zero-price tier yield loss and no positive CU capacity',()=>{
   const x=run({eventPriceUsd:'0',nonCuPlatformCostUsd:'0.1',computeUnits:'1'});
   assert.equal(x.profitUsdAssumed,'-0.300000000');

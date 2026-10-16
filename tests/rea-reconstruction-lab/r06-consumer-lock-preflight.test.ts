@@ -129,3 +129,106 @@ it('R06 detects scoped package substitution while accepting canonical encoded sc
   const x=inspectR06ConsumerLock(ok);
   expect(x.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(x);
 });
+
+it('R06 permits missing optional OS-specific node-pty binary rows without accepting installation',()=>{
+  const realOptionalOs=['darwin-arm64','darwin-x64','linux-arm64','linux-x64','win32-arm64','win32-x64'];
+  const x=fixture();
+  x.packages['node_modules/@lydell/node-pty'].optionalDependencies=Object.fromEntries(
+    realOptionalOs.map(os=>['@lydell/node-pty-'+os,'1.1.0']));
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',optional:true,
+    os:['win32'],cpu:['x64'],integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+  expect(r.counts).toMatchObject({missingOptionalDependencies:5,packageRows:37});
+  safe(r);
+});
+it('R06 reports absent optional native package without claiming binary availability',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={
+    '@lydell/node-pty-win32-x64':'1.1.0'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.counts.missingOptionalDependencies).toBe(1);safe(r);
+});
+it('R06 preserves mandatory dependency fail-closed checks',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={'required-missing':'1.0.0'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r.reason).toBe('UNRESOLVED_DEPENDENCY_REFERENCE');safe(r);
+});
+it('R06 rejects invalid optional specs and suspicious optional package tarball substitution',()=>{
+  const x=fixture();x.packages['node_modules/zod'].optionalDependencies={missing:''};
+  expect(inspectR06ConsumerLock(x).reason).toBe('INVALID_DEPENDENCY_REFERENCE');
+  const y=fixture();y.packages['node_modules/zod'].optionalDependencies={foo:'1.0.0'};
+  y.packages['node_modules/foo']={version:'1.0.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/rogue/-/rogue-1.0.0.tgz'};
+  const r=inspectR06ConsumerLock(y);
+  expect(r.reason).toBe('UNVERIFIED_PACKAGE_SOURCE');safe(r);
+});
+
+it('R06 rejects exact optional native pin mismatching an internally consistent registry row',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.1',integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.1.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
+it('R06 rejects mandatory exact pin mismatch even when tarball filename matches row',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'1.1.0'};
+  x.packages['node_modules/extra']={version:'1.1.1',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-1.1.1.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
+it('R06 matching exact optional addon stays shape-only, never install-approved',()=>{
+  const x=fixture();x.packages['node_modules/@lydell/node-pty'].optionalDependencies={'@lydell/node-pty-win32-x64':'1.1.0'};
+  x.packages['node_modules/@lydell/node-pty-win32-x64']={version:'1.1.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/@lydell/node-pty-win32-x64/-/node-pty-win32-x64-1.1.0.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(r);
+});
+it('R06 exact prerelease pins are compared rather than silently bypassed',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'2.0.0-alpha.4'};
+  x.packages['node_modules/extra']={version:'2.0.0-alpha.5',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-2.0.0-alpha.5.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_EXACT_VERSION_MISMATCH');safe(r);
+});
+
+it('R06 rejects ^1.2.3 when a valid registry package row resolves to a different major',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'^1.2.3'};
+  x.packages['node_modules/extra']={version:'2.0.0',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-2.0.0.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_RANGE_MISMATCH');safe(r);
+});
+it('R06 rejects ^0.2.0 crossing minor boundary and ^0.0.3 crossing patch',()=>{
+  for(const [spec,version] of [['^0.2.0','0.3.0'],['^0.0.3','0.0.4']]){
+    const x=fixture();x.packages['node_modules/zod'].dependencies={extra:spec};
+    x.packages['node_modules/extra']={version,integrity:sri,
+      resolved:'https://registry.npmjs.org/extra/-/extra-'+version+'.tgz'};
+    const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_RANGE_MISMATCH');safe(r);
+  }
+});
+it('R06 rejects ~5.2.0 across minor boundary and major-only 1 across majors',()=>{
+  for(const [spec,version] of [['~5.2.0','5.3.0'],['1','2.0.0']]){
+    const x=fixture();x.packages['node_modules/zod'].dependencies={extra:spec};
+    x.packages['node_modules/extra']={version,integrity:sri,
+      resolved:'https://registry.npmjs.org/extra/-/extra-'+version+'.tgz'};
+    const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_RANGE_MISMATCH');safe(r);
+  }
+});
+it('R06 accepts supported ^, ~, and major-only versions only as static shapes',()=>{
+  for(const [spec,version] of [['^1.2.3','1.9.0'],['^0.2.0','0.2.9'],['~5.2.0','5.2.8'],['1','1.4.2']]){
+    const x=fixture();x.packages['node_modules/zod'].dependencies={extra:spec};
+    x.packages['node_modules/extra']={version,integrity:sri,
+      resolved:'https://registry.npmjs.org/extra/-/extra-'+version+'.tgz'};
+    const r=inspectR06ConsumerLock(x);
+    expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');safe(r);
+  }
+});
+it('R06 fails closed for unsupported semver expressions even on absent optional dependencies',()=>{
+  for(const spec of ['>=1.0.0','file:./local.tgz','^1.2','*','npm:other@1.0.0']){
+    const x=fixture();x.packages['node_modules/zod'].optionalDependencies={optional:spec};
+    const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('UNSUPPORTED_DEPENDENCY_SPEC');safe(r);
+  }
+});
+it('R06 rejects ranged prerelease resolutions without a prerelease-aware full npm resolver',()=>{
+  const x=fixture();x.packages['node_modules/zod'].dependencies={extra:'^2.0.0'};
+  x.packages['node_modules/extra']={version:'2.1.0-beta.1',integrity:sri,
+    resolved:'https://registry.npmjs.org/extra/-/extra-2.1.0-beta.1.tgz'};
+  const r=inspectR06ConsumerLock(x);expect(r.reason).toBe('DEPENDENCY_RANGE_MISMATCH');safe(r);
+});

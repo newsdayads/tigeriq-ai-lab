@@ -1,6 +1,7 @@
 // GH-2293 R04: inspect one OWNER-NAMED EXISTING private Apify run.
 // Pure GET-only evidence, with no Actor execution, build, run-sync, mutation or billing claim.
 import { fileURLToPath } from 'node:url';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API = 'https://api.apify.com/v2';
 const OPAQUE = /^[A-Za-z0-9]{6,64}$/;
@@ -18,8 +19,22 @@ export class HistoricReadError extends Error {
 const reject = code => { throw new HistoricReadError(code); };
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const actualData = x => object(x) && Object.hasOwn(x, 'data') ? x.data : x;
-const validInstant = x => typeof x === 'string' && /^\d{4}-\d\d-\d\dT/.test(x) &&
-  Number.isFinite(Date.parse(x));
+// Apify declares startedAt/finishedAt as ISO 8601 date-time (UTC examples).
+// Offsets are mandatory: an offset-less local time is host-TZ dependent.
+export function validApifyInstant(x) {
+  if (typeof x !== 'string') return false;
+  // Date.parse alone normalizes nonexistent calendar days and 24:00.
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(x);
+  if (!match) return false;
+  const [, y, m, d, h, min, sec, tzH, tzM] = match;
+  const year = Number(y), month = Number(m), day = Number(d);
+  if (month < 1 || month > 12 || Number(h) > 23 || Number(min) > 59 || Number(sec) > 59 ||
+      (tzH !== undefined && (Number(tzH) > 14 || Number(tzM) > 59 ||
+        (Number(tzH) === 14 && Number(tzM) !== 0)))) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1] && Number.isFinite(Date.parse(x));
+}
 
 export function historicalRunConfig(env = process.env) {
   // Deny before using any credentials or touching network.
@@ -51,11 +66,12 @@ async function readJson(fetchFn, url, token) {
   if (response.status === 401 || response.status === 403) reject('SCOPED_READ_DENIED');
   if (!response.ok) reject('APIFY_READ_FAILED');
   const ct = response.headers?.get?.('content-type') || '';
-  if (!ct.toLowerCase().includes('application/json')) reject('JSON_CONTENT_TYPE_REQUIRED');
+  // Check the media-type token, not a substring (application/jsonp is not JSON).
+  // Permit a case-insensitive media type with an optional parameter section.
+  if (!/^application\/json(?:\s*;|$)/i.test(ct.trim())) reject('JSON_CONTENT_TYPE_REQUIRED');
   let body;
   try {
-    const raw = await response.text();
-    if (raw.length > 131072) reject('RESPONSE_TOO_LARGE');
+    const raw = await readBoundedApifyJsonText(response, reject);
     body = JSON.parse(raw);
   } catch (e) {
     if (e instanceof HistoricReadError) throw e;
@@ -92,7 +108,7 @@ function validateRun(run, config, nowMs) {
   if (typeof run.buildNumber !== 'string' || !run.buildNumber)
     reject('HISTORICAL_BUILD_UNVERIFIED');
   if (run.buildNumber !== EXPECTED_BUILD) reject('HISTORICAL_BUILD_MISMATCH');
-  if (!validInstant(run.startedAt) || !validInstant(run.finishedAt))
+  if (!validApifyInstant(run.startedAt) || !validApifyInstant(run.finishedAt))
     reject('RUN_TIMESTAMPS_UNVERIFIED');
   const start = Date.parse(run.startedAt), end = Date.parse(run.finishedAt);
   if (start > end || end > nowMs - 10000) reject('RUN_USAGE_NOT_SETTLED');
