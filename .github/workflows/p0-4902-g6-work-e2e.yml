@@ -1,7 +1,7 @@
 name: P0 G6 Work Isolated E2E
 on:
   push:
-    branches: [p0/4902-g6-work-e2e]
+    branches: [p0/4902-g6-work-e2e, p0/owner-vy-core-coding-contract-20261016]
     paths:
       - tests/g6-work/**
       - .github/workflows/p0-4902-g6-work-e2e.yml
@@ -13,6 +13,28 @@ concurrency:
   group: p0-g6-work-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  g6-vy-integrated-policy:
+    if: github.repository == 'newsdayads/tigeriq-ai-lab' && github.ref == 'refs/heads/p0/owner-vy-core-coding-contract-20261016'
+    name: G6 Vy Integrated Policy Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify integrated exact SHA and deny unexpected changes
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check tests/g6-work/run.mjs
+          node --check tests/g6-work/worker.mjs
+          node --check tests/g6-work/receipt-policy.mjs
+      - name: Verify Work G6 receipt policy and Vy Owner handoff
+        run: |
+          node --test tests/g6-work/receipt-policy.test.mjs tests/coding-p0-g6-vy-owner-handoff.test.mjs
   g6-work:
     if: github.repository == 'newsdayads/tigeriq-ai-lab' && github.event.repository.private == false && github.ref == 'refs/heads/p0/4902-g6-work-e2e'
     name: G6 Work Real Process PG Model Verify
