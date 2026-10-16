@@ -1,0 +1,53 @@
+name: P0 G6 Native Coding Runtime Rollback
+on:
+  push:
+    branches: [p0/owner-vy-core-coding-contract-20261016]
+    paths:
+      - tests/coding-p0-g6-native-version-rollback.mjs
+      - .github/workflows/p0-4902-g6-native-version-rollback.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-version-rollback:
+    name: G6 Native Version Rollback Verify
+    if: github.repository == 'newsdayads/tigeriq-ai-lab' && github.event.repository.private == false && github.ref == 'refs/heads/p0/owner-vy-core-coding-contract-20261016'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      pg:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: g6test
+          POSTGRES_PASSWORD: isolated-only
+          POSTGRES_DB: g6test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U g6test -d g6test"
+          --health-interval 4s --health-timeout 4s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://g6test:isolated-only@127.0.0.1:5432/g6test
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact SHA and syntax
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check tests/coding-p0-g6-native-version-rollback.mjs
+      - name: Install lockfile dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Boot, inject fault and restore real native process
+        run: node tests/coding-p0-g6-native-version-rollback.mjs
+      - name: Preserve result even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-g6-native-version-rollback
+          path: p0-g6-native-rollback-evidence/receipt.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -208,7 +208,7 @@ test('source integration covers manager implementer reviewer, Core status and re
   const coding=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.ok(coding.includes("leaseContext:{workId:`CODING-MANAGER:${o.id}`,role:'manager'}"));
-  assert.ok(coding.includes("{workId:j.id,role:'implementer'}"));
+  assert.ok(coding.includes("{workId:j.id,role:'implementer',objective:canonicalObjective}"));
   assert.ok(coding.includes("leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}"));
   assert.ok(coding.includes('heartbeatCodingLaneInferenceLease'));
   assert.ok(core.includes('recoverExpiredSharedResourceLeases(pool)'));

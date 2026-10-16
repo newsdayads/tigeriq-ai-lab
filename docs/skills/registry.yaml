@@ -213,3 +213,23 @@ skills:
     target: owner-interface
     triggers: owner vy giao việc tiếp tục quyết định ghi nhớ lỗi học hỏi trao đổi
     summary: Recover Owner goals and decisions from canonical sources, execute safely, learn from verified outcomes and checkpoint without repeated questions.
+
+  - id: frontend-engineering
+    title: Frontend Engineering
+    state: CANDIDATE
+    version: 0.1.0
+    provenance_batch: owner-p0-core-coding-2026-10-16
+    source_log: frontend-engineering/SKILL.md
+    target: coding-lane
+    triggers: frontend giao diện ui component responsive accessibility web source implementation
+    summary: Scoped UI implementation with stepwise prompts, exact source artifacts, behavior checks, responsive accessibility and verified visual testing.
+
+  - id: backend-engineering
+    title: Backend Engineering
+    state: CANDIDATE
+    version: 0.1.0
+    provenance_batch: owner-p0-core-coding-2026-10-16
+    source_log: backend-engineering/SKILL.md
+    target: coding-lane
+    triggers: backend máy chủ api service database postgres worker schema contract integration
+    summary: Scoped backend implementation with contract, failure reproduction, idempotency, API/database integration tests and exact-head receipts.

@@ -33,3 +33,43 @@ jobs:
         run: npm run test:e2e
       - name: Build
         run: npm run build
+
+  frontend-functional:
+    name: Frontend Functional Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install application and browser test dependencies
+        run: npm ci
+      - name: Execute real Chromium UI functional flows
+        run: npm run test:e2e
+
+  backend-contract:
+    name: Backend Contract Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install backend API test dependencies
+        run: npm ci
+      - name: Execute real HTTP API and WorkItem contract tests
+        run: npx vitest run tests/api.test.ts tests/api-workitems.test.ts

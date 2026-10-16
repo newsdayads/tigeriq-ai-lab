@@ -1,0 +1,61 @@
+name: P0 G3 G6 Hosted Local Model Canary
+on:
+  push:
+    branches:
+      - p0/owner-vy-core-coding-contract-20261016
+    paths:
+      - .github/workflows/p0-4902-g3-g6-hosted-canary.yml
+      - tests/coding-p0-g6-hosted-live-canary.mjs
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  g3-real-canary:
+    name: G3 Real Model Tool Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate canary executable syntax before model download
+        run: node --check tests/coding-p0-g6-hosted-live-canary.mjs
+      - name: Verify source SHA and public zero-cost scope
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = newsdayads/tigeriq-ai-lab
+          echo "G3_EXACT_SOURCE_SHA=$GITHUB_SHA"
+      - name: Prepare isolated Docker images
+        run: |
+          set -euo pipefail
+          docker pull ollama/ollama:0.12.11
+          docker pull node:22-bookworm-slim
+          docker image inspect ollama/ollama:0.12.11 --format '{{index .RepoDigests 0}}'
+          docker image inspect node:22-bookworm-slim --format '{{index .RepoDigests 0}}'
+      - name: Start dedicated local-only Ollama model
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name p0-g3-ollama \
+            -p 127.0.0.1:11435:11434 ollama/ollama:0.12.11
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:11435/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11435/api/tags >/dev/null
+          curl -fsS --max-time 660 http://127.0.0.1:11435/api/pull \
+            -H 'content-type: application/json' \
+            -d '{"model":"qwen2.5-coder:7b","stream":false}'
+      - name: Run canonical Coding Lane model plus isolated tool once
+        run: node tests/coding-p0-g6-hosted-live-canary.mjs
+      - name: Preserve bounded nonsecret receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-g3-real-local-canary-receipt
+          path: p0-g3-live-evidence/receipt.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Release isolated model
+        if: always()
+        run: docker rm -f p0-g3-ollama || true

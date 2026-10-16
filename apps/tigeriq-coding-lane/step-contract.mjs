@@ -1,0 +1,341 @@
+import {createHash} from 'node:crypto';
+
+export const CODING_STEP_PACKET_VERSION='TIGERIQ_CODING_STEP_V1';
+const TYPES=new Set(['source','frontend','backend','android','test','documentation']);
+const string=x=>String(x??'').trim();
+const safePath=p=>/^[A-Za-z0-9._/-]{1,220}$/.test(p)&&!p.startsWith('/')&&!p.includes('..')&&!p.includes('\\');
+function strings(values,field,{max=8,allowEmpty=false}={}){
+  if(!Array.isArray(values)||values.length>max||(!allowEmpty&&!values.length))throw Error('CODING_STEP_'+field+'_INVALID');
+  const out=values.map(string);
+  if(out.some(x=>!x||x.length>1200)||new Set(out).size!==out.length)throw Error('CODING_STEP_'+field+'_INVALID');
+  return out;
+}
+export function compileCodingStepPacket({objectiveId,sourceRevision,sourceHeadSha='',job,allowedPaths=[],skillEvidence=[]}={}){
+  if(!string(objectiveId)||!string(sourceRevision))throw Error('CODING_STEP_IDENTITY_MISSING');
+  if(sourceHeadSha&&!/^[a-f0-9]{40}$/i.test(string(sourceHeadSha)))throw Error('CODING_STEP_SOURCE_HEAD_INVALID');
+  if(!job||typeof job!=='object'||Array.isArray(job))throw Error('CODING_STEP_JOB_INVALID');
+  if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(string(job.step_id)))throw Error('CODING_STEP_STEP_ID_INVALID');
+  if(!string(job.title)||!string(job.instruction)||string(job.instruction).length>12000)throw Error('CODING_STEP_INSTRUCTION_INVALID');
+  const paths=strings(job.paths,'PATHS');
+  const allowed=new Set(strings(allowedPaths,'ALLOWED_PATHS',{max:80}));
+  if(paths.some(p=>!safePath(p)||!allowed.has(p)))throw Error('CODING_STEP_SCOPE_MISMATCH');
+  const kind=string(job.deliverable_type);
+  if(!TYPES.has(kind))throw Error('CODING_STEP_DELIVERABLE_INVALID');
+  // The manager must not relabel an Android/frontend artifact as documentation,
+  // tests or generic source to evade the mandatory G5 product acceptance gate.
+  // Only unambiguous artifact signatures are inferred here: ambiguous .js/.ts,
+  // .kt or backend scripts must be classified by the canonical step specification.
+  const inferred=new Set();
+  for(const path of paths){
+    if(/(?:^|\/)AndroidManifest\.xml$|\.gradle(?:\.kts)?$/i.test(path))inferred.add('android');
+    if(/\.(?:tsx|jsx|vue|svelte)$/i.test(path))inferred.add('frontend');
+  }
+  if(inferred.size>1||inferred.size===1&&!inferred.has(kind))
+    throw Error('CODING_STEP_PRODUCT_TYPE_DOWNGRADE');
+  const required=strings(job.required_changed_paths,'REQUIRED_PATHS');
+  if(required.some(p=>!safePath(p)||!paths.includes(p)))throw Error('CODING_STEP_REQUIRED_PATH_OUT_OF_SCOPE');
+  if(kind==='android'&&!required.some(p=>/(\.kt|\.java|\.gradle\.kts|AndroidManifest\.xml)$/.test(p)))throw Error('CODING_STEP_ANDROID_SOURCE_REQUIRED');
+  if(kind==='frontend'&&!required.some(p=>/\.(tsx?|jsx?|vue|svelte|html|css)$/.test(p)))throw Error('CODING_STEP_FRONTEND_SOURCE_REQUIRED');
+  if(kind==='backend'&&!required.some(p=>/\.(mjs|cjs|js|ts|py|go|rs|java|kt)$/.test(p)))throw Error('CODING_STEP_BACKEND_SOURCE_REQUIRED');
+  const packet={
+    schema:CODING_STEP_PACKET_VERSION,objective_id:string(objectiveId),source_revision:string(sourceRevision),source_head_sha:string(sourceHeadSha).toLowerCase()||null,
+    step_id:string(job.step_id),title:string(job.title),instruction:string(job.instruction),
+    paths,deliverable_type:kind,required_changed_paths:required,
+    steps:strings(job.steps,'STEPS'),acceptance:strings(job.acceptance,'ACCEPTANCE'),
+    evidence_required:strings(job.evidence_required,'EVIDENCE'),
+    skill_refs:skillEvidence.map(x=>({id:string(x.id),version:string(x.version),bytes:Number(x.bytes)||0,...(x.context_sha256?{context_sha256:string(x.context_sha256)}:{})})),
+    required_checks:[...new Set([
+      ...({android:['Android Build Verify'],frontend:['Frontend Functional Verify'],backend:['Backend Contract Verify'],test:['Focused Test Verify'],source:['Focused Test Verify'],documentation:[]}[kind]),
+      ...(job.required_checks===undefined?[]:strings(job.required_checks,'FUNCTIONAL_CHECKS',{max:5,allowEmpty:true}))
+    ])]
+  };
+  packet.skill_ids=packet.skill_refs.map(x=>x.id);
+  packet.prompt_revision=createHash('sha256').update(JSON.stringify(packet)).digest('hex').slice(0,24);
+  return packet;
+}
+export function codingStepInstruction(packet){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  return packet.instruction+'\n\nCODING_STEP_PACKET_JSON='+JSON.stringify(packet);
+}
+export function codingStepPacketFromInstruction(instruction){
+  const match=string(instruction).match(/^CODING_STEP_PACKET_JSON=(\{[^\r\n]*\})$/m);
+  if(!match)return null;
+  try{
+    const packet=JSON.parse(match[1]);
+    if(packet?.schema===CODING_STEP_PACKET_VERSION&&/^[a-f0-9]{24}$/.test(String(packet.prompt_revision||''))){
+      const {prompt_revision,...withoutRevision}=packet;
+      const calculated=createHash('sha256').update(JSON.stringify(withoutRevision)).digest('hex').slice(0,24);
+      if(calculated===prompt_revision)return packet;
+    }
+  }catch{}
+  throw Error('CODING_STEP_PACKET_CORRUPT');
+}
+export function codingRolePrompt({role,packet,skillContext='',context='',diff=''}={}){
+  const rules={
+    manager:'Define one bounded step with explicit actions, artifacts, acceptance and evidence; never declare the project complete.',
+    implementer:'Read real source, edit only authorized files, run meaningful scoped tests and return artifact/test evidence; a markdown description is not executable code.',
+    reviewer:'Check every acceptance criterion against actual diff, required artifacts, and tests; report precise failures. Never self-review.',
+    acceptor:'Confirm every acceptance with trusted artifacts and functional tests for the exact source SHA. Waiver is not technical PASS.'
+  };
+  if(!rules[role])throw Error('CODING_STEP_ROLE_INVALID');
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  return [
+    'ROLE='+role,
+    'Do not change permissions, secrets, Production or App Chrome. The canonical source and allowed scope override the AI response.',
+    rules[role],
+    'STEP_ID='+packet.step_id,
+    'PROMPT_REVISION='+packet.prompt_revision,
+    'SOURCE_REVISION='+packet.source_revision,
+    'SOURCE_HEAD_SHA='+String(packet.source_head_sha||'NOT_PINNED'),
+    'SKILLS='+packet.skill_ids.join(','),
+    'PACKET_JSON='+JSON.stringify(packet),
+    'CONTEXT='+string(context).slice(0,14000),
+    'ACTIVE_SKILL_CONTENT='+string(skillContext).slice(0,6000),
+    'REVIEW_DIFF='+string(diff).slice(0,30000),
+    'OUTPUT: step_id, source_revision, changed_paths, test receipts, criterion-specific evidence, and next-step or blocked reason.'
+  ].join('\n');
+}
+export function verifyCodingDeliverable({packet,changes=[]}={}){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const files=new Map((Array.isArray(changes)?changes:[]).map(x=>[string(x?.path),string(x?.content)]));
+  const missing=packet.required_changed_paths.filter(p=>!files.has(p)||!files.get(p));
+  const outside=[...files.keys()].filter(p=>!packet.paths.includes(p));
+  const requiredExtension={
+    android:/\.(kt|java|gradle\.kts)$/,
+    frontend:/\.(tsx?|jsx?|vue|svelte|html|css)$/,
+    backend:/\.(mjs|cjs|js|ts|py|go|rs|java|kt)$/
+  }[packet.deliverable_type];
+  const typeMissing=requiredExtension&&![...files.keys()].some(p=>requiredExtension.test(p));
+  const reasons=[
+    ...(missing.length?['REQUIRED_CHANGED_PATHS_MISSING:'+missing.join(',')]:[]),
+    ...(outside.length?['OUT_OF_SCOPE:'+outside.join(',')]:[]),
+    ...(typeMissing?['DELIVERABLE_SOURCE_TYPE_MISSING']:[])
+  ];
+  return {pass:!reasons.length,code:reasons.length?'CODING_DELIVERABLE_REJECTED':'CODING_DELIVERABLE_STRUCTURE_PASSED',reasons};
+}
+export function repeatedCodingAttemptDecision({workOrderId,stepId,sourceRevision,failureSignature='',history=[],maxSameFailure=2}={}){
+  if(!string(workOrderId)||!string(stepId)||!string(sourceRevision))return {allow:false,code:'CODING_ATTEMPT_IDENTITY_UNVERIFIED'};
+  const revisionPeers=(Array.isArray(history)?history:[]).filter(x=>
+    string(x.workOrderId)===string(workOrderId)&&string(x.sourceRevision)===string(sourceRevision));
+  // Manager-generated step_id is NOT a trusted replay key. Switching D01 to D02
+  // with identical canonical Work Order and source blobs cannot re-arm a failed
+  // or unaccepted step. A genuinely accepted D01 may proceed to D02.
+  if(revisionPeers.some(x=>string(x.stepId)!==string(stepId)&&
+     ['failed','queued','running','review','waiting_ci','waiting_resource','merged_unaccepted','blocked_unaccepted','waiting_owner'].includes(x.status)))
+    return {allow:false,code:'CODING_STEP_ALIAS_REPLAY_BLOCKED'};
+  const comparable=revisionPeers.filter(x=>string(x.stepId)===string(stepId));
+  if(comparable.some(x=>x.status==='accepted'))return {allow:false,code:'CODING_STEP_ALREADY_ACCEPTED'};
+  if(comparable.some(x=>x.status==='merged_unaccepted'))return {allow:false,code:'CODING_STEP_MERGED_AWAITING_ACCEPTANCE'};
+  if(comparable.some(x=>x.status==='waiting_owner'))return {allow:false,code:'CODING_STEP_AWAITING_OWNER_RELEASE'};
+  if(comparable.some(x=>x.status==='blocked_unaccepted'))return {allow:false,code:'CODING_STEP_BLOCKED_AWAITING_MATERIAL_CHANGE'};
+  if(comparable.some(x=>['queued','running','review','waiting_ci','waiting_resource'].includes(x.status)))return {allow:false,code:'CODING_STEP_ALREADY_IN_FLIGHT'};
+  if(string(failureSignature)&&comparable.filter(x=>x.status==='failed'&&string(x.failureSignature)===string(failureSignature)).length>=Math.max(1,Number(maxSameFailure)||2))return {allow:false,code:'CODING_SAME_FAILURE_STOP'};
+  return {allow:true,code:'CODING_ATTEMPT_ALLOWED'};
+}
+
+// Old jobs without a signed step packet cannot be classified as a clean
+// retry history. In particular, a legacy failed/blocked job is not permission
+// to start an equivalent P0 canary job on the same Issue.
+export function codingUnverifiedLegacyHistoryDecision({workOrderId,legacyRows=[]}={}){
+  const key=string(workOrderId);
+  if(!key)return {allow:false,code:'CODING_LEGACY_WORK_ORDER_UNVERIFIED'};
+  if(!Array.isArray(legacyRows))return {allow:false,code:'CODING_LEGACY_HISTORY_UNVERIFIED'};
+  const unresolved=legacyRows.filter(row=>
+    string(row.workOrderId)===key&&
+    ['queued','running','review','waiting_ci','waiting_resource','waiting_owner','failed','blocked','done'].includes(string(row.status)));
+  if(unresolved.length)return {allow:false,code:'CODING_PRE_CANARY_HISTORY_UNVERIFIED',legacyCount:unresolved.length};
+  return {allow:true,code:'CODING_LEGACY_HISTORY_CLEAR'};
+}
+
+// G6 source adapter. Provider evidence MUST come from authenticated GitHub
+// REST on the intended exact commit; never accept AI-supplied check-run arrays,
+// human comments, or a self-asserted "trusted" status as test execution proof.
+export async function verifyCodingCanaryProductGate({
+  packet,sourceHeadSha,prHeadSha,changedPaths=[],readSource,
+  fetchEvidence,evaluateProduct,repositoryFullName,checkRuns
+}={}){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const source=string(sourceHeadSha).toLowerCase();
+  if(!/^[a-f0-9]{40}$/.test(source)||string(prHeadSha).toLowerCase()!==source)
+    throw Error('CODING_PRODUCT_SOURCE_HEAD_DRIFT');
+  if(!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName)))
+    throw Error('CODING_PRODUCT_REPOSITORY_UNVERIFIED');
+  if(!Array.isArray(changedPaths)||changedPaths.length<1||changedPaths.length>=100||
+     new Set(changedPaths).size!==changedPaths.length||
+     changedPaths.some(p=>!safePath(p)||!packet.paths.includes(p)))
+    throw Error('CODING_PRODUCT_CHANGED_SCOPE_INVALID');
+  if(packet.required_changed_paths.some(p=>!changedPaths.includes(p)))
+    throw Error('CODING_PRODUCT_REQUIRED_SOURCE_MISSING');
+  // Even real checks shown in an AI response are NOT trusted. Only an injected
+  // transport function owned by the Coding Lane can fetch GitHub REST evidence.
+  if(checkRuns!==undefined)throw Error('CODING_PRODUCT_SELF_REPORTED_CHECKS_REJECTED');
+  const kind=packet.deliverable_type;
+  if(!['android','frontend','backend'].includes(kind))
+    return {pass:true,code:'CODING_NON_PRODUCT_STEP_STRUCTURAL_ONLY',sourceHeadSha:source};
+  if(typeof evaluateProduct!=='function')throw Error('CODING_G5_PRODUCT_ACCEPTOR_UNAVAILABLE');
+  if(typeof readSource!=='function'||typeof fetchEvidence!=='function')
+    throw Error('CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE');
+  const proof=await fetchEvidence(source,string(repositoryFullName));
+  const sourceChecks=proof?.checkRuns;
+  if(proof?.provider!=='github_rest_authenticated'||
+     proof?.sourceHeadSha!==source||proof?.repository!==string(repositoryFullName)||
+     !Number.isInteger(proof?.totalCount)||!Array.isArray(sourceChecks)||
+     !sourceChecks.length||proof.totalCount!==sourceChecks.length||sourceChecks.length>=100)
+    throw Error('CODING_PRODUCT_PROVIDER_RECEIPT_UNVERIFIED');
+  const trusted=[];
+  const required=new Set(packet.required_checks||[]);
+  for(const check of sourceChecks){
+    const name=string(check?.name);
+    if(!required.has(name))continue;
+    const slug=string(check?.app?.slug);
+    const url=string(check?.details_url);
+    const urlPrefix='https://github.com/'+string(repositoryFullName)+'/actions/runs/';
+    if(!/^[a-f0-9]{40}$/.test(string(check?.head_sha))||
+       string(check.head_sha).toLowerCase()!==source||
+       !Number.isSafeInteger(check?.id)||check.id<=0||
+       slug!=='github-actions'||!url.startsWith(urlPrefix)||
+       !/^\d+\/job\/\d+(?:[?#].*)?$/.test(url.slice(urlPrefix.length))||
+       check.status!=='completed'||check.conclusion!=='success')
+      throw Error('CODING_PRODUCT_PROVIDER_CHECK_UNTRUSTED:'+name);
+    trusted.push(check);
+  }
+  if([...required].some(name=>!trusted.some(x=>x.name===name)))
+    throw Error('CODING_PRODUCT_REQUIRED_PROVIDER_CHECK_MISSING');
+  const changes=[];
+  for(const path of changedPaths){
+    const data=await readSource(path,source);
+    if(!data||typeof data.content!=='string'||!data.content.trim()||
+       !/^[a-f0-9]{40}$/i.test(string(data.sha)))
+      throw Error('CODING_PRODUCT_SOURCE_BYTES_UNVERIFIED:'+path);
+    const bytes=Buffer.from(data.content,'utf8');
+    const actual=createHash('sha1').update(Buffer.concat([
+      Buffer.from('blob '+bytes.length+'\0'),bytes
+    ])).digest('hex');
+    if(actual!==string(data.sha).toLowerCase())
+      throw Error('CODING_PRODUCT_SOURCE_GIT_BLOB_MISMATCH:'+path);
+    changes.push({path,content:data.content});
+  }
+  // G5 is a pure product-quality policy. Input receipts are strictly GitHub
+  // check runs just re-fetched by G6; no AI-provided receipts or waiver flags.
+  const verdict=await evaluateProduct({
+    productType:kind,sourceHeadSha:source,repositoryFullName:string(repositoryFullName),changes,checkRuns:trusted,receipts:[]
+  });
+  if(verdict?.pass!==true||verdict?.status!=='ACCEPTED'||verdict.sourceHeadSha!==source)
+    throw Object.assign(new Error('CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED'),{
+      code:'CODING_PRODUCT_ACCEPTANCE_NOT_VERIFIED',detail:verdict||null
+    });
+  return {pass:true,code:'CODING_PRODUCT_GATE_VERIFIED',sourceHeadSha:source,
+    verifiedSourcePaths:changes.map(c=>c.path),verifiedCheckRunIds:trusted.map(c=>c.id),
+    productReceipt:verdict};
+}
+
+export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha='',repositoryFullName=''}={}){
+  if(packet?.schema!==CODING_STEP_PACKET_VERSION)throw Error('CODING_STEP_PACKET_INVALID');
+  const required=packet.required_checks||[];
+  // Legacy pure contract tests can supply synthetic records. The *live canary*
+  // supplies a pinned GitHub SHA + repository, making every required matching
+  // check a verified, all-success exact-head GitHub Actions receipt.
+  const pinned=!!sourceHeadSha||!!repositoryFullName;
+  if(pinned&&(!/^[a-f0-9]{40}$/i.test(string(sourceHeadSha))||
+      !/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(string(repositoryFullName))||
+      !Array.isArray(checkRuns)))
+    return {pass:false,code:'CODING_FUNCTIONAL_CHECKS_UNVERIFIED',missing:[...required]};
+  const rows=(Array.isArray(checkRuns)?checkRuns:[]).map(x=>{
+    if(typeof x==='string')return {name:x,status:'unknown',conclusion:'unknown'};
+    return {name:string(x?.name),status:string(x?.status),conclusion:string(x?.conclusion),
+      head_sha:string(x?.head_sha),id:x?.id,appSlug:string(x?.app?.slug),
+      detailsUrl:string(x?.details_url)};
+  });
+  const missing=[],unverified=[];
+  const prefix='https://github.com/'+repositoryFullName+'/actions/runs/';
+  for(const name of required){
+    const matches=rows.filter(row=>row.name===name);
+    if(!matches.length){missing.push(name);continue;}
+    const valid=matches.every(row=>
+      row.status==='completed'&&row.conclusion==='success'&&
+      (!pinned||(row.head_sha.toLowerCase()===string(sourceHeadSha).toLowerCase()&&
+         Number.isSafeInteger(row.id)&&row.id>0&&
+         row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&
+         /^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
+    if(!valid)unverified.push(name);
+  }
+  return {pass:missing.length===0&&unverified.length===0,
+    code:unverified.length?'CODING_FUNCTIONAL_CHECKS_UNVERIFIED':
+      missing.length?'CODING_FUNCTIONAL_CHECKS_MISSING':'CODING_FUNCTIONAL_CHECKS_PASSED',
+    missing:[...missing,...unverified]};
+}
+
+
+// Evidence check for a *closed* GitHub source Work Order. Closed state is not
+// accepted product delivery. This gate is deliberately independent of AI text.
+export function verifyClosedCodingWorkOrder({body='',state='closed',stateReason='completed',externallyVerified=false}={}){
+  const source=string(body);
+  const fields=name=>[...source.matchAll(new RegExp('^'+name+'\\s*=\\s*([^\\r\\n]+)$','gmi'))].map(x=>x[1].trim());
+  const done=fields('DONE');
+  const finished=fields('FINISHED_AT');
+  const receipt=fields('FINISH_RECEIPT_URL');
+  const checkboxes=source.split(/\r?\n/).filter(line=>/^\s*-\s*\[[ xX]\]\s+/.test(line));
+  const incomplete=checkboxes.filter(line=>/^\s*-\s*\[\s\]/.test(line));
+  const reasons=[];
+  if(string(state).toLowerCase()!=='closed'||string(stateReason).toLowerCase()!=='completed')reasons.push('NOT_CLOSED_COMPLETED');
+  if(done.length!==1||done[0].toLowerCase()!=='true')reasons.push('DONE_EVIDENCE_MISSING_OR_AMBIGUOUS');
+  if(finished.length!==1||!/\b20\d\d-\d\d-\d\dT\d\d:\d\d/.test(finished[0]))reasons.push('FINISHED_AT_UNVERIFIED');
+  if(receipt.length!==1||!/^https:\/\/[a-z0-9.-]+\/\S+/i.test(receipt[0]))reasons.push('FINISH_RECEIPT_UNVERIFIED');
+  if(checkboxes.length===0||incomplete.length)reasons.push('CHECKLIST_NOT_ACCEPTED');
+  // Issue body is authored text, never an independent acceptance receipt.
+  if(externallyVerified!==true)reasons.push('EXTERNAL_ACCEPTANCE_UNVERIFIED');
+  return {pass:reasons.length===0,code:reasons.length?'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED':'SOURCE_WORK_ORDER_COMPLETION_EVIDENCED',reasons,completedChecklist:checkboxes.length-incomplete.length,totalChecklist:checkboxes.length};
+}
+
+
+// Prefer stable machine error codes. Normalize incidental IDs, numbers and
+// timestamps so retry budgets cannot reset merely from different log text.
+export function codingFailureSignature(failure={}){
+  const source=failure&&typeof failure==='object'?failure:{message:String(failure)};
+  const code=string(source.code).toUpperCase();
+  if(/^[A-Z][A-Z0-9_.:-]{1,119}$/.test(code))return code;
+  const message=string(source.message).toUpperCase()
+    .replace(/\b[0-9A-F]{8}-[0-9A-F-]{27,}\b/g,'<ID>')
+    .replace(/\b[0-9A-F]{40,64}\b/g,'<SHA>')
+    .replace(/\b20\d{2}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)?\b/g,'<TIME>')
+    .replace(/\b(?:PR|JOB|CODE)\s*#?[0-9A-F-]{4,}\b/g,'<ID>')
+    .replace(/\b\d{2,}(?:MS|MSEC|SEC)\b/g,'<DURATION>')
+    .replace(/\b\d{3,}\b/g,'<N>')
+    .replace(/\s+/g,' ').slice(0,180);
+  return message||'UNKNOWN_FAILURE';
+}
+
+
+// A new unrelated main commit cannot reset two-failure budget. Relevant target
+// blob changes or explicitly changed canonical objective/evidence can.
+// A manager-generated path subset cannot become a new source epoch. For P0
+// claims the authoritative canonical file set is pinned before step planning.
+export function codingSourceRevisionPaths({canonicalPaths=[],proposedPaths=[]}={}){
+  const fixed=Array.isArray(canonicalPaths)?canonicalPaths.map(string):[];
+  const proposed=Array.isArray(proposedPaths)?proposedPaths.map(string):[];
+  if(!fixed.length||fixed.length>8||fixed.some(p=>!safePath(p)||p.endsWith('/')||!p)||
+     new Set(fixed).size!==fixed.length)
+    throw Error('CODING_CANARY_EXACT_SOURCE_SCOPE_REQUIRED');
+  if(!proposed.length||proposed.some(p=>!fixed.includes(p)))
+    throw Error('CODING_CANARY_STEP_SOURCE_SCOPE_MISMATCH');
+  return [...fixed].sort();
+}
+
+export function codingMaterialSourceRevision({objective='',canonicalWorkOrderId='',materialSpecRevision='',paths=[],sourceBlobs={}}={}){
+  const selected=[...new Set((Array.isArray(paths)?paths:[]).map(string))].sort();
+  if(!selected.length||selected.length>8||selected.some(p=>!safePath(p)))throw Error('CODING_MATERIAL_PATHS_INVALID');
+  const blobs=selected.map(path=>{
+    if(!Object.hasOwn(sourceBlobs,path))throw Error('CODING_MATERIAL_BLOB_UNKNOWN:'+path);
+    const sha=sourceBlobs[path];
+    if(sha!==null&&!/^[a-f0-9]{40}$/i.test(String(sha)))throw Error('CODING_MATERIAL_BLOB_INVALID:'+path);
+    return [path,sha===null?null:String(sha).toLowerCase()];
+  });
+  const workOrder=string(canonicalWorkOrderId);
+  if(workOrder&&!/^[0-9]{1,12}$/.test(workOrder))throw Error('CODING_CANONICAL_WORK_ORDER_INVALID');
+  const revision=string(materialSpecRevision);
+  if(revision&&!/^[a-zA-Z0-9._-]{1,80}$/.test(revision))throw Error('CODING_MATERIAL_SPEC_REVISION_INVALID');
+  // Generated "retry 1/2", "retry 2/2" and changing dispatch metadata
+  // are NOT new acceptance input for the same canonical Work Order.
+  const identity=workOrder?'GH-ISSUE-'+workOrder:string(objective);
+  return createHash('sha256').update(JSON.stringify({objective:identity,specRevision:revision||null,blobs})).digest('hex');
+}
