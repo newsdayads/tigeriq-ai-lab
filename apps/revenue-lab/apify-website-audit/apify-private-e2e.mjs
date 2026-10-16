@@ -43,12 +43,26 @@ function envConfig(env = process.env) {
     throw new ApifyE2EError('EXECUTION_GATE_REQUIRED', 'Set APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST only in the authorized execution environment.');
   }
 
+  // waitForFinish only bounds the HTTP wait; it is not a spending limit.
+  // This is an additional source fail-closed prerequisite, NOT a grant to
+  // start paid work: platform/Owner cost approval must still be checked.
+  // The run limit does not cap the separate build or account-level charges.
+  const budgetText = String(env.APIFY_E2E_MAX_TOTAL_CHARGE_USD ?? '').trim();
+  const maxTotalChargeUsd = Number(budgetText);
+  if (!/^(?:0|1)(?:\.\d{1,3})?$/.test(budgetText) ||
+      !Number.isFinite(maxTotalChargeUsd) ||
+      maxTotalChargeUsd <= 0 || maxTotalChargeUsd > 1) {
+    throw new ApifyE2EError('EXPLICIT_COST_ENVELOPE_REQUIRED',
+      'A positive, bounded run cost envelope in USD is required before building or running.');
+  }
+
   return {
     token,
     actorId,
     version: String(env.APIFY_ACTOR_VERSION || '0.1').trim(),
     buildTag: String(env.APIFY_BUILD_TAG || 'latest').trim(),
     apiBase: 'https://api.apify.com/v2',
+    maxTotalChargeUsd,
     evidencePath: String(env.APIFY_EVIDENCE_PATH || '').trim() || null,
   };
 }
@@ -222,6 +236,7 @@ export async function runPrivateApifyE2E({
     waitForFinish: '60',
     timeout: '60',
     memory: '256',
+    maxTotalChargeUsd: String(config.maxTotalChargeUsd),
     restartOnError: 'false',
     forcePermissionLevel: 'LIMITED_PERMISSIONS',
   });
