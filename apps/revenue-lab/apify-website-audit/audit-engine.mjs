@@ -158,7 +158,7 @@ async function requestOnce(url, options) {
     }, res => {
       const statusCode = Number(res.statusCode || 0);
       if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
-        res.resume();
+        res.destroy();
         return done(resolve, {
           redirect: new URL(res.headers.location, parsed).toString(),
           statusCode,
@@ -168,12 +168,12 @@ async function requestOnce(url, options) {
       // HTTP failures must preserve their status code even when servers
       // return a JSON or text error page instead of HTML.
       if (statusCode < 200 || statusCode >= 300) {
-        res.resume();
+        res.destroy();
         return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
       }
       const contentType = headerValue(res.headers, 'content-type').toLowerCase();
       if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
-        res.resume();
+        res.destroy();
         return done(reject, new AuditError('UNSUPPORTED_CONTENT_TYPE', 'Response is not HTML.', contentType || null));
       }
 

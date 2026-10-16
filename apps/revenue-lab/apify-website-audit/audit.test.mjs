@@ -340,3 +340,69 @@ test('benchmark: 20 deterministic valid runs achieve at least 95 percent success
   assert.equal(runs.length, 20);
   assert.ok(successRate >= 0.95);
 });
+
+
+test('streaming HTTP early exits abort discarded response bodies', async () => {
+  // A redirect/non-HTML/error response must not keep downloading forever
+  // after the audit has either moved to its next URL or rejected the page.
+  const scenarios = [
+    { label: '302 redirect', statusCode: 302, headers: { location: '/ok', 'content-type': 'text/html' }, error: null },
+    { label: '500 non-2xx', statusCode: 500, headers: { 'content-type': 'text/plain' }, error: 'NON_2XX' },
+    { label: '200 non-HTML', statusCode: 200, headers: { 'content-type': 'application/json' }, error: 'UNSUPPORTED_CONTENT_TYPE' },
+  ];
+
+  for (const scenario of scenarios) {
+    let streamClosed = false;
+    let streamOpened = false;
+    let ticksAfterClose = 0;
+    const streamServer = http.createServer((req, res) => {
+      if (req.url === '/ok') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        return res.end('<html><head><title>Redirect OK</title></head><body><h1>OK</h1></body></html>');
+      }
+      res.writeHead(scenario.statusCode, scenario.headers);
+      res.write('first streaming chunk');
+      streamOpened = true;
+      const ticker = setInterval(() => {
+        if (res.destroyed) {
+          ticksAfterClose++;
+          return;
+        }
+        res.write('x'.repeat(1024));
+      }, 4);
+      res.once('close', () => {
+        streamClosed = true;
+        clearInterval(ticker);
+      });
+    });
+    try {
+      await new Promise(resolve => streamServer.listen(0, '127.0.0.1', resolve));
+      const url = 'http://audit.test:' + streamServer.address().port + '/stream';
+      const result = auditWebsite(url, {
+        maxRedirects: 2,
+        timeoutMs: 1200,
+        resolveTargetFn: localResolver,
+      });
+      if (scenario.error) {
+        await assert.rejects(result, error => error instanceof AuditError && error.code === scenario.error);
+      } else {
+        const value = await result;
+        assert.equal(value.status, 'success');
+        assert.equal(value.pages[0].seo.title, 'Redirect OK');
+        assert.equal(value.pages[0].redirectCount, 1);
+      }
+      // An HTTP response 'close' event is asynchronous. The discarded
+      // stream must close well within the timeout, not keep downloading.
+      const deadline = Date.now() + 400;
+      while (!streamClosed && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.equal(streamOpened, true, scenario.label + ': initial streaming response was not observed');
+      assert.equal(streamClosed, true, scenario.label + ': discarded HTTP body was left streaming');
+      assert.equal(ticksAfterClose, 0, scenario.label + ': streaming interval leaked after close');
+    } finally {
+      streamServer.closeAllConnections();
+      await new Promise(resolve => streamServer.close(resolve));
+    }
+  }
+});
