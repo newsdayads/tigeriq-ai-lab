@@ -1878,6 +1878,10 @@ async function runJob(j){
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
   const canary=codingP0CanaryApplies(canonicalObjective);
+  // A stored canary packet must never silently fall back into legacy auto-merge
+  // after config is disabled, target Issue is changed, or objective is missing.
+  const storedCanaryPacket=codingStepPacketFromInstruction(j.instruction);
+  if(storedCanaryPacket&&!canary)throw Object.assign(new Error('CODING_STEP_PACKET_OUTSIDE_CANARY_SCOPE'),{code:'CODING_STEP_PACKET_OUTSIDE_CANARY_SCOPE'});
   const targetRepository=resolveCodingRepository(targetRepositoryFromObjective(canonicalObjective));
   const ownerWaiver=codingOwnerReviewWaiver(targetRepository);
   const mutationAuth={...controlPlaneRepairIntent(canonicalObjective),executorClass:'CODING_LANE'};
