@@ -13,10 +13,12 @@ const socket=process.env.TIGERIQ_TEST_POSTGRES_SOCKET;
 let databaseName,dbOptions;
 if(socket){
   if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_OS!=='Linux'||
-     socket!=='/var/run/postgresql'||!/^tigeriq_test_[a-f0-9]{12}$/.test(process.env.TIGERIQ_TEST_POSTGRES_DB||''))
+     process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
+     socket!=='/var/run/postgresql'||process.env.TIGERIQ_TEST_POSTGRES_USER!=='runner'||
+     !/^tigeriq_test_[a-f0-9]{12}$/.test(process.env.TIGERIQ_TEST_POSTGRES_DB||''))
     throw Error('ISOLATED_POSTGRES_CI_SOCKET_INVALID');
   databaseName=process.env.TIGERIQ_TEST_POSTGRES_DB;
-  dbOptions={host:socket,user:'postgres',database:databaseName};
+  dbOptions={host:socket,user:'runner',database:databaseName};
 }else{
   const url=process.env.TIGERIQ_TEST_POSTGRES_URL;
   if(!url)throw Error('ISOLATED_POSTGRES_URL_REQUIRED');

@@ -1,37 +1,49 @@
-// GitHub-hosted Ubuntu has PostgreSQL preinstalled but stopped. Only on a
-// GitHub Actions Linux runner, provision a random disposable database using
-// peer auth, run the real integration suite, and drop the entire database.
-// No production connection, no permanent credential or schema mutations.
+// GitHub-hosted Ubuntu PostgreSQL test: no external DB or credentials.
+// Create one peer-auth role and one disposable DB on this ephemeral runner.
+// Run tests as the existing checkout user (not as postgres, whose account
+// cannot traverse GitHub's private checkout tree).
 import {execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
+import {userInfo} from 'node:os';
 
-const githubHosted=process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_OS==='Linux';
+const githubHosted=process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_OS==='Linux'&&
+  process.env.RUNNER_ENVIRONMENT==='github-hosted';
 if(!githubHosted){
-  console.log('G4_POSTGRES_NOT_RUN: GitHub Actions Linux test runner unavailable');
+  console.log('G4_POSTGRES_NOT_RUN: GitHub-hosted Ubuntu runner unavailable');
   process.exit(0);
 }
+const peerUser=userInfo().username;
+if(peerUser!=='runner')throw Error('G4_POSTGRES_UNEXPECTED_OS_USER');
 const db='tigeriq_test_'+randomBytes(6).toString('hex');
 const run=(args,{timeout=15000,stdio='inherit'}={})=>execFileSync('sudo',['-n',...args],{
   cwd:process.cwd(),timeout,stdio,env:process.env
 });
-let created=false,passed=false;
+let roleCreated=false,created=false,passed=false;
 try{
   run(['systemctl','start','postgresql.service'],{timeout:25000});
-  run(['-u','postgres','createdb',db]);
+  run(['-u','postgres','createuser','--no-superuser','--no-createdb','--no-createrole','--login',peerUser]);
+  roleCreated=true;
+  run(['-u','postgres','createdb','--owner='+peerUser,db]);
   created=true;
   console.log('G4_POSTGRES_ISOLATED_DB_CREATED '+db);
-  run(['-u','postgres','env',
-    'GITHUB_ACTIONS=true','RUNNER_OS=Linux',
-    'TIGERIQ_TEST_POSTGRES_SOCKET=/var/run/postgresql',
-    'TIGERIQ_TEST_POSTGRES_DB='+db,
-    process.execPath,'--test','tests/coding-postgres-integration.test.mjs'
-  ],{timeout:120000});
+  execFileSync(process.execPath,['--test','tests/coding-postgres-integration.test.mjs'],{
+    cwd:process.cwd(),timeout:120000,stdio:'inherit',
+    env:{...process.env,
+      TIGERIQ_TEST_POSTGRES_DB:db,
+      TIGERIQ_TEST_POSTGRES_SOCKET:'/var/run/postgresql',
+      TIGERIQ_TEST_POSTGRES_USER:peerUser
+    }
+  });
   passed=true;
 }finally{
   if(created){
     try{run(['-u','postgres','dropdb','--if-exists',db],{timeout:20000})}
     catch(error){console.error('G4_POSTGRES_TEST_DB_CLEANUP_FAILED');throw error}
   }
+  if(roleCreated){
+    try{run(['-u','postgres','dropuser',peerUser],{timeout:20000})}
+    catch(error){console.error('G4_POSTGRES_TEST_ROLE_CLEANUP_FAILED');throw error}
+  }
 }
 if(!passed)throw Error('G4_POSTGRES_REAL_TEST_FAILED');
-console.log('G4_POSTGRES_REAL_TEST_PASSED_AND_DB_DROPPED');
+console.log('G4_POSTGRES_REAL_TEST_PASSED_DB_AND_ROLE_DROPPED');
