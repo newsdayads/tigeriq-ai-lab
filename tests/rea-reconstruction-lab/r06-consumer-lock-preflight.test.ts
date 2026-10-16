@@ -355,3 +355,29 @@ it('R06 hostile packages ownKeys Proxy is rejected before lock can be trusted',(
  expect(r).toMatchObject({decision:'REJECTED',reason:'INVALID_UNTRUSTED_LOCK_OBJECT'});
  safe(r);
 });
+
+it('R06 rejects root overrides that could redirect transitive npm resolution',()=>{
+ for(const key of ['zod','@lydell/node-pty']){
+  const x=fixture();
+  x.packages[''].overrides={[key]:'npm:untrusted-replacement@1.0.0'};
+  const r=inspectR06ConsumerLock(x);
+  expect(r).toMatchObject({decision:'REJECTED',reason:'CONSUMER_ROOT_SCOPE_DRIFT'});
+  safe(r);
+ }
+});
+it('R06 rejects inherited REA request despite a single own extra root dependency',()=>{
+ const x=fixture();
+ const inherited=Object.create({'rea-agents':'6.4.0'});
+ inherited.zod='4.4.3';
+ x.packages[''].dependencies=inherited;
+ const r=inspectR06ConsumerLock(x);
+ expect(r).toMatchObject({decision:'REJECTED',reason:'REA_ARTIFACT_PIN_MISMATCH'});
+ safe(r);
+});
+it('R06 permits an empty overrides map and an explicit own REA pin as shape only',()=>{
+ const x=fixture();
+ x.packages[''].overrides={};
+ const r=inspectR06ConsumerLock(x);
+ expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+ safe(r);
+});
