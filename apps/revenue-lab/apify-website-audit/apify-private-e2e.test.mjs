@@ -13,6 +13,18 @@ const env = {
 };
 const noSleep = async () => {};
 
+// Mirrors the genuine auditWebsite() schema from audit-engine.mjs, not just
+// a synthetic "success" flag. No paid Actor or network involved.
+const validAuditOutput = () => ({
+  schemaVersion: '1.0',
+  status: 'success',
+  requestedUrl: 'https://example.com/',
+  metrics: { pagesAudited: 1, errorCount: 0 },
+  pages: [{ url: 'https://example.com/', statusCode: 200 }],
+  errors: [],
+  summary: { titlePresent: true },
+});
+
 function response(status, body) {
   return new Response(JSON.stringify(body), {
     status,
@@ -38,7 +50,7 @@ function successFetch() {
       return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', stats: { computeUnits: 0.02 }, usageTotalUsd: 0.004 } });
     }
     if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) {
-      return response(200, { schemaVersion: '1.0', status: 'success' });
+      return response(200, validAuditOutput());
     }
     throw new Error('unexpected URL ' + u);
   };
@@ -64,6 +76,8 @@ test('success path uses finalized build/run usage after settle refetch', async (
   assert.equal(evidence.run.requestedBuildNumber, '0.1.7');
   assert.equal(evidence.cost.totalPlatformCostUSD, 0.006);
   assert.equal(evidence.output.schemaVersion, '1.0');
+  assert.equal(evidence.output.requestedUrl, 'https://example.com/');
+  assert.equal(evidence.output.pagesAudited, 1);
   assert.ok(written.includes('"totalPlatformCostUSD": 0.006'));
   assert.ok(!written.includes(env.APIFY_TOKEN));
   assert.ok(calls.some(call => call.url.endsWith('/actor-builds/build1')));
@@ -87,6 +101,17 @@ test('R08 invalid OUTPUT must never become accepted E2E evidence', async () => {
     { schemaVersion: '1.0', status: 'error' },
     { schemaVersion: '1.0', status: 'success', error: 'not-empty' },
     null,
+    // Prior code accepted a success-only JSON without any actual audit.
+    { schemaVersion: '1.0', status: 'success' },
+    { ...validAuditOutput(), requestedUrl: 'https://other.example/' },
+    { ...validAuditOutput(), requestedUrl: undefined },
+    { ...validAuditOutput(), pages: [] },
+    { ...validAuditOutput(), metrics: { pagesAudited: 0, errorCount: 0 } },
+    { ...validAuditOutput(), metrics: { pagesAudited: 2, errorCount: 0 } },
+    { ...validAuditOutput(), errors: [{ code: 'AUDIT_FAILURE' }] },
+    { ...validAuditOutput(), metrics: { pagesAudited: 1, errorCount: 1 } },
+    { ...validAuditOutput(), summary: null },
+    { ...validAuditOutput(), pages: [{ url: 'https://example.com/', statusCode: 500 }] },
   ]) {
     const normal = successFetch();
     const fetchFn = async (url, options) =>
@@ -305,7 +330,7 @@ test('bounded polling still supports transitional build/run', async () => {
       return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     }
     if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.002 } });
-    if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) return response(200, { status: 'success', schemaVersion: '1.0' });
+    if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) return response(200, validAuditOutput());
     throw new Error('unexpected URL ' + u);
   };
   const evidence = await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
