@@ -30,6 +30,13 @@ function auditSnapshot(data: typeof inventory): string[] {
         !n.taggedSourceLicenseTextRead || !/^[a-f0-9]{40}$/.test(n.taggedLicenseTextGitBlob))
       issues.push('NOTICE_PROVENANCE_DRIFT');
   }
+  // Also walk pinned notices in reverse: a tampered AND license disappears
+  // from the flagged subset, but must still be rejected, not downgraded.
+  for (const n of data.noticeCases) {
+    const item = byPath.get(n.path);
+    if (!item || item.version !== n.version || item.license !== n.licenseDeclaration)
+      issues.push('NOTICE_PROVENANCE_DRIFT');
+  }
   for (const [flag,value] of Object.entries(data.gates)) {
     if (flag === 'sourceOnly' ? value !== true : value !== false) issues.push('UNAUTHORIZED_ACCEPTANCE_FLAG');
   }
