@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
+import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable,runCodingSkillCapabilityCanary} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
 test('real ACTIVE spec-first-tdd file content and version load into Coding role',()=>{
@@ -213,4 +214,167 @@ test('invalid UTF-8 and duplicate identity fields are denied',t=>{
   assert.throws(()=>load(options),/CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED/);
   writeFileSync(path,identity().replace('- ID: spec-first-tdd','- ID: spec-first-tdd\n- ID: spec-first-tdd'));
   assert.throws(()=>load(options),/CODING_REQUIRED_ACTIVE_SKILL_NOT_LOADED/);
+});
+
+// Synthetic model/permission receipts below test the gate, never model competence.
+// The only executable source is this fixed, reviewed fixture, not LLM output.
+const PORT_FIXTURE='export function normalizePort(value){if(typeof value!=="number"&&typeof value!=="string")return null;if(typeof value==="string"){value=value.trim();if(!/^[0-9]+$/.test(value))return null;value=Number(value)}return Number.isInteger(value)&&value>=1&&value<=65535?value:null}';
+function capabilityFixture(){
+  const calls={inspect:0,model:0,tool:0};
+  const observed={mode:'test-fixture',
+    model:{id:'test-fixture/no-live-model',available:true,allowed:true,new_cost:0},
+    tool:{id:'test-fixture/node-child',available:true,allowed:true,new_cost:0,isolated:true,source_read_only:true},
+    permission_receipts:{model:'fixture:model-grant',tool:'fixture:tool-grant'}};
+  const host={
+    inspect:async()=>{calls.inspect++;return structuredClone(observed)},
+    verifyReceipt:async()=>true,
+    invokeModel:async request=>{
+      calls.model++;
+      const response=JSON.stringify({run_id:request.run_id,step_id:request.step_id,source_sha:request.source_sha,skill_context_sha256:request.skill_context_sha256,code:PORT_FIXTURE});
+      return {id:'fixture:model-receipt',run_id:request.run_id,source_sha:request.source_sha,model_id:request.model_id,
+        prompt_sha256:request.prompt_sha256,response,response_sha256:hash(response)};
+    },
+    runTool:async input=>{
+      calls.tool++;
+      assert.equal(input.code,PORT_FIXTURE,'only fixed reviewed test source can execute');
+      const script=PORT_FIXTURE+'\nprocess.stdout.write(JSON.stringify({outputs:'+JSON.stringify(input.cases)+'.map(normalizePort)}));';
+      const stdout=execFileSync(process.execPath,['--input-type=module','--eval',script],{encoding:'utf8',timeout:4000,maxBuffer:16384});
+      return {id:'fixture:tool-receipt',run_id:input.run_id,tool_id:input.tool_id,source_sha:input.source_sha,
+        model_receipt_id:input.model_receipt_id,code_sha256:input.code_sha256,input_sha256:input.input_sha256,
+        exit_code:0,stdout,stdout_sha256:hash(stdout)};
+    }
+  };
+  return {host,observed,calls};
+}
+const canaryInput=host=>({sourceSha:'c'.repeat(40),skills:loadRequiredCodingSkills('G3 source capability canary'),host});
+
+test('no connected runtime adapter produces BLOCKED, with real ACTIVE proof and a prepared one-step prompt',async()=>{
+  const receipt=await runCodingSkillCapabilityCanary(canaryInput());
+  assert.equal(receipt.status,'BLOCKED');
+  assert.equal(receipt.code,'CODING_CANARY_RUNTIME_ADAPTER_UNAVAILABLE');
+  assert.equal(receipt.capability_verified,false);assert.equal(receipt.model_invoked,false);assert.equal(receipt.tool_invoked,false);
+  assert.equal(receipt.model_id,null);assert.equal(receipt.response,null);
+  assert.match(receipt.prompt,/exactly ONE isolated technical step/);
+  assert.equal(receipt.prompt_sha256,hash(receipt.prompt));
+  assert.ok(receipt.skill_proof[0].content_sha256);
+});
+
+test('fixture model plus actual fixed-code Node tool validates 19 cases but never becomes live capability evidence',async()=>{
+  const {host,calls}=capabilityFixture();const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.status,'FIXTURE_VALIDATED');assert.equal(r.capability_verified,false);
+  assert.equal(r.tested_cases,19);assert.equal(r.model_id,'test-fixture/no-live-model');
+  assert.equal(r.response_sha256,hash(r.response));
+  assert.equal(r.tool_receipt.stdout_sha256,hash(r.tool_receipt.stdout));
+  assert.deepEqual(calls,{inspect:1,model:1,tool:1});
+});
+
+for(const [name,mutate,code] of [
+  ['missing model',o=>{o.model=null},'MODEL_UNAVAILABLE'],
+  ['missing model id',o=>{delete o.model.id},'MODEL_UNAVAILABLE'],
+  ['blank model id',o=>{o.model.id=' '},'MODEL_UNAVAILABLE'],
+  ['nonboolean model availability',o=>{o.model.available='false'},'MODEL_UNAVAILABLE'],
+  ['unavailable model',o=>{o.model.available=false},'MODEL_UNAVAILABLE'],
+  ['model permission denied',o=>{o.model.allowed=false},'MODEL_PERMISSION_MISSING'],
+  ['missing tool',o=>{o.tool=null},'TOOL_UNAVAILABLE'],
+  ['missing tool id',o=>{delete o.tool.id},'TOOL_UNAVAILABLE'],
+  ['blank tool id',o=>{o.tool.id=' '},'TOOL_UNAVAILABLE'],
+  ['nonboolean tool availability',o=>{o.tool.available='true'},'TOOL_UNAVAILABLE'],
+  ['unavailable tool',o=>{o.tool.available=false},'TOOL_UNAVAILABLE'],
+  ['tool permission denied',o=>{o.tool.allowed=false},'TOOL_PERMISSION_MISSING'],
+  ['missing isolation permission',o=>{delete o.tool.isolated},'TOOL_PERMISSION_MISSING'],
+  ['source write permitted',o=>{o.tool.source_read_only=false},'TOOL_PERMISSION_MISSING'],
+  ['new model cost',o=>{o.model.new_cost=1},'ZERO_COST_UNVERIFIED'],
+  ['unknown model cost',o=>{delete o.model.new_cost},'ZERO_COST_UNVERIFIED'],
+  ['new tool cost',o=>{o.tool.new_cost=1},'ZERO_COST_UNVERIFIED'],
+  ['unknown tool cost',o=>{delete o.tool.new_cost},'ZERO_COST_UNVERIFIED'],
+  ['missing grant receipt',o=>{o.permission_receipts=null},'PERMISSION_EVIDENCE_UNVERIFIED'],
+  ['missing model grant receipt',o=>{delete o.permission_receipts.model},'PERMISSION_EVIDENCE_UNVERIFIED'],
+  ['missing tool grant receipt',o=>{delete o.permission_receipts.tool},'PERMISSION_EVIDENCE_UNVERIFIED'],
+  ['blank model grant receipt',o=>{o.permission_receipts.model=' '},'PERMISSION_EVIDENCE_UNVERIFIED'],
+  ['unidentified execution mode',o=>{delete o.mode},'PERMISSION_EVIDENCE_UNVERIFIED']
+])test('canary blocks before invocation: '+name,async()=>{
+  const {host,observed,calls}=capabilityFixture();mutate(observed);
+  const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.status,'BLOCKED');assert.equal(r.code,'CODING_CANARY_'+code);
+  assert.equal(r.capability_verified,false);assert.equal(calls.model,0);assert.equal(calls.tool,0);
+});
+
+for(const kind of ['permission','model','tool'])test('unverified '+kind+' transport receipt cannot be replaced by AI assertion',async()=>{
+  const {host,calls}=capabilityFixture();host.verifyReceipt=async type=>type!==kind;
+  const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.status,'BLOCKED');assert.equal(r.capability_verified,false);
+  if(kind==='permission')assert.equal(calls.model,0);
+  if(kind!=='tool')assert.equal(calls.tool,0);
+});
+
+test('missing source SHA, Skill hash, CANDIDATE or incomplete callbacks cannot invoke model',async()=>{
+  const {host,calls}=capabilityFixture();
+  for(const sourceSha of [undefined,'not-a-commit','a'.repeat(64)]){
+    const r=await runCodingSkillCapabilityCanary({...canaryInput(host),sourceSha});
+    assert.equal(r.code,'CODING_CANARY_SOURCE_SHA_REQUIRED');
+  }
+  for(const change of [s=>{delete s.proof[0].context_sha256},s=>{delete s.proof[0].content_sha256},s=>{s.skills[0].state='CANDIDATE'}]){
+    const input=canaryInput(host);change(input.skills);
+    const r=await runCodingSkillCapabilityCanary(input);assert.equal(r.code,'CODING_STEP_SKILL_EVIDENCE_CHANGED');
+  }
+  for(const key of ['inspect','invokeModel','runTool','verifyReceipt']){
+    const incomplete={...host};delete incomplete[key];
+    assert.equal((await runCodingSkillCapabilityCanary(canaryInput(incomplete))).code,'CODING_CANARY_RUNTIME_ADAPTER_UNAVAILABLE');
+  }
+  assert.equal(calls.model,0);assert.equal(calls.tool,0);
+});
+
+for(const [name,mutate] of [
+  ['receipt absent',()=>null],['receipt id absent',r=>{delete r.id;return r}],
+  ['different model',r=>({...r,model_id:'unapproved-model'})],['replayed run',r=>({...r,run_id:'old-run'})],
+  ['different source',r=>({...r,source_sha:'d'.repeat(40)})],
+  ['missing prompt hash',r=>{delete r.prompt_sha256;return r}],
+  ['missing response hash',r=>{delete r.response_sha256;return r}],
+  ['changed response',r=>({...r,response:r.response+' '})],['empty response',r=>({...r,response:'',response_sha256:hash('')})]
+])test('model evidence is denied: '+name,async()=>{
+  const {host,calls}=capabilityFixture();const invoke=host.invokeModel;
+  host.invokeModel=async request=>mutate(await invoke(request));
+  const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.code,'CODING_CANARY_MODEL_EVIDENCE_INVALID');assert.equal(calls.tool,0);
+});
+
+for(const [name,mutate] of [
+  ['extra step',r=>({...r,second_step:'unauthorized'})],['AI PASS assertion',r=>({...r,PASS:true})],
+  ['different step',r=>({...r,step_id:'G4'})],['different source',r=>({...r,source_sha:'d'.repeat(40)})],
+  ['missing Skill hash',r=>{delete r.skill_context_sha256;return r}],['wrong Skill hash',r=>({...r,skill_context_sha256:'a'.repeat(64)})],
+  ['no executable code',r=>({...r,code:''})]
+])test('model one-step response is denied: '+name,async()=>{
+  const {host,calls}=capabilityFixture();const invoke=host.invokeModel;
+  host.invokeModel=async request=>{const r=await invoke(request);r.response=JSON.stringify(mutate(JSON.parse(r.response)));r.response_sha256=hash(r.response);return r};
+  const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.code,'CODING_CANARY_MODEL_RESPONSE_INVALID');assert.equal(calls.tool,0);
+});
+
+for(const [name,mutate] of [
+  ['receipt absent',()=>null],['receipt id absent',r=>{delete r.id;return r}],
+  ['different tool',r=>({...r,tool_id:'unapproved-tool'})],['replayed run',r=>({...r,run_id:'old-run'})],
+  ['different source',r=>({...r,source_sha:'d'.repeat(40)})],['different model receipt',r=>({...r,model_receipt_id:'old-model-call'})],
+  ['missing input hash',r=>{delete r.input_sha256;return r}],['missing code hash',r=>{delete r.code_sha256;return r}],
+  ['missing output hash',r=>{delete r.stdout_sha256;return r}],['changed output',r=>({...r,stdout:r.stdout+' '})],
+  ['tool failure',r=>({...r,exit_code:1})]
+])test('tool evidence is denied: '+name,async()=>{
+  const {host}=capabilityFixture();const run=host.runTool;host.runTool=async input=>mutate(await run(input));
+  const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+  assert.equal(r.status,'BLOCKED');assert.equal(r.code,'CODING_CANARY_TOOL_EVIDENCE_INVALID');
+});
+
+for(const stdout of ['{"PASS":true}','{"outputs":[]}',JSON.stringify({outputs:Array(19).fill(null)}),'not-json'])
+  test('AI or tool PASS labels cannot replace independent functional outputs: '+stdout.slice(0,30),async()=>{
+    const {host}=capabilityFixture();const run=host.runTool;
+    host.runTool=async input=>({...await run(input),stdout,stdout_sha256:hash(stdout)});
+    const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+    assert.equal(r.code,'CODING_CANARY_FUNCTIONAL_EVIDENCE_INVALID');assert.equal(r.capability_verified,false);
+  });
+
+test('adapter errors block without inventing a model response or a tool result',async()=>{
+  for(const method of ['inspect','invokeModel','runTool']){
+    const {host}=capabilityFixture();host[method]=async()=>{throw Error('simulated transport failure')};
+    const r=await runCodingSkillCapabilityCanary(canaryInput(host));
+    assert.equal(r.status,'BLOCKED');assert.equal(r.code,'CODING_CANARY_EXECUTION_FAILED');assert.equal(r.capability_verified,false);
+  }
 });
