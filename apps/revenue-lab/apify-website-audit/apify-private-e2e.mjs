@@ -242,8 +242,22 @@ export async function runPrivateApifyE2E({
   const buildCost = usageCost(finalizedBuild, 'build');
   const buildComputeUnits = computeUnits(finalizedBuild, 'build');
 
+  // Apify run 'build' accepts a tag OR immutable build number; never use a
+  // mutable tag after creating the build. A post-POST buildId check alone is
+  // too late: a different, potentially charged Actor run could have started.
+  const pinnedBuildNumber = finalizedBuild?.buildNumber;
+  if (typeof pinnedBuildNumber !== 'string' ||
+      !/^([0-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])\.[1-9][0-9]{0,4}$/.test(pinnedBuildNumber)) {
+    throw new ApifyE2EError('BUILD_NUMBER_INVALID',
+      'Finalized Actor build has no canonical immutable build number; refusing run POST.');
+  }
+  if (build?.buildNumber != null && build.buildNumber !== pinnedBuildNumber) {
+    throw new ApifyE2EError('BUILD_NUMBER_MISMATCH',
+      'Initial and finalized Actor build numbers differ; refusing run POST.');
+  }
+
   const runParams = new URLSearchParams({
-    build: config.buildTag,
+    build: pinnedBuildNumber,
     waitForFinish: '60',
     timeout: '60',
     memory: '256',
@@ -315,6 +329,7 @@ export async function runPrivateApifyE2E({
     },
     build: {
       id: build.id ?? null,
+      buildNumber: pinnedBuildNumber,
       status: build.status,
       computeUnits: buildComputeUnits,
       usageTotalUsd: buildCost,
@@ -322,6 +337,7 @@ export async function runPrivateApifyE2E({
     run: {
       id: run.id ?? null,
       buildId: finalizedRun.buildId,
+      requestedBuildNumber: pinnedBuildNumber,
       status: run.status,
       computeUnits: runComputeUnits,
       usageTotalUsd: runCost,
