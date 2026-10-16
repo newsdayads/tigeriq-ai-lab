@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {loadRequiredCodingSkills,runCodingSkillCapabilityCanary} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
 const sha=x=>createHash('sha256').update(x).digest('hex');
-const modelName='qwen2.5-coder:3b', toolName='docker:node:22-bookworm-slim:network-none';
+const modelName='qwen2.5-coder:7b', toolName='docker:node:22-bookworm-slim:network-none';
 const sourceSha=process.env.GITHUB_SHA||'', repo=process.env.GITHUB_REPOSITORY||'';
 const runId=process.env.GITHUB_RUN_ID||'';
 const fail=(code)=>{throw Object.assign(new Error(code),{code});};
@@ -46,10 +46,10 @@ const host={
         code:{type:'string',minLength:30,maxLength:1800}
       }};
     const payload={model:modelName,prompt:request.prompt,stream:false,think:false,
-      format:schema,keep_alive:'0s',options:{temperature:0,num_ctx:8192,num_predict:420}};
+      format:schema,keep_alive:'0s',options:{temperature:0,num_ctx:8192,num_predict:550}};
     const result=await fetch('http://127.0.0.1:11435/api/generate',{
       method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),
-      signal:AbortSignal.timeout(180000)});
+      signal:AbortSignal.timeout(420000)});
     if(!result.ok)fail('G3_MODEL_HTTP_'+result.status);
     const json=await result.json();
     if(json.done!==true||json.model!==modelName||!String(json.response||'').trim())fail('G3_MODEL_RESPONSE_UNVERIFIED');
@@ -64,7 +64,14 @@ const host={
     try {
       chmodSync(dir,0o755);
       // No repository mount, tokens, network or writable container filesystem.
-      writeFileSync(join(dir,'candidate.mjs'),input.code,{mode:0o644});
+      const rawCode=String(input.code||'').trim();
+      const plain=/^function\\s+normalizePort\\s*\\(/.test(rawCode);
+      const exported=/^export\\s+function\\s+normalizePort\\s*\\(/.test(rawCode);
+      if(!plain&&!exported)fail('G3_MODEL_CODE_NOT_FUNCTION_DECLARATION');
+      // Preserve the raw model source and hash: the one-line export shim
+      // affects only ESM linkage inside the unprivileged Docker evaluator.
+      const isolatedModule=rawCode+(plain?'\nexport {normalizePort};\n':'\n');
+      writeFileSync(join(dir,'candidate.mjs'),isolatedModule,{mode:0o644});
       writeFileSync(join(dir,'runner.mjs'),
         'import {normalizePort} from "./candidate.mjs";\n'+
         'const inputs='+JSON.stringify(input.cases)+';\n'+

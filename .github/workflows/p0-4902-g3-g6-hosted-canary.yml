@@ -13,7 +13,7 @@ jobs:
   g3-real-canary:
     name: G3 Real Model Tool Verify
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,9 +41,9 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:11435/api/tags >/dev/null
-          curl -fsS --max-time 480 http://127.0.0.1:11435/api/pull \
+          curl -fsS --max-time 660 http://127.0.0.1:11435/api/pull \
             -H 'content-type: application/json' \
-            -d '{"model":"qwen2.5-coder:3b","stream":false}'
+            -d '{"model":"qwen2.5-coder:7b","stream":false}'
       - name: Run canonical Coding Lane model plus isolated tool once
         run: node tests/coding-p0-g6-hosted-live-canary.mjs
       - name: Preserve bounded nonsecret receipt
