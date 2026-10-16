@@ -1172,7 +1172,7 @@ export function codingP0CanaryApplies(objective=''){
   const issue=Number(process.env.TIGERIQ_P0_CODING_STEP_CANARY_ISSUE||0);
   if(!Number.isSafeInteger(issue)||issue<=0)
     throw Object.assign(new Error('CODING_CANARY_ISSUE_SCOPE_REQUIRED'),{code:'CODING_CANARY_ISSUE_SCOPE_REQUIRED'});
-  return sourceWorkOrderNumber(objective)===issue;
+  return (Number.isSafeInteger(objective)&&objective>0?objective:sourceWorkOrderNumber(objective))===issue;
 }
 export function sourceWorkOrderNumber(objective=''){
   const text=String(objective||'');
@@ -1213,7 +1213,7 @@ export function assertSourceWorkOrderExecutable(issue,issueNumber=null){
     const error=new Error('SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE');
     error.code='SOURCE_WORK_ORDER_NO_LONGER_EXECUTABLE';
     error.detail={issueNumber:Number(issueNumber)||Number(issue?.number)||null,state:state||null,stateReason:stateReason||null,executableTrue,executableFalse,terminalState,supersededBy,
-      completionEvidence:(codingP0CanaryApplies(objective)&&state==='closed')?verifyClosedCodingWorkOrder({body,state,stateReason}):null};
+      completionEvidence:(codingP0CanaryApplies(Number(issueNumber)||Number(issue?.number)||0)&&state==='closed')?verifyClosedCodingWorkOrder({body,state,stateReason}):null};
     throw error;
   }
   return true;
@@ -1241,7 +1241,7 @@ export function codingObjectiveSourcePreflightDecision(error){
   const state=String(error?.detail?.state||'').toLowerCase();
   const stateReason=String(error?.detail?.stateReason||'').toLowerCase();
   if(state==='closed'&&stateReason==='completed'){
-    if(codingP0CanaryApplies(objective)&&error?.detail?.completionEvidence?.pass!==true)
+    if(codingP0CanaryApplies(Number(error?.detail?.issueNumber)||0)&&error?.detail?.completionEvidence?.pass!==true)
       return {action:'block',code:'SOURCE_WORK_ORDER_CLOSED_UNACCEPTED'};
     return {action:'complete',code:'SOURCE_WORK_ORDER_COMPLETED'};
   }
