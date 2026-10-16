@@ -9,7 +9,7 @@ import {
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from '../apps/tigeriq-coding-lane/coding-skill-policy.mjs';
 
 process.env.NODE_ENV='test';
-const {runGateWithRepair,runReviewReworkLifecycle,assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision,sourceWorkOrderNumber}=await import('../apps/tigeriq-coding-lane/coding-lane.mjs');
+const {runGateWithRepair,runReviewReworkLifecycle,runOwnerWaivedAcceptance,codingOwnerReviewWaiver,assertCodingReviewAcceptance,assertIndependentReviewApproval,restartRecoveryDecision,staleRunningRecoveryDecision,sourceWorkOrderNumber}=await import('../apps/tigeriq-coding-lane/coding-lane.mjs');
 
 const files=['apps/demo/app/build.gradle.kts','apps/demo/app/src/main/AndroidManifest.xml','apps/demo/app/src/main/java/MainActivity.kt'];
 const sourceBlobs=Object.fromEntries(files.map(x=>[x,null]));
@@ -229,4 +229,39 @@ test('G6 product runner cannot be bypassed by review waiver; independent review 
   await assert.rejects(verifyCodingCanaryProductGate({...args,fetchEvidence:async()=>receipt([{...goodCheck,conclusion:'failure'}])}),/CHECK_UNTRUSTED/);
   assert.throws(()=>assertIndependentReviewApproval({implementerId:'agent',reviewerId:'agent',
     targetHead:head,expectedHead:head,decision:'approve'}),/REVIEWER_IMPLEMENTER_COLLISION/);
+});
+
+test('G6 Owner waiver requires source policy and exact-SHA GitHub receipt, never means independent review PASS',async()=>{
+  const sourceRepo={fullName:'newsdayads/tigeriq-ai-lab',isSource:true};
+  const otherRepo={fullName:'newsdayads/tigeriq-media',isSource:false};
+  const waiver=codingOwnerReviewWaiver(sourceRepo,{mode:'owner_waiver'});
+  assert.equal(waiver.kind,'owner_waiver');
+  assert.equal(codingOwnerReviewWaiver(otherRepo,{mode:'owner_waiver'}),null);
+  assert.equal(codingOwnerReviewWaiver(sourceRepo,{mode:'independent'}),null);
+  const base={
+    waiver,waitGatesFn:async()=>({state:'passed',sha:head}),
+    recordWaiverFn:async()=>({
+      id:42,targetHead:head,
+      url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4902#issuecomment-42'
+    })
+  };
+  const result=await runOwnerWaivedAcceptance(base);
+  assert.equal(result.review.kind,'owner_waiver');
+  assert.equal(result.review.decision,undefined);
+  assert.equal(assertCodingReviewAcceptance({
+    repository:sourceRepo,implementerId:'worker-A',targetHead:head,
+    expectedHead:head,review:result.review
+  }),true);
+  assert.throws(()=>assertCodingReviewAcceptance({
+    repository:sourceRepo,implementerId:'worker-A',targetHead:head,
+    expectedHead:'b'.repeat(40),review:result.review
+  }),/OWNER_REVIEW_WAIVER_HEAD_STALE/);
+  await assert.rejects(runOwnerWaivedAcceptance({...base,
+    recordWaiverFn:async()=>({id:42,targetHead:'b'.repeat(40),url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/4902#issuecomment-42'})
+  }),/OWNER_REVIEW_WAIVER_RECEIPT_REQUIRED/);
+  await assert.rejects(runOwnerWaivedAcceptance({...base,
+    waitGatesFn:async()=>({state:'pending',sha:head})
+  }),/OWNER_REVIEW_WAIVER_CI_REQUIRED/);
+  // Waiver authorizes only the optional review route, NOT product acceptance.
+  await assert.rejects(verifyCodingCanaryProductGate({...g6Fixture(),evaluateProduct:undefined}),/ACCEPTOR_UNAVAILABLE/);
 });
