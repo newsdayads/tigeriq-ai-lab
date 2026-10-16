@@ -29,7 +29,8 @@ export function validApifyInstant(x) {
   const [, y, m, d, h, min, sec, tzH, tzM] = match;
   const year = Number(y), month = Number(m), day = Number(d);
   if (month < 1 || month > 12 || Number(h) > 23 || Number(min) > 59 || Number(sec) > 59 ||
-      (tzH !== undefined && (Number(tzH) > 23 || Number(tzM) > 59))) return false;
+      (tzH !== undefined && (Number(tzH) > 14 || Number(tzM) > 59 ||
+        (Number(tzH) === 14 && Number(tzM) !== 0)))) return false;
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= daysInMonth[month - 1] && Number.isFinite(Date.parse(x));
