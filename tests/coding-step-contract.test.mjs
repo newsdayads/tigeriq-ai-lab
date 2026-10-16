@@ -129,8 +129,8 @@ test('step contract is pinned to exact source commit, not only an objective text
 test('Owner-controlled canary always creates draft PRs and never auto-merges',async()=>{
   const {readFileSync}=await import('node:fs');
   const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-  assert.match(lane,/draft:\(process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\)/);
-  assert.match(lane,/if\(AUTO_MERGE&&process\.env\.TIGERIQ_P0_CODING_STEP_CANARY!=='1'\)/);
+  assert.match(lane,/draft:canary,maintainer_can_modify:true/);
+  assert.match(lane,/if\(AUTO_MERGE&&!canary\)/);
   assert.doesNotMatch(lane,/TIGERIQ_P0_CODING_STEP_OWNER_RELEASE/);
 });
 
@@ -188,7 +188,7 @@ test('held draft PR cannot spawn another identical Work Order step without mater
 test('P0 compact-output contract failure switches to a distinct model instead of repeating identical prompt',async()=>{
   const {readFileSync}=await import('node:fs');
   const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
-  assert.match(lane,/maxSameResourceAttempts:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?1:2/);
+  assert.match(lane,/maxSameResourceAttempts:codingP0CanaryApplies\(leaseContext\?\.objective\)\?1:2/);
   assert.match(lane,/shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts/);
 });
 test('reviewer is given real pinned ACTIVE Skill instructions rather than an empty skill slot',async()=>{
@@ -197,4 +197,17 @@ test('reviewer is given real pinned ACTIVE Skill instructions rather than an emp
   assert.match(lane,/const reviewSkills=loadRequiredCodingSkills\(canonicalObjective,\{requiredIds:requiredCodingSkillIdsForDeliverable\(packet\.deliverable_type\)\}\)/);
   assert.match(lane,/assertCodingSkillProof\(packet\.skill_refs,reviewSkills\)/);
   assert.match(lane,/role:'reviewer',packet,skillContext:reviewSkills\.contextBlock/);
+});
+
+test('canary is allowlisted per source Issue; missing issue scope fails closed',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(source,/export function codingP0CanaryApplies\(objective=''\)/);
+  assert.match(source,/TIGERIQ_P0_CODING_STEP_CANARY_ISSUE/);
+  assert.match(source,/CODING_CANARY_ISSUE_SCOPE_REQUIRED/);
+  assert.match(source,/return sourceWorkOrderNumber\(objective\)===issue/);
+  assert.match(source,/const canary=codingP0CanaryApplies\(o\.objective\)/);
+  assert.match(source,/const canary=codingP0CanaryApplies\(canonicalObjective\)/);
+  assert.match(source,/draft:canary/);
+  assert.match(source,/if\(AUTO_MERGE&&!canary\)/);
 });
