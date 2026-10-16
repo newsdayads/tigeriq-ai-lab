@@ -127,10 +127,27 @@ function headerValue(headers, name) {
 
 async function requestOnce(url, options) {
   const parsed = parseTarget(url);
+  const deadline = Date.now() + options.timeoutMs;
   const resolver = typeof options.resolveTargetFn === 'function'
     ? options.resolveTargetFn
     : (target => resolveSafeTarget(target, { lookupFn: options.lookupFn }));
-  const resolved = await resolver(parsed);
+  // DNS resolution and HTTP response share one bounded per-hop deadline.
+  // A resolver that stalls must not evade the configured timeout.
+  let resolutionTimer;
+  let resolved;
+  try {
+    resolved = await Promise.race([
+      Promise.resolve().then(() => resolver(parsed)),
+      new Promise((_, reject) => {
+        resolutionTimer = setTimeout(
+          () => reject(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })),
+          Math.max(1, deadline - Date.now()),
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(resolutionTimer);
+  }
   if (!resolved?.address || !resolved?.family) {
     throw new AuditError('DNS_FAILURE', 'Resolver returned no usable address.');
   }
@@ -200,7 +217,7 @@ async function requestOnce(url, options) {
       }));
     });
 
-    const timer = setTimeout(() => req.destroy(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })), options.timeoutMs);
+    const timer = setTimeout(() => req.destroy(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })), Math.max(1, deadline - Date.now()));
     req.on('close', () => clearTimeout(timer));
     req.on('error', error => {
       clearTimeout(timer);
