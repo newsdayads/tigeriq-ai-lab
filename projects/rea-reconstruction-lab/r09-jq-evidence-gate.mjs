@@ -26,7 +26,13 @@ const canonical = root => {
   };
   return visit(root, 0);
 };
+// Public callers may supply getters/proxies, not only JSON.parse output.
+// Reject accessor failures before the immutable hash stage without disclosing inputs.
 export function inspectR09Snapshot(s) {
+  try { return inspectR09SnapshotUnchecked(s); }
+  catch { return fail('INVALID_BUNDLE_STRUCTURE'); }
+}
+function inspectR09SnapshotUnchecked(s) {
   if (!record(s) || s.case_count!==16 || !Array.isArray(s.cases) || s.cases.length!==16 ||
       s.binary!=='/usr/bin/jq' || s.version!=='jq-1.7' ||
       s.binary_sha256!=='5e1dcc8c21b9362013a1f30acb24c69a128cbd5238364b88803f4c60cd9376dd' ||
