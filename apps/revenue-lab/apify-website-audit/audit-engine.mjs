@@ -82,6 +82,14 @@ export function isBlockedAddress(address) {
   return true;
 }
 
+// WHATWG URL.hostname wraps IPv6 literals in [], but node:net.isIP does not
+// recognize the brackets. The socket layer treats them as IP literals, so
+// unwrap BEFORE safety classification and never route them through DNS.
+function normalizedTargetHost(url) {
+  const host = url.hostname;
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+}
+
 function parseTarget(raw) {
   let url;
   try {
@@ -95,20 +103,20 @@ function parseTarget(raw) {
   if (url.username || url.password) {
     throw new AuditError('CREDENTIALS_REJECTED', 'Credential-bearing URLs are not allowed.');
   }
-  if (url.hostname.toLowerCase() === 'localhost') {
-    throw new AuditError('PRIVATE_TARGET', 'Localhost targets are forbidden.');
+  const host = normalizedTargetHost(url);
+  if (host.toLowerCase() === 'localhost' ||
+      (net.isIP(host) && isBlockedAddress(host))) {
+    throw new AuditError('PRIVATE_TARGET', 'Localhost, private or reserved IP targets are forbidden.');
   }
   return url;
 }
 
 export async function resolveSafeTarget(url, { lookupFn = dns.lookup } = {}) {
-  const parsed = url instanceof URL ? url : parseTarget(url);
-  if (net.isIP(parsed.hostname)) {
-    if (isBlockedAddress(parsed.hostname)) {
-      throw new AuditError('PRIVATE_TARGET', 'Private, loopback, link-local, carrier-grade NAT, multicast, or reserved targets are forbidden.');
-    }
-    return { address: parsed.hostname, family: net.isIP(parsed.hostname) };
-  }
+  // Revalidate even when the caller supplies a URL object, not only text.
+  const parsed = parseTarget(url);
+  const literal = normalizedTargetHost(parsed);
+  const family = net.isIP(literal);
+  if (family) return { address: literal, family };
   let answers;
   try {
     answers = await lookupFn(parsed.hostname, { all: true, verbatim: true });
