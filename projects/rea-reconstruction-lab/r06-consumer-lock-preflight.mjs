@@ -158,7 +158,7 @@ function inspectR06ConsumerLockUnchecked(lock){
       (own(root,'gypfile')&&root.gypfile!==false))
     return report('REJECTED','CONSUMER_ROOT_SCOPE_DRIFT');
   if(!rec(rea.dependencies)||pairs(rea.dependencies).length!==35||
-      pairs(DIRECT).some(([name,v])=>rea.dependencies[name]!==v))
+      pairs(DIRECT).some(([name,v])=>!own(rea.dependencies,name)||rea.dependencies[name]!==v))
     return report('REJECTED','REA_DIRECT_DEPENDENCIES_MISMATCH');
   if(pairs(DIRECT).some(([name,v])=>{
     const path=locate(pkgs,'node_modules/rea-agents',name);

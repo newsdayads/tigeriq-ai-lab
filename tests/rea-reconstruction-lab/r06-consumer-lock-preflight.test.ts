@@ -381,3 +381,28 @@ it('R06 permits an empty overrides map and an explicit own REA pin as shape only
  expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
  safe(r);
 });
+
+it('R06 requires real own REA pins instead of prototype-inherited declarations',()=>{
+ const x=fixture(),inherited=Object.create(REA_DIRECT_DEPENDENCIES);
+ for(let i=0;i<35;i++){
+  const name='unrelated-'+i;
+  inherited[name]='1.0.0';
+  x.packages['node_modules/'+name]={version:'1.0.0',integrity:sri,
+   resolved:'https://registry.npmjs.org/'+name+'/-/'+name+'-1.0.0.tgz'};
+ }
+ x.packages['node_modules/rea-agents'].dependencies=inherited;
+ expect(Object.keys(inherited)).toHaveLength(35);
+ expect(Object.keys(REA_DIRECT_DEPENDENCIES).filter(
+  name=>Object.prototype.hasOwnProperty.call(inherited,name))).toHaveLength(0);
+ const r=inspectR06ConsumerLock(x);
+ expect(r).toMatchObject({decision:'REJECTED',reason:'REA_DIRECT_DEPENDENCIES_MISMATCH'});
+ safe(r);
+});
+it('R06 still accepts null-prototype REA dependency map when all pins are own',()=>{
+ const x=fixture();
+ x.packages['node_modules/rea-agents'].dependencies=
+  Object.assign(Object.create(null),REA_DIRECT_DEPENDENCIES);
+ const r=inspectR06ConsumerLock(x);
+ expect(r.decision).toBe('STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED');
+ safe(r);
+});
