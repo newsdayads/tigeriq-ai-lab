@@ -287,3 +287,45 @@ it('R05 actual Node CLI with 40 terminal jobs stays read-only and does not echo 
   expect(r.decision).toBe('NV02_RESOURCE_ABSENT');safe(r);
   expect(p.stdout).not.toContain('PRIVATE_HIST_JOB_');
 });
+
+it('R05 fails closed on a throwing top-level Core projection getter without leaking details',()=>{
+  const x:any=fixture();
+  Object.defineProperty(x,'ok',{enumerable:true,get(){throw new Error('PRIVATE_HOST_TOKEN');}});
+  const r=check(x);
+  expect(r.decision).toBe('INVALID_UNTRUSTED_SNAPSHOT');
+  expect(JSON.stringify(r)).not.toContain('PRIVATE_HOST_TOKEN');safe(r);
+});
+it('R05 fails closed on a throwing nested resource proxy, not a guessed free lease',()=>{
+  const x:any=fixture();nv02(x);
+  const entry=x.resources.at(-1);
+  x.resources[x.resources.length-1]=new Proxy(entry,{
+    get(target,key,receiver){if(key==='resource_id')throw new Error('PRIVATE_RESOURCE_TOKEN');
+      return Reflect.get(target,key,receiver);}
+  });
+  const r=check(x);
+  expect(r.decision).toBe('INVALID_UNTRUSTED_SNAPSHOT');
+  expect(JSON.stringify(r)).not.toContain('PRIVATE_RESOURCE_TOKEN');safe(r);
+});
+it('R05 invalid current_job_id type cannot make a busy NV02 row look claim-ready',()=>{
+  for(const current_job_id of [42,{},true]){
+    const x:any=fixture();nv02(x);x.resources.at(-1).current_job_id=current_job_id;
+    const r=check(x);
+    expect(r.decision).toBe('INVALID_RESOURCE');safe(r);
+  }
+});
+it('R05 invalid shared_lease_work_id type cannot bypass busy-state diagnostics',()=>{
+  for(const shared_lease_work_id of [123,false,{}]){
+    const x:any=fixture();nv02(x);x.resources.at(-1).shared_lease_work_id=shared_lease_work_id;
+    const r=check(x);
+    expect(r.decision).toBe('INVALID_RESOURCE');safe(r);
+  }
+});
+it('R05 benign missing/null job fields remain diagnostics only, never ownership',()=>{
+  for(const mode of ['missing','null']){
+    const x:any=fixture();nv02(x);
+    if(mode==='null')x.resources.at(-1).shared_lease_work_id=null;
+    else delete x.resources.at(-1).current_job_id;
+    const r=check(x);
+    expect(r.decision).toBe('REAL_ATOMIC_CLAIM_AND_DEVICE_AUTH_REQUIRED');safe(r);
+  }
+});
