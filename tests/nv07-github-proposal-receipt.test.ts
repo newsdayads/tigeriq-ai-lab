@@ -50,12 +50,12 @@ describe('Core GitHub proposal receipt evidence',()=>{
   }
   expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(true);
   for(const mutate of [
-   (r:typeof v.runs[number])=>{r.head_branch='another-branch';},
-   (r:typeof v.runs[number])=>{r.repository.full_name='attacker/repo';},
-   (r:typeof v.runs[number])=>{r.head_repository.full_name='attacker/repo';},
-   (r:typeof v.runs[number])=>{r.created_at='2026-10-15T18:30:00Z';},
-   (r:typeof v.runs[number])=>{r.created_at='2026-10-15T18:00:00Z';},
-   (r:typeof v.runs[number])=>{r.pull_requests=[{number:9999}];},
+   (r:Record<string,unknown>)=>{r.head_branch='another-branch';},
+   (r:Record<string,unknown>)=>{r.repository={full_name:'attacker/repo'};},
+   (r:Record<string,unknown>)=>{r.head_repository={full_name:'attacker/repo'};},
+   (r:Record<string,unknown>)=>{r.created_at='2026-10-15T18:30:00Z';},
+   (r:Record<string,unknown>)=>{r.created_at='2026-10-15T18:00:00Z';},
+   (r:Record<string,unknown>)=>{r.pull_requests=[{number:9999}];},
   ]){
    const bad=evidence();
    for(const run of bad.runs){run.pull_requests=[];Object.assign(run,{
