@@ -15,10 +15,53 @@ OTHER_ORDER=#4569 > #4578 > #2949 > #4625 > #2054 > #2293
 Old overrides must not replace current priority
 CORE_ORDER=#9999
 `;
+
+const singleBoardFixture=`# TIGERIQ — HÀNG ĐỢI ĐIỀU HÀNH DUY NHẤT
+**Đối chiếu nguồn GitHub: 16/10/2026.** Chỉ bảng bên dưới là danh mục điều hành hiện hành.
+
+QUEUE_VERSION=OWNER_RECONCILED_SINGLE_BOARD_20261016
+SOURCE=GITHUB_MAIN+ISSUE_504+LIVE_OPEN_ISSUE_SEARCH
+OPEN_ISSUES_CONFIRMED=12
+
+## 1. Việc giao hàng — P0 (đang bị chặn đúng bước, KHÔNG giả đang chạy)
+
+| Thứ tự | Thẻ gốc | Kết quả đã nghiệm thu | Chỉ còn việc phải làm | Trạng thái |
+| --- | --- | --- | --- | --- |
+| 1 | [#4902 — Core + Coding Lane G6](https://github.com/newsdayads/tigeriq-ai-lab/issues/4902) | 5/6 mốc | E2E | BLOCKED |
+| 2 | [#4783 — NV07 Antigravity S6–S7](https://github.com/newsdayads/tigeriq-ai-lab/issues/4783) | 8/10 mốc | S6/S7 | BLOCKED |
+
+## 2. Bốn thẻ P0 quản trị
+| Thẻ | Vai trò | Cách dùng |
+| --- | --- | --- |
+| [#504 — Chính sách](https://github.com/newsdayads/tigeriq-ai-lab/issues/504) | Tra cứu | Quy tắc |
+
+## 3. Công việc sản phẩm P2 — chuyển sang phần làm được nếu P0 chạm cổng thực
+| Ưu tiên sau P0 | Thẻ | Bước có thể làm ngay / cổng đang chờ |
+| --- | --- | --- |
+| P2-A | [#2293 — Revenue Lab / Apify](https://github.com/newsdayads/tigeriq-ai-lab/issues/2293) | Rà nguồn |
+| P2-B | [#4780 — REA](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780) | Đọc nguồn |
+| P2-C | [#4456 — News & Media](https://github.com/newsdayads/tigeriq-ai-lab/issues/4456) | Chờ writer |
+
+## 4. Ba thẻ hệ thống chỉ để theo dõi, không giao việc lập trình
+- [#280 — Hàng đợi này](https://github.com/newsdayads/tigeriq-ai-lab/issues/280)
+
+## 5. Thẻ đã đóng — loại khỏi hàng đợi, không mở lại theo nhật ký cũ
+CLOSED_NOT_PLANNED: [#4595], [#4661], [#2949], [#4532], [#4696]
+CLOSED_COMPLETED: [#4457], [#4625], [#4870]
+`;
+
 describe('Canonical Owner backlog order for Core manager',()=>{
   it('recovers exact owner ordering and ignores historical sections',()=>{
     const ids=parseOwnerBacklogOrder(fixture);
     expect(ids).toEqual([4457,3278,4595,4532,2788,4574,4456,3904,3899,4627,4629,4636,4631,4569,4578,2949,4625,2054,2293]);
+  });
+  it('parses reconciled single board format from updated Issue #280',()=>{
+    const ids=parseOwnerBacklogOrder(singleBoardFixture);
+    expect(ids).toEqual([4902,4783,2293,4780,4456]);
+    expect(objectiveBacklogRank({id:'OBJ-GH-4902'},ids)).toBe(0);
+    expect(objectiveBacklogRank({id:'OBJ-GH-4783'},ids)).toBe(1);
+    expect(objectiveBacklogRank({id:'OBJ-GH-2293'},ids)).toBe(2);
+    expect(objectiveBacklogRank({id:'OBJ-GH-4595'},ids)).toBe(100000);
   });
   it('detects metadata- and ID-based Github objectives',()=>{
     const ids=parseOwnerBacklogOrder(fixture);
