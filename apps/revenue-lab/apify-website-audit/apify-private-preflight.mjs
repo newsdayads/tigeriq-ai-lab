@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBoundedApifyJsonText } from './apify-json-response-bounded.mjs';
 
 const API_BASE = 'https://api.apify.com/v2';
 
@@ -68,7 +69,10 @@ async function requestJson(fetchFn, url, token, { allowForbidden = false } = {})
     }
   }
 
-  const raw = await response.text();
+  // Bound all authenticated responses (including errors) before buffering.
+  const raw = await readBoundedApifyJsonText(response, code => {
+    throw new ApifyPreflightError(code, 'Apify API response exceeds the permitted JSON size.');
+  });
   let parsed = null;
   try {
     parsed = raw ? JSON.parse(raw) : null;
