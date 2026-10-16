@@ -143,11 +143,12 @@ test('G6 product gate rejects SHA drift, missing source bytes, off-scope and abs
   const packet=compileCodingStepPacket({objectiveId:'CODEOBJ-4625',sourceRevision:revision,
     sourceHeadSha:head,allowedPaths:files,job:job('D01'),skillEvidence:loaded.proof});
   const opts={packet,sourceHeadSha:head,prHeadSha:head,changedPaths:files,
-    checkRuns:checks,readSource:async path=>({sha:'1'.repeat(40),content:changes.find(c=>c.path===path).content})};
+    checkRuns:checks,readSource:async path=>({sha:'1'.repeat(40),content:changes.find(c=>c.path===path).content}),
+    evaluateProduct:()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})};
   await assert.rejects(verifyCodingCanaryProductGate({...opts,prHeadSha:'b'.repeat(40)}),/SOURCE_HEAD_DRIFT/);
   await assert.rejects(verifyCodingCanaryProductGate({...opts,changedPaths:[...files,'apps/outside.mjs']}),/CHANGED_SCOPE_INVALID/);
   await assert.rejects(verifyCodingCanaryProductGate({...opts,readSource:async()=>({content:'code'})}),/SOURCE_BYTES_UNVERIFIED/);
-  await assert.rejects(verifyCodingCanaryProductGate(opts),/PRODUCT_GATE_DEPENDENCY_MISSING/);
+  await assert.rejects(verifyCodingCanaryProductGate({...opts,evaluateProduct:undefined}),/PRODUCT_GATE_DEPENDENCY_MISSING/);
   await assert.rejects(verifyCodingCanaryProductGate({
     ...opts,evaluateProduct:()=>({pass:false,status:'BLOCKED',sourceHeadSha:head})
   }),/ACCEPTANCE_NOT_VERIFIED/);
