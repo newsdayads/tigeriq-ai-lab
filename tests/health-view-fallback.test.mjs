@@ -56,7 +56,7 @@ test('GitHub fallback is GET-only, paginated and excludes pull requests',async()
   const a=Array.from({length:100},(_,n)=>row(n+1,'[P2] Work '+(n+1)));
   const result=await readFallbackIssues(async(url, init)=>{
     seen.push({url,method:init.method});
-    return {ok:true,json:async()=>url.includes('page=1')?a:[row(101,'[P2] Next'), {...row(102,'PR'),pull_request:{url:'a'}}]};
+    return {ok:true,json:async()=>new URL(url).searchParams.get('page')==='1'?a:[row(101,'[P2] Next'), {...row(102,'PR'),pull_request:{url:'a'}}]};
   },'injected_fake_token');
   assert.equal(result.length,101);
   assert.equal(seen.length,2);
