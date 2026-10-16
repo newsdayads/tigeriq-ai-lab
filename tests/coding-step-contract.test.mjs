@@ -184,3 +184,17 @@ test('held draft PR cannot spawn another identical Work Order step without mater
   const changed=repeatedCodingAttemptDecision({workOrderId:'4902',stepId:'G4',sourceRevision:'source-B',history});
   assert.equal(changed.allow,true);
 });
+
+test('P0 compact-output contract failure switches to a distinct model instead of repeating identical prompt',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(lane,/maxSameResourceAttempts:process\.env\.TIGERIQ_P0_CODING_STEP_CANARY==='1'\?1:2/);
+  assert.match(lane,/shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts/);
+});
+test('reviewer is given real pinned ACTIVE Skill instructions rather than an empty skill slot',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const lane=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
+  assert.match(lane,/const reviewSkills=loadRequiredCodingSkills\(canonicalObjective,\{requiredIds:requiredCodingSkillIdsForDeliverable\(packet\.deliverable_type\)\}\)/);
+  assert.match(lane,/assertCodingSkillProof\(packet\.skill_refs,reviewSkills\)/);
+  assert.match(lane,/role:'reviewer',packet,skillContext:reviewSkills\.contextBlock/);
+});
