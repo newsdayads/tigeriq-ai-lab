@@ -50,7 +50,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       number: issue.number, title: issue.title, workKind: 'WORK',
       status: i === 1 ? 'WORKING' : 'WAITING',
     })), issues);
-    expect(rows[0]).toMatchObject({ androidVersionMinor: null, workPackageId: 'mobile-v0-22', portfolioHidden: false });
+    expect(rows[0]).toMatchObject({ androidVersionMinor: null, workPackageId: 'mobile-v0-22', workstreamId: 'mobile-v0-22', portfolioHidden: false });
     expect(rows[1]).toMatchObject({ androidVersionMinor: 22, workPackageId: 'mobile-v0-22', portfolioHidden: false });
     expect(rows[2]).toMatchObject({ androidVersionMinor: 21, portfolioHidden: true });
     const mobile = buildProjectPortfolio(rows).find(project => project.id === 'tigeriq-mobile-worker');
