@@ -111,7 +111,9 @@ export default async function handler(req, res) {
       return;
     }
     res.send(raw);
-  } catch {
+  } catch (error) {
+    // Redacted transport diagnosis only. Never log device cookies or gateway secrets.
+    console.warn('TIGERIQ_ORIGINAL_VIEW_TRANSPORT_FAILED',{path,code:String(error?.code||error?.cause?.code||error?.name||'UNKNOWN').slice(0,40)});
     res.status(502).send('PC01_UNAVAILABLE');
   }
 }
