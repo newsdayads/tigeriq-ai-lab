@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { auditWebsite, AuditError, resolveSafeTarget } from './audit-engine.mjs';
+import { auditWebsite, AuditError, resolveSafeTarget, isBlockedAddress } from './audit-engine.mjs';
 
 let server;
 let baseUrl;
@@ -222,6 +222,35 @@ test('rejects invalid, unsupported, credential-bearing, and literal private targ
   await assert.rejects(() => auditWebsite('file:///etc/passwd'), err => err instanceof AuditError && err.code === 'UNSUPPORTED_PROTOCOL');
   await assert.rejects(() => auditWebsite('http://user:pass@example.com'), err => err instanceof AuditError && err.code === 'CREDENTIALS_REJECTED');
   await assert.rejects(() => auditWebsite('http://127.0.0.1'), err => err instanceof AuditError && err.code === 'PRIVATE_TARGET');
+});
+
+test('IANA documentation, transition and reserved IPs are not publicly auditable', () => {
+  const nonPublic = [
+    '192.0.0.170', '192.0.2.1', '192.88.99.1',
+    '198.51.100.30', '203.0.113.9',
+    '2001:db8::1', '2001:0db8::1', '3fff::1',
+    '2002:7f00:1::', '2001:0:abcd::1',
+    '64:ff9b::7f00:1', '64:ff9b:1::7f00:1',
+    '100::1', '::ffff:127.0.0.1', '::ffff:7f00:1',
+  ];
+  for (const address of nonPublic) {
+    assert.equal(isBlockedAddress(address), true, 'unexpected public classification: ' + address);
+  }
+  for (const address of ['8.8.8.8', '1.1.1.1', '2606:4700:4700::1111', '2001:4860:4860::8888']) {
+    assert.equal(isBlockedAddress(address), false, 'unexpected blocked public address: ' + address);
+  }
+});
+
+test('mixed DNS answers fail closed if any resolved address is IANA reserved', async () => {
+  for (const address of ['192.0.2.4', '198.51.100.2', '203.0.113.42', '2001:db8::1', '::ffff:7f00:1', '64:ff9b::7f00:1']) {
+    await assert.rejects(
+      () => resolveSafeTarget('https://trusted-example.invalid/', {
+        lookupFn: async () => [{ address: '8.8.8.8', family: 4 }, { address, family: address.includes(':') ? 6 : 4 }],
+      }),
+      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
+      'DNS mixed answer should fail: ' + address
+    );
+  }
 });
 
 test('rejects DNS answers that resolve to private space', async () => {
