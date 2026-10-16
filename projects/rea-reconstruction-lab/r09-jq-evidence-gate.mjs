@@ -11,6 +11,8 @@ export const R09_ORIGINAL_EVIDENCE_SHA256 = 'c8bfee3f8720a10bd117a984e37a3a03219
 const field = (o,k) => Object.prototype.hasOwnProperty.call(o,k);
 const record = x => x && typeof x === 'object' && !Array.isArray(x);
 const boundedHex = v => typeof v==='string' && v.length <= 131072 && v.length % 2===0 && /^[0-9a-f]*$/.test(v);
+const canonical = v => Array.isArray(v) ? '['+v.map(canonical).join(',')+']' :
+  record(v) ? '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}' : JSON.stringify(v);
 export function inspectR09Snapshot(s) {
   if (!record(s) || s.case_count!==16 || !Array.isArray(s.cases) || s.cases.length!==16 ||
       s.binary!=='/usr/bin/jq' || s.version!=='jq-1.7' ||
@@ -35,6 +37,9 @@ export function inspectR09Snapshot(s) {
       if(sha(Buffer.from(hex,'hex'))!==digest)return fail('STREAM_DIGEST_MISMATCH');
     }
   }
+  // Stream hashes alone cannot bind exit codes, arguments or source metadata.
+  if(sha(Buffer.from(canonical(s),'utf8'))!==R09_NORMALIZED_EVIDENCE_SHA256)
+    return fail('BUNDLE_DIGEST_MISMATCH');
   return { decision:'SOURCE_OBSERVATION_BYTES_VERIFIED_NOT_RUNTIME_ATTESTATION',
     observationIntegrityOnly:true, count:ids.size, sourceAuthenticated:false,
     nativeBuildProvenance:false, reaExecuted:false, coreLeaseOwned:false,
