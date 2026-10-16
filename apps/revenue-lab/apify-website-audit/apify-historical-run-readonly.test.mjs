@@ -130,6 +130,29 @@ test('R04 exact ISO timestamp accepts leap days, Vietnam offset and fractions',(
   assert.equal(validApifyInstant('2026-10-08T10:00:00.123+07:00'),true);
 });
 
+test('R04 rejects timezone offsets beyond conservative real-world +/-14:00',async()=>{
+  // This is an Apify evidence validation policy, not an RFC 3339 ABNF claim.
+  for(const value of [
+    '2026-10-08T03:00:00+14:01',
+    '2026-10-08T03:00:00+15:00',
+    '2026-10-08T03:00:00+23:59',
+    '2026-10-08T03:00:00-14:01',
+    '2026-10-08T03:00:00-15:00',
+    '2026-10-08T03:00:00-23:59',
+  ]) {
+    assert.equal(validApifyInstant(value),false,value);
+    const calls=await rejected('RUN_TIMESTAMPS_UNVERIFIED',{first:{...run(),startedAt:value}});
+    assert.equal(calls.length,2,value);
+  }
+  for(const value of [
+    '2026-10-08T03:00:00+14:00',
+    '2026-10-08T03:00:00-14:00',
+    '2026-10-08T03:00:00+13:59',
+    '2026-10-08T03:00:00-13:59',
+    '2026-10-08T10:00:00.123+07:00',
+  ]) assert.equal(validApifyInstant(value),true,value);
+});
+
 test('R04 explicit +07:00 offset is valid for the Owner Oct-08 canary',async()=>{
   const local={...run(),startedAt:'2026-10-08T10:00:00+07:00',finishedAt:'2026-10-08T10:00:02+07:00'};
   const m=mocked({first:local,final:local});
