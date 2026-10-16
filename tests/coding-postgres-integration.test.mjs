@@ -7,22 +7,35 @@ import pg from 'pg';
 import {withAtomicCodingSourceClaim} from '../apps/tigeriq-coding-lane/atomic-source-claim.mjs';
 import {repeatedCodingAttemptDecision,codingUnverifiedLegacyHistoryDecision,codingMaterialSourceRevision} from '../apps/tigeriq-coding-lane/step-contract.mjs';
 
-const url=process.env.TIGERIQ_TEST_POSTGRES_URL;
-if(!url)throw Error('ISOLATED_POSTGRES_URL_REQUIRED');
-const target=new URL(url);
-if(target.protocol!=='postgres:'&&target.protocol!=='postgresql:')throw Error('ISOLATED_POSTGRES_SCHEME_INVALID');
-const databaseName=decodeURIComponent(target.pathname.startsWith('/')?target.pathname.slice(1):target.pathname);
-if(!['127.0.0.1','localhost','::1','[::1]'].includes(target.hostname)||
-   !/^tigeriq_test(?:_|$)/i.test(databaseName))
-  throw Error('ISOLATED_POSTGRES_LOCAL_TEST_DB_REQUIRED');
+// An actual disposable PostgreSQL database is required: either an explicitly
+// supplied local test URL or a GitHub-hosted runner's peer-auth UNIX socket.
+const socket=process.env.TIGERIQ_TEST_POSTGRES_SOCKET;
+let databaseName,dbOptions;
+if(socket){
+  if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_OS!=='Linux'||
+     socket!=='/var/run/postgresql'||!/^tigeriq_test_[a-f0-9]{12}$/.test(process.env.TIGERIQ_TEST_POSTGRES_DB||''))
+    throw Error('ISOLATED_POSTGRES_CI_SOCKET_INVALID');
+  databaseName=process.env.TIGERIQ_TEST_POSTGRES_DB;
+  dbOptions={host:socket,user:'postgres',database:databaseName};
+}else{
+  const url=process.env.TIGERIQ_TEST_POSTGRES_URL;
+  if(!url)throw Error('ISOLATED_POSTGRES_URL_REQUIRED');
+  const target=new URL(url);
+  if(target.protocol!=='postgres:'&&target.protocol!=='postgresql:')throw Error('ISOLATED_POSTGRES_SCHEME_INVALID');
+  databaseName=decodeURIComponent(target.pathname.startsWith('/')?target.pathname.slice(1):target.pathname);
+  if(!['127.0.0.1','localhost','::1','[::1]'].includes(target.hostname)||
+     !/^tigeriq_test(?:_|$)/i.test(databaseName))
+    throw Error('ISOLATED_POSTGRES_LOCAL_TEST_DB_REQUIRED');
+  dbOptions={connectionString:url};
+}
 
 test('real isolated PostgreSQL: writers, replay, crash recovery, rollback',async t=>{
   const schema='tigeriq_p0_'+randomBytes(7).toString('hex');
-  const admin=new pg.Pool({connectionString:url,max:2,connectionTimeoutMillis:4000});
+  const admin=new pg.Pool({...dbOptions,max:2,connectionTimeoutMillis:4000});
   let pool,created=false;
   try{
     await admin.query(`CREATE SCHEMA "${schema}"`);created=true;
-    pool=new pg.Pool({connectionString:url,max:10,connectionTimeoutMillis:4000,
+    pool=new pg.Pool({...dbOptions,max:10,connectionTimeoutMillis:4000,
       options:`-c search_path=${schema},public -c statement_timeout=8000`});
     await pool.query(`CREATE TABLE tigeriq_coding_jobs(
       id text PRIMARY KEY,paths jsonb NOT NULL,status text NOT NULL,
