@@ -110,10 +110,18 @@ function usageCost(item, kind) {
   return value;
 }
 
-function computeUnits(item) {
-  const candidates = [item?.stats?.computeUnits, item?.usage?.ACTOR_COMPUTE_UNITS];
-  const value = candidates.find(candidate => typeof candidate === 'number' && Number.isFinite(candidate));
-  return value ?? null;
+function computeUnits(item, kind) {
+  const stats = item?.stats?.computeUnits;
+  const usage = item?.usage?.ACTOR_COMPUTE_UNITS;
+  const valid = x => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+  // Missing counters stay explicit null, never an invented zero; malformed or
+  // conflicting authenticated counters must not be recorded as measured units.
+  if ((stats != null && !valid(stats)) || (usage != null && !valid(usage)) ||
+      (stats != null && usage != null && stats !== usage)) {
+    throw new ApifyE2EError('COMPUTE_UNITS_UNVERIFIED',
+      `Authenticated terminal ${kind} compute unit counters are invalid or conflicting.`);
+  }
+  return stats ?? usage ?? null;
 }
 
 export async function runPrivateApifyE2E({
@@ -157,6 +165,7 @@ export async function runPrivateApifyE2E({
     });
   }
   const buildCost = usageCost(finalizedBuild, 'build');
+  const buildComputeUnits = computeUnits(finalizedBuild, 'build');
 
   const runParams = new URLSearchParams({
     build: config.buildTag,
@@ -199,12 +208,21 @@ export async function runPrivateApifyE2E({
     });
   }
   const runCost = usageCost(finalizedRun, 'run');
+  const runComputeUnits = computeUnits(finalizedRun, 'run');
 
   const output = await requestJson(
     fetchFn,
     `${config.apiBase}/actor-runs/${encode(run.id)}/key-value-store/records/OUTPUT`,
     { token: config.token },
   );
+
+  // HTTP 200 only proves that OUTPUT was retrieved, not that the audit passed.
+  if (!output || typeof output !== 'object' || Array.isArray(output) ||
+      output.schemaVersion !== '1.0' || output.status !== 'success' ||
+      Boolean(output.error)) {
+    throw new ApifyE2EError('OUTPUT_INVALID',
+      'Authenticated OUTPUT is not a successful Website Audit schema 1.0 result.');
+  }
 
   const evidence = {
     schema: 'TIGERIQ_APIFY_PRIVATE_E2E_V1',
@@ -218,13 +236,13 @@ export async function runPrivateApifyE2E({
     build: {
       id: build.id ?? null,
       status: build.status,
-      computeUnits: computeUnits(finalizedBuild),
+      computeUnits: buildComputeUnits,
       usageTotalUsd: buildCost,
     },
     run: {
       id: run.id ?? null,
       status: run.status,
-      computeUnits: computeUnits(finalizedRun),
+      computeUnits: runComputeUnits,
       usageTotalUsd: runCost,
     },
     output: {
