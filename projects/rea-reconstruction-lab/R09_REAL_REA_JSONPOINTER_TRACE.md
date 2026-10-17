@@ -37,6 +37,29 @@ REA's 5 graph edges consist of two `contains` and three `exposes`. It did **not*
 - No authenticated PC01 execution, REA MCP session, host sandbox/rollback acceptance, Core lease, runtime API call, or runtime performance measurement was present in the downloaded evidence.
 - Existing D04 JSONPointer CLI comparison tests and package results are a **separate** clean-room behavioral evidence stream; combining them with this REA AST map still does not establish full API equivalence or R09 pass.
 
+## New executable source-to-behavior bridge (separate R09 paired oracle)
+
+The separately added test `tests/rea-reconstruction-lab/r09-jsonpointer-source-to-runtime.test.ts` runs the **pinned original MIT CommonJS source** via Node VM in an isolated test process, then compares `outcome()` from the new D04 implementation and an actual spawned JSONL CLI process on **14 new, non-replayed input cases**. It checks SHA1 Git blob provenance before execution. This is **runtime behavioral evidence** independent of REA's static AST output, not REA-generated dynamic tracing.
+
+| Trace IDs | Observed contract under test | Relation to REA |
+|---|---|---|
+| R09-T01–T05 | UTF-8 escaped keys; array pointer numeric segment; unknown tilde escape kept literal; nested empty path segment; zero index | REA statically locates `get` export at source line 98 but does not know concrete values |
+| R09-T06–T08 | Array replacement; construction of nested array/object; escaped pointer-array setter | REA statically locates `set` export at source line 99 but does not establish mutation semantics |
+| R09-T09–T11 | Missing `value` means delete; object subtree replacement; intermediate empty key creation | Source `setter` mutation and return values require real execution; not established by AST |
+| R09-T12–T14 | Double pointer escape; append via `-`; safe missing descent through scalar parent | Same source exports, verified separately by paired original/CLI execution |
+
+The regression also **separately labels deliberate safety differences, not parity**:
+
+| Case | Original MIT behavior | D04 conservative behavior | Classification |
+|---|---|---|---|
+| R09-E01 `/constructor/x` write | Returns original object when forbidden segment encountered | Rejects unsafe segment with an error | INTENTIONAL_SECURITY_EXCLUSION |
+| R09-E02 write beyond current array length | Can create sparse array holes | Rejects unbounded/sparse expansion, document unchanged | INTENTIONAL_SECURITY_EXCLUSION |
+| R09-E03 empty-root string `set` | Mutates property named `undefined` under original setter implementation | Rejects invalid root assignment | INTENTIONAL_SECURITY_EXCLUSION |
+
+**Material uncovered gap:** Original MIT `exports.compile` at line 100 returns pre-bound `get`/`set` closures. A new real-source test invokes these closures and checks the analogous D04 direct operations; **D04 JSONL CLI has no `compile` operation** and must return `Unsupported operation.` This is an OPEN FEATURE GAP, not a passing equivalence result. No CLI compilation of callable functions has been implemented or implied.
+
+Paired test acceptance is proven only by the **exact changed-head CI** output. The test prints `GH4780_R09_REAL_SOURCE_CLI_PARITY=14_OF_14` with SHA256 of the normalized original-output array, and separate safety/compile-gap markers, if it passes. A GitHub PR or this document alone does not constitute execution evidence. 28 older gold cases are left intact; no new R09 checklist completion is claimed.
+
 ## Requirements to carry forward (not accepted yet)
 
 1. Bind each exported API `get`, `set`, `compile` to observable original-versus-reconstruction cases, including escaped pointer segments, empty pointer variants, mutation/return semantics, and protected-property boundaries; keep runtime observations separate from REA inference.
