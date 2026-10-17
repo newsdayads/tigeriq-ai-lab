@@ -242,11 +242,13 @@ export function validatePaperclipLabEnvText(text) {
   return true;
 }
 
-async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null } = {}) {
+async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null, readOnly = false } = {}) {
   throwIfAborted(signal);
   const safeCwd = resolvePaperclipLabPath(cwd);
-  await ensureRootIntegrity();
-  const realCwd = await ensureContainedDirectory(safeCwd);
+  await ensureRootIntegrity({ create: !readOnly });
+  const realCwd = readOnly
+    ? await paperclipReadOnlyExistingDirectory(safeCwd)
+    : await ensureContainedDirectory(safeCwd);
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
       cwd: realCwd,
@@ -292,7 +294,12 @@ function parseBrokerJson(text) {
 
 async function brokerStatus() {
   try {
-    const safeHeartbeat = await assertSafeFileTarget(BROKER_HEARTBEAT_FILE);
+    // Status reads must never create the broker directory or its parent.
+    const safeHeartbeat = resolvePaperclipLabPath(BROKER_HEARTBEAT_FILE);
+    const stat = await fs.lstat(safeHeartbeat);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_BROKER_HEARTBEAT_UNSAFE');
+    const real = normalizeWinPath(await fs.realpath(safeHeartbeat));
+    if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     const heartbeat = parseBrokerJson(await fs.readFile(safeHeartbeat, 'utf8'));
     const atMs = Date.parse(String(heartbeat?.at || ''));
     const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
@@ -451,20 +458,29 @@ async function runDocker(transport, args, options = {}) {
   throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_TRANSPORT_INVALID');
 }
 
-async function resolveDockerTransport(signal = null) {
-  const windows = await runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
+export async function resolveDockerTransport(signal = null, {
+  allowBrokerProbe = true,
+  runVersionCommand = runFixed,
+  readBrokerStatus = brokerStatus,
+  probeViaBroker = runDockerViaBroker,
+} = {}) {
+  const windows = await runVersionCommand('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal, readOnly: !allowBrokerProbe })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WINDOWS, version: windows.stdout.trim(), error: null };
   }
-  const wsl = await runFixed('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal })
+  const wsl = await runVersionCommand('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal, readOnly: !allowBrokerProbe })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (wsl.exitCode === 0 && !wsl.timedOut && wsl.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WSL, version: wsl.stdout.trim(), error: null };
   }
-  const broker = await brokerStatus();
+  const broker = await readBrokerStatus();
   if (broker.ready) {
-    const bridged = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
+    // R01 cannot write a broker request file merely to check Docker readiness.
+    if (!allowBrokerProbe) return {
+      kind: null, version: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT', broker,
+    };
+    const bridged = await probeViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
       .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
     if (bridged.exitCode === 0 && !bridged.timedOut && bridged.stdout.trim()) {
       return { kind: DOCKER_TRANSPORT_BROKER, version: bridged.stdout.trim(), error: null, broker };
@@ -485,14 +501,31 @@ function pathInsideLab(value) {
   return candidate === base || candidate.startsWith(base + '\\');
 }
 
-async function ensureRootIntegrity() {
-  await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
+async function ensureRootIntegrity({ create = true } = {}) {
+  // Read-only preflight must not materialize a missing root.
+  if (create) await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
   const stat = await fs.lstat(PAPERCLIP_LAB_ROOT);
   if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED');
   const real = normalizeWinPath(await fs.realpath(PAPERCLIP_LAB_ROOT));
   if (real.toLowerCase() !== normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase()) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
   }
+  return real;
+}
+
+// Strictly read-only counterpart to ensureContainedDirectory. All probes fail
+// closed for missing/symlinked paths and never materialize a directory.
+export async function paperclipReadOnlyExistingDirectory(value, {
+  lstat = path => fs.lstat(path),
+  realpath = path => fs.realpath(path),
+} = {}) {
+  const candidate = resolvePaperclipLabPath(value);
+  const stat = await lstat(candidate);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_READ_ONLY_DIRECTORY_UNSAFE');
+  }
+  const real = normalizeWinPath(await realpath(candidate));
+  if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
   return real;
 }
 
@@ -721,22 +754,46 @@ async function httpHealth(signal = null) {
   }
 }
 
-async function preflight(signal = null) {
+// R01 accepts replaceable read-only probes so the actual diagnostic contract
+// can be exercised without PC01, WSL, Docker, network or filesystem mutation.
+export async function paperclipReadOnlyPreflight({
+  signal = null,
+  checkRoot = () => ensureRootIntegrity({ create: false }),
+  inspectDocker = () => resolveDockerTransport(signal, { allowBrokerProbe: false }),
+  inspectPort = () => probePort(),
+  inspectDisk = () => fs.statfs(PAPERCLIP_LAB_ROOT),
+  inspectBroker = () => brokerStatus(),
+} = {}) {
   throwIfAborted(signal);
-  await ensureRootIntegrity();
-  const [docker, port] = await Promise.all([resolveDockerTransport(signal), probePort()]);
-  let disk = null;
+  let rootPresent = false;
   try {
-    const stat = await fs.statfs(PAPERCLIP_LAB_ROOT);
-    disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
-  } catch {}
+    await checkRoot();
+    rootPresent = true;
+  } catch (error) {
+    // An absent Lab is a diagnostic finding, not an invitation to create it.
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const [docker, port] = await Promise.all([inspectDocker(), inspectPort()]);
+  let disk = null;
+  if (rootPresent) {
+    try {
+      const stat = await inspectDisk();
+      disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
+    } catch {}
+  }
+  const broker = docker.broker || await inspectBroker();
   return {
-    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker: docker.broker || await brokerStatus() },
+    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,
+    rootPresent,
     disk,
     pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, image: PAPERCLIP_LAB_IMAGE },
   };
+}
+
+async function preflight(signal = null) {
+  return await paperclipReadOnlyPreflight({ signal });
 }
 
 function redactPaperclipDiagnosticText(value = '') {
