@@ -1,0 +1,110 @@
+import {describe,it,expect} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {readNv07S6NativePreflight,NV07_S6_PINNED_PROPOSAL} from '../apps/tigeriq-core/nv07-s6-native-preflight.mjs';
+
+const p=NV07_S6_PINNED_PROPOSAL;
+const canary={seq:'214872',job_id:p.jobId,resource_id:p.resourceId,data:{
+ workOrderId:4783,sourceSha:p.sourceSha,outputHash:p.outputHash,
+ resourceScope:'TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783',proposedFileCount:1,
+}};
+const freeResource={resource_id:p.resourceId,employee_id:'NV07',enabled:true,
+ current_job_id:null,work_id:null};
+function fake({receipts=[canary],applied=[],resources=[freeResource],throwAt=0}:{
+ receipts?:Record<string,unknown>[],applied?:Record<string,unknown>[],
+ resources?:Record<string,unknown>[],throwAt?:number,
+}={}){
+ const calls:{sql:string,args:unknown[]}[]=[];
+ return {
+  calls,
+  db:{query:async(sql:string,args:unknown[]=[])=>
+  {calls.push({sql,args});
+   if(throwAt===calls.length)throw new Error('simulated DB outage');
+   if(sql.includes("type='NV07_CANARY_RECEIPT'"))return {rows:receipts};
+   if(sql.includes("type='NV07_GITHUB_PROPOSAL_APPLIED'"))return {rows:applied};
+   if(sql.includes('from tigeriq_ai_resources a left join'))return {rows:resources};
+   throw new Error('unexpected SQL');
+  }},
+ };
+}
+describe('S6 protected operator preflight is read-only, non-authorizing and fail-closed',()=>{
+ it('rejects missing DB, missing receipt, duplicate and wrong binding',async()=>{
+  expect((await readNv07S6NativePreflight(null)).code).toBe('NV07_S6_DB_UNAVAILABLE');
+  for(const receipts of [
+   [],[canary,canary],[{...canary,data:{...canary.data,outputHash:'f'.repeat(64)}}],
+   [{...canary,data:{...canary.data,workOrderId:999}}],
+  ]){
+   const {db}=fake({receipts});
+   const outcome=await readNv07S6NativePreflight(db);
+   expect(outcome.ok).toBe(false);
+   expect(outcome.sourceInputsVerified).toBe(false);
+   expect(outcome.nv07Active).toBe(false);
+  }
+ });
+ it('reads pinned canonical rows, never acquires a lease or asserts active S6',async()=>{
+  const {db,calls}=fake();
+  const outcome=await readNv07S6NativePreflight(db);
+  expect(outcome).toMatchObject({
+   ok:true,code:'NV07_S6_AWAIT_AUTHORIZED_NATIVE_OPERATOR',
+   sourceInputsVerified:true,durableS6Observed:false,
+   liveS6LeaseAuthorized:false,nv07Active:false,
+   pinnedJobId:p.jobId,pinnedPullRequest:4893,
+  });
+  expect(calls).toHaveLength(3);
+  expect(calls[0].args).toEqual([p.jobId]);
+  expect(calls[1].args).toEqual([p.jobId]);
+  expect(calls[2].args).toEqual([p.resourceId]);
+  for(const call of calls){
+   expect(call.sql.toLowerCase().trim().startsWith('select')).toBe(true);
+   expect(call.sql.toLowerCase()).not.toMatch(/\b(insert|update|delete|alter|create|truncate)\b/);
+  }
+  expect(JSON.stringify(outcome)).not.toMatch(/lease_token|bearer|secret/i);
+ });
+ it('recognizes genuine applied DB receipt but never activates NV07',async()=>{
+  const applied={seq:'219999',data:{
+   workOrderId:4783,pullRequestNumber:4893,sourceSha:p.sourceSha,outputHash:p.outputHash,
+  }};
+  const {db,calls}=fake({applied:[applied]});
+  const outcome=await readNv07S6NativePreflight(db);
+  expect(outcome).toMatchObject({
+   ok:true,code:'NV07_S6_DURABLE_RECEIPT_OBSERVED_READ_ONLY',
+   durableS6Observed:true,nv07Active:false,
+   eventRef:'tigeriq_events:NV07_GITHUB_PROPOSAL_APPLIED:219999',
+  });
+  expect(calls).toHaveLength(2);
+  for(const bad of [
+   {...applied,data:{...applied.data,pullRequestNumber:1111}},
+   {...applied,data:{...applied.data,outputHash:'0'.repeat(64)}},
+  ]){
+   expect((await readNv07S6NativePreflight(fake({applied:[bad]}).db)).code)
+    .toBe('NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT');
+  }
+ });
+ it('rejects busy other resource and never trusts a same-job lease as authorization',async()=>{
+  const {db}=fake({resources:[{...freeResource,current_job_id:'another-job'}]});
+  expect((await readNv07S6NativePreflight(db)).code).toBe('NV07_S6_RESOURCE_OCCUPIED');
+  const lease={...freeResource,current_job_id:p.jobId,work_id:p.jobId,
+   lease_employee_id:'NV07',lane:'nv07_s6',role:'github_receipt',
+   metadata:{workOrderId:4783,resourceScope:p.resourceScope,
+    sourceSha:p.sourceSha,action:'APPLY_GITHUB_PROPOSAL',pullRequestNumber:'4893'}};
+  const outcome=await readNv07S6NativePreflight(fake({resources:[lease]}).db);
+  expect(outcome).toMatchObject({ok:false,code:'NV07_S6_LEASE_OBSERVED_NOT_AUTHORIZED',
+   liveS6LeaseAuthorized:false,nv07Active:false});
+ });
+ it('reports DB failures without forging readiness or leaking sensitive query data',async()=>{
+  for(const throwAt of [1,2,3]){
+   const result=await readNv07S6NativePreflight(fake({throwAt}).db);
+   expect(result).toMatchObject({ok:false,code:'NV07_S6_READ_ONLY_PREFLIGHT_FAILED',
+    nv07Active:false,liveS6LeaseAuthorized:false});
+  }
+ });
+ it('Core HTTP route is local AND authenticated, GET only; protected POST untouched',()=>{
+  const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const route=source.indexOf("url.pathname==='/api/nv07/s6-preflight'");
+  expect(route).toBeGreaterThan(0);
+  expect(source.slice(route,route+440)).toContain('if(!auth(req)||!localSelf(req))');
+  expect(source.slice(route,route+440)).toContain('readNv07S6NativePreflight(pool)');
+  const post=source.indexOf("url.pathname==='/api/nv07/proposal-github-receipt'");
+  expect(post).toBeGreaterThan(0);
+  expect(source.slice(post,post+220)).toContain('if(!auth(req)||!localSelf(req))');
+ });
+});
