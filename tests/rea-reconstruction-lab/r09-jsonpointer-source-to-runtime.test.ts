@@ -108,5 +108,5 @@ it('R09 verifies MIT compile closures but explicitly flags D04 CLI compile opera
   expect(standalone).toEqual({payload:[11]});
   const unimplemented=outcome({id:'R09-C01-COMPILE-GAP',op:'compile',document:{payload:[7]},pointer:'/payload/0'});
   expect(unimplemented).toMatchObject({outcome:'error',message:'Unsupported operation.'});
-  console.log('GH4780_R09_COMPILE_MIT_ORACLE=EXECUTED|D04_COMPILE_API=NOT_IMPLEMENTED');
+  console.log('GH4780_R09_COMPILE_MIT_ORACLE=EXECUTED|D04_JSONL_RAW_FUNCTION_SERIALIZATION=NOT_SUPPORTED');
 });
