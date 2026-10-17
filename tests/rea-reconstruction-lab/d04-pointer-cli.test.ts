@@ -100,6 +100,39 @@ describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
     expect(({} as any).polluted).toBeUndefined();
     expect(()=>get(Object.defineProperty({},'secret',{get(){throw Error('bad');}}),'/secret')).toThrow(/Accessor/);
   });
+  it('rejects non-enumerable properties without silently erasing original JS data',()=>{
+    const obj:any={visible:'kept'};
+    Object.defineProperty(obj,'hidden',{value:'do-not-erase-silently',enumerable:false});
+    const beforeKeys=Reflect.ownKeys(obj);
+    const result=outcome({op:'get',document:obj,pointer:''});
+    expect(result.outcome).toBe('error');
+    expect(result.message).toContain('Non-enumerable JSON property forbidden.');
+    expect(Reflect.ownKeys(obj)).toEqual(beforeKeys);
+    expect(Object.getOwnPropertyDescriptor(obj,'hidden')?.value).toBe('do-not-erase-silently');
+  });
+  it('rejects sparse JS arrays without silently serializing holes into nulls',()=>{
+    const sparse:any[]=new Array(2);
+    sparse[1]='value';
+    const result=outcome({op:'get',document:{arr:sparse},pointer:'/arr'});
+    expect(result.outcome).toBe('error');
+    expect(result.message).toContain('Sparse JSON array forbidden.');
+    expect(0 in sparse).toBe(false);
+  });
+  it('rejects non-index named properties on JS arrays instead of losing them',()=>{
+    const arr:any=[2,3];
+    arr.auditMarker='preserve';
+    const result=outcome({op:'get',document:{arr},pointer:'/arr'});
+    expect(result.outcome).toBe('error');
+    expect(result.message).toContain('Named JSON array property forbidden.');
+    expect(arr.auditMarker).toBe('preserve');
+  });
+  it('continues accepting dense arrays and ordinary JSONL input',()=>{
+    expect(outcome({id:'dense',op:'get',document:{arr:[null,7]},pointer:'/arr/1'}))
+      .toMatchObject({id:'dense',outcome:'ok',returned:7});
+    const p=cli('{"id":"dense","op":"get","document":{"arr":[null,7]},"pointer":"/arr/1"}\\n'.replace('\\n','\n'));
+    expect(p.status,p.stderr).toBe(0);
+    expect(JSON.parse(p.stdout.trim())).toMatchObject({id:'dense',outcome:'ok',returned:7});
+  });
   it('rejects invalid UTF-8, excessive input and excessive row count from native CLI',()=>{
     const badUtf8=cli(Buffer.from([0x7b,0x22,0x69,0x64,0x22,0x3a,0x22,0xff,0x22,0x7d,0x0a]));
     expect(badUtf8.status).toBe(1);
