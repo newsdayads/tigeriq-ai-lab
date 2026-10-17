@@ -20,7 +20,12 @@ const run = () => ({
   defaultKeyValueStoreId:'STORE12345', buildNumber:'0.0.4',
   stats:{computeUnits:0.002}, usageTotalUsd:0.0004,
 });
-const output=()=>({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'});
+const output=()=>({
+  schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/',
+  pages:[{url:'https://example.com/',statusCode:200}],
+  metrics:{pagesAudited:1,errorCount:0},errors:[],
+  summary:{titlePresent:true},
+});
 function mocked({actorData=actor(),first=run(),final=run(),result=output(),responses={}}={}){
   const calls=[];
   let seenRun=0;
@@ -176,6 +181,23 @@ test('R04 missing computeUnits is explicitly null not zero',async()=>{
   const res=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
   assert.equal(res.run.computeUnits,null);
   assert.equal(res.cost.zeroCostClaim,false);
+});
+test('R04 rejects successful status without actual audit page evidence',async()=>{
+  const claimed={schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'};
+  for (const result of [
+    claimed,
+    {...output(),pages:[]},
+    {...output(),pages:[{url:'https://other.example/',statusCode:200}]},
+    {...output(),pages:[{url:'https://example.com/other',statusCode:200}]},
+    {...output(),pages:[{url:'https://example.com/',statusCode:500}]},
+    {...output(),metrics:{pagesAudited:0,errorCount:0}},
+    {...output(),metrics:{pagesAudited:1,errorCount:1}},
+    {...output(),errors:[{code:'HTTP_FAILURE'}]},
+    {...output(),summary:null},
+  ]) {
+    const calls=await rejected('HISTORICAL_AUDIT_PAYLOAD_UNVERIFIED',{result});
+    assert.equal(calls.length,4);
+  }
 });
 test('R04 output schema cannot be fabricated',async()=>{await rejected('HISTORICAL_OUTPUT_INVALID',{result:{schemaVersion:'2.0',status:'success'}})});
 test('R04 output status must be success',async()=>{await rejected('HISTORICAL_OUTPUT_INVALID',{result:{schemaVersion:'1.0',status:'error'}})});
