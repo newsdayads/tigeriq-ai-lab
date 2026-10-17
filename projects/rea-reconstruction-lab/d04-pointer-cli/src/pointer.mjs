@@ -75,6 +75,12 @@ function traverseForSet(document, parts, value, dryRun) {
     const prior = ownValue(current, key);
     const last = i===parts.length-1;
     if (last) {
+      // Deleting a JSON array slot creates a sparse array. Such a result
+      // cannot round-trip through JSON (it serializes as null) and is
+      // explicitly rejected by copyJsonData on subsequent calls.
+      // Reject during preflight to avoid any partial parent creation.
+      if (value === undefined && Array.isArray(current))
+        throw Error('Sparse array deletion forbidden.');
       if (!dryRun) {
         if (value === undefined) delete current[key];
         else current[key] = value;
