@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
+import {nv02WorkOrderMeta,nv02PrioritySummary} from '../tigeriq-core/nv02-local-self-pull.mjs';
 
 const DEFAULT_INTERVAL_MS=15000;
 const DEFAULT_STALE_MS=45*60*1000;
@@ -71,15 +72,16 @@ export async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
     if(!res.ok)return false;
     const body=await res.json();
     if(body?.state!=='open'||body?.pull_request)return false;
-    const bodyText=String(body?.body||'');
-    const labels=(Array.isArray(body?.labels)?body.labels:[]).map(l=>String(l?.name||l||'').trim());
-    if(labels.includes('NV02_SELF_MODIFICATION_GUARD')||labels.includes('MANUAL_HOLD')||labels.includes('HOLD'))return false;
-    if(/\bNV02_SELF_MODIFICATION_GUARD\b/i.test(bodyText)||/\bMANUAL_HOLD\b/i.test(bodyText)||/\bHOLD\b/i.test(bodyText))return false;
-    const hasExecTrue=/(?:^|\s|;)TIGERIQ_EXECUTABLE\s*[:=]\s*true\b/i.test(bodyText)||labels.includes('TIGERIQ_EXECUTABLE=true');
-    const hasExecFalse=/(?:^|\s|;)TIGERIQ_EXECUTABLE\s*[:=]\s*false\b/i.test(bodyText)||labels.includes('TIGERIQ_EXECUTABLE=false');
-    if(hasExecFalse||!hasExecTrue)return false;
-    const hasAutoOwner=/(?:^|\s|;)OWNER_POLICY\s*[:=]\s*AUTO\b/i.test(bodyText)||labels.includes('OWNER_POLICY=AUTO');
-    if(!hasAutoOwner)return false;
+    const current=nv02WorkOrderMeta(body);
+    if(current.METADATA_CONFLICT==='true')return false;
+    const labels=(Array.isArray(body?.labels)?body.labels:[]).map(l=>String(l?.name||l||'').trim().toUpperCase());
+    // Labels and old descriptions can only deny; never grant permissions.
+    if(labels.some(l=>['NV02_SELF_MODIFICATION_GUARD','MANUAL_HOLD','HOLD'].includes(l)))return false;
+    if(current.TIGERIQ_EXECUTABLE!=='true'||current.OWNER_POLICY!=='AUTO')return false;
+    if(nv02PrioritySummary(body)==='P0'||current.PRIORITY==='P0')return false;
+    if(['EXCLUDED','EXCLUDED_'].some(prefix=>String(current.AUTO_QUEUE||'').toUpperCase().startsWith(prefix)))return false;
+    if(['OWNER_HOLD','OWNER_GATE','MANUAL_HOLD','REVIEW_ONLY','DONE','NV02_SELF_MODIFICATION_GUARD'].some(k=>current[k]==='true'))return false;
+    if(/^(?:BLOCKED|EXTERNAL_WAIT|WAIT_EXTERNAL|WAIT_DEPENDENCY|SUPERSEDED|CANCELLED|DONE|COMPLETED)(?:_|$)/i.test(String(current.CURRENT_STATE||'')))return false;
     return true;
   }catch{return false;}
 }

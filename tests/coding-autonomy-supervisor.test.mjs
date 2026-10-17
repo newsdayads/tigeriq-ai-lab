@@ -64,7 +64,7 @@ describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
 
   it('returns false when issue is closed or is a pull request',async()=>{
     process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
-    const fetchMock=async()=>({ok:true,json:async()=>({state:'closed',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    const fetchMock=async()=>({ok:true,json:async()=>({state:'closed',body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nPRIORITY=P2\nAUTO_QUEUE=INCLUDED'})});
     expect(await githubIssueIsOpen(123,fetchMock)).toBe(false);
 
     const fetchPrMock=async()=>({ok:true,json:async()=>({state:'open',pull_request:{},body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
@@ -91,7 +91,25 @@ describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
 
   it('returns true for valid open auto issue with executable true and owner policy auto',async()=>{
     process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
-    const fetchValidMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    const fetchValidMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nPRIORITY=P2\nAUTO_QUEUE=INCLUDED'})});
     expect(await githubIssueIsOpen(123,fetchValidMock)).toBe(true);
   });
+
+  it('uses only the current GitHub contract, not historical authorizations or denials',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const issue=body=>({ok:true,json:async()=>({state:'open',title:'[P2] News',body})});
+    const current=['## OWNER — CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_REVIEW'].join('\n');
+    const history=['## HISTORICAL','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','PRIORITY=P1'].join('\n');
+    expect(await githubIssueIsOpen(4456,async()=>issue(current+'\n'+history))).toBe(false);
+    const ready=['## OWNER — CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED'].join('\n');
+    expect(await githubIssueIsOpen(4456,async()=>issue(ready+'\n## HISTORY\nTIGERIQ_EXECUTABLE=false'))).toBe(true);
+  });
+  it('rejects P0 and blocked work even with stale permission labels',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const allow=['## OWNER','PRIORITY=P0','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED'].join('\n');
+    expect(await githubIssueIsOpen(4902,async()=>({ok:true,json:async()=>({state:'open',title:'[P0] core',body:allow})}))).toBe(false);
+    const blocked=allow.replace('PRIORITY=P0','PRIORITY=P2')+'\nCURRENT_STATE=BLOCKED_WAIT_REVIEW';
+    expect(await githubIssueIsOpen(4902,async()=>({ok:true,json:async()=>({state:'open',title:'[P2] core',body:blocked,labels:[{name:'TIGERIQ_EXECUTABLE=true'}]})}))).toBe(false);
+  });
+
 });

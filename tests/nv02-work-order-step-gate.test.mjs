@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   nv02StepUpdatePlan,nv02PrecloseGate,nv02TerminalReadback,NV02_STEP_CHECKPOINT_MARKER,
 } from '../apps/tigeriq-core/nv02-work-order-step-gate.mjs';
-import {selectNv02WorkOrder} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
+import {selectNv02WorkOrder,nv02WorkOrderMeta} from '../apps/tigeriq-core/nv02-local-self-pull.mjs';
 
 const url='https://github.com/newsdayads/tigeriq-ai-lab/issues/9001#issuecomment-12345';
 const body=(completed=false)=>[
@@ -93,4 +93,48 @@ test('single-digit S6/S7 checklist step IDs are accepted only with owned lease a
  for(const invalid of ['S600','S6x','S6/S7','S0x','R100']){
   assert.equal(nv02StepUpdatePlan({...inputs,stepId:invalid,evidenceReadbackVerified:true}).reason,'STEP_NOT_DECLARED');
  }
+});
+
+test('NV02 routing uses current first H2 and cannot revive archived P1 executable flags',()=>{
+ const issue={number:4456,title:'[P2] media',state:'open',body:[
+  '## LỆNH OWNER — CURRENT',
+  'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+  'AUTO_QUEUE=EXCLUDED_WAIT_REVIEW','RESOURCE_SCOPE=NEWS_CURRENT',
+  '## HISTORY (STALE)',
+  'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true',
+  'AUTO_QUEUE=INCLUDED','RESOURCE_SCOPE=NEWS_OLD',
+ ].join('\n')};
+ const meta=nv02WorkOrderMeta(issue);
+ assert.equal(meta.PRIORITY,'P2');
+ assert.equal(meta.TIGERIQ_EXECUTABLE,'false');
+ assert.equal(meta.AUTO_QUEUE,'EXCLUDED_WAIT_REVIEW');
+ assert.equal(meta.RESOURCE_SCOPE,'NEWS_CURRENT');
+ assert.equal(selectNv02WorkOrder([issue]),null);
+});
+test('intro-only first H2 fails closed; metadata in old H2 cannot silently authorize',()=>{
+ const issue={number:4457,title:'[P2] intro card',state:'open',body:[
+  '## P0 — TÓM TẮT CHỨNG CỨ',
+  'Đây là phần dẫn nhập, không có quyền điều phối.',
+  '## LỊCH SỬ',
+  'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true',
+  'AUTO_QUEUE=INCLUDED','CAPABILITY=general','RESOURCE_SCOPE=OLD',
+ ].join('\n')};
+ const meta=nv02WorkOrderMeta(issue);
+ assert.equal(meta.TIGERIQ_EXECUTABLE,undefined);
+ assert.equal(selectNv02WorkOrder([issue]),null);
+});
+
+
+test('conflicting duplicate current metadata must not promote a worker',()=>{
+ const issue={number:9017,title:'[P2] conflicting contract',state:'open',body:[
+  '## OWNER — CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO',
+  'TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_REVIEW',
+  'RESOURCE_SCOPE=SCOPED_CONTRACT',
+  'TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+  '## HISTORY','TIGERIQ_EXECUTABLE=true',
+ ].join('\n')};
+ const meta=nv02WorkOrderMeta(issue);
+ assert.equal(meta.METADATA_CONFLICT,'true');
+ assert.equal(meta.TIGERIQ_EXECUTABLE,'false');
+ assert.equal(selectNv02WorkOrder([issue]),null);
 });

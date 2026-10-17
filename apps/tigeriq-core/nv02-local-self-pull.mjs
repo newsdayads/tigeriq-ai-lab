@@ -49,11 +49,21 @@ async function releaseLocalClaimLock(lockKey) {
   await unlink(lock.path).catch(() => {});
 }
 
-function fields(body) {
-  return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
+function fields(body, { strict = false } = {}) {
+  const result = {};
+  for (const line of String(body || '').split(/\r?\n/)) {
     const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
-    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
-  }));
+    if (!m) continue;
+    const key=m[1].toUpperCase(), value=m[2].trim();
+    if (Object.hasOwn(result,key) && strict) {
+      if (result[key]!==value) result.METADATA_CONFLICT='true';
+      continue;
+    }
+    // Existing no-heading V1 fixtures/contracts use last-write-wins within
+    // their active preamble. H2-headed canonical V2 contracts are strict.
+    result[key]=value;
+  }
+  return result;
 }
 
 export function nv02PrioritySummary(issue) {
@@ -61,17 +71,23 @@ export function nv02PrioritySummary(issue) {
   return m ? m[1].toUpperCase() : '';
 }
 function currentAuthoritySection(body) {
-  const text = String(body || '');
-  const trimmed = text.trimStart();
-  if (!/^##\s+OWNER\b/i.test(trimmed)) return text;
-  const firstBreak = trimmed.indexOf('\n');
-  if (firstBreak < 0) return trimmed;
-  const rest = trimmed.slice(firstBreak + 1);
-  const nextHeading = rest.search(/^##\s+/m);
-  return nextHeading < 0 ? trimmed : trimmed.slice(0, firstBreak + 1 + nextHeading);
+  const text = String(body || '').trimStart();
+  // Authoritative metadata is always in the first contract section. Never let
+  // an archived Markdown section override the current queue/lease authority.
+  const firstH2 = text.match(/^##[ \t]+[^\r\n]+/m);
+  const nextH2 = firstH2?.index === 0
+    ? text.slice(firstH2[0].length).match(/^#{2,6}[ \t]+[^\r\n]+/m)
+    : null;
+  const headingEnd = firstH2?.index === 0
+    ? (nextH2 ? firstH2[0].length + nextH2.index : text.length)
+    : (firstH2?.index ?? text.length);
+  const divider = text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);
+  return text.slice(0, Math.min(headingEnd, divider?.index ?? text.length));
 }
-
-export function nv02WorkOrderMeta(issue) { return fields(currentAuthoritySection(issue?.body)); }
+export function nv02WorkOrderMeta(issue) {
+  const body=String(issue?.body||'').trimStart();
+  return fields(currentAuthoritySection(body), { strict: /^##[ \t]+/.test(body) });
+}
 
 function nv02RearmEpochMs(issue) {
   const meta = nv02WorkOrderMeta(issue);
@@ -418,6 +434,7 @@ export async function releaseStaleAssigneeLease({ issue, takeover, postComment, 
 
 export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map(), activeOwners = new Set(), allowFallback = true, takeoverStatuses = new Map() } = {}) {
   const meta = nv02WorkOrderMeta(issue);
+  if (meta.METADATA_CONFLICT === 'true') return { eligible: false, reason: 'CURRENT_METADATA_CONFLICT' };
   const priority = nv02PrioritySummary(issue) || String(meta.PRIORITY || '').toUpperCase();
   if (!PRIORITIES.has(priority)) return { eligible: false, reason: priority === 'P0' ? 'P0_FORBIDDEN' : 'PRIORITY_OUT_OF_RANGE' };
   if (issue?.state === 'closed') return { eligible: false, reason: 'WORK_ORDER_CLOSED' };
