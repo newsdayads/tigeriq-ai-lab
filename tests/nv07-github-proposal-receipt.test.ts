@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {verifyNv07GithubProposalEvidence} from '../apps/tigeriq-core/nv07-github-proposal-receipt.mjs';
+import {verifyNv07GithubProposalEvidence,storeNv07GithubProposalWithLease,NV07_S6_GITHUB_SCOPE} from '../apps/tigeriq-core/nv07-github-proposal-receipt.mjs';
 const SHA='a'.repeat(40),OUT='b'.repeat(64),HEAD='c'.repeat(40),MERGE='d'.repeat(40);
 const FILE='docs/implementation/nv07-proposal.md',JOB='NV07-4783-CORE-TEST';
 function evidence(){
@@ -75,4 +75,56 @@ describe('Core GitHub proposal receipt evidence',()=>{
    (v:ReturnType<typeof evidence>)=>{v.waiverBody='APPROVED';},
   ]){const v=evidence();mutate(v);expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(false);}
  });
+ it('requires a real scoped lease token before attempting any database write',async()=>{
+  const e=evidence(),queries:string[]=[];
+  const db={query:async(sql:string)=>{queries.push(sql);return {rowCount:1,rows:[{seq:1000}]};}};
+  const params={receipt:e.receipt,evidence:{...verifyNv07GithubProposalEvidence(e),pullRequestNumber:4893},leaseToken:''};
+  const missing=await storeNv07GithubProposalWithLease(db,params);
+  expect(missing).toMatchObject({accepted:false,code:'NV07_S6_CURRENT_LEASE_REQUIRED'});
+  expect(queries).toHaveLength(0);
+  const malformed=await storeNv07GithubProposalWithLease(db,{...params,leaseToken:'not-a-lease'});
+  expect(malformed.accepted).toBe(false);
+  expect(queries).toHaveLength(0);
+ });
+ it('binds the S6 receipt INSERT atomically to live lease token, scope, PR and occupied resource',async()=>{
+  const e=evidence(),calls:{sql:string;params:unknown[]}[]=[];
+  const leaseToken='11111111-2222-4333-8444-555555555555';
+  const db={query:async(sql:string,params:unknown[])=>{
+   calls.push({sql,params});
+   return {rowCount:0,rows:[]};
+  }};
+  const result=await storeNv07GithubProposalWithLease(db,{
+   receipt:e.receipt,evidence:verifyNv07GithubProposalEvidence(e),leaseToken,
+  });
+  expect(result).toMatchObject({accepted:false,code:'NV07_S6_CURRENT_LEASE_OR_REPLAY_DENIED'});
+  expect(calls).toHaveLength(1);
+  const {sql,params}=calls[0];
+  for(const clause of [
+   'join tigeriq_ai_resource_leases l',
+   'l.resource_id=r.resource_id and l.work_id=r.job_id',
+   'l.lease_token=$5','l.lease_until>now()',
+   "l.lane='nv07_s6'","l.role='github_receipt'",
+   "l.metadata->>'workOrderId'='4783'",
+   "l.metadata->>'resourceScope'=$6",
+   "l.metadata->>'sourceSha'=r.data->>'sourceSha'",
+   "l.metadata->>'pullRequestNumber'=$7",
+   'a.current_job_id=l.work_id','on conflict do nothing',
+  ])expect(sql).toContain(clause);
+  expect(params[4]).toBe(leaseToken);
+  expect(params[5]).toBe(NV07_S6_GITHUB_SCOPE);
+  expect(params[6]).toBe('4893');
+  expect(JSON.stringify(params[2])).not.toContain(leaseToken);
+ });
+ it('rejects mismatched Core receipt identity even with a lease token',async()=>{
+  const e=evidence();let queries=0;
+  const db={query:async()=>{queries++;return {rowCount:1,rows:[{seq:1}]};}};
+  const leaseToken='11111111-2222-4333-8444-555555555555';
+  const result=await storeNv07GithubProposalWithLease(db,{
+   receipt:{...e.receipt,job_id:'NV07-4783-CORE-OTHER'},
+   evidence:verifyNv07GithubProposalEvidence(e),leaseToken,
+  });
+  expect(result).toMatchObject({accepted:false,code:'NV07_S6_CURRENT_LEASE_REQUIRED'});
+  expect(queries).toBe(0);
+ });
+
 });
