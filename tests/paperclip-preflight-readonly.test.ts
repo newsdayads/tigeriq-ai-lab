@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 // @ts-ignore — Paperclip's existing native .mjs exports do not publish TypeScript declarations.
-import { paperclipReadOnlyPreflight } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, resolveDockerTransport } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip #2054 R01 read-only source contract', () => {
   it('avoids root creation, heartbeat directory creation and broker request writes', async () => {
@@ -77,6 +77,62 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       inspectDocker: async () => { dockerCalled = true; throw new Error('unreachable docker probe'); },
     })).rejects.toThrow('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED');
     expect(dockerCalled).toBe(false);
+  });
+
+
+  it('does not write broker request when Docker and WSL fail but broker is healthy', async () => {
+    const attempted: string[] = [];
+    let bridged = 0;
+    const result = await resolveDockerTransport(null, {
+      allowBrokerProbe: false,
+      runVersionCommand: async (command: string) => {
+        attempted.push(command);
+        return { exitCode: 1, timedOut: false, stdout: '', stderr: 'version unavailable' };
+      },
+      readBrokerStatus: async () => ({ ready: true, version: '1.7-openai-device-auth' }),
+      probeViaBroker: async () => {
+        bridged++;
+        throw new Error('BROKER_WRITE_MUST_NOT_OCCUR');
+      },
+    });
+    expect(attempted).toEqual(['docker.exe', 'wsl.exe']);
+    expect(bridged).toBe(0);
+    expect(result).toMatchObject({
+      kind: null, version: null,
+      error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
+      broker: { ready: true },
+    });
+  });
+  it('preserves the existing operational broker route outside R01', async () => {
+    let bridged = 0;
+    const result = await resolveDockerTransport(null, {
+      allowBrokerProbe: true,
+      runVersionCommand: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'version unavailable' }),
+      readBrokerStatus: async () => ({ ready: true }),
+      probeViaBroker: async () => {
+        bridged++;
+        return { exitCode: 0, timedOut: false, stdout: '27.1.0\n', stderr: '' };
+      },
+    });
+    expect(bridged).toBe(1);
+    expect(result).toMatchObject({
+      kind: 'wsl-ubuntu-interactive-broker', version: '27.1.0', error: null,
+      broker: { ready: true },
+    });
+  });
+  it('short-circuits broker checks when a direct Docker transport works', async () => {
+    let brokerReads = 0;
+    const result = await resolveDockerTransport(null, {
+      allowBrokerProbe: false,
+      runVersionCommand: async (command: string) => {
+        if (command !== 'docker.exe') throw new Error('WSL_MUST_NOT_RUN');
+        return { exitCode: 0, timedOut: false, stdout: '27.2.0\n', stderr: '' };
+      },
+      readBrokerStatus: async () => { brokerReads++; throw new Error('BROKER_MUST_NOT_RUN'); },
+      probeViaBroker: async () => { throw new Error('BROKER_WRITE_MUST_NOT_OCCUR'); },
+    });
+    expect(brokerReads).toBe(0);
+    expect(result).toMatchObject({ kind: 'windows', version: '27.2.0', error: null });
   });
 
 });
