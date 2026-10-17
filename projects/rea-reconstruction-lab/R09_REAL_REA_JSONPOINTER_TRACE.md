@@ -78,3 +78,19 @@ Sau giai đoạn ban đầu có khoảng trống `compile`, bản độc lập v
 Bộ thử mới `tests/rea-reconstruction-lab/r09-jsonpointer-compile-runtime.test.ts` đối chiếu **10 ca mới**: closure từ mã MIT nguồn gốc ghim blob `dad907d763f7369ac0e284e7d1fae2bd5508f477`, closure nội bộ mới, đầu ra lệnh CLI thực. Ngoài ra có kiểm tra 4 trường hợp giới hạn: phản đối đường dẫn nguy hiểm, chỉ số mảng thưa, con trỏ không hợp lệ và từ chối tuần tự hóa hàm. Không tính lại 14 ca R09 trước hay 28 ca D04 làm thành quả mới.
 
 **Cổng nghiệm thu:** phải đọc log CI đúng SHA cuối PR, nhận 10/10 và 4 trường hợp an toàn, cùng các cổng Queue/Vercel, rồi đọc lại nguồn `main` sau hợp nhất. Chỉ khi đó mới báo phần tính năng R09-C được nghiệm thu; đây vẫn là R09 **một phần**, không biến R05–R07 thành đã đạt. Không cài/triển khai PC01, không nhận lease NV02, không nối MCP. 6/16 mốc toàn thẻ giữ nguyên cho tới khi nghiệm thu đủ các ô bắt buộc.
+
+## R09-D/E addendum — JSON mutation integrity boundaries (17/10/2026)
+
+These are **new focused negative-case observations**, not a rerun of the original 14 safe R09 pairs or a reanalysis with REA 6.4.0. The original MIT module is pinned by Git blob `dad907d763f7369ac0e284e7d1fae2bd5508f477`. Source annotations below are test-intent statements; claim execution only when the exact changed-head CI emits the markers.
+
+| Boundary | Pinned original MIT behavior | Independent implementation v0.6.2 | Evidence / explicit limitation |
+|---|---|---|---|
+| Delete array slot via absent `value` | `delete array[index]` leaves sparse hole, serializes as `null` | Refuses both `set` and `compile-set` before mutation; leaves document unchanged | R09-D: `tests/rea-reconstruction-lab/r09-jsonpointer-array-delete-integrity.test.ts`, protected PR #4983 |
+| Delete nested **absent object** property via absent `value` | Creates an empty ancestor object on the way to deleting missing leaf | Returns `undefined` with **no parent insertion**; existing properties unchanged | R09-E: `tests/rea-reconstruction-lab/r09-jsonpointer-missing-delete-noop.test.ts`; intended security divergence, not equivalent parity |
+| Delete existing object property | Deletes key and returns previous value | Remains supported for both direct and compiled interfaces | R09-E new JSONL case; existing D04 suite not claimed as new work |
+| Explicitly set `null` in an absent nested object | Creates ancestors and stores `null` | Continues to create ancestors and store `null` | R09-E new JSONL case |
+| Delete where a missing intermediate component would create an array | May create parent/hole | Preflight **still rejects** sparse-array deletion; no bypass via absent ancestor | R09-E new direct regression, R09-D retained |
+
+**Verification contract for R09-E:** exact-head protected CI must contain `GH4780_R09_MISSING_DELETE_UPSTREAM_PARENT_CREATED=true|D04_DIRECT_COMPILED_NOOP=2|ARRAY_GUARD_RETAINED=true` and `GH4780_R09_MISSING_DELETE_JSONL=4_OF_4|NO_UNINTENDED_PARENT_CREATION=true`, plus Queue and Vercel pass. These strings alone in source are not execution evidence.
+
+**Acceptance boundary:** the R09 AST/source report does not establish all upstream runtime behavior; this addendum documents intentional safe subset semantics. R09 total checklist, R10 full product equivalence, device operator R05, PC01 installation R06 and MCP R07 remain unaccepted pending their distinct evidence.
