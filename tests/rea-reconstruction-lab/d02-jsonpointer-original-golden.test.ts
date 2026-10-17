@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-const source = fileURLToPath(new URL('../projects/rea-reconstruction-lab/d02-node-jsonpointer/', import.meta.url));
+const source = fileURLToPath(new URL('../../projects/rea-reconstruction-lab/d02-node-jsonpointer/', import.meta.url));
 const expectedGoldenSha256 = 'eab897112bd5948b432c90ab63040da07db6e72a32ec0963982e61d8e4bad955';
 const expectedOriginalBlob = 'dad907d763f7369ac0e284e7d1fae2bd5508f477';
 function run(dir: string, observe = false) {
