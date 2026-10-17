@@ -170,8 +170,46 @@ function explicitUiWorkerRequested(body=''){
     .some((key)=>String(value(body,key)||'').trim());
 }
 
+export function parseCoreUiReadOnlyStep(issue) {
+  if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const active=currentCoreUiHeader(issue.body);
+  if(value(active,'STEP_AUTO_DISPATCH')!=='true'||value(active,'STEP_STATUS')!=='READY'
+    ||value(active,'STEP_AUTHORITY')!=='OWNER_READ_ONLY'||value(active,'OWNER_POLICY')!=='AUTO')return null;
+  const priority=String(value(active,'PRIORITY')||String(issue.title||'').match(/\[(P[0-5])\]/)?.[1]||'').toUpperCase();
+  if(!/^P[1-5]$/.test(priority)||/\[P0\]/i.test(String(issue.title||'')))return null;
+  if(['OWNER_HOLD','OWNER_GATE','MANUAL_GATE','OWNER_APPROVAL_REQUIRED','REVIEW_ONLY_HOLD'].some(k=>yes(active,k)))return null;
+  if(/^(?:DONE|COMPLETED|CANCELLED|SUPERSEDED)(?:_|$)/.test(value(active,'CURRENT_STATE').toUpperCase()))return null;
+  if([...REQUIRED,'NO_CODE_CHANGE','NO_SECURITY_BOUNDARY_CHANGE'].some(k=>!yes(active,k))||yes(active,'AUTONOMOUS_CODE'))return null;
+  const workerId=value(active,'STEP_WORKER').toUpperCase(),role=value(active,'STEP_ROLE').toUpperCase();
+  if(workerId==='NV03'?(role!=='QA'||coreUiNv03SelfPullFenced())
+    :workerId!=='NV04'||!['RESEARCH','REVIEW','SECOND_OPINION'].includes(role))return null;
+  const stepId=value(active,'STEP_ID').trim(),instruction=value(active,'STEP_INSTRUCTION').trim(),
+    acceptance=value(active,'STEP_ACCEPTANCE').trim(),scope=value(active,'STEP_RESOURCE_SCOPE').trim(),
+    evidence=value(active,'STEP_EVIDENCE_DESTINATION').trim();
+  if(!/^[A-Za-z][A-Za-z0-9_-]{1,31}$/.test(stepId)||instruction.length<12||acceptance.length<12
+    ||!/^[A-Z][A-Z0-9_]{5,100}$/.test(scope)
+    ||!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull)\/\d+/.test(evidence))return null;
+  if(/^APP_CHROME_/i.test(scope)||/\[APP-CHROME\]/i.test(String(issue.title||'')))return null;
+  const targetRepository=resolveCoreUiTargetRepository(active);
+  if(!targetRepository.valid)return null;
+  const context=['STEP_ID='+stepId,'STEP_ROLE='+role,'STEP_STATUS=READY','STEP_INSTRUCTION='+instruction,
+    'STEP_ACCEPTANCE='+acceptance,'STEP_EVIDENCE_DESTINATION='+evidence,
+    'TARGET_REPOSITORY='+targetRepository.fullName,'TARGET_PR='+value(active,'TARGET_PR'),
+    'TARGET_HEAD='+value(active,'TARGET_HEAD'),'NO_CODE_CHANGE=true','MUTATION_ALLOWED=false'].join('\n');
+  const revision=createHash('sha256').update([String(issue.number),stepId,workerId,role,scope,instruction,
+    acceptance,evidence,value(active,'TARGET_PR'),value(active,'TARGET_HEAD')].join('\n')).digest('hex').slice(0,12);
+  const capability=role==='QA'||role==='REVIEW'?'review':role==='SECOND_OPINION'?'second_opinion':'research';
+  return {number:Number(issue.number),jobId:'GH-'+Number(issue.number),workItemId:'CORE-UI-GH-'+Number(issue.number),
+    sourceRevision:revision,title:clean(issue.title),url:String(issue.html_url||''),priority,sourcePriority:priority,
+    legacyP0Autonomous:false,ownerControlled:false,capability,resourceScope:scope,workerId,eligibleWorkerIds:[workerId],
+    targetRepository,readOnly:true,autonomousCode:false,body:context,stepId,stepMode:true,stepAcceptance:acceptance,
+    updatedAt:String(issue.updated_at||''),commentCount:Math.max(0,Number(issue.comments||0))};
+}
+
 export function parseCoreUiIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const step=parseCoreUiReadOnlyStep(issue);
+  if(step)return step;
   const body=currentCoreUiHeader(issue.body);
   if(!yes(body,'TIGERIQ_EXECUTABLE')||value(body,'OWNER_POLICY')!=='AUTO')return null;
   const queue=value(body,'AUTO_QUEUE').toUpperCase();
@@ -220,6 +258,7 @@ export function buildCoreUiPrompt(spec,repo=OWNER+'/'+REPO,exactContext=''){
     return [
       guard,
       'NV04_ROLE='+role,
+      'JOB_ID='+String(spec.jobId||''),
       'CURRENT_WORK_ORDER=#'+spec.number+' - '+spec.title,
       'EXACT_INPUT='+spec.url,
       'RESOURCE_SCOPE='+spec.resourceScope,
@@ -330,10 +369,11 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 }
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
-  // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
-  if(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced()))return null;
+  // NV03 general Core routing remains disabled. Only an explicit Owner-scoped
+  // QA step may use this typed read-only transport. Never race verified self-pull.
+  if(workerId==='NV03'&&coreUiNv03SelfPullFenced())return null;
   if(await row(pool,{workerId}))return null;
-  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
+  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()&&x.stepMode!==true)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
     const prior=await latestCoreUiObjective(pool,spec);
     if(sameCoreUiRevision(prior,spec))continue;
@@ -343,7 +383,7 @@ async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,ro
     if(!exactContext.ok)continue;
     const comments=await readComments(fetchImpl,owner,repo,token,spec.number,spec.commentCount);
     if(activeRoleClaim(comments))continue;
-    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',keepParentOpenAtAssignment:(yes(currentCoreUiHeader(spec.body),'REVIEW_ONLY')||yes(currentCoreUiHeader(spec.body),'KEEP_OPEN_ON_STEP_COMPLETE')),readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
+    const metadata={source:'github_ui',issueNumber:spec.number,issueUrl:spec.url,capability:spec.capability,resourceScope:spec.resourceScope,executionSurface:'CORE_UI',uiWorkerId:spec.workerId,currentWorkOrder:'#'+spec.number+' - '+spec.title,assignmentAuthority:'CORE',keepParentOpenAtAssignment:(spec.stepMode===true||yes(currentCoreUiHeader(spec.body),'REVIEW_ONLY')||yes(currentCoreUiHeader(spec.body),'KEEP_OPEN_ON_STEP_COMPLETE')),stepMode:spec.stepMode===true,stepId:spec.stepId||null,stepAcceptance:spec.stepAcceptance||null,readOnly:spec.readOnly,autonomousCode:spec.autonomousCode,sourcePriority:spec.sourcePriority,legacyP0Autonomous:spec.legacyP0Autonomous,ownerControlled:spec.ownerControlled,sourceRevision:spec.sourceRevision,rearmedFromObjectiveId:prior?.id||null,exactContextRequired:exactContext.required===true,targetRepository:exactContext.targetRepository||spec.targetRepository?.fullName||DEFAULT_TARGET_REPOSITORY,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null,exactContextFileCount:exactContext.fileCount||0,exactContextTruncated:exactContext.truncated===true};
     if(!await insertObjectiveIfScopeFree(pool,spec,metadata,ids.objectiveId))continue;
     const materializedSpec={...spec,jobId:ids.jobId};
     await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,max_attempts) values($1,$2,$3,$4,$5,'ui','ui_assigned',$6,$7,'ui','UI',$8,1) on conflict(id) do nothing",[ids.jobId,ids.objectiveId,'#'+spec.number+' - '+spec.title,buildCoreUiPrompt(materializedSpec,owner+'/'+repo,exactContext.bundle),spec.capability,spec.workerId,resourceId(spec.workerId),JSON.stringify({authority:'CORE',workerId:spec.workerId,capability:spec.capability,resourceScope:spec.resourceScope,sourceRevision:spec.sourceRevision,targetPr:exactContext.targetPr||null,targetHead:exactContext.targetHead||null})]);
@@ -360,6 +400,8 @@ function publicJob(item,{status='READY',executable=true,prompt}={}){
 
 async function recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt}={}){
   if(!item||String(item.status||'')!=='ui_assigned')return item;
+  // Never transfer on elapsed time alone: require real non-delivery and released lease evidence.
+  if(item.routing_decision?.dispatchConfirmedNotDelivered!==true||item.routing_decision?.leaseReleased!==true)return item;
   const priorFailoverCount=Math.max(0,Number(item.routing_decision?.staleFailoverCount||0));
   if(priorFailoverCount>=1)return item;
   const createdMs=Date.parse(String(item.created_at||''));
@@ -443,14 +485,14 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
   const current=[],missingWorkers=[];
-  for(const workerId of WORKERS.filter(id=>id!=='NV03'||!coreUiNv03CoreRoutingDisabled())){
+  for(const workerId of WORKERS){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
-    if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
-    else if(!(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))missingWorkers.push(workerId);
+    if(item&&['ui_assigned','ui_running'].includes(String(item.status||''))&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()&&item.metadata?.stepMode!==true))current.push(item);
+    else if(!(workerId==='NV03'&&coreUiNv03SelfPullFenced()))missingWorkers.push(workerId);
   }
   if(missingWorkers.length){
     let issues,sourceError;

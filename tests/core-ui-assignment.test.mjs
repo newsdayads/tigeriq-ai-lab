@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03CoreRoutingDisabled,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
+import {CORE_UI_ASSIGNMENT_STALE_MS,buildCoreUiAssignmentSnapshot,buildCoreUiPrompt,completeCoreUiAssignment,coreUiNv03CoreRoutingDisabled,coreUiNv03SelfPullFenced,coreUiSourceRevision,parseCoreUiIssue,parseCoreUiReadOnlyStep,parseInternalReviewEvidence,readyUnassignedCoreUiSnapshot,selectCoreUiWorker} from '../apps/tigeriq-core/core-ui-assignment.mjs';
 
 const safe=(extra=[])=>[
   'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','PRIORITY=P2','RESOURCE_SCOPE=UI_CANARY',
@@ -605,10 +605,15 @@ test('stale unstarted NV03 UI assignment fails over to idle NV04 without minting
   const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
   assert.equal(pool.jobs.length,1,'must preserve the same job');
   assert.equal(pool.objectives.length,1,'must preserve the same objective');
+  assert.equal(pool.jobs[0].employee_id,'NV03','elapsed time alone must not steal a pending task');
+  assert.equal(pool.events.filter(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER').length,0);
+  pool.jobs[0].routing_decision={...pool.jobs[0].routing_decision,dispatchConfirmedNotDelivered:true,leaseReleased:true};
+  const transferred=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
   assert.equal(pool.jobs[0].employee_id,'NV04');
+  assert.equal(transferred.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
   assert.match(pool.jobs[0].prompt,/^NV04_ROLE=INDEPENDENT_REVIEW$/m);
   assert.match(pool.jobs[0].prompt,/^EXACT_INPUT=https:\/\/github\.com\//m);
-  assert.equal(snap.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
+  assert.equal(transferred.workerBindings.NV04.currentWorkOrder.jobId,'GH-4302');
   assert.ok(pool.events.some(e=>e.type==='CORE_UI_ASSIGNMENT_FAILOVER'));
   const afterFirst=pool.jobs[0].employee_id;
   const second=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
@@ -775,4 +780,121 @@ test('Core NV04 idle audit does not preempt a real P1-P5 research task',async()=
   const snap=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'test',nv04Observation:ready,nv04IdleEnabled:true,nv04IdleForceProbe:true});
   assert.equal(snap.nextJobs[0].jobId,'GH-4889');
   assert.equal(pool.jobs.length,1);
+});
+
+test('Core dispatches a single bounded read-only step while parent remains blocked',()=>{
+  const parent=issue(4456,[
+    '## OWNER — CANONICAL',
+    'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_REVIEW',
+    'CURRENT_STATE=BLOCKED_REVIEW_PENDING','RESOURCE_SCOPE=NEWS_PARENT',
+    'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_PC01_SHELL=true','NO_DIRECT_MAIN=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+    'STEP_ID=S05a','STEP_WORKER=NV03','STEP_ROLE=QA',
+    'STEP_RESOURCE_SCOPE=NEWS_S05A_READONLY',
+    'STEP_INSTRUCTION=Review exact source PR and report unresolved comments',
+    'STEP_ACCEPTANCE=Provide evidence and findings without modifying source code',
+    'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4456',
+    '## HISTORY','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','PRIORITY=P1',
+  ].join('\n'),'[P2] News & Media');
+  const step=parseCoreUiReadOnlyStep(parent);
+  assert.equal(step.stepId,'S05a');
+  assert.equal(step.workerId,'NV03');
+  assert.equal(step.resourceScope,'NEWS_S05A_READONLY');
+  assert.equal(parseCoreUiIssue(parent).stepMode,true);
+  assert.match(buildCoreUiPrompt(step),/STEP_INSTRUCTION=Review exact source PR/);
+  const historical={...parent,body:parent.body+'\nOWNER_POLICY=BAD'};
+  assert.equal(parseCoreUiReadOnlyStep(historical)?.sourceRevision,step.sourceRevision);
+  assert.equal(parseCoreUiReadOnlyStep({...parent,title:'[P0] Owner'}),null);
+  assert.equal(parseCoreUiReadOnlyStep({...parent,body:parent.body.replace('NO_CODE_CHANGE=true','NO_CODE_CHANGE=false')}),null);
+  assert.equal(parseCoreUiReadOnlyStep({...parent,body:parent.body.replace('STEP_AUTO_DISPATCH=true','STEP_AUTO_DISPATCH=false')}),null);
+  assert.equal(parseCoreUiReadOnlyStep({...parent,body:parent.body.replace('STEP_STATUS=READY','STEP_STATUS=DONE')}),null);
+});
+test('NV04 prompt contains durable JOB_ID and role-scoped evidence request',()=>{
+  const parent=issue(4783,[
+    '## OWNER CURRENT','PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+    'AUTO_QUEUE=EXCLUDED_S6','CURRENT_STATE=BLOCKED_S6',
+    'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PC01_SHELL=true','NO_DIRECT_MAIN=true',
+    'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY','STEP_ID=S6a',
+    'STEP_WORKER=NV04','STEP_ROLE=RESEARCH','STEP_RESOURCE_SCOPE=NV07_S6A_READ_ONLY',
+    'STEP_INSTRUCTION=Inspect read only S6 operator receipts and scope',
+    'STEP_ACCEPTANCE=Return exact receipts with no protected writes',
+    'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4783',
+  ].join('\n'),'[P1] NV07');
+  const spec=parseCoreUiIssue(parent);
+  assert.equal(spec.workerId,'NV04');
+  assert.match(buildCoreUiPrompt(spec),/^JOB_ID=GH-4783$/m);
+  assert.match(buildCoreUiPrompt(spec),/STEP_ID=S6a/);
+});
+
+
+test('disabled general NV03 Core lane still recognizes exactly scoped QA-only steps',()=>{
+  const previous=process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+  try{
+    process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1';
+    const parent=issue(4456,[
+      '## OWNER CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_WAIT_QA','CURRENT_STATE=BLOCKED_WAIT_QA',
+      'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_PC01_SHELL=true','NO_DIRECT_MAIN=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+      'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+      'STEP_ID=S05a','STEP_WORKER=NV03','STEP_ROLE=QA','STEP_RESOURCE_SCOPE=NEWS_S05A_QA_ONLY',
+      'STEP_INSTRUCTION=Review open PR and verify exact current comment threads',
+      'STEP_ACCEPTANCE=Return issue evidence and findings without source changes',
+      'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4456',
+    ].join('\n'),'[P2] News');
+    assert.equal(parseCoreUiIssue(parent)?.workerId,'NV03');
+    const ordinary=issue(4457,safe(['CAPABILITY=review']),'[P2] Ordinary review');
+    assert.notEqual(parseCoreUiIssue(ordinary)?.stepMode,true); // ordinary review is not owner-scoped
+  } finally {
+    if(previous===undefined)delete process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+    else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=previous;
+  }
+});
+
+
+test('Core QA stage: blocked parent -> real typed job -> result receipt, parent remains open',async()=>{
+  const pool=fakePool(),n=4456;
+  let parent=issue(n,[
+    '## OWNER CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_QA','CURRENT_STATE=BLOCKED_REVIEW_PENDING',
+    'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PC01_SHELL=true',
+    'NO_DIRECT_MAIN=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+    'STEP_ID=S05a','STEP_WORKER=NV03','STEP_ROLE=QA','STEP_RESOURCE_SCOPE=NEWS_MEDIA_PR47_S05A_READONLY',
+    'STEP_INSTRUCTION=Review the exact PR and collect unresolved thread evidence',
+    'STEP_ACCEPTANCE=Report precise source findings without changing any files',
+    'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4456',
+  ].join('\n'),'[P2] News');
+  let comments=0,closed=0;
+  const fetchImpl=async(url,init={})=>{
+    if(url.endsWith('/comments')&&init.method==='POST'){
+      comments++;
+      const body=JSON.parse(init.body).body;
+      return response({html_url:parent.html_url+'#issuecomment-'+comments,body});
+    }
+    if(url.includes('/comments?'))return response([]);
+    if(url.endsWith('/issues/'+n)&&init.method==='PATCH'){closed++;return response({state:'closed'});}
+    if(url.endsWith('/issues/'+n))return response(parent);
+    return response([parent]);
+  };
+  const assigned=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(assigned.assignmentState,'READY_ASSIGNED');
+  assert.equal(assigned.nextJobs[0].jobId,'GH-4456');
+  assert.equal(assigned.nextJobs[0].workerId,'NV03');
+  assert.match(assigned.nextJobs[0].prompt,/STEP_ID=S05a/);
+  assert.equal(pool.objectives[0].metadata.keepParentOpenAtAssignment,true);
+  const result=await completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-4456',workerId:'NV03',
+    terminal:'DONE',result:'Preliminary QA evidence submitted for exact PR'});
+  assert.equal(result.ok,true);
+  assert.equal(comments,1);
+  assert.equal(closed,0);
+  assert.equal(pool.jobs[0].status,'done');
+  assert.equal(pool.objectives[0].status,'completed');
+  const next=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(next.nextJobs.length,0,'same step revision must not repeat');
 });
