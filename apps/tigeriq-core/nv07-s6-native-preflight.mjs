@@ -63,7 +63,8 @@ export async function readNv07S6NativePreflight(db){
   const canary=prior?.rows||[];
   if(canary.length!==1)return deny('NV07_S6_CANONICAL_CANARY_RECEIPT_NOT_UNIQUE');
   const receipt=canary[0],data=receipt?.data||{};
-  if(!cleanSeq(receipt.seq)||receipt.job_id!==pin.jobId||receipt.resource_id!==pin.resourceId
+  if(cleanSeq(receipt.seq)!==pin.cliReceiptSeq
+   ||receipt.job_id!==pin.jobId||receipt.resource_id!==pin.resourceId
    ||data.workOrderId!==4783||data.sourceSha!==pin.sourceSha
    ||data.outputHash!==pin.outputHash||data.proposedFileCount!==1
    ||data.resourceScope!=='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783')
