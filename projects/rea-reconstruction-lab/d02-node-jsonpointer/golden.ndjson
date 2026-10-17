@@ -1,0 +1,10 @@
+{"id":"J01_NESTED_GET","outcome":"ok","returned":7,"documentAfter":{"a":{"b":7}}}
+{"id":"J02_ESCAPED_SLASH_GET","outcome":"ok","returned":12,"documentAfter":{"a/b":12}}
+{"id":"J03_ESCAPED_TILDE_GET","outcome":"ok","returned":"tilde","documentAfter":{"m~n":"tilde"}}
+{"id":"J04_MISSING_GET","outcome":"ok","returned":{"$type":"undefined"},"documentAfter":{"a":1}}
+{"id":"J05_SET_REPLACE","outcome":"ok","returned":1,"documentAfter":{"a":9}}
+{"id":"J06_SET_NESTED_ARRAY","outcome":"ok","returned":{"$type":"undefined"},"documentAfter":{"items":[{"name":"Lin"}]}}
+{"id":"J07_SET_ARRAY_APPEND","outcome":"ok","returned":{"$type":"undefined"},"documentAfter":{"items":[1,2]}}
+{"id":"J08_SET_ESCAPED_SLASH","outcome":"ok","returned":2,"documentAfter":{"a/b":5}}
+{"id":"J09_BAD_RELATIVE_POINTER","outcome":"error","name":"Error","message":"Invalid JSON pointer.","documentAfter":{"a":1}}
+{"id":"J10_BAD_INPUT_OBJECT","outcome":"error","name":"Error","message":"Invalid input object.","documentAfter":42}
