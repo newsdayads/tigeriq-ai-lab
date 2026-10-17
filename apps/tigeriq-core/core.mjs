@@ -62,7 +62,7 @@ import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResour
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
 import {recordNv07GithubProposalReceipt} from './nv07-github-proposal-receipt.mjs';
-import {readNv07S6NativePreflight} from './nv07-s6-native-preflight.mjs';
+import {readNv07S6NativePreflight,observeNv07S6RuntimeRelease} from './nv07-s6-native-preflight.mjs';
 import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
@@ -3176,8 +3176,12 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/nv07/s6-preflight'){
       if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
       const result=await readNv07S6NativePreflight(pool);
+      const releaseObservation=observeNv07S6RuntimeRelease({
+        sourceState:readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE),
+        updaterState:readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE),
+      });
       res.writeHead(result.ok?200:409,{'content-type':'application/json','cache-control':'no-store'});
-      return res.end(JSON.stringify(result));
+      return res.end(JSON.stringify({...result,releaseObservation}));
     }
     if(req.method==='GET'&&url.pathname==='/api/nv07/bootstrap-receipts'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}

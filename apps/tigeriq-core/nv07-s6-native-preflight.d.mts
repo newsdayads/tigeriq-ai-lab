@@ -1,2 +1,3 @@
 export const NV07_S6_PINNED_PROPOSAL: Readonly<{workOrderId:number;jobId:string;pullRequestNumber:number;sourceSha:string;outputHash:string;resourceId:string;resourceScope:string}>;
 export function readNv07S6NativePreflight(db: {query:(sql:string,args?:unknown[])=>Promise<{rows?:Record<string,unknown>[]}>}|null): Promise<Record<string,unknown>>;
+export function observeNv07S6RuntimeRelease(input?: {sourceState?: {currentSha?:string;updatedAt?:string}|null;updaterState?: {installedSha?:string}|null}): Readonly<{sourceSha:string|null;updaterSha:string|null;stateFilesAligned:boolean;observedCutoverAt:string|null;nativeRuntimeAttested:false;s6Accepted:false;note:string}>;
