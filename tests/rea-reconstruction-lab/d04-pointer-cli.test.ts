@@ -11,8 +11,11 @@ import {outcome, get, set} from '../../projects/rea-reconstruction-lab/d04-point
 
 const originalPath=new URL('../../projects/rea-reconstruction-lab/d02-node-jsonpointer/jsonpointer.js',import.meta.url);
 const originalLicensePath=new URL('../../projects/rea-reconstruction-lab/d02-node-jsonpointer/LICENSE.md',import.meta.url);
-const cliPath=new URL('../../projects/rea-reconstruction-lab/d04-pointer-cli/bin/rea-pointer-demo.mjs',import.meta.url);
-const blob=(bytes:Buffer)=>createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
+const cliPath=fileURLToPath(new URL('../../projects/rea-reconstruction-lab/d04-pointer-cli/bin/rea-pointer-demo.mjs',import.meta.url));
+const blob=(bytes:Buffer)=>{
+  const normalized = Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  return createHash('sha1').update(Buffer.from('blob '+normalized.length+'\0')).update(normalized).digest('hex');
+};
 const original=readFileSync(originalPath);
 const originalLicense=readFileSync(originalLicensePath);
 const originalExports:Record<string,any>={};
@@ -62,7 +65,7 @@ function originalOutcome(test:any){
   }
 }
 function cli(input:string|Buffer){
-  return spawnSync(process.execPath,[cliPath.pathname,'--jsonl'],{input,encoding:'utf8',timeout:9000,maxBuffer:4*1024*1024});
+  return spawnSync(process.execPath,[cliPath,'--jsonl'],{input,encoding:'utf8',timeout:9000,maxBuffer:4*1024*1024});
 }
 describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
   it('pins the original MIT blobs and matches 10 golden + 18 distinct cases',()=>{
@@ -175,9 +178,11 @@ describe('REA #4780 D04: offline npm package fresh-install acceptance',()=>{
     const root=mkdtempSync(join(tmpdir(),'tigeriq-d04-fresh-install-'));
     const project=fileURLToPath(new URL('../../projects/rea-reconstruction-lab/d04-pointer-cli/',import.meta.url));
     const env={...process.env,npm_config_update_notifier:'false',npm_config_audit:'false',npm_config_fund:'false'};
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const shell = process.platform === 'win32';
     try{
-      const pack=spawnSync('npm',['pack',project,'--offline','--ignore-scripts','--pack-destination',root,'--json'],{
-        cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,
+      const pack=spawnSync(npmCmd,['pack',project,'--offline','--ignore-scripts','--pack-destination',root,'--json'],{
+        cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,shell,
       });
       expect(pack.status,pack.stderr+' '+pack.stdout).toBe(0);
       const metadata=JSON.parse(pack.stdout);
@@ -188,10 +193,10 @@ describe('REA #4780 D04: offline npm package fresh-install acceptance',()=>{
       expect(digest).toMatch(/^[a-f0-9]{64}$/);
       const target=join(root,'fresh');
       mkdirSync(target);
-      const install=spawnSync('npm',[
+      const install=spawnSync(npmCmd,[
         'install','--offline','--ignore-scripts','--no-audit','--no-fund',
         '--prefix',target,tarball,
-      ],{cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024});
+      ],{cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,shell});
       expect(install.status,install.stderr+' '+install.stdout).toBe(0);
       const installedCli=join(target,'node_modules','tigeriq-rea-pointer-demo','bin','rea-pointer-demo.mjs');
       const actual=spawnSync(process.execPath,[installedCli,'--jsonl'],{

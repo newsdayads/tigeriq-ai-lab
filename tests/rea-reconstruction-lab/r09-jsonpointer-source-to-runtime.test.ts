@@ -11,9 +11,10 @@ import { outcome, get, set } from '../../projects/rea-reconstruction-lab/d04-poi
 // Static REA evidence alone cannot establish observed results or full API parity.
 const sourcePath=new URL('../../projects/rea-reconstruction-lab/d02-node-jsonpointer/jsonpointer.js',import.meta.url);
 const cliPath=fileURLToPath(new URL('../../projects/rea-reconstruction-lab/d04-pointer-cli/bin/rea-pointer-demo.mjs',import.meta.url));
-const source=readFileSync(sourcePath);
-const blob=createHash('sha1').update(Buffer.from('blob '+source.length+'\0')).update(source).digest('hex');
-if(blob!=='dad907d763f7369ac0e284e7d1fae2bd5508f477')
+const rawSource = readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
+const source = Buffer.from(rawSource, 'utf8');
+const blob = createHash('sha1').update(Buffer.from('blob ' + source.length + '\0')).update(source).digest('hex');
+if (blob !== 'dad907d763f7369ac0e284e7d1fae2bd5508f477')
   throw new Error('R09 pinned original source blob mismatch');
 const upstream:Record<string,any>={};
 runInNewContext(source.toString('utf8'),{exports:upstream},{filename:'pinned-mit-jsonpointer.js',timeout:1200});
