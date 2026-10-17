@@ -1,0 +1,114 @@
+name: REA 4780 - Real isolated install and static JS analysis
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rea-real-sandbox-4780.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-4780-real-install-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rea-real-sandbox:
+    name: REA 6.4.0 locked install and no-network runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    if: github.repository == 'newsdayads/tigeriq-ai-lab'
+    steps:
+      - name: Checkout exact proposed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact source verification
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+      - name: Generate dedicated exact-version consumer lock without install
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rea-4780/evidence" "$RUNNER_TEMP/rea-4780/target"
+          cd "$RUNNER_TEMP/rea-4780"
+          printf '%s\n' '{"name":"tigeriq-rea-4780-isolated-consumer","version":"0.0.0","private":true,"dependencies":{"rea-agents":"6.4.0"}}' > package.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact
+          sha256sum package-lock.json > evidence/consumer-lock.sha256
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {pathToFileURL} from 'node:url';
+          const checker=await import(pathToFileURL(process.env.GITHUB_WORKSPACE+'/projects/rea-reconstruction-lab/r06-consumer-lock-preflight.mjs'));
+          const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+          const result=checker.inspectR06ConsumerLock(lock);
+          fs.writeFileSync('evidence/consumer-lock-static-report.json',JSON.stringify(result,null,2)+'\n');
+          console.log('R06_CONSUMER_LOCK_STATIC_DECISION='+result.decision);
+          console.log('R06_REASON='+result.reason);
+          if(result.decision!=='STATIC_LOCK_SHAPE_PRESENT_NOT_RUNTIME_VERIFIED') process.exit(23);
+          NODE
+      - name: Install EXACT REA package - ignore ALL package lifecycle scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/rea-4780"
+          npm ci --ignore-scripts --no-audit --no-fund --omit=dev > evidence/npm-ci.log 2>&1
+          test -f node_modules/rea-agents/scripts/rea.mjs
+          node -p "require('./node_modules/rea-agents/package.json').version" | grep -Fx '6.4.0'
+          npm sbom --sbom-format cyclonedx > evidence/consumer-sbom.cdx.json
+          sha256sum evidence/consumer-sbom.cdx.json > evidence/consumer-sbom.sha256
+          npm ls --all --omit=dev --json > evidence/npm-tree.json
+          sha256sum node_modules/rea-agents/package.json >> evidence/installed-package-files.sha256
+          cp "$GITHUB_WORKSPACE/projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs" target/
+          printf '%s\n' 'REAL_NPM_CI_IGNORE_SCRIPTS_EXIT_0' > evidence/rea-install-status.txt
+      - name: Real CLI smoke and REA JavaScript static analysis in no-network container
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/rea-4780"
+          docker pull node:24-bookworm-slim
+          docker image inspect node:24-bookworm-slim --format '{{index .RepoDigests 0}}' > evidence/runtime-container-digest.txt
+          run_isolated() {
+            docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+              --memory 1536m --cpus 1 --pids-limit 128 --user 65534:65534 \
+              --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+              --mount "type=bind,source=$PWD,target=/app,readonly" \
+              --workdir /app -e HOME=/tmp \
+              node:24-bookworm-slim node /app/node_modules/rea-agents/scripts/rea.mjs "$@"
+          }
+          run_isolated --help > evidence/rea-help.txt 2>&1
+          printf 'REA_HELP_EXIT=0\n' >> evidence/rea-install-status.txt
+          run_isolated analyze-javascript-application /app/target --json > evidence/rea-analysis.json 2> evidence/rea-analysis.stderr
+          test -s evidence/rea-analysis.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=fs.readFileSync('evidence/rea-analysis.json','utf8');
+          const json=JSON.parse(raw);
+          if(typeof json!=='object'||json===null||Array.isArray(json)) process.exit(24);
+          fs.writeFileSync('evidence/rea-analysis-verified.json',JSON.stringify({
+            realCliExecuted:true, target:'projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs',
+            topLevelKeys:Object.keys(json),outputBytes:Buffer.byteLength(raw),
+            sha256:(await import('node:crypto')).createHash('sha256').update(raw).digest('hex')
+          },null,2)+'\n');
+          NODE
+          sha256sum evidence/rea-help.txt evidence/rea-analysis.json evidence/rea-analysis.stderr > evidence/rea-run.sha256
+          printf 'REA_ANALYZE_JAVASCRIPT_APPLICATION_EXIT=0\n' >> evidence/rea-install-status.txt
+          cat evidence/rea-install-status.txt
+      - name: Save real evidence even if a step fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-4780-real-install-evidence
+          path: ${{ runner.temp }}/rea-4780/evidence/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Final strict summary
+        if: success()
+        shell: bash
+        run: |
+          echo 'REA 6.4.0: installed with npm ci --ignore-scripts, help exit=0 and actual analyze-javascript-application exit=0 under Docker --network none; see evidence artifact.' >> "$GITHUB_STEP_SUMMARY"
