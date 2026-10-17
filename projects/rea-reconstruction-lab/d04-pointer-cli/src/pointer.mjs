@@ -131,8 +131,12 @@ function copyJsonData(value, state, depth=0) {
       if (!Object.hasOwn(descriptors, String(index)))
         throw new TypeError('Sparse JSON array forbidden.');
     }
-    if (Object.keys(descriptors).some(key =>
-      key !== 'length' && !/^(0|[1-9][0-9]*)$/.test(key)))
+    if (Object.keys(descriptors).some(key => {
+      if (key === 'length') return false;
+      const index = Number(key);
+      return !Number.isSafeInteger(index) || index < 0 ||
+        index >= value.length || String(index) !== key;
+    }))
       throw new TypeError('Named JSON array property forbidden.');
   }
   state.active.add(value);
