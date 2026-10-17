@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 // @ts-ignore — Paperclip's existing native .mjs exports do not publish TypeScript declarations.
-import { paperclipReadOnlyPreflight, resolveDockerTransport } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, resolveDockerTransport, paperclipReadOnlyExistingDirectory } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip #2054 R01 read-only source contract', () => {
   it('avoids root creation, heartbeat directory creation and broker request writes', async () => {
@@ -15,6 +15,10 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
     };
     const root = section('async function ensureRootIntegrity(', 'async function ensureContainedDirectory(');
     expect(root).toContain('if (create) await fs.mkdir(PAPERCLIP_LAB_ROOT');
+    const subprocess = section('async function runFixed(', 'function parseBrokerJson(');
+    expect(subprocess).toContain('await ensureRootIntegrity({ create: !readOnly })');
+    expect(subprocess).toContain('paperclipReadOnlyExistingDirectory(safeCwd)');
+    expect(subprocess).toContain('readOnly = false');
     const status = section('async function brokerStatus()', 'export function paperclipLabBrokerOperationForDockerArgs(');
     expect(status).toContain('await fs.lstat(safeHeartbeat)');
     expect(status).toContain('if (!pathInsideLab(real))');
@@ -82,11 +86,13 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
 
   it('does not write broker request when Docker and WSL fail but broker is healthy', async () => {
     const attempted: string[] = [];
+    const readonly: unknown[] = [];
     let bridged = 0;
     const result = await resolveDockerTransport(null, {
       allowBrokerProbe: false,
-      runVersionCommand: async (command: string) => {
+      runVersionCommand: async (command: string, _args: unknown, opts: { readOnly?: boolean }) => {
         attempted.push(command);
+        readonly.push(opts.readOnly);
         return { exitCode: 1, timedOut: false, stdout: '', stderr: 'version unavailable' };
       },
       readBrokerStatus: async () => ({ ready: true, version: '1.7-openai-device-auth' }),
@@ -96,6 +102,7 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       },
     });
     expect(attempted).toEqual(['docker.exe', 'wsl.exe']);
+    expect(readonly).toEqual([true, true]);
     expect(bridged).toBe(0);
     expect(result).toMatchObject({
       kind: null, version: null,
@@ -105,9 +112,13 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
   });
   it('preserves the existing operational broker route outside R01', async () => {
     let bridged = 0;
+    const readonly: unknown[] = [];
     const result = await resolveDockerTransport(null, {
       allowBrokerProbe: true,
-      runVersionCommand: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'version unavailable' }),
+      runVersionCommand: async (_command: string, _args: unknown, opts: { readOnly?: boolean }) => {
+        readonly.push(opts.readOnly);
+        return { exitCode: 1, timedOut: false, stdout: '', stderr: 'version unavailable' };
+      },
       readBrokerStatus: async () => ({ ready: true }),
       probeViaBroker: async () => {
         bridged++;
@@ -115,6 +126,7 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       },
     });
     expect(bridged).toBe(1);
+    expect(readonly).toEqual([false, false]);
     expect(result).toMatchObject({
       kind: 'wsl-ubuntu-interactive-broker', version: '27.1.0', error: null,
       broker: { ready: true },
@@ -133,6 +145,42 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
     });
     expect(brokerReads).toBe(0);
     expect(result).toMatchObject({ kind: 'windows', version: '27.2.0', error: null });
+  });
+
+
+  it('reads an existing Lab directory using lstat and realpath without mkdir', async () => {
+    const paths: string[] = [];
+    const root = String.raw`D:\TigerIQ-Paperclip-Lab`;
+    const result = await paperclipReadOnlyExistingDirectory(root, {
+      lstat: async (path: string) => {
+        paths.push('lstat:' + path);
+        return { isDirectory: () => true, isSymbolicLink: () => false };
+      },
+      realpath: async (path: string) => {
+        paths.push('realpath:' + path);
+        return root;
+      },
+    });
+    expect(result).toBe(root);
+    expect(paths).toEqual(['lstat:' + root, 'realpath:' + root]);
+  });
+
+  it('fails closed on missing, symlinked, non-directory and escaped Lab root', async () => {
+    const root = String.raw`D:\TigerIQ-Paperclip-Lab`;
+    const bad = (directory: boolean, link: boolean) => ({
+      lstat: async () => ({ isDirectory: () => directory, isSymbolicLink: () => link }),
+      realpath: async () => root,
+    });
+    await expect(paperclipReadOnlyExistingDirectory(root, {
+      lstat: async () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); },
+      realpath: async () => root,
+    })).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(paperclipReadOnlyExistingDirectory(root, bad(true, true))).rejects.toThrow('READ_ONLY_DIRECTORY_UNSAFE');
+    await expect(paperclipReadOnlyExistingDirectory(root, bad(false, false))).rejects.toThrow('READ_ONLY_DIRECTORY_UNSAFE');
+    await expect(paperclipReadOnlyExistingDirectory(root, {
+      lstat: async () => ({ isDirectory: () => true, isSymbolicLink: () => false }),
+      realpath: async () => String.raw`D:\TigerIQ\State`,
+    })).rejects.toThrow('REALPATH_ESCAPE_BLOCKED');
   });
 
 });
