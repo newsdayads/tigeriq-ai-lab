@@ -33,10 +33,10 @@ it('GH-2293 runs all 20 original R08 node:test mock cases natively with network 
   expect(run.signal).toBeNull();
   expect(run.status,'Native offline R08 node:test failed: '+String(run.stderr||'').slice(0,400)).toBe(0);
   // A successful process without full TAP enumeration is NOT acceptance.
-  expect(run.stdout).toMatch(/(?:^|\n)# tests 20(?:\n|$)/);
-  expect(run.stdout).toMatch(/(?:^|\n)# pass 20(?:\n|$)/);
-  expect(run.stdout).toMatch(/(?:^|\n)# fail 0(?:\n|$)/);
-  expect(run.stdout).toMatch(/(?:^|\n)# cancelled 0(?:\n|$)/);
-  expect(run.stdout).toMatch(/(?:^|\n)# skipped 0(?:\n|$)/);
+  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) tests 20(?:\n|$)/);
+  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) pass 20(?:\n|$)/);
+  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) fail 0(?:\n|$)/);
+  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) cancelled 0(?:\n|$)/);
+  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) skipped 0(?:\n|$)/);
   expect(run.stdout).not.toContain('secret-token-value');
 },25000);

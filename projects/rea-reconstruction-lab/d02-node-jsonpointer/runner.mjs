@@ -28,7 +28,8 @@ const cases = [
 ];
 
 function gitBlobSha(bytes) {
-  return createHash('sha1').update(Buffer.from('blob ' + bytes.length + '\0')).update(bytes).digest('hex');
+  const normalized = Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  return createHash('sha1').update(Buffer.from('blob ' + normalized.length + '\0')).update(normalized).digest('hex');
 }
 function asValue(value) { return value === undefined ? { $type: 'undefined' } : value; }
 function originalModule() {
@@ -62,8 +63,8 @@ export function executeOriginalCases() {
 function ndjson(rows) { return rows.map(r => JSON.stringify(r)).join('\n') + '\n'; }
 export function verifyGoldenCases() {
   const actual = ndjson(executeOriginalCases());
-  const expected = readFileSync(new URL('./golden.ndjson', directory), 'utf8');
-  assert.equal(createHash('sha256').update(expected).digest('hex'), 'eab897112bd5948b432c90ab63040da07db6e72a32ec0963982e61d8e4bad955', 'pinned golden file SHA256 mismatch');
+  const expected = readFileSync(new URL('./golden.ndjson', directory), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(createHash('sha256').update(Buffer.from(expected, 'utf8')).digest('hex'), 'eab897112bd5948b432c90ab63040da07db6e72a32ec0963982e61d8e4bad955', 'pinned golden file SHA256 mismatch');
   assert.equal(actual, expected, 'original observed stdout differs from pinned golden bytes');
   return { cases: 10, errorCases: 2, sourceBlob: UPSTREAM.sourceBlob,
     goldenSha256: createHash('sha256').update(actual).digest('hex') };

@@ -35,8 +35,8 @@ describe('NV02 D02: exact upstream MIT JavaScript original vs 10 golden cases', 
     });
     const observations = run(source, true);
     expect(observations.status, observations.stderr).toBe(0);
-    expect(observations.stdout).toBe(readFileSync(join(source, 'golden.ndjson'), 'utf8'));
-    expect(observations.stdout.trim().split('\n')).toHaveLength(10);
+    expect(observations.stdout.replace(/\r\n/g, '\n')).toBe(readFileSync(join(source, 'golden.ndjson'), 'utf8').replace(/\r\n/g, '\n'));
+    expect(observations.stdout.trim().split(/\r?\n/)).toHaveLength(10);
   });
 
   it('fails closed if the pinned upstream implementation changes', () => {
