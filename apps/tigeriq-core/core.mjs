@@ -62,6 +62,7 @@ import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResour
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
 import {recordNv07GithubProposalReceipt} from './nv07-github-proposal-receipt.mjs';
+import {readNv07S6NativePreflight} from './nv07-s6-native-preflight.mjs';
 import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
@@ -3169,6 +3170,13 @@ const server=createServer(async(req,res)=>{
       }
       const result=await queueNv07ApprovedBootstrap(pool);
       res.writeHead(result.accepted?202:409,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify(result));
+    }
+    // Core-local, authenticated, read-only S6 admission: no lease claim or POST.
+    if(req.method==='GET'&&url.pathname==='/api/nv07/s6-preflight'){
+      if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
+      const result=await readNv07S6NativePreflight(pool);
+      res.writeHead(result.ok?200:409,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(result));
     }
     if(req.method==='GET'&&url.pathname==='/api/nv07/bootstrap-receipts'){
