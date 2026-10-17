@@ -319,8 +319,10 @@ export async function runPrivateApifyE2E({
       Boolean(output.error) || output.requestedUrl !== expectedAuditUrl ||
       !Array.isArray(output.pages) || output.pages.length === 0 ||
       output.pages.length > runInput.maxPages ||
-      !output.pages.every(page => typeof page?.url === 'string' &&
-        /^https?:\/\//.test(page.url) &&
+      // This private smoke harness submits exactly one fixed page. A
+      // "success" record for any other page is not evidence for that input.
+      // Fail closed instead of crediting unrelated/redirected output.
+      !output.pages.every(page => page?.url === expectedAuditUrl &&
         Number.isInteger(page.statusCode) &&
         page.statusCode >= 200 && page.statusCode < 300) ||
       !output.metrics || output.metrics.pagesAudited !== output.pages.length ||

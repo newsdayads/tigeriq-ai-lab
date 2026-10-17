@@ -105,6 +105,9 @@ test('R08 invalid OUTPUT must never become accepted E2E evidence', async () => {
     { schemaVersion: '1.0', status: 'success' },
     { ...validAuditOutput(), requestedUrl: 'https://other.example/' },
     { ...validAuditOutput(), requestedUrl: undefined },
+    // Check the returned page, not merely the claimed requestedUrl field.
+    { ...validAuditOutput(), pages: [{ url: 'https://other.example/', statusCode: 200 }] },
+    { ...validAuditOutput(), pages: [{ url: 'https://example.com/other', statusCode: 200 }] },
     { ...validAuditOutput(), pages: [] },
     { ...validAuditOutput(), metrics: { pagesAudited: 0, errorCount: 0 } },
     { ...validAuditOutput(), metrics: { pagesAudited: 2, errorCount: 0 } },
