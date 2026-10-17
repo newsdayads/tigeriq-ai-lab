@@ -50,10 +50,18 @@ async function releaseLocalClaimLock(lockKey) {
 }
 
 function fields(body) {
-  return Object.fromEntries(String(body || '').split(/\r?\n/).flatMap((line) => {
+  const result = {};
+  for (const line of String(body || '').split(/\r?\n/)) {
     const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
-    return m ? [[m[1].toUpperCase(), m[2].trim()]] : [];
-  }));
+    if (!m) continue;
+    const key=m[1].toUpperCase(), value=m[2].trim();
+    if (Object.hasOwn(result,key)) {
+      if (result[key]!==value) result.METADATA_CONFLICT='true';
+      continue;
+    }
+    result[key]=value;
+  }
+  return result;
 }
 
 export function nv02PrioritySummary(issue) {
@@ -66,7 +74,7 @@ function currentAuthoritySection(body) {
   // an archived Markdown section override the current queue/lease authority.
   const firstH2 = text.match(/^##[ \t]+[^\r\n]+/m);
   const nextH2 = firstH2?.index === 0
-    ? text.slice(firstH2[0].length).match(/^##[ \t]+[^\r\n]+/m)
+    ? text.slice(firstH2[0].length).match(/^#{2,6}[ \t]+[^\r\n]+/m)
     : null;
   const headingEnd = firstH2?.index === 0
     ? (nextH2 ? firstH2[0].length + nextH2.index : text.length)
@@ -421,6 +429,7 @@ export async function releaseStaleAssigneeLease({ issue, takeover, postComment, 
 
 export function nv02EligibleWorkOrder(issue, { heldScopes = new Set(), dependencies = new Map(), activeOwners = new Set(), allowFallback = true, takeoverStatuses = new Map() } = {}) {
   const meta = nv02WorkOrderMeta(issue);
+  if (meta.METADATA_CONFLICT === 'true') return { eligible: false, reason: 'CURRENT_METADATA_CONFLICT' };
   const priority = nv02PrioritySummary(issue) || String(meta.PRIORITY || '').toUpperCase();
   if (!PRIORITIES.has(priority)) return { eligible: false, reason: priority === 'P0' ? 'P0_FORBIDDEN' : 'PRIORITY_OUT_OF_RANGE' };
   if (issue?.state === 'closed') return { eligible: false, reason: 'WORK_ORDER_CLOSED' };
