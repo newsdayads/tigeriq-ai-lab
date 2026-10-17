@@ -109,9 +109,10 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
  });
  it('read-only release observer confirms matching source/updater declarations but never certifies runtime',()=>{
   const sha='a'.repeat(40);
+  const sourceWithExtra={currentSha:sha,updatedAt:'2026-10-17T04:20:00Z',credential:'DO_NOT_LEAK'};
+  const updaterWithExtra={installedSha:sha,secret:'DO_NOT_LEAK'};
   const response=observeNv07S6RuntimeRelease({
-   sourceState:{currentSha:sha,updatedAt:'2026-10-17T04:20:00Z',credential:'DO_NOT_LEAK'},
-   updaterState:{installedSha:sha,secret:'DO_NOT_LEAK'},
+   sourceState:sourceWithExtra,updaterState:updaterWithExtra,
   });
   expect(response).toMatchObject({
    sourceSha:sha,updaterSha:sha,
