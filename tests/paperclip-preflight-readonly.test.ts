@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { paperclipReadOnlyPreflight } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip #2054 R01 read-only source contract', () => {
   it('avoids root creation, heartbeat directory creation and broker request writes', async () => {
@@ -20,10 +21,61 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
     expect(status).not.toContain('fs.mkdir(');
     const transport = section('async function resolveDockerTransport(', 'function pathInsideLab(');
     expect(transport).toContain('if (!allowBrokerProbe) return');
-    const preflight = section('async function preflight(', 'function redactPaperclipDiagnosticText(');
-    expect(preflight).toContain('await ensureRootIntegrity({ create: false })');
+    const preflight = section('export async function paperclipReadOnlyPreflight(', 'function redactPaperclipDiagnosticText(');
+    expect(preflight).toContain('ensureRootIntegrity({ create: false })');
     expect(preflight).toContain('allowBrokerProbe: false');
+    expect(preflight).toContain('rootPresent');
+    expect(preflight).toContain("error?.code !== 'ENOENT'");
     expect(preflight).not.toContain('fs.mkdir(');
     expect(preflight).not.toContain('runBrokerRequest(');
   });
+
+  it('returns an absent-root diagnostic without probing the missing disk', async () => {
+    const result = await paperclipReadOnlyPreflight({
+      checkRoot: async () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); },
+      inspectDocker: async () => ({
+        kind: null, version: null, error: 'DOCKER_UNAVAILABLE',
+        broker: { ready: false, reason: 'BROKER_MISSING' },
+      }),
+      inspectPort: async () => ({ host: '127.0.0.1', port: 3210, reachable: false, reason: 'refused' }),
+      inspectDisk: async () => { throw new Error('unreachable disk probe'); },
+      inspectBroker: async () => { throw new Error('unreachable broker probe'); },
+    });
+    expect(result.rootPresent).toBe(false);
+    expect(result.disk).toBeNull();
+    expect(result.docker.ok).toBe(false);
+    expect(result.docker.error).toBe('DOCKER_UNAVAILABLE');
+    expect(result.port3210.reachable).toBe(false);
+  });
+  it('collects present-root read-only probe results exactly once', async () => {
+    let disks = 0;
+    let brokers = 0;
+    const result = await paperclipReadOnlyPreflight({
+      checkRoot: async () => {},
+      inspectDocker: async () => ({ kind: 'windows', version: '27.0', error: null }),
+      inspectPort: async () => ({ host: '127.0.0.1', port: 3210, reachable: true, reason: 'connected' }),
+      inspectDisk: async () => {
+        disks++;
+        return { bavail: 2, bsize: 4096, blocks: 100 };
+      },
+      inspectBroker: async () => {
+        brokers++;
+        return { ready: true, version: '1.7-openai-device-auth' };
+      },
+    });
+    expect(result.rootPresent).toBe(true);
+    expect(result.disk).toEqual({ freeBytes: 8192, totalBytes: 409600 });
+    expect(result.docker).toMatchObject({ ok: true, transport: 'windows', version: '27.0', broker: { ready: true } });
+    expect(disks).toBe(1);
+    expect(brokers).toBe(1);
+  });
+  it('rejects an unsafe root instead of suppressing a security error', async () => {
+    let dockerCalled = false;
+    await expect(paperclipReadOnlyPreflight({
+      checkRoot: async () => { throw new Error('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED'); },
+      inspectDocker: async () => { dockerCalled = true; throw new Error('unreachable docker probe'); },
+    })).rejects.toThrow('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED');
+    expect(dockerCalled).toBe(false);
+  });
+
 });
