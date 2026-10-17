@@ -5,13 +5,34 @@ const FILE='docs/implementation/nv07-proposal.md';
 const ROOT=String.raw`C:\ProgramData\TigerIQNV07`;
 const required=['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'];
 const denied=code=>({accepted:false,code,nv07Active:false});
+// Immutable S6 provenance from the accepted native PC01 canary, Work Order #4783.
+// A historically valid canary for another job is NOT authority to publish PR #4893.
+const S6_PIN=Object.freeze({
+ jobId:'NV07-4783-CORE-20261015T175311-001',
+ resourceId:'res:antigravity:agy-cli:owner-wdragons12x:pc01',
+ cliReceiptSeq:'214872',reservationSeq:'214864',pullRequestNumber:4893,
+ sourceSha:'2bf72df2774eee67c19c8db5dbd063ddeef640be',
+ outputHash:'b473807fa0c8af4d85d09a1a39efd5c223d0de9f068cda649f71d28c13f622b5',
+ headSha:'037954520f2533d0d6fae62e369d7a71e55f19ba',
+ mergeSha:'9eee52f9988701785cfacf00de0a58dac5778752',
+ artifactBlobSha:'c0b0c56740f88831146e9ac196ec8bea46ff3423',
+});
+function matchesCanonicalCanary(r){
+ const d=r?.data||{};
+ return String(r?.seq||'')===S6_PIN.cliReceiptSeq
+  &&r?.job_id===S6_PIN.jobId&&r?.resource_id===S6_PIN.resourceId
+  &&d.workOrderId===4783&&d.resourceScope==='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783'
+  &&d.sourceSha===S6_PIN.sourceSha&&d.outputHash===S6_PIN.outputHash
+  &&d.proposedFileCount===1&&String(d.reservationSeq||'')===S6_PIN.reservationSeq
+  &&d.state==='BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE'
+  &&d.source==='CORE_VERIFIED_CLI_JSON';
+}
+
 export function verifyNv07GithubProposalEvidence({pr,files,runs,headFile,mergedFile,receipt,document,waiverBody}={}){
- if(!receipt||!/^[1-9]\d{0,15}$/.test(String(receipt.seq||''))
-  ||!/^NV07-4783-CORE-[a-z0-9_-]{1,90}$/i.test(receipt.job_id||'')
-  ||!/^[a-f0-9]{40}$/i.test(receipt.data?.sourceSha||'')
-  ||!/^[a-f0-9]{64}$/i.test(receipt.data?.outputHash||'')
-  ||receipt.data?.proposedFileCount!==1)return denied('NV07_CANONICAL_PROPOSAL_RECEIPT_REQUIRED');
- if(!pr||pr.merged!==true||pr.state!=='closed'||pr.base?.repo?.full_name!==REPO
+ if(!matchesCanonicalCanary(receipt))return denied('NV07_CANONICAL_PROPOSAL_RECEIPT_REQUIRED');
+ if(!pr||pr.number!==S6_PIN.pullRequestNumber||pr.head?.sha!==S6_PIN.headSha
+  ||pr.merge_commit_sha!==S6_PIN.mergeSha
+  ||pr.merged!==true||pr.state!=='closed'||pr.base?.repo?.full_name!==REPO
   ||pr.head?.repo?.full_name!==REPO||pr.base?.ref!=='main'
   ||!/^[a-f0-9]{40}$/i.test(pr.head?.sha||'')
   ||!/^[a-f0-9]{40}$/i.test(pr.merge_commit_sha||'')
@@ -40,7 +61,8 @@ function runBelongsToPr(run,pr){
   if(!r||r.status!=='completed'||r.conclusion!=='success')return denied('NV07_EXACT_PR_CHECKS_REQUIRED');
  }
  if(headFile?.path!==FILE||mergedFile?.path!==FILE||headFile.encoding!=='base64'
-  ||mergedFile.encoding!=='base64'||headFile.sha!==mergedFile.sha)
+  ||mergedFile.encoding!=='base64'||headFile.sha!==mergedFile.sha
+  ||mergedFile.sha!==S6_PIN.artifactBlobSha)
   return denied('NV07_MERGED_ARTIFACT_CHANGED');
  const content=Buffer.from(mergedFile.content||'','base64').toString('utf8');
  if(content.length>20000||!content.includes(receipt.job_id)||!content.includes(receipt.data.outputHash)
@@ -78,7 +100,19 @@ const S6_INSERT=[
  "where r.seq=$1::bigint and r.type='NV07_CANARY_RECEIPT'",
  "and r.employee_id='NV07' and r.job_id=$2 and r.data->>'workOrderId'='4783'",
  "and r.data->>'resourceScope'='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783'",
+ "and r.resource_id=$8 and r.data->>'sourceSha'=$9",
+ "and r.data->>'state'='BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE'",
+ "and r.data->>'source'='CORE_VERIFIED_CLI_JSON'",
+ "and r.data->>'reservationSeq'='214864'",
+ "and r.data->>'proposedFileCount'='1'",
  "and r.data->>'outputHash'=$4",
+ "and exists (select 1 from tigeriq_events v where v.seq=214864",
+ " and v.type='NV07_CANARY_RESERVED' and v.employee_id='NV07'",
+ " and v.job_id=r.job_id and v.resource_id=r.resource_id",
+ " and v.data->>'workOrderId'='4783'",
+ " and v.data->>'resourceScope'='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783'",
+ " and v.data->>'sourceSha'=r.data->>'sourceSha'",
+ " and v.data->>'idempotencyHash'=r.data->>'idempotencyHash')",
  "and l.employee_id='NV07' and l.lease_token=$5 and l.lease_until>now()",
  "and l.lane='nv07_s6' and l.role='github_receipt'",
  "and l.metadata->>'workOrderId'='4783'",
@@ -94,16 +128,20 @@ const S6_INSERT=[
 // This helper cannot claim, extend, release or disclose a lease.
 export async function storeNv07GithubProposalWithLease(db,{receipt,evidence,leaseToken}={}){
  if(!db?.query||!LEASE_TOKEN.test(String(leaseToken||''))
-  ||!receipt||!evidence||evidence.accepted!==true
-  ||evidence.jobId!==receipt.job_id
-  ||evidence.sourceSha!==receipt.data?.sourceSha
-  ||!Number.isSafeInteger(evidence.pullRequestNumber)
-  ||!/^[1-9]\d{0,15}$/.test(String(receipt.seq||'')))
+  ||!matchesCanonicalCanary(receipt)||!evidence||evidence.accepted!==true
+  ||evidence.code!=='NV07_GITHUB_PROPOSAL_EVIDENCE_VERIFIED'
+  ||evidence.jobId!==S6_PIN.jobId||evidence.cliReceiptSeq!==S6_PIN.cliReceiptSeq
+  ||evidence.sourceSha!==S6_PIN.sourceSha||evidence.outputHash!==S6_PIN.outputHash
+  ||evidence.pullRequestNumber!==S6_PIN.pullRequestNumber
+  ||evidence.headSha!==S6_PIN.headSha||evidence.mergeSha!==S6_PIN.mergeSha
+  ||evidence.artifactBlobSha!==S6_PIN.artifactBlobSha
+  ||evidence.artifactPath!==FILE||evidence.review!=='OWNER_WAIVED_NOT_INDEPENDENT_PASS'
+  ||evidence.nv07Active!==false)
   return denied('NV07_S6_CURRENT_LEASE_REQUIRED');
  const result=await db.query(S6_INSERT,[
   receipt.seq,receipt.job_id,JSON.stringify({...evidence,workOrderId:4783}),
   receipt.data.outputHash,leaseToken,NV07_S6_GITHUB_SCOPE,
-  String(evidence.pullRequestNumber),
+  String(evidence.pullRequestNumber),S6_PIN.resourceId,S6_PIN.sourceSha,
  ]);
  const seq=result?.rows?.[0]?.seq;
  if(result?.rowCount!==1||seq==null)return denied('NV07_S6_CURRENT_LEASE_OR_REPLAY_DENIED');
@@ -111,13 +149,13 @@ export async function storeNv07GithubProposalWithLease(db,{receipt,evidence,leas
 }
 
 export async function recordNv07GithubProposalReceipt(db,{jobId,pullRequestNumber,leaseToken}={}){
- if(!db?.query||!/^NV07-4783-CORE-[a-z0-9_-]{1,90}$/i.test(jobId||'')
-  ||!Number.isSafeInteger(pullRequestNumber)||pullRequestNumber<=0)
+ if(!db?.query||jobId!==S6_PIN.jobId||pullRequestNumber!==S6_PIN.pullRequestNumber)
   return denied('NV07_GITHUB_RECEIPT_INPUT_INVALID');
  if(!LEASE_TOKEN.test(String(leaseToken||'')))return denied('NV07_S6_CURRENT_LEASE_REQUIRED');
  try{
   const rows=await db.query("select seq,job_id,data,resource_id from tigeriq_events where employee_id='NV07' and job_id=$1 and type='NV07_CANARY_RECEIPT' and data->>'workOrderId'='4783'",[jobId]);
-  if(rows.rows?.length!==1)return denied('NV07_CANONICAL_PROPOSAL_RECEIPT_REQUIRED');
+  if(rows.rows?.length!==1||!matchesCanonicalCanary(rows.rows[0]))
+   return denied('NV07_CANONICAL_PROPOSAL_RECEIPT_REQUIRED');
   const receipt=rows.rows[0],path=ROOT+'\\evidence\\proposal-'+jobId+'.json';
   const st=await lstat(path);
   if(!st.isFile()||st.isSymbolicLink()||st.size>32768)return denied('NV07_PROTECTED_PROPOSAL_REQUIRED');
