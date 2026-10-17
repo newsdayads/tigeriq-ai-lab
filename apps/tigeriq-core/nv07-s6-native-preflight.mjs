@@ -8,6 +8,11 @@ export const NV07_S6_PINNED_PROPOSAL=Object.freeze({
  workOrderId:4783,
  jobId:'NV07-4783-CORE-20261015T175311-001',
  pullRequestNumber:4893,
+ cliReceiptSeq:'214872',
+ headSha:'037954520f2533d0d6fae62e369d7a71e55f19ba',
+ mergeSha:'9eee52f9988701785cfacf00de0a58dac5778752',
+ artifactPath:'docs/implementation/nv07-proposal.md',
+ artifactBlobSha:'c0b0c56740f88831146e9ac196ec8bea46ff3423',
  sourceSha:'2bf72df2774eee67c19c8db5dbd063ddeef640be',
  outputHash:'b473807fa0c8af4d85d09a1a39efd5c223d0de9f068cda649f71d28c13f622b5',
  resourceId:NV07_BOOTSTRAP_RESOURCE_ID,
@@ -57,16 +62,28 @@ export async function readNv07S6NativePreflight(db){
    ||data.outputHash!==pin.outputHash||data.proposedFileCount!==1
    ||data.resourceScope!=='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783')
    return deny('NV07_S6_CANONICAL_CANARY_BINDING_MISMATCH');
+  // The existence of a Core row alone is not acceptance: bind its complete
+  // canonical PR/CI/artifact provenance to pinned GitHub evidence (PR #4893).
   const applied=await db.query(
-   "select seq,data from tigeriq_events where type='NV07_GITHUB_PROPOSAL_APPLIED' "+
+   "select seq,job_id,resource_id,data from tigeriq_events where type='NV07_GITHUB_PROPOSAL_APPLIED' "+
    "and employee_id='NV07' and job_id=$1 order by seq desc limit 2",[pin.jobId]);
   if((applied?.rows||[]).length){
    const rows=applied.rows;
-   if(rows.length!==1||!cleanSeq(rows[0].seq)
-    ||rows[0].data?.workOrderId!==4783
-    ||rows[0].data?.pullRequestNumber!==pin.pullRequestNumber
-    ||rows[0].data?.sourceSha!==pin.sourceSha
-    ||rows[0].data?.outputHash!==pin.outputHash)
+   const event=rows[0],proof=event.data;
+   if(rows.length!==1||!cleanSeq(event.seq)
+    ||event.job_id!==pin.jobId||event.resource_id!==pin.resourceId
+    ||proof?.accepted!==true
+    ||proof?.code!=='NV07_GITHUB_PROPOSAL_EVIDENCE_VERIFIED'
+    ||proof?.workOrderId!==pin.workOrderId
+    ||proof?.jobId!==pin.jobId
+    ||proof?.cliReceiptSeq!==pin.cliReceiptSeq
+    ||proof?.pullRequestNumber!==pin.pullRequestNumber
+    ||proof?.headSha!==pin.headSha||proof?.mergeSha!==pin.mergeSha
+    ||proof?.artifactPath!==pin.artifactPath
+    ||proof?.artifactBlobSha!==pin.artifactBlobSha
+    ||proof?.review!=='OWNER_WAIVED_NOT_INDEPENDENT_PASS'
+    ||proof?.sourceSha!==pin.sourceSha||proof?.outputHash!==pin.outputHash
+    ||proof?.nv07Active!==false)
     return deny('NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT');
    return Object.freeze({
     ok:true,code:'NV07_S6_DURABLE_RECEIPT_OBSERVED_READ_ONLY',

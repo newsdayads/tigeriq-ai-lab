@@ -60,8 +60,14 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   expect(JSON.stringify(outcome)).not.toMatch(/lease_token|bearer|secret/i);
  });
  it('recognizes genuine applied DB receipt but never activates NV07',async()=>{
-  const applied={seq:'219999',data:{
-   workOrderId:4783,pullRequestNumber:4893,sourceSha:p.sourceSha,outputHash:p.outputHash,
+  const applied={seq:'219999',job_id:p.jobId,resource_id:p.resourceId,data:{
+   accepted:true,code:'NV07_GITHUB_PROPOSAL_EVIDENCE_VERIFIED',
+   workOrderId:4783,jobId:p.jobId,cliReceiptSeq:p.cliReceiptSeq,
+   pullRequestNumber:p.pullRequestNumber,
+   headSha:p.headSha,mergeSha:p.mergeSha,
+   artifactPath:p.artifactPath,artifactBlobSha:p.artifactBlobSha,
+   review:'OWNER_WAIVED_NOT_INDEPENDENT_PASS',
+   sourceSha:p.sourceSha,outputHash:p.outputHash,nv07Active:false,
   }};
   const {db,calls}=fake({applied:[applied]});
   const outcome=await readNv07S6NativePreflight(db);
@@ -71,13 +77,33 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
    eventRef:'tigeriq_events:NV07_GITHUB_PROPOSAL_APPLIED:219999',
   });
   expect(calls).toHaveLength(2);
+  // Reject a superficially matching event which refers to another merged
+  // commit, PR head, artifact blob, historical receipt, job or Core resource.
   for(const bad of [
+   {...applied,job_id:'NV07-4783-CORE-UNRELATED'},
+   {...applied,resource_id:'res:antigravity:wrong-resource'},
    {...applied,data:{...applied.data,pullRequestNumber:1111}},
    {...applied,data:{...applied.data,outputHash:'0'.repeat(64)}},
+   {...applied,data:{...applied.data,headSha:'f'.repeat(40)}},
+   {...applied,data:{...applied.data,mergeSha:'f'.repeat(40)}},
+   {...applied,data:{...applied.data,artifactBlobSha:'f'.repeat(40)}},
+   {...applied,data:{...applied.data,artifactPath:'docs/other.md'}},
+   {...applied,data:{...applied.data,cliReceiptSeq:'214940'}},
+   {...applied,data:{...applied.data,jobId:'NV07-4783-CORE-UNRELATED'}},
+   {...applied,data:{...applied.data,code:'UNVERIFIED'}},
+   {...applied,data:{...applied.data,review:'INDEPENDENT_PASS_FORGED'}},
+   {...applied,data:{...applied.data,accepted:false}},
+   {...applied,data:{...applied.data,nv07Active:true}},
+   {...applied,data:{...applied.data,workOrderId:4780}},
   ]){
-   expect((await readNv07S6NativePreflight(fake({applied:[bad]}).db)).code)
-    .toBe('NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT');
+   const outcome=await readNv07S6NativePreflight(fake({applied:[bad]}).db);
+   expect(outcome).toMatchObject({
+    ok:false,code:'NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT',
+    durableS6Observed:false,liveS6LeaseAuthorized:false,nv07Active:false,
+   });
   }
+  const duplicate=await readNv07S6NativePreflight(fake({applied:[applied,applied]}).db);
+  expect(duplicate.code).toBe('NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT');
  });
  it('rejects busy other resource and never trusts a same-job lease as authorization',async()=>{
   const {db}=fake({resources:[{...freeResource,current_job_id:'another-job'}]});
