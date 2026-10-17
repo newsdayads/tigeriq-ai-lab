@@ -6,7 +6,12 @@ const env = { APIFY_TOKEN:'SYNTHETIC_SECRET_NO_LOG', APIFY_READONLY_EXECUTE:'OWN
 const actor={id:'ACTOR12345',username:'tigeriq',name:'tigeriq-ai-lab',isPublic:false,actorPermissionLevel:'LIMITED_PERMISSIONS'};
 const row=(opts={})=>({id:'RUN1234567',actId:actor.id,status:'SUCCEEDED',startedAt:'2026-10-08T03:00:00.000Z',finishedAt:'2026-10-08T03:00:02.000Z',buildNumber:'0.0.4',defaultKeyValueStoreId:'STORE12345',stats:{computeUnits:0.002},usageTotalUsd:0.0004,...opts});
 const list=(items=[row()],opts={})=>({total:items.length,offset:0,count:items.length,items,...opts});
-const output={schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'};
+const output={
+  schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/',
+  pages:[{url:'https://example.com/',statusCode:200}],
+  metrics:{pagesAudited:1,errorCount:0},errors:[],
+  summary:{titlePresent:true},
+};
 function mock({actorData=actor,runList=list(),run=row(),storeOutput=output,responses={}}={}){
   const calls=[];
   const fetchFn=async (url,opts)=>{
