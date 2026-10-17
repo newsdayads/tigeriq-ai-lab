@@ -32,6 +32,8 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   for(const receipts of [
    [],[canary,canary],[{...canary,data:{...canary.data,outputHash:'f'.repeat(64)}}],
    [{...canary,data:{...canary.data,workOrderId:999}}],
+   [{...canary,seq:'214873'}],
+   [{...canary,seq:'214872 '}],
   ]){
    const {db}=fake({receipts});
    const outcome=await readNv07S6NativePreflight(db);
@@ -104,6 +106,28 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   }
   const duplicate=await readNv07S6NativePreflight(fake({applied:[applied,applied]}).db);
   expect(duplicate.code).toBe('NV07_S6_EXISTING_APPLIED_EVENT_INCONSISTENT');
+ });
+ it('never accepts a noncanonical historic receipt sequence even with matching applied event',async()=>{
+  const alternateReceipt={...canary,seq:'214873'};
+  const matchingApplied={seq:'219999',job_id:p.jobId,resource_id:p.resourceId,data:{
+   accepted:true,code:'NV07_GITHUB_PROPOSAL_EVIDENCE_VERIFIED',
+   workOrderId:4783,jobId:p.jobId,cliReceiptSeq:p.cliReceiptSeq,
+   pullRequestNumber:p.pullRequestNumber,
+   headSha:p.headSha,mergeSha:p.mergeSha,
+   artifactPath:p.artifactPath,artifactBlobSha:p.artifactBlobSha,
+   review:'OWNER_WAIVED_NOT_INDEPENDENT_PASS',
+   sourceSha:p.sourceSha,outputHash:p.outputHash,nv07Active:false,
+  }};
+  for(const applied of [[],[matchingApplied]]){
+   const result=await readNv07S6NativePreflight(fake({
+    receipts:[alternateReceipt],applied,
+   }).db);
+   expect(result).toMatchObject({
+    ok:false,code:'NV07_S6_CANONICAL_CANARY_BINDING_MISMATCH',
+    sourceInputsVerified:false,durableS6Observed:false,
+    liveS6LeaseAuthorized:false,nv07Active:false,
+   });
+  }
  });
  it('rejects busy other resource and never trusts a same-job lease as authorization',async()=>{
   const {db}=fake({resources:[{...freeResource,current_job_id:'another-job'}]});
