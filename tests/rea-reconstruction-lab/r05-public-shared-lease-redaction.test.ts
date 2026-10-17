@@ -40,6 +40,55 @@ it('malformed lease projection fails closed instead of silently hiding occupied 
   expect(()=>projectPublicSharedLeases(invalid)).toThrow('INVALID_SHARED_LEASE_PROJECTION');
 });
 
+it('rejects incomplete and malformed lease identities instead of emitting anonymous public rows',()=>{
+  const fields=[
+    'resource_id','employee_id','lane','work_id','role','lease_until','heartbeat_at'
+  ];
+  expect(()=>projectPublicSharedLeases([{}])).toThrow('INVALID_SHARED_LEASE_PROJECTION');
+  for(const key of fields){
+    const missing:any=lease();
+    delete missing[key];
+    expect(()=>projectPublicSharedLeases([missing]),key+' missing').toThrow('INVALID_SHARED_LEASE_PROJECTION');
+    const empty:any=lease();
+    empty[key]='';
+    expect(()=>projectPublicSharedLeases([empty]),key+' empty').toThrow('INVALID_SHARED_LEASE_PROJECTION');
+    const nullish:any=lease();
+    nullish[key]=null;
+    expect(()=>projectPublicSharedLeases([nullish]),key+' null').toThrow('INVALID_SHARED_LEASE_PROJECTION');
+  }
+  for(const timestamp of ['lease_until','heartbeat_at']){
+    const broken:any=lease();
+    broken[timestamp]='not-a-date';
+    expect(()=>projectPublicSharedLeases([broken])).toThrow('INVALID_SHARED_LEASE_PROJECTION');
+    broken[timestamp]=new Date(NaN);
+    expect(()=>projectPublicSharedLeases([broken])).toThrow('INVALID_SHARED_LEASE_PROJECTION');
+  }
+});
+
+it('accepts native pg Date timestamp shapes without changing the original DB lease',()=>{
+  const row:any=lease();
+  row.lease_until=new Date('2026-10-17T06:00:00Z');
+  row.heartbeat_at=new Date('2026-10-17T05:59:00Z');
+  const output=projectPublicSharedLeases([row]);
+  expect(output).toHaveLength(1);
+  expect(output[0].lease_until).toBe(row.lease_until);
+  expect(output[0].heartbeat_at).toBe(row.heartbeat_at);
+  expect(JSON.stringify(output)).toContain('2026-10-17T06:00:00.000Z');
+  expect(JSON.stringify(output)).not.toContain('PRIVATE_METADATA_SECRET');
+  expect(row.metadata.secret).toBe('PRIVATE_METADATA_SECRET');
+});
+
+it('rejects accessor-backed or inherited lease identity without invoking getters',()=>{
+  let hits=0;
+  const row:any=lease();
+  Object.defineProperty(row,'employee_id',{enumerable:true,get(){hits++;return 'NV02';}});
+  expect(()=>projectPublicSharedLeases([row])).toThrow('INVALID_SHARED_LEASE_PROJECTION');
+  expect(hits).toBe(0);
+  const prototype=lease();
+  const inherited=Object.create(prototype);
+  expect(()=>projectPublicSharedLeases([inherited])).toThrow('INVALID_SHARED_LEASE_PROJECTION');
+});
+
 it('metadata accessor is never dereferenced, even if it would throw or leak credentials',()=>{
  const row:any=lease();
  Object.defineProperty(row,'metadata',{get(){throw new Error('PRIVATE_THROWN_TOKEN')}});
