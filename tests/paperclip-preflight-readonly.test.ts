@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
+// @ts-ignore — Paperclip's existing native .mjs exports do not publish TypeScript declarations.
 import { paperclipReadOnlyPreflight } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip #2054 R01 read-only source contract', () => {
