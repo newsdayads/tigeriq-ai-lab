@@ -828,3 +828,29 @@ test('NV04 prompt contains durable JOB_ID and role-scoped evidence request',()=>
   assert.match(buildCoreUiPrompt(spec),/^JOB_ID=GH-4783$/m);
   assert.match(buildCoreUiPrompt(spec),/STEP_ID=S6a/);
 });
+
+
+test('disabled general NV03 Core lane still recognizes exactly scoped QA-only steps',()=>{
+  const previous=process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+  try{
+    process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED='1';
+    const parent=issue(4456,[
+      '## OWNER CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_WAIT_QA','CURRENT_STATE=BLOCKED_WAIT_QA',
+      'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_PC01_SHELL=true','NO_DIRECT_MAIN=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+      'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+      'STEP_ID=S05a','STEP_WORKER=NV03','STEP_ROLE=QA','STEP_RESOURCE_SCOPE=NEWS_S05A_QA_ONLY',
+      'STEP_INSTRUCTION=Review open PR and verify exact current comment threads',
+      'STEP_ACCEPTANCE=Return issue evidence and findings without source changes',
+      'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4456',
+    ].join('\n'),'[P2] News');
+    assert.equal(parseCoreUiIssue(parent)?.workerId,'NV03');
+    const ordinary=issue(4457,safe(['CAPABILITY=review']),'[P2] Ordinary review');
+    assert.notEqual(parseCoreUiIssue(ordinary)?.stepMode,true); // ordinary review is not owner-scoped
+  } finally {
+    if(previous===undefined)delete process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED;
+    else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=previous;
+  }
+});
