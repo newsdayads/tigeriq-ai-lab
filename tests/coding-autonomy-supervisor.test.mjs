@@ -91,7 +91,7 @@ describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
 
   it('returns true for valid open auto issue with executable true and owner policy auto',async()=>{
     process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
-    const fetchValidMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true OWNER_POLICY=AUTO'})});
+    const fetchValidMock=async()=>({ok:true,json:async()=>({state:'open',body:'TIGERIQ_EXECUTABLE=true\nOWNER_POLICY=AUTO\nPRIORITY=P2\nAUTO_QUEUE=INCLUDED'})});
     expect(await githubIssueIsOpen(123,fetchValidMock)).toBe(true);
   });
 
