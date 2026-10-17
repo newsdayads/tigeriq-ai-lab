@@ -88,7 +88,7 @@ test('NV02 routing uses current first H2 and cannot revive archived P1 executabl
   '## HISTORY (STALE)',
   'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true',
   'AUTO_QUEUE=INCLUDED','RESOURCE_SCOPE=NEWS_OLD',
- ].join('\\n')};
+ ].join('\n')};
  const meta=nv02WorkOrderMeta(issue);
  assert.equal(meta.PRIORITY,'P2');
  assert.equal(meta.TIGERIQ_EXECUTABLE,'false');
@@ -103,7 +103,7 @@ test('intro-only first H2 fails closed; metadata in old H2 cannot silently autho
   '## LỊCH SỬ',
   'PRIORITY=P2','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true',
   'AUTO_QUEUE=INCLUDED','CAPABILITY=general','RESOURCE_SCOPE=OLD',
- ].join('\\n')};
+ ].join('\n')};
  const meta=nv02WorkOrderMeta(issue);
  assert.equal(meta.TIGERIQ_EXECUTABLE,undefined);
  assert.equal(selectNv02WorkOrder([issue]),null);
