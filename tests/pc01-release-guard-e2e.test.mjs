@@ -357,17 +357,20 @@ it('exact Owner-approved #4767 Coding Manager intake pair is atomic, content-bou
   expect(impactForPc01ReleaseFiles([...v6,...coding,...bundle,...guards])).toEqual(['coding','core','updater']);
 });
 
-it.skipIf(!pwshPresent)('PowerShell guard validates the two exact Git blobs for #4767 and rejects omission or mismatches',()=>{
+it.skipIf(!pwshPresent)('PowerShell guard validates the two exact Git blobs for #4767 and rejects omission or mismatches',async()=>{
   const root=fileURLToPath(new URL('../',import.meta.url));
   const targetSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   const paths=Object.keys(OWNER_CODING_INTAKE_APPROVED_BLOBS);
   const args={approval:{...template(),targetSha},targetSha,controlRepo:root,paths};
   const matchesHistoricBlobs=paths.every(path=>execFileSync('git',['rev-parse',targetSha+':'+path],{cwd:root,encoding:'utf8'}).trim()===OWNER_CODING_INTAKE_APPROVED_BLOBS[path]);
-  expect(run(args).reason).toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
-  expect(run({...args,paths:paths.slice(0,1)}).reason).toBe(matchesHistoricBlobs?'RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
-  expect(run({...args,paths:[...paths,'tests/github-coding-intake-copy.test.mjs']}).reason).toBe(matchesHistoricBlobs?'RELEASE_PATH_OUT_OF_SCOPE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
-  expect(run({...args,impact:'@{core=$false;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}'}).reason).toBe('RELEASE_PATH_COMPONENT_MISMATCH');
-});
+  // Four real PowerShell processes can exceed Vitest's 5s default on a busy
+  // hosted runner. Keep each independent fail-closed assertion and let the
+  // runner observe the test deadline while each bounded child executes.
+  expect((await runAsync(args)).reason).toBe(matchesHistoricBlobs?'LOCAL_RELEASE_APPROVAL_PRESENT':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
+  expect((await runAsync({...args,paths:paths.slice(0,1)})).reason).toBe(matchesHistoricBlobs?'RELEASE_CODING_INTAKE_BUNDLE_INCOMPLETE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
+  expect((await runAsync({...args,paths:[...paths,'tests/github-coding-intake-copy.test.mjs']})).reason).toBe(matchesHistoricBlobs?'RELEASE_PATH_OUT_OF_SCOPE':'RELEASE_CODING_INTAKE_CONTENT_MISMATCH');
+  expect((await runAsync({...args,impact:'@{core=$false;web=$false;coding=$false;openclaw=$false;updater=$true;liveBridge=$false}'})).reason).toBe('RELEASE_PATH_COMPONENT_MISMATCH');
+},30000);
 
 it('the immutable Owner V6 thirteen-blob package including Loader and sorting tests combines safely with Coding Lane two blobs for one signed main release',()=>{
   const ui=Object.entries(OWNER_V6_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
