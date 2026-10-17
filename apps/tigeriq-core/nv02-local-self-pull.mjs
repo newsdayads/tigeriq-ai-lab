@@ -61,19 +61,19 @@ export function nv02PrioritySummary(issue) {
   return m ? m[1].toUpperCase() : '';
 }
 function currentAuthoritySection(body) {
-  const text = String(body || '');
-  const trimmed = text.trimStart();
-  // Every first H2 section is the current authority. Archived H2 sections
-  // may contain stale executable/priority/lease flags; never scan them.
-  // An introductory section without machine fields must fail closed.
-  if (!/^##\s+/.test(trimmed)) return text;
-  const firstBreak = trimmed.indexOf('\n');
-  if (firstBreak < 0) return trimmed;
-  const rest = trimmed.slice(firstBreak + 1);
-  const nextHeading = rest.search(/^##\s+/m);
-  return nextHeading < 0 ? trimmed : trimmed.slice(0, firstBreak + 1 + nextHeading);
+  const text = String(body || '').trimStart();
+  // Authoritative metadata is always in the first contract section. Never let
+  // an archived Markdown section override the current queue/lease authority.
+  const firstH2 = text.match(/^##[ \t]+[^\r\n]+/m);
+  const nextH2 = firstH2?.index === 0
+    ? text.slice(firstH2[0].length).match(/^##[ \t]+[^\r\n]+/m)
+    : null;
+  const headingEnd = firstH2?.index === 0
+    ? (nextH2 ? firstH2[0].length + nextH2.index : text.length)
+    : (firstH2?.index ?? text.length);
+  const divider = text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);
+  return text.slice(0, Math.min(headingEnd, divider?.index ?? text.length));
 }
-
 export function nv02WorkOrderMeta(issue) { return fields(currentAuthoritySection(issue?.body)); }
 
 function nv02RearmEpochMs(issue) {
