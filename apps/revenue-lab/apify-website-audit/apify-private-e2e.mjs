@@ -242,8 +242,22 @@ export async function runPrivateApifyE2E({
   const buildCost = usageCost(finalizedBuild, 'build');
   const buildComputeUnits = computeUnits(finalizedBuild, 'build');
 
+  // Apify run 'build' accepts a tag OR immutable build number; never use a
+  // mutable tag after creating the build. A post-POST buildId check alone is
+  // too late: a different, potentially charged Actor run could have started.
+  const pinnedBuildNumber = finalizedBuild?.buildNumber;
+  if (typeof pinnedBuildNumber !== 'string' ||
+      !/^([0-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])\.[1-9][0-9]{0,4}$/.test(pinnedBuildNumber)) {
+    throw new ApifyE2EError('BUILD_NUMBER_INVALID',
+      'Finalized Actor build has no canonical immutable build number; refusing run POST.');
+  }
+  if (build?.buildNumber != null && build.buildNumber !== pinnedBuildNumber) {
+    throw new ApifyE2EError('BUILD_NUMBER_MISMATCH',
+      'Initial and finalized Actor build numbers differ; refusing run POST.');
+  }
+
   const runParams = new URLSearchParams({
-    build: config.buildTag,
+    build: pinnedBuildNumber,
     waitForFinish: '60',
     timeout: '60',
     memory: '256',
@@ -296,10 +310,26 @@ export async function runPrivateApifyE2E({
     { token: config.token },
   );
 
-  // HTTP 200 only proves that OUTPUT was retrieved, not that the audit passed.
+  // HTTP 200 + success alone does not prove the paid run audited *our*
+  // requested target. Bind OUTPUT to the fixed E2E input and require the
+  // minimum real audit payload before writing a product/cost receipt.
+  const expectedAuditUrl = new URL(runInput.url).toString();
   if (!output || typeof output !== 'object' || Array.isArray(output) ||
       output.schemaVersion !== '1.0' || output.status !== 'success' ||
-      Boolean(output.error)) {
+      Boolean(output.error) || output.requestedUrl !== expectedAuditUrl ||
+      !Array.isArray(output.pages) || output.pages.length === 0 ||
+      output.pages.length > runInput.maxPages ||
+      // This private smoke harness submits exactly one fixed page. A
+      // "success" record for any other page is not evidence for that input.
+      // Fail closed instead of crediting unrelated/redirected output.
+      !output.pages.every(page => page?.url === expectedAuditUrl &&
+        Number.isInteger(page.statusCode) &&
+        page.statusCode >= 200 && page.statusCode < 300) ||
+      !output.metrics || output.metrics.pagesAudited !== output.pages.length ||
+      output.metrics.errorCount !== 0 ||
+      !Array.isArray(output.errors) || output.errors.length !== 0 ||
+      !output.summary || typeof output.summary !== 'object' ||
+      Array.isArray(output.summary)) {
     throw new ApifyE2EError('OUTPUT_INVALID',
       'Authenticated OUTPUT is not a successful Website Audit schema 1.0 result.');
   }
@@ -315,6 +345,7 @@ export async function runPrivateApifyE2E({
     },
     build: {
       id: build.id ?? null,
+      buildNumber: pinnedBuildNumber,
       status: build.status,
       computeUnits: buildComputeUnits,
       usageTotalUsd: buildCost,
@@ -322,13 +353,16 @@ export async function runPrivateApifyE2E({
     run: {
       id: run.id ?? null,
       buildId: finalizedRun.buildId,
+      requestedBuildNumber: pinnedBuildNumber,
       status: run.status,
       computeUnits: runComputeUnits,
       usageTotalUsd: runCost,
     },
     output: {
-      status: output?.status ?? null,
-      schemaVersion: output?.schemaVersion ?? null,
+      status: output.status,
+      schemaVersion: output.schemaVersion,
+      requestedUrl: output.requestedUrl,
+      pagesAudited: output.pages.length,
     },
     cost: {
       buildUsageTotalUsd: buildCost,

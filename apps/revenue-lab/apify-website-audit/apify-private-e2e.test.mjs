@@ -13,6 +13,18 @@ const env = {
 };
 const noSleep = async () => {};
 
+// Mirrors the genuine auditWebsite() schema from audit-engine.mjs, not just
+// a synthetic "success" flag. No paid Actor or network involved.
+const validAuditOutput = () => ({
+  schemaVersion: '1.0',
+  status: 'success',
+  requestedUrl: 'https://example.com/',
+  metrics: { pagesAudited: 1, errorCount: 0 },
+  pages: [{ url: 'https://example.com/', statusCode: 200 }],
+  errors: [],
+  summary: { titlePresent: true },
+});
+
 function response(status, body) {
   return new Response(JSON.stringify(body), {
     status,
@@ -26,10 +38,10 @@ function successFetch() {
     const u = String(url);
     calls.push({ url: u, options });
     if (u.includes('/actors/actor123/builds?')) {
-      return response(201, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: null } });
+      return response(201, { data: { id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7', usageTotalUsd: null } });
     }
     if (u.endsWith('/actor-builds/build1')) {
-      return response(200, { data: { id: 'build1', status: 'SUCCEEDED', stats: { computeUnits: 0.01 }, usageTotalUsd: 0.002 } });
+      return response(200, { data: { id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7', stats: { computeUnits: 0.01 }, usageTotalUsd: 0.002 } });
     }
     if (u.includes('/actors/actor123/runs?')) {
       return response(201, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', usageTotalUsd: null } });
@@ -38,7 +50,7 @@ function successFetch() {
       return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', stats: { computeUnits: 0.02 }, usageTotalUsd: 0.004 } });
     }
     if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) {
-      return response(200, { schemaVersion: '1.0', status: 'success' });
+      return response(200, validAuditOutput());
     }
     throw new Error('unexpected URL ' + u);
   };
@@ -60,8 +72,12 @@ test('success path uses finalized build/run usage after settle refetch', async (
   assert.deepEqual(sleeps, [10000, 10000]);
   assert.equal(evidence.build.computeUnits, 0.01);
   assert.equal(evidence.run.computeUnits, 0.02);
+  assert.equal(evidence.build.buildNumber, '0.1.7');
+  assert.equal(evidence.run.requestedBuildNumber, '0.1.7');
   assert.equal(evidence.cost.totalPlatformCostUSD, 0.006);
   assert.equal(evidence.output.schemaVersion, '1.0');
+  assert.equal(evidence.output.requestedUrl, 'https://example.com/');
+  assert.equal(evidence.output.pagesAudited, 1);
   assert.ok(written.includes('"totalPlatformCostUSD": 0.006'));
   assert.ok(!written.includes(env.APIFY_TOKEN));
   assert.ok(calls.some(call => call.url.endsWith('/actor-builds/build1')));
@@ -70,6 +86,8 @@ test('success path uses finalized build/run usage after settle refetch', async (
   const actorRunPost = calls.find(call => call.url.includes('/actors/actor123/runs?'));
   assert.ok(actorRunPost, 'must submit a run request with a bounded cost envelope');
   assert.equal(new URL(actorRunPost.url).searchParams.get('maxTotalChargeUsd'), '0.05');
+  assert.equal(new URL(actorRunPost.url).searchParams.get('build'), '0.1.7');
+  assert.notEqual(new URL(actorRunPost.url).searchParams.get('build'), env.APIFY_BUILD_TAG);
   for (const call of calls) {
     assert.ok(!call.url.includes(env.APIFY_TOKEN));
     assert.equal(call.options.headers.authorization, 'Bearer ' + env.APIFY_TOKEN);
@@ -83,6 +101,20 @@ test('R08 invalid OUTPUT must never become accepted E2E evidence', async () => {
     { schemaVersion: '1.0', status: 'error' },
     { schemaVersion: '1.0', status: 'success', error: 'not-empty' },
     null,
+    // Prior code accepted a success-only JSON without any actual audit.
+    { schemaVersion: '1.0', status: 'success' },
+    { ...validAuditOutput(), requestedUrl: 'https://other.example/' },
+    { ...validAuditOutput(), requestedUrl: undefined },
+    // Check the returned page, not merely the claimed requestedUrl field.
+    { ...validAuditOutput(), pages: [{ url: 'https://other.example/', statusCode: 200 }] },
+    { ...validAuditOutput(), pages: [{ url: 'https://example.com/other', statusCode: 200 }] },
+    { ...validAuditOutput(), pages: [] },
+    { ...validAuditOutput(), metrics: { pagesAudited: 0, errorCount: 0 } },
+    { ...validAuditOutput(), metrics: { pagesAudited: 2, errorCount: 0 } },
+    { ...validAuditOutput(), errors: [{ code: 'AUDIT_FAILURE' }] },
+    { ...validAuditOutput(), metrics: { pagesAudited: 1, errorCount: 1 } },
+    { ...validAuditOutput(), summary: null },
+    { ...validAuditOutput(), pages: [{ url: 'https://example.com/', statusCode: 500 }] },
   ]) {
     const normal = successFetch();
     const fetchFn = async (url, options) =>
@@ -259,7 +291,7 @@ test('run terminal failure stops before finalized run/output', async () => {
   const fetchFn = async url => {
     const u = String(url);
     if (u.includes('/actors/actor123/builds?')) return response(201, { data: { id: 'build1', status: 'SUCCEEDED' } });
-    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
+    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7', usageTotalUsd: 0.001 } });
     if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'FAILED', usageTotalUsd: 0.002 } });
     throw new Error('unexpected URL ' + u);
   };
@@ -273,7 +305,7 @@ test('finalized run usage is required after settle', async () => {
   const fetchFn = async url => {
     const u = String(url);
     if (u.includes('/actors/actor123/builds?')) return response(201, { data: { id: 'build1', status: 'SUCCEEDED' } });
-    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
+    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7', usageTotalUsd: 0.001 } });
     if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     throw new Error('should not continue');
@@ -294,14 +326,14 @@ test('bounded polling still supports transitional build/run', async () => {
       buildPoll += 1;
       return response(200, { data: { id: 'build1', status: 'SUCCEEDED' } });
     }
-    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.001 } });
+    if (u.endsWith('/actor-builds/build1')) return response(200, { data: { id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7', usageTotalUsd: 0.001 } });
     if (u.includes('/actors/actor123/runs?')) return response(201, { data: { id: 'run1', buildId: 'build1', status: 'RUNNING' } });
     if (u.includes('/actor-runs/run1?waitForFinish=60')) {
       runPoll += 1;
       return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED' } });
     }
     if (u.endsWith('/actor-runs/run1')) return response(200, { data: { id: 'run1', buildId: 'build1', status: 'SUCCEEDED', usageTotalUsd: 0.002 } });
-    if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) return response(200, { status: 'success', schemaVersion: '1.0' });
+    if (u.endsWith('/actor-runs/run1/key-value-store/records/OUTPUT')) return response(200, validAuditOutput());
     throw new Error('unexpected URL ' + u);
   };
   const evidence = await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
@@ -424,7 +456,7 @@ async function assertR08ResourceIdFenceCases() {
       if(u.includes('/actors/actor123/builds?'))
         return response(201,{data:{id:'build1',status:'SUCCEEDED'}});
       if(u.endsWith('/actor-builds/build1'))
-        return response(200,{data:{id:'build1',status:'SUCCEEDED',usageTotalUsd:0}});
+        return response(200,{data:{id:'build1',status:'SUCCEEDED',buildNumber:'0.1.7',usageTotalUsd:0}});
       if(u.includes('/actors/actor123/runs?'))
         return response(201,{data:{id:'run1',buildId: 'build1', status:'RUNNING'}});
       if(u.includes('/actor-runs/run1?waitForFinish=60'))
@@ -525,7 +557,52 @@ async function assertR08BuildIdAffinityCases() {
     assert.equal(normal.calls.some(c => c.url.includes('/records/OUTPUT')), false);
   });
 
-  assert.equal(cases.length, 5, 'all five distinct build-affinity checks must execute');
+
+  // The POST must pin an immutable build number before any potentially
+  // chargeable run; existing run.buildId fences run only after the POST.
+  check('missing finalized build number rejects before run POST', async () => {
+    const normal = successFetch();
+    const fetchFn = (url, options) => String(url).endsWith('/actor-builds/build1')
+      ? response(200, { data: { id: 'build1', status: 'SUCCEEDED',
+          stats: { computeUnits: 0.01 }, usageTotalUsd: 0.002 } })
+      : normal.fetchFn(url, options);
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      e => e instanceof ApifyE2EError && e.code === 'BUILD_NUMBER_INVALID',
+    );
+    assert.equal(normal.calls.some(c => c.url.includes('/runs?')), false);
+  });
+
+  check('noncanonical build number and query injection reject before run POST', async () => {
+    for (const candidate of ['latest', '0.1', '0.1.0', '00.1.7', '0.1.7&memory=8192', null]) {
+      const normal = successFetch();
+      const fetchFn = (url, options) => String(url).endsWith('/actor-builds/build1')
+        ? response(200, { data: { id: 'build1', status: 'SUCCEEDED',
+            buildNumber: candidate, usageTotalUsd: 0.002 } })
+        : normal.fetchFn(url, options);
+      await assert.rejects(
+        () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+        e => e instanceof ApifyE2EError && e.code === 'BUILD_NUMBER_INVALID',
+        String(candidate),
+      );
+      assert.equal(normal.calls.some(c => c.url.includes('/runs?')), false);
+    }
+  });
+
+  check('initial and finalized build number mismatch rejects before run POST', async () => {
+    const normal = successFetch();
+    const fetchFn = (url, options) => String(url).endsWith('/actor-builds/build1')
+      ? response(200, { data: { id: 'build1', status: 'SUCCEEDED',
+          buildNumber: '0.1.8', usageTotalUsd: 0.002 } })
+      : normal.fetchFn(url, options);
+    await assert.rejects(
+      () => runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep }),
+      e => e instanceof ApifyE2EError && e.code === 'BUILD_NUMBER_MISMATCH',
+    );
+    assert.equal(normal.calls.some(c => c.url.includes('/runs?')), false);
+  });
+
+  assert.equal(cases.length, 8, 'all eight distinct build-affinity checks must execute');
   for (const entry of cases) {
     try {
       await entry.run();
