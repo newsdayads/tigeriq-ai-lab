@@ -108,3 +108,18 @@ test('intro-only first H2 fails closed; metadata in old H2 cannot silently autho
  assert.equal(meta.TIGERIQ_EXECUTABLE,undefined);
  assert.equal(selectNv02WorkOrder([issue]),null);
 });
+
+
+test('conflicting duplicate current metadata must not promote a worker',()=>{
+ const issue={number:9017,title:'[P2] conflicting contract',state:'open',body:[
+  '## OWNER — CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO',
+  'TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_REVIEW',
+  'RESOURCE_SCOPE=SCOPED_CONTRACT',
+  'TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+  '## HISTORY','TIGERIQ_EXECUTABLE=true',
+ ].join('\n')};
+ const meta=nv02WorkOrderMeta(issue);
+ assert.equal(meta.METADATA_CONFLICT,'true');
+ assert.equal(meta.TIGERIQ_EXECUTABLE,'false');
+ assert.equal(selectNv02WorkOrder([issue]),null);
+});
