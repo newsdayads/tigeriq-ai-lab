@@ -1649,3 +1649,30 @@ describe('#4532 isolated Cline benchmark preflight',()=>{
     expect(result.installedLocalModels).toEqual([]);
   });
 });
+
+
+describe('Paperclip #2054 R01 is a non-mutating source path', () => {
+  it('does not create the lab root or write broker requests during preflight', async () => {
+    const source = await readFile(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    const fn = (start, end) => {
+      const a = source.indexOf(start);
+      const b = source.indexOf(end, a + start.length);
+      expect(a).toBeGreaterThan(-1);
+      expect(b).toBeGreaterThan(a);
+      return source.slice(a, b);
+    };
+    const root = fn('async function ensureRootIntegrity(', 'async function ensureContainedDirectory(');
+    expect(root).toContain('if (create) await fs.mkdir(PAPERCLIP_LAB_ROOT');
+    const status = fn('async function brokerStatus()', 'export function paperclipLabBrokerOperationForDockerArgs(');
+    expect(status).toContain('await fs.lstat(safeHeartbeat)');
+    expect(status).not.toContain('assertSafeFileTarget(');
+    expect(status).not.toContain('fs.mkdir(');
+    const transport = fn('async function resolveDockerTransport(', 'function pathInsideLab(');
+    expect(transport).toContain('if (!allowBrokerProbe) return');
+    const preflight = fn('async function preflight(', 'function redactPaperclipDiagnosticText(');
+    expect(preflight).toContain('await ensureRootIntegrity({ create: false })');
+    expect(preflight).toContain('allowBrokerProbe: false');
+    expect(preflight).not.toContain('fs.mkdir(');
+    expect(preflight).not.toContain('runBrokerRequest(');
+  });
+});
