@@ -71,15 +71,20 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/rea-4780"
-          docker pull node:24-bookworm-slim
-          docker image inspect node:24-bookworm-slim --format '{{index .RepoDigests 0}}' > evidence/runtime-container-digest.txt
+          # REA requires a real procps-compatible ps for owned child-process inspection.
+          # Add it at isolated image-build time; the analysis container itself has NO network.
+          docker build --pull -t tigeriq-rea-4780-runtime:1 - <<'DOCKERFILE'
+          FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+          RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+          docker image inspect tigeriq-rea-4780-runtime:1 --format '{{.Id}}' > evidence/runtime-container-digest.txt
           run_isolated() {
             docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
               --memory 1536m --cpus 1 --pids-limit 128 --user 65534:65534 \
               --tmpfs /tmp:rw,noexec,nosuid,size=256m \
               --mount "type=bind,source=$PWD,target=/app,readonly" \
               --workdir /app -e HOME=/tmp \
-              node:24-bookworm-slim node /app/node_modules/rea-agents/scripts/rea.mjs "$@"
+              tigeriq-rea-4780-runtime:1 node /app/node_modules/rea-agents/scripts/rea.mjs "$@"
           }
           run_isolated --help > evidence/rea-help.txt 2>&1
           printf 'REA_HELP_EXIT=0\n' >> evidence/rea-install-status.txt
@@ -89,7 +94,7 @@ jobs:
           import fs from 'node:fs';
           const raw=fs.readFileSync('evidence/rea-analysis.json','utf8');
           const json=JSON.parse(raw);
-          if(typeof json!=='object'||json===null||Array.isArray(json)) process.exit(24);
+          if(typeof json!=='object'||json===null||Array.isArray(json)||json.error||json.code||!json.normalized_result?.graph) {console.error('MISSING_SUCCESSFUL_REA_GRAPH');process.exit(24)}
           fs.writeFileSync('evidence/rea-analysis-verified.json',JSON.stringify({
             realCliExecuted:true, target:'projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs',
             topLevelKeys:Object.keys(json),outputBytes:Buffer.byteLength(raw),
