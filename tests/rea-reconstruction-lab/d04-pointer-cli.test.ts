@@ -125,11 +125,16 @@ describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
     expect(result.outcome).toBe('error');
     expect(result.message).toContain('Named JSON array property forbidden.');
     expect(arr.auditMarker).toBe('preserve');
+    const dangerous:any=[1];
+    dangerous['4294967295']='not-a-real-array-index';
+    const high=outcome({op:'get',document:{arr:dangerous},pointer:'/arr'});
+    expect(high.outcome).toBe('error');
+    expect(high.message).toContain('Named JSON array property forbidden.');
   });
   it('continues accepting dense arrays and ordinary JSONL input',()=>{
     expect(outcome({id:'dense',op:'get',document:{arr:[null,7]},pointer:'/arr/1'}))
       .toMatchObject({id:'dense',outcome:'ok',returned:7});
-    const p=cli('{"id":"dense","op":"get","document":{"arr":[null,7]},"pointer":"/arr/1"}\\n'.replace('\\n','\n'));
+    const p=cli(JSON.stringify({id:'dense',op:'get',document:{arr:[null,7]},pointer:'/arr/1'})+'\n');
     expect(p.status,p.stderr).toBe(0);
     expect(JSON.parse(p.stdout.trim())).toMatchObject({id:'dense',outcome:'ok',returned:7});
   });
