@@ -70,6 +70,22 @@ describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
     expect(new Set(cases.map(c=>c.id)).size).toBe(28);
     for(const c of cases) expect(clean(outcome(c)),c.id).toEqual(clean(originalOutcome(c)));
   });
+  it('matches original MIT distinction: [] is undefined, while string root and one-element array are root',()=>{
+    const fixtures:any[]=[
+      {id:'K29_EMPTY_ARRAY_POINTER',op:'get',document:{keep:'root'},pointer:[]},
+      {id:'K30_EMPTY_STRING_ROOT',op:'get',document:{keep:'root'},pointer:''},
+      {id:'K31_ARRAY_ROOT_POINTER',op:'get',document:{keep:'root'},pointer:['']},
+    ];
+    const expected=fixtures.map(c=>clean(originalOutcome(c)));
+    expect(expected[0]).toMatchObject({id:'K29_EMPTY_ARRAY_POINTER',outcome:'ok',returned:{$type:'undefined'}});
+    expect(expected[1].returned).toEqual({keep:'root'});
+    expect(expected[2].returned).toEqual({keep:'root'});
+    expect(get(fixtures[0].document,[])).toBeUndefined();
+    expect(fixtures.map(c=>clean(outcome(c)))).toEqual(expected);
+    const native=cli(fixtures.map(c=>JSON.stringify(c)).join('\n')+'\n');
+    expect(native.status,native.stderr).toBe(0);
+    expect(native.stdout.trim().split('\n').map(line=>JSON.parse(line))).toEqual(expected);
+  });
   it('executes all 28 cases via native CLI JSONL process',()=>{
     const p=cli(cases.map(c=>JSON.stringify(c)).join('\n')+'\n');
     expect(p.status,p.stderr).toBe(0);
