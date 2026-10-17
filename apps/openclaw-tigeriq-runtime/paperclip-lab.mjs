@@ -456,24 +456,29 @@ async function runDocker(transport, args, options = {}) {
   throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_TRANSPORT_INVALID');
 }
 
-async function resolveDockerTransport(signal = null, { allowBrokerProbe = true } = {}) {
-  const windows = await runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
+export async function resolveDockerTransport(signal = null, {
+  allowBrokerProbe = true,
+  runVersionCommand = runFixed,
+  readBrokerStatus = brokerStatus,
+  probeViaBroker = runDockerViaBroker,
+} = {}) {
+  const windows = await runVersionCommand('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WINDOWS, version: windows.stdout.trim(), error: null };
   }
-  const wsl = await runFixed('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal })
+  const wsl = await runVersionCommand('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (wsl.exitCode === 0 && !wsl.timedOut && wsl.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WSL, version: wsl.stdout.trim(), error: null };
   }
-  const broker = await brokerStatus();
+  const broker = await readBrokerStatus();
   if (broker.ready) {
     // R01 cannot write a broker request file merely to check Docker readiness.
     if (!allowBrokerProbe) return {
       kind: null, version: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT', broker,
     };
-    const bridged = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
+    const bridged = await probeViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
       .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
     if (bridged.exitCode === 0 && !bridged.timedOut && bridged.stdout.trim()) {
       return { kind: DOCKER_TRANSPORT_BROKER, version: bridged.stdout.trim(), error: null, broker };
