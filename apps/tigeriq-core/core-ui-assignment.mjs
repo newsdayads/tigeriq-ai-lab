@@ -175,8 +175,8 @@ export function parseCoreUiReadOnlyStep(issue) {
   const active=currentCoreUiHeader(issue.body);
   if(value(active,'STEP_AUTO_DISPATCH')!=='true'||value(active,'STEP_STATUS')!=='READY'
     ||value(active,'STEP_AUTHORITY')!=='OWNER_READ_ONLY'||value(active,'OWNER_POLICY')!=='AUTO')return null;
-  const priority=String(value(active,'PRIORITY')||String(issue.title||'').match(/\\[(P[0-5])\\]/)?.[1]||'').toUpperCase();
-  if(!/^P[1-5]$/.test(priority)||/\\[P0\\]/i.test(String(issue.title||'')))return null;
+  const priority=String(value(active,'PRIORITY')||String(issue.title||'').match(/\[(P[0-5])\]/)?.[1]||'').toUpperCase();
+  if(!/^P[1-5]$/.test(priority)||/\[P0\]/i.test(String(issue.title||'')))return null;
   if(['OWNER_HOLD','OWNER_GATE','MANUAL_GATE','OWNER_APPROVAL_REQUIRED','REVIEW_ONLY_HOLD'].some(k=>yes(active,k)))return null;
   if(/^(?:DONE|COMPLETED|CANCELLED|SUPERSEDED)(?:_|$)/.test(value(active,'CURRENT_STATE').toUpperCase()))return null;
   if([...REQUIRED,'NO_CODE_CHANGE','NO_SECURITY_BOUNDARY_CHANGE'].some(k=>!yes(active,k))||yes(active,'AUTONOMOUS_CODE'))return null;
@@ -188,16 +188,16 @@ export function parseCoreUiReadOnlyStep(issue) {
     evidence=value(active,'STEP_EVIDENCE_DESTINATION').trim();
   if(!/^[A-Za-z][A-Za-z0-9_-]{1,31}$/.test(stepId)||instruction.length<12||acceptance.length<12
     ||!/^[A-Z][A-Z0-9_]{5,100}$/.test(scope)
-    ||!/^https:\/\/github\\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull)\/\\d+/.test(evidence))return null;
-  if(/^APP_CHROME_/i.test(scope)||/\\[APP-CHROME\\]/i.test(String(issue.title||'')))return null;
+    ||!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull)\/\d+/.test(evidence))return null;
+  if(/^APP_CHROME_/i.test(scope)||/\[APP-CHROME\]/i.test(String(issue.title||'')))return null;
   const targetRepository=resolveCoreUiTargetRepository(active);
   if(!targetRepository.valid)return null;
   const context=['STEP_ID='+stepId,'STEP_ROLE='+role,'STEP_STATUS=READY','STEP_INSTRUCTION='+instruction,
     'STEP_ACCEPTANCE='+acceptance,'STEP_EVIDENCE_DESTINATION='+evidence,
     'TARGET_REPOSITORY='+targetRepository.fullName,'TARGET_PR='+value(active,'TARGET_PR'),
-    'TARGET_HEAD='+value(active,'TARGET_HEAD'),'NO_CODE_CHANGE=true','MUTATION_ALLOWED=false'].join('\\n');
+    'TARGET_HEAD='+value(active,'TARGET_HEAD'),'NO_CODE_CHANGE=true','MUTATION_ALLOWED=false'].join('\n');
   const revision=createHash('sha256').update([String(issue.number),stepId,workerId,role,scope,instruction,
-    acceptance,evidence,value(active,'TARGET_PR'),value(active,'TARGET_HEAD')].join('\\n')).digest('hex').slice(0,12);
+    acceptance,evidence,value(active,'TARGET_PR'),value(active,'TARGET_HEAD')].join('\n')).digest('hex').slice(0,12);
   const capability=role==='QA'||role==='REVIEW'?'review':role==='SECOND_OPINION'?'second_opinion':'research';
   return {number:Number(issue.number),jobId:'GH-'+Number(issue.number),workItemId:'CORE-UI-GH-'+Number(issue.number),
     sourceRevision:revision,title:clean(issue.title),url:String(issue.html_url||''),priority,sourcePriority:priority,
