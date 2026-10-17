@@ -49,16 +49,18 @@ async function releaseLocalClaimLock(lockKey) {
   await unlink(lock.path).catch(() => {});
 }
 
-function fields(body) {
+function fields(body, { strict = false } = {}) {
   const result = {};
   for (const line of String(body || '').split(/\r?\n/)) {
     const m = line.trim().match(/^([A-Z][A-Z0-9_]{1,80})\s*=\s*(.+)$/i);
     if (!m) continue;
     const key=m[1].toUpperCase(), value=m[2].trim();
-    if (Object.hasOwn(result,key)) {
+    if (Object.hasOwn(result,key) && strict) {
       if (result[key]!==value) result.METADATA_CONFLICT='true';
       continue;
     }
+    // Existing no-heading V1 fixtures/contracts use last-write-wins within
+    // their active preamble. H2-headed canonical V2 contracts are strict.
     result[key]=value;
   }
   return result;
@@ -82,7 +84,10 @@ function currentAuthoritySection(body) {
   const divider = text.match(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m);
   return text.slice(0, Math.min(headingEnd, divider?.index ?? text.length));
 }
-export function nv02WorkOrderMeta(issue) { return fields(currentAuthoritySection(issue?.body)); }
+export function nv02WorkOrderMeta(issue) {
+  const body=String(issue?.body||'').trimStart();
+  return fields(currentAuthoritySection(body), { strict: /^##[ \t]+/.test(body) });
+}
 
 function nv02RearmEpochMs(issue) {
   const meta = nv02WorkOrderMeta(issue);
