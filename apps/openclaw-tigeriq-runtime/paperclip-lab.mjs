@@ -292,7 +292,12 @@ function parseBrokerJson(text) {
 
 async function brokerStatus() {
   try {
-    const safeHeartbeat = await assertSafeFileTarget(BROKER_HEARTBEAT_FILE);
+    // Status reads must never create the broker directory or its parent.
+    const safeHeartbeat = resolvePaperclipLabPath(BROKER_HEARTBEAT_FILE);
+    const stat = await fs.lstat(safeHeartbeat);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_BROKER_HEARTBEAT_UNSAFE');
+    const real = normalizeWinPath(await fs.realpath(safeHeartbeat));
+    if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     const heartbeat = parseBrokerJson(await fs.readFile(safeHeartbeat, 'utf8'));
     const atMs = Date.parse(String(heartbeat?.at || ''));
     const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
@@ -451,7 +456,7 @@ async function runDocker(transport, args, options = {}) {
   throw new Error('TIGERIQ_PAPERCLIP_LAB_DOCKER_TRANSPORT_INVALID');
 }
 
-async function resolveDockerTransport(signal = null) {
+async function resolveDockerTransport(signal = null, { allowBrokerProbe = true } = {}) {
   const windows = await runFixed('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
@@ -464,6 +469,10 @@ async function resolveDockerTransport(signal = null) {
   }
   const broker = await brokerStatus();
   if (broker.ready) {
+    // R01 cannot write a broker request file merely to check Docker readiness.
+    if (!allowBrokerProbe) return {
+      kind: null, version: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT', broker,
+    };
     const bridged = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
       .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
     if (bridged.exitCode === 0 && !bridged.timedOut && bridged.stdout.trim()) {
@@ -485,8 +494,9 @@ function pathInsideLab(value) {
   return candidate === base || candidate.startsWith(base + '\\');
 }
 
-async function ensureRootIntegrity() {
-  await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
+async function ensureRootIntegrity({ create = true } = {}) {
+  // Read-only preflight must not materialize a missing root.
+  if (create) await fs.mkdir(PAPERCLIP_LAB_ROOT, { recursive: true });
   const stat = await fs.lstat(PAPERCLIP_LAB_ROOT);
   if (stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_ROOT_SYMLINK_BLOCKED');
   const real = normalizeWinPath(await fs.realpath(PAPERCLIP_LAB_ROOT));
@@ -723,8 +733,10 @@ async function httpHealth(signal = null) {
 
 async function preflight(signal = null) {
   throwIfAborted(signal);
-  await ensureRootIntegrity();
-  const [docker, port] = await Promise.all([resolveDockerTransport(signal), probePort()]);
+  await ensureRootIntegrity({ create: false });
+  const [docker, port] = await Promise.all([
+    resolveDockerTransport(signal, { allowBrokerProbe: false }), probePort(),
+  ]);
   let disk = null;
   try {
     const stat = await fs.statfs(PAPERCLIP_LAB_ROOT);
