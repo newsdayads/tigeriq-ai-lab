@@ -2906,7 +2906,7 @@ async function publicJobEvidence(jobId){
 async function liveStatusSnapshot(){
   const sharedLeases=await activeSharedResourceLeases(pool);
   const leaseByResource=indexSharedResourceLeases(sharedLeases);
-  const resources=(await pool.query("select employee_id,resource_id,provider,health_state,work_state,current_job_id,last_seen_at,cooldown_until,enabled from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id")).rows.map(row=>{
+  const resources=(await pool.query("select employee_id,resource_id,provider,credential_state,health_state,work_state,current_job_id,last_seen_at,cooldown_until,enabled from tigeriq_ai_resources where enabled=true order by employee_id nulls last,resource_id")).rows.map(row=>{
     const lease=leaseByResource.get(String(row.resource_id||''))||null;
     const r=lease?{...row,current_job_id:lease.work_id,work_state:'BUSY'}:row;
     return {
