@@ -1,9 +1,12 @@
 import http from 'node:http';
+import {resolveCodingStatusUrl} from './status-endpoints.mjs';
 
 const PORT=Number(process.env.TIGERIQ_LIVE_BRIDGE_PORT||8801);
 const CORE=process.env.TIGERIQ_CORE_STATUS_URL||'http://100.97.23.87:8795/api/status';
 const CORE_EVENT=process.env.TIGERIQ_CORE_EVENT_URL||'http://100.97.23.87:8795/api/github-event';
-const CODING=process.env.TIGERIQ_CODING_STATUS_URL||'http://100.97.23.87:8797/api/status';
+// Live Bridge and Coding Lane are co-resident on PC01. Use the Coding Lane
+// loopback bind by default; keep the explicit environment override unchanged.
+const CODING=resolveCodingStatusUrl();
 const UI_HEALTH='http://127.0.0.1:8794/health';
 const UI_CONTROLLER='http://127.0.0.1:8798/api/state';
 const UI_HEARTBEAT_STALE_MS=15000;
