@@ -65,6 +65,32 @@ describe('GitHub Core intake guardrails',()=>{
 
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
+  it('live product delivery cannot finish on source CI or self-declared DONE without real acceptance receipt',()=>{
+    for(const kind of ['REAL_LIVE_END_TO_END','PRODUCT_VALIDATION','PRODUCT_DELIVERY','LIVE_PRODUCT']){
+      const ticket={...base,body:base.body+'\nWORK_TYPE='+kind};
+      const spec=parseExecutableIssue(ticket);
+      expect(spec).not.toBeNull();
+      expect(spec.liveAcceptanceRequired).toBe(true);
+      expect(objectiveCompletionGate({sourceRevision:spec.sourceRevision,liveAcceptanceRequired:spec.liveAcceptanceRequired}))
+        .toMatchObject({allow:false,reason:'live_acceptance_pending'});
+      expect(objectiveCompletionGate({sourceRevision:spec.sourceRevision,liveAcceptanceRequired:true,
+        liveAcceptancePass:true,liveAcceptanceRevision:'different-source'}))
+        .toMatchObject({allow:false,reason:'live_acceptance_pending'});
+      expect(objectiveCompletionGate({sourceRevision:spec.sourceRevision,liveAcceptanceRequired:true,
+        liveAcceptancePass:true,liveAcceptanceRevision:spec.sourceRevision}))
+        .toMatchObject({allow:true,reason:'acceptance_satisfied'});
+    }
+    // A historical product/work gate must not modify a current non-product task.
+    const historical={...base,body:base.body+'\n\n## HISTORICAL — superseded\nWORK_TYPE=PRODUCT_DELIVERY\nLIVE_ACCEPTANCE_REQUIRED=true\nFINAL_REVIEW_REQUIRED=true'};
+    const spec=parseExecutableIssue(historical);
+    expect(spec).not.toBeNull();
+    expect(spec.liveAcceptanceRequired).toBe(false);
+    expect(spec.finalReviewRequired).toBe(false);
+    // Explicit current authority still requires evidence even without WORK_TYPE.
+    const declared=parseExecutableIssue({...base,body:base.body+'\nLIVE_ACCEPTANCE_REQUIRED=true'});
+    expect(declared.liveAcceptanceRequired).toBe(true);
+  });
+
   it('honors current safety and legacy-contract denials ahead of superseded true flags',()=>{
     const active=[
       'TIGERIQ_EXECUTABLE=true','PRIORITY=P2','CAPABILITY=reasoning',
