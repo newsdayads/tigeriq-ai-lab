@@ -9,6 +9,7 @@ export const NV07_S6_PINNED_PROPOSAL=Object.freeze({
  jobId:'NV07-4783-CORE-20261015T175311-001',
  pullRequestNumber:4893,
  cliReceiptSeq:'214872',
+ reservationSeq:'214864',
  headSha:'037954520f2533d0d6fae62e369d7a71e55f19ba',
  mergeSha:'9eee52f9988701785cfacf00de0a58dac5778752',
  artifactPath:'docs/implementation/nv07-proposal.md',
@@ -67,6 +68,9 @@ export async function readNv07S6NativePreflight(db){
    ||receipt.job_id!==pin.jobId||receipt.resource_id!==pin.resourceId
    ||data.workOrderId!==4783||data.sourceSha!==pin.sourceSha
    ||data.outputHash!==pin.outputHash||data.proposedFileCount!==1
+   ||data.state!=='BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE'
+   ||data.source!=='CORE_VERIFIED_CLI_JSON'
+   ||String(data.reservationSeq||'')!==pin.reservationSeq
    ||data.resourceScope!=='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783')
    return deny('NV07_S6_CANONICAL_CANARY_BINDING_MISMATCH');
   // The existence of a Core row alone is not acceptance: bind its complete
