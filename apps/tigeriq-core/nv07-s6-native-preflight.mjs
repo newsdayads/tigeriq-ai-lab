@@ -34,7 +34,13 @@ export function observeNv07S6RuntimeRelease({sourceState,updaterState}={}){
  const sourceSha=sha(sourceState?.currentSha);
  const updaterSha=sha(updaterState?.installedSha);
  const at=String(sourceState?.updatedAt||'');
- const timestamp=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(at)
+ // A valid-looking prefix and Date.parse are not enough: JS normalizes
+ // impossible calendar dates (e.g. Feb 30) and accepts timezone-less input.
+ const parts=/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,7})?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.exec(at);
+ const calendar=parts?new Date(Date.UTC(Number(parts[1]),Number(parts[2])-1,Number(parts[3]))):null;
+ const timestamp=calendar&&calendar.getUTCFullYear()===Number(parts[1])
+   &&calendar.getUTCMonth()+1===Number(parts[2])
+   &&calendar.getUTCDate()===Number(parts[3])
    &&Number.isFinite(Date.parse(at))?at:null;
  return Object.freeze({
   sourceSha,updaterSha,

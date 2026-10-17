@@ -173,4 +173,35 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   expect(route).not.toContain('recordNv07GithubProposalReceipt');
  });
 
+ it('rejects normalized impossible dates and timezone-less declarations; accepts valid source timestamps',()=>{
+  const sha='a'.repeat(40);
+  for(const updatedAt of [
+   '2026-02-30T08:07:38Z',
+   '2026-04-31T08:07:38Z',
+   '2026-10-17T08:07:38',
+   '2026-10-17T25:07:38Z',
+   '2026-10-17T08:07:38+15:00',
+   '2026-10-17T08:07:38Zextra',
+  ]){
+   const result=observeNv07S6RuntimeRelease({
+    sourceState:{currentSha:sha,updatedAt},updaterState:{installedSha:sha},
+   });
+   expect(result).toMatchObject({
+    stateFilesAligned:false,observedCutoverAt:null,nativeRuntimeAttested:false,s6Accepted:false,
+   });
+  }
+  for(const updatedAt of [
+   '2024-02-29T08:07:38.2890137Z',
+   '2026-10-17T15:07:38+07:00',
+  ]){
+   const result=observeNv07S6RuntimeRelease({
+    sourceState:{currentSha:sha,updatedAt},updaterState:{installedSha:sha},
+   });
+   expect(result).toMatchObject({
+    stateFilesAligned:true,observedCutoverAt:updatedAt,
+    nativeRuntimeAttested:false,s6Accepted:false,
+   });
+  }
+ });
+
 });
