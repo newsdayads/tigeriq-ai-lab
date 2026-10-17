@@ -19,6 +19,28 @@ const deny=(code,fields={})=>Object.freeze({
 });
 const cleanSeq=value=>/^[1-9]\d{0,15}$/.test(String(value||''))?String(value):null;
 
+
+// Read-only, redacted PC01 release ledger comparison. Two agreeing on-disk
+// states are useful as a handoff diagnostic, NOT proof that this process runs
+// that SHA or that the SHA contains the current GitHub patch.
+// The native operator must separately attest executable/source provenance.
+export function observeNv07S6RuntimeRelease({sourceState,updaterState}={}){
+ const sha=value=>/^[a-f0-9]{40}$/i.test(String(value||''))?String(value).toLowerCase():null;
+ const sourceSha=sha(sourceState?.currentSha);
+ const updaterSha=sha(updaterState?.installedSha);
+ const at=String(sourceState?.updatedAt||'');
+ const timestamp=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(at)
+   &&Number.isFinite(Date.parse(at))?at:null;
+ return Object.freeze({
+  sourceSha,updaterSha,
+  stateFilesAligned:Boolean(sourceSha&&sourceSha===updaterSha&&timestamp),
+  observedCutoverAt:timestamp,
+  nativeRuntimeAttested:false,
+  s6Accepted:false,
+  note:'ON_DISK_RELEASE_DECLARATION_NOT_RUNNING_PROCESS_ATTESTATION',
+ });
+}
+
 export async function readNv07S6NativePreflight(db){
  if(!db||typeof db.query!=='function')return deny('NV07_S6_DB_UNAVAILABLE');
  const pin=NV07_S6_PINNED_PROPOSAL;
