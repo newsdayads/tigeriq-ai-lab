@@ -157,6 +157,17 @@ export async function inspectHistoricalRun({
     reject('HISTORICAL_REQUESTED_URL_UNVERIFIED');
   if (output.requestedUrl !== EXPECTED_CANARY_URL)
     reject('HISTORICAL_REQUESTED_URL_MISMATCH');
+  // A claimed canary URL and success flag are insufficient: the original
+  // audit engine produces page-level, metric and error evidence. Refuse
+  // empty/unrelated results before declaring the historical run matched.
+  if (!Array.isArray(output.pages) || output.pages.length !== 1 ||
+      output.pages[0]?.url !== EXPECTED_CANARY_URL ||
+      !Number.isInteger(output.pages[0]?.statusCode) ||
+      output.pages[0].statusCode < 200 || output.pages[0].statusCode >= 300 ||
+      !output.metrics || output.metrics.pagesAudited !== 1 ||
+      output.metrics.errorCount !== 0 ||
+      !Array.isArray(output.errors) || output.errors.length !== 0 ||
+      !object(output.summary)) reject('HISTORICAL_AUDIT_PAYLOAD_UNVERIFIED');
 
   // Minimal evidence only. Never include token, payload content or audited URL.
   return {
