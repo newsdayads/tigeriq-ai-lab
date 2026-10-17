@@ -67,3 +67,14 @@ Paired test acceptance is proven only by the **exact changed-head CI** output. T
 3. R09 must still deliver the complete feature/module/API/uncertainty trace with independently reproducible comparison and approved device/lease boundaries if a protected integration is later attempted.
 
 **Status:** `R09_PARTIAL_REAL_STATIC_EVIDENCE_ONLY`; `R09_ACCEPTANCE=false`; `R05_FULL_ACCEPTANCE=false`; `R06_R07_PC01=false`; Issue #4780 historical checklist `6/16`, `DONE=false`. No PC01, Core, Chrome, credential, paid-service, npm installation, or device-write action occurred in this report generation.
+
+
+## R09-C addendum (17/10/2026): biên dịch đường dẫn an toàn, chưa phải nghiệm thu R09
+
+Thẻ nguồn [GH-4780](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780), nhánh thay đổi [PR 4982](https://github.com/newsdayads/tigeriq-ai-lab/pull/4982).
+
+Sau giai đoạn ban đầu có khoảng trống `compile`, bản độc lập v0.6.0 cung cấp `compile(pointer)` **chỉ trong JavaScript** để tạo closure ràng buộc một lần, đồng thời cung cấp hai thao tác JSONL **`compile-get` và `compile-set`** với kết quả là JSON thường. Chức năng **không** chuyển đổi một closure JavaScript thành dữ liệu JSON có thể thực thi; việc từ chối `op=compile` nguyên dạng trong JSONL là cố ý, không còn đồng nghĩa API JavaScript chưa hỗ trợ `compile`.
+
+Bộ thử mới `tests/rea-reconstruction-lab/r09-jsonpointer-compile-runtime.test.ts` đối chiếu **10 ca mới**: closure từ mã MIT nguồn gốc ghim blob `dad907d763f7369ac0e284e7d1fae2bd5508f477`, closure nội bộ mới, đầu ra lệnh CLI thực. Ngoài ra có kiểm tra 4 trường hợp giới hạn: phản đối đường dẫn nguy hiểm, chỉ số mảng thưa, con trỏ không hợp lệ và từ chối tuần tự hóa hàm. Không tính lại 14 ca R09 trước hay 28 ca D04 làm thành quả mới.
+
+**Cổng nghiệm thu:** phải đọc log CI đúng SHA cuối PR, nhận 10/10 và 4 trường hợp an toàn, cùng các cổng Queue/Vercel, rồi đọc lại nguồn `main` sau hợp nhất. Chỉ khi đó mới báo phần tính năng R09-C được nghiệm thu; đây vẫn là R09 **một phần**, không biến R05–R07 thành đã đạt. Không cài/triển khai PC01, không nhận lease NV02, không nối MCP. 6/16 mốc toàn thẻ giữ nguyên cho tới khi nghiệm thu đủ các ô bắt buộc.

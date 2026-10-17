@@ -2,7 +2,7 @@
 // It is intentionally NOT a byte-copy of the upstream janl/node-jsonpointer source.
 const dangerous = new Set(['__proto__', 'constructor', 'prototype']);
 
-function compile(pointer) {
+function parseParts(pointer) {
   if (typeof pointer === 'string') {
     if (!pointer.startsWith('/')) {
       if (pointer === '') return [];
@@ -26,8 +26,11 @@ export function get(document, pointer) {
   // Original MIT getter returns undefined for an empty array-form pointer.
   // Unlike the root string pointer '', [] is not a root-document read.
   if (Array.isArray(pointer) && pointer.length === 0) return undefined;
-  const parts=compile(pointer);
+  const parts=parseParts(pointer);
   ensureSafe(parts);
+  return getParts(document, parts);
+}
+function getParts(document, parts) {
   let cur=document;
   for (const key of parts) {
     if (cur === null || (typeof cur!=='object' && typeof cur!=='function')) return undefined;
@@ -85,15 +88,35 @@ function traverseForSet(document, parts, value, dryRun) {
     } else current = prior.value;
   }
 }
-export function set(document, pointer, value) {
-  validObject(document);
-  const parts=compile(pointer);
+function setParts(document, parts, value) {
   if (!parts.length) throw Error('Invalid JSON pointer for set.');
   ensureSafe(parts);
   // Preflight the entire path before touching the caller-owned document:
   // a late invalid segment or a scalar parent must not leave partial writes.
   traverseForSet(document, parts, value, true);
   return traverseForSet(document, parts, value, false);
+}
+export function set(document, pointer, value) {
+  validObject(document);
+  return setParts(document, parseParts(pointer), value);
+}
+// Closures are ephemeral JavaScript functions, never serialized into JSONL.
+// JSONL exposes only bounded compile-get / compile-set operations below.
+export function compile(pointer) {
+  const emptyArrayPointer = Array.isArray(pointer) && pointer.length === 0;
+  const parts = parseParts(pointer);
+  ensureSafe(parts);
+  const captured = Object.freeze(parts.slice());
+  return Object.freeze({
+    get(document) {
+      validObject(document);
+      return emptyArrayPointer ? undefined : getParts(document, captured);
+    },
+    set(document, value) {
+      validObject(document);
+      return setParts(document, captured, value);
+    }
+  });
 }
 // This public API accepts JSON-shaped records only. Native structuredClone invokes
 // getters on ordinary objects, even though get() itself rejects accessors.
@@ -174,7 +197,10 @@ export function outcome(test) {
     doc=copied?.document;
     cloned=true;
     const result=copied?.op==='get' ? get(doc,copied.pointer)
-      : copied?.op==='set' ? set(doc,copied.pointer,copied.value) : (()=>{throw Error('Unsupported operation.');})();
+      : copied?.op==='set' ? set(doc,copied.pointer,copied.value)
+      : copied?.op==='compile-get' ? compile(copied.pointer).get(doc)
+      : copied?.op==='compile-set' ? compile(copied.pointer).set(doc,copied.value)
+      : (()=>{throw Error('Unsupported operation.');})();
     return {id:copied?.id,outcome:'ok',returned:result===undefined?{$type:'undefined'}:result,documentAfter:doc};
   } catch(e) {
     return {id,outcome:'error',name:e.name,message:e.message,documentAfter:cloned?doc:null};

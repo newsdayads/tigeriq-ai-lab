@@ -202,7 +202,7 @@ describe('REA #4780 D04: offline npm package fresh-install acceptance',()=>{
       const outputs=actual.stdout.trim().split('\n').map(row=>JSON.parse(row));
       expect(outputs).toHaveLength(28);
       expect(outputs).toEqual(cases.map(c=>clean(originalOutcome(c))));
-      console.log('D04_OFFLINE_FRESH_INSTALL_PASS=28_OF_28|PACKAGE=tigeriq-rea-pointer-demo@0.5.0|PACK_SHA256='+digest+'|PC01_TOUCHED=false');
+      console.log('D04_OFFLINE_FRESH_INSTALL_PASS=28_OF_28|PACKAGE=tigeriq-rea-pointer-demo@0.6.0|PACK_SHA256='+digest+'|PC01_TOUCHED=false');
     }finally{rmSync(root,{recursive:true,force:true});}
   });
 });
