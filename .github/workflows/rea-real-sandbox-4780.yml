@@ -64,7 +64,14 @@ jobs:
           sha256sum evidence/consumer-sbom.cdx.json > evidence/consumer-sbom.sha256
           npm ls --all --omit=dev --json > evidence/npm-tree.json
           sha256sum node_modules/rea-agents/package.json >> evidence/installed-package-files.sha256
-          cp "$GITHUB_WORKSPACE/projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs" target/
+          # Pin original third-party MIT JavaScript source by Git blob, not tag alone.
+          git clone --depth 1 --branch v5.0.1 https://github.com/janl/node-jsonpointer.git reference-source
+          test "$(git -C reference-source hash-object jsonpointer.js)" = 'dad907d763f7369ac0e284e7d1fae2bd5508f477'
+          test "$(git -C reference-source hash-object LICENSE.md)" = 'ac32f5dfdd49682b416374dcbed58a7f17fa4e24'
+          git -C reference-source rev-parse HEAD > evidence/reference-commit.txt
+          printf '%s\n' 'SOURCE_JS_GIT_BLOB=dad907d763f7369ac0e284e7d1fae2bd5508f477' 'SOURCE_LICENSE_GIT_BLOB=ac32f5dfdd49682b416374dcbed58a7f17fa4e24' > evidence/reference-blob-ids.txt
+          cp reference-source/jsonpointer.js target/
+          cp reference-source/LICENSE.md target/
           printf '%s\n' 'REAL_NPM_CI_IGNORE_SCRIPTS_EXIT_0' > evidence/rea-install-status.txt
       - name: Real CLI smoke and REA JavaScript static analysis in no-network container
         shell: bash
@@ -96,7 +103,7 @@ jobs:
           const json=JSON.parse(raw);
           if(typeof json!=='object'||json===null||Array.isArray(json)||json.error||json.code||!json.normalized_result?.graph) {console.error('MISSING_SUCCESSFUL_REA_GRAPH');process.exit(24)}
           fs.writeFileSync('evidence/rea-analysis-verified.json',JSON.stringify({
-            realCliExecuted:true, target:'projects/rea-reconstruction-lab/r09-jq-module-api-native-oracle.mjs',
+            realCliExecuted:true, target:'janl/node-jsonpointer@v5.0.1/jsonpointer.js Git blob dad907d763f7369ac0e284e7d1fae2bd5508f477',
             topLevelKeys:Object.keys(json),outputBytes:Buffer.byteLength(raw),
             sha256:(await import('node:crypto')).createHash('sha256').update(raw).digest('hex')
           },null,2)+'\n');
