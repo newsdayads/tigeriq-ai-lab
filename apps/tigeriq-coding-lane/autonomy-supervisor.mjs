@@ -73,6 +73,7 @@ export async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
     const body=await res.json();
     if(body?.state!=='open'||body?.pull_request)return false;
     const current=nv02WorkOrderMeta(body);
+    if(current.METADATA_CONFLICT==='true')return false;
     const labels=(Array.isArray(body?.labels)?body.labels:[]).map(l=>String(l?.name||l||'').trim().toUpperCase());
     // Labels and old descriptions can only deny; never grant permissions.
     if(labels.some(l=>['NV02_SELF_MODIFICATION_GUARD','MANUAL_HOLD','HOLD'].includes(l)))return false;
