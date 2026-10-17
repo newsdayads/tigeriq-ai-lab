@@ -731,24 +731,46 @@ async function httpHealth(signal = null) {
   }
 }
 
-async function preflight(signal = null) {
+// R01 accepts replaceable read-only probes so the actual diagnostic contract
+// can be exercised without PC01, WSL, Docker, network or filesystem mutation.
+export async function paperclipReadOnlyPreflight({
+  signal = null,
+  checkRoot = () => ensureRootIntegrity({ create: false }),
+  inspectDocker = () => resolveDockerTransport(signal, { allowBrokerProbe: false }),
+  inspectPort = () => probePort(),
+  inspectDisk = () => fs.statfs(PAPERCLIP_LAB_ROOT),
+  inspectBroker = () => brokerStatus(),
+} = {}) {
   throwIfAborted(signal);
-  await ensureRootIntegrity({ create: false });
-  const [docker, port] = await Promise.all([
-    resolveDockerTransport(signal, { allowBrokerProbe: false }), probePort(),
-  ]);
-  let disk = null;
+  let rootPresent = false;
   try {
-    const stat = await fs.statfs(PAPERCLIP_LAB_ROOT);
-    disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
-  } catch {}
+    await checkRoot();
+    rootPresent = true;
+  } catch (error) {
+    // An absent Lab is a diagnostic finding, not an invitation to create it.
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const [docker, port] = await Promise.all([inspectDocker(), inspectPort()]);
+  let disk = null;
+  if (rootPresent) {
+    try {
+      const stat = await inspectDisk();
+      disk = { freeBytes: Number(stat.bavail) * Number(stat.bsize), totalBytes: Number(stat.blocks) * Number(stat.bsize) };
+    } catch {}
+  }
+  const broker = docker.broker || await inspectBroker();
   return {
-    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker: docker.broker || await brokerStatus() },
+    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,
+    rootPresent,
     disk,
     pinned: { release: PAPERCLIP_LAB_RELEASE, sourceCommit: PAPERCLIP_LAB_RELEASE_SHA, image: PAPERCLIP_LAB_IMAGE },
   };
+}
+
+async function preflight(signal = null) {
+  return await paperclipReadOnlyPreflight({ signal });
 }
 
 function redactPaperclipDiagnosticText(value = '') {
