@@ -1,4 +1,4 @@
-# D04 — CLI tái tạo JSONPointer độc lập v0.6.1
+# D04 — CLI tái tạo JSONPointer độc lập v0.6.2
 
 Nguồn công việc: [REA #4780](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780). Đây là phần mềm **viết mới**, không phải `rea-agents@6.4.0`, không phải phát hành PC01/MCP. Tác vụ D03 chạy REA gốc trên máy GitHub cô lập đã có biên nhận riêng; PR này **không chạy lại** D03.
 
@@ -15,6 +15,8 @@ npm pack --offline --ignore-scripts --pack-destination /tmp projects/rea-reconst
 Phạm vi: hỗ trợ `get` và `set` của JSON Pointer với JSONL. Giới hạn mỗi dòng 32 KiB, tổng 1 MiB, tối đa 1000 dòng, mảng không quá 4096 phần tử, đầu vào UTF-8 hợp lệ; chỉ nhận cấu trúc JSON thường, không thực thi getter, từ chối truy cập prototype, vòng tham chiếu, prototype khác, kích thước/độ sâu không hợp lệ. Bản v0.6.0 bổ sung thao tác JSONL `compile-get` và `compile-set`: biên dịch đường dẫn một lần, gọi các hàm JavaScript được ràng buộc để đọc/ghi trên cùng bản sao JSON. Đây là cách thể hiện có giới hạn của `compile` gốc: không tuần tự hóa closure/function thành JSON, không thay thế đầy đủ API gốc. 10 ca mới đối chiếu hành vi closure của MIT với bản mới và tiến trình CLI nằm ở `tests/rea-reconstruction-lab/r09-jsonpointer-compile-runtime.test.ts`.
 
 Bản vá v0.6.1 không cho phép xóa ô mảng bằng giá trị `undefined` (kể cả đầu vào JSONL bỏ trường `value`): thao tác đó tạo **mảng thưa**, sau khi tuần tự hóa JSON bị chuyển thành `null` và mất ngữ nghĩa. Giờ từ chối sớm với `Sparse array deletion forbidden.` và bảo toàn tài liệu gốc. Đây là **ngoại lệ an toàn có chủ ý** so với thư viện MIT, không tính là tương đương; việc xóa khóa thuộc tính đối tượng vẫn được hỗ trợ. Bộ thử mới nằm ở `tests/rea-reconstruction-lab/r09-jsonpointer-array-delete-integrity.test.ts`.
+
+Bản vá v0.6.2: khi xóa một đường dẫn đối tượng **không tồn tại**, bản viết mới trả `undefined` và **không tự tạo đối tượng trung gian**. Đây là sai khác an toàn có chủ ý với MIT upstream (upstream có thể tạo cha rỗng khi xóa đích vắng mặt), không tính parity. Kiểm tra trước khi ghi vẫn phát hiện thao tác xóa dẫn đến mảng thưa; thao tác gán giá trị `null` hoặc giá trị thường vẫn tạo nhánh theo thiết kế. Bộ thử mới `tests/rea-reconstruction-lab/r09-jsonpointer-missing-delete-noop.test.ts` xác minh mã gốc, thao tác trực tiếp, closure biên dịch và tiến trình CLI.
 
 API JS không bảo vệ chống mọi bẫy `Proxy` của mã độc chạy cùng tiến trình. Một số trường hợp cố ý từ chối dù thư viện MIT nguồn cho phép, nên **không phải bản thay thế tương đương toàn bộ API**.
 

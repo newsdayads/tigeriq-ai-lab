@@ -5,7 +5,7 @@ const MAX_LINE_BYTES=32768;
 const strictUtf8=new TextDecoder('utf-8',{fatal:true});
 const MAX_TOTAL_BYTES=1048576;
 const MAX_ROWS=1000;
-const help='rea-pointer-demo 0.6.1: usage: rea-pointer-demo --jsonl < input.ndjson';
+const help='rea-pointer-demo 0.6.2: usage: rea-pointer-demo --jsonl < input.ndjson';
 if (process.argv.includes('--help') || !process.argv.includes('--jsonl')) {
   console.log(help);
   if (!process.argv.includes('--help')) process.exitCode=2;

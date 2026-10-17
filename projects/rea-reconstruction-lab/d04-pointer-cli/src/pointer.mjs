@@ -89,6 +89,10 @@ function traverseForSet(document, parts, value, dryRun) {
     }
     if (!prior.found || prior.value===undefined) {
       const child = newContainer(parts[i+1]);
+      // An absent-target deletion is a no-op: do not create intermediate
+      // parents in the commit pass. The preflight must still traverse virtual
+      // containers to reject unsafe array deletions and invalid indexes.
+      if (value===undefined && !dryRun) return undefined;
       if (!dryRun) current[key] = child;
       current = child;
     } else current = prior.value;
