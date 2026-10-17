@@ -1,13 +1,13 @@
 import {describe,it,expect} from 'vitest';
 import {verifyNv07GithubProposalEvidence,storeNv07GithubProposalWithLease,NV07_S6_GITHUB_SCOPE} from '../apps/tigeriq-core/nv07-github-proposal-receipt.mjs';
-const SHA='a'.repeat(40),OUT='b'.repeat(64),HEAD='c'.repeat(40),MERGE='d'.repeat(40);
-const FILE='docs/implementation/nv07-proposal.md',JOB='NV07-4783-CORE-TEST';
+const SHA='2bf72df2774eee67c19c8db5dbd063ddeef640be',OUT='b473807fa0c8af4d85d09a1a39efd5c223d0de9f068cda649f71d28c13f622b5',HEAD='037954520f2533d0d6fae62e369d7a71e55f19ba',MERGE='9eee52f9988701785cfacf00de0a58dac5778752';
+const FILE='docs/implementation/nv07-proposal.md',JOB='NV07-4783-CORE-20261015T175311-001';
 function evidence(){
  const repo={full_name:'newsdayads/tigeriq-ai-lab'};
- const file={path:FILE,encoding:'base64',sha:'e'.repeat(40),
-  content:Buffer.from(JOB+' '+SHA+' '+OUT+' NV07_CANARY_RECEIPT:123').toString('base64')};
+ const file={path:FILE,encoding:'base64',sha:'c0b0c56740f88831146e9ac196ec8bea46ff3423',
+  content:Buffer.from(JOB+' '+SHA+' '+OUT+' NV07_CANARY_RECEIPT:214872').toString('base64')};
  return {
-  receipt:{seq:'123',job_id:JOB,data:{sourceSha:SHA,outputHash:OUT,proposedFileCount:1}},
+  receipt:{seq:'214872',job_id:JOB,resource_id:'res:antigravity:agy-cli:owner-wdragons12x:pc01',data:{workOrderId:4783,sourceSha:SHA,outputHash:OUT,proposedFileCount:1,resourceScope:'TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783',reservationSeq:'214864',state:'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',source:'CORE_VERIFIED_CLI_JSON',idempotencyHash:'f'.repeat(64)}},
   pr:{number:4893,merged:true,state:'closed',created_at:'2026-10-15T18:06:49Z',merged_at:'2026-10-15T18:16:54Z',base:{repo,ref:'main'},head:{repo,sha:HEAD,ref:'docs/nv07-live-proposal-4783'},merge_commit_sha:MERGE},
   files:[{filename:FILE,status:'added'}],
   runs:['CI','WO-014 Queue Hygiene','WO-012/013 Vercel Online Verify'].map(name=>({
@@ -20,7 +20,7 @@ function evidence(){
 describe('Core GitHub proposal receipt evidence',()=>{
  it('binds actual merged artifact, exact successful PR checks and canonical CLI receipt',()=>{
   expect(verifyNv07GithubProposalEvidence(evidence())).toMatchObject({
-   accepted:true,jobId:JOB,cliReceiptSeq:'123',headSha:HEAD,mergeSha:MERGE,nv07Active:false,
+   accepted:true,jobId:JOB,cliReceiptSeq:'214872',headSha:HEAD,mergeSha:MERGE,nv07Active:false,
    review:'OWNER_WAIVED_NOT_INDEPENDENT_PASS'});
  });
  it('rejects unmerged PR, another repository, branch or changed file',()=>{
@@ -28,6 +28,9 @@ describe('Core GitHub proposal receipt evidence',()=>{
    (v:ReturnType<typeof evidence>)=>{v.pr.merged=false;},
    (v:ReturnType<typeof evidence>)=>{v.pr.base.repo.full_name='other/repo';},
    (v:ReturnType<typeof evidence>)=>{v.pr.base.ref='preview';},
+   (v:ReturnType<typeof evidence>)=>{v.pr.number=1111;},
+   (v:ReturnType<typeof evidence>)=>{v.pr.head.sha='f'.repeat(40);},
+   (v:ReturnType<typeof evidence>)=>{v.pr.merge_commit_sha='f'.repeat(40);},
    (v:ReturnType<typeof evidence>)=>{v.files[0].filename='AGENTS.md';},
    (v:ReturnType<typeof evidence>)=>{v.files.push({filename:'other.md',status:'added'});},
   ]){const v=evidence();mutate(v);expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(false);}
@@ -72,6 +75,11 @@ describe('Core GitHub proposal receipt evidence',()=>{
    (v:ReturnType<typeof evidence>)=>{v.mergedFile.content=Buffer.from('generic success').toString('base64');},
    (v:ReturnType<typeof evidence>)=>{v.document.outputHash='f'.repeat(64);},
    (v:ReturnType<typeof evidence>)=>{v.receipt.data.proposedFileCount=0;},
+   (v:ReturnType<typeof evidence>)=>{v.receipt.seq='214873';},
+   (v:ReturnType<typeof evidence>)=>{v.receipt.data.reservationSeq='214935';},
+   (v:ReturnType<typeof evidence>)=>{v.receipt.data.state='FAILED';},
+   (v:ReturnType<typeof evidence>)=>{v.receipt.data.source='UNVERIFIED';},
+   (v:ReturnType<typeof evidence>)=>{v.receipt.data.outputHash='f'.repeat(64);},
    (v:ReturnType<typeof evidence>)=>{v.waiverBody='APPROVED';},
   ]){const v=evidence();mutate(v);expect(verifyNv07GithubProposalEvidence(v).accepted).toBe(false);}
  });
@@ -108,6 +116,11 @@ describe('Core GitHub proposal receipt evidence',()=>{
    "l.metadata->>'resourceScope'=$6",
    "l.metadata->>'sourceSha'=r.data->>'sourceSha'",
    "l.metadata->>'pullRequestNumber'=$7",
+   "r.data->>'state'='BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE'",
+   "r.data->>'source'='CORE_VERIFIED_CLI_JSON'",
+   "r.data->>'reservationSeq'='214864'",
+   "v.type='NV07_CANARY_RESERVED'",
+   "v.data->>'idempotencyHash'=r.data->>'idempotencyHash'",
    'a.current_job_id=l.work_id','on conflict do nothing',
   ])expect(sql).toContain(clause);
   expect(params[4]).toBe(leaseToken);
@@ -125,6 +138,29 @@ describe('Core GitHub proposal receipt evidence',()=>{
   });
   expect(result).toMatchObject({accepted:false,code:'NV07_S6_CURRENT_LEASE_REQUIRED'});
   expect(queries).toBe(0);
+ });
+
+ it('never attempts an S6 INSERT when receipt lineage or verified PR identity is wrong',async()=>{
+  const e=evidence(),leaseToken='11111111-2222-4333-8444-555555555555';
+  const goodProof=verifyNv07GithubProposalEvidence(e);let queryCount=0;
+  const db={query:async()=>{queryCount++;return {rowCount:1,rows:[{seq:1000}]};}};
+  for(const receipt of [
+   {...e.receipt,seq:'214873'},
+   {...e.receipt,data:{...e.receipt.data,reservationSeq:'214935'}},
+   {...e.receipt,data:{...e.receipt.data,state:'FAILED'}},
+   {...e.receipt,data:{...e.receipt.data,source:'UNVERIFIED'}},
+  ])expect((await storeNv07GithubProposalWithLease(db,{
+   receipt,evidence:goodProof,leaseToken,
+  })).accepted).toBe(false);
+  for(const proof of [
+   {...goodProof,headSha:'f'.repeat(40)},
+   {...goodProof,mergeSha:'f'.repeat(40)},
+   {...goodProof,pullRequestNumber:9999},
+   {...goodProof,cliReceiptSeq:'214873'},
+  ])expect((await storeNv07GithubProposalWithLease(db,{
+   receipt:e.receipt,evidence:proof,leaseToken,
+  })).accepted).toBe(false);
+  expect(queryCount).toBe(0);
  });
 
 });
