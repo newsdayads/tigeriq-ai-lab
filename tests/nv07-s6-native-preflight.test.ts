@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {readNv07S6NativePreflight,NV07_S6_PINNED_PROPOSAL} from '../apps/tigeriq-core/nv07-s6-native-preflight.mjs';
+import {readNv07S6NativePreflight,NV07_S6_PINNED_PROPOSAL,observeNv07S6RuntimeRelease} from '../apps/tigeriq-core/nv07-s6-native-preflight.mjs';
 
 const p=NV07_S6_PINNED_PROPOSAL;
 const canary={seq:'214872',job_id:p.jobId,resource_id:p.resourceId,data:{
@@ -107,4 +107,43 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   expect(post).toBeGreaterThan(0);
   expect(source.slice(post,post+220)).toContain('if(!auth(req)||!localSelf(req))');
  });
+ it('read-only release observer confirms matching source/updater declarations but never certifies runtime',()=>{
+  const sha='a'.repeat(40);
+  const response=observeNv07S6RuntimeRelease({
+   sourceState:{currentSha:sha,updatedAt:'2026-10-17T04:20:00Z',credential:'DO_NOT_LEAK'},
+   updaterState:{installedSha:sha,secret:'DO_NOT_LEAK'},
+  });
+  expect(response).toMatchObject({
+   sourceSha:sha,updaterSha:sha,
+   stateFilesAligned:true,nativeRuntimeAttested:false,s6Accepted:false,
+   note:'ON_DISK_RELEASE_DECLARATION_NOT_RUNNING_PROCESS_ATTESTATION',
+  });
+  expect(JSON.stringify(response)).not.toMatch(/DO_NOT_LEAK|credential|secret/);
+ });
+ it('read-only release observer fails closed on missing, malformed or divergent deployed SHA',()=>{
+  const sha='a'.repeat(40),other='b'.repeat(40);
+  for(const input of [
+   {},
+   {sourceState:{currentSha:sha,updatedAt:'2026-10-17T04:20:00Z'}},
+   {sourceState:{currentSha:sha,updatedAt:'2026-10-17T04:20:00Z'},updaterState:{installedSha:other}},
+   {sourceState:{currentSha:sha,updatedAt:'invalid-date'},updaterState:{installedSha:sha}},
+   {sourceState:{currentSha:'fake',updatedAt:'2026-10-17T04:20:00Z'},updaterState:{installedSha:sha}},
+  ]){
+   const result=observeNv07S6RuntimeRelease(input);
+   expect(result).toMatchObject({stateFilesAligned:false,nativeRuntimeAttested:false,s6Accepted:false});
+  }
+ });
+ it('GET S6 preflight binds release comparison to existing on-host state readers only',()=>{
+  const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const start=source.indexOf("url.pathname==='/api/nv07/s6-preflight'");
+  const route=source.slice(start,start+830);
+  expect(route).toContain('if(!auth(req)||!localSelf(req))');
+  expect(route).toContain('observeNv07S6RuntimeRelease({');
+  expect(route).toContain('sourceState:readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE)');
+  expect(route).toContain('updaterState:readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE)');
+  expect(route).toContain('JSON.stringify({...result,releaseObservation})');
+  expect(route).not.toContain('acquireSharedResourceLease');
+  expect(route).not.toContain('recordNv07GithubProposalReceipt');
+ });
+
 });
