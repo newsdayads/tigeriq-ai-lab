@@ -242,11 +242,13 @@ export function validatePaperclipLabEnvText(text) {
   return true;
 }
 
-async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null } = {}) {
+async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null, readOnly = false } = {}) {
   throwIfAborted(signal);
   const safeCwd = resolvePaperclipLabPath(cwd);
-  await ensureRootIntegrity();
-  const realCwd = await ensureContainedDirectory(safeCwd);
+  await ensureRootIntegrity({ create: !readOnly });
+  const realCwd = readOnly
+    ? await paperclipReadOnlyExistingDirectory(safeCwd)
+    : await ensureContainedDirectory(safeCwd);
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
       cwd: realCwd,
@@ -462,12 +464,12 @@ export async function resolveDockerTransport(signal = null, {
   readBrokerStatus = brokerStatus,
   probeViaBroker = runDockerViaBroker,
 } = {}) {
-  const windows = await runVersionCommand('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal })
+  const windows = await runVersionCommand('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal, readOnly: !allowBrokerProbe })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WINDOWS, version: windows.stdout.trim(), error: null };
   }
-  const wsl = await runVersionCommand('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal })
+  const wsl = await runVersionCommand('wsl.exe', paperclipLabWslDockerArgs(['version', '--format', '{{.Server.Version}}']), { timeoutMs: 15000, signal, readOnly: !allowBrokerProbe })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (wsl.exitCode === 0 && !wsl.timedOut && wsl.stdout.trim()) {
     return { kind: DOCKER_TRANSPORT_WSL, version: wsl.stdout.trim(), error: null };
@@ -508,6 +510,22 @@ async function ensureRootIntegrity({ create = true } = {}) {
   if (real.toLowerCase() !== normalizeWinPath(PAPERCLIP_LAB_ROOT).toLowerCase()) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
   }
+  return real;
+}
+
+// Strictly read-only counterpart to ensureContainedDirectory. All probes fail
+// closed for missing/symlinked paths and never materialize a directory.
+export async function paperclipReadOnlyExistingDirectory(value, {
+  lstat = path => fs.lstat(path),
+  realpath = path => fs.realpath(path),
+} = {}) {
+  const candidate = resolvePaperclipLabPath(value);
+  const stat = await lstat(candidate);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_READ_ONLY_DIRECTORY_UNSAFE');
+  }
+  const real = normalizeWinPath(await realpath(candidate));
+  if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
   return real;
 }
 
