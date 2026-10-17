@@ -181,7 +181,7 @@ export function parseCoreUiReadOnlyStep(issue) {
   if(/^(?:DONE|COMPLETED|CANCELLED|SUPERSEDED)(?:_|$)/.test(value(active,'CURRENT_STATE').toUpperCase()))return null;
   if([...REQUIRED,'NO_CODE_CHANGE','NO_SECURITY_BOUNDARY_CHANGE'].some(k=>!yes(active,k))||yes(active,'AUTONOMOUS_CODE'))return null;
   const workerId=value(active,'STEP_WORKER').toUpperCase(),role=value(active,'STEP_ROLE').toUpperCase();
-  if(workerId==='NV03'?(role!=='QA'||coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())
+  if(workerId==='NV03'?(role!=='QA'||coreUiNv03SelfPullFenced())
     :workerId!=='NV04'||!['RESEARCH','REVIEW','SECOND_OPINION'].includes(role))return null;
   const stepId=value(active,'STEP_ID').trim(),instruction=value(active,'STEP_INSTRUCTION').trim(),
     acceptance=value(active,'STEP_ACCEPTANCE').trim(),scope=value(active,'STEP_RESOURCE_SCOPE').trim(),
@@ -369,10 +369,11 @@ async function insertObjectiveIfScopeFree(pool,spec,metadata,objectiveId){
 }
 
 async function materializeForWorker({pool,fetchImpl,owner,repo,token,workerId,rows}){
-  // Never create a Core typed assignment for NV03 while its independent self-pull lane is enabled.
-  if(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced()))return null;
+  // NV03 general Core routing remains disabled. Only an explicit Owner-scoped
+  // QA step may use this typed read-only transport. Never race verified self-pull.
+  if(workerId==='NV03'&&coreUiNv03SelfPullFenced())return null;
   if(await row(pool,{workerId}))return null;
-  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
+  const specs=(Array.isArray(rows)?rows:[]).map(parseCoreUiIssue).filter(x=>x&&Array.isArray(x.eligibleWorkerIds)&&x.eligibleWorkerIds.includes(workerId)&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()&&x.stepMode!==true)).map(x=>({...x,workerId})).sort((a,b)=>rank(a.priority)-rank(b.priority)||a.number-b.number);
   for(const spec of specs){
     const prior=await latestCoreUiObjective(pool,spec);
     if(sameCoreUiRevision(prior,spec))continue;
@@ -484,14 +485,14 @@ export async function buildCoreUiAssignmentSnapshot({pool,fetchImpl=fetch,token=
     else{previous=publicJob(prev,{status:'RUNNING',executable:true});if(prev.status==='ui_assigned')await pool.query("update tigeriq_jobs set status='ui_running',started_at=coalesce(started_at,now()) where id=$1",[prev.job_id]);}
   }
   const current=[],missingWorkers=[];
-  for(const workerId of WORKERS.filter(id=>id!=='NV03'||!coreUiNv03CoreRoutingDisabled())){
+  for(const workerId of WORKERS){
     let item=await row(pool,{workerId});
     if(item)item=await reconcile({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
     if(item)item=await recoverStaleUiAssignment({pool,fetchImpl,owner,repo,token,item,observedAt});
     if(item&&current.some((existing)=>existing.job_id===item.job_id))continue;
-    if(item&&['ui_assigned','ui_running'].includes(String(item.status||'')))current.push(item);
-    else if(!(workerId==='NV03'&&(coreUiNv03CoreRoutingDisabled()||coreUiNv03SelfPullFenced())))missingWorkers.push(workerId);
+    if(item&&['ui_assigned','ui_running'].includes(String(item.status||''))&&!(workerId==='NV03'&&coreUiNv03CoreRoutingDisabled()&&item.metadata?.stepMode!==true))current.push(item);
+    else if(!(workerId==='NV03'&&coreUiNv03SelfPullFenced()))missingWorkers.push(workerId);
   }
   if(missingWorkers.length){
     let issues,sourceError;
