@@ -23,6 +23,9 @@ function ensureSafe(parts) {if (parts.some(p => dangerous.has(p))) throw Error('
 
 export function get(document, pointer) {
   validObject(document);
+  // Original MIT getter returns undefined for an empty array-form pointer.
+  // Unlike the root string pointer '', [] is not a root-document read.
+  if (Array.isArray(pointer) && pointer.length === 0) return undefined;
   const parts=compile(pointer);
   ensureSafe(parts);
   let cur=document;
