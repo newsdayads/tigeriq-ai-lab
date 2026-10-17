@@ -1,6 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {runInNewContext} from 'node:vm';
 // @ts-ignore Standalone CLI source is .mjs and deliberately has no declaration emit.
@@ -148,5 +151,42 @@ describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
     const rows=cli((JSON.stringify({op:'get',document:{a:1},pointer:'/a'})+'\n').repeat(1001));
     expect(rows.status).toBe(1);
     expect(rows.stdout).toContain('Input exceeds 1000 rows.');
+  });
+});
+
+describe('REA #4780 D04: offline npm package fresh-install acceptance',()=>{
+  it('packs with no network, installs in a clean prefix and reproduces all 28 MIT golden outcomes',()=>{
+    const root=mkdtempSync(join(tmpdir(),'tigeriq-d04-fresh-install-'));
+    const project=fileURLToPath(new URL('../../projects/rea-reconstruction-lab/d04-pointer-cli/',import.meta.url));
+    const env={...process.env,npm_config_update_notifier:'false',npm_config_audit:'false',npm_config_fund:'false'};
+    try{
+      const pack=spawnSync('npm',['pack',project,'--offline','--ignore-scripts','--pack-destination',root,'--json'],{
+        cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,
+      });
+      expect(pack.status,pack.stderr+' '+pack.stdout).toBe(0);
+      const metadata=JSON.parse(pack.stdout);
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].name).toBe('tigeriq-rea-pointer-demo');
+      const tarball=join(root,metadata[0].filename);
+      const digest=createHash('sha256').update(readFileSync(tarball)).digest('hex');
+      expect(digest).toMatch(/^[a-f0-9]{64}$/);
+      const target=join(root,'fresh');
+      mkdirSync(target);
+      const install=spawnSync('npm',[
+        'install','--offline','--ignore-scripts','--no-audit','--no-fund',
+        '--prefix',target,tarball,
+      ],{cwd:root,env,encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024});
+      expect(install.status,install.stderr+' '+install.stdout).toBe(0);
+      const installedCli=join(target,'node_modules','tigeriq-rea-pointer-demo','bin','rea-pointer-demo.mjs');
+      const actual=spawnSync(process.execPath,[installedCli,'--jsonl'],{
+        input:cases.map(c=>JSON.stringify(c)).join('\n')+'\n',
+        encoding:'utf8',timeout:9000,maxBuffer:4*1024*1024,
+      });
+      expect(actual.status,actual.stderr).toBe(0);
+      const outputs=actual.stdout.trim().split('\n').map(row=>JSON.parse(row));
+      expect(outputs).toHaveLength(28);
+      expect(outputs).toEqual(cases.map(c=>clean(originalOutcome(c))));
+      console.log('D04_OFFLINE_FRESH_INSTALL_PASS=28_OF_28|PACKAGE=tigeriq-rea-pointer-demo@0.5.0|PACK_SHA256='+digest+'|PC01_TOUCHED=false');
+    }finally{rmSync(root,{recursive:true,force:true});}
   });
 });
