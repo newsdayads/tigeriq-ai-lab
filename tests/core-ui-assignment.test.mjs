@@ -854,3 +854,47 @@ test('disabled general NV03 Core lane still recognizes exactly scoped QA-only st
     else process.env.TIGERIQ_NV03_CORE_DISPATCH_DISABLED=previous;
   }
 });
+
+
+test('Core QA stage: blocked parent -> real typed job -> result receipt, parent remains open',async()=>{
+  const pool=fakePool(),n=4456;
+  let parent=issue(n,[
+    '## OWNER CURRENT','PRIORITY=P2','OWNER_POLICY=AUTO',
+    'TIGERIQ_EXECUTABLE=false','AUTO_QUEUE=EXCLUDED_WAIT_QA','CURRENT_STATE=BLOCKED_REVIEW_PENDING',
+    'NO_CODE_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PC01_SHELL=true',
+    'NO_DIRECT_MAIN=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true',
+    'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true',
+    'STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+    'STEP_ID=S05a','STEP_WORKER=NV03','STEP_ROLE=QA','STEP_RESOURCE_SCOPE=NEWS_MEDIA_PR47_S05A_READONLY',
+    'STEP_INSTRUCTION=Review the exact PR and collect unresolved thread evidence',
+    'STEP_ACCEPTANCE=Report precise source findings without changing any files',
+    'STEP_EVIDENCE_DESTINATION=https://github.com/newsdayads/tigeriq-ai-lab/issues/4456',
+  ].join('\n'),'[P2] News');
+  let comments=0,closed=0;
+  const fetchImpl=async(url,init={})=>{
+    if(url.endsWith('/comments')&&init.method==='POST'){
+      comments++;
+      const body=JSON.parse(init.body).body;
+      return response({html_url:parent.html_url+'#issuecomment-'+comments,body});
+    }
+    if(url.includes('/comments?'))return response([]);
+    if(url.endsWith('/issues/'+n)&&init.method==='PATCH'){closed++;return response({state:'closed'});}
+    if(url.endsWith('/issues/'+n))return response(parent);
+    return response([parent]);
+  };
+  const assigned=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(assigned.assignmentState,'READY_ASSIGNED');
+  assert.equal(assigned.nextJobs[0].jobId,'GH-4456');
+  assert.equal(assigned.nextJobs[0].workerId,'NV03');
+  assert.match(assigned.nextJobs[0].prompt,/STEP_ID=S05a/);
+  assert.equal(pool.objectives[0].metadata.keepParentOpenAtAssignment,true);
+  const result=await completeCoreUiAssignment({pool,fetchImpl,token:'x',jobId:'GH-4456',workerId:'NV03',
+    terminal:'DONE',result:'Preliminary QA evidence submitted for exact PR'});
+  assert.equal(result.ok,true);
+  assert.equal(comments,1);
+  assert.equal(closed,0);
+  assert.equal(pool.jobs[0].status,'done');
+  assert.equal(pool.objectives[0].status,'completed');
+  const next=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
+  assert.equal(next.nextJobs.length,0,'same step revision must not repeat');
+});
