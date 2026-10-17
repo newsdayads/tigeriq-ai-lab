@@ -63,7 +63,10 @@ export function nv02PrioritySummary(issue) {
 function currentAuthoritySection(body) {
   const text = String(body || '');
   const trimmed = text.trimStart();
-  if (!/^##\s+OWNER\b/i.test(trimmed)) return text;
+  // Every first H2 section is the current authority. Archived H2 sections
+  // may contain stale executable/priority/lease flags; never scan them.
+  // An introductory section without machine fields must fail closed.
+  if (!/^##\s+/.test(trimmed)) return text;
   const firstBreak = trimmed.indexOf('\n');
   if (firstBreak < 0) return trimmed;
   const rest = trimmed.slice(firstBreak + 1);
