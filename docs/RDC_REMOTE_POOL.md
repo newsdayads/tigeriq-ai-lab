@@ -15,6 +15,12 @@ Scope: Remote Desktop Commander (RDC) multi-account pool on PC01
 - This is a **canonical routing requirement for participating TigerIQ chats/agents**, not proof that the native ChatGPT connector implements a persistent host-level automatic router. Global/cross-chat acceptance requires actual host connector configuration and new-session tests. Do not claim it is installed solely from this GitHub policy.
 - Do not perform background polling or charge device-bound calls just to monitor quota. Use this rule only when an actual authorized RDC operation is requested.
 
+## ENFORCEMENT — 2026-10-17 (TIGERIQ-owned connector callers)
+- Executable guard: `apps/shared/rdc-account-preflight.mjs` exporting `inspectRdcPool` and `executeRdcWithPool`. Regression: `tests/rdc-account-preflight.test.mjs`.
+- Every owned app/agent that directly invokes RDC MUST bind actual exposed `link_id` values to stable `RDC01..RDC05`, and pass the real `who_am_i`, `list_devices` and tool-invoker functions into `executeRdcWithPool`. Its returned selected `link_id` and paired PC01 `deviceId` are mandatory arguments to the RDC device call.
+- Fail closed before executing anything when operation is not explicitly authorized, quota/device status is unknown, PC01 offline, or all links have 0%. Do not select a hard-coded default account. Eligibility rechecked for every independent operation; only explicit pre-execution/quota failures permit failover. An ambiguous write MUST NOT be repeated.
+- Merely adding this module to the repository is NOT runtime integration. Acceptance needs callsite binding, exact-head checks, actual PC01 read-only call on a non-primary account, readback after release, and tests in fresh ChatGPT sessions. The ChatGPT native plugin host cannot be forcibly patched from this GitHub repository; host-level routing remains UNVERIFIED unless independently configured and tested.
+
 ## Runtime architecture
 - PC01 uses five independent Desktop Commander Remote sessions: `RDC01` → `RDC05`.
 - Each session has its own persisted profile under `D:\TigerIQ\RDCProfiles\RDC0N`.
