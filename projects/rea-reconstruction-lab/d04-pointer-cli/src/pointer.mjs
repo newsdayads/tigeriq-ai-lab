@@ -120,6 +120,21 @@ function copyJsonData(value, state, depth=0) {
   }
   if (Reflect.ownKeys(descriptors).some(key => typeof key === 'symbol'))
     throw new TypeError('Non-JSON symbol property forbidden.');
+  // JSON cannot express sparse arrays, named array properties or hidden fields.
+  // Silently omitting these while cloning can change input semantics. Reject
+  // them instead of returning a seemingly successful but lossy result.
+  if (Object.entries(descriptors).some(([key, desc]) =>
+    !desc.enumerable && !(array && key === 'length')))
+    throw new TypeError('Non-enumerable JSON property forbidden.');
+  if (array) {
+    for (let index = 0; index < value.length; index++) {
+      if (!Object.hasOwn(descriptors, String(index)))
+        throw new TypeError('Sparse JSON array forbidden.');
+    }
+    if (Object.keys(descriptors).some(key =>
+      key !== 'length' && !/^(0|[1-9][0-9]*)$/.test(key)))
+      throw new TypeError('Named JSON array property forbidden.');
+  }
   state.active.add(value);
   try {
     const result = array ? new Array(value.length) : {};
