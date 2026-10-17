@@ -1,7 +1,49 @@
 // Readback-only gate: checklist assertions are not proof of runtime acceptance.
 // Caller MUST supply the fresh GitHub issue fetched after the attempted checkbox write.
-const STEP=/^\s*[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
+const STEP=/^ {0,3}[-*]\s+\[([ xX])\]\s+\*{0,2}([A-Z][A-Za-z0-9_-]{1,15})\*{0,2}\b\s*(.*)$/;
 const MARKDOWN_LINK=/\[[^\]]+\]\((https:\/\/[^\s)]+)\)/g;
+
+function markdownEscaped(text,index){
+ let n=0;
+ for(let i=index-1;i>=0&&text[i]==='\\';i--)n++;
+ return n%2===1;
+}
+// Evidence links must be visible Markdown hyperlinks, not inline code,
+// literal escaped link syntax, image embeds, or raw HTML code samples.
+function receiptLinksFromLine(line){
+ const input=String(line||'').replace(/<code\b[^>]*>[\s\S]*?<\/code\s*>/gi,'');
+ let visible='';
+ for(let i=0;i<input.length;){
+  if(input[i]!=='\x60'||markdownEscaped(input,i)){visible+=input[i++];continue;}
+  let endOpen=i;
+  while(input[endOpen]==='\x60')endOpen++;
+  const width=endOpen-i;
+  let k=endOpen,close=-1,closeEnd=-1;
+  while(k<input.length){
+   const at=input.indexOf('\x60',k);
+   if(at<0)break;
+   let end=at;
+   while(input[end]==='\x60')end++;
+   if(end-at===width&&!markdownEscaped(input,at)){close=at;closeEnd=end;break;}
+   k=end;
+  }
+  if(close<0){visible+=input.slice(i,endOpen);i=endOpen;}
+  else{visible+=' '.repeat(closeEnd-i);i=closeEnd;}
+ }
+ // A Markdown-looking link within raw inline HTML is not reliable visible
+ // evidence. Reject the whole row on ambiguous inline HTML; the canonical
+ // checklist can be rewritten as plain Markdown with an explicit receipt.
+ // Inline <code>...</code> samples were already removed above.
+ if(/<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])[^>]*>/.test(visible))return [];
+ const found=[];
+ for(const match of visible.matchAll(MARKDOWN_LINK)){
+  if(markdownEscaped(visible,match.index))continue;
+  const image=match.index>0&&visible[match.index-1]==='!'&&!markdownEscaped(visible,match.index-1);
+  if(!image)found.push(match[1]);
+ }
+ return found;
+}
+
 function sectionName(line){
  const m=String(line).match(/^\s{0,3}#{2,6}\s+(.+)$/);
  if(!m)return null;
@@ -12,14 +54,76 @@ export function workOrderChecklistSteps(body=''){
  const lines=String(body||'').split(/\r?\n/);
  let found=false,inside=false;
  const steps=[];
- for(const line of lines){
+ // Read only canonical root checklist entries, never checkbox illustrations in
+ // fenced/indented Markdown code. Match CommonMark's 0-3-space fence boundary;
+ // a longer opening fence cannot be closed by a shorter marker.
+ let fence=null,htmlComment=false,rawHtmlTag=null,rawHtmlDepth=0;
+ // HTML blocks contain literal content, not authorized Markdown checklist
+ // receipts. Track nested same-tag elements so an inner close cannot release
+ // a forged checked stage before the outer HTML block closes.
+ // Protect every standalone opening HTML element, not a selective tag list.
+ // Fail closed even for uncommon CommonMark/raw/custom tags such as iframe.
+ const HTML_BLOCK_OPEN=/^ {0,3}<([a-z][a-z0-9:-]*)(?=[\s/>])[^>]*>/i;
+ const htmlTagMatches=(line,tag)=>{
+  const pattern=new RegExp('<(/?)'+tag+'(?=[\\s/>])[^>]*>','gi');
+  return [...line.matchAll(pattern)].map(match=>({
+   closing:match[1]==='/',selfClosing:/\/\s*>$/.test(match[0])
+  }));
+ };
+ for(const rawLine of lines){
+  // Markdown fenced code is literal: its comment markers are not HTML syntax.
+  if(fence){
+   const closing=rawLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+   if(closing&&closing[1][0]===fence.char&&closing[1].length>=fence.length&&
+      closing[2].trim()==='')fence=null;
+   continue;
+  }
+  // Strip HTML comments, including multiline blocks, before considering a
+  // heading or checked receipt. Never count hidden examples as acceptance.
+  let line='',rest=rawLine;
+  while(rest.length){
+   if(htmlComment){
+    const end=rest.indexOf('-->');
+    if(end<0)break;
+    rest=rest.slice(end+3);htmlComment=false;
+   }else{
+    const begin=rest.indexOf('<!--');
+    if(begin<0){line+=rest;break;}
+    line+=rest.slice(0,begin);
+    rest=rest.slice(begin+4);htmlComment=true;
+   }
+  }
+  if(rawHtmlTag){
+   for(const tag of htmlTagMatches(line,rawHtmlTag)){
+    if(tag.closing)rawHtmlDepth--;
+    else if(!tag.selfClosing)rawHtmlDepth++;
+   }
+   if(rawHtmlDepth<=0){rawHtmlTag=null;rawHtmlDepth=0;}
+   continue;
+  }
+  const htmlOpener=line.match(HTML_BLOCK_OPEN);
+  if(htmlOpener){
+   const tagName=htmlOpener[1].toLowerCase();
+   // Void elements do not hide subsequent canonical checklist rows.
+   if(new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']).has(tagName))continue;
+   rawHtmlTag=tagName;
+   rawHtmlDepth=0;
+   for(const tag of htmlTagMatches(line,rawHtmlTag)){
+    if(tag.closing)rawHtmlDepth--;
+    else if(!tag.selfClosing)rawHtmlDepth++;
+   }
+   if(rawHtmlDepth<=0){rawHtmlTag=null;rawHtmlDepth=0;}
+   continue;
+  }
+  const marker=line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  if(marker){fence={char:marker[1][0],length:marker[1].length};continue;}
   const heading=sectionName(line);
   if(heading!==null){if(inside)break;if(!found&&heading==='checklist'){found=true;inside=true;}continue;}
   if(!inside)continue;
   const m=line.match(STEP);
   if(!m)continue;
   steps.push({id:m[2],checked:m[1].toLowerCase()==='x',
-   evidenceUrls:[...line.matchAll(MARKDOWN_LINK)].map(v=>v[1]),line});
+   evidenceUrls:receiptLinksFromLine(line),line});
  }
  return {found,steps};
 }

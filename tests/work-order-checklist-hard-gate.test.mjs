@@ -55,3 +55,139 @@ test('NV07 canonical case-only duplicate IDs are rejected before acceptance',()=
  assert.equal(workOrderChecklistSteps(body).steps.length,2);
  assert.equal(workOrderChecklistGate(card(body),{stepId:'S4a',requireAll:false}).reason,'DUPLICATE_STEP_ID');
 });
+
+test('NV07 S6 cannot be completed by a forged checked checkbox inside a fenced example',()=>{
+ for(const [open,close] of [['```md','```'],['~~~markdown','~~~']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',open,
+   '- [x] S6 — illustrative only [Receipt]('+url+')',close,
+   '- [ ] S6 — actual pending GitHub to Core receipt','## ACCEPTANCE'].join('\n');
+  const parsed=workOrderChecklistSteps(body);
+  assert.deepEqual(parsed.steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,
+   'STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+test('NV07 indented Markdown code may not impersonate canonical S6 evidence',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '    - [x] S6 — code sample [Receipt]('+url+')',
+  '- [ ] S6 — real protected Core step','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6']);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('fenced pseudo-checklist heading before real checklist is not a Work Order',()=>{
+ const body=['```md','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — fake checked [Receipt]('+url+')','```',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — only authoritative row',
+  '## ACCEPTANCE'].join('\n');
+ const parsed=workOrderChecklistSteps(body);
+ assert.equal(parsed.found,true);
+ assert.deepEqual(parsed.steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('long tilde fenced code cannot be closed by a shorter marker',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','~~~~mjs',
+  '- [x] S6 — fake code [Receipt]('+url+')','~~~',
+  '- [x] S7 — still code [Receipt]('+url+')','~~~~',
+  '- [ ] S6 — pending','- [ ] S7 — pending','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6','S7']);
+ assert.equal(workOrderChecklistGate(card(body)).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+
+test('NV07 rejects a checked S6 hidden inside a Markdown HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--',
+  '- [x] S6 — hidden fake [Receipt]('+url+')','-->','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKLIST_MISSING');
+});
+test('NV07 rejects a forged checklist heading hidden inside an HTML comment',()=>{
+ const body=['<!--','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — hidden [Receipt]('+url+')','-->',
+  '## STRUCTURED_PROGRESS_CHECKLIST','- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.checked),[false]);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+test('NV07 ignores a fake fence marker inside an HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<!--','```md',
+  '-->','- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>x.id),['S6']);
+});
+test('NV07 preserves visible checked S5c with an inline HTML comment',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — accepted <!-- note --> [Receipt]('+url+')',
+  '- [ ] S6 — actual','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+});
+
+test('NV07 raw HTML script/pre/details cannot spoof checked S6',()=>{
+ for(const [open,close] of [['<pre>','</pre>'],['<script>','</script>'],['<details>','</details>']]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',open,
+   '- [x] S6 — fake [Receipt]('+url+')',close,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKLIST_MISSING');
+ }
+});
+test('NV07 forged HTML heading and nested div cannot be accepted',()=>{
+ const body=['<div>','## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S6 — false [Receipt]('+url+')','</div>',
+  '## STRUCTURED_PROGRESS_CHECKLIST','<div>','<div>','</div>',
+  '- [x] S6 — false [Receipt]('+url+')','</div>',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+  assert.deepEqual(workOrderChecklistSteps(body).steps.map(x=>({id:x.id,checked:x.checked})),[{id:'S6',checked:false}]);
+});
+
+test('NV07 inline code, escaped link, image and HTML code cannot spoof checked S6 receipt',()=>{
+ const proof='https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-6171872076';
+ const tick=String.fromCharCode(96);
+ for(const fake of [
+  tick+'[Receipt]('+proof+')'+tick,
+  tick+tick+'[Receipt]('+proof+')'+tick+tick,
+  '\\[Receipt]('+proof+')',
+  '![Receipt]('+proof+')',
+  '<code>[Receipt]('+proof+')</code>'
+ ]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST','- [x] S6 — '+fake,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+});
+test('NV07 linked S5c after inline literal still accepted; unchecked S6 is not',()=>{
+ const tick=String.fromCharCode(96);
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — '+tick+'example'+tick+' [Receipt]('+url+')',
+  '- [ ] S6 — pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+
+test('NV07 QA #4940: unlisted iframe/figure HTML blocks cannot forge checked S6',()=>{
+ for(const tag of ['iframe','figure','custom-widget']){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST','<'+tag+'>',
+   '- [x] S6 — forged [Receipt]('+url+')','</'+tag+'>',
+   '- [ ] S6 — authoritative pending','## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+ }
+});
+test('NV07 QA #4940: standalone void tag does not hide authorized prior receipt',()=>{
+ const body=['## STRUCTURED_PROGRESS_CHECKLIST','<hr>',
+  '- [x] S5c — valid [Receipt]('+url+')',
+  '- [ ] S6 — real pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
+
+test('NV07 inline HTML wrapping or adjacent to receipt cannot certify S6',()=>{
+ for(const fragment of [
+  '<span>[Receipt]('+url+')</span>',
+  '<span class="proof">[Receipt]('+url+')</span>',
+  '<a href="'+url+'">[Receipt]('+url+')</a>',
+  '<span>raw</span> [Receipt]('+url+')',
+  '[Receipt]('+url+') <span>raw</span>'
+ ]){
+  const body=['## STRUCTURED_PROGRESS_CHECKLIST',
+   '- [x] S6 — '+fragment,'## ACCEPTANCE'].join('\n');
+  assert.equal(workOrderChecklistGate(card(body),{stepId:'S6',requireAll:false}).reason,
+   'CHECKED_WITHOUT_RECEIPT_LINK');
+ }
+ const real=['## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] S5c — [Receipt]('+url+')',
+  '- [ ] S6 — pending','## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(real),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
+ assert.equal(workOrderChecklistGate(card(real),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
+});
