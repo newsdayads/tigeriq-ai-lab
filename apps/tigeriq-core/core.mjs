@@ -3154,7 +3154,7 @@ const server=createServer(async(req,res)=>{
     if(req.method==='POST'&&url.pathname==='/api/nv07/proposal-github-receipt'){
       if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
       const input=await readBody(req);
-      if(Object.keys(input).some(k=>!['jobId','pullRequestNumber'].includes(k))){
+      if(Object.keys(input).some(k=>!['jobId','pullRequestNumber','leaseToken'].includes(k))){
         res.writeHead(400);return res.end('NV07_RECEIPT_FIELDS_INVALID');
       }
       const result=await recordNv07GithubProposalReceipt(pool,input);

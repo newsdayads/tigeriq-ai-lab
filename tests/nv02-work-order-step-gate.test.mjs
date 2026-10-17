@@ -79,3 +79,18 @@ test('A blocked can lead to independent B; source-only simulation does not claim
  ].join('\n')};
  assert.equal(selectNv02WorkOrder([a,b])?.issue?.number,9002);
 });
+
+
+test('single-digit S6/S7 checklist step IDs are accepted only with owned lease and verified evidence',()=>{
+ const singleBody=body().replaceAll('R03','S5c').replaceAll('R04','S6');
+ const singleIssue={...work(),body:singleBody};
+ const inputs={issue:singleIssue,lease,comments:leaseComment,stepId:'S6',evidenceUrl:url};
+ assert.equal(nv02StepUpdatePlan({...inputs,evidenceReadbackVerified:false}).reason,'ORIGINAL_EVIDENCE_READBACK_REQUIRED');
+ assert.equal(nv02StepUpdatePlan({...inputs,evidenceReadbackVerified:true,comments:[]}).reason,'LIVE_LEASE_RECEIPT_REQUIRED');
+ const approved=nv02StepUpdatePlan({...inputs,evidenceReadbackVerified:true});
+ assert.equal(approved.ok,true);
+ assert.match(approved.updatedBody,/^- \[x\] S6 — Bước mới — \[Biên nhận đã đối chiếu\]\(/m);
+ for(const invalid of ['S600','S6x','S6/S7','S0x','R100']){
+  assert.equal(nv02StepUpdatePlan({...inputs,stepId:invalid,evidenceReadbackVerified:true}).reason,'STEP_NOT_DECLARED');
+ }
+});
