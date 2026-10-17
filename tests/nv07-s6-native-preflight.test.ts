@@ -6,6 +6,8 @@ const p=NV07_S6_PINNED_PROPOSAL;
 const canary={seq:'214872',job_id:p.jobId,resource_id:p.resourceId,data:{
  workOrderId:4783,sourceSha:p.sourceSha,outputHash:p.outputHash,
  resourceScope:'TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783',proposedFileCount:1,
+ state:'BOOTSTRAP_CANARY_PROPOSAL_VERIFIED_NOT_ACTIVE',
+ source:'CORE_VERIFIED_CLI_JSON',reservationSeq:p.reservationSeq,
 }};
 const freeResource={resource_id:p.resourceId,employee_id:'NV07',enabled:true,
  current_job_id:null,work_id:null};
@@ -34,6 +36,10 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
    [{...canary,data:{...canary.data,workOrderId:999}}],
    [{...canary,seq:'214873'}],
    [{...canary,seq:'214872 '}],
+   [{...canary,data:{...canary.data,state:'FAILED'}}],
+   [{...canary,data:{...canary.data,source:'UNVERIFIED_EXTERNAL'}}],
+   [{...canary,data:{...canary.data,reservationSeq:'214935'}}],
+   [{...canary,data:{...canary.data,reservationSeq:null}}],
   ]){
    const {db}=fake({receipts});
    const outcome=await readNv07S6NativePreflight(db);
@@ -121,6 +127,31 @@ describe('S6 protected operator preflight is read-only, non-authorizing and fail
   for(const applied of [[],[matchingApplied]]){
    const result=await readNv07S6NativePreflight(fake({
     receipts:[alternateReceipt],applied,
+   }).db);
+   expect(result).toMatchObject({
+    ok:false,code:'NV07_S6_CANONICAL_CANARY_BINDING_MISMATCH',
+    sourceInputsVerified:false,durableS6Observed:false,
+    liveS6LeaseAuthorized:false,nv07Active:false,
+   });
+  }
+ });
+ it('rejects forged source, state or reservation even when an applied event looks valid',async()=>{
+  const applied={seq:'219999',job_id:p.jobId,resource_id:p.resourceId,data:{
+   accepted:true,code:'NV07_GITHUB_PROPOSAL_EVIDENCE_VERIFIED',
+   workOrderId:4783,jobId:p.jobId,cliReceiptSeq:p.cliReceiptSeq,
+   pullRequestNumber:p.pullRequestNumber,
+   headSha:p.headSha,mergeSha:p.mergeSha,
+   artifactPath:p.artifactPath,artifactBlobSha:p.artifactBlobSha,
+   review:'OWNER_WAIVED_NOT_INDEPENDENT_PASS',
+   sourceSha:p.sourceSha,outputHash:p.outputHash,nv07Active:false,
+  }};
+  for(const changed of [
+   {state:'FAILED'}, {source:'EXTERNAL_UNVERIFIED'},
+   {reservationSeq:'214935'}, {reservationSeq:'0'},
+  ]){
+   const result=await readNv07S6NativePreflight(fake({
+    receipts:[{...canary,data:{...canary.data,...changed}}],
+    applied:[applied],
    }).db);
    expect(result).toMatchObject({
     ok:false,code:'NV07_S6_CANONICAL_CANARY_BINDING_MISMATCH',
