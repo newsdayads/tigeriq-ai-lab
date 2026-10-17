@@ -3,7 +3,7 @@
 import {completionProof} from '../shared/work-center-history.mjs';
 import {lifecycleSteps,validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
 
-const STEP_ID=/^([A-Z]\d{2})\b/;
+const STEP_ID=/^[A-Z]\d{1,2}$/;
 const URL=/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:issues|pull|commit)\/[1-9]\d*(?:[/?#][^\s]*)?$/;
 const FIELDS=(body)=>Object.fromEntries(String(body||'').split(/\r?\n/).map(x=>x.match(/^([A-Z_]+)=(.*)$/)).filter(Boolean).map(x=>[x[1],x[2].trim()]));
 export const NV02_STEP_CHECKPOINT_MARKER='[TIGERIQ_NV02_STEP_CHECKPOINT_V1]';
