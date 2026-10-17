@@ -43,12 +43,26 @@ function envConfig(env = process.env) {
     throw new ApifyE2EError('EXECUTION_GATE_REQUIRED', 'Set APIFY_E2E_EXECUTE=OWNER_APPROVED_PRIVATE_TEST only in the authorized execution environment.');
   }
 
+  // waitForFinish only bounds the HTTP wait; it is not a spending limit.
+  // This is an additional source fail-closed prerequisite, NOT a grant to
+  // start paid work: platform/Owner cost approval must still be checked.
+  // The run limit does not cap the separate build or account-level charges.
+  const budgetText = String(env.APIFY_E2E_MAX_TOTAL_CHARGE_USD ?? '').trim();
+  const maxTotalChargeUsd = Number(budgetText);
+  if (!/^(?:0|1)(?:\.\d{1,3})?$/.test(budgetText) ||
+      !Number.isFinite(maxTotalChargeUsd) ||
+      maxTotalChargeUsd <= 0 || maxTotalChargeUsd > 1) {
+    throw new ApifyE2EError('EXPLICIT_COST_ENVELOPE_REQUIRED',
+      'A positive, bounded run cost envelope in USD is required before building or running.');
+  }
+
   return {
     token,
     actorId,
     version: String(env.APIFY_ACTOR_VERSION || '0.1').trim(),
     buildTag: String(env.APIFY_BUILD_TAG || 'latest').trim(),
     apiBase: 'https://api.apify.com/v2',
+    maxTotalChargeUsd,
     evidencePath: String(env.APIFY_EVIDENCE_PATH || '').trim() || null,
   };
 }
@@ -114,15 +128,45 @@ function dataOf(payload) {
   return payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
 }
 
-async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4 }) {
+function requireResourceId(item, kind) {
+  const id = item?.id;
+  if (typeof id !== 'string' || !id.trim() || id.length > 256) {
+    throw new ApifyE2EError('RESOURCE_ID_INVALID',
+      `${kind} response has no bounded canonical resource ID.`);
+  }
+  return id;
+}
+
+function assertSameResourceId(item, expectedId, kind) {
+  // POST, every polling step and finalized usage reads must refer to the
+  // same Core-unrelated Apify resource. Never silently follow a swapped id.
+  if (item?.id !== expectedId) {
+    throw new ApifyE2EError('RESOURCE_ID_MISMATCH',
+      `${kind} resource ID changed across authenticated API responses.`);
+  }
+}
+
+function assertSameBuildId(item, expectedBuildId, stage) {
+  // A mutable build tag such as "latest" may be repointed between the
+  // successful build and the run. Successful status alone is not proof that
+  // the newly built Actor was executed. Apify run objects expose buildId.
+  if (typeof item?.buildId !== 'string' || item.buildId !== expectedBuildId) {
+    throw new ApifyE2EError('BUILD_ID_MISMATCH',
+      `${stage} did not attest the exact Actor build created in this E2E attempt.`);
+  }
+}
+
+async function waitTerminal({ kind, initial, fetchFn, config, maxPolls = 4, expectedBuildId = null }) {
+  const expectedId = requireResourceId(initial, kind);
   let item = initial;
   for (let attempt = 0; attempt <= maxPolls; attempt += 1) {
+    assertSameResourceId(item, expectedId, kind);
+    if (kind === 'run') assertSameBuildId(item, expectedBuildId, 'run-poll');
     if (TERMINAL.has(item?.status)) return item;
-    if (!item?.id) throw new ApifyE2EError('MISSING_RESOURCE_ID', `${kind} response did not contain an id.`);
-    const path = kind === 'build' ? 'actor-builds' : 'actor-runs';
+    const resourcePath = kind === 'build' ? 'actor-builds' : 'actor-runs';
     item = dataOf(await requestJson(
       fetchFn,
-      `${config.apiBase}/${path}/${encode(item.id)}?waitForFinish=60`,
+      `${config.apiBase}/${resourcePath}/${encode(expectedId)}?waitForFinish=60`,
       { token: config.token },
     ));
   }
@@ -188,6 +232,7 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actor-builds/${encode(build.id)}`,
     { token: config.token },
   ));
+  assertSameResourceId(finalizedBuild, build.id, 'build');
   if (finalizedBuild?.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('BUILD_FINAL_STATE_INVALID', 'Finalized build no longer reports SUCCEEDED.', {
       buildId: build.id ?? null,
@@ -197,11 +242,26 @@ export async function runPrivateApifyE2E({
   const buildCost = usageCost(finalizedBuild, 'build');
   const buildComputeUnits = computeUnits(finalizedBuild, 'build');
 
+  // Apify run 'build' accepts a tag OR immutable build number; never use a
+  // mutable tag after creating the build. A post-POST buildId check alone is
+  // too late: a different, potentially charged Actor run could have started.
+  const pinnedBuildNumber = finalizedBuild?.buildNumber;
+  if (typeof pinnedBuildNumber !== 'string' ||
+      !/^([0-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])\.[1-9][0-9]{0,4}$/.test(pinnedBuildNumber)) {
+    throw new ApifyE2EError('BUILD_NUMBER_INVALID',
+      'Finalized Actor build has no canonical immutable build number; refusing run POST.');
+  }
+  if (build?.buildNumber != null && build.buildNumber !== pinnedBuildNumber) {
+    throw new ApifyE2EError('BUILD_NUMBER_MISMATCH',
+      'Initial and finalized Actor build numbers differ; refusing run POST.');
+  }
+
   const runParams = new URLSearchParams({
-    build: config.buildTag,
+    build: pinnedBuildNumber,
     waitForFinish: '60',
     timeout: '60',
     memory: '256',
+    maxTotalChargeUsd: String(config.maxTotalChargeUsd),
     restartOnError: 'false',
     forcePermissionLevel: 'LIMITED_PERMISSIONS',
   });
@@ -218,7 +278,9 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actors/${encode(config.actorId)}/runs?${runParams}`,
     { token: config.token, method: 'POST', body: runInput },
   ));
-  const run = await waitTerminal({ kind: 'run', initial: runInitial, fetchFn, config });
+  assertSameBuildId(runInitial, build.id, 'run-start');
+  const run = await waitTerminal({ kind: 'run', initial: runInitial, fetchFn, config, expectedBuildId: build.id });
+  assertSameBuildId(run, build.id, 'run-terminal');
   if (run.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FAILED', `Private Actor run finished with status ${run.status}.`, {
       runId: run.id ?? null,
@@ -231,6 +293,8 @@ export async function runPrivateApifyE2E({
     `${config.apiBase}/actor-runs/${encode(run.id)}`,
     { token: config.token },
   ));
+  assertSameResourceId(finalizedRun, run.id, 'run');
+  assertSameBuildId(finalizedRun, build.id, 'run-final');
   if (finalizedRun?.status !== 'SUCCEEDED') {
     throw new ApifyE2EError('RUN_FINAL_STATE_INVALID', 'Finalized run no longer reports SUCCEEDED.', {
       runId: run.id ?? null,
@@ -246,10 +310,26 @@ export async function runPrivateApifyE2E({
     { token: config.token },
   );
 
-  // HTTP 200 only proves that OUTPUT was retrieved, not that the audit passed.
+  // HTTP 200 + success alone does not prove the paid run audited *our*
+  // requested target. Bind OUTPUT to the fixed E2E input and require the
+  // minimum real audit payload before writing a product/cost receipt.
+  const expectedAuditUrl = new URL(runInput.url).toString();
   if (!output || typeof output !== 'object' || Array.isArray(output) ||
       output.schemaVersion !== '1.0' || output.status !== 'success' ||
-      Boolean(output.error)) {
+      Boolean(output.error) || output.requestedUrl !== expectedAuditUrl ||
+      !Array.isArray(output.pages) || output.pages.length === 0 ||
+      output.pages.length > runInput.maxPages ||
+      // This private smoke harness submits exactly one fixed page. A
+      // "success" record for any other page is not evidence for that input.
+      // Fail closed instead of crediting unrelated/redirected output.
+      !output.pages.every(page => page?.url === expectedAuditUrl &&
+        Number.isInteger(page.statusCode) &&
+        page.statusCode >= 200 && page.statusCode < 300) ||
+      !output.metrics || output.metrics.pagesAudited !== output.pages.length ||
+      output.metrics.errorCount !== 0 ||
+      !Array.isArray(output.errors) || output.errors.length !== 0 ||
+      !output.summary || typeof output.summary !== 'object' ||
+      Array.isArray(output.summary)) {
     throw new ApifyE2EError('OUTPUT_INVALID',
       'Authenticated OUTPUT is not a successful Website Audit schema 1.0 result.');
   }
@@ -265,19 +345,24 @@ export async function runPrivateApifyE2E({
     },
     build: {
       id: build.id ?? null,
+      buildNumber: pinnedBuildNumber,
       status: build.status,
       computeUnits: buildComputeUnits,
       usageTotalUsd: buildCost,
     },
     run: {
       id: run.id ?? null,
+      buildId: finalizedRun.buildId,
+      requestedBuildNumber: pinnedBuildNumber,
       status: run.status,
       computeUnits: runComputeUnits,
       usageTotalUsd: runCost,
     },
     output: {
-      status: output?.status ?? null,
-      schemaVersion: output?.schemaVersion ?? null,
+      status: output.status,
+      schemaVersion: output.schemaVersion,
+      requestedUrl: output.requestedUrl,
+      pagesAudited: output.pages.length,
     },
     cost: {
       buildUsageTotalUsd: buildCost,

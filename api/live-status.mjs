@@ -1134,7 +1134,9 @@ export function classifyOpenIssue(issue) {
   const phase = issueCanonicalState(issue);
   const acceptance = ownerAcceptancePolicy(body);
 
-  const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|POLICY|SOT)\]/i.test(title)
+  const systemReference = /\[(?:QUẢN TRỊ|REGISTRY|STATE|CENTRAL|TÀI NGUYÊN|RESULTS|POLICY|SOT)\]/i.test(title)
+    || bodyValue(body, 'RESOURCE_SCOPE').toUpperCase().startsWith('SYSTEM_')
+    || bodyFlag(body, 'RESULT_INBOX')
     || bodyFlag(body, 'CANONICAL_POLICY')
     || bodyFlag(body, 'REFERENCE_ONLY');
 

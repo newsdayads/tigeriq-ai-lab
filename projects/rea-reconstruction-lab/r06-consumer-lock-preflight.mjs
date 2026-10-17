@@ -89,6 +89,29 @@ const dependencySpecMatches = (spec, resolved) => {
   return actual[0] === 0 && actual[1] === 0 && actual[2] === min[2];
 };
 
+// Pinned REA 6.4.0 source production metadata: only these six
+// platform-native packages carry optional/os/cpu flags. Source-shape admission
+// is NOT validation of a consumer-resolved lock, actual SBOM, or permission to install.
+const SOURCE_NATIVE_TARGETS=Object.freeze({
+  'node_modules/@lydell/node-pty-darwin-arm64':Object.freeze({os:'darwin',cpu:'arm64'}),
+  'node_modules/@lydell/node-pty-darwin-x64':Object.freeze({os:'darwin',cpu:'x64'}),
+  'node_modules/@lydell/node-pty-linux-arm64':Object.freeze({os:'linux',cpu:'arm64'}),
+  'node_modules/@lydell/node-pty-linux-x64':Object.freeze({os:'linux',cpu:'x64'}),
+  'node_modules/@lydell/node-pty-win32-arm64':Object.freeze({os:'win32',cpu:'arm64'}),
+  'node_modules/@lydell/node-pty-win32-x64':Object.freeze({os:'win32',cpu:'x64'})
+});
+const sourceMetadataMatches=(path,p)=>{
+  // These flags were absent from all 148 pinned production rows. Their
+  // appearance can change npm's consumer install graph or execution plan.
+  if(['inBundle','bundled','bundleDependencies','bundledDependencies',
+      'dev','devOptional'].some(flag=>own(p,flag)))return false;
+  const target=SOURCE_NATIVE_TARGETS[path];
+  if(!target)return !own(p,'optional')&&!own(p,'os')&&!own(p,'cpu');
+  return own(p,'optional')&&p.optional===true&&
+    Array.isArray(p.os)&&p.os.length===1&&p.os[0]===target.os&&
+    Array.isArray(p.cpu)&&p.cpu.length===1&&p.cpu[0]===target.cpu;
+};
+
 // Immutable REA 6.4.0 upstream production-lock peers: exactly three optional
 // declarations in two packages. These are metadata admission bounds, not
 // authentication of a consumer SBOM or permission to run npm.
@@ -128,7 +151,7 @@ const report=(decision,reason,counts={})=>({
 });
 export const REA_DIRECT_DEPENDENCIES=DIRECT;
 export const REA_EXPECTED_SRI=REA_SRI;
-export function inspectR06ConsumerLock(lock){
+function inspectR06ConsumerLockUnchecked(lock){
   if(!rec(lock)||lock.lockfileVersion!==3||!rec(lock.packages)||
       !rec(lock.packages[''])||!rec(lock.packages['node_modules/rea-agents']))
     return report('REJECTED','LOCK_V3_SHAPE_MISSING');
@@ -137,7 +160,8 @@ export function inspectR06ConsumerLock(lock){
       rows.some(([path,p])=>!pathOk(path)||!rec(p)))
     return report('REJECTED','PACKAGE_ENTRIES_INVALID');
   const root=pkgs[''],rea=pkgs['node_modules/rea-agents'];
-  if(!rec(root.dependencies)||root.dependencies['rea-agents']!=='6.4.0'||
+  if(!rec(root.dependencies)||!own(root.dependencies,'rea-agents')||
+      root.dependencies['rea-agents']!=='6.4.0'||
       rea.version!=='6.4.0'||rea.integrity!==REA_SRI||
       !resolvedOk(rea.resolved,'rea-agents',rea.version))
     return report('REJECTED','REA_ARTIFACT_PIN_MISMATCH');
@@ -149,15 +173,17 @@ export function inspectR06ConsumerLock(lock){
   const rootListEmptyOrAbsent=key=>!own(root,key)||
     (Array.isArray(root[key])&&root[key].length===0);
   if(Object.keys(root.dependencies).length!==1||
-      ['devDependencies','optionalDependencies','peerDependencies','scripts']
+      ['devDependencies','optionalDependencies','peerDependencies','scripts','overrides']
         .some(key=>!rootMapEmptyOrAbsent(key))||
       ['workspaces','bundleDependencies','bundledDependencies']
         .some(key=>!rootListEmptyOrAbsent(key))||
       (own(root,'hasInstallScript')&&root.hasInstallScript!==false)||
       (own(root,'gypfile')&&root.gypfile!==false))
     return report('REJECTED','CONSUMER_ROOT_SCOPE_DRIFT');
+  if(!sourceMetadataMatches('',root))
+    return report('REJECTED','CONSUMER_ROOT_SCOPE_DRIFT');
   if(!rec(rea.dependencies)||pairs(rea.dependencies).length!==35||
-      pairs(DIRECT).some(([name,v])=>rea.dependencies[name]!==v))
+      pairs(DIRECT).some(([name,v])=>!own(rea.dependencies,name)||rea.dependencies[name]!==v))
     return report('REJECTED','REA_DIRECT_DEPENDENCIES_MISMATCH');
   if(pairs(DIRECT).some(([name,v])=>{
     const path=locate(pkgs,'node_modules/rea-agents',name);
@@ -169,6 +195,8 @@ export function inspectR06ConsumerLock(lock){
     if(p.link===true||!versionOk(p.version)||!sriOk(p.integrity)||
         !resolvedOk(p.resolved,path.slice(path.lastIndexOf('node_modules/')+13),p.version))
       return report('REJECTED','UNVERIFIED_PACKAGE_SOURCE');
+    if(!sourceMetadataMatches(path,p))
+      return report('REJECTED','CONSUMER_PACKAGE_METADATA_DRIFT');
     // Only the three audited upstream optional peer edges are admitted.
     // Unknown required peers may cause npm to resolve additional packages.
     const declaredPeers=p.peerDependencies===undefined?{}:p.peerDependencies;
@@ -217,4 +245,12 @@ export function inspectR06ConsumerLock(lock){
       peerDeclarations,missingOptionalPeers,
       packagesWithInstallScriptFlag:rows.filter(([path,p])=>path&&p.hasInstallScript===true).length
     });
+}
+
+// Boundary for caller-controlled objects. JSON.parse produces ordinary data, but
+// plugin/test callers can supply getters and Proxies that throw on inspection.
+// A malicious accessor must never leak an exception or turn into install approval.
+export function inspectR06ConsumerLock(lock){
+  try{return inspectR06ConsumerLockUnchecked(lock);}
+  catch{return report('REJECTED','INVALID_UNTRUSTED_LOCK_OBJECT');}
 }
