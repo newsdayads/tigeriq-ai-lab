@@ -766,6 +766,11 @@ export function parseExecutableIssue(issue){
   if(['HOLD_OWNER','UI'].includes(classification.route))return null;
   if(classification.route==='CODING'&&!policyAdmission.eligible)return null;
   const requiresCodingHandoff=classification.route==='CODING'&&policyAdmission.eligible;
+  // Full-product work cannot use a checked Issue or passing source CI as a live
+  // acceptance receipt. This is a project-level outcome gate, not a new queue.
+  // Read CURRENT authority only: archived WORK_TYPE flags must not grant/deny work.
+  const liveProductWorkTypes=new Set(['REAL_LIVE_END_TO_END','PRODUCT_VALIDATION','PRODUCT_DELIVERY','LIVE_PRODUCT']);
+  const liveProductDelivery=liveProductWorkTypes.has(bodyValue(currentBody,'WORK_TYPE').toUpperCase());
   const capability=classification.route==='OPENCLAW'?'pc_operator':requiresCodingHandoff?'reasoning':classification.capability;
   const resourceScope=bodyValue(currentBody,'RESOURCE_SCOPE');
   if(classification.route==='OPENCLAW'&&(!resourceScope||!currentPcOperatorInstruction(body)))return null;
@@ -788,8 +793,10 @@ export function parseExecutableIssue(issue){
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
-    liveAcceptanceRequired:hasExactFlag(body,'LIVE_ACCEPTANCE_REQUIRED'),
-    finalReviewRequired:hasExactFlag(body,'FINAL_REVIEW_REQUIRED')||hasExactFlag(body,'FINAL_LIVE_REVIEW_REQUIRED'),
+    // A real-product Work Order always awaits revision-bound live evidence.
+    // Engineering products also require the existing independent review gate.
+    liveAcceptanceRequired:liveProductDelivery||hasExactFlag(currentBody,'LIVE_ACCEPTANCE_REQUIRED'),
+    finalReviewRequired:(liveProductDelivery&&requiresCodingHandoff)||hasExactFlag(currentBody,'FINAL_REVIEW_REQUIRED')||hasExactFlag(currentBody,'FINAL_LIVE_REVIEW_REQUIRED'),
     // Classify by the CURRENT policy decision, not by the mere presence of
     // still-supported legacy flags in an otherwise fully safe contract.
     admissionMode:policyAdmission.eligible?'SAFE_P1_P5_POLICY':'LEGACY_EXECUTION_FLAGS',
