@@ -70,7 +70,7 @@ describe('REA #4780 D04: integrated independent JSONPointer CLI (not REA)',()=>{
   it('executes all 28 cases via native CLI JSONL process',()=>{
     const p=cli(cases.map(c=>JSON.stringify(c)).join('\n')+'\n');
     expect(p.status,p.stderr).toBe(0);
-    const rows=p.stdout.trim().split('\n').map(JSON.parse);
+    const rows=p.stdout.trim().split('\n').map(row=>JSON.parse(row));
     expect(rows).toHaveLength(28);
     expect(rows).toEqual(cases.map(c=>clean(originalOutcome(c))));
   });
