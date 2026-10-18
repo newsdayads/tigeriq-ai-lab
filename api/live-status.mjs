@@ -806,6 +806,9 @@ async function scopedCompletedWork(openIssues, openRows, owner, repo, issueMap, 
 
 export function parseQueueIssue(issue) {
   if (issueIsTerminalOrExcluded(issue)) return null;
+  // Canonical execution exclusion must be applied before displaying a job as QUEUED.
+  const admission = safeAutoWorkAdmission(issue);
+  if (!admission.eligible && ['EXPLICIT_EXECUTION_DISABLED', 'AUTO_QUEUE_EXCLUDED'].includes(String(admission.reason || ''))) return null;
   const coreSpec = parseExecutableIssue(issue);
   const codingSpec = parseCodingIssue(issue);
   if (!coreSpec && !codingSpec) return null;
@@ -2031,6 +2034,8 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       if (pa !== pb) return pa - pb;
       return Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0) || b.number - a.number;
     });
+    // Core UI assignments are evidence, not worker heartbeats or GitHub phase changes.
+    attachCoreUiAssignmentReceipts(openWork, base.coreUiAssignments);
     if (resultInboxProjection) {
       const inboxRow = openWork.find((row) => Number(row.number) === Number(resultInboxProjection.issueNumber));
       if (inboxRow) Object.assign(inboxRow, resultInboxProjection);
@@ -2144,10 +2149,45 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   }
 }
 
+export function attachCoreUiAssignmentReceipts(openWork = [], receipts = []) {
+  const byIssue = new Map();
+  for (const item of (Array.isArray(receipts) ? receipts : []).slice(0, 40)) {
+    if (!Number.isSafeInteger(item?.issueNumber) || item.issueNumber <= 0
+        || !/^GH-\d+-R[A-Za-z0-9]+$/.test(String(item?.jobId || ''))
+        || !['NV03', 'NV04'].includes(String(item?.employeeId || ''))
+        || !['ui_assigned', 'ui_running', 'done', 'failed'].includes(String(item?.status || ''))) continue;
+    if (!byIssue.has(item.issueNumber)) byIssue.set(item.issueNumber, {
+      jobId: String(item.jobId).slice(0, 130), employeeId: item.employeeId, status: item.status,
+      startedAt: typeof item.startedAt === 'string' ? item.startedAt.slice(0, 64) : null,
+      completedAt: typeof item.completedAt === 'string' ? item.completedAt.slice(0, 64) : null,
+    });
+  }
+  const rows = Array.isArray(openWork) ? openWork : [];
+  for (const row of rows) row.coreAssignment = byIssue.get(Number(row.number)) || null;
+  return rows;
+}
+
 export function sanitizeRuntimePayload(payload) {
   if (!payload || payload.ok !== true || !Array.isArray(payload.workers)) throw new Error('runtime_bridge_payload_invalid');
   const referenceAt = Date.parse(payload.generatedAt || '') || Date.now();
   const workers = payload.workers.map(sanitizeRuntimeWorker).filter(Boolean).map((worker) => normalizeRuntimeWorkerActivity(worker, referenceAt)).map(ownerFacingWorkRow);
+  // Do not infer a running worker from an assigned Core UI job.
+  const coreUiAssignments = [];
+  for (const item of (payload.source?.core === true && Array.isArray(payload.coreUiAssignments) ? payload.coreUiAssignments : []).slice(0, 40)) {
+    if (!Number.isSafeInteger(item?.issueNumber) || item.issueNumber <= 0
+        || !/^GH-\d+-R[A-Za-z0-9]+$/.test(String(item?.jobId || ''))
+        || !['NV03', 'NV04'].includes(String(item?.employeeId || ''))
+        || !['ui_assigned', 'ui_running', 'done', 'failed'].includes(String(item?.status || ''))) continue;
+    if (coreUiAssignments.some((row) => row.issueNumber === item.issueNumber)) continue;
+    coreUiAssignments.push({
+      issueNumber: item.issueNumber,
+      jobId: String(item.jobId).slice(0, 130),
+      employeeId: item.employeeId,
+      status: item.status,
+      startedAt: typeof item.startedAt === 'string' ? item.startedAt.slice(0, 64) : null,
+      completedAt: typeof item.completedAt === 'string' ? item.completedAt.slice(0, 64) : null,
+    });
+  }
   const summary = {
     working: workers.filter((w) => w.state === 'working').length,
     waiting: workers.filter((w) => w.state === 'waiting').length,
@@ -2172,6 +2212,7 @@ export function sanitizeRuntimePayload(payload) {
     },
     summary,
     workers,
+    coreUiAssignments,
     activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
     nextQueue: [],
     nextQueueTotal: 0,
