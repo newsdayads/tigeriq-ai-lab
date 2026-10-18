@@ -1,0 +1,40 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {planWindowRequest,checkAppliedBounds,planLayoutRestore} from '../../projects/dexcam-personal/c02-window-contract.mjs';
+const display={id:2,fingerprint:'synthetic-monitor',width_px:1920,height_px:1080,insets:{left:0,top:40,right:0,bottom:40}};
+const preset={display_id:2,display_fingerprint:'synthetic-monitor',bounds_normalized:{x:.5,y:0,width:.5,height:1}};
+const capability={freeform:'SUPPORTED',multi_window:'SUPPORTED',activity_state:'FOREGROUND'};
+test('C02 returns pixel request, not applied bounds',()=>{
+  assert.deepEqual(planWindowRequest({display,preset,capability}).requested_bounds,{x:960,y:40,width:960,height:1000});
+  assert.equal(planWindowRequest({display,preset,capability}).action,'REQUEST_L0_LAUNCH_BOUNDS');
+  assert.equal(planWindowRequest({display,preset,capability}).verification,'NOT_MEASURED');
+});
+test('C02 freeform unverified and background launches fall back',()=>{
+  assert.equal(planWindowRequest({display,preset,capability:{...capability,freeform:'UNVERIFIED'}}).action,'MANUAL_FALLBACK');
+  assert.equal(planWindowRequest({display,preset,capability:{...capability,activity_state:'BACKGROUND'}}).reason,'BACKGROUND_ACTIVITY_LAUNCH_NOT_VERIFIED');
+});
+test('C02 rejects stale display identity, invalid ratios and unusable display',()=>{
+  assert.equal(planWindowRequest({display:{...display,id:3},preset,capability}).reason,'DISPLAY_PROFILE_MISMATCH');
+  for(const invalid of [{x:.8,y:0,width:.5,height:1},{x:NaN,y:0,width:1,height:1},{x:0,y:0,width:0,height:1}])
+    assert.equal(planWindowRequest({display,preset:{...preset,bounds_normalized:invalid},capability}).action,'MANUAL_FALLBACK');
+  assert.equal(planWindowRequest({display:{...display,insets:{left:1100,right:1100,top:0,bottom:0}},preset,capability}).reason,'NO_SAFE_DISPLAY_AREA');
+});
+test('C02 does not claim bounds match without OS readback evidence',()=>{
+  const bounds={x:2,y:3,width:400,height:300};
+  assert.equal(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds}).status,'NOT_MEASURED');
+  assert.deepEqual(checkAppliedBounds({requested_bounds:bounds,observed_bounds:{...bounds,x:4},evidence_ref:'synthetic:readback'}),
+    {status:'BOUNDS_DIFFER_OBSERVED',delta:{x:2,y:0,width:0,height:0}});
+});
+test('C02 does not restore on stream or USB loss while R is ON/UNKNOWN',()=>{
+  for(const reverse_state of ['ON','UNKNOWN'])
+    assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state,live_frame:false}).restore_permitted,false);
+});
+test('C02 requires independent R OFF proof, not just OFF label',()=>{
+  assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF'}).restore_permitted,false);
+  assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF',reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference:'synthetic:r'}}).basis,'VERIFIED_R_OFF');
+});
+test('C02 manual close requires confirmed stationary state',()=>{
+  assert.equal(planLayoutRestore({snapshot_id:'snap',manual_close:true}).restore_permitted,false);
+  assert.equal(planLayoutRestore({snapshot_id:'snap',manual_close:true,stationary_confirmed:true}).basis,'MANUAL_CLOSE_WHILE_STATIONARY');
+  assert.equal(planLayoutRestore({reverse_state:'OFF'}).action,'NO_SNAPSHOT');
+});
