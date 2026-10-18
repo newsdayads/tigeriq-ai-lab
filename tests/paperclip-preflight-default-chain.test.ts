@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   rootSymlink: false,
   brokerReady: false,
   directDockerReady: false,
+  inspectBindings: null as null | Record<string, unknown>,
   inspectArgs: [] as string[][],
   lstatPaths: [] as string[],
   spawned: [] as string[],
@@ -90,6 +91,8 @@ vi.mock('node:child_process', async (importOriginal) => {
           child.stdout.emit('data', Buffer.from(JSON.stringify({
             State: { Running: true },
             Config: { Image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },
+            NetworkSettings: state.inspectBindings === null
+              ? {} : { Ports: state.inspectBindings },
           })));
           child.emit('close', 0);
           return;
@@ -190,7 +193,9 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       capability: 'paperclip-lab-v2',
       root: ROOT,
       port: 3210,
-      loopbackOnly: true,
+      loopbackOnly: false,
+      loopbackOnlyConfigured: true,
+      observedLoopbackBinding: null,
       arbitraryShell: false,
       arbitraryPath: false,
       arbitraryPort: false,
@@ -199,6 +204,53 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(state.lstatPaths).toContain(HEARTBEAT);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(1);
+  });
+
+  it('R01 native receipt never asserts localhost when Docker actually published publicly', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = false;
+    state.directDockerReady = true;
+    state.inspectArgs.length = 0;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+    state.inspectBindings = { '3100/tcp': [{ HostIp: '0.0.0.0', HostPort: '3210' }] };
+
+    try {
+      const exposed = await executePaperclipLabAction({ action: 'paperclip_lab_preflight' });
+      expect(exposed.data.container.port3210LoopbackBinding).toBe(false);
+      expect(exposed.evidence).toMatchObject({
+        loopbackOnlyConfigured: true,
+        observedLoopbackBinding: false,
+        loopbackOnly: false,
+      });
+      expect(state.writeAttempts).toEqual([]);
+
+      state.inspectBindings = { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3210' }] };
+      const privateBinding = await executePaperclipLabAction({ action: 'paperclip_lab_preflight' });
+      expect(privateBinding.data.container.port3210LoopbackBinding).toBe(true);
+      expect(privateBinding.evidence).toMatchObject({
+        loopbackOnlyConfigured: true,
+        observedLoopbackBinding: true,
+        loopbackOnly: true,
+      });
+
+      state.inspectBindings = null;
+      const unknown = await executePaperclipLabAction({ action: 'paperclip_lab_preflight' });
+      expect(unknown.data.container.port3210LoopbackBinding).toBeNull();
+      expect(unknown.evidence).toMatchObject({
+        loopbackOnlyConfigured: true,
+        observedLoopbackBinding: null,
+        loopbackOnly: false,
+      });
+      expect(state.writeAttempts).toEqual([]);
+      expect(state.spawned).toEqual(['docker.exe', 'docker.exe', 'docker.exe', 'docker.exe', 'docker.exe', 'docker.exe']);
+    } finally {
+      state.inspectBindings = null;
+      state.directDockerReady = false;
+    }
   });
 
   it('rejects a typed R01 request with extra fields before any IO', async () => {
