@@ -2,9 +2,40 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyRuntimeIsolation,runSandboxVerification,sandboxBaseUrl,doctorAndSelectWork} from '../scripts/verify-core-ui-sandbox.mjs';
 
-import {existsSync} from 'node:fs';
+import {existsSync,readlinkSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
+
+// Source-only preflight: observes an ephemeral public-repo GitHub runner.
+// This does NOT claim an isolated Core/bridge/database, a native inspector,
+// a lease, or T04 acceptance. No containers, namespaces or services are created.
+test('T04: hosted runner read-only capability preflight',{
+  skip:process.env.GITHUB_ACTIONS!=='true'
+},()=>{
+  assert.equal(process.env.GITHUB_REPOSITORY,'newsdayads/tigeriq-ai-lab');
+  assert.equal(process.env.RUNNER_OS,'Linux');
+  assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
+  const namespace=readlinkSync('/proc/self/ns/net');
+  assert.match(namespace,/^net:\\[\\d+\\]$/);
+  const docker=spawnSync('docker',['info','--format','{{.OSType}}'],{
+    encoding:'utf8',timeout:10000,shell:false
+  });
+  assert.equal(docker.status,0,'T04_DOCKER_DAEMON_NOT_VERIFIED');
+  assert.equal(docker.stdout.trim(),'linux','T04_DOCKER_OS_NOT_LINUX');
+  const privilege=spawnSync('sudo',['-n','id','-u'],{
+    encoding:'utf8',timeout:5000,shell:false
+  });
+  assert.equal(privilege.status,0,'T04_NATIVE_OPERATOR_PRIVILEGE_NOT_VERIFIED');
+  assert.equal(privilege.stdout.trim(),'0','T04_NATIVE_OPERATOR_NOT_ROOT');
+  console.log('T04_RUNNER_READ_ONLY_PREFLIGHT_OK '+JSON.stringify({
+    repository:process.env.GITHUB_REPOSITORY,
+    runnerEnvironment:process.env.RUNNER_ENVIRONMENT,
+    runnerOS:process.env.RUNNER_OS,networkNamespace:namespace,
+    dockerOS:docker.stdout.trim(),noninteractiveSudo:true,
+    createdResources:false,nativeFullStackAccepted:false
+  }));
+});
 
 const baseUrl='http://127.0.0.1:4315/';
 const now=Date.parse('2026-10-18T14:55:00.000Z');
