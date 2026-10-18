@@ -71,6 +71,12 @@ async function readJson(url,fetchImpl){
     throw new VerificationBlocked('SANDBOX_HTTP_INVALID',url);
   try{return await response.json()}catch{throw new VerificationBlocked('SANDBOX_JSON_INVALID',url)}
 }
+function requireCanonicalWorkSource(issueNumber,work){
+  // Only the canonical TigerIQ Issue may be used as verification provenance.
+  // A matching but untrusted UI link is not proof of the target Work Order.
+  if(work?.url!==`https://github.com/newsdayads/tigeriq-ai-lab/issues/${issueNumber}`)
+    throw new VerificationBlocked('WORK_SOURCE_URL_INVALID');
+}
 export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,now=Date.now(),maxAgeMs=120000,expectedCorePid}={}){
   const origin=sandboxBaseUrl(baseUrl),number=Number(issueNumber);
   if(!Number.isSafeInteger(number)||number<1)throw new VerificationBlocked('ISSUE_NUMBER_INVALID');
@@ -87,6 +93,7 @@ export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,n
   const rows=projection.openWork.filter(row=>Number(row?.number)===number);
   if(rows.length!==1||typeof rows[0]?.title!=='string'||!rows[0].title.trim())throw new VerificationBlocked('ISSUE_NOT_UNIQUELY_VISIBLE');
   const work=rows[0];
+  requireCanonicalWorkSource(number,work);
   return {
     origin,issueNumber:number,api:{generatedAt:projection.generatedAt,health:'GET /api/status',work:'GET /api/health-live-work'},
     work:{number,title:work.title,status:String(work.status||''),jobId:String(work.jobId||''),url:String(work.url||'')},
@@ -98,6 +105,7 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     throw new VerificationBlocked('DRIVE_INPUT_INVALID');
   // Recheck input before browser access. The doctor packet is not an authorization token.
   const origin=sandboxBaseUrl(diagnostic.origin+'/');
+  requireCanonicalWorkSource(diagnostic.issueNumber,diagnostic.work);
   // Public callers must not bypass runSandboxVerification's evidence path guard.
   if(outputDir){
     safeEvidenceDir(outputDir);
@@ -150,7 +158,7 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
       throw new VerificationBlocked('UI_WORK_DETAIL_NOT_OPEN');
     const after=(await page.locator('#workDetailModal').innerText()).slice(0,1800);
     const githubHref=await page.locator('#workDetailGithub').getAttribute('href').catch(()=>null);
-    if(diagnostic.work.url&&githubHref!==diagnostic.work.url)throw new VerificationBlocked('UI_GITHUB_LINK_MISMATCH');
+    if(githubHref!==diagnostic.work.url)throw new VerificationBlocked('UI_GITHUB_LINK_MISMATCH');
     if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
     if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
     let screenshot=null,trace=null;
