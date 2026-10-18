@@ -19,14 +19,29 @@ mkdir -m 0700 "$sock"
 base_owner="$(stat -c %u "$base")"
 base_inode="$(stat -c %i "$base")"
 started=0
+verified=0
+core_denied=0
 cleanup() {
   local rc=$?
   trap - EXIT
   if [[ "$started" == 1 ]]; then
-    "$bin/pg_ctl" -D "$data" -m immediate -w stop >/dev/null 2>&1 || rc=1
+    if "$bin/pg_ctl" -D "$data" -m immediate -w stop >/dev/null 2>&1; then
+      started=0
+    else
+      echo T04_POSTGRES_CLEANUP_STOP_FAILED >&2
+      rc=1
+    fi
   fi
-  # Delete only the exact directory minted in this run, with ownership and
-  # inode rechecked. Never follow a changed path or cleanup another owner.
+  # FAIL CLOSED: never remove on a failed stop, or while the cluster is
+  # observed running. Failed runs leave evidence on the ephemeral runner.
+  if [[ -d "$data" ]] && "$bin/pg_ctl" -D "$data" status >/dev/null 2>&1; then
+    echo T04_POSTGRES_CLEANUP_PROCESS_STILL_RUNNING >&2
+    rc=1
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    echo T04_POSTGRES_DISPOSABLE_BLOCKED >&2
+    exit "$rc"
+  fi
   if [[ "$base" =~ ^/tmp/tigeriq-pstack-pg\.[A-Za-z0-9]+$ ]] &&
      [[ -d "$base" && ! -L "$base" ]] &&
      [[ "$(stat -c %u "$base")" == "$base_owner" ]] &&
@@ -36,7 +51,16 @@ cleanup() {
     echo T04_POSTGRES_CLEANUP_IDENTITY_UNVERIFIED >&2
     rc=1
   fi
-  if [[ "$rc" -ne 0 ]]; then echo T04_POSTGRES_DISPOSABLE_BLOCKED >&2; fi
+  if [[ -e "$base" || -L "$base" ]]; then
+    echo T04_POSTGRES_CLUSTER_DIR_NOT_REMOVED >&2
+    rc=1
+  fi
+  if [[ "$rc" == 0 && "$verified" == 1 && "$core_denied" == 1 ]]; then
+    printf 'T04_POSTGRES_DISPOSABLE_REAL namespace=%s systemId=%s database=%s dbDropped=true postgresStopped=true privateSocket=true clusterDirectoryRemoved=true coreDeniedBeforeDb=true fullStackAccepted=false\n' "$ns" "$system_id" "$db"
+  else
+    echo T04_POSTGRES_DISPOSABLE_BLOCKED >&2
+    rc=1
+  fi
   exit "$rc"
 }
 trap cleanup EXIT
@@ -54,6 +78,27 @@ db="tigeriq_pstack_$$"
 "$bin/createdb" -h "$sock" -p 55433 -U runner "$db"
 seen="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d "$db" -c 'select current_database();')"
 [[ "$seen" == "$db" ]] || { echo T04_POSTGRES_DB_READBACK_MISMATCH >&2; exit 1; }
+# Core negative test: a genuine isolated DB exists in this same namespace,
+# but sandbox guard MUST reject Core before any DB access or schema mutation.
+node_bin="$1"
+[[ "$node_bin" == /* && -x "$node_bin" ]] ||
+  { echo T04_POSTGRES_NODE_BIN_UNVERIFIED >&2; exit 1; }
+before_connections="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d postgres -c "select count(*) from pg_stat_activity where datname='$db';")"
+[[ "$before_connections" == 0 ]] || { echo T04_POSTGRES_UNEXPECTED_CLIENT_BEFORE_CORE >&2; exit 1; }
+if TIGERIQ_PSTACK_SANDBOX_MODE=read-only DATABASE_URL="postgresql://runner@localhost:55433/$db?host=$sock" \
+   "$node_bin" apps/tigeriq-core/core.mjs >"$base/core.stdout" 2>"$base/core.stderr"; then
+  echo T04_CORE_UNSAFE_SANDBOX_BOOT_ALLOWED >&2
+  exit 1
+fi
+grep -Fq PSTACK_T04_SANDBOX_AUTOWORK_GATE_NOT_ACCEPTED "$base/core.stderr" ||
+  { echo T04_CORE_GUARD_NOT_CONFIRMED >&2; exit 1; }
+if grep -Eq 'TIGERIQ_CORE_STARTED|CORE_LOOP_ERROR|MANAGER_TICK' "$base/core.stdout"; then
+  echo T04_CORE_AUTONOMOUS_STARTUP_DETECTED >&2
+  exit 1
+fi
+after_connections="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d postgres -c "select count(*) from pg_stat_activity where datname='$db';")"
+[[ "$after_connections" == 0 ]] || { echo T04_CORE_TOUCHED_DISPOSABLE_DATABASE >&2; exit 1; }
+core_denied=1
 "$bin/dropdb" -h "$sock" -p 55433 -U runner "$db"
 if "$bin/psql" -X -qAt -h "$sock" -p 55433 -U runner -d "$db" -c 'select 1;' >/dev/null 2>&1; then
   echo T04_POSTGRES_DROP_NOT_CONFIRMED >&2; exit 1
@@ -63,4 +108,5 @@ started=0
 if "$bin/pg_ctl" -D "$data" status >/dev/null 2>&1; then
   echo T04_POSTGRES_PROCESS_STILL_RUNNING >&2; exit 1
 fi
-printf 'T04_POSTGRES_DISPOSABLE_REAL namespace=%s systemId=%s database=%s dbDropped=true postgresStopped=true privateSocket=true fullStackAccepted=false\n' "$ns" "$system_id" "$db"
+verified=1
+# Only EXIT cleanup may issue the success receipt after directory removal.
