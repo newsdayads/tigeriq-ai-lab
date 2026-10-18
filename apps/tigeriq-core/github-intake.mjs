@@ -760,9 +760,12 @@ export function scopedReadOnlyStepIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||''),current=currentAutoExecutionHeader(body);
   const f=k=>bodyValue(current,k).trim(),u=k=>f(k).toUpperCase();
-  if(!SAFE_AUTO_WORK_PRIORITIES.has(u('PRIORITY'))||isOwnerOnlyP0(current,issue.title))return null;
+  if(!SAFE_AUTO_WORK_PRIORITIES.has(u('PRIORITY'))||isOwnerOnlyP0(current,issue.title)
+    ||isManualOnlyAppChromeMaintenance(issue.title,body)
+    ||androidProductAutoExecutionExclusion(issue))return null;
   if(f('OWNER_DIRECT')!=='true'||f('OWNER_HOLD')!=='false'
     ||f('OWNER_CONTROLLED')==='true'||f('OWNER_GATE')==='true'
+    ||f('KEEP_OPEN_ON_STEP_COMPLETE')==='false'
     ||hasExactFlag(current,'MANUAL_GATE')||hasExactFlag(current,'OWNER_REVIEW_REQUIRED')
     ||hasExactFlag(current,'OWNER_ACCEPTANCE_REQUIRED'))return null;
   if(issueLabelNames(issue).some(x=>x.toLowerCase()==='tigeriq:terminal-blocked'))return null;
