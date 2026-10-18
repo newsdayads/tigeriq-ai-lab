@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectApkPublicApi, runP02 } from '../../projects/dexcam-personal/p02-apk-api-audit.mjs';
-import { makeDex, makeZip } from './p02-apk-api-fixture.mjs';
+import { makeDex, makeZip, makeDuplicateDexCentralEntry } from './p02-apk-api-fixture.mjs';
 
 test('offline stored DEX counts public references without leaking vendor identifiers', () => {
   const r = inspectApkPublicApi(makeZip());
@@ -66,4 +66,8 @@ test('supports ZIP data-descriptor bit with unset local sizes as permitted by AP
   b.writeUInt32LE(oldCentral + 16, b.length - 22 + 16);
   const r = inspectApkPublicApi(b);
   assert.equal(r.method_ids_by_category.usb, 1);
+});
+
+test('rejects duplicated central-directory DEX entry rather than double-counting public APIs', () => {
+  assert.throws(() => inspectApkPublicApi(makeDuplicateDexCentralEntry()), /DUPLICATE_DEX_ZIP_MEMBER/);
 });
