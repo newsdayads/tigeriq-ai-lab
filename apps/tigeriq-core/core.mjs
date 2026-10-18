@@ -3154,7 +3154,7 @@ const server=createServer(async(req,res)=>{
       return res.end(JSON.stringify(health));
     }
     if(req.method==='POST'&&url.pathname==='/api/nv07/execute-s6-receipt'){
-      if(!auth(req)||!localSelf(req)){res.writeHead(403);return res.end('forbidden');}
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       const result=await executeNv07S6ProposalReceipt(pool);
       res.writeHead(result.accepted?200:409,{'content-type':'application/json','cache-control':'no-store'});
       return res.end(JSON.stringify(result));
