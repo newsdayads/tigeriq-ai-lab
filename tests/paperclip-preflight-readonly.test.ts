@@ -277,7 +277,8 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       inspectBroker: async () => ({ ready: false }),
       inspectContainer: async () => { throw new Error('CONTAINER_MUST_NOT_BE_PROBED_WITH_MISSING_ROOT'); },
     });
-    expect(missing.container).toMatchObject({ attempted: false, present: null, reason: 'LAB_ROOT_MISSING' });
+    expect(missing.container).toMatchObject({ attempted: false, present: null,
+      imagePinMatch: null, imageDigestVerified: false, reason: 'LAB_ROOT_MISSING' });
   });
 
 
