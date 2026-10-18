@@ -131,10 +131,14 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
       await route.close();
     });
     await context.route('**/*',async route=>{
-      const requested=route.request().url();
+      // The verifier is read-only: same-origin POST/PUT/PATCH/DELETE must
+      // never reach sandbox Core, even if the UI requests them internally.
       let allowed=false;
-      try{const u=new URL(requested);allowed=u.protocol==='http:'&&u.origin===origin;}
-      catch{allowed=false}
+      try{
+        const request=route.request(),u=new URL(request.url());
+        const method=request.method();
+        allowed=u.protocol==='http:'&&u.origin===origin&&(method==='GET'||method==='HEAD');
+      }catch{allowed=false}
       if(!allowed){outsideRequest=true;return route.abort('blockedbyclient')}
       return route.continue();
     });
