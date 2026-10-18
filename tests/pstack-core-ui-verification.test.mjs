@@ -27,6 +27,23 @@ test('read-only doctor binds one fresh source Issue from two endpoints',async()=
   assert.equal(result.proofScope,'SANDBOX_DIAGNOSTIC_NOT_LIVE_ACCEPTANCE');
   assert.deepEqual(calls.map(x=>new URL(x.url).pathname),['/api/status','/api/health-live-work']);
 });
+test('T03: work source URL must match canonical GitHub Issue before Doctor or UI trust',async()=>{
+  const correct='https://github.com/newsdayads/tigeriq-ai-lab/issues/2054';
+  assert.equal(row.url,correct);
+  for(const bad of ['',
+    'https://attacker.invalid/newsdayads/tigeriq-ai-lab/issues/2054',
+    'https://github.com/newsdayads/tigeriq-ai-lab/issues/2055',
+    'https://github.com/newsdayads/tigeriq-ai-lab/pull/2054']){
+    const evil={...row,url:bad};
+    await assert.rejects(doctorAndSelectWork({baseUrl,issueNumber:2054,
+      fetchImpl:transport(fixture({rows:[evil]})),now}),{code:'WORK_SOURCE_URL_INVALID'});
+  }
+  let opened=0;
+  await assert.rejects(driveWorkCard({diagnostic:{origin:'http://127.0.0.1:4315',
+    issueNumber:2054,work:{...row,url:''}},browserFactory:async()=>{opened++;throw Error('BROWSER_NOT_AUTHORIZED');}}),
+    {code:'WORK_SOURCE_URL_INVALID'});
+  assert.equal(opened,0,'invalid source evidence must fail before browser creation');
+});
 test('stale, absent, duplicate and malformed projection fail closed',async()=>{
   for(const [data,code] of [
     [fixture({stale:true}),'WORK_PROJECTION_STALE'],
