@@ -82,3 +82,10 @@ test('fails closed when ZIP bit-3 descriptor disagrees with the verified DEX CRC
 test('accepts a valid unsigned ZIP data descriptor', () => {
   assert.equal(inspectApkPublicApi(makeDescriptorZip({ signed: false })).method_ids_by_category.usb, 1);
 });
+
+test('P02 rejects method_id.proto_idx outside the DEX proto_ids table', () => {
+  assert.throws(() => inspectApkPublicApi(makeZip('classes.dex', makeDex({ invalidProtoIndex: true }))), /INVALID_DEX_INDEX/);
+});
+test('P02 rejects malformed proto_ids table bounds before trusting Android API method refs', () => {
+  assert.throws(() => inspectApkPublicApi(makeZip('classes.dex', makeDex({ invalidProtoTable: true }))), /INVALID_BINARY_RANGE/);
+});

@@ -3,7 +3,7 @@ import { deflateRawSync } from 'node:zlib';
 const le16=(b,o,v)=>b.writeUInt16LE(v,o);
 const le32=(b,o,v)=>b.writeUInt32LE(v,o);
 const bytes=s=>Buffer.from(s,'utf8');
-export function makeDex({ badMagic=false } = {}) {
+export function makeDex({ badMagic=false, invalidProtoIndex=false, invalidProtoTable=false } = {}) {
   const strings=[
     'Landroid/hardware/usb/UsbManager;', 'Landroid/app/ActivityOptions;',
     'Lsynthetic/private/NeverPublish;', 'requestPermission', 'setLaunchBounds', 'secretMethod',
@@ -17,12 +17,12 @@ export function makeDex({ badMagic=false } = {}) {
   b.write(badMagic?'bad!':'dex\n035\0',0,'ascii');
   le32(b,32,b.length);le32(b,36,112);le32(b,40,0x12345678);
   le32(b,56,ns);le32(b,60,stringOff);le32(b,64,nt);le32(b,68,typeOff);
-  le32(b,72,nproto);le32(b,76,protoOff);le32(b,88,nm);le32(b,92,methodOff);
+  le32(b,72,nproto);le32(b,76,invalidProtoTable ? b.length-5 : protoOff);le32(b,88,nm);le32(b,92,methodOff);
   let p=dataStart;
   for(let i=0;i<data.length;i++){le32(b,stringOff+i*4,p);data[i].copy(b,p);p+=data[i].length;}
   for(let i=0;i<nt;i++)le32(b,typeOff+i*4,i);
   const items=[[0,3],[1,4],[2,5]];
-  for(let i=0;i<items.length;i++){le16(b,methodOff+i*8,items[i][0]);le16(b,methodOff+i*8+2,0);le32(b,methodOff+i*8+4,items[i][1]);}
+  for(let i=0;i<items.length;i++){le16(b,methodOff+i*8,items[i][0]);le16(b,methodOff+i*8+2,invalidProtoIndex && i===0 ? nproto : 0);le32(b,methodOff+i*8+4,items[i][1]);}
   return b;
 }
 let tbl;
@@ -55,7 +55,7 @@ export function makeDuplicateDexCentralEntry() {
 
 export function makeZip(entryName='classes.dex',content=makeDex(),{compressed=false, corruptCRC=false, encrypted=false}={}){
   const name=bytes(entryName),zipBytes=compressed?deflateRawSync(content):content;
-  const crc=crc32(content)^(corruptCRC?0x1234:0),local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22);
+  const crc=(crc32(content)^(corruptCRC?0x1234:0))>>>0,local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22);
   le32(local,0,0x04034b50);le16(local,6,encrypted?1:0);le16(local,8,compressed?8:0);le32(local,14,crc);
   le32(local,18,zipBytes.length);le32(local,22,content.length);le16(local,26,name.length);
   const localSize=local.length+name.length+zipBytes.length;

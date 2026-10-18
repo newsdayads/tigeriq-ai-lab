@@ -58,9 +58,10 @@ function parseDexPublicApi(bytes) {
       b[7] !== 0 || u32(b, 32) !== b.length || u32(b, 36) !== 112 || u32(b, 40) !== EXPECTED_TAG)
     throw new Error('INVALID_DEX_HEADER');
   const ns = u32(b, 56), os = u32(b, 60), nt = u32(b, 64), ot = u32(b, 68);
+  const np = u32(b, 72), op = u32(b, 76);
   const nm = u32(b, 88), om = u32(b, 92), nc = u32(b, 96), oc = u32(b, 100);
   checkTable(b, ns, os, 4); checkTable(b, nt, ot, 4);
-  checkTable(b, nm, om, 8); checkTable(b, nc, oc, 32);
+  checkTable(b, np, op, 12); checkTable(b, nm, om, 8); checkTable(b, nc, oc, 32);
   // Resolve only strings needed by DEX type IDs and method names. These are
   // kept in memory; no vendor identifiers enter the output.
   const needed = new Set();
@@ -80,8 +81,8 @@ function parseDexPublicApi(bytes) {
   const counts = Object.fromEntries(Object.keys(groups).map(k => [k, 0]));
   const found = Object.fromEntries(Object.keys(probes).map(k => [k, false]));
   for (let i = 0; i < nm; i++) {
-    const cls = u16(b, om + i * 8);
-    if (cls >= nt) throw new Error('INVALID_DEX_INDEX');
+    const cls = u16(b, om + i * 8), proto = u16(b, om + i * 8 + 2);
+    if (cls >= nt || proto >= np) throw new Error('INVALID_DEX_INDEX');
     if (own.has(cls)) continue;
     const cname = types[cls];
     const method = strs.get(u32(b, om + i * 8 + 4));
