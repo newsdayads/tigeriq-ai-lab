@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 // @ts-ignore — Paperclip's existing native .mjs exports do not publish TypeScript declarations.
-import { paperclipReadOnlyPreflight, resolveDockerTransport, paperclipReadOnlyExistingDirectory } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, resolveDockerTransport, paperclipReadOnlyExistingDirectory, paperclipReadOnlyContainerStatus } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip #2054 R01 read-only source contract', () => {
   it('avoids root creation, heartbeat directory creation and broker request writes', async () => {
@@ -58,6 +58,7 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
     const result = await paperclipReadOnlyPreflight({
       checkRoot: async () => {},
       inspectDocker: async () => ({ kind: 'windows', version: '27.0', error: null }),
+      inspectContainer: async () => ({ attempted: true, present: true, running: true, imageRef: 'test', imageDigestVerified: false, reason: null }),
       inspectPort: async () => ({ host: '127.0.0.1', port: 3210, reachable: true, reason: 'connected' }),
       inspectDisk: async () => {
         disks++;
@@ -182,5 +183,71 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       realpath: async () => String.raw`D:\TigerIQ\State`,
     })).rejects.toThrow('REALPATH_ESCAPE_BLOCKED');
   });
+
+
+  it('R01 reads an existing container only through direct Docker with readOnly:true', async () => {
+    const calls: unknown[] = [];
+    const result = await paperclipReadOnlyContainerStatus('windows', {
+      runReadOnlyCommand: async (exe: string, args: string[], options: { readOnly: boolean; cwd: string }) => {
+        calls.push({ exe, args, options });
+        return { exitCode: 0, timedOut: false,
+          stdout: JSON.stringify({ State: { Running: false }, Config: { Image: 'ghcr.io/paperclipai/paperclip:2026.916.1' } }) };
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      exe: 'docker.exe',
+      args: ['inspect', 'tigeriq-paperclip-lab', '--format', '{{json .}}'],
+      options: { readOnly: true, cwd: String.raw`D:\TigerIQ-Paperclip-Lab` },
+    });
+    expect(result).toMatchObject({ attempted: true, present: true, running: false,
+      imageRef: 'ghcr.io/paperclipai/paperclip:2026.916.1', imageDigestVerified: false, reason: null });
+  });
+
+  it('R01 supports direct WSL without broker and does not fabricate unavailable container state', async () => {
+    const calls: string[] = [];
+    const wsl = await paperclipReadOnlyContainerStatus('wsl-ubuntu', {
+      runReadOnlyCommand: async (exe: string, args: string[], options: { readOnly: boolean }) => {
+        calls.push(exe + ':' + args.join(' ') + ':' + options.readOnly);
+        return { exitCode: 1, timedOut: false, stdout: '', stderr: 'not found' };
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('wsl.exe:--distribution Ubuntu --exec docker inspect tigeriq-paperclip-lab');
+    expect(calls[0]).toContain(':true');
+    expect(wsl).toMatchObject({ attempted: true, present: null, running: null,
+      imageDigestVerified: false, reason: 'CONTAINER_INSPECT_FAILED' });
+    const broker = await paperclipReadOnlyContainerStatus('wsl-ubuntu-interactive-broker', {
+      runReadOnlyCommand: async () => { throw new Error('BROKER_MUST_NOT_RUN'); },
+    });
+    expect(broker).toMatchObject({ attempted: false, present: null, running: null,
+      reason: 'DIRECT_DOCKER_TRANSPORT_UNAVAILABLE' });
+  });
+
+  it('R01 attaches real container probe result only when Lab exists and Docker is available', async () => {
+    let inspected = 0;
+    const result = await paperclipReadOnlyPreflight({
+      checkRoot: async () => {},
+      inspectDocker: async () => ({ kind: 'windows', version: '27.0', error: null }),
+      inspectPort: async () => ({ reachable: false }),
+      inspectDisk: async () => ({ bavail: 2, bsize: 4, blocks: 10 }),
+      inspectBroker: async () => ({ ready: false }),
+      inspectContainer: async () => {
+        inspected++;
+        return { attempted: true, present: true, running: true, imageRef: 'tag', imageDigestVerified: false, reason: null };
+      },
+    });
+    expect(inspected).toBe(1);
+    expect(result.container).toMatchObject({ attempted: true, present: true, running: true });
+    const missing = await paperclipReadOnlyPreflight({
+      checkRoot: async () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); },
+      inspectDocker: async () => ({ kind: 'windows', version: '27.0', error: null }),
+      inspectPort: async () => ({ reachable: false }),
+      inspectBroker: async () => ({ ready: false }),
+      inspectContainer: async () => { throw new Error('CONTAINER_MUST_NOT_BE_PROBED_WITH_MISSING_ROOT'); },
+    });
+    expect(missing.container).toMatchObject({ attempted: false, present: null, reason: 'LAB_ROOT_MISSING' });
+  });
+
 
 });
