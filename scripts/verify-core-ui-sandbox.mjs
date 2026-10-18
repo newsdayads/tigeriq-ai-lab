@@ -1,6 +1,6 @@
 /** pstack verification pilot. Read-only isolated API Health; never Core/Production acceptance. */
 import {pathToFileURL} from 'node:url';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,writeFile,rm} from 'node:fs/promises';
 import {lstatSync,realpathSync} from 'node:fs';
 import {resolve,relative,dirname,sep,join} from 'node:path';
 
@@ -172,13 +172,22 @@ export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetc
   await mkdir(dirname(dir),{recursive:true,mode:0o700});
   safeEvidenceDir(outputDir); // Recheck after creating the parent.
   try{await mkdir(dir,{mode:0o700})}catch(error){throw new VerificationBlocked('EVIDENCE_DIR_NOT_NEW',String(error?.code||error))}
-  safeEvidenceDir(outputDir);
-  const drive=await driveWorkCard({diagnostic,browserFactory,outputDir:dir});
-  safeEvidenceDir(outputDir);
-  const packet={version:1,product:'TigerIQ API Health Core UI',result:'SANDBOX_DIAGNOSTIC_PASS',acceptanceVerified:false,
-    sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),isolation,diagnostic,drive};
-  await writeFile(resolve(dir,'receipt.json'),JSON.stringify(packet,null,2)+'\n',{flag:'wx'});
-  return packet;
+  // Only this run owns the fresh directory, created after the pre-existing-dir guard.
+  // Keep successful receipts; clean partial screenshots or empty dirs on failure.
+  try{
+    safeEvidenceDir(outputDir);
+    const drive=await driveWorkCard({diagnostic,browserFactory,outputDir:dir});
+    safeEvidenceDir(outputDir);
+    const packet={version:1,product:'TigerIQ API Health Core UI',result:'SANDBOX_DIAGNOSTIC_PASS',acceptanceVerified:false,
+      sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),isolation,diagnostic,drive};
+    await writeFile(resolve(dir,'receipt.json'),JSON.stringify(packet,null,2)+'\n',{flag:'wx'});
+    return packet;
+  }catch(error){
+    // Refuse to follow changed/symlinked evidence paths even when cleaning up.
+    // Do not remove any pre-existing directory: mkdir above had to succeed.
+    try{safeEvidenceDir(outputDir);await rm(dir,{recursive:true,force:true})}catch{}
+    throw error;
+  }
 }
 async function main(){
   const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined};
