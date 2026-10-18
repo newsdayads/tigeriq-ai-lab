@@ -114,3 +114,23 @@ test('T04: malformed or thrown inspector fails closed without leaking details',a
  await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>null,now}),
   {code:'SANDBOX_ISOLATION_NOT_VERIFIED'});
 });
+
+test('T04: attested Core PID must match the live Core /api/status PID before any browser access',async()=>{
+  let browserCalls=0;
+  const outputDir='artifacts/pstack-verification/t04-pid-mismatch-'+process.pid+'-'+Date.now();
+  const fetchImpl=async url=>{
+    const pathname=new URL(url).pathname;
+    const payload=pathname==='/api/status'
+      ?{ok:true,core:{pid:4569,time:new Date(now).toISOString()}}
+      :{ok:true,projection:{generatedAt:new Date(now).toISOString(),stale:false,
+          openWork:[{number:5012,title:'PSTACK isolated pilot'}]}};
+    return {ok:true,headers:{get:()=> 'application/json'},json:async()=>payload};
+  };
+  await assert.rejects(runSandboxVerification({
+    baseUrl,issueNumber:5012,outputDir,now,fetchImpl,
+    nativeIsolationInspector:async()=>proof(),
+    browserFactory:async()=>{browserCalls++;throw Error('BROWSER_MUST_NOT_RUN_FOR_PID_MISMATCH');}
+  }),{code:'SANDBOX_CORE_PID_MISMATCH'});
+  assert.equal(browserCalls,0);
+  assert.equal(existsSync(resolve(outputDir)),false);
+});
