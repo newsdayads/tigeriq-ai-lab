@@ -204,6 +204,37 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       imageRef: 'ghcr.io/paperclipai/paperclip:2026.916.1', imageDigestVerified: false, reason: null });
   });
 
+
+  it('R01 distinguishes observed pinned tag, drift and unknown digest without mutating Docker', async () => {
+    const observed: Array<{ ref: string | null; match: boolean | null }> = [];
+    const inspect = async (ref?: string) => paperclipReadOnlyContainerStatus('windows', {
+      runReadOnlyCommand: async (_exe: string, _args: string[], opts: { readOnly: boolean }) => {
+        expect(opts.readOnly).toBe(true);
+        return { exitCode: 0, timedOut: false, stdout: JSON.stringify({
+          State: { Running: true }, Config: ref == null ? {} : { Image: ref },
+        }) };
+      },
+    });
+    for (const [ref, match] of [
+      ['ghcr.io/paperclipai/paperclip:2026.916.1', true],
+      ['ghcr.io/paperclipai/paperclip:latest', false],
+      ['example.invalid/paperclip:2026.916.1', false],
+      ['ghcr.io/paperclipai/paperclip@sha256:' + 'b'.repeat(64), null],
+      [null, null],
+    ] as Array<[string | null, boolean | null]>) {
+      const result = await inspect(ref ?? undefined);
+      expect(result).toMatchObject({ attempted: true, present: true, running: true,
+        imagePinMatch: match, imageDigestVerified: false });
+      observed.push({ ref, match: result.imagePinMatch });
+    }
+    expect(observed).toHaveLength(5);
+    const unknown = await paperclipReadOnlyContainerStatus('wsl-ubuntu-interactive-broker', {
+      runReadOnlyCommand: async () => { throw new Error('BROKER_MUST_NOT_RUN'); },
+    });
+    expect(unknown).toMatchObject({ attempted: false, imagePinMatch: null,
+      imageDigestVerified: false });
+  });
+
   it('R01 supports direct WSL without broker and does not fabricate unavailable container state', async () => {
     const calls: string[] = [];
     const wsl = await paperclipReadOnlyContainerStatus('wsl-ubuntu', {
