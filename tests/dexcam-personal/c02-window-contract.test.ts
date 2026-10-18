@@ -17,6 +17,17 @@ it('C02: display identity and normalized bounds are strictly checked',()=>{
   expect(planWindowRequest({display:{...display,id:3},preset,capability}).reason).toBe('DISPLAY_PROFILE_MISMATCH');
   expect(planWindowRequest({display,preset:{...preset,bounds_normalized:{x:.8,y:0,width:.5,height:1}},capability}).reason).toBe('INVALID_NORMALIZED_BOUNDS');
 });
+it('C02: invalid Android display IDs and fingerprints fail closed',()=>{
+  for(const id of [-1,1.5,'2',{},NaN,Infinity]){
+    const result=planWindowRequest({display:{...display,id},preset:{...preset,display_id:id},capability});
+    expect(result).toMatchObject({action:'MANUAL_FALLBACK',reason:'DISPLAY_UNVERIFIED',verification:'NOT_MEASURED'});
+  }
+  for(const fingerprint of [' ',{},3]){
+    expect(planWindowRequest({display:{...display,fingerprint},preset:{...preset,display_fingerprint:fingerprint},capability}))
+      .toMatchObject({action:'MANUAL_FALLBACK',reason:'DISPLAY_UNVERIFIED'});
+  }
+  expect(planWindowRequest({display,preset,capability}).action).toBe('REQUEST_L0_LAUNCH_BOUNDS');
+});
 it('C02: no bounds readback means NOT_MEASURED, not PASS',()=>{
   const b={x:1,y:2,width:100,height:100};
   expect(checkAppliedBounds({requested_bounds:b,observed_bounds:b}).status).toBe('NOT_MEASURED');
