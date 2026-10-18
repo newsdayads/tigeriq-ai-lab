@@ -144,7 +144,7 @@ test('T04: matching attested process allows only the read-only doctor path',asyn
     const payload=route==='/api/status'
       ?{ok:true,core:{pid:4567,time:new Date(now).toISOString()}}
       :{ok:true,projection:{generatedAt:new Date(now).toISOString(),stale:false,
-        openWork:[{number:5012,title:'Isolated Work Order'}]}};
+        openWork:[{number:5012,title:'Isolated Work Order',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5012'}]}};
     return {ok:true,headers:{get:()=> 'application/json'},json:async()=>payload};
   };
   const r=await doctorAndSelectWork({baseUrl,issueNumber:5012,now,expectedCorePid:4567,fetchImpl});
