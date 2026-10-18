@@ -99,7 +99,7 @@ vi.mock('node:net', async (importOriginal) => {
 });
 
 // @ts-ignore — Existing native .mjs API intentionally has no TS declaration.
-import { paperclipReadOnlyPreflight } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, executePaperclipLabAction } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip R01 production-default preflight call chain (isolated OS)', () => {
   it('returns missing-root without mkdir, spawn or broker-file writes', async () => {
@@ -150,6 +150,53 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     state.writeAttempts.length = 0;
     state.socketConnects = 0;
     await expect(paperclipReadOnlyPreflight()).rejects.toThrow('ROOT_SYMLINK_BLOCKED');
+    expect(state.spawned).toEqual([]);
+    expect(state.writeAttempts).toEqual([]);
+    expect(state.socketConnects).toBe(0);
+  });
+
+  it('runs the actual typed R01 executor entrypoint without writing to the Lab', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = true;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    const result = await executePaperclipLabAction({ action: 'paperclip_lab_preflight' });
+    expect(result.data.rootPresent).toBe(true);
+    expect(result.data.docker.error).toBe('BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT');
+    expect(result.data.docker.broker.ready).toBe(true);
+    expect(result.evidence).toMatchObject({
+      capability: 'paperclip-lab-v2',
+      root: ROOT,
+      port: 3210,
+      loopbackOnly: true,
+      arbitraryShell: false,
+      arbitraryPath: false,
+      arbitraryPort: false,
+    });
+    expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
+    expect(state.lstatPaths).toContain(HEARTBEAT);
+    expect(state.writeAttempts).toEqual([]);
+    expect(state.socketConnects).toBe(1);
+  });
+
+  it('rejects a typed R01 request with extra fields before any IO', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = true;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    await expect(executePaperclipLabAction({
+      action: 'paperclip_lab_preflight',
+      path: String.raw`C:\Windows\System32`,
+    })).rejects.toThrow('TIGERIQ_PAPERCLIP_LAB_ARGUMENT_NOT_ALLOWED');
+    expect(state.lstatPaths).toEqual([]);
     expect(state.spawned).toEqual([]);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(0);
