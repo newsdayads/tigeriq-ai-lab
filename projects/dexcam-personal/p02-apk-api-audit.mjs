@@ -148,6 +148,21 @@ function readDexMembersFromApk(input) {
       throw new Error('ZIP_MEMBER_NAME_MISMATCH');
     const start = localOffset + 30 + localNameLen + localExtraLen;
     assertRange(apk, start, zipSize);
+    if (flags & 0x0008) {
+      // GPBF bit 3 requires a data descriptor after the compressed payload.
+      // ZIP permits both the signed (16-byte) and unsigned (12-byte) forms.
+      // Never trust central-directory values alone when the descriptor differs.
+      const descriptorStart = start + zipSize;
+      const matchesDescriptor = at => at + 12 <= offset &&
+        u32(apk, at) === expectedCrc &&
+        u32(apk, at + 4) === zipSize &&
+        u32(apk, at + 8) === rawSize;
+      const unsignedValid = matchesDescriptor(descriptorStart);
+      const signedValid = descriptorStart + 16 <= offset &&
+        u32(apk, descriptorStart) === 0x08074b50 &&
+        matchesDescriptor(descriptorStart + 4);
+      if (!unsignedValid && !signedValid) throw new Error('DEX_ZIP_DESCRIPTOR_MISMATCH');
+    }
     const compressed = apk.subarray(start, start + zipSize);
     const b = method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: MAX_DEX_BYTES });
     if (b.length !== rawSize || crc32(b) !== expectedCrc) throw new Error('DEX_ZIP_CRC_OR_SIZE_MISMATCH');
