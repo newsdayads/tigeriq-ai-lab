@@ -4,8 +4,43 @@ import {verifyRuntimeIsolation,runSandboxVerification,sandboxBaseUrl,doctorAndSe
 
 import {existsSync,readlinkSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {readLinuxProcessIdentity,readLinuxIsolatedProcessPair,LinuxNativeReadbackBlocked} from '../scripts/pstack-linux-native-readback.mjs';
 import {rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
+
+test('T04: Linux /proc reader observes current process without leaking command line',{
+  skip:process.platform!=='linux'
+},async()=>{
+  const packet=await readLinuxProcessIdentity(process.pid);
+  assert.equal(packet.pid,process.pid);
+  assert.match(packet.networkNamespace,/^net:\[\d+\]$/);
+  assert.match(packet.processStartTicks,/^\d+$/);
+  assert.deepEqual(Object.keys(packet).sort(),[
+    'networkNamespace','pid','processStartTicks'
+  ]);
+});
+
+test('T04: native Linux inspector rejects invalid and absent PIDs before any acceptance',{
+  skip:process.platform!=='linux'
+},async()=>{
+  await assert.rejects(readLinuxProcessIdentity(0),{code:'NATIVE_PID_INVALID'});
+  await assert.rejects(readLinuxProcessIdentity(-1),{code:'NATIVE_PID_INVALID'});
+  await assert.rejects(readLinuxProcessIdentity(1.25),{code:'NATIVE_PID_INVALID'});
+  await assert.rejects(readLinuxProcessIdentity(2147483647),
+    {code:'NATIVE_PROCESS_READBACK_UNAVAILABLE'});
+});
+
+test('T04: native pair rejects same PID or a Core in the host namespace',{
+  skip:process.platform!=='linux'
+},async()=>{
+  await assert.rejects(readLinuxIsolatedProcessPair({
+    corePid:process.pid,bridgePid:process.pid
+  }),{code:'NATIVE_CORE_BRIDGE_SAME_PID'});
+  assert.ok(process.ppid>0);
+  await assert.rejects(readLinuxIsolatedProcessPair({
+    corePid:process.pid,bridgePid:process.ppid
+  }),{code:'NATIVE_CORE_HOST_NAMESPACE_SHARED'});
+});
 
 // Source-only preflight: observes an ephemeral public-repo GitHub runner.
 // This does NOT claim an isolated Core/bridge/database, a native inspector,
