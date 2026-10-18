@@ -831,7 +831,8 @@ export async function paperclipReadOnlyPreflight({
   const container = rootPresent && docker.kind
     ? await inspectContainer(docker)
     : { attempted: false, present: null, running: null, imageRef: null,
-        imageDigestVerified: false, reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
+        imagePinMatch: null, imageDigestVerified: false,
+        reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     container,
