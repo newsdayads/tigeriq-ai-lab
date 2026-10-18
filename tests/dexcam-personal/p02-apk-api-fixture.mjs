@@ -65,3 +65,32 @@ export function makeZip(entryName='classes.dex',content=makeDex(),{compressed=fa
   le32(end,0,0x06054b50);le16(end,8,1);le16(end,10,1);le32(end,12,central.length+name.length);le32(end,16,localSize);
   return Buffer.concat([local,name,zipBytes,central,name,end]);
 }
+
+/**
+ * Synthetic ZIP GPBF bit-3 variants. The descriptor must follow compressed
+ * DEX bytes and agree with the canonical central-directory checksum/sizes.
+ * No source APK, device input, or proprietary code.
+ */
+export function makeDescriptorZip({ signed = true, omitted = false, corruptCrc = false, corruptSize = false } = {}) {
+  const original = makeZip();
+  const centralOffset = original.readUInt32LE(original.length - 22 + 16);
+  const desc = omitted ? Buffer.alloc(0) : Buffer.alloc(signed ? 16 : 12);
+  const valueOffset = signed ? 4 : 0;
+  if (!omitted) {
+    if (signed) desc.writeUInt32LE(0x08074b50, 0);
+    desc.writeUInt32LE(original.readUInt32LE(14) ^ (corruptCrc ? 0x1234 : 0), valueOffset);
+    desc.writeUInt32LE(original.readUInt32LE(18) + (corruptSize ? 1 : 0), valueOffset + 4);
+    desc.writeUInt32LE(original.readUInt32LE(22), valueOffset + 8);
+  }
+  const output = Buffer.concat([
+    original.subarray(0, centralOffset), desc, original.subarray(centralOffset),
+  ]);
+  const central = centralOffset + desc.length;
+  output.writeUInt16LE(8, 6);
+  output.writeUInt16LE(8, central + 8);
+  output.writeUInt32LE(0, 14);
+  output.writeUInt32LE(0, 18);
+  output.writeUInt32LE(0, 22);
+  output.writeUInt32LE(central, output.length - 22 + 16);
+  return output;
+}
