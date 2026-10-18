@@ -1219,7 +1219,9 @@ async function health(signal = null, transport = null, options = {}) {
   try { pin = await readReleasePin(); }
   catch { return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'PIN_NOT_READY' }; }
 
-  const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal);
+  // R02 is diagnostic/read-only: broker fallback writes request files. Only
+  // direct Docker/WSL are admissible without a separate mutation lease.
+  const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal, { allowBrokerProbe: false });
   if (!docker.kind) return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'DOCKER_UNAVAILABLE', docker };
   const [port, http, inspect, database] = await Promise.all([
     probePort(),
