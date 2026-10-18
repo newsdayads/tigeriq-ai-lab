@@ -2149,11 +2149,18 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
   }
 }
 
+function coreUiReceiptMatchesIssue(item) {
+  const match = /^GH-(\d+)-R[A-Za-z0-9]+$/.exec(String(item?.jobId || ''));
+  return Number.isSafeInteger(item?.issueNumber)
+    && item.issueNumber > 0
+    && match !== null
+    && Number(match[1]) === item.issueNumber;
+}
+
 export function attachCoreUiAssignmentReceipts(openWork = [], receipts = []) {
   const byIssue = new Map();
   for (const item of (Array.isArray(receipts) ? receipts : []).slice(0, 40)) {
-    if (!Number.isSafeInteger(item?.issueNumber) || item.issueNumber <= 0
-        || !/^GH-\d+-R[A-Za-z0-9]+$/.test(String(item?.jobId || ''))
+    if (!coreUiReceiptMatchesIssue(item)
         || !['NV03', 'NV04'].includes(String(item?.employeeId || ''))
         || !['ui_assigned', 'ui_running', 'done', 'failed'].includes(String(item?.status || ''))) continue;
     if (!byIssue.has(item.issueNumber)) byIssue.set(item.issueNumber, {
@@ -2174,8 +2181,7 @@ export function sanitizeRuntimePayload(payload) {
   // Do not infer a running worker from an assigned Core UI job.
   const coreUiAssignments = [];
   for (const item of (payload.source?.core === true && Array.isArray(payload.coreUiAssignments) ? payload.coreUiAssignments : []).slice(0, 40)) {
-    if (!Number.isSafeInteger(item?.issueNumber) || item.issueNumber <= 0
-        || !/^GH-\d+-R[A-Za-z0-9]+$/.test(String(item?.jobId || ''))
+    if (!coreUiReceiptMatchesIssue(item)
         || !['NV03', 'NV04'].includes(String(item?.employeeId || ''))
         || !['ui_assigned', 'ui_running', 'done', 'failed'].includes(String(item?.status || ''))) continue;
     if (coreUiAssignments.some((row) => row.issueNumber === item.issueNumber)) continue;
