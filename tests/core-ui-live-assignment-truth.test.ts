@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 // @ts-ignore: Production ESM has no TypeScript declarations; vitest resolves Node source.
 import { parseQueueIssue, sanitizeRuntimePayload, attachCoreUiAssignmentReceipts } from '../api/live-status.mjs';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
 const issue = (number: number, body: string) => ({
   number, state: 'open', title: '[P1] Assigned bounded work', body,
   html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/' + number,
