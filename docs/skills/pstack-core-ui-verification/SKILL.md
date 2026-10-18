@@ -24,7 +24,9 @@ From the repo root, on an already running authorized isolated sandbox:
 
     node scripts/verify-core-ui-sandbox.mjs --base-url http://127.0.0.1:PORT/ --issue ISSUE_NUMBER --evidence-dir artifacts/pstack-verification/UNIQUE_RUN_ID
 
-The harness opens a new isolated Chrome context without request mocking, selects the matching work card, opens its detail modal, validates the GitHub link when supplied by the API and captures before/after state.
+**T04 SAFETY GATE (18/10/2026):** The CLI command above is a **documentation of the intended interface, not an approved runnable canary**. It now refuses to contact the HTTP target with `SANDBOX_NATIVE_READBACK_REQUIRED` until an authorized operator provides a genuine `nativeIsolationInspector` integration. A user-authored JSON receipt, a loopback URL or a successful CI test is NOT such an inspector. The operator must independently observe separate Core process/port, DB fingerprint, network namespace isolating the Core and the hardcoded bridge `127.0.0.1:8801`, different browser profile, actual build SHA, observation timestamp and durable evidence reference. `verifyRuntimeIsolation` checks only the structure of that readback; it does not itself authenticate the operator or establish that the sandbox ran. No live drive is approved while T04 remains unchecked. Do not replace the current CLI with a mock inspector to force PASS.
+
+The harness opens a new isolated Chrome context without request mocking, selects the matching work card, opens its detail modal, validates the GitHub link when supplied by the API and captures before/after state **only after the T04 operator/runtime gate is satisfied**.
 
 ## Evidence
 - Scoped output: artifacts/pstack-verification/UNIQUE_RUN_ID/receipt.json and core-ui-work-card.png.
