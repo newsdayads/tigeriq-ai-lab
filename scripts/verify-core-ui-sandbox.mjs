@@ -1,7 +1,8 @@
 /** pstack verification pilot. Read-only isolated API Health; never Core/Production acceptance. */
 import {pathToFileURL} from 'node:url';
 import {mkdir,writeFile} from 'node:fs/promises';
-import {resolve,relative,dirname} from 'node:path';
+import {lstatSync,realpathSync} from 'node:fs';
+import {resolve,relative,dirname,sep,join} from 'node:path';
 
 export class VerificationBlocked extends Error{
   constructor(code,detail=''){super(detail?code+': '+detail:code);this.name='VerificationBlocked';this.code=code}
@@ -42,41 +43,88 @@ export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,n
   };
 }
 export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
-  if(!diagnostic?.origin||!diagnostic?.issueNumber||typeof browserFactory!=='function')
+  if(!diagnostic?.origin||!Number.isSafeInteger(diagnostic?.issueNumber)||diagnostic.issueNumber<1||typeof browserFactory!=='function')
     throw new VerificationBlocked('DRIVE_INPUT_INVALID');
+  // Recheck input before browser access. The doctor packet is not an authorization token.
+  const origin=sandboxBaseUrl(diagnostic.origin+'/');
   let browser;
   try{
     browser=await browserFactory();
-    const context=await browser.newContext({serviceWorkers:'block'}),page=await context.newPage();
-    // No page.route(), mocks, test-only API or shared browser profile.
-    await page.goto(diagnostic.origin+'/',{waitUntil:'domcontentloaded',timeout:15000});
+    const context=await browser.newContext({serviceWorkers:'block'});
+    if(typeof context.route!=='function')throw new VerificationBlocked('UI_NETWORK_GUARD_UNAVAILABLE');
+    let outsideRequest=false;
+    // Interception denies document and subresource traffic outside the sandbox.
+    // It is not a mock, nor proof of OS-level network isolation.
+    await context.route('**/*',async route=>{
+      const requested=route.request().url();
+      let allowed=false;
+      try{const u=new URL(requested);allowed=u.protocol==='http:'&&u.origin===origin;}
+      catch{allowed=false}
+      if(!allowed){outsideRequest=true;return route.abort('blockedbyclient')}
+      return route.continue();
+    });
+    const page=await context.newPage();
+    try{await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000})}
+    catch(error){
+      if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+      throw error;
+    }
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(typeof page.url!=='function'||page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
     const row=page.locator('.work-row[data-work-number="'+diagnostic.issueNumber+'"]');
     if(await row.count()!==1||!(await row.isVisible()))throw new VerificationBlocked('UI_WORK_CARD_NOT_VISIBLE');
     const before=(await row.innerText()).slice(0,1200);
     await row.click();
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
     const backdrop=page.locator('#workDetailBackdrop');
     if(!(await backdrop.count())||!(await backdrop.getAttribute('class')||'').includes('open'))
       throw new VerificationBlocked('UI_WORK_DETAIL_NOT_OPEN');
     const after=(await page.locator('#workDetailModal').innerText()).slice(0,1800);
     const githubHref=await page.locator('#workDetailGithub').getAttribute('href').catch(()=>null);
     if(diagnostic.work.url&&githubHref!==diagnostic.work.url)throw new VerificationBlocked('UI_GITHUB_LINK_MISMATCH');
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
     let screenshot=null;
     if(outputDir){screenshot=resolve(outputDir,'core-ui-work-card.png');await page.screenshot({path:screenshot,animations:'disabled'})}
+    if(outsideRequest||page.url()!==origin+'/')throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
     return {action:'OPEN_WORK_CARD',before,after,githubHref:githubHref||null,screenshot,driver:'BROWSER_INTERACTION_NO_INTERCEPTION_CONFIGURED'};
   }finally{if(browser)await browser.close()}
 }
 export function safeEvidenceDir(raw,cwd=process.cwd()){
   if(!raw||typeof raw!=='string')throw new VerificationBlocked('EVIDENCE_DIR_REQUIRED');
-  const allowed=resolve(cwd,'artifacts','pstack-verification'),target=resolve(cwd,raw),rel=relative(allowed,target);
+  const base=resolve(cwd),allowed=resolve(base,'artifacts','pstack-verification');
+  const target=resolve(base,raw),rel=relative(allowed,target);
   if(rel.startsWith('..')||rel==='..'||rel.startsWith('/')||rel==='')throw new VerificationBlocked('EVIDENCE_SCOPE_INVALID');
+  // Lexical containment cannot detect pre-existing symlinks/junctions.
+  try{if(realpathSync.native(base)!==base)throw new VerificationBlocked('EVIDENCE_SYMLINK_FORBIDDEN')}
+  catch(e){
+    if(e instanceof VerificationBlocked)throw e;
+    if(e?.code!=='ENOENT')throw new VerificationBlocked('EVIDENCE_BASE_UNVERIFIED');
+  }
+  let cursor=base;
+  for(const part of relative(base,target).split(sep)){
+    cursor=join(cursor,part);
+    try{
+      const stat=lstatSync(cursor);
+      if(stat.isSymbolicLink())throw new VerificationBlocked('EVIDENCE_SYMLINK_FORBIDDEN');
+      if(!stat.isDirectory()&&cursor!==target)throw new VerificationBlocked('EVIDENCE_PARENT_NOT_DIRECTORY');
+    }catch(e){
+      if(e instanceof VerificationBlocked)throw e;
+      if(e?.code!=='ENOENT')throw new VerificationBlocked('EVIDENCE_PATH_UNVERIFIED');
+    }
+  }
   return target;
 }
 export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetchImpl=fetch,browserFactory,now=Date.now()}={}){
   const dir=safeEvidenceDir(outputDir);
   const diagnostic=await doctorAndSelectWork({baseUrl,issueNumber,fetchImpl,now});
-  await mkdir(dirname(dir),{recursive:true});
-  try{await mkdir(dir)}catch(error){throw new VerificationBlocked('EVIDENCE_DIR_NOT_NEW',String(error?.code||error))}
+  await mkdir(dirname(dir),{recursive:true,mode:0o700});
+  safeEvidenceDir(outputDir); // Recheck after creating the parent.
+  try{await mkdir(dir,{mode:0o700})}catch(error){throw new VerificationBlocked('EVIDENCE_DIR_NOT_NEW',String(error?.code||error))}
+  safeEvidenceDir(outputDir);
   const drive=await driveWorkCard({diagnostic,browserFactory,outputDir:dir});
+  safeEvidenceDir(outputDir);
   const packet={version:1,product:'TigerIQ API Health Core UI',result:'SANDBOX_DIAGNOSTIC_PASS',acceptanceVerified:false,
     sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),diagnostic,drive};
   await writeFile(resolve(dir,'receipt.json'),JSON.stringify(packet,null,2)+'\n',{flag:'wx'});
