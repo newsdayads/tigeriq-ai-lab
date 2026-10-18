@@ -46,10 +46,10 @@ test('browser reads real UI selectors, opens modal and releases owned session',a
   const target={count:async()=>1,isVisible:async()=>true,innerText:async()=> '#2054 Paperclip',click:async()=>trace.push('click')};
   const backdrop={count:async()=>1,getAttribute:async()=> 'modal open'};
   const detail={innerText:async()=> 'Paperclip R01'},github={getAttribute:async()=>row.url};
-  const page={goto:async(url)=>trace.push(url),locator:sel=>({
+  const page={goto:async(url)=>trace.push(url),url:()=> 'http://127.0.0.1:4315/',locator:sel=>({
     '.work-row[data-work-number="2054"]':target,'#workDetailBackdrop':backdrop,'#workDetailModal':detail,'#workDetailGithub':github
   })[sel]};
-  const browserFactory=async()=>({newContext:async()=>({newPage:async()=>page}),close:async()=>{closed=true}});
+  const browserFactory=async()=>({newContext:async()=>({route:async()=>{},newPage:async()=>page}),close:async()=>{closed=true}});
   const result=await driveWorkCard({diagnostic:{origin:'http://127.0.0.1:4315',issueNumber:2054,work:row},browserFactory});
   assert.deepEqual(trace,['http://127.0.0.1:4315/','click']);
   assert.equal(result.githubHref,row.url);assert.equal(closed,true);
@@ -57,8 +57,8 @@ test('browser reads real UI selectors, opens modal and releases owned session',a
 test('failed UI card check cannot pass; browser is still closed',async()=>{
   let closed=false;
   const browserFactory=async()=>({newContext:async()=>({newPage:async()=>({
-    goto:async()=>{},locator:()=>({count:async()=>0})
-  })}),close:async()=>{closed=true}});
+    goto:async()=>{},url:()=> 'http://127.0.0.1:4315/',locator:()=>({count:async()=>0})
+  }),route:async()=>{}}),close:async()=>{closed=true}});
   await assert.rejects(driveWorkCard({diagnostic:{origin:'http://127.0.0.1:4315',issueNumber:2054,work:row},browserFactory}),{code:'UI_WORK_CARD_NOT_VISIBLE'});
   assert.equal(closed,true);
 });
