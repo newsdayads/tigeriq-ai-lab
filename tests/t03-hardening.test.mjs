@@ -65,3 +65,36 @@ test('T03: changing location after card click blocks evidence acceptance',async(
  await assert.rejects(driveWorkCard({diagnostic,browserFactory:factory}),{code:'UI_NAVIGATION_OUT_OF_SCOPE'});
  assert.equal(closed,true);
 });
+
+test('T04: WebSocket route guard is required before any browser navigation',async()=>{
+ const b=browserFixture();
+ await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory}),
+   {code:'UI_WEBSOCKET_GUARD_UNAVAILABLE'});
+ assert.equal(b.observed().visited,false,'navigation must not begin without WebSocket interception');
+ assert.equal(b.observed().closed,true);
+});
+test('T04: unsolicited WebSocket is denied without connecting outside the sandbox',async()=>{
+ const b=browserFixture();let webSocketHandler,closedSockets=0;
+ const factory=async()=>{
+   const browser=await b.factory(),createContext=browser.newContext;
+   browser.newContext=async()=> {
+     const context=await createContext(),createPage=context.newPage;
+     context.routeWebSocket=async(_pattern,handler)=>{webSocketHandler=handler};
+     context.newPage=async()=>{
+       const page=await createPage(),navigate=page.goto;
+       page.goto=async(...args)=>{
+         await navigate(...args);
+         if(webSocketHandler)
+           await webSocketHandler({close:async()=>{closedSockets++}});
+       };
+       return page;
+     };
+     return context;
+   };
+   return browser;
+ };
+ await assert.rejects(driveWorkCard({diagnostic,browserFactory:factory}),
+   {code:'UI_NETWORK_OUT_OF_SCOPE'});
+ assert.equal(closedSockets,1,'WebSocket must close without a server connection');
+ assert.equal(b.observed().closed,true);
+});
