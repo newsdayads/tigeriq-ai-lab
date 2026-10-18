@@ -2162,8 +2162,9 @@ export function attachCoreUiAssignmentReceipts(openWork = [], receipts = []) {
       completedAt: typeof item.completedAt === 'string' ? item.completedAt.slice(0, 64) : null,
     });
   }
-  for (const row of (Array.isArray(openWork) ? openWork : [])) row.coreAssignment = byIssue.get(Number(row.number)) || null;
-  return openWork;
+  const rows = Array.isArray(openWork) ? openWork : [];
+  for (const row of rows) row.coreAssignment = byIssue.get(Number(row.number)) || null;
+  return rows;
 }
 
 export function sanitizeRuntimePayload(payload) {
