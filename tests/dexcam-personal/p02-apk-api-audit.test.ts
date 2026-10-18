@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 // @ts-ignore Standalone ESM module with no ambient JS declarations.
 import { inspectApkPublicApi, runP02 } from '../../projects/dexcam-personal/p02-apk-api-audit.mjs';
 // @ts-ignore Synthetic test-only JavaScript fixture, no external APK content.
-import { makeDex, makeZip } from './p02-apk-api-fixture.mjs';
+import { makeDex, makeZip, makeDuplicateDexCentralEntry } from './p02-apk-api-fixture.mjs';
 
 it('checks exact whitelisted Android method refs from a synthetic APK', () => {
   const r = inspectApkPublicApi(makeZip());
@@ -65,4 +65,8 @@ it('permits a ZIP data descriptor with empty local CRC and sizes', () => {
   b.writeUInt32LE(0, 14); b.writeUInt32LE(0, 18); b.writeUInt32LE(0, 22);
   b.writeUInt32LE(central + 16, b.length - 22 + 16);
   expect(inspectApkPublicApi(b).method_ids_by_category.usb).toBe(1);
+});
+
+it('rejects a duplicated root DEX central record instead of counting one method table twice', () => {
+  expect(() => inspectApkPublicApi(makeDuplicateDexCentralEntry())).toThrow('DUPLICATE_DEX_ZIP_MEMBER');
 });
