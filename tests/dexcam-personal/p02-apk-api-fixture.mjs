@@ -30,6 +30,29 @@ function crc32(b) {
   if(!tbl)tbl=Array.from({length:256},(_,i)=>{let c=i;for(let j=0;j<8;j++)c=(c>>>1)^((c&1)?0xedb88320:0);return c>>>0;});
   let c=0xffffffff;for(const v of b)c=(c>>>8)^tbl[(c^v)&255];return (c^0xffffffff)>>>0;
 }
+
+/**
+ * Synthetic malformed ZIP: a second central-directory record aliases the same
+ * local classes.dex entry. Parsers must not count one DEX twice.
+ */
+export function makeDuplicateDexCentralEntry() {
+  const original = makeZip();
+  const end = original.length - 22;
+  const start = original.readUInt32LE(end + 16);
+  const size = original.readUInt32LE(end + 12);
+  const centralEntry = original.subarray(start, start + size);
+  const out = Buffer.concat([
+    original.subarray(0, end),
+    centralEntry,
+    original.subarray(end),
+  ]);
+  const newEnd = out.length - 22;
+  out.writeUInt16LE(2, newEnd + 8);
+  out.writeUInt16LE(2, newEnd + 10);
+  out.writeUInt32LE(size * 2, newEnd + 12);
+  return out;
+}
+
 export function makeZip(entryName='classes.dex',content=makeDex(),{compressed=false, corruptCRC=false, encrypted=false}={}){
   const name=bytes(entryName),zipBytes=compressed?deflateRawSync(content):content;
   const crc=crc32(content)^(corruptCRC?0x1234:0),local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22);
