@@ -97,8 +97,19 @@ test('T04: real ephemeral native Linux process pair has private network namespac
     pids=await ready;
     const [corePid,bridgePid]=pids;
     assert.ok(corePid>0&&bridgePid>0&&corePid!==bridgePid);
-    original=await readLinuxProcessIdentity(corePid);
-    observed=await readLinuxIsolatedProcessPair({corePid,bridgePid});
+    // A forked /bin/sleep can briefly expose empty /proc/PID/cmdline
+    // before execve. Retry only this bounded startup race; never downgrade
+    // missing PID, shared namespace, or changed process identity to PASS.
+    for(let attempt=0;attempt<30;attempt++){
+      try{
+        original=await readLinuxProcessIdentity(corePid);
+        observed=await readLinuxIsolatedProcessPair({corePid,bridgePid});
+        break;
+      }catch(error){
+        if(error?.code!=='NATIVE_PROCESS_NOT_EXECUTABLE'||attempt===29)throw error;
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+    }
     assert.equal(observed.source,'LINUX_PROC_READ_ONLY');
     assert.notEqual(observed.host.networkNamespace,observed.core.networkNamespace);
     assert.equal(observed.bridge.networkNamespace,observed.core.networkNamespace);
