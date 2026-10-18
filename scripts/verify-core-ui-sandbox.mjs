@@ -1,6 +1,6 @@
 /** pstack verification pilot. Read-only isolated API Health; never Core/Production acceptance. */
 import {pathToFileURL} from 'node:url';
-import {mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdir,writeFile,rm,lstat as lstatAsync} from 'node:fs/promises';
 import {lstatSync,realpathSync} from 'node:fs';
 import {resolve,relative,dirname,sep,join} from 'node:path';
 
@@ -104,6 +104,9 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     const context=await browser.newContext({serviceWorkers:'block'});
     if(typeof context.route!=='function')throw new VerificationBlocked('UI_NETWORK_GUARD_UNAVAILABLE');
     if(typeof context.routeWebSocket!=='function')throw new VerificationBlocked('UI_WEBSOCKET_GUARD_UNAVAILABLE');
+    // A live receipt must include real Playwright tracing; deny navigation if unavailable.
+    if(outputDir&&(typeof context.tracing?.start!=='function'||typeof context.tracing?.stop!=='function'))
+      throw new VerificationBlocked('UI_TRACE_UNAVAILABLE');
     let outsideRequest=false;
     // Neither HTTP nor WebSocket interception establishes OS-level network isolation.
     // Deny ALL WebSocket attempts (including loopback) before creating the page.
@@ -119,6 +122,7 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
       if(!allowed){outsideRequest=true;return route.abort('blockedbyclient')}
       return route.continue();
     });
+    if(outputDir)await context.tracing.start({screenshots:true,snapshots:true,sources:false});
     const page=await context.newPage();
     try{await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000})}
     catch(error){
@@ -141,10 +145,22 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     if(diagnostic.work.url&&githubHref!==diagnostic.work.url)throw new VerificationBlocked('UI_GITHUB_LINK_MISMATCH');
     if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
     if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
-    let screenshot=null;
-    if(outputDir){screenshot=resolve(outputDir,'core-ui-work-card.png');await page.screenshot({path:screenshot,animations:'disabled'})}
+    let screenshot=null,trace=null;
+    if(outputDir){
+      screenshot=resolve(outputDir,'core-ui-work-card.png');
+      trace=resolve(outputDir,'core-ui-work-card-trace.zip');
+      await page.screenshot({path:screenshot,animations:'disabled'});
+      if(outsideRequest||page.url()!==origin+'/')throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+      try{await context.tracing.stop({path:trace})}
+      catch{throw new VerificationBlocked('UI_TRACE_NOT_RECORDED')}
+      let shot,record;
+      try{[shot,record]=await Promise.all([lstatAsync(screenshot),lstatAsync(trace)])}
+      catch{throw new VerificationBlocked('UI_TRACE_NOT_RECORDED')}
+      if(!shot.isFile()||!record.isFile()||shot.size<1||record.size<1)
+        throw new VerificationBlocked('UI_TRACE_NOT_RECORDED');
+    }
     if(outsideRequest||page.url()!==origin+'/')throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
-    return {action:'OPEN_WORK_CARD',before,after,githubHref:githubHref||null,screenshot,driver:'BROWSER_INTERACTION_NO_INTERCEPTION_CONFIGURED'};
+    return {action:'OPEN_WORK_CARD',before,after,githubHref:githubHref||null,screenshot,trace,driver:'BROWSER_INTERACTION_NO_INTERCEPTION_CONFIGURED'};
   }finally{if(browser)await browser.close()}
 }
 export function safeEvidenceDir(raw,cwd=process.cwd()){
