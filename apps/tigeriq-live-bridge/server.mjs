@@ -22,7 +22,9 @@ if(PSTACK_BRIDGE_INTENT){
   if(!PSTACK_BRIDGE_READ_ONLY||PORT!==8801||
      !process.env.TIGERIQ_CORE_STATUS_URL||
      !process.env.TIGERIQ_CODING_STATUS_URL||
+     !process.env.TIGERIQ_CORE_EVENT_URL||
      !isLocalSandboxEndpoint(CORE)||
+     !isLocalSandboxEndpoint(CORE_EVENT)||
      !isLocalSandboxEndpoint(CODING)){
     throw new Error('PSTACK_BRIDGE_SANDBOX_ISOLATION_NO_GO');
   }
