@@ -130,6 +130,40 @@ test('T04: real ephemeral native Linux process pair has private network namespac
   }));
 });
 
+test('T04: sandbox mode flag blocks real Core before DB and autonomous startup',{
+  skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
+    process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
+    process.env.GITHUB_REPOSITORY==='newsdayads/tigeriq-ai-lab'),
+  timeout:20000
+},()=>{
+  // Exercise exact Core entrypoint, in real private network namespace;
+  // intentionally supply syntactically valid but unreachable DB target.
+  // The T04 gate must fire BEFORE any attempt to connect or initialize tables.
+  // env -i eliminates inherited tokens, provider URLs and production state.
+  const child=spawnSync('sudo',[
+    '-n','unshare','--net','--','runuser','-u','runner','--',
+    'env','-i','PATH=/usr/bin:/bin','NODE_ENV=test',
+    'TIGERIQ_PSTACK_SANDBOX_MODE=read-only',
+    'DATABASE_URL=postgresql://127.0.0.1:1/tigeriq_pstack_disposable_not_created',
+    process.execPath,'apps/tigeriq-core/core.mjs'
+  ],{cwd:process.cwd(),shell:false,encoding:'utf8',
+    timeout:15000,maxBuffer:65536});
+  assert.equal(child.error,undefined);
+  assert.equal(child.signal,null);
+  assert.equal(child.status,1);
+  assert.match(child.stderr||'',/PSTACK_T04_SANDBOX_AUTOWORK_GATE_NOT_ACCEPTED/);
+  assert.doesNotMatch(child.stderr||'',/ECONNREFUSED|DATABASE_URL_MISSING/,
+    'the admission guard must precede database access');
+  assert.doesNotMatch(child.stdout||'',/TIGERIQ_CORE_STARTED|MANAGER_TICK|CORE_LOOP_ERROR/);
+  console.log('T04_REAL_CORE_SANDBOX_INTENT_BLOCKED '+JSON.stringify({
+    entrypoint:'apps/tigeriq-core/core.mjs',
+    sandboxIntent:'read-only',databaseIsDisposable:false,
+    databaseContacted:false,credentialsForwarded:false,
+    automaticCoreLoopStarted:false,exitCode:child.status,
+    result:'NO_GO_NATIVE_OPERATOR_REQUIRED',t04Accepted:false
+  }));
+});
+
 test('T04: actual Core entrypoint must reject unsafe boot before autonomy in isolated netns',{
   skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
     process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
