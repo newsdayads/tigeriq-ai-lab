@@ -57,6 +57,7 @@ import {
   paperclipHealthFailureClass,
   paperclipOpenAiDeviceAuthFailureClass,
   parsePaperclipComposePsRows,
+  paperclipComposeDbStatusRow,
   paperclipLabBrokerOperationForDockerArgs,
   paperclipLabComposeYaml,
   paperclipLabWslDockerArgs,
@@ -1263,6 +1264,19 @@ describe('Paperclip Lab bounded PC01 capability', () => {
     expect(rows[0].Service).toBe('db');
     expect(rows[0].State).toBe('exited');
     expect(rows[0].ExitCode).toBe(137);
+  });
+
+  it('accepts only the exact db service as PostgreSQL health evidence, regardless of Compose response order', () => {
+    const healthyOther = { Service: 'paperclip', State: 'running', Health: 'healthy' };
+    const migratedOther = { Service: 'migrate', State: 'exited', Health: 'healthy' };
+    const db = { Service: 'db', State: 'running', Health: 'healthy' };
+    const parsedWrongOnly = parsePaperclipComposePsRows(JSON.stringify([healthyOther, migratedOther]));
+    expect(paperclipComposeDbStatusRow(parsedWrongOnly)).toBeNull();
+    expect(paperclipComposeDbStatusRow([healthyOther])).toBeNull();
+    expect(paperclipComposeDbStatusRow([healthyOther, db])).toEqual(db);
+    expect(paperclipComposeDbStatusRow([db, healthyOther])).toEqual(db);
+    expect(paperclipComposeDbStatusRow([])).toBeNull();
+    expect(paperclipComposeDbStatusRow(null)).toBeNull();
   });
 
   it('includes bounded PostgreSQL sidecar diagnostics in typed health source', async () => {
