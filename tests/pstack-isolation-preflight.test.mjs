@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {verifyRuntimeIsolation,runSandboxVerification,sandboxBaseUrl,doctorAndSelectWork} from '../scripts/verify-core-ui-sandbox.mjs';
 
 import {existsSync,readlinkSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {readLinuxProcessIdentity,readLinuxIsolatedProcessPair,LinuxNativeReadbackBlocked} from '../scripts/pstack-linux-native-readback.mjs';
 import {rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -40,6 +40,93 @@ test('T04: native pair rejects same PID or a Core in the host namespace',{
   await assert.rejects(readLinuxIsolatedProcessPair({
     corePid:process.pid,bridgePid:process.ppid
   }),{code:'NATIVE_CORE_HOST_NAMESPACE_SHARED'});
+});
+
+
+test('T04: real ephemeral native Linux process pair has private network namespace and teardown',{
+  skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
+    process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
+    process.env.GITHUB_REPOSITORY==='newsdayads/tigeriq-ai-lab'),
+  timeout:25000
+},async()=>{
+  // Only two disposable /bin/sleep processes. No Core, DB, bridge,
+  // browser, credentials, network requests or host service modifications.
+  // The shell cleans up ONLY the two PIDs it spawned on all exit paths.
+  const shell=String.raw`
+    set -eu
+    core=; bridge=
+    cleanup() {
+      if [ -n "$core" ]; then kill "$core" 2>/dev/null || :; fi
+      if [ -n "$bridge" ]; then kill "$bridge" 2>/dev/null || :; fi
+      if [ -n "$core" ]; then wait "$core" 2>/dev/null || :; fi
+      if [ -n "$bridge" ]; then wait "$bridge" 2>/dev/null || :; fi
+    }
+    trap cleanup EXIT HUP INT TERM
+    sleep 15 & core=$!
+    sleep 15 & bridge=$!
+    printf 'PSTACK_T04_PAIR %s %s\n' "$core" "$bridge"
+    answer=
+    IFS= read -r -t 10 answer || :
+    [ "$answer" = TEARDOWN ]
+  `;
+  const subprocess=spawn('sudo',['-n','unshare','--net','--','bash','-c',shell],{
+    stdio:['pipe','pipe','pipe'],shell:false
+  });
+  let textOut='',textErr='',closed=false,exitCode=null;
+  const completion=new Promise((resolve,reject)=>{
+    subprocess.once('error',reject);
+    subprocess.once('close',code=>{closed=true;exitCode=code;resolve(code);});
+  });
+  const ready=new Promise((resolve,reject)=>{
+    subprocess.stdout.on('data',chunk=>{
+      textOut+=chunk.toString('utf8');
+      if(textOut.length>1024)return reject(Error('T04_PAIR_OUTPUT_INVALID'));
+      const match=/^PSTACK_T04_PAIR (\d+) (\d+)\r?\n/.exec(textOut);
+      if(match)return resolve([Number(match[1]),Number(match[2])]);
+    });
+    subprocess.stderr.on('data',chunk=>{
+      textErr=(textErr+chunk.toString('utf8')).slice(-700);
+    });
+    completion.then(code=>reject(Error(
+      code===0?'T04_PAIR_TERMINATED_EARLY':'T04_PRIVATE_NETNS_UNAVAILABLE'
+    ))).catch(reject);
+  });
+  let original=null,observed=null,pids=null;
+  try{
+    pids=await ready;
+    const [corePid,bridgePid]=pids;
+    assert.ok(corePid>0&&bridgePid>0&&corePid!==bridgePid);
+    original=await readLinuxProcessIdentity(corePid);
+    observed=await readLinuxIsolatedProcessPair({corePid,bridgePid});
+    assert.equal(observed.source,'LINUX_PROC_READ_ONLY');
+    assert.notEqual(observed.host.networkNamespace,observed.core.networkNamespace);
+    assert.equal(observed.bridge.networkNamespace,observed.core.networkNamespace);
+    assert.equal(observed.createdResources,false);
+    assert.equal(observed.nativeFullStackAccepted,false);
+  }finally{
+    // Never target a PID outside the child shell; only signal its stdin.
+    if(!subprocess.stdin.destroyed){
+      subprocess.stdin.write('TEARDOWN\n');
+      subprocess.stdin.end();
+    }
+    await completion;
+  }
+  assert.equal(closed,true);
+  assert.equal(exitCode,0,'T04_PRIVATE_NETNS_CLEANUP_FAILED');
+  await assert.rejects(readLinuxProcessIdentity(pids[0]),{
+    code:'NATIVE_PROCESS_READBACK_UNAVAILABLE'
+  });
+  await assert.rejects(readLinuxProcessIdentity(pids[1]),{
+    code:'NATIVE_PROCESS_READBACK_UNAVAILABLE'
+  });
+  console.log('T04_EPHEMERAL_NETNS_LIVE_TEARDOWN '+JSON.stringify({
+    hostNamespace:observed.host.networkNamespace,
+    sandboxNamespace:observed.core.networkNamespace,
+    corePid:pids[0],bridgePid:pids[1],
+    sourceProcessStartTicks:original.processStartTicks,
+    childProcessesExited:true,scope:'TWO_SLEEP_PLACEHOLDERS_NOT_REAL_CORE_OR_BRIDGE',
+    nativeFullStackAccepted:false
+  }));
 });
 
 // Source-only preflight: observes an ephemeral public-repo GitHub runner.
