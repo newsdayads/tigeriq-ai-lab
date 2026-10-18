@@ -15,6 +15,53 @@ export function sandboxBaseUrl(raw){
   if(['3150','3210'].includes(url.port))throw new VerificationBlocked('SHARED_RUNTIME_PORT_FORBIDDEN');
   return url.origin;
 }
+/**
+ * T04 gate: a calling, authorized native operator must independently read
+ * runtime process, database, bridge namespace and browser profile identities.
+ * A JSON file, loopback URL, CI test or Issue comment alone cannot certify these.
+ * This is a structural safety check, never product acceptance.
+ */
+export async function verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,now=Date.now()}={}){
+  const origin=sandboxBaseUrl(baseUrl);
+  if(typeof nativeIsolationInspector!=='function')
+    throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_REQUIRED');
+  let proof;
+  try{proof=await nativeIsolationInspector()}
+  catch{throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_UNAVAILABLE')}
+  if(!proof||proof.source!=='AUTHORIZED_NATIVE_OPERATOR_READBACK'||
+      typeof proof.evidenceRef!=='string'||!proof.evidenceRef.trim()||
+      !proof.core||!proof.bridge||!proof.host||!proof.browser)
+    throw new VerificationBlocked('SANDBOX_ISOLATION_NOT_VERIFIED');
+  const at=Date.parse(String(proof.observedAt||''));
+  if(!Number.isFinite(at)||!Number.isFinite(now)||Math.abs(at-now)>120000)
+    throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_STALE');
+  const c=proof.core,b=proof.bridge,h=proof.host,p=proof.browser,port=Number(new URL(origin).port);
+  if(!Number.isSafeInteger(c.pid)||c.pid<1||!Number.isSafeInteger(b.pid)||b.pid<1||
+      !Number.isSafeInteger(c.port)||!Number.isSafeInteger(b.port)||
+      c.port!==port||!Number.isSafeInteger(h.corePort)||
+      typeof c.buildSha!=='string'||!/^[a-f0-9]{40}$/.test(c.buildSha)||
+      ![c.dbFingerprint,h.dbFingerprint,c.networkNamespace,h.networkNamespace,
+        b.networkNamespace,p.profileId,p.sharedProfileId].every(x=>typeof x==='string'&&x.trim().length>0))
+    throw new VerificationBlocked('SANDBOX_ISOLATION_NOT_VERIFIED');
+  if(c.port===h.corePort||['3150','3210','8795'].includes(String(c.port)))
+    throw new VerificationBlocked('SANDBOX_CORE_PORT_UNSAFE');
+  if(c.dbFingerprint===h.dbFingerprint)
+    throw new VerificationBlocked('SANDBOX_DATABASE_NOT_ISOLATED');
+  if(c.networkNamespace===h.networkNamespace)
+    throw new VerificationBlocked('SANDBOX_CORE_NOT_ISOLATED');
+  // Core's /api/health-live-work presently uses 127.0.0.1:8801/status.
+  // With no injectable bridge URL, Core and the bridge MUST be in the same
+  // isolated network namespace; distinct ports alone are not isolation.
+  if(b.port!==8801||b.networkNamespace!==c.networkNamespace||
+     b.networkNamespace===h.networkNamespace||b.pid===c.pid)
+    throw new VerificationBlocked('SANDBOX_BRIDGE_NOT_ISOLATED');
+  if(p.profileId===p.sharedProfileId)
+    throw new VerificationBlocked('SANDBOX_BROWSER_PROFILE_SHARED');
+  return {isolationSource:'OPERATOR_READBACK_STRUCTURALLY_CHECKED',
+    nativeReadbackEvidenceRef:proof.evidenceRef,instanceOrigin:origin,
+    sourceSha:c.buildSha,runtimeAcceptanceVerified:false};
+}
+
 async function readJson(url,fetchImpl){
   let response;
   try{response=await fetchImpl(url,{method:'GET',redirect:'error',cache:'no-store',headers:{'Cache-Control':'no-store'},signal:AbortSignal.timeout(10000)})}
@@ -116,7 +163,9 @@ export function safeEvidenceDir(raw,cwd=process.cwd()){
   }
   return target;
 }
-export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetchImpl=fetch,browserFactory,now=Date.now()}={}){
+export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetchImpl=fetch,browserFactory,now=Date.now(),nativeIsolationInspector}={}){
+  // Hard gate before API, browser or evidence filesystem side-effects.
+  const isolation=await verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,now});
   const dir=safeEvidenceDir(outputDir);
   const diagnostic=await doctorAndSelectWork({baseUrl,issueNumber,fetchImpl,now});
   await mkdir(dirname(dir),{recursive:true,mode:0o700});
@@ -126,7 +175,7 @@ export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetc
   const drive=await driveWorkCard({diagnostic,browserFactory,outputDir:dir});
   safeEvidenceDir(outputDir);
   const packet={version:1,product:'TigerIQ API Health Core UI',result:'SANDBOX_DIAGNOSTIC_PASS',acceptanceVerified:false,
-    sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),diagnostic,drive};
+    sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),isolation,diagnostic,drive};
   await writeFile(resolve(dir,'receipt.json'),JSON.stringify(packet,null,2)+'\n',{flag:'wx'});
   return packet;
 }
