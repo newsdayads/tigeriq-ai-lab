@@ -38,3 +38,18 @@ OFFLINE_SOURCE_FILE_SHA256=`282ac1794b14d936d3a1eb45a77ebdd52f25fb67f22d326174d7
 OFFLINE_SANITIZED_JSON_SHA256=`0edc54c9b2067d4773ebc761b5bd10bc3b0182af50b15d4aebac3c5b5f312cf9`
 
 **Checkpoint:** P02 method-ID structural evidence verified only. `P01_NATIVE_REA=NOT_RUN`; `C01_F05=NOT_ACCEPTED`; `DONE=false`; progress **11/30 unchanged**. Next executable input for full P01 is an authorized native REA PC01 lane and private APK tool receipt. No PC01/RDC/App Chrome/vehicle action, source copying, release, paid or security mutation in this audit.
+
+
+## Follow-up repair evidence — inconsistent ZIP local vs central DEX headers (18/10/2026)
+
+**Found after the original P02 method-ID audit:** The private **standalone audit prototype**, not this repository document, accepted four crafted ZIP inputs in which the local DEX header contradicted the central-directory entry. Its first ten checks did not cover that class of error. This is an offline input-integrity failure, **not** evidence that UltraCar v240 itself is compromised.
+
+**New observed RED:** `node --test tests/dexcam-personal/p02-apk-api-audit.test.mjs`, on the previous prototype plus five newly authored synthetic checks: **11/15 PASS, 4/15 FAIL**. The rejected-by-policy but previously accepted cases were local compression-method mismatch, local encryption-bit mismatch, forged local CRC, and forged local uncompressed/compressed size.
+
+**Bounded fix in the exported standalone prototype:** after reading a local ZIP header, require the local general-purpose flags and compression method to agree with the central entry. When bit 3 (data descriptor) is **not** set, also compare local CRC and both sizes. With bit 3 set, allow absent local CRC/sizes and continue verifying actual decoded size and CRC from the central record. A new positive synthetic test includes a **real signed data-descriptor record**, not merely a flag with missing bytes.
+
+**New observed GREEN:** **15/15 Node tests PASS, 0 FAIL** on the patched local source. Re-running the patched tool against the **same original private APK** succeeded and preserved source SHA-256 `6e1717d4df469c4c9fb8639d1f4cd4a8eb431b270b0521326250dcb2c89bde7f`, method IDs `61410`, and category counts `USB=32, CAMERA=14, WINDOW=10, RENDER=38`. This real-APK sanity readback is **not** an Android runtime test. A matching five-case Vitest suite was authored, **not run in repository CI**, because the standalone parser and test fixtures are distributed **only in the user-conversation ZIP**, not committed here.
+
+**Repaired offline bundle:** `DeXCam_P02_ZIP_Header_Repair_20261018.zip`; SHA-256 `649ff2cc8b619992d24270d75fa189b3008edf934e77eb978552b7e724478df7`. Parsed source file SHA-256 `092b97509046a6d7844faf88c97fbab7e0aa1f53f1d6b8315c2e8a40bace792c`. Included logs: `RED_ZIP_HEADER.txt`, `GREEN_ZIP_HEADER.txt`; ZIP CRC and per-file manifest hashes verified. The archive **does not contain** the private reference APK, vendor DEX code, device IDs, license data, or credentials.
+
+**Strict acceptance boundary:** This is an **offline prototype regression repaired and verified in the current conversation**, not a production/PC01 REA parser release and not repo-CI acceptance of that parser. GitHub checks for this documentation file, if successful, prove only this documentation diff. Native P01 REA on the authorized PC01 lane, actual USB/DeX/R observations, and product milestones C01–F05 are still unaccepted; `DONE=false`, checklist **11/30**.
