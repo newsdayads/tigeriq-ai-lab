@@ -130,6 +130,42 @@ test('T04: real ephemeral native Linux process pair has private network namespac
   }));
 });
 
+test('T04: actual Core entrypoint must reject unsafe boot before autonomy in isolated netns',{
+  skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
+    process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
+    process.env.GITHUB_REPOSITORY==='newsdayads/tigeriq-ai-lab'),
+  timeout:20000
+},()=>{
+  // Invoke the real Core entrypoint in a disposable *private network namespace*.
+  // env -i strips inherited database URLs, tokens, GitHub credentials, provider
+  // keys, and production addresses. A safe verdict here is a REFUSAL to boot.
+  // This does NOT authorize an actual database/Core/bridge launch.
+  const outcome=spawnSync('sudo',[
+    '-n','unshare','--net','--',
+    'runuser','-u','runner','--',
+    'env','-i','PATH=/usr/bin:/bin','NODE_ENV=test',
+    process.execPath,'apps/tigeriq-core/core.mjs'
+  ],{
+    cwd:process.cwd(),shell:false,encoding:'utf8',timeout:15000,
+    maxBuffer:65536
+  });
+  assert.equal(outcome.error,undefined,'T04_CORE_SANDBOX_LAUNCH_UNVERIFIED');
+  assert.equal(outcome.signal,null,'T04_CORE_SANDBOX_TIMEOUT_OR_SIGNAL');
+  assert.equal(outcome.status,1,'T04_CORE_BOOT_MUST_FAIL_CLOSED');
+  assert.match(outcome.stderr||'',/DATABASE_URL_MISSING/,
+    'T04_CORE_MUST_DENY_MISSING_DATABASE_BEFORE_LOOP');
+  assert.doesNotMatch(outcome.stdout||'',/TIGERIQ_CORE_STARTED|CORE_LOOP_ERROR/,
+    'T04_CORE_AUTONOMY_MUST_NOT_START');
+  console.log('T04_REAL_CORE_DENIED_NO_DATABASE '+JSON.stringify({
+    testedEntrypoint:'apps/tigeriq-core/core.mjs',
+    host:'GITHUB_HOSTED_PRIVATE_NETNS',
+    databaseSupplied:false,credentialsForwarded:false,
+    processExitCode:outcome.status,
+    expectedBlocker:'DATABASE_URL_MISSING',
+    autonomousCoreStarted:false,nativeFullStackAccepted:false
+  }));
+});
+
 // Source-only preflight: observes an ephemeral public-repo GitHub runner.
 // This does NOT claim an isolated Core/bridge/database, a native inspector,
 // a lease, or T04 acceptance. No containers, namespaces or services are created.
