@@ -13,7 +13,7 @@ export function sandboxBaseUrl(raw){
   if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||!url.port||url.username||url.password||url.pathname!=='/'||url.search||url.hash)
     throw new VerificationBlocked('SANDBOX_URL_REQUIRES_LOOPBACK_ROOT');
   // Never allow a standalone Doctor call to probe known live Core or bridge ports.
-  if(['3150','3210','8795','8801'].includes(url.port))throw new VerificationBlocked('SHARED_RUNTIME_PORT_FORBIDDEN');
+  if(['3150','3210','8795','8796','8797','8801'].includes(url.port))throw new VerificationBlocked('SHARED_RUNTIME_PORT_FORBIDDEN');
   return url.origin;
 }
 /**
