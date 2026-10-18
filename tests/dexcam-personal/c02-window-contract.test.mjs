@@ -19,6 +19,20 @@ test('C02 rejects stale display identity, invalid ratios and unusable display',(
     assert.equal(planWindowRequest({display,preset:{...preset,bounds_normalized:invalid},capability}).action,'MANUAL_FALLBACK');
   assert.equal(planWindowRequest({display:{...display,insets:{left:1100,right:1100,top:0,bottom:0}},preset,capability}).reason,'NO_SAFE_DISPLAY_AREA');
 });
+test('C02 rejects invalid Android display IDs and unverified display fingerprints before requesting launch bounds',()=>{
+  for(const id of [-1,1.5,'2',{},NaN,Infinity]){
+    const result=planWindowRequest({display:{...display,id},preset:{...preset,display_id:id},capability});
+    assert.equal(result.action,'MANUAL_FALLBACK','invalid Android display identity must fail closed');
+    assert.equal(result.reason,'DISPLAY_UNVERIFIED');
+    assert.equal(result.verification,'NOT_MEASURED');
+  }
+  for(const fingerprint of [' ',{},3]){
+    const result=planWindowRequest({display:{...display,fingerprint},preset:{...preset,display_fingerprint:fingerprint},capability});
+    assert.equal(result.action,'MANUAL_FALLBACK','empty/non-string display fingerprint must not authorize launch');
+    assert.equal(result.reason,'DISPLAY_UNVERIFIED');
+  }
+  assert.equal(planWindowRequest({display,preset,capability}).action,'REQUEST_L0_LAUNCH_BOUNDS');
+});
 test('C02 does not claim bounds match without OS readback evidence',()=>{
   const bounds={x:2,y:3,width:400,height:300};
   assert.equal(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds}).status,'NOT_MEASURED');
