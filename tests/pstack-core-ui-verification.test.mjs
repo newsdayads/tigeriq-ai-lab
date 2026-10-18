@@ -49,7 +49,7 @@ test('browser reads real UI selectors, opens modal and releases owned session',a
   const page={goto:async(url)=>trace.push(url),url:()=> 'http://127.0.0.1:4315/',locator:sel=>({
     '.work-row[data-work-number="2054"]':target,'#workDetailBackdrop':backdrop,'#workDetailModal':detail,'#workDetailGithub':github
   })[sel]};
-  const browserFactory=async()=>({newContext:async()=>({route:async()=>{},newPage:async()=>page}),close:async()=>{closed=true}});
+  const browserFactory=async()=>({newContext:async()=>({route:async()=>{},routeWebSocket:async()=>{},newPage:async()=>page}),close:async()=>{closed=true}});
   const result=await driveWorkCard({diagnostic:{origin:'http://127.0.0.1:4315',issueNumber:2054,work:row},browserFactory});
   assert.deepEqual(trace,['http://127.0.0.1:4315/','click']);
   assert.equal(result.githubHref,row.url);assert.equal(closed,true);
@@ -58,7 +58,7 @@ test('failed UI card check cannot pass; browser is still closed',async()=>{
   let closed=false;
   const browserFactory=async()=>({newContext:async()=>({newPage:async()=>({
     goto:async()=>{},url:()=> 'http://127.0.0.1:4315/',locator:()=>({count:async()=>0})
-  }),route:async()=>{}}),close:async()=>{closed=true}});
+  }),route:async()=>{},routeWebSocket:async()=>{}}),close:async()=>{closed=true}});
   await assert.rejects(driveWorkCard({diagnostic:{origin:'http://127.0.0.1:4315',issueNumber:2054,work:row},browserFactory}),{code:'UI_WORK_CARD_NOT_VISIBLE'});
   assert.equal(closed,true);
 });
