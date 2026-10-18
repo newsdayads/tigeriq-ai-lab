@@ -17,7 +17,7 @@ test('T04: hosted runner read-only capability preflight',{
   assert.equal(process.env.RUNNER_OS,'Linux');
   assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
   const namespace=readlinkSync('/proc/self/ns/net');
-  assert.match(namespace,/^net:\\[\\d+\\]$/);
+  assert.match(namespace,/^net:\[\d+\]$/);
   const docker=spawnSync('docker',['info','--format','{{.OSType}}'],{
     encoding:'utf8',timeout:10000,shell:false
   });
