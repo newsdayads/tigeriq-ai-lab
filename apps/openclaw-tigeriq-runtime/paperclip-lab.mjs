@@ -1151,6 +1151,13 @@ export function parsePaperclipComposePsRows(value = '') {
   return rows;
 }
 
+// Docker Compose ps can return unrelated services. A healthy non-db row
+// must never be accepted as proof that the Postgres sidecar is present.
+export function paperclipComposeDbStatusRow(rows = []) {
+  if (!Array.isArray(rows)) return null;
+  return rows.find((item) => String(item?.Service || '').trim().toLowerCase() === 'db') || null;
+}
+
 async function inspectComposeService(dockerKind, service, signal = null, diagnostics = false) {
   if (service !== 'db') throw new Error('TIGERIQ_PAPERCLIP_LAB_DIAGNOSTIC_SERVICE_NOT_ALLOWED');
   const psResult = await runDocker(
@@ -1159,7 +1166,7 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
     { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
   ).catch(() => null);
   const rows = psResult?.exitCode === 0 ? parsePaperclipComposePsRows(psResult.stdout) : [];
-  const row = rows.find((item) => String(item?.Service || '').toLowerCase() === 'db') || rows[0] || null;
+  const row = paperclipComposeDbStatusRow(rows);
   if (!row) {
     return {
       present: false,
