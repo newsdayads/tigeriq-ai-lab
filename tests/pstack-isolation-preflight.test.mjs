@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyRuntimeIsolation,runSandboxVerification,sandboxBaseUrl,doctorAndSelectWork} from '../scripts/verify-core-ui-sandbox.mjs';
 
+import {existsSync} from 'node:fs';
+import {rm} from 'node:fs/promises';
+import {resolve} from 'node:path';
+
 const baseUrl='http://127.0.0.1:4315/';
 const now=Date.parse('2026-10-18T14:55:00.000Z');
 const proof=()=>({
@@ -82,6 +86,28 @@ test('T04: direct Doctor and base URL must deny known production and bridge port
   }
   assert.equal(networkCalls,0);
 });
+test('T04: aborted UI verification removes its fresh evidence directory and no false PASS',async()=>{
+ const outputDir='artifacts/pstack-verification/t04-rollback-'+process.pid+'-'+Date.now();
+ const target=resolve(outputDir);
+ const fetchImpl=async url=>{
+   const path=new URL(url).pathname;
+   const value=path==='/api/status'?{ok:true,core:{time:new Date(now).toISOString()}}:
+    {ok:true,projection:{generatedAt:new Date(now).toISOString(),stale:false,
+      openWork:[{number:5012,title:'PSTACK T04 sandbox',status:'READY',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5012'}]}};
+   return {ok:true,headers:{get:()=> 'application/json'},json:async()=>value};
+ };
+ assert.equal(existsSync(target),false);
+ try{
+   await assert.rejects(runSandboxVerification({
+     baseUrl,issueNumber:5012,outputDir,fetchImpl,
+     nativeIsolationInspector:async()=>proof(),now,
+     browserFactory:async()=>{throw Error('CONTROLLED_BROWSER_LAUNCH_FAILURE');}
+   }),/CONTROLLED_BROWSER_LAUNCH_FAILURE/);
+   assert.equal(existsSync(target),false,
+     'failed verification must not leave its own empty evidence dir or suggest success');
+ }finally{await rm(target,{recursive:true,force:true})}
+});
+
 test('T04: malformed or thrown inspector fails closed without leaking details',async()=>{
  await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>{throw Error('SECRET_STUFF');},now}),
   {code:'SANDBOX_NATIVE_READBACK_UNAVAILABLE'});
