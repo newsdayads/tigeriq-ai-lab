@@ -24,7 +24,7 @@ const observedTime = value => {
 // Plain-text device metadata can still contain placeholder labels. Reject these
 // for a self-declared real observation without claiming the remainder is genuine.
 const sampleMarker = value => typeof value === 'string' &&
-  /(?:^|[^A-Z0-9])(?:NOT[_ -]?MEASURED|UNKNOWN|UNVERIFIED|TBD|TEST|MOCK|SAMPLE|DEMO|PLACEHOLDER|FAKE|N\/A)(?:$|[^A-Z0-9])/i.test(value);
+  /(?:^|[^A-Z])(?:NOT[_ -]?MEASURED|UNKNOWN|UNVERIFIED|TBD|TEST|MOCK|SAMPLE|DEMO|PLACEHOLDER|FAKE|N\/A)(?:$|[^A-Z])/i.test(value);
 
 /** Return a preflight assessment, not B01 acceptance or a device attestation. */
 export function inspectB01(x) {
