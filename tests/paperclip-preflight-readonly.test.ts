@@ -235,6 +235,52 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       imageDigestVerified: false });
   });
 
+
+  it('R01 reports Docker-observed host-port exposure without claiming static loopback as runtime proof', async () => {
+    const inspect = async (ports?: Record<string, unknown>) => paperclipReadOnlyContainerStatus('windows', {
+      runReadOnlyCommand: async (_exe: string, _args: string[], options: { readOnly: boolean }) => {
+        expect(options.readOnly).toBe(true);
+        return { exitCode: 0, timedOut: false, stdout: JSON.stringify({
+          State: { Running: true },
+          Config: { Image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },
+          NetworkSettings: ports === undefined ? {} : { Ports: ports },
+        }) };
+      },
+    });
+    const cases: Array<[string, Record<string, unknown> | undefined, boolean | null]> = [
+      ['IPv4 localhost', { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3210' }] }, true],
+      ['IPv6 localhost', { '3100/tcp': [{ HostIp: '::1', HostPort: '3210' }] }, true],
+      ['public IPv4', { '3100/tcp': [{ HostIp: '0.0.0.0', HostPort: '3210' }] }, false],
+      ['public IPv6', { '3100/tcp': [{ HostIp: '::', HostPort: '3210' }] }, false],
+      ['default all-interface bind', { '3100/tcp': [{ HostIp: '', HostPort: '3210' }] }, false],
+      ['wrong host port', { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3100' }] }, false],
+      ['extra published port', { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3210' }],
+        '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '5432' }] }, false],
+      ['Docker port mapping unknown', undefined, null],
+      ['malformed Docker binding', { '3100/tcp': [{ HostIp: '127.0.0.1' }] }, null],
+      ['no port published', { '3100/tcp': null }, null],
+      ['other EXPOSE only', { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3210' }],
+        '3000/tcp': null }, true],
+    ];
+    for (const [label, ports, expected] of cases) {
+      const result = await inspect(ports);
+      expect(result.port3210LoopbackBinding, label).toBe(expected);
+      expect(result.imageDigestVerified, label).toBe(false);
+    }
+    const broker = await paperclipReadOnlyContainerStatus('wsl-ubuntu-interactive-broker', {
+      runReadOnlyCommand: async () => { throw new Error('BROKER_MUST_NOT_RUN'); },
+    });
+    expect(broker).toMatchObject({ attempted: false, port3210LoopbackBinding: null });
+    const absent = await paperclipReadOnlyPreflight({
+      checkRoot: async () => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); },
+      inspectDocker: async () => ({ kind: 'windows', version: '27.0', error: null }),
+      inspectPort: async () => ({ reachable: false }),
+      inspectBroker: async () => ({ ready: false }),
+      inspectContainer: async () => { throw new Error('SHOULD_NOT_INSPECT_ABSENT_LAB'); },
+    });
+    expect(absent.container.port3210LoopbackBinding).toBeNull();
+  });
+
   it('R01 supports direct WSL without broker and does not fabricate unavailable container state', async () => {
     const calls: string[] = [];
     const wsl = await paperclipReadOnlyContainerStatus('wsl-ubuntu', {
