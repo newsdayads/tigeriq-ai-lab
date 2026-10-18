@@ -168,3 +168,28 @@ test('T06: missing trace bytes cannot produce a successful verification packet',
   assert.equal(b.observed().closed,true);
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
+
+test('T03: exported drive rejects evidence outside the scoped artifacts root before browser factory',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'pstack-t03-outside-direct-'));
+ let calls=0;
+ try{
+  await assert.rejects(driveWorkCard({diagnostic,outputDir:dir,browserFactory:async()=>{
+    calls++;throw Error('BROWSER_MUST_NOT_OPEN_FOR_OUTSIDE_EVIDENCE');
+  }}),{code:'EVIDENCE_SCOPE_INVALID'});
+  assert.equal(calls,0);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
+test('T03: exported drive cannot overwrite an existing evidence receipt in a scoped directory',async()=>{
+ const root=join(process.cwd(),'artifacts','pstack-verification');
+ mkdirSync(root,{recursive:true});
+ const dir=mkdtempSync(join(root,'t03-preexisting-direct-'));
+ let calls=0;
+ try{
+  await writeFile(join(dir,'core-ui-work-card.png'),'protected receipt');
+  await assert.rejects(driveWorkCard({diagnostic,outputDir:dir,browserFactory:async()=>{
+    calls++;throw Error('BROWSER_MUST_NOT_OPEN_FOR_OLD_EVIDENCE');
+  }}),{code:'EVIDENCE_DIR_NOT_EMPTY'});
+  assert.equal(calls,0);
+  assert.equal((await stat(join(dir,'core-ui-work-card.png'))).size>0,true);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
