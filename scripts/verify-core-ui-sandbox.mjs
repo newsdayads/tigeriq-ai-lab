@@ -60,7 +60,7 @@ export async function verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,n
     throw new VerificationBlocked('SANDBOX_BROWSER_PROFILE_SHARED');
   return {isolationSource:'OPERATOR_READBACK_STRUCTURALLY_CHECKED',
     nativeReadbackEvidenceRef:proof.evidenceRef,instanceOrigin:origin,
-    sourceSha:c.buildSha,runtimeAcceptanceVerified:false};
+    sourceSha:c.buildSha,corePid:c.pid,runtimeAcceptanceVerified:false};
 }
 
 async function readJson(url,fetchImpl){
@@ -71,11 +71,14 @@ async function readJson(url,fetchImpl){
     throw new VerificationBlocked('SANDBOX_HTTP_INVALID',url);
   try{return await response.json()}catch{throw new VerificationBlocked('SANDBOX_JSON_INVALID',url)}
 }
-export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,now=Date.now(),maxAgeMs=120000}={}){
+export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,now=Date.now(),maxAgeMs=120000,expectedCorePid}={}){
   const origin=sandboxBaseUrl(baseUrl),number=Number(issueNumber);
   if(!Number.isSafeInteger(number)||number<1)throw new VerificationBlocked('ISSUE_NUMBER_INVALID');
   const status=await readJson(origin+'/api/status',fetchImpl);
   if(status?.ok!==true||!status.core||typeof status.core!=='object')throw new VerificationBlocked('CORE_HEALTH_NOT_VERIFIED');
+  // Bind the native process attestation to the actual HTTP endpoint before reading work/UI.
+  if(expectedCorePid!==undefined&&(!Number.isSafeInteger(status.core.pid)||status.core.pid!==expectedCorePid))
+    throw new VerificationBlocked('SANDBOX_CORE_PID_MISMATCH');
   const data=await readJson(origin+'/api/health-live-work',fetchImpl),projection=data?.projection;
   if(data?.ok!==true||!projection||!Array.isArray(projection.openWork))throw new VerificationBlocked('WORK_PROJECTION_UNAVAILABLE');
   const generated=Date.parse(String(projection.generatedAt||''));
@@ -168,7 +171,7 @@ export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetc
   // Hard gate before API, browser or evidence filesystem side-effects.
   const isolation=await verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,now});
   const dir=safeEvidenceDir(outputDir);
-  const diagnostic=await doctorAndSelectWork({baseUrl,issueNumber,fetchImpl,now});
+  const diagnostic=await doctorAndSelectWork({baseUrl,issueNumber,fetchImpl,now,expectedCorePid:isolation.corePid});
   await mkdir(dirname(dir),{recursive:true,mode:0o700});
   safeEvidenceDir(outputDir); // Recheck after creating the parent.
   try{await mkdir(dir,{mode:0o700})}catch(error){throw new VerificationBlocked('EVIDENCE_DIR_NOT_NEW',String(error?.code||error))}
