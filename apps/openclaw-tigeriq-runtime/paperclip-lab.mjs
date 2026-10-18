@@ -761,7 +761,7 @@ export async function paperclipReadOnlyContainerStatus(dockerKind, {
   signal = null,
   runReadOnlyCommand = runFixed,
 } = {}) {
-  const base = { attempted: false, present: null, running: null, imageRef: null, imageDigestVerified: false };
+  const base = { attempted: false, present: null, running: null, imageRef: null, imagePinMatch: null, imageDigestVerified: false };
   if (dockerKind !== DOCKER_TRANSPORT_WINDOWS && dockerKind !== DOCKER_TRANSPORT_WSL) {
     return { ...base, reason: 'DIRECT_DOCKER_TRANSPORT_UNAVAILABLE' };
   }
@@ -781,10 +781,17 @@ export async function paperclipReadOnlyContainerStatus(dockerKind, {
       || typeof parsed?.State?.Running !== 'boolean') {
       return { ...base, attempted: true, reason: 'CONTAINER_INSPECT_INVALID' };
     }
+    const imageRef = typeof parsed?.Config?.Image === 'string' ? parsed.Config.Image : null;
+    // R01 checks only the observed image reference against the pinned tag.
+    // A digest-only reference is UNKNOWN here; R02 verifies immutable digest.
+    const imagePinMatch = imageRef && !imageRef.includes('@sha256:')
+      ? imageRef === PAPERCLIP_LAB_IMAGE
+      : null;
     return {
       ...base, attempted: true, present: true,
       running: parsed.State.Running,
-      imageRef: typeof parsed?.Config?.Image === 'string' ? parsed.Config.Image : null,
+      imageRef,
+      imagePinMatch,
       reason: null,
     };
   } catch {
@@ -824,7 +831,8 @@ export async function paperclipReadOnlyPreflight({
   const container = rootPresent && docker.kind
     ? await inspectContainer(docker)
     : { attempted: false, present: null, running: null, imageRef: null,
-        imageDigestVerified: false, reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
+        imagePinMatch: null, imageDigestVerified: false,
+        reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     container,
