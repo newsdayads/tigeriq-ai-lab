@@ -1,0 +1,363 @@
+{
+  "schema": "dexcam-c03-requirements-trace-v1",
+  "work_order": "GH-4625",
+  "resource_scope": "DEXCAM_PERSONAL_GH4625_SOURCE_AND_BUILD",
+  "source_paths": [
+    "projects/dexcam-personal/01_PRODUCT_REQUIREMENTS.md",
+    "projects/dexcam-personal/05_QUALITY_ACCEPTANCE.md",
+    "projects/dexcam-personal/07_DECISIONS_RISKS_EXTENSIONS.md",
+    "projects/dexcam-personal/C02_WINDOW_ARCHITECTURE_DECISION_20261018.md",
+    "projects/dexcam-personal/06_BACKLOG_AND_ROADMAP.md"
+  ],
+  "counts": {
+    "fr": 18,
+    "nfr": 10
+  },
+  "scope": "SPEC_SYNC_ONLY_NOT_ANDROID_APK_OR_REAL_HARDWARE",
+  "evidence_status": "SOURCE_REQUIREMENTS_SYNC_ONLY_NOT_TEST_ACCEPTANCE",
+  "fr": [
+    {
+      "id": "FR-001",
+      "priority": "P0",
+      "requirement": "Khám phá USB/UVC theo interface, VID/PID, danh sách mode hỗ trợ",
+      "acceptance": "Có thông tin xác minh từ USB descriptor, không giả tên chipset",
+      "planned_test_ids": [
+        "CAM-01",
+        "CAM-02",
+        "CAM-07"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-002",
+      "priority": "P0",
+      "requirement": "Quản lý quyền USB và `CAMERA` với camera USB/video capture (bao gồm composite USB có interface video), xét target API 28+ và trạng thái chặn camera hệ thống",
+      "acceptance": "Ghi riêng descriptor thiết bị/interface, quyền CAMERA, USB grant/deny, camera privacy nếu đọc được; không tự cấp quyền, không kết luận lỗi USB khi camera bị chặn hoặc coi phát hiện USB là luồng video đang hoạt động",
+      "planned_test_ids": [
+        "CAM-06",
+        "CAM-07",
+        "CAM-20",
+        "CAM-21",
+        "CAM-22"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-003",
+      "priority": "P0",
+      "requirement": "Camera tự kích hoạt theo tín hiệu thực tế",
+      "acceptance": "Có kiểm thử lặp R/D trên xe",
+      "planned_test_ids": [
+        "CAM-03",
+        "CAM-04",
+        "CAM-05"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-004",
+      "priority": "P0",
+      "requirement": "Cửa sổ camera nổi ưu tiên trên bố cục khác",
+      "acceptance": "Không cần bấm icon trong điều kiện đã nghiệm thu",
+      "planned_test_ids": [
+        "CAM-02",
+        "CAM-12",
+        "DEX-12"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-005",
+      "priority": "P0",
+      "requirement": "Tự trả bố cục sau khi ngừng R",
+      "acceptance": "Bố cục trước đó không bị phá",
+      "planned_test_ids": [
+        "CAM-13",
+        "CAM-18",
+        "DEX-08"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-006",
+      "priority": "P0",
+      "requirement": "Khung hình hiện hành và trạng thái mất tín hiệu",
+      "acceptance": "Không giữ hình cũ như hình trực tiếp",
+      "planned_test_ids": [
+        "CAM-08",
+        "CAM-09",
+        "CAM-17"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-007",
+      "priority": "P0",
+      "requirement": "Tự phục hồi có giới hạn khi lỗi USB/preview",
+      "acceptance": "Mỗi lỗi có dấu vết, không lặp vô hạn",
+      "planned_test_ids": [
+        "CAM-07",
+        "CAM-09",
+        "CAM-11"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-008",
+      "priority": "P0",
+      "requirement": "Preset cửa sổ và gán app",
+      "acceptance": "Lưu, áp dụng, báo khác biệt so với tọa độ yêu cầu",
+      "planned_test_ids": [
+        "DEX-01",
+        "DEX-02",
+        "DEX-04"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C02_SOURCE_CONTRACT_DONE_OS_READBACK_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-009",
+      "priority": "P0",
+      "requirement": "Thiết lập X/Y/W/H và vùng màn hình",
+      "acceptance": "Tôn trọng kích thước tối thiểu, taskbar, dpi",
+      "planned_test_ids": [
+        "DEX-03",
+        "DEX-06",
+        "DEX-10"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C02_SOURCE_CONTRACT_DONE_OS_READBACK_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-010",
+      "priority": "P0",
+      "requirement": "Lưu toàn bộ cài đặt cục bộ",
+      "acceptance": "Khôi phục sau khởi động lại",
+      "planned_test_ids": [
+        "DEX-11"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C02_SOURCE_CONTRACT_DONE_OS_READBACK_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-011",
+      "priority": "P0",
+      "requirement": "Nhật ký camera theo lần kích hoạt R",
+      "acceptance": "Có tương quan event và mốc thời gian",
+      "planned_test_ids": [
+        "CAM-19"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-012",
+      "priority": "P0",
+      "requirement": "Chế độ kích hoạt thủ công dự phòng",
+      "acceptance": "Vẫn mở camera khi event tự động trượt, nếu USB sẵn sàng",
+      "planned_test_ids": [
+        "CAM-14"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "C01_P01_REAL_USB_R_EVIDENCE_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-013",
+      "priority": "P1",
+      "requirement": "Chỉnh hiển thị lật, xoay, zoom, crop, fit",
+      "acceptance": "Không làm chậm hành trình R ngoài ngưỡng đo",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_AND_IMPLEMENTATION_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-014",
+      "priority": "P1",
+      "requirement": "Điều chỉnh độ sáng/tương phản/màu tùy khả năng phần cứng",
+      "acceptance": "Chỉ hiển thị controls khi thiết bị báo hỗ trợ; có cách xử lý phần mềm",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_AND_IMPLEMENTATION_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-015",
+      "priority": "P1",
+      "requirement": "Vạch canh xe do chủ xe hiệu chỉnh",
+      "acceptance": "Chỉ là hỗ trợ hiển thị, không thay thế quan sát thực tế",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_AND_IMPLEMENTATION_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-016",
+      "priority": "P1",
+      "requirement": "Sao lưu/khôi phục cấu hình ngoại tuyến",
+      "acceptance": "Không bao gồm dữ liệu nhạy cảm nếu chưa được duyệt",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_AND_IMPLEMENTATION_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-017",
+      "priority": "P1",
+      "requirement": "Hỗ trợ nhiều màn hình/độ phân giải",
+      "acceptance": "Preset theo định danh màn hình",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_AND_IMPLEMENTATION_PENDING",
+      "extension_status": "BASELINE_PRD_ONLY"
+    },
+    {
+      "id": "FR-018",
+      "priority": "P2",
+      "requirement": "Các tiện ích cá nhân phát triển sau",
+      "acceptance": "Mỗi tiện ích có đặc tả và nghiệm thu riêng",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "OWNER_EXTENSION_APPROVAL_REQUIRED",
+      "extension_status": "NO_NEW_FEATURE_APPROVED"
+    }
+  ],
+  "nfr": [
+    {
+      "id": "NFR-001",
+      "requirement": "Tin cậy",
+      "acceptance": "Mục tiêu thử tối thiểu **50/50 lượt R thành công** trên cấu hình chuẩn; chưa được coi là kết quả hiện tại",
+      "planned_test_ids": [
+        "CAM-04"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-002",
+      "requirement": "Độ trễ",
+      "acceptance": "Đo phân bố P50/P95/P99 từ R→hình sống; **chưa chốt số ms** khi chưa có đo USB/hardware",
+      "planned_test_ids": [
+        "CAM-19"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-003",
+      "requirement": "An toàn",
+      "acceptance": "Camera mất hình phải cảnh báo rõ; không gọi hình đứng là hình sống",
+      "planned_test_ids": [
+        "CAM-17",
+        "CAM-18"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-004",
+      "requirement": "Ngoại tuyến",
+      "acceptance": "Không cần tài khoản, API, Firebase, kết nối Internet cho chức năng lõi",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-005",
+      "requirement": "Riêng tư",
+      "acceptance": "Nhật ký và cài đặt nằm ở thiết bị, xuất chỉ do người dùng quyết định",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-006",
+      "requirement": "Bảo trì",
+      "acceptance": "Module độc lập, dữ liệu versioned, kiểm thử tái lập được",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-007",
+      "requirement": "Tương thích",
+      "acceptance": "Chỉ cam kết các mẫu điện thoại/One UI/DeX đã kiểm thử",
+      "planned_test_ids": [
+        "DEX-12"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-008",
+      "requirement": "Ổn định",
+      "acceptance": "Không khóa ứng dụng khác, không vòng lặp CPU/USB vô hạn",
+      "planned_test_ids": [
+        "CAM-05",
+        "CAM-11"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-009",
+      "requirement": "Khả dụng",
+      "acceptance": "Cài đặt khi dừng xe, nút camera thủ công rõ ràng",
+      "planned_test_ids": [
+        "CAM-14"
+      ],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    },
+    {
+      "id": "NFR-010",
+      "requirement": "Khả năng mở rộng",
+      "acceptance": "Không tạo dependency buộc kết nối máy chủ chỉ để thêm tính năng",
+      "planned_test_ids": [],
+      "test_status": "NOT_RUN",
+      "gate": "G2_OR_LATER_DEVICE_ACCEPTANCE_PENDING"
+    }
+  ],
+  "extensions": {
+    "approved_new_features": [],
+    "pending_owner_decisions": [
+      "ADR-007_REVERSE_TRIGGER_USB_ATTACH_VS_VIDEO",
+      "ADR-008_ADB_SHIZUKU_SPECIAL_WINDOW_PRIVILEGES",
+      "ADR-009_SEPARATE_APP_REPOSITORY",
+      "ADR-010_APP_UI_BRANDING",
+      "ADR-011_LATENCY_REAL_MEASUREMENT",
+      "ADR-012_PERSONAL_EXTENSIONS"
+    ],
+    "state": "NO_OWNER_APPROVAL_EVIDENCE_FOR_NEW_FR_NEW"
+  },
+  "acceptance_boundary": {
+    "c02": "SOURCE_ARCHITECTURE_ONLY_ACCEPTED_PR5014",
+    "c01": "UNACCEPTED_NEEDS_REAL_USB_R_OFF",
+    "p01": "UNACCEPTED_NEEDS_NATIVE_REA_PC01_RECEIPT",
+    "g1": "NOT_ACCEPTED",
+    "g2": "NOT_ACCEPTED",
+    "d01": "NOT_STARTED",
+    "device_tests": "NOT_RUN",
+    "app_built": false,
+    "issue_done": false
+  }
+}
