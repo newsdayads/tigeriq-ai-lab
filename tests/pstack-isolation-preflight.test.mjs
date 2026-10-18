@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {verifyRuntimeIsolation,runSandboxVerification} from '../scripts/verify-core-ui-sandbox.mjs';
+import {verifyRuntimeIsolation,runSandboxVerification,sandboxBaseUrl,doctorAndSelectWork} from '../scripts/verify-core-ui-sandbox.mjs';
 
 const baseUrl='http://127.0.0.1:4315/';
 const now=Date.parse('2026-10-18T14:55:00.000Z');
@@ -43,7 +43,7 @@ test('T04: block a live Core port even when its reported port matches the destin
  await assert.rejects(verifyRuntimeIsolation({
    baseUrl:'http://127.0.0.1:8795/',
    nativeIsolationInspector:async()=>({...proof(),core:{...proof().core,port:8795}}),now
- }),{code:'SANDBOX_CORE_PORT_UNSAFE'});
+ }),{code:'SHARED_RUNTIME_PORT_FORBIDDEN'});
 });
 test('T04: reject a bridge outside the isolated Core network namespace',async()=>{
  await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>({...proof(),
@@ -55,6 +55,19 @@ test('T04: structured source gate is NOT product acceptance',async()=>{
  assert.equal(r.isolationSource,'OPERATOR_READBACK_STRUCTURALLY_CHECKED');
  assert.equal(r.runtimeAcceptanceVerified,false);
  assert.equal(r.nativeReadbackEvidenceRef,'local-operator:isolated-instance/123');
+});
+
+test('T04: direct Doctor and base URL must deny known production and bridge ports without network I/O', async()=>{
+  let networkCalls=0;
+  for(const port of [3150,3210,8795,8801]){
+    const u='http://127.0.0.1:'+port+'/';
+    assert.throws(()=>sandboxBaseUrl(u),{code:'SHARED_RUNTIME_PORT_FORBIDDEN'});
+    await assert.rejects(doctorAndSelectWork({
+      baseUrl:u,issueNumber:5012,now,
+      fetchImpl:async()=>{networkCalls++;throw Error('MUST_NOT_CONTACT_KNOWN_LIVE_PORT')}
+    }),{code:'SHARED_RUNTIME_PORT_FORBIDDEN'});
+  }
+  assert.equal(networkCalls,0);
 });
 test('T04: malformed or thrown inspector fails closed without leaking details',async()=>{
  await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>{throw Error('SECRET_STUFF');},now}),
