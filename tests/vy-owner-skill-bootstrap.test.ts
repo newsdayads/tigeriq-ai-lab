@@ -14,7 +14,8 @@ describe('Vy Owner goal-to-evidence bootstrap', () => {
     expect(loader).toContain('VY GOAL → SKILL → PROMPT → VERIFIED DELIVERY');
     expect(loader).toContain('Skill ACTIVE');
     expect(loader).toContain('task-prompt-compiler.mjs');
-    expect(loader).toContain('Không nạp toàn bộ 29 thư mục');
+    expect(loader).toContain('Không nạp toàn bộ thư mục Skill');
+    expect(loader).toContain('Chưa có mục tiêu cụ thể thì CHƯA được tự nhận đã nạp Skill');
     expect(vy).toContain('Select rather than preload');
     expect(vy).toContain('selected ACTIVE skill_ids');
   });
@@ -24,7 +25,7 @@ describe('Vy Owner goal-to-evidence bootstrap', () => {
     expect(vy).toContain('unregistered CANDIDATE');
     expect(vy).toContain('does not force native ChatGPT');
     expect(registry).toMatch(/- id: vy-owner-collaboration\n\s+title: Vy Owner Collaboration\n\s+state: CANDIDATE/);
-    expect(registry).not.toContain('  - id: core-manager-planner\n');
+    expect(registry).toContain('  - id: vy-owner-collaboration\n');
     expect(compiler).toContain('function');
   });
 
