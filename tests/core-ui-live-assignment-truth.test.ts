@@ -122,3 +122,43 @@ describe('P1 #4573 safe modern-main port: independent Core assignment evidence',
     expect(ui).toContain('CHƯA XÁC MINH HEARTBEAT');
   });
 });
+
+
+describe('P1 #4999 follow-up: GitHub issue identity must match the Core job ID', () => {
+  it('rejects mismatched issueNumber and jobId at the runtime JSON sanitizer', () => {
+    const out = sanitizeRuntimePayload({
+      ok: true, generatedAt: '2026-10-18T04:00:00Z', workers: [],
+      source: { core: true },
+      coreUiAssignments: [
+        { issueNumber: 3278, jobId: 'GH-4457-Rwrong', employeeId: 'NV03', status: 'ui_assigned' },
+        { issueNumber: 3278, jobId: 'GH-3278-Rcorrect', employeeId: 'NV04', status: 'ui_assigned' },
+      ],
+    });
+    expect(out.summary.working).toBe(0);
+    expect(out.coreUiAssignments).toHaveLength(1);
+    expect(out.coreUiAssignments[0]).toMatchObject({
+      issueNumber: 3278, jobId: 'GH-3278-Rcorrect', employeeId: 'NV04',
+    });
+  });
+
+  it('never attaches a different issue job to a GitHub work row', () => {
+    const rows = [{ number: 3278, status: 'REVIEW', employeeId: 'NONE', activeLease: false }];
+    const got = attachCoreUiAssignmentReceipts(rows, [
+      { issueNumber: 3278, jobId: 'GH-4457-Rwrong', employeeId: 'NV03', status: 'ui_running' },
+    ]);
+    expect(got[0]).toMatchObject({
+      status: 'REVIEW', employeeId: 'NONE', activeLease: false, coreAssignment: null,
+    });
+  });
+
+  it('keeps matching Core job IDs as read-only UI receipts without changing work state', () => {
+    const rows = [{ number: 3278, status: 'BLOCKED', employeeId: null, activeLease: false }];
+    const got = attachCoreUiAssignmentReceipts(rows, [
+      { issueNumber: 3278, jobId: 'GH-3278-Rcorrect', employeeId: 'NV03', status: 'ui_assigned' },
+    ]);
+    expect(got[0]).toMatchObject({
+      status: 'BLOCKED', activeLease: false,
+      coreAssignment: { jobId: 'GH-3278-Rcorrect', employeeId: 'NV03', status: 'ui_assigned' },
+    });
+  });
+});
