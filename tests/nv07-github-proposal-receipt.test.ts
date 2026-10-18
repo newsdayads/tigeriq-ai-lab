@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {verifyNv07GithubProposalEvidence,storeNv07GithubProposalWithLease,NV07_S6_GITHUB_SCOPE} from '../apps/tigeriq-core/nv07-github-proposal-receipt.mjs';
+import {verifyNv07GithubProposalEvidence,storeNv07GithubProposalWithLease,NV07_S6_GITHUB_SCOPE,executeNv07S6ProposalReceipt} from '../apps/tigeriq-core/nv07-github-proposal-receipt.mjs';
 const SHA='2bf72df2774eee67c19c8db5dbd063ddeef640be',OUT='b473807fa0c8af4d85d09a1a39efd5c223d0de9f068cda649f71d28c13f622b5',HEAD='037954520f2533d0d6fae62e369d7a71e55f19ba',MERGE='9eee52f9988701785cfacf00de0a58dac5778752';
 const FILE='docs/implementation/nv07-proposal.md',JOB='NV07-4783-CORE-20261015T175311-001';
 function evidence(){
@@ -161,6 +161,12 @@ describe('Core GitHub proposal receipt evidence',()=>{
    receipt:e.receipt,evidence:proof,leaseToken,
   })).accepted).toBe(false);
   expect(queryCount).toBe(0);
+
+  it('executeNv07S6ProposalReceipt handles missing DB or failed lease claim',async()=>{
+   expect(await executeNv07S6ProposalReceipt(null)).toMatchObject({accepted:false,code:'NV07_S6_DB_UNAVAILABLE'});
+   const dbNoLease={query:async()=>({rows:[]})};
+   expect(await executeNv07S6ProposalReceipt(dbNoLease)).toMatchObject({accepted:false,code:'NV07_S6_LEASE_CLAIM_FAILED'});
+  });
  });
 
 });
