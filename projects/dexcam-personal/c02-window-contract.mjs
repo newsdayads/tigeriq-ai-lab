@@ -12,7 +12,10 @@ export function planWindowRequest({ display, preset, capability } = {}) {
     contract: CONTRACT, action:'MANUAL_FALLBACK', reason, requested_bounds,
     applied_bounds:null, verification:'NOT_MEASURED', third_party_task_resize:'NOT_AUTHORIZED'
   });
-  if (!display || display.id == null || !display.fingerprint ||
+  // Android Display.INVALID_DISPLAY is -1; ID must be a finite integer.
+  // Reject missing/nonprimitive fingerprints rather than trusting truthiness.
+  if (!display || !pixel(display.id) ||
+      typeof display.fingerprint !== 'string' || !display.fingerprint.trim() ||
       !pixel(display.width_px) || !pixel(display.height_px) ||
       display.width_px === 0 || display.height_px === 0 ||
       !display.insets || !['left','right','top','bottom'].every(k => pixel(display.insets[k])))
