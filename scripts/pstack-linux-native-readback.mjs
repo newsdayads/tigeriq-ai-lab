@@ -54,14 +54,13 @@ export async function readLinuxProcessIdentity(pid) {
     throw new LinuxNativeReadbackBlocked('NATIVE_PROCESS_READBACK_UNAVAILABLE');
   }
 }
-export async function readLinuxIsolatedProcessPair({corePid,bridgePid,hostPid=process.pid}={}) {
+export async function readLinuxIsolatedProcessPair({corePid,bridgePid}={}) {
   requirePid(corePid);
   requirePid(bridgePid);
-  requirePid(hostPid);
   if(corePid===bridgePid)
     throw new LinuxNativeReadbackBlocked('NATIVE_CORE_BRIDGE_SAME_PID');
   const [host,core,bridge]=await Promise.all([
-    readLinuxProcessIdentity(hostPid),
+    readLinuxProcessIdentity(process.pid),
     readLinuxProcessIdentity(corePid),
     readLinuxProcessIdentity(bridgePid)
   ]);
