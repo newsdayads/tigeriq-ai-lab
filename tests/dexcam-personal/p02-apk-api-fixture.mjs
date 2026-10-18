@@ -55,7 +55,7 @@ export function makeDuplicateDexCentralEntry() {
 
 export function makeZip(entryName='classes.dex',content=makeDex(),{compressed=false, corruptCRC=false, encrypted=false}={}){
   const name=bytes(entryName),zipBytes=compressed?deflateRawSync(content):content;
-  const crc=crc32(content)^(corruptCRC?0x1234:0),local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22);
+  const crc=(crc32(content)^(corruptCRC?0x1234:0))>>>0,local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22);
   le32(local,0,0x04034b50);le16(local,6,encrypted?1:0);le16(local,8,compressed?8:0);le32(local,14,crc);
   le32(local,18,zipBytes.length);le32(local,22,content.length);le16(local,26,name.length);
   const localSize=local.length+name.length+zipBytes.length;
