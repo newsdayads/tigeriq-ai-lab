@@ -118,6 +118,7 @@ function readDexMembersFromApk(input) {
   if (members > MAX_ZIP_MEMBERS || offset + size > eocd) throw new Error('INVALID_ZIP_CENTRAL_DIRECTORY');
   let p = offset;
   const dex = [];
+  const seenDexNames = new Set();
   for (let i = 0; i < members; i++) {
     if (u32(apk, p) !== 0x02014b50) throw new Error('INVALID_ZIP_MEMBER');
     const flags = u16(apk, p + 8), method = u16(apk, p + 10), expectedCrc = u32(apk, p + 16),
@@ -127,6 +128,8 @@ function readDexMembersFromApk(input) {
     const name = apk.subarray(p + 46, p + 46 + nameLen).toString('utf8');
     p += 46 + nameLen + extraLen + commentLen;
     if (!/^classes(?:[2-9]\d*)?\.dex$/.test(name)) continue;
+    if (seenDexNames.has(name)) throw new Error('DUPLICATE_DEX_ZIP_MEMBER');
+    seenDexNames.add(name);
     if (diskStart || (flags & 1) || ![0, 8].includes(method) || rawSize > MAX_DEX_BYTES || zipSize > MAX_APK_BYTES)
       throw new Error('UNSUPPORTED_DEX_ZIP_MEMBER');
     if (u32(apk, localOffset) !== 0x04034b50) throw new Error('INVALID_ZIP_LOCAL_HEADER');
