@@ -68,3 +68,65 @@ test('duplicate evidence remains invalid when labeled as a real device', () => {
   assert.equal(r.b01_accepted, false);
   assert.ok(r.errors.includes('evidence.display_readback:DUPLICATE_EVIDENCE_POINTER'));
 });
+
+// Regression: mock/test labels with a numeric suffix must not masquerade as real device metadata.
+const realShapedB01Input = () => {
+  const x = sample(); x.capture_kind = 'REAL_DEVICE_OBSERVATION'; x.android.model = 'SM-X999';
+  return x;
+};
+test('rejects numeric-suffixed placeholder model=SM-TEST2026', () => {
+  const x = realShapedB01Input(); x.android.model = 'SM-TEST2026';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.model:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder model=SM-MOCK01', () => {
+  const x = realShapedB01Input(); x.android.model = 'SM-MOCK01';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.model:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder model=SM-FAKE001', () => {
+  const x = realShapedB01Input(); x.android.model = 'SM-FAKE001';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.model:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder manufacturer=UNKNOWN2026', () => {
+  const x = realShapedB01Input(); x.android.manufacturer = 'UNKNOWN2026';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.manufacturer:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder android_version=TEST16', () => {
+  const x = realShapedB01Input(); x.android.android_version = 'TEST16';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.android_version:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder one_ui_version=8.0DEMO1', () => {
+  const x = realShapedB01Input(); x.android.one_ui_version = '8.0DEMO1';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.one_ui_version:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder model=SAMPLE2026', () => {
+  const x = realShapedB01Input(); x.android.model = 'SAMPLE2026';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.model:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
+test('rejects numeric-suffixed placeholder manufacturer=PLACEHOLDER01', () => {
+  const x = realShapedB01Input(); x.android.manufacturer = 'PLACEHOLDER01';
+  const r = inspectB01(x);
+  assert.equal(r.status, 'INCOMPLETE');
+  assert.equal(r.b01_accepted, false);
+  assert.ok(r.errors.includes('android.manufacturer:PLACEHOLDER_NOT_REAL_EVIDENCE'));
+});
