@@ -59,6 +59,7 @@ test('T04: structured source gate is NOT product acceptance',async()=>{
  assert.equal(r.isolationSource,'OPERATOR_READBACK_STRUCTURALLY_CHECKED');
  assert.equal(r.runtimeAcceptanceVerified,false);
  assert.equal(r.nativeReadbackEvidenceRef,'local-operator:isolated-instance/123');
+ assert.equal(r.corePid,4567);
 });
 
 test('T04: known live web and coding-lane service ports never qualify as sandbox URLs',async()=>{
@@ -91,7 +92,7 @@ test('T04: aborted UI verification removes its fresh evidence directory and no f
  const target=resolve(outputDir);
  const fetchImpl=async url=>{
    const path=new URL(url).pathname;
-   const value=path==='/api/status'?{ok:true,core:{time:new Date(now).toISOString()}}:
+   const value=path==='/api/status'?{ok:true,core:{pid:proof().core.pid,time:new Date(now).toISOString()}}:
     {ok:true,projection:{generatedAt:new Date(now).toISOString(),stale:false,
       openWork:[{number:5012,title:'PSTACK T04 sandbox',status:'READY',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5012'}]}};
    return {ok:true,headers:{get:()=> 'application/json'},json:async()=>value};
@@ -133,4 +134,30 @@ test('T04: attested Core PID must match the live Core /api/status PID before any
   }),{code:'SANDBOX_CORE_PID_MISMATCH'});
   assert.equal(browserCalls,0);
   assert.equal(existsSync(resolve(outputDir)),false);
+});
+
+test('T04: matching attested process allows only the read-only doctor path',async()=>{
+  const calls=[];
+  const fetchImpl=async url=>{
+    const route=new URL(url).pathname;
+    calls.push(route);
+    const payload=route==='/api/status'
+      ?{ok:true,core:{pid:4567,time:new Date(now).toISOString()}}
+      :{ok:true,projection:{generatedAt:new Date(now).toISOString(),stale:false,
+        openWork:[{number:5012,title:'Isolated Work Order'}]}};
+    return {ok:true,headers:{get:()=> 'application/json'},json:async()=>payload};
+  };
+  const r=await doctorAndSelectWork({baseUrl,issueNumber:5012,now,expectedCorePid:4567,fetchImpl});
+  assert.equal(r.issueNumber,5012);
+  assert.deepEqual(calls,['/api/status','/api/health-live-work']);
+});
+test('T04: missing Core PID blocks before work projection is fetched',async()=>{
+  const calls=[];
+  await assert.rejects(doctorAndSelectWork({baseUrl,issueNumber:5012,now,expectedCorePid:4567,
+    fetchImpl:async url=>{
+      calls.push(new URL(url).pathname);
+      return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({ok:true,core:{time:new Date(now).toISOString()}})};
+    }
+  }),{code:'SANDBOX_CORE_PID_MISMATCH'});
+  assert.deepEqual(calls,['/api/status']);
 });
