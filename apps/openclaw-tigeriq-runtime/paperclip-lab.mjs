@@ -679,8 +679,15 @@ async function ensureConfig(pin = null) {
 
 
 async function readReleasePin() {
-  const safeReleaseFile = await assertSafeFileTarget(RELEASE_FILE);
-  const parsed = JSON.parse(await fs.readFile(safeReleaseFile, 'utf8'));
+  // R02 health must never materialize an absent Lab/config while reading a pin.
+  await ensureRootIntegrity({ create: false });
+  await paperclipReadOnlyExistingDirectory(CONFIG_DIR);
+  const safeReleaseFile = resolvePaperclipLabPath(RELEASE_FILE);
+  const stat = await fs.lstat(safeReleaseFile);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_PIN_FILE_UNSAFE');
+  const realReleaseFile = normalizeWinPath(await fs.realpath(safeReleaseFile));
+  if (!pathInsideLab(realReleaseFile)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+  const parsed = JSON.parse(await fs.readFile(realReleaseFile, 'utf8'));
   const pin = {
     release: String(parsed?.release || ''),
     sourceCommit: String(parsed?.sourceCommit || ''),
