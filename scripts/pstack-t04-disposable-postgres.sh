@@ -46,7 +46,7 @@ trap 'exit 1' INT TERM HUP
 started=1
 ns="$(readlink /proc/self/ns/net)"
 [[ "$ns" =~ ^net:\[[0-9]+\]$ ]] || { echo T04_POSTGRES_NAMESPACE_INVALID >&2; exit 1; }
-actual_data="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d postgres -c 'select current_setting('"'data_directory'"');')"
+actual_data="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d postgres -c "select current_setting('data_directory');")"
 [[ "$actual_data" == "$data" ]] || { echo T04_POSTGRES_DATA_FINGERPRINT_MISMATCH >&2; exit 1; }
 system_id="$("$bin/psql" -X -qAt -v ON_ERROR_STOP=1 -h "$sock" -p 55433 -U runner -d postgres -c 'select system_identifier from pg_control_system();')"
 [[ "$system_id" =~ ^[0-9]{15,22}$ ]] || { echo T04_POSTGRES_SYSTEM_ID_INVALID >&2; exit 1; }
