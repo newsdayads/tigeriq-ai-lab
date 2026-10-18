@@ -104,8 +104,13 @@ test('T04: unsolicited WebSocket is denied without connecting outside the sandbo
  assert.equal(b.observed().closed,true);
 });
 
+function evidenceTestRoot(){
+ const root=join(process.cwd(),'artifacts','pstack-verification');
+ mkdirSync(root,{recursive:true});
+ return root;
+}
 test('T06: evidence output requires a real trace capability before browser navigation',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-gate-'));
+ const dir=mkdtempSync(join(evidenceTestRoot(),'pstack-t06-trace-gate-'));
  const b=browserFixture();
  try{
   await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory,outputDir:dir}),
@@ -115,7 +120,7 @@ test('T06: evidence output requires a real trace capability before browser navig
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
 test('T06: successful evidence records must include nonempty screenshot and trace files',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-positive-'));
+ const dir=mkdtempSync(join(evidenceTestRoot(),'pstack-t06-trace-positive-'));
  const b=browserFixture(),steps=[];
  const factory=async()=>{
   const browser=await b.factory(),originalContext=browser.newContext;
@@ -145,7 +150,7 @@ test('T06: successful evidence records must include nonempty screenshot and trac
  }finally{rmSync(dir,{recursive:true,force:true})}
 });
 test('T06: missing trace bytes cannot produce a successful verification packet',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-empty-'));
+ const dir=mkdtempSync(join(evidenceTestRoot(),'pstack-t06-trace-empty-'));
  const b=browserFixture();
  const factory=async()=>{
   const browser=await b.factory(),originalContext=browser.newContext;
