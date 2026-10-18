@@ -25,7 +25,7 @@ test('T03: nested symlink below evidence root is blocked',()=>{
  try {assert.throws(()=>safeEvidenceDir('artifacts/pstack-verification/indirect/job42',cwd),{code:'EVIDENCE_SYMLINK_FORBIDDEN'});}
  finally {rmSync(root,{recursive:true,force:true})}
 });
-function browserFixture({destination='http://127.0.0.1:4315/',requestUrls=[]}={}){
+function browserFixture({destination='http://127.0.0.1:4315/',requestUrls=[],webSocketRouteSupported=true}={}){
  let closed=false,handler,visited=false,aborted=0;
  const row={count:async()=>1,isVisible:async()=>true,innerText:async()=> 'fixture row',click:async()=>{}};
  const page={
@@ -33,7 +33,11 @@ function browserFixture({destination='http://127.0.0.1:4315/',requestUrls=[]}={}
   url:()=>destination,
   locator:sel=>({'.work-row[data-work-number="2054"]':row,'#workDetailBackdrop':{count:async()=>1,getAttribute:async()=> 'open'},'#workDetailModal':{innerText:async()=> 'fixture detail'},'#workDetailGithub':{getAttribute:async()=>work.url}})[sel]
  };
- return {factory:async()=>({newContext:async()=>({newPage:async()=>page,route:async(_glob,cb)=>{handler=cb;}}),close:async()=>{closed=true}}),observed:()=>({closed,visited,aborted})};
+ return {factory:async()=>({newContext:async()=>{
+  const context={newPage:async()=>page,route:async(_glob,cb)=>{handler=cb;}};
+  if(webSocketRouteSupported)context.routeWebSocket=async()=>{};
+  return context;
+ },close:async()=>{closed=true}}),observed:()=>({closed,visited,aborted})};
 }
 test('T03: redirected browser page outside sandbox must not be accepted',async()=>{
  const b=browserFixture({destination:'http://127.0.0.1:3210/'});
@@ -61,13 +65,13 @@ test('T03: changing location after card click blocks evidence acceptance',async(
  const target={count:async()=>1,isVisible:async()=>true,innerText:async()=> 'fixture',click:async()=>{redirected=true}};
  const page={goto:async()=>{},url:()=>redirected?'http://127.0.0.1:3150/':'http://127.0.0.1:4315/',
    locator:sel=>({'.work-row[data-work-number="2054"]':target})[sel]};
- const factory=async()=>({newContext:async()=>({route:async()=>{},newPage:async()=>page}),close:async()=>{closed=true}});
+ const factory=async()=>({newContext:async()=>({route:async()=>{},routeWebSocket:async()=>{},newPage:async()=>page}),close:async()=>{closed=true}});
  await assert.rejects(driveWorkCard({diagnostic,browserFactory:factory}),{code:'UI_NAVIGATION_OUT_OF_SCOPE'});
  assert.equal(closed,true);
 });
 
 test('T04: WebSocket route guard is required before any browser navigation',async()=>{
- const b=browserFixture();
+ const b=browserFixture({webSocketRouteSupported:false});
  await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory}),
    {code:'UI_WEBSOCKET_GUARD_UNAVAILABLE'});
  assert.equal(b.observed().visited,false,'navigation must not begin without WebSocket interception');
