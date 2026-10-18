@@ -757,11 +757,39 @@ async function httpHealth(signal = null) {
 // R01 reports the bounded existing container state; this is not the R02
 // image-digest or health acceptance gate. Broker fallback would create request
 // files, so direct Docker/WSL are the only admissible preflight transports.
+// The requested compose file pins a localhost host port, but R01 must report
+// Docker's observed live binding separately. An absent or malformed inspect
+// mapping is UNKNOWN, not proof that the service is private.
+function paperclipObservedLoopbackPortBinding(inspect) {
+  const published = inspect?.NetworkSettings?.Ports;
+  if (!published || typeof published !== 'object' || Array.isArray(published)) return null;
+  let checked = 0;
+  let uncertain = false;
+  for (const [containerPort, bindings] of Object.entries(published)) {
+    if (bindings === null) continue; // Docker EXPOSE without host publishing.
+    if (!Array.isArray(bindings) || bindings.length === 0) {
+      uncertain = true;
+      continue;
+    }
+    for (const binding of bindings) {
+      if (!binding || typeof binding.HostIp !== 'string' || typeof binding.HostPort !== 'string') {
+        uncertain = true;
+        continue;
+      }
+      checked++;
+      if (containerPort !== '3100/tcp'
+        || binding.HostPort !== String(PAPERCLIP_LAB_PORT)
+        || !['127.0.0.1', '::1'].includes(binding.HostIp)) return false;
+    }
+  }
+  return checked > 0 && !uncertain ? true : null;
+}
+
 export async function paperclipReadOnlyContainerStatus(dockerKind, {
   signal = null,
   runReadOnlyCommand = runFixed,
 } = {}) {
-  const base = { attempted: false, present: null, running: null, imageRef: null, imagePinMatch: null, imageDigestVerified: false };
+  const base = { attempted: false, present: null, running: null, imageRef: null, imagePinMatch: null, port3210LoopbackBinding: null, imageDigestVerified: false };
   if (dockerKind !== DOCKER_TRANSPORT_WINDOWS && dockerKind !== DOCKER_TRANSPORT_WSL) {
     return { ...base, reason: 'DIRECT_DOCKER_TRANSPORT_UNAVAILABLE' };
   }
@@ -792,6 +820,7 @@ export async function paperclipReadOnlyContainerStatus(dockerKind, {
       running: parsed.State.Running,
       imageRef,
       imagePinMatch,
+      port3210LoopbackBinding: paperclipObservedLoopbackPortBinding(parsed),
       reason: null,
     };
   } catch {
@@ -831,7 +860,7 @@ export async function paperclipReadOnlyPreflight({
   const container = rootPresent && docker.kind
     ? await inspectContainer(docker)
     : { attempted: false, present: null, running: null, imageRef: null,
-        imagePinMatch: null, imageDigestVerified: false,
+        imagePinMatch: null, port3210LoopbackBinding: null, imageDigestVerified: false,
         reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
