@@ -820,7 +820,9 @@ export async function paperclipReadOnlyContainerStatus(dockerKind, {
       running: parsed.State.Running,
       imageRef,
       imagePinMatch,
-      port3210LoopbackBinding: paperclipObservedLoopbackPortBinding(parsed),
+      port3210LoopbackBinding: parsed.State.Running === true
+        ? paperclipObservedLoopbackPortBinding(parsed)
+        : null,
       reason: null,
     };
   } catch {
