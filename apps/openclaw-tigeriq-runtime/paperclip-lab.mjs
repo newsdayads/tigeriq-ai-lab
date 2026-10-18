@@ -1378,11 +1378,15 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
       // evidence that Docker's live host-port binding is restricted.
       loopbackOnly: action === 'paperclip_lab_preflight'
         ? data?.container?.port3210LoopbackBinding === true
-        : true,
+        : action === 'paperclip_lab_health'
+          ? data?.container?.running === true && data?.container?.portBindingOk === true
+          : true,
       loopbackOnlyConfigured: true,
       observedLoopbackBinding: action === 'paperclip_lab_preflight'
         ? (data?.container?.port3210LoopbackBinding ?? null)
-        : null,
+        : action === 'paperclip_lab_health' && data?.container?.running === true
+          ? (data?.container?.portBindingOk ?? null)
+          : null,
       arbitraryShell: false,
       arbitraryPath: false,
       arbitraryPort: false,
