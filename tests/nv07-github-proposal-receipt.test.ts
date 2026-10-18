@@ -161,12 +161,12 @@ describe('Core GitHub proposal receipt evidence',()=>{
    receipt:e.receipt,evidence:proof,leaseToken,
   })).accepted).toBe(false);
   expect(queryCount).toBe(0);
+ });
 
-  it('executeNv07S6ProposalReceipt handles missing DB or failed lease claim',async()=>{
-   expect(await executeNv07S6ProposalReceipt(null)).toMatchObject({accepted:false,code:'NV07_S6_DB_UNAVAILABLE'});
-   const dbNoLease={query:async()=>({rows:[]})};
-   expect(await executeNv07S6ProposalReceipt(dbNoLease)).toMatchObject({accepted:false,code:'NV07_S6_LEASE_CLAIM_FAILED'});
-  });
+ it('executeNv07S6ProposalReceipt handles missing DB or failed lease claim',async()=>{
+  expect(await executeNv07S6ProposalReceipt(null)).toMatchObject({accepted:false,code:'NV07_S6_DB_UNAVAILABLE'});
+  const dbNoLease={query:async()=>({rows:[]})};
+  expect(await executeNv07S6ProposalReceipt(dbNoLease)).toMatchObject({accepted:false,code:'NV07_S6_LEASE_CLAIM_FAILED'});
  });
 
 });
