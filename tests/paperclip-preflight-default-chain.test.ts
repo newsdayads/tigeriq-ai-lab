@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   rootSymlink: false,
   brokerReady: false,
   directDockerReady: false,
+  releaseReady: false,
   inspectBindings: null as null | Record<string, unknown>,
   inspectArgs: [] as string[][],
   lstatPaths: [] as string[],
@@ -17,6 +18,8 @@ const state = vi.hoisted(() => ({
 
 const ROOT = String.raw`D:\TigerIQ-Paperclip-Lab`;
 const HEARTBEAT = ROOT + String.raw`\broker\heartbeat.json`;
+const CONFIG = ROOT + String.raw`\config`;
+const RELEASE = CONFIG + String.raw`\release.json`;
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -48,10 +51,25 @@ vi.mock('node:fs', async (importOriginal) => {
           isFile: () => true,
           isSymbolicLink: () => false,
         };
+        if (target === CONFIG && state.releaseReady) return {
+          isDirectory: () => true,
+          isFile: () => false,
+          isSymbolicLink: () => false,
+        };
+        if (target === RELEASE && state.releaseReady) return {
+          isDirectory: () => false,
+          isFile: () => true,
+          isSymbolicLink: () => false,
+        };
         throw missing();
       },
       realpath: async (p: string) => String(p),
       readFile: async (p: string) => {
+        if (String(p) === RELEASE && state.releaseReady) return JSON.stringify({
+          release: 'v2026.916.1',
+          sourceCommit: 'd554c4789ed3930f8a53ac9fdf6503b3187097da',
+          imageDigest: 'ghcr.io/paperclipai/paperclip@sha256:' + 'a'.repeat(64),
+        });
         if (String(p) !== HEARTBEAT || !state.brokerReady) throw missing();
         return JSON.stringify({
           schema: 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1',
@@ -295,6 +313,38 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(state.spawned).toEqual([]);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(0);
+  });
+
+  it('R02 rejects broker fallback without writing a broker request when only broker is ready', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = true;
+    state.directDockerReady = false;
+    state.releaseReady = true;
+    state.inspectBindings = null;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    try {
+      const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
+      expect(result.data).toMatchObject({
+        ok: false,
+        reason: 'DOCKER_UNAVAILABLE',
+        docker: {
+          kind: null,
+          error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
+          broker: { ready: true },
+        },
+      });
+      expect(result.evidence).toMatchObject({ loopbackOnly: false, observedLoopbackBinding: null });
+      expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
+      expect(state.writeAttempts).toEqual([]);
+      expect(state.socketConnects).toBe(0);
+    } finally {
+      state.releaseReady = false;
+    }
   });
 
   it('rejects a typed R01 request with extra fields before any IO', async () => {
