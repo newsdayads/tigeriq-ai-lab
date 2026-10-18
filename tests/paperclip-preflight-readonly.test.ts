@@ -236,6 +236,28 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
   });
 
 
+  it('R01 does not attest live localhost binding for a stopped container with stale Docker port map', async () => {
+    const ports = { '3100/tcp': [{ HostIp: '127.0.0.1', HostPort: '3210' }] };
+    const probe = async (running: boolean) => paperclipReadOnlyContainerStatus('windows', {
+      runReadOnlyCommand: async (_exe: string, _args: string[], options: { readOnly: boolean }) => {
+        expect(options.readOnly).toBe(true);
+        return { exitCode: 0, timedOut: false, stdout: JSON.stringify({
+          State: { Running: running },
+          Config: { Image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },
+          NetworkSettings: { Ports: ports },
+        }) };
+      },
+    });
+    expect(await probe(false)).toMatchObject({
+      attempted: true, present: true, running: false, imagePinMatch: true,
+      port3210LoopbackBinding: null, imageDigestVerified: false, reason: null,
+    });
+    expect(await probe(true)).toMatchObject({
+      attempted: true, present: true, running: true, imagePinMatch: true,
+      port3210LoopbackBinding: true, imageDigestVerified: false, reason: null,
+    });
+  });
+
   it('R01 reports Docker-observed host-port exposure without claiming static loopback as runtime proof', async () => {
     const inspect = async (ports?: Record<string, unknown>) => paperclipReadOnlyContainerStatus('windows', {
       runReadOnlyCommand: async (_exe: string, _args: string[], options: { readOnly: boolean }) => {
