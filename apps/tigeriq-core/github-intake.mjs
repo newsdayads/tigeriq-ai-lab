@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
-import {workOrderChecklistGate} from './work-order-checklist-hard-gate.mjs';
+import {workOrderChecklistGate,workOrderChecklistSteps} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -739,6 +739,20 @@ export function safeAutoWorkAdmission(issue){
   return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
 }
 
+// Bind a partial Work Order to the exact CURRENT step before dispatch.
+// This is NOT a completion receipt: the fresh GitHub checklist still must be
+// checked and linked to real execution evidence before the outcome can pass.
+export function githubCurrentStepId(body=''){
+  const active=currentAutoExecutionHeader(body);
+  const raw=bodyValue(active,'CURRENT_STEP');
+  const match=String(raw||'').trim().match(/^([A-Z][A-Za-z0-9_-]{1,15})(?=\s|$)/);
+  if(!match)return '';
+  const id=match[1].toUpperCase();
+  const {found,steps}=workOrderChecklistSteps(body);
+  if(!found||steps.filter(step=>step.id.toUpperCase()===id).length!==1)return '';
+  return id;
+}
+
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
   const body=String(issue.body||'');
@@ -793,6 +807,7 @@ export function parseExecutableIssue(issue){
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
+    completedStepId:(hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff)?githubCurrentStepId(body):'',
     // A real-product Work Order always awaits revision-bound live evidence.
     // Engineering products also require the existing independent review gate.
     liveAcceptanceRequired:liveProductDelivery||hasExactFlag(currentBody,'LIVE_ACCEPTANCE_REQUIRED'),
@@ -1351,6 +1366,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
       p1P5StandingReleaseAuthorized:Boolean(spec.pcOperatorDirectAction?.action==='tigeriq_live_3150_production_deploy'&&p1P5StandingReleaseAuthorized(spec.body)),
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
+      completedStepId:spec.completedStepId||null,
       liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
       finalReviewRequired:spec.finalReviewRequired===true,
       liveAcceptancePass:false,
