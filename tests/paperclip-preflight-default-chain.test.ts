@@ -6,6 +6,8 @@ const state = vi.hoisted(() => ({
   rootExists: false,
   rootSymlink: false,
   brokerReady: false,
+  directDockerReady: false,
+  inspectArgs: [] as string[][],
   lstatPaths: [] as string[],
   spawned: [] as string[],
   writeAttempts: [] as string[],
@@ -71,13 +73,29 @@ vi.mock('node:child_process', async (importOriginal) => {
   const { EventEmitter } = await import('node:events');
   return {
     ...actual,
-    spawn: (exe: string) => {
+    spawn: (exe: string, args: string[] = []) => {
       state.spawned.push(String(exe));
       const child = new EventEmitter() as any;
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
       child.kill = () => true;
-      queueMicrotask(() => child.emit('close', 1));
+      queueMicrotask(() => {
+        if (state.directDockerReady && exe === 'docker.exe' && args[0] === 'version') {
+          child.stdout.emit('data', Buffer.from('27.5.0\n'));
+          child.emit('close', 0);
+          return;
+        }
+        if (state.directDockerReady && exe === 'docker.exe' && args[0] === 'inspect') {
+          state.inspectArgs.push([...args]);
+          child.stdout.emit('data', Buffer.from(JSON.stringify({
+            State: { Running: true },
+            Config: { Image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },
+          })));
+          child.emit('close', 0);
+          return;
+        }
+        child.emit('close', 1);
+      });
       return child;
     },
   };
@@ -200,5 +218,35 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(state.spawned).toEqual([]);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(0);
+  });
+
+  it('follows the typed R01 default direct-Docker inspect chain without OS writes', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = false;
+    state.directDockerReady = true;
+    state.inspectArgs.length = 0;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    const result = await executePaperclipLabAction({ action: 'paperclip_lab_preflight' });
+    expect(result.data.docker).toMatchObject({ ok: true, transport: 'windows', version: '27.5.0' });
+    expect(result.data.container).toMatchObject({
+      attempted: true,
+      present: true,
+      running: true,
+      imageRef: 'ghcr.io/paperclipai/paperclip:2026.916.1',
+      imageDigestVerified: false,
+      reason: null,
+    });
+    expect(state.inspectArgs).toEqual([[
+      'inspect', 'tigeriq-paperclip-lab', '--format', '{{json .}}',
+    ]]);
+    expect(state.spawned).toEqual(['docker.exe', 'docker.exe']);
+    expect(state.lstatPaths).toContain(ROOT);
+    expect(state.writeAttempts).toEqual([]);
+    expect(state.socketConnects).toBe(1);
   });
 });
