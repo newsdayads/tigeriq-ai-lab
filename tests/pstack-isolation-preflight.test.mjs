@@ -164,7 +164,7 @@ test('T04: sandbox mode flag blocks real Core before DB and autonomous startup',
   }));
 });
 
-test('T04: real private PostgreSQL cluster is fingerprinted and dropped',{
+test('T04: real PostgreSQL teardown fenced and Core denied before private DB access',{
   skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
     process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
     process.env.GITHUB_REPOSITORY==='newsdayads/tigeriq-ai-lab'),
@@ -177,14 +177,14 @@ test('T04: real private PostgreSQL cluster is fingerprinted and dropped',{
   const result=spawnSync('sudo',[
     '-n','unshare','--net','--','runuser','-u','runner','--',
     'env','-i','PATH=/usr/bin:/bin',
-    'bash','scripts/pstack-t04-disposable-postgres.sh'
+    'bash','scripts/pstack-t04-disposable-postgres.sh',process.execPath
   ],{cwd:process.cwd(),shell:false,encoding:'utf8',
     timeout:100000,maxBuffer:65536});
   assert.equal(result.error,undefined,'T04_PRIVATE_POSTGRES_EXECUTION_UNAVAILABLE');
   assert.equal(result.signal,null,'T04_PRIVATE_POSTGRES_TIMEOUT');
   assert.equal(result.status,0,'T04_PRIVATE_POSTGRES_LAUNCH_OR_TEARDOWN_FAILED');
   const match=(result.stdout||'').match(
-    /T04_POSTGRES_DISPOSABLE_REAL namespace=(net:\[\d+\]) systemId=(\d{15,22}) database=(tigeriq_pstack_\d+) dbDropped=true postgresStopped=true privateSocket=true fullStackAccepted=false/
+    /T04_POSTGRES_DISPOSABLE_REAL namespace=(net:\[\d+\]) systemId=(\d{15,22}) database=(tigeriq_pstack_\d+) dbDropped=true postgresStopped=true privateSocket=true clusterDirectoryRemoved=true coreDeniedBeforeDb=true fullStackAccepted=false/
   );
   assert.ok(match,'T04_POSTGRES_REAL_DB_AND_TEARDOWN_RECEIPT_MISSING');
   const host=readlinkSync('/proc/self/ns/net');
@@ -193,8 +193,8 @@ test('T04: real private PostgreSQL cluster is fingerprinted and dropped',{
   console.log('T04_NATIVE_PRIVATE_DB_READBACK '+JSON.stringify({
     hostNamespace:host,dbNamespace:match[1],
     pgSystemIdentifier:match[2],db:match[3],
-    dbDropped:true,postgresStopped:true,
-    inheritedCredentials:false,liveCoreBooted:false,
+    dbDropped:true,postgresStopped:true,clusterDirectoryRemoved:true,
+    coreDeniedBeforeDb:true,inheritedCredentials:false,liveCoreBooted:false,
     nativeFullStackAccepted:false
   }));
 });
