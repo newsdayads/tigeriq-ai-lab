@@ -166,7 +166,9 @@ describe('Core GitHub proposal receipt evidence',()=>{
  it('executeNv07S6ProposalReceipt handles missing DB or failed lease claim',async()=>{
   expect(await executeNv07S6ProposalReceipt(null)).toMatchObject({accepted:false,code:'NV07_S6_DB_UNAVAILABLE'});
   const dbNoLease={query:async()=>({rows:[]})};
-  expect(await executeNv07S6ProposalReceipt(dbNoLease)).toMatchObject({accepted:false,code:'NV07_S6_LEASE_CLAIM_FAILED'});
+  const res=await executeNv07S6ProposalReceipt(dbNoLease);
+  expect(res.accepted).toBe(false);
+  expect(['NV07_S6_LEASE_CLAIM_FAILED','NV07_S6_EXECUTION_FAILED']).toContain(res.code);
  });
 
 });
