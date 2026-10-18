@@ -130,6 +130,40 @@ test('T04: real ephemeral native Linux process pair has private network namespac
   }));
 });
 
+test('T04: actual live-bridge runs in private namespace without relay and cleans up',{
+  skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
+    process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
+    process.env.GITHUB_REPOSITORY==='newsdayads/tigeriq-ai-lab'),
+  timeout:30000
+},()=>{
+  // Private namespace and loopback belong exclusively to this GitHub runner
+  // test. Drop root identity before starting the ACTUAL bridge source file.
+  // The helper script prints its success receipt only after PID exit + cleanup.
+  const launch='ip link set dev lo up && exec runuser -u runner -- '+
+    'env -i PATH=/usr/bin:/bin bash scripts/pstack-t04-native-bridge.sh "$1"';
+  const child=spawnSync('sudo',[
+    '-n','unshare','--net','--','bash','-c',launch,'pstack-t04-bridge',
+    process.execPath
+  ],{cwd:process.cwd(),shell:false,encoding:'utf8',
+    timeout:25000,maxBuffer:65536});
+  assert.equal(child.error,undefined,'T04_BRIDGE_LAUNCH_UNVERIFIED');
+  assert.equal(child.signal,null,'T04_BRIDGE_TIMEOUT_OR_SIGNAL');
+  assert.equal(child.status,0,'T04_NATIVE_BRIDGE_OR_TEARDOWN_FAILED');
+  const match=(child.stdout||'').match(
+    /T04_REAL_BRIDGE_ISOLATED namespace=(net:\[\d+\]) bridgePid=(\d+) bridgeExited=true workDirRemoved=true actualSource=true githubRelayBlocked=true statusAuthoritative=false coreStarted=false fullStackAccepted=false/
+  );
+  assert.ok(match,'T04_REAL_BRIDGE_READBACK_AND_CLEANUP_MISSING');
+  const hostNamespace=readlinkSync('/proc/self/ns/net');
+  assert.notEqual(match[1],hostNamespace,'T04_BRIDGE_HOST_NETNS_SHARED');
+  assert.match(child.stdout||'',/T04_BRIDGE_HTTP_READBACK/);
+  console.log('T04_NATIVE_LIVE_BRIDGE_PROOF '+JSON.stringify({
+    hostNamespace,bridgeNamespace:match[1],bridgePid:Number(match[2]),
+    nativeProcessExited:true,workDirRemoved:true,
+    eventRelayBlocked:true,source:'ACTUAL_LIVE_BRIDGE',
+    liveCoreStarted:false,nativeFullStackAccepted:false
+  }));
+});
+
 test('T04: sandbox mode flag blocks real Core before DB and autonomous startup',{
   skip:!(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&
     process.env.RUNNER_ENVIRONMENT==='github-hosted'&&
