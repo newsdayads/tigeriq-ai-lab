@@ -1372,7 +1372,15 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
       runtimeRevision: PAPERCLIP_LAB_RUNTIME_REVISION,
       root: PAPERCLIP_LAB_ROOT,
       port: PAPERCLIP_LAB_PORT,
-      loopbackOnly: true,
+      // For the read-only R01 receipt, a static Compose setting is never
+      // evidence that Docker's live host-port binding is restricted.
+      loopbackOnly: action === 'paperclip_lab_preflight'
+        ? data?.container?.port3210LoopbackBinding === true
+        : true,
+      loopbackOnlyConfigured: true,
+      observedLoopbackBinding: action === 'paperclip_lab_preflight'
+        ? (data?.container?.port3210LoopbackBinding ?? null)
+        : null,
       arbitraryShell: false,
       arbitraryPath: false,
       arbitraryPort: false,
