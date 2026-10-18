@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,symlinkSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,symlinkSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {writeFile,stat} from 'node:fs/promises';
 import {safeEvidenceDir,driveWorkCard} from '../scripts/verify-core-ui-sandbox.mjs';
 
 const work={number:2054,title:'Fixture only',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2054'};
@@ -101,4 +102,69 @@ test('T04: unsolicited WebSocket is denied without connecting outside the sandbo
    {code:'UI_NETWORK_OUT_OF_SCOPE'});
  assert.equal(closedSockets,1,'WebSocket must close without a server connection');
  assert.equal(b.observed().closed,true);
+});
+
+test('T06: evidence output requires a real trace capability before browser navigation',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-gate-'));
+ const b=browserFixture();
+ try{
+  await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory,outputDir:dir}),
+    {code:'UI_TRACE_UNAVAILABLE'});
+  assert.equal(b.observed().visited,false,'no navigation before trace capability verification');
+  assert.equal(b.observed().closed,true);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
+test('T06: successful evidence records must include nonempty screenshot and trace files',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-positive-'));
+ const b=browserFixture(),steps=[];
+ const factory=async()=>{
+  const browser=await b.factory(),originalContext=browser.newContext;
+  browser.newContext=async()=>{
+   const context=await originalContext(),originalPage=context.newPage;
+   context.tracing={
+    start:async()=>{steps.push('trace-start');},
+    stop:async({path})=>{steps.push('trace-stop');await writeFile(path,Buffer.from('playwright trace evidence'));}
+   };
+   context.newPage=async()=>{
+    const page=await originalPage();
+    page.screenshot=async({path})=>{steps.push('screenshot');await writeFile(path,Buffer.from('PNG evidence'));};
+    return page;
+   };
+   return context;
+  };
+  return browser;
+ };
+ try{
+  const r=await driveWorkCard({diagnostic,browserFactory:factory,outputDir:dir});
+  assert.deepEqual(steps,['trace-start','screenshot','trace-stop']);
+  assert.equal(r.trace,join(dir,'core-ui-work-card-trace.zip'));
+  assert.equal(r.screenshot,join(dir,'core-ui-work-card.png'));
+  assert.equal((await stat(r.trace)).size>0,true);
+  assert.equal((await stat(r.screenshot)).size>0,true);
+  assert.equal(b.observed().closed,true);
+ }finally{rmSync(dir,{recursive:true,force:true})}
+});
+test('T06: missing trace bytes cannot produce a successful verification packet',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'pstack-t06-trace-empty-'));
+ const b=browserFixture();
+ const factory=async()=>{
+  const browser=await b.factory(),originalContext=browser.newContext;
+  browser.newContext=async()=>{
+   const context=await originalContext(),originalPage=context.newPage;
+   context.tracing={start:async()=>{},stop:async()=>{}};
+   context.newPage=async()=>{
+    const page=await originalPage();
+    page.screenshot=async({path})=>writeFile(path,Buffer.from('PNG evidence'));
+    return page;
+   };
+   return context;
+  };
+  return browser;
+ };
+ try{
+  await assert.rejects(driveWorkCard({diagnostic,browserFactory:factory,outputDir:dir}),
+    {code:'UI_TRACE_NOT_RECORDED'});
+  assert.equal(existsSync(join(dir,'core-ui-work-card-trace.zip')),false);
+  assert.equal(b.observed().closed,true);
+ }finally{rmSync(dir,{recursive:true,force:true})}
 });
