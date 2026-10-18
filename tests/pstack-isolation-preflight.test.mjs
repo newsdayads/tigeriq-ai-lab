@@ -51,6 +51,7 @@ test('T04: real ephemeral native Linux process pair has private network namespac
 },async()=>{
   // Only two disposable /bin/sleep processes. No Core, DB, bridge,
   // browser, credentials, network requests or host service modifications.
+  // Drop privileges to runner after unshare; avoid /proc readback denial on root PIDs.
   // The shell cleans up ONLY the two PIDs it spawned on all exit paths.
   const shell=String.raw`
     set -eu
@@ -69,7 +70,7 @@ test('T04: real ephemeral native Linux process pair has private network namespac
     IFS= read -r -t 10 answer || :
     [ "$answer" = TEARDOWN ]
   `;
-  const subprocess=spawn('sudo',['-n','unshare','--net','--','bash','-c',shell],{
+  const subprocess=spawn('sudo',['-n','unshare','--net','--','runuser','-u','runner','--','bash','-c',shell],{
     stdio:['pipe','pipe','pipe'],shell:false
   });
   let textOut='',textErr='',closed=false,exitCode=null;
