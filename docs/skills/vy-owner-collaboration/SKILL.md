@@ -26,6 +26,23 @@ Apply when Vy interacts directly with Owner on goals, decisions, follow-ups, tro
 6. **Checkpoint continuity.** Update the existing canonical Issue/PR with RESULT | CURRENT_STATE | DECISION | EVIDENCE | NEXT | BLOCKER | OWNER_AUTH_SCOPE when the tool and scope permit. Do not claim GitHub, ChatGPT memory, or other worker sessions were updated without a real write and readback.
 7. **Report concisely.** In Vietnamese, respond in order KẾT QUẢ → VƯỚNG THẬT → BƯỚC TIẾP THEO, with verified status only; no repeated questions or invented percentages.
 
+## Owner goal-to-evidence execution protocol — 2026-10-18
+
+This behavior guide remains **CANDIDATE**. It may inform Vy's reasoning while only Registry-**ACTIVE** skills are eligible for automatic runtime loading. No host-wide ChatGPT installation is implied.
+
+1. **Source first:** load canonical GitHub main, applicable bootstrap, Issue #504 and existing Work Order. Verify exact live state; preserve prior Owner grants, scope freezes and terminal decisions. Do not create a duplicate queue/issue.
+2. **Select rather than preload:** map the specific job to relevant Registry-ACTIVE skills and their trigger/scope. Research: `source-grounded-knowledge-retrieval`, `external-research-capability-routing` when appropriate. Engineering: `spec-first-tdd`, `automated-code-review-gate`. Work coordination: `role-separated-execution`, `capability-aware-model-routing`, `learn-from-failure`, `minimal-change-output`; apply only as relevant, not all at once. Verify each selected ID/state against `docs/skills/registry.yaml`.
+3. **Plan for one deliverable:** restate goal as a tangible output; inspect dependencies, capability, resource ownership and existing evidence; choose the smallest runnable step, concrete acceptance/evidence, and failure/unblock conditions. `core-manager-planner`, `core-replanner`, `core-resource-scheduler`, `core-acceptance-verifier` are unregistered CANDIDATE reference contracts, never claim they were injected into runtime.
+4. **Compile task instructions when dispatching:** if an authorized execution lane exists, call the existing `apps/tigeriq-core/task-prompt-compiler.mjs` rather than sending an ambiguous free-text worker instruction. Require source revision, goal, selected ACTIVE skill_ids, allowed/forbidden actions, ordered steps, acceptance, evidence, retry/stop policy and deterministic result contract. Do not claim compiler execution without receipt. Owner-requested copy prompts must obey the single-frame `LÀM — NO YAPPING.` contract; that is distinct from internal execution packets.
+5. **Execute, repair, accept:** use only actual tools/leases/grants. Read-only work may proceed without a future mutation lease. After a failure, compare failure signature, change strategy, run bounded retest. Validate the artifact/runtime and exact source HEAD; a PR, green CI, HTTP 200, or a worker's claim alone is not final product acceptance. Do not mark an unchecked step completed without GitHub checklist/evidence readback.
+6. **Report and learn:** update the same Work Order with RESULT | CURRENT_STATE | EVIDENCE | BLOCKER | NEXT when authorized, using exact URLs/SHAs. Report only verified deliverables. For before/after improvement, record a comparable baseline and at least 20 real tasks; evaluate acceptance rate, median rework loops and time to verified delivery. A 30% improvement may be a target, never a fabricated result.
+7. **Cross-chat boundary:** GitHub may hold canonical instructions for new sessions to read, but modifying the repo does not force native ChatGPT/Gemini conversations or Project Instructions to refresh. A fresh source load plus real host testing is required before claiming persistent activation.
+
+### Acceptance for this source upgrade
+- The Loader references Registry-ACTIVE selection and the existing compiler, preserving CANDIDATE gates.
+- The source change has regression checks at exact PR head, passes required GitHub gates and is merged with verified main readback.
+- Real Owner chat, Core job dispatch and PC01 runtime acceptance remain separate, explicitly unverified until a live receipt exists. Never promote this skill to ACTIVE solely because documentation and CI pass.
+
 ## Tools / Output
 Use the existing GitHub connector, authorized app/tool integrations, and existing Skill Registry. Output a completed outcome with acceptance/evidence links, or a precise verified blocker and next executable action.
 
