@@ -117,7 +117,7 @@ describe('P1 #4573 safe modern-main port: independent Core assignment evidence',
   it('preserves modern owner UI checklist and audit and only appends distinct Core evidence', () => {
     const ui=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
     expect(ui).toContain('TigerIQWorkCenter.renderAudit(');
-    expect(ui).toContain('row.progressChecklistVerified');
+    expect(ui).toContain('progressChecklistVerified===true');
     expect(ui).toContain('woCoreAssignment(row)');
     expect(ui).toContain('CHƯA XÁC MINH HEARTBEAT');
   });
