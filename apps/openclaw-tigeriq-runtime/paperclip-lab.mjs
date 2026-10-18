@@ -754,6 +754,44 @@ async function httpHealth(signal = null) {
   }
 }
 
+// R01 reports the bounded existing container state; this is not the R02
+// image-digest or health acceptance gate. Broker fallback would create request
+// files, so direct Docker/WSL are the only admissible preflight transports.
+export async function paperclipReadOnlyContainerStatus(dockerKind, {
+  signal = null,
+  runReadOnlyCommand = runFixed,
+} = {}) {
+  const base = { attempted: false, present: null, running: null, imageRef: null, imageDigestVerified: false };
+  if (dockerKind !== DOCKER_TRANSPORT_WINDOWS && dockerKind !== DOCKER_TRANSPORT_WSL) {
+    return { ...base, reason: 'DIRECT_DOCKER_TRANSPORT_UNAVAILABLE' };
+  }
+  const inspectArgs = ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'];
+  const exe = dockerKind === DOCKER_TRANSPORT_WINDOWS ? 'docker.exe' : 'wsl.exe';
+  const args = dockerKind === DOCKER_TRANSPORT_WINDOWS
+    ? inspectArgs
+    : paperclipLabWslDockerArgs(inspectArgs);
+  const options = { cwd: PAPERCLIP_LAB_ROOT, timeoutMs: 15000, signal, readOnly: true };
+  try {
+    const result = await runReadOnlyCommand(exe, args, options);
+    if (result?.exitCode !== 0 || result?.timedOut === true) {
+      return { ...base, attempted: true, reason: 'CONTAINER_INSPECT_FAILED' };
+    }
+    const parsed = JSON.parse(String(result?.stdout || '').trim());
+    if (!parsed || typeof parsed !== 'object'
+      || typeof parsed?.State?.Running !== 'boolean') {
+      return { ...base, attempted: true, reason: 'CONTAINER_INSPECT_INVALID' };
+    }
+    return {
+      ...base, attempted: true, present: true,
+      running: parsed.State.Running,
+      imageRef: typeof parsed?.Config?.Image === 'string' ? parsed.Config.Image : null,
+      reason: null,
+    };
+  } catch {
+    return { ...base, attempted: true, reason: 'CONTAINER_INSPECT_UNAVAILABLE' };
+  }
+}
+
 // R01 accepts replaceable read-only probes so the actual diagnostic contract
 // can be exercised without PC01, WSL, Docker, network or filesystem mutation.
 export async function paperclipReadOnlyPreflight({
@@ -763,6 +801,7 @@ export async function paperclipReadOnlyPreflight({
   inspectPort = () => probePort(),
   inspectDisk = () => fs.statfs(PAPERCLIP_LAB_ROOT),
   inspectBroker = () => brokerStatus(),
+  inspectContainer = (docker) => paperclipReadOnlyContainerStatus(docker.kind, { signal }),
 } = {}) {
   throwIfAborted(signal);
   let rootPresent = false;
@@ -782,8 +821,13 @@ export async function paperclipReadOnlyPreflight({
     } catch {}
   }
   const broker = docker.broker || await inspectBroker();
+  const container = rootPresent && docker.kind
+    ? await inspectContainer(docker)
+    : { attempted: false, present: null, running: null, imageRef: null,
+        imageDigestVerified: false, reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
+    container,
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,
     rootPresent,
