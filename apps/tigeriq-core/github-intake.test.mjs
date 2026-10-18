@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,isEquivalentPreMigrationProgressRevision,normalizeWorkOrderChecklistReceiptProgress,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,githubCurrentStepId,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,isEquivalentPreMigrationProgressRevision,normalizeWorkOrderChecklistReceiptProgress,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,githubCurrentStepId,scopedReadOnlyStepIssue,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -63,6 +63,76 @@ describe('GitHub Core intake guardrails',()=>{
     expect(source).not.toContain('return {created:1,skipped,externalClaims,active:activeMetadata.length,considered:specs.length');
   });
 
+
+
+  it('admits only a separately authorized independent GitHub read-only milestone, not the blocked parent',()=>{
+    const header=[
+      'WORK_ORDER_LIFECYCLE=V2','PROJECT_ID=phase-guard','WORKSTREAM_ID=source-check',
+      'PRIORITY=P1','OWNER_DIRECT=true','OWNER_POLICY=VY_COORDINATED',
+      'OWNER_HOLD=false','OWNER_CONTROLLED=false','TIGERIQ_EXECUTABLE=false',
+      'AUTO_QUEUE=EXCLUDED_SANDBOX_AND_SECURITY_GATES',
+      'RESOURCE_SCOPE=PHASE_GUARD_SAME_SCOPE','MUTATION_OWNER=NONE',
+      'CURRENT_STATE=EXTERNAL_WAIT_T02_SANDBOX','CURRENT_STEP=T02 — sandbox',
+      'BLOCKER=SANDBOX_ISOLATION_MISSING','STEP_AUTHORITY=OWNER_READ_ONLY',
+      'STEP_AUTO_DISPATCH=true','STEP_STATUS=READY',
+      'STEP_ROLE=SOURCE_ANALYSIS','STEP_WORKER=NV08',
+      'STEP_ACTION=GITHUB_SOURCE_READ_ONLY',
+      'STEP_INDEPENDENT_OF_BLOCKER=true','STEP_ID=T03',
+      'STEP_TASK=Inspect existing source documentation and report provenance gaps without any mutation',
+      'NO_PC01_SHELL=true','NO_BROWSER_AUTH=true','NO_CODE_CHANGE=true',
+      'NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','NO_PRODUCTION_RELEASE=true'
+    ];
+    const checklist=[
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] T01 — initial evidence [proof](https://github.com/newsdayads/tigeriq-ai-lab/issues/1)',
+      '- [ ] T02 — native sandbox cannot run',
+      '- [ ] T03 — independent static GitHub source audit',
+      '## ACCEPTANCE','All accepted steps require real evidence.',
+      '## STOP_CONDITIONS','No mutation or private runtime.'
+    ].join('\n');
+    const issue={number:5012,title:'[P1] source-only candidate',state:'open',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5012',
+      body:'## ACTIVE WORK ORDER\n'+header.join('\n')+'\n\n'+checklist};
+    // The parent remains non-executable. The derived single-stage packet is
+    // read-only, same scope and source SHA; it never completes the parent.
+    expect(safeAutoWorkAdmission(issue).eligible).toBe(false);
+    const stage=scopedReadOnlyStepIssue(issue);
+    expect(stage).not.toBeNull();
+    expect(safeAutoWorkAdmission(stage).eligible).toBe(true);
+    expect(stage.body).toContain('NO_RDC=true');
+    expect(stage.body).toContain('KEEP_OPEN_ON_STEP_COMPLETE=true');
+    const parsed=parseExecutableIssue(issue);
+    expect(parsed).toMatchObject({number:5012,dispatchLane:'CORE_REASONING',
+      resourceScope:'PHASE_GUARD_SAME_SCOPE',completedStepId:'T03',
+      keepOpenOnStepComplete:true,requestedWorker:'NV08'});
+    expect(parsed.sourceRevision).toBe(githubIssueSourceRevision(issue));
+    expect(activeGithubObjectiveSourceExclusion(issue)).toBe('');
+    const edit=(a,b)=>({...issue,body:issue.body.replace(a,b)});
+    for(const unsafe of [
+      edit('STEP_AUTO_DISPATCH=true','STEP_AUTO_DISPATCH=false'),
+      edit('STEP_AUTHORITY=OWNER_READ_ONLY','STEP_AUTHORITY=NONE'),
+      edit('STEP_STATUS=READY','STEP_STATUS=WAIT'),
+      edit('STEP_WORKER=NV08','STEP_WORKER=NV02'),
+      edit('STEP_ACTION=GITHUB_SOURCE_READ_ONLY','STEP_ACTION=PC01_SHELL'),
+      edit('STEP_ID=T03','STEP_ID=T02_NO_MATCH'),
+      edit('STEP_INDEPENDENT_OF_BLOCKER=true','STEP_INDEPENDENT_OF_BLOCKER=false'),
+      edit('OWNER_HOLD=false','OWNER_HOLD=true'),
+      edit('NO_PAID_COST=true','NO_PAID_COST=false'),
+      edit('NO_PC01_SHELL=true','NO_PC01_SHELL=false'),
+      edit('PRIORITY=P1','PRIORITY=P0'),
+      edit('MUTATION_OWNER=NONE','MUTATION_OWNER=NV09'),
+      {...issue,labels:[{name:'tigeriq:terminal-blocked'}]},
+      edit('- [ ] T03','- [x] T03'),
+      edit('STEP_AUTO_DISPATCH=true','STEP_AUTO_DISPATCH=false')]){
+      expect(scopedReadOnlyStepIssue(unsafe)).toBeNull();
+      expect(parseExecutableIssue(unsafe)).toBeNull();
+    }
+    // Archived permissions can never activate a current denied stage.
+    const historical=edit('STEP_AUTO_DISPATCH=true','STEP_AUTO_DISPATCH=false');
+    historical.body+='\n\n## HISTORICAL\nSTEP_AUTO_DISPATCH=true\n';
+    expect(scopedReadOnlyStepIssue(historical)).toBeNull();
+  });
 
   const base={number:588,title:'safe test',state:'open',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/588',body:'TIGERIQ_EXECUTABLE=true\nPRIORITY=P2\nCAPABILITY=reasoning\nOWNER_POLICY=AUTO\nNO_CODE_CHANGE=true\nNO_PC01_SHELL=true\nRead #280 and #335 plus `docs/CURRENT_STATE.md`.'};
   it('live product delivery cannot finish on source CI or self-declared DONE without real acceptance receipt',()=>{
