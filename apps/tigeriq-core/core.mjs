@@ -68,6 +68,12 @@ import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approv
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
 
+// T04: no operator-authenticated full-stack mode exists yet. A sandbox flag
+// must never fall through to normal Core init/recovery/manager/claim loops.
+// This is intentionally a NO-GO gate, not a substitute for a native receipt.
+if(Object.prototype.hasOwnProperty.call(process.env,'TIGERIQ_PSTACK_SANDBOX_MODE')){
+  throw new Error('PSTACK_T04_SANDBOX_AUTOWORK_GATE_NOT_ACCEPTED');
+}
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 if (!DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
 const HOST = process.env.TIGERIQ_CORE_HOST?.trim() || '127.0.0.1';
