@@ -276,6 +276,27 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(state.socketConnects).toBe(0);
   });
 
+  it('R02 health never creates a missing config directory when the Lab root exists', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.brokerReady = false;
+    state.directDockerReady = false;
+    state.inspectBindings = null;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
+    expect(result.data).toMatchObject({ ok: false, reason: 'PIN_NOT_READY' });
+    expect(result.evidence).toMatchObject({ loopbackOnly: false, observedLoopbackBinding: null });
+    expect(state.lstatPaths).toContain(ROOT);
+    expect(state.lstatPaths).toContain(ROOT + String.raw`\config`);
+    expect(state.spawned).toEqual([]);
+    expect(state.writeAttempts).toEqual([]);
+    expect(state.socketConnects).toBe(0);
+  });
+
   it('rejects a typed R01 request with extra fields before any IO', async () => {
     state.rootExists = true;
     state.rootSymlink = false;
