@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 // @ts-ignore Standalone ESM module with no ambient JS declarations.
 import { inspectApkPublicApi, runP02 } from '../../projects/dexcam-personal/p02-apk-api-audit.mjs';
 // @ts-ignore Synthetic test-only JavaScript fixture, no external APK content.
-import { makeDex, makeZip, makeDuplicateDexCentralEntry } from './p02-apk-api-fixture.mjs';
+import { makeDex, makeZip, makeDuplicateDexCentralEntry, makeDescriptorZip } from './p02-apk-api-fixture.mjs';
 
 it('checks exact whitelisted Android method refs from a synthetic APK', () => {
   const r = inspectApkPublicApi(makeZip());
@@ -69,4 +69,15 @@ it('permits a ZIP data descriptor with empty local CRC and sizes', () => {
 
 it('rejects a duplicated root DEX central record instead of counting one method table twice', () => {
   expect(() => inspectApkPublicApi(makeDuplicateDexCentralEntry())).toThrow('DUPLICATE_DEX_ZIP_MEMBER');
+});
+
+it('fails closed when a ZIP bit-3 descriptor is missing', () => {
+  expect(() => inspectApkPublicApi(makeDescriptorZip({ omitted: true }))).toThrow('DEX_ZIP_DESCRIPTOR_MISMATCH');
+});
+it('fails closed on contradictory signed CRC or unsigned size in a ZIP data descriptor', () => {
+  expect(() => inspectApkPublicApi(makeDescriptorZip({ corruptCrc: true }))).toThrow('DEX_ZIP_DESCRIPTOR_MISMATCH');
+  expect(() => inspectApkPublicApi(makeDescriptorZip({ corruptSize: true, signed: false }))).toThrow('DEX_ZIP_DESCRIPTOR_MISMATCH');
+});
+it('accepts valid unsigned ZIP data descriptors', () => {
+  expect(inspectApkPublicApi(makeDescriptorZip({ signed: false })).method_ids_by_category.usb).toBe(1);
 });
