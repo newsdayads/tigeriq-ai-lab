@@ -1,11 +1,33 @@
 import http from 'node:http';
 
+// T04 pilot, explicitly opt-in only. Reject misconfigured sandbox bridge
+// before opening a listener or using any remote endpoint. Does not authorize
+// full-stack product acceptance or modify the normal PC01 deployment path.
+const PSTACK_BRIDGE_INTENT=Object.prototype.hasOwnProperty.call(process.env,'TIGERIQ_PSTACK_BRIDGE_MODE');
+const PSTACK_BRIDGE_READ_ONLY=process.env.TIGERIQ_PSTACK_BRIDGE_MODE==='read-only';
+function isLocalSandboxEndpoint(value) {
+  try{
+    const u=new URL(value);
+    return u.protocol==='http:'&&u.hostname==='127.0.0.1'&&
+      !u.username&&!u.password&&!u.hash&&u.search==='';
+  }catch{return false}
+}
 const PORT=Number(process.env.TIGERIQ_LIVE_BRIDGE_PORT||8801);
 const CORE=process.env.TIGERIQ_CORE_STATUS_URL||'http://100.97.23.87:8795/api/status';
 const CORE_EVENT=process.env.TIGERIQ_CORE_EVENT_URL||'http://100.97.23.87:8795/api/github-event';
 // PC01 deploy copies ONLY this standalone server.mjs into Runtime/LiveStatusBridge.
 // Coding Lane listens on 127.0.0.1:8797; preserve explicit endpoint override.
 const CODING=String(process.env.TIGERIQ_CODING_STATUS_URL||'').trim()||'http://127.0.0.1:8797/api/status';
+if(PSTACK_BRIDGE_INTENT){
+  if(!PSTACK_BRIDGE_READ_ONLY||PORT!==8801||
+     !process.env.TIGERIQ_CORE_STATUS_URL||
+     !process.env.TIGERIQ_CODING_STATUS_URL||
+     !isLocalSandboxEndpoint(CORE)||
+     !isLocalSandboxEndpoint(CODING)){
+    throw new Error('PSTACK_BRIDGE_SANDBOX_ISOLATION_NO_GO');
+  }
+}
+
 const UI_HEALTH='http://127.0.0.1:8794/health';
 const UI_CONTROLLER='http://127.0.0.1:8798/api/state';
 const UI_HEARTBEAT_STALE_MS=15000;
@@ -118,7 +140,7 @@ async function snapshot(){
   for(const id of ['NV02','NV03','NV04'])workers.push(uiWorker(id,uiController,uiOk));
   const rank={working:0,waiting:1,blocked:2,unknown:3,idle:4,paused:5};workers.sort((a,b)=>(rank[a.state]??9)-(rank[b.state]??9)||a.employeeId.localeCompare(b.employeeId));
   const summary={working:workers.filter(w=>w.state==='working').length,waiting:workers.filter(w=>w.state==='waiting').length,blocked:workers.filter(w=>w.state==='blocked').length,idle:workers.filter(w=>w.state==='idle').length,unknown:workers.filter(w=>w.state==='unknown').length,total:workers.length};
-  return {ok:true,generatedAt,refreshSeconds:5,authority:'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core)};
+  return {ok:PSTACK_BRIDGE_READ_ONLY?false:true,generatedAt,refreshSeconds:5,authority:PSTACK_BRIDGE_READ_ONLY?'PSTACK_SANDBOX_NONAUTHORITATIVE':'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core)};
 }
 async function readRaw(req,max=512*1024){
   const chunks=[];let size=0;
@@ -140,9 +162,15 @@ async function relayGithubEvent(req,res){
 }
 const server=http.createServer(async(req,res)=>{
   res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.setHeader('access-control-allow-origin','*');
+  // The read-only pilot never forwards /github-event, even when a caller
+  // supplies a valid-looking token or a same-origin relay target.
+  if(PSTACK_BRIDGE_READ_ONLY&&req.method!=='GET'){
+    res.writeHead(405,{'content-type':'application/json'});
+    return res.end(JSON.stringify({ok:false,error:'PSTACK_BRIDGE_MUTATION_BLOCKED'}));
+  }
   if(req.method==='POST'&&req.url==='/github-event')return relayGithubEvent(req,res);
   if(req.method!=='GET'){res.writeHead(405);return res.end()}
-  if(req.url==='/health'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({ok:true,service:'tigeriq-live-status-bridge',eventRelay:true,time:new Date().toISOString()}))}
+  if(req.url==='/health'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({ok:true,service:'tigeriq-live-status-bridge',eventRelay:!PSTACK_BRIDGE_READ_ONLY,sandboxReadOnly:PSTACK_BRIDGE_READ_ONLY,time:new Date().toISOString()}))}
   if(req.url!=='/status'){res.writeHead(404);return res.end()}
   try{res.setHeader('content-type','application/json; charset=utf-8');res.end(JSON.stringify(await snapshot()))}
   catch(e){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,reason:String(e?.message||e),generatedAt:new Date().toISOString()}))}
