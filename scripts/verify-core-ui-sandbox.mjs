@@ -103,9 +103,14 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     browser=await browserFactory();
     const context=await browser.newContext({serviceWorkers:'block'});
     if(typeof context.route!=='function')throw new VerificationBlocked('UI_NETWORK_GUARD_UNAVAILABLE');
+    if(typeof context.routeWebSocket!=='function')throw new VerificationBlocked('UI_WEBSOCKET_GUARD_UNAVAILABLE');
     let outsideRequest=false;
-    // Interception denies document and subresource traffic outside the sandbox.
-    // It is not a mock, nor proof of OS-level network isolation.
+    // Neither HTTP nor WebSocket interception establishes OS-level network isolation.
+    // Deny ALL WebSocket attempts (including loopback) before creating the page.
+    await context.routeWebSocket('**/*',async route=>{
+      outsideRequest=true;
+      await route.close();
+    });
     await context.route('**/*',async route=>{
       const requested=route.request().url();
       let allowed=false;
