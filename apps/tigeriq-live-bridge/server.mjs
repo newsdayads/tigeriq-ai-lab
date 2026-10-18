@@ -81,6 +81,30 @@ function uiWorker(id,controller,serviceOk){
     prNumber:null,provider:null,model:hb?.modelName||null,cooldownUntil:null,lastError:w?.lastError||hb?.securityBlock||null,source:'PC01 Chrome Controller'
   };
 }
+// Extract only Core-authored UI job identifiers and statuses; never classify these as worker activity.
+function extractCoreUiAssignments(core) {
+  const out = [];
+  const seen = new Set();
+  const candidates = (Array.isArray(core?.jobs) ? core.jobs : []).slice().sort((a, b) =>
+    (Date.parse(b?.updated_at || b?.started_at || b?.created_at || '') || 0)
+    - (Date.parse(a?.updated_at || a?.started_at || a?.created_at || '') || 0));
+  for (const job of candidates) {
+    const match = /^GH-(\d+)-R[A-Za-z0-9]+$/.exec(String(job?.id || ''));
+    if (!match || !['NV03', 'NV04'].includes(String(job?.employee_id || ''))
+        || !['ui_assigned', 'ui_running', 'done', 'failed'].includes(String(job?.status || ''))) continue;
+    const issueNumber = Number(match[1]);
+    if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0 || seen.has(issueNumber)) continue;
+    seen.add(issueNumber);
+    out.push({
+      issueNumber, jobId: String(job.id), employeeId: job.employee_id, status: job.status,
+      startedAt: typeof job.started_at === 'string' ? job.started_at.slice(0, 64) : null,
+      completedAt: typeof job.completed_at === 'string' ? job.completed_at.slice(0, 64) : null,
+    });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
 async function snapshot(){
   const generatedAt=new Date().toISOString();let core=null,coding=null,coreError=null,codingError=null;
   try{core=await getJson(CORE)}catch(e){coreError=String(e?.message||e)}
@@ -94,7 +118,7 @@ async function snapshot(){
   for(const id of ['NV02','NV03','NV04'])workers.push(uiWorker(id,uiController,uiOk));
   const rank={working:0,waiting:1,blocked:2,unknown:3,idle:4,paused:5};workers.sort((a,b)=>(rank[a.state]??9)-(rank[b.state]??9)||a.employeeId.localeCompare(b.employeeId));
   const summary={working:workers.filter(w=>w.state==='working').length,waiting:workers.filter(w=>w.state==='waiting').length,blocked:workers.filter(w=>w.state==='blocked').length,idle:workers.filter(w=>w.state==='idle').length,unknown:workers.filter(w=>w.state==='unknown').length,total:workers.length};
-  return {ok:true,generatedAt,refreshSeconds:5,authority:'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers};
+  return {ok:true,generatedAt,refreshSeconds:5,authority:'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core)};
 }
 async function readRaw(req,max=512*1024){
   const chunks=[];let size=0;
