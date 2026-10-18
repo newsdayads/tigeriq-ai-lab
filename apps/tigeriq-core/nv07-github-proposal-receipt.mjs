@@ -1,5 +1,6 @@
 import {readFile,lstat} from 'node:fs/promises';
 import {Buffer} from 'node:buffer';
+import {acquireSharedResourceLease,releaseSharedResourceLease} from './shared-resource-lease.mjs';
 const REPO='newsdayads/tigeriq-ai-lab';
 const FILE='docs/implementation/nv07-proposal.md';
 const ROOT=String.raw`C:\ProgramData\TigerIQNV07`;
@@ -186,4 +187,34 @@ export async function recordNv07GithubProposalReceipt(db,{jobId,pullRequestNumbe
   await db.query("create unique index if not exists tigeriq_nv07_github_proposal_once_idx on tigeriq_events(job_id) where type='NV07_GITHUB_PROPOSAL_APPLIED' and employee_id='NV07'");
   return await storeNv07GithubProposalWithLease(db,{receipt,evidence,leaseToken});
  }catch{return denied('NV07_GITHUB_RECEIPT_VERIFICATION_FAILED');}
+}
+
+export async function executeNv07S6ProposalReceipt(db){
+ if(!db?.query)return denied('NV07_S6_DB_UNAVAILABLE');
+ let lease=null;
+ try{
+  lease=await acquireSharedResourceLease(db,{
+   employeeId:'NV07',resourceId:S6_PIN.resourceId,
+   workId:S6_PIN.jobId,lane:'nv07_s6',role:'github_receipt',
+   ttlMs:120000,
+   metadata:{
+    workOrderId:4783,resourceScope:NV07_S6_GITHUB_SCOPE,
+    sourceSha:S6_PIN.sourceSha,action:'APPLY_GITHUB_PROPOSAL',
+    pullRequestNumber:String(S6_PIN.pullRequestNumber),
+   },
+  });
+  if(!lease||!lease.lease_token)return denied('NV07_S6_LEASE_CLAIM_FAILED');
+  return await recordNv07GithubProposalReceipt(db,{
+   jobId:S6_PIN.jobId,pullRequestNumber:S6_PIN.pullRequestNumber,
+   leaseToken:lease.lease_token,
+  });
+ }catch{
+  return denied('NV07_S6_EXECUTION_FAILED');
+ }finally{
+  if(lease?.lease_token){
+   await releaseSharedResourceLease(db,{
+    resourceId:S6_PIN.resourceId,leaseToken:lease.lease_token,
+   }).catch(()=>{});
+  }
+ }
 }
