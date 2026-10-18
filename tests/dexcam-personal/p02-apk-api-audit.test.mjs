@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectApkPublicApi, runP02 } from '../../projects/dexcam-personal/p02-apk-api-audit.mjs';
-import { makeDex, makeZip, makeDuplicateDexCentralEntry } from './p02-apk-api-fixture.mjs';
+import { makeDex, makeZip, makeDuplicateDexCentralEntry, makeDescriptorZip } from './p02-apk-api-fixture.mjs';
 
 test('offline stored DEX counts public references without leaking vendor identifiers', () => {
   const r = inspectApkPublicApi(makeZip());
@@ -70,4 +70,15 @@ test('supports ZIP data-descriptor bit with unset local sizes as permitted by AP
 
 test('rejects duplicated central-directory DEX entry rather than double-counting public APIs', () => {
   assert.throws(() => inspectApkPublicApi(makeDuplicateDexCentralEntry()), /DUPLICATE_DEX_ZIP_MEMBER/);
+});
+
+test('fails closed when ZIP bit-3 declares a missing data descriptor', () => {
+  assert.throws(() => inspectApkPublicApi(makeDescriptorZip({ omitted: true })), /DEX_ZIP_DESCRIPTOR_MISMATCH/);
+});
+test('fails closed when ZIP bit-3 descriptor disagrees with the verified DEX CRC or size', () => {
+  assert.throws(() => inspectApkPublicApi(makeDescriptorZip({ corruptCrc: true })), /DEX_ZIP_DESCRIPTOR_MISMATCH/);
+  assert.throws(() => inspectApkPublicApi(makeDescriptorZip({ corruptSize: true, signed: false })), /DEX_ZIP_DESCRIPTOR_MISMATCH/);
+});
+test('accepts a valid unsigned ZIP data descriptor', () => {
+  assert.equal(inspectApkPublicApi(makeDescriptorZip({ signed: false })).method_ids_by_category.usb, 1);
 });
