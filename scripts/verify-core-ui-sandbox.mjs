@@ -1,6 +1,6 @@
 /** pstack verification pilot. Read-only isolated API Health; never Core/Production acceptance. */
 import {pathToFileURL} from 'node:url';
-import {mkdir,writeFile,rm,lstat as lstatAsync} from 'node:fs/promises';
+import {mkdir,writeFile,rm,readdir,lstat as lstatAsync} from 'node:fs/promises';
 import {lstatSync,realpathSync} from 'node:fs';
 import {resolve,relative,dirname,sep,join} from 'node:path';
 
@@ -98,6 +98,14 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     throw new VerificationBlocked('DRIVE_INPUT_INVALID');
   // Recheck input before browser access. The doctor packet is not an authorization token.
   const origin=sandboxBaseUrl(diagnostic.origin+'/');
+  // Public callers must not bypass runSandboxVerification's evidence path guard.
+  if(outputDir){
+    safeEvidenceDir(outputDir);
+    let current;
+    try{current=await readdir(outputDir)}
+    catch{throw new VerificationBlocked('EVIDENCE_DIR_NOT_READY')}
+    if(current.length!==0)throw new VerificationBlocked('EVIDENCE_DIR_NOT_EMPTY');
+  }
   let browser;
   try{
     browser=await browserFactory();
@@ -147,6 +155,12 @@ export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
     if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
     let screenshot=null,trace=null;
     if(outputDir){
+      // Revalidate after UI navigation before writing; never overwrite old receipts.
+      safeEvidenceDir(outputDir);
+      let current;
+      try{current=await readdir(outputDir)}
+      catch{throw new VerificationBlocked('EVIDENCE_DIR_NOT_READY')}
+      if(current.length!==0)throw new VerificationBlocked('EVIDENCE_DIR_NOT_EMPTY');
       screenshot=resolve(outputDir,'core-ui-work-card.png');
       trace=resolve(outputDir,'core-ui-work-card-trace.zip');
       await page.screenshot({path:screenshot,animations:'disabled'});
