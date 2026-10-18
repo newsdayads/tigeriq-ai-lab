@@ -81,3 +81,10 @@ it('fails closed on contradictory signed CRC or unsigned size in a ZIP data desc
 it('accepts valid unsigned ZIP data descriptors', () => {
   expect(inspectApkPublicApi(makeDescriptorZip({ signed: false })).method_ids_by_category.usb).toBe(1);
 });
+
+it('rejects an out-of-range DEX method_id proto_idx instead of counting a public API reference', () => {
+  expect(() => inspectApkPublicApi(makeZip('classes.dex',makeDex({ invalidProtoIndex:true })))).toThrow('INVALID_DEX_INDEX');
+});
+it('rejects a proto_ids table pointing beyond the DEX binary boundary', () => {
+  expect(() => inspectApkPublicApi(makeZip('classes.dex',makeDex({ invalidProtoTable:true })))).toThrow('INVALID_BINARY_RANGE');
+});
