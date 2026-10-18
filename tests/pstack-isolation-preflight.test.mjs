@@ -32,12 +32,18 @@ test('T04: reject shared or stale resources even if a report claims sandbox',asy
   [{bridge:{...proof().bridge,networkNamespace:proof().host.networkNamespace}},'SANDBOX_BRIDGE_NOT_ISOLATED'],
   [{core:{...proof().core,networkNamespace:proof().host.networkNamespace}},'SANDBOX_CORE_NOT_ISOLATED'],
   [{browser:{profileId:'same',sharedProfileId:'same'}},'SANDBOX_BROWSER_PROFILE_SHARED'],
-  [{core:{...proof().core,port:8795}},'SANDBOX_CORE_PORT_UNSAFE'],
+  [{core:{...proof().core,port:8795}},'SANDBOX_ISOLATION_NOT_VERIFIED'],
   [{observedAt:new Date(now-300000).toISOString()},'SANDBOX_NATIVE_READBACK_STALE'],
   [{evidenceRef:'   '},'SANDBOX_ISOLATION_NOT_VERIFIED'],
  ];
  for(const [part,code] of invalid)
   await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>({...proof(),...part}),now}),{code});
+});
+test('T04: block a live Core port even when its reported port matches the destination',async()=>{
+ await assert.rejects(verifyRuntimeIsolation({
+   baseUrl:'http://127.0.0.1:8795/',
+   nativeIsolationInspector:async()=>({...proof(),core:{...proof().core,port:8795}}),now
+ }),{code:'SANDBOX_CORE_PORT_UNSAFE'});
 });
 test('T04: reject a bridge outside the isolated Core network namespace',async()=>{
  await assert.rejects(verifyRuntimeIsolation({baseUrl,nativeIsolationInspector:async()=>({...proof(),
