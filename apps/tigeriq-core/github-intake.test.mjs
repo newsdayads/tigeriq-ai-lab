@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,isEquivalentPreMigrationProgressRevision,normalizeWorkOrderChecklistReceiptProgress,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
+import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitContextIssues,extractIssueRefs,extractPcOperatorInstruction,extractRepoPaths,finalLiveReviewJobId,formatResultComment,githubDependencySpec,githubDispatchLane,githubIssueSourceRevision,isEquivalentPreMigrationProgressRevision,normalizeWorkOrderChecklistReceiptProgress,githubPcOperatorJobId,githubRateLimitCooldownMs,githubSpecBlockedByActive,githubTerminalDependencyGate,MAX_SAME_REVISION_FALLBACK_REARMS,sameRevisionFallbackRearmDecision,normalizeWorkOrderScopeFamily,normalizeWorkOrderIntentTitle,workOrderDedupIdentity,dedupeBacklogWorkOrders,hydrateContext,implementationReviewContext,indexOpenGithubIssues,isBoundedAppChromeRequestOnly,objectiveCompletionGate,parseExecutableIssue,safeAutoWorkAdmission,parseLiveAcceptanceEvidence,parsePcOperatorDirectAction,resolveGithubSourceIssue,syncExternalRoleClaimLabels,syncGithubOutcomes,githubKeepOpenOnStepComplete,githubCurrentStepId,activeGithubObjectiveSourceExclusion,trustedFinalLiveReviewEvidence,ensureFinalLiveReviewJob,selectUiFinalReviewer } from './github-intake.mjs';
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
@@ -506,6 +506,21 @@ describe('GitHub Core intake guardrails',()=>{
     const parsed=parseExecutableIssue({...base,body:base.body+'\nKEEP_OPEN_ON_STEP_COMPLETE=true'});
     expect(parsed).toMatchObject({keepOpenOnStepComplete:true});
     expect(parseExecutableIssue(base).keepOpenOnStepComplete).toBe(false);
+  });
+
+  it('binds only the canonical CURRENT R01 checklist stage to partial Core objectives',()=>{
+    const header=base.body+'\nKEEP_OPEN_ON_STEP_COMPLETE=true\nCURRENT_STEP=R01 — PC01 read-only preflight';
+    const checklist='\n## STRUCTURED_PROGRESS_CHECKLIST\n- [ ] R01 — preflight\n- [ ] R02 — health\n## ACCEPTANCE';
+    const ticket={...base,body:header+checklist};
+    expect(githubCurrentStepId(ticket.body)).toBe('R01');
+    expect(parseExecutableIssue(ticket)).toMatchObject({keepOpenOnStepComplete:true,completedStepId:'R01'});
+    expect(parseExecutableIssue({...ticket,body:ticket.body.replace('KEEP_OPEN_ON_STEP_COMPLETE=true','KEEP_OPEN_ON_STEP_COMPLETE=false')}))
+      .toMatchObject({completedStepId:''});
+    expect(githubCurrentStepId(header.replace('CURRENT_STEP=R01','CURRENT_STEP=R99')+checklist)).toBe('');
+    expect(githubCurrentStepId(header+checklist.replace('- [ ] R02','- [ ] R01'))).toBe('');
+    expect(githubCurrentStepId(base.body+checklist+'\n## HISTORICAL ONLY\nCURRENT_STEP=R01')).toBe('');
+    const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
+    expect(source).toContain('completedStepId:spec.completedStepId||null');
   });
 
   it('requires current-revision live evidence plus trusted DB-backed final review',()=>{
