@@ -57,6 +57,19 @@ test('T04: structured source gate is NOT product acceptance',async()=>{
  assert.equal(r.nativeReadbackEvidenceRef,'local-operator:isolated-instance/123');
 });
 
+test('T04: known live web and coding-lane service ports never qualify as sandbox URLs',async()=>{
+ let networkCalls=0;
+ for(const port of [8796,8797]){
+   const liveUrl='http://127.0.0.1:'+port+'/';
+   assert.throws(()=>sandboxBaseUrl(liveUrl),{code:'SHARED_RUNTIME_PORT_FORBIDDEN'});
+   await assert.rejects(doctorAndSelectWork({
+     baseUrl:liveUrl,issueNumber:5012,now,
+     fetchImpl:async()=>{networkCalls++;throw Error('LIVE_SERVICE_CONTACT_FORBIDDEN');}
+   }),{code:'SHARED_RUNTIME_PORT_FORBIDDEN'});
+ }
+ assert.equal(networkCalls,0);
+});
+
 test('T04: direct Doctor and base URL must deny known production and bridge ports without network I/O', async()=>{
   let networkCalls=0;
   for(const port of [3150,3210,8795,8801]){
