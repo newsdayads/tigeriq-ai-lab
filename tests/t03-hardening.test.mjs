@@ -30,7 +30,7 @@ function browserFixture({destination='http://127.0.0.1:4315/',requestUrls=[],web
  let closed=false,handler,visited=false,aborted=0;
  const row={count:async()=>1,isVisible:async()=>true,innerText:async()=> 'fixture row',click:async()=>{}};
  const page={
-  goto:async()=>{visited=true; for(const url of requestUrls){await handler({request:()=>({url:()=>url}),continue:async()=>{},abort:async()=>{aborted++;}});}},
+  goto:async()=>{visited=true; for(const request of requestUrls){const item=typeof request==='string'?{url:request,method:'GET'}:request;await handler({request:()=>({url:()=>item.url,method:()=>item.method}),continue:async()=>{},abort:async()=>{aborted++;}});}},
   url:()=>destination,
   locator:sel=>({'.work-row[data-work-number="2054"]':row,'#workDetailBackdrop':{count:async()=>1,getAttribute:async()=> 'open'},'#workDetailModal':{innerText:async()=> 'fixture detail'},'#workDetailGithub':{getAttribute:async()=>work.url}})[sel]
  };
@@ -49,6 +49,15 @@ test('T03: external document resource is denied and cannot produce a PASS',async
  const b=browserFixture({requestUrls:['https://outside.invalid/resource']});
  await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory}),{code:'UI_NETWORK_OUT_OF_SCOPE'});
  assert.equal(b.observed().aborted,1);assert.equal(b.observed().closed,true);
+});
+test('T04: same-origin mutating HTTP methods must be denied before read-only card acceptance',async()=>{
+ for(const method of ['POST','PUT','PATCH','DELETE']){
+  const b=browserFixture({requestUrls:[{url:'http://127.0.0.1:4315/api/work-orders',method}]});
+  await assert.rejects(driveWorkCard({diagnostic,browserFactory:b.factory}),
+    {code:'UI_NETWORK_OUT_OF_SCOPE'},method+' must never reach sandbox Core');
+  assert.equal(b.observed().aborted,1,method+' request must be explicitly aborted');
+  assert.equal(b.observed().closed,true);
+ }
 });
 test('T03: local-only browser requests may proceed without claiming product acceptance',async()=>{
  const b=browserFixture({requestUrls:['http://127.0.0.1:4315/work-ui.css']});
