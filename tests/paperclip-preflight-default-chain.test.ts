@@ -253,6 +253,29 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     }
   });
 
+  it('R02 native health evidence never claims live localhost when release pin is missing', async () => {
+    state.rootExists = false;
+    state.rootSymlink = false;
+    state.brokerReady = false;
+    state.directDockerReady = false;
+    state.inspectBindings = null;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
+    expect(result.data).toMatchObject({ ok: false, reason: 'PIN_NOT_READY' });
+    expect(result.evidence).toMatchObject({
+      loopbackOnly: false,
+      loopbackOnlyConfigured: true,
+      observedLoopbackBinding: null,
+    });
+    expect(state.spawned).toEqual([]);
+    expect(state.writeAttempts).toEqual([]);
+    expect(state.socketConnects).toBe(0);
+  });
+
   it('rejects a typed R01 request with extra fields before any IO', async () => {
     state.rootExists = true;
     state.rootSymlink = false;
