@@ -1,14 +1,76 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
+function parseSsePayload(text) {
+  const lines = text.split('\n');
+  const dataLine = lines.find((l) => l.startsWith('data: '));
+  if (!dataLine) throw new Error('No data line found in SSE response: ' + text);
+  const json = JSON.parse(dataLine.slice(6));
+  if (json.error) return { isRpcError: true, error: json.error };
+  const contentText = json.result?.content?.[0]?.text;
+  if (!contentText) return json.result;
+  try {
+    return JSON.parse(contentText);
+  } catch {
+    return { raw: contentText };
+  }
+}
+
 describe('TigerIQ PC Operator MCP Server', () => {
-  it('exposes exactly the 3 allowed Paperclip Lab tools', () => {
-    expect(PC_OPERATOR_MCP_TOOLS).toEqual([
-      'paperclip_lab_preflight',
-      'paperclip_lab_health',
-      'paperclip_lab_broker_install',
-    ]);
+  it('exposes exactly the 25 comprehensive tools', () => {
+    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(25);
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_preflight');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_health');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_broker_install');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('file_read');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('file_write');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('file_list');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('file_stat');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('file_search');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('shell_exec');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('process_list');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('task_list');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('task_action');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('service_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('docker_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('wsl_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('ui_window_list');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('ui_screenshot');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('ui_action');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('core_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('ollama_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('log_read');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('test_run');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('evidence_record');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('rdc_pool_status');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('work_order_status');
+  });
+
+  it('handles GET /mcp/health check endpoint', async () => {
+    const handler = createPcOperatorMcpHandler();
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp/health`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.ok).toBe(true);
+      expect(json.version).toBe('2.0.0');
+      expect(json.toolsCount).toBe(25);
+      expect(json.tools).toEqual(PC_OPERATOR_MCP_TOOLS);
+    } finally {
+      server.close();
+    }
   });
 
   it('handles MCP initialize and tools/list via Streamable HTTP POST', async () => {
@@ -60,6 +122,9 @@ describe('TigerIQ PC Operator MCP Server', () => {
       expect(listText).toContain('paperclip_lab_preflight');
       expect(listText).toContain('paperclip_lab_health');
       expect(listText).toContain('paperclip_lab_broker_install');
+      expect(listText).toContain('file_read');
+      expect(listText).toContain('shell_exec');
+      expect(listText).toContain('ui_screenshot');
 
       // 3. tools/call paperclip_lab_preflight
       const callPreflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
@@ -189,34 +254,50 @@ describe('TigerIQ PC Operator MCP Server', () => {
       gateway.close();
     }
   });
+
   it('requires existing gateway bearer and a real shared lease before writing broker', async () => {
     const secret = 'a'.repeat(32);
-    const execute = vi.fn().mockResolvedValue({ ok: true,
-      data: { installed: true, r07SourceVerified: true, dockerVersion: '27.0' } });
+    const execute = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { installed: true, r07SourceVerified: true, dockerVersion: '27.0' },
+    });
     const leaseDb = { query: vi.fn() };
     const leaseApi = {
       acquire: vi.fn(async (_db, spec) => ({
-        resource_id: spec.resourceId, work_id: spec.workId, lease_token: 'private-token',
+        resource_id: spec.resourceId,
+        work_id: spec.workId,
+        lease_token: 'private-token',
         lease_until: new Date(Date.now() + 120000).toISOString(),
       })),
       heartbeat: vi.fn().mockResolvedValue(true),
       release: vi.fn().mockResolvedValue(true),
     };
     const handler = createPcOperatorMcpHandler({
-      executePcActionImpl: execute, existingSecret: secret, leaseDb, leaseApi,
+      executePcActionImpl: execute,
+      existingSecret: secret,
+      leaseDb,
+      leaseApi,
     });
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       if (!(await handler(req, res, url))) res.writeHead(404).end();
     });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
-    const call = (authorization) => fetch('http://127.0.0.1:' + port + '/mcp', {
-      method: 'POST', headers: { 'content-type': 'application/json',
-        ...(authorization ? { authorization } : {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
-        params: { name: 'paperclip_lab_broker_install', arguments: {} } }),
-    }).then(r => r.text());
+    const call = (authorization) =>
+      fetch('http://127.0.0.1:' + port + '/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(authorization ? { authorization } : {}),
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 9,
+          method: 'tools/call',
+          params: { name: 'paperclip_lab_broker_install', arguments: {} },
+        }),
+      }).then((r) => r.text());
     try {
       const denied = await call(null);
       expect(denied).toContain('MCP_EXISTING_AUTH_REQUIRED');
@@ -253,4 +334,209 @@ describe('TigerIQ PC Operator MCP Server', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('executes file_write, file_read, and file_stat with safety boundaries', async () => {
+    const handler = createPcOperatorMcpHandler();
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    const testFile = 'D:\\TigerIQ\\State\\mcp-test-file.txt';
+
+    try {
+      // 1. file_write
+      const writeRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 10,
+          method: 'tools/call',
+          params: {
+            name: 'file_write',
+            arguments: {
+              path: testFile,
+              content: 'TigerIQ MCP Test Content 2026',
+            },
+          },
+        }),
+      });
+      expect(writeRes.status).toBe(200);
+      const writePayload = parseSsePayload(await writeRes.text());
+      expect(writePayload.ok).toBe(true);
+      expect(writePayload.receipt.size).toBeGreaterThan(0);
+
+      // 2. file_read
+      const readRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 11,
+          method: 'tools/call',
+          params: {
+            name: 'file_read',
+            arguments: {
+              path: testFile,
+            },
+          },
+        }),
+      });
+      expect(readRes.status).toBe(200);
+      const readPayload = parseSsePayload(await readRes.text());
+      expect(readPayload.ok).toBe(true);
+      expect(readPayload.receipt.content).toBe('TigerIQ MCP Test Content 2026');
+
+      // 3. file_stat
+      const statRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 12,
+          method: 'tools/call',
+          params: {
+            name: 'file_stat',
+            arguments: {
+              path: testFile,
+            },
+          },
+        }),
+      });
+      expect(statRes.status).toBe(200);
+      const statPayload = parseSsePayload(await statRes.text());
+      expect(statPayload.ok).toBe(true);
+      expect(statPayload.receipt.type).toBe('file');
+
+      // 4. sensitive path denied
+      const sensitiveRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 13,
+          method: 'tools/call',
+          params: {
+            name: 'file_read',
+            arguments: {
+              path: 'D:\\TigerIQ\\secrets\\test.txt',
+            },
+          },
+        }),
+      });
+      expect(sensitiveRes.status).toBe(200);
+      const sensitivePayload = parseSsePayload(await sensitiveRes.text());
+      expect(sensitivePayload.ok).toBe(false);
+      expect(sensitivePayload.error).toContain('TIGERIQ_PC_SENSITIVE_PATH_BLOCKED');
+    } finally {
+      server.close();
+      try { await fs.unlink(testFile); } catch {}
+    }
+  });
+
+  it('records structured evidence via evidence_record tool with sha256', async () => {
+    const handler = createPcOperatorMcpHandler();
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 20,
+          method: 'tools/call',
+          params: {
+            name: 'evidence_record',
+            arguments: {
+              category: 'unit-test-verification',
+              data: {
+                testPass: true,
+                target: 'pc01-operator-mcp',
+              },
+            },
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const payload = parseSsePayload(await res.text());
+      expect(payload.ok).toBe(true);
+      expect(payload.receipt.sha256).toBeDefined();
+      expect(payload.receipt.record.category).toBe('unit-test-verification');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('handles idempotencyKey to prevent duplicate execution', async () => {
+    let callCount = 0;
+    const mockExecute = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      return { count: callCount };
+    });
+
+    const handler = createPcOperatorMcpHandler({ executePcActionImpl: mockExecute });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const idempotencyKey = 'key-test-dedup-9999';
+
+      // Call 1
+      const res1 = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 30,
+          method: 'tools/call',
+          params: {
+            name: 'ollama_status',
+            arguments: { idempotencyKey },
+          },
+        }),
+      });
+      expect(res1.status).toBe(200);
+      const p1 = parseSsePayload(await res1.text());
+      expect(p1.ok).toBe(true);
+
+      // Call 2 with same idempotencyKey -> returns cached response
+      const res2 = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 31,
+          method: 'tools/call',
+          params: {
+            name: 'ollama_status',
+            arguments: { idempotencyKey },
+          },
+        }),
+      });
+      expect(res2.status).toBe(200);
+      const p2 = parseSsePayload(await res2.text());
+      expect(p2.ok).toBe(true);
+      expect(p2.jobId).toBe(p1.jobId);
+    } finally {
+      server.close();
+    }
+  });
 });
