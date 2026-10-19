@@ -61,7 +61,8 @@ it.skipIf(!enabled)('P01 fallback runs pinned real JADX on exact public APK in i
     await execFile('unzip', ['-q', archivePath, '-d', executableDir], { timeout: 30_000 });
     const binary = join(executableDir, 'bin', 'jadx');
     // The real upstream JADX CLI is executed, NOT REA or private APK tooling.
-    await execFile(binary, ['--threads-count', '1', '--output-dir', decodedDir, apkPath],
+    // Execute the verified upstream bash launcher as a script; ZIP mode bits may not survive unpack.
+    await execFile('bash', [binary, '--threads-count', '1', '--output-dir', decodedDir, apkPath],
       { timeout: 120_000, maxBuffer: 3 * 1024 * 1024 });
     const manifest = await readFile(join(decodedDir, 'resources', 'AndroidManifest.xml'), 'utf8');
     expect(manifest).toMatch(/<manifest\b/);
