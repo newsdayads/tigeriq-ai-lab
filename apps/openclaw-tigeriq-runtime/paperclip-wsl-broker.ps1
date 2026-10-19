@@ -20,6 +20,9 @@ $DeviceAuthProcess = $null
 $DeviceAuthStdout = $null
 $DeviceAuthStderr = $null
 $DeviceAuthSessionId = $null
+# Capture the running script identity once at process startup, not on each heartbeat.
+# A stale process must not claim the SHA of a newer script written to disk.
+$BrokerSourceSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 New-Item -ItemType Directory -Force -Path $Requests,$Responses,$Claims | Out-Null
 $created = $false
@@ -76,6 +79,7 @@ function Write-BrokerHeartbeat {
   Write-JsonAtomic $Heartbeat ([pscustomobject]@{
     schema='TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
     version=$BrokerVersion
+    sourceSha256=$BrokerSourceSha256
     at=(Get-Date).ToUniversalTime().ToString('o')
     sessionId=(Get-Process -Id $PID).SessionId
     user=[Environment]::UserName
