@@ -159,6 +159,45 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(row).toMatchObject({status:'DONE',completionVerified:true,progressPercent:100,progressSource:'terminal',progressTotal:2});
   expect(row.lifecycleTiming.finishVerified).toBe(true);
  });
+ it('GH-2054 fails closed when structured progress says 3 of 9 but 5 evidence checkboxes are ticked',()=>{
+  const url2054='https://github.com/newsdayads/tigeriq-ai-lab/issues/2054';
+  const checklist=Array.from({length:9},(_,i)=>{
+   const step='R'+String(i+1).padStart(2,'0');
+   return '- ['+([1,2,4,6,8].includes(i+1)?'x':' ')+'] '+step+' — thử nghiệm'+
+    ([1,2,4,6,8].includes(i+1)?' [Bằng chứng]('+url2054+'#issuecomment-'+(100+i)+')':'');
+  }).join('\n');
+  const body=validBody
+   .replace('DONE=true','DONE=false\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_VERIFIED=true\nPROGRESS_COMPLETED=3\nPROGRESS_TOTAL=9')
+   .replace(/- \[x\] M01[^\n]*\n- \[x\] M02[^\n]*/,checklist);
+  const card=issue(body,{number:2054,state:'open',state_reason:null,closed_at:null});
+  const proof=completionProof(card);
+  const history=buildWorkHistory(card,[]);
+  expect(proof).toMatchObject({
+   verified:false,checkedSteps:9,checkedEvidenceSteps:5,verifiedSteps:null,
+   consistent:false,declaredCompletedSteps:3,declaredTotalSteps:9,
+  });
+  expect(history).toMatchObject({
+   completionVerified:false,checkedSteps:9,checkedEvidenceSteps:5,
+   verifiedSteps:null,progressCounterConsistent:false,declaredCompletedSteps:3,declaredTotalSteps:9,
+  });
+  // Even closing the issue with a synthetic finish receipt cannot override the mismatch.
+  expect(completionProof(issue(body.replace('DONE=false','DONE=true'),{number:2054})).verified).toBe(false);
+ });
+ it('preserves valid checklist counts but rejects invalid or missing declared counters',()=>{
+  const good=validBody.replace('DONE=true',
+   'DONE=true\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_VERIFIED=true\nPROGRESS_COMPLETED=2\nPROGRESS_TOTAL=2');
+  expect(completionProof(issue(good))).toMatchObject({
+   verified:true,verifiedSteps:2,checkedEvidenceSteps:2,consistent:true,
+  });
+  for(const bad of [
+   good.replace('PROGRESS_COMPLETED=2','PROGRESS_COMPLETED=1'),
+   good.replace('PROGRESS_TOTAL=2','PROGRESS_TOTAL=3'),
+   good.replace('PROGRESS_COMPLETED=2','PROGRESS_COMPLETED=x'),
+   good.replace('PROGRESS_COMPLETED=2','PROGRESS_COMPLETED='),
+  ]){
+   expect(completionProof(issue(bad))).toMatchObject({verified:false,verifiedSteps:null,consistent:false});
+  }
+ });
  it('separates comment author from AI executor and never invents start time',()=>{
   const history=buildWorkHistory(issue(),[
    {body:'CURRENT_STATE=WORKING\nCURRENT_STEP=M01 — Viết mã',user:{login:'reviewer'},created_at:'2026-10-12T11:14:00Z',html_url:url+'#issuecomment-10'},

@@ -13,15 +13,36 @@ export function latestComments(pages){
 function val(body,key){const m=String(body||'').match(new RegExp('^'+key+'=([^\\r\\n]+)$','m'));return m?m[1].trim():''}
 function safeText(v,max=220){return String(v||'').replace(/[\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max)}
 function url(v){const t=String(v||'');return /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/(?:issues|pull|commit)\/[a-zA-Z0-9_.#/-]+(?:\?.*)?$/.test(t)?t:null}
+// GitHub checkbox links establish only structural evidence, not native step
+// acceptance. If a card claims structured-checklist progress, disagreeing
+// counters must remain explicitly unverified rather than inflate a report.
+export function structuredProgressConsistency(body,steps=[]){
+ if(val(body,'PROGRESS_SOURCE')!=='STRUCTURED_PROGRESS_CHECKLIST')
+  return {consistent:null,declaredCompletedSteps:null,declaredTotalSteps:null};
+ const number=(key)=>{const value=val(body,key);const parsed=Number(value);return /^(0|[1-9]\d*)$/.test(value)&&Number.isSafeInteger(parsed)?parsed:null;};
+ const declaredCompletedSteps=number('PROGRESS_COMPLETED');
+ const declaredTotalSteps=number('PROGRESS_TOTAL');
+ const checked=steps.filter(step=>step.checked).length;
+ const consistent=declaredCompletedSteps!==null&&declaredTotalSteps!==null
+   &&declaredTotalSteps===steps.length&&declaredCompletedSteps===checked;
+ return {consistent,declaredCompletedSteps,declaredTotalSteps};
+}
 export function completionProof(issue){
  const checked=validateWorkOrderLifecycleV2(issue);
  const body=String(issue?.body||'');
+ const progress=structuredProgressConsistency(body,checked.steps);
+ const checkedEvidenceSteps=checked.steps.filter(s=>s.checked&&Boolean(s.evidence)).length;
  const isClosed=issue?.state==='closed'&&issue?.state_reason==='completed';
  const verified=isClosed&&checked.required===true&&checked.valid===true
    &&val(body,'DONE').toLowerCase()==='true'
    &&checked.timestamps?.finishVerified===true
-   &&checked.steps.length>=2&&checked.steps.every(s=>s.checked&&Boolean(s.evidence));
- return {verified,timing:checked.timestamps,contract:{required:checked.required,valid:checked.valid,missing:checked.missing},checkedSteps:checked.steps.length,verifiedSteps:checked.steps.filter(s=>s.checked&&s.evidence).length};
+   &&checked.steps.length>=2&&checked.steps.every(s=>s.checked&&Boolean(s.evidence))
+   &&progress.consistent!==false;
+ return {verified,timing:checked.timestamps,contract:{required:checked.required,valid:checked.valid,missing:checked.missing},
+  checkedSteps:checked.steps.length,checkedEvidenceSteps,
+  // Null means not independently verified; do not claim the larger checkbox count.
+  verifiedSteps:progress.consistent===false?null:checkedEvidenceSteps,
+  ...progress};
 }
 function commentEvent(comment){
  const body=String(comment?.body||'');
@@ -56,7 +77,10 @@ export function buildWorkHistory(issue,comments=[]){
  if(issue.state==='closed')list.push({at:issue.closed_at||null,action:proof.verified?'Nghiệm thu hoàn tất':'Đóng thẻ GitHub — chưa xác minh hoàn tất',detail:proof.verified?'Đã đủ biên nhận V2':'Không dùng trạng thái đóng thẻ làm bằng chứng kết thúc công việc',author:'GitHub (trạng thái thẻ)',url:url(issue.html_url)});
  return {
   ok:true,issueNumber:number,source:'github_read_only',completionVerified:proof.verified,timing:proof.timing,
-  checkedSteps:proof.checkedSteps,verifiedSteps:proof.verifiedSteps,historyScope:'latest_100_comments_only',
+  checkedSteps:proof.checkedSteps,checkedEvidenceSteps:proof.checkedEvidenceSteps,
+  verifiedSteps:proof.verifiedSteps,progressCounterConsistent:proof.consistent,
+  declaredCompletedSteps:proof.declaredCompletedSteps,declaredTotalSteps:proof.declaredTotalSteps,
+  historyScope:'latest_100_comments_only',
   events:[creation,...list].sort((a,b)=>Date.parse(b.at||0)-Date.parse(a.at||0)).slice(0,MAX_EVENTS)
  };
 }
