@@ -54,6 +54,17 @@ it('C02: restore requires verified independent R OFF or deliberate stationary ma
   expect(planLayoutRestore({snapshot_id:'pre-R',manual_close:true,stationary_confirmed:true}).basis).toBe('MANUAL_CLOSE_WHILE_STATIONARY');
 });
 
+it('C02: R OFF with placeholder evidence must not restore the prior layout',()=>{
+  for(const reference of ['NOT_MEASURED',' not_measured ','UNVERIFIED','UNKNOWN','NOT_AVAILABLE','TBD','none','N/A']){
+    expect(planLayoutRestore({snapshot_id:'pre-R',reverse_state:'OFF',
+      reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference}}))
+      .toEqual({action:'HOLD_AND_SHOW_CAMERA_UNAVAILABLE',restore_permitted:false,basis:'NO_VERIFIED_R_OFF'});
+  }
+  expect(planLayoutRestore({snapshot_id:'pre-R',reverse_state:'OFF',
+    reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference:'synthetic:off'}}).basis)
+    .toBe('VERIFIED_R_OFF');
+});
+
 it('C02: odd pixel widths and heights use quantized endpoint bounds safely',()=>{
   const scenarios=[
     {w:1919,h:1080,insets:{left:0,right:0,top:40,bottom:40},
