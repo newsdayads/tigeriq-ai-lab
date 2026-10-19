@@ -127,6 +127,9 @@ it('P0 NV07 bootstrap slot is opt-in and cannot join regular routing',()=>{
   expect(source).toContain("process.env.TIGERIQ_NV07_BOOTSTRAP_RESOURCE_ENABLED==='1'");
   expect(source).toContain("...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[])");
   expect(source).toContain("capabilities:['nv07_bootstrap']");
-  expect(source).toContain("if(r.id==='NV07'){credential='WAIT_KEY';health='OFFLINE';}");
+  // Auth is a user-bound CLI session, never a fabricated API key or an ACTIVE lease.
+  expect(source).toContain("if(r.id==='NV07'){credential='SESSION_UNVERIFIED';health='OFFLINE';}");
+  expect(source).not.toContain("if(r.id==='NV07'){credential='READY'");
+  expect(source).not.toContain("if(r.id==='NV07'){credential='LOCAL';health='READY'");
   expect(source).toContain("resourceId:'res:antigravity:agy-cli:owner-wdragons12x:pc01'");
 });
