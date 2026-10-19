@@ -508,8 +508,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
           id: 30,
           method: 'tools/call',
           params: {
-            name: 'shell_exec',
-            arguments: { command: 'echo 1', idempotencyKey },
+            name: 'ollama_status',
+            arguments: { idempotencyKey },
           },
         }),
       });
@@ -526,8 +526,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
           id: 31,
           method: 'tools/call',
           params: {
-            name: 'shell_exec',
-            arguments: { command: 'echo 1', idempotencyKey },
+            name: 'ollama_status',
+            arguments: { idempotencyKey },
           },
         }),
       });
