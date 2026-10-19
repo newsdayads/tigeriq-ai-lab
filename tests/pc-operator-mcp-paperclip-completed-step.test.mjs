@@ -37,7 +37,8 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
     expect(response.ok).toBe(true);
     expect(response.targetStepId).toBe('R01');
     expect(response.completedStepId).toBe('R01');
-    expect(execute).toHaveBeenCalledExactlyOnceWith({ action: 'paperclip_lab_preflight' });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({ action: 'paperclip_lab_preflight' });
   });
 
   it('does not mark R01 for a failed native Docker probe', async () => {
@@ -81,7 +82,8 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
     expect(response.completedStepId).toBe('R07');
     expect(response.leaseReleased).toBe(true);
     expect(leaseApi.release).toHaveBeenCalledOnce();
-    expect(execute).toHaveBeenCalledExactlyOnceWith({ action: 'paperclip_lab_broker_install' });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
     expect(JSON.stringify(response)).not.toContain('fixture-private-token-do-not-echo');
   });
 
