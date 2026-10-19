@@ -22,7 +22,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     });
 
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const port = (server.address() as any).port;
+    const port = server.address().port;
 
     try {
       // 1. initialize
@@ -135,7 +135,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     });
 
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const port = (server.address() as any).port;
+    const port = server.address().port;
 
     try {
       const sseRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
@@ -145,7 +145,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       expect(sseRes.status).toBe(200);
       expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
 
-      const reader = sseRes.body!.getReader();
+      const reader = sseRes.body.getReader();
       const chunk = await reader.read();
       const text = new TextDecoder().decode(chunk.value);
       expect(text).toContain('event: endpoint');
@@ -171,7 +171,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     });
 
     await new Promise((resolve) => gateway.listen(0, '127.0.0.1', resolve));
-    const port = (gateway.address() as any).port;
+    const port = gateway.address().port;
 
     try {
       // 1. Unauthenticated /mcp -> 200 via mcpHandler

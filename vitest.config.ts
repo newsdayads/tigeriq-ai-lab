@@ -58,6 +58,7 @@ export default defineConfig({
       'tests/core-4457-manager-pg-lock.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
       'tests/nv07-native-session-broker.test.mjs',
+      'tests/pc-operator-mcp.test.mjs',
     ],
     environment: 'node'
   }
