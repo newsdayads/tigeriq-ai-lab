@@ -142,3 +142,15 @@ it('RDC partial/drifted external pool never falls back to legacy installer or to
   expect(entry).toContain('remoteDesktopGuardInstaller');
   expect(probe).not.toMatch(/(?:Copy-Item|Set-Content|Remove-Item|Start-Process|Stop-Process)/);
 });
+
+it('GH-2054: importing shared work-history must count as Core restart impact',()=>{
+  const start=source.indexOf('function Get-Impact(');
+  const end=source.indexOf('function Restart-UpdaterAfterExit(',start);
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  const impact=source.slice(start,end);
+  const core=impact.slice(impact.indexOf('$core='),impact.indexOf('$updater='));
+  expect(core).toContain("$_ -eq 'apps/shared/work-center-history.mjs'");
+  expect(source).toContain('if($impact.core){$coreHealth=Restart-Core $oldPid');
+  expect(source).toContain("throw 'CORE_HEALTH_OR_PID_FAILED'");
+});
