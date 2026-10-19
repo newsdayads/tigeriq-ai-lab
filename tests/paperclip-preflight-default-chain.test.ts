@@ -138,7 +138,7 @@ vi.mock('node:net', async (importOriginal) => {
 });
 
 // @ts-ignore — Existing native .mjs API intentionally has no TS declaration.
-import { paperclipReadOnlyPreflight, executePaperclipLabAction, paperclipUnverifiedDockerHealth } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, executePaperclipLabAction, paperclipUnverifiedDockerHealth, paperclipHealthFailureClass } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip R01 production-default preflight call chain (isolated OS)', () => {
   it('returns missing-root without mkdir, spawn or broker-file writes', async () => {
@@ -336,7 +336,7 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
       expect(result.data).toMatchObject({
         ok: false,
-        reason: 'DOCKER_UNAVAILABLE',
+        reason: 'DOCKER_UNVERIFIED_READ_ONLY',
         docker: {
           kind: null,
           error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
@@ -367,11 +367,37 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       http: { reachable: true, status: 200, appOk: true },
     });
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe('DOCKER_UNAVAILABLE');
+    expect(result.reason).toBe('DOCKER_UNVERIFIED_READ_ONLY');
     expect(result.result).toMatchObject({
       portReachable: true, httpReachable: true, httpStatus: 200, httpAppOk: true,
       dockerVerified: false, containerVerified: false, databaseVerified: false,
     });
+  });
+
+  it('R02 distinguishes a skipped read-only broker probe from a real Docker error, without upgrading acceptance', () => {
+    const base = {
+      port: { reachable: true },
+      http: { reachable: true, status: 200, appOk: true },
+    };
+    const skipped = paperclipUnverifiedDockerHealth({
+      ...base,
+      docker: { kind: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT' },
+    });
+    const failed = paperclipUnverifiedDockerHealth({
+      ...base,
+      docker: { kind: null, error: 'docker executable not found' },
+    });
+    expect(skipped.reason).toBe('DOCKER_UNVERIFIED_READ_ONLY');
+    expect(failed.reason).toBe('DOCKER_UNAVAILABLE');
+    expect(paperclipHealthFailureClass(skipped)).toBe('DOCKER_UNVERIFIED_READ_ONLY');
+    expect(paperclipHealthFailureClass(failed)).toBe('DOCKER_UNAVAILABLE');
+    for (const sample of [skipped, failed]) {
+      expect(sample.ok).toBe(false);
+      expect(sample.result).toMatchObject({
+        httpStatus: 200, httpAppOk: true,
+        dockerVerified: false, containerVerified: false, databaseVerified: false,
+      });
+    }
   });
 
   it('R02 broker-only helper reports HTTP failure without inventing health', () => {
