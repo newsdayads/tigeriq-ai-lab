@@ -22,7 +22,7 @@ const incomplete = code => ({
 });
 function safeError(raw) {
   if (typeof raw !== 'string') return 'input:INVALID';
-  const match = /^(.*):([A-Z_]{2,80})$/.exec(raw);
+  const match = /^(.*):([A-Z0-9_]{2,80})$/.exec(raw);
   if (!match) return 'input:INVALID';
   const [,field,reason] = match;
   if (rootFields.has(field)) return field + ':' + reason;
