@@ -5,9 +5,16 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import pg from 'pg';
 import { z } from 'zod';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
+import {
+  acquireSharedResourceLease,
+  heartbeatSharedResourceLease,
+  releaseSharedResourceLease,
+} from './shared-resource-lease.mjs';
 
+const { Pool } = pg;
 const win = path.win32;
 
 export const PC_OPERATOR_ROOTS = Object.freeze([
@@ -34,39 +41,80 @@ const DENIED_PATH_FRAGMENTS = [
 const LOCAL_ONLY_BOUNDARY = 'D:\\TigerIQ\\Apps\\ChromeController\\LocalOnly';
 
 export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
-  // 1. Files & Directories
+  // Paperclip Lab Tools (Protected & Gated)
+  'paperclip_lab_preflight',
+  'paperclip_lab_health',
+  'paperclip_lab_broker_install',
+  // Files & Directories
   'file_read',
   'file_write',
   'file_list',
   'file_stat',
   'file_search',
-  // 2. Terminal & Execution
+  // Terminal & Shell
   'shell_exec',
-  // 3. Processes, Tasks & Services
+  // Processes, Tasks & Services
   'process_list',
   'task_list',
   'task_action',
   'service_status',
   'docker_status',
   'wsl_status',
-  // 4. Desktop & UI
+  // Desktop & UI
   'ui_window_list',
   'ui_screenshot',
   'ui_action',
-  // 5. Software & Health Subsystems
+  // Subsystems & Diagnostics
   'core_status',
   'ollama_status',
-  'paperclip_lab_preflight',
-  'paperclip_lab_health',
-  'paperclip_lab_broker_install',
-  // 6. Logs, Diagnostics & Evidence
   'log_read',
   'test_run',
   'evidence_record',
-  // 7. Coordination & Workforce
+  // Coordination & Workforce
   'rdc_pool_status',
   'work_order_status',
 ]);
+
+const LAB_SCOPE = 'TIGERIQ_PAPERCLIP_LAB_PC01_EXISTING_SANDBOX_20261018';
+const NV06_RESOURCE_ID = 'res:openclaw:operator-local:default:pc01';
+const leaseApiDefault = {
+  acquire: acquireSharedResourceLease,
+  heartbeat: heartbeatSharedResourceLease,
+  release: releaseSharedResourceLease,
+};
+let existingLeasePool;
+
+function existingCoreLeaseDb() {
+  const connectionString = String(process.env.DATABASE_URL || '').trim();
+  if (!connectionString) return null;
+  if (!existingLeasePool) existingLeasePool = new Pool({ connectionString, max: 2 });
+  return existingLeasePool;
+}
+
+function allowMcpMutation(headers = {}, secret = '') {
+  const a = Buffer.from(String(headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  const b = Buffer.from(String(secret || ''));
+  return b.length >= 32 && a.length === b.length && timingSafeEqual(a, b);
+}
+
+function nativeOk(action, receipt) {
+  if (receipt?.ok !== true || receipt?.data?.ok === false) return false;
+  if (action === 'paperclip_lab_preflight') return receipt.data?.docker?.ok === true;
+  if (action === 'paperclip_lab_health') {
+    return receipt.data?.result?.dockerVerified === true
+      && receipt.data?.result?.containerVerified === true
+      && receipt.data?.result?.databaseVerified === true;
+  }
+  return receipt.data?.installed === true && receipt.data?.r07SourceVerified === true
+    && typeof receipt.data?.dockerVersion === 'string' && receipt.data.dockerVersion.length > 0;
+}
+
+function mcpReply(value) {
+  return {
+    ...(value.ok ? {} : { isError: true }),
+    content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+  };
+}
 
 // Anti-duplicate / Idempotency Cache (5 minutes TTL)
 const deduplicationCache = new Map();
@@ -216,8 +264,97 @@ function wrapTool(server, name, description, schemaObj, handler) {
   });
 }
 
-export function registerPcOperatorTools(server, executePcActionImpl = executePcAction) {
-  // 1. file_read
+export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
+  allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
+} = {}) {
+  // 1. Paperclip Lab Tools (Exact backward-compatible & gated lease logic)
+  for (const [action, description, targetStepId] of [
+    ['paperclip_lab_preflight', 'Paperclip Lab read-only preflight.', 'R01'],
+    ['paperclip_lab_health', 'Paperclip Lab read-only health.', 'R02'],
+    ['paperclip_lab_broker_install', 'Install Paperclip broker through an exclusive NV06 Core lease.', 'R07'],
+  ]) {
+    server.tool(action, description, {}, async () => {
+      const jobId = 'JOB-MCP-' + randomUUID();
+      const common = {
+        jobId,
+        workOrderId: 2054,
+        resourceScope: LAB_SCOPE,
+        action,
+        targetStepId,
+        completedStepId: null,
+        executionSurface: 'MCP_PC01_DIRECT',
+      };
+
+      if (action !== 'paperclip_lab_broker_install') {
+        try {
+          const receipt = await executePcActionImpl({ action });
+          const ok = nativeOk(action, receipt);
+          return mcpReply({ ...common, ok, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
+        } catch (error) {
+          return mcpReply({ ...common, ok: false, reason: 'PC_OPERATOR_READ_ERROR', error: String(error?.message || error) });
+        }
+      }
+
+      if (!allowMutation) return mcpReply({ ...common, ok: false, reason: 'MCP_EXISTING_AUTH_REQUIRED' });
+      const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
+      if (!db) return mcpReply({ ...common, ok: false, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE' });
+
+      let lease = null, timer = null, leaseLost = false, receipt = null;
+      let reason = null, leaseReleased = false;
+      try {
+        lease = await leaseApi.acquire(db, {
+          employeeId: 'NV06',
+          resourceId: NV06_RESOURCE_ID,
+          workId: jobId,
+          role: 'operator',
+          lane: 'mcp_pc_operator',
+          ttlMs: 600000,
+          metadata: { workOrderId: 2054, resourceScope: LAB_SCOPE, action, targetStepId },
+        });
+        if (!lease) reason = 'NV06_SHARED_LEASE_BUSY';
+        else if (!lease.lease_token || lease.resource_id !== NV06_RESOURCE_ID || lease.work_id !== jobId
+          || new Date(lease.lease_until).getTime() <= now() + 30000) {
+          reason = 'NV06_SHARED_LEASE_INVALID';
+        } else if (!(await leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 }))) {
+          reason = 'NV06_SHARED_LEASE_NOT_FENCED';
+        } else {
+          timer = setInterval(() => {
+            void leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 })
+              .then((ok) => { if (!ok) leaseLost = true; })
+              .catch(() => { leaseLost = true; });
+          }, 30000);
+          timer.unref?.();
+          receipt = await executePcActionImpl({ action });
+          const stillOwned = await leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 });
+          if (leaseLost || !stillOwned) reason = 'NV06_SHARED_LEASE_LOST';
+          else if (!nativeOk(action, receipt)) reason = 'NATIVE_BROKER_INSTALL_NOT_ACCEPTED';
+        }
+      } catch {
+        reason = 'NV06_INSTALL_OR_LEASE_ERROR';
+      } finally {
+        if (timer) clearInterval(timer);
+        if (lease?.lease_token) {
+          try {
+            leaseReleased = await leaseApi.release(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token });
+          } catch {
+            leaseReleased = false;
+          }
+          if (!leaseReleased) reason = 'NV06_SHARED_LEASE_RELEASE_UNVERIFIED';
+        }
+      }
+      return mcpReply({
+        ...common,
+        ok: !reason && leaseReleased && nativeOk(action, receipt),
+        reason,
+        leaseVerified: Boolean(lease?.lease_token),
+        leaseReleased,
+        leaseWorkId: lease?.work_id || null,
+        receipt,
+      });
+    });
+  }
+
+  // 2. file_read
   wrapTool(
     server,
     'file_read',
@@ -251,7 +388,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 2. file_write
+  // 3. file_write
   wrapTool(
     server,
     'file_write',
@@ -283,7 +420,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 3. file_list
+  // 4. file_list
   wrapTool(
     server,
     'file_list',
@@ -308,7 +445,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 4. file_stat
+  // 5. file_stat
   wrapTool(
     server,
     'file_stat',
@@ -329,7 +466,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 5. file_search
+  // 6. file_search
   wrapTool(
     server,
     'file_search',
@@ -372,7 +509,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 6. shell_exec
+  // 7. shell_exec
   wrapTool(
     server,
     'shell_exec',
@@ -403,7 +540,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 7. process_list
+  // 8. process_list
   wrapTool(
     server,
     'process_list',
@@ -436,7 +573,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 8. task_list
+  // 9. task_list
   wrapTool(
     server,
     'task_list',
@@ -463,7 +600,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 9. task_action
+  // 10. task_action
   wrapTool(
     server,
     'task_action',
@@ -495,7 +632,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 10. service_status
+  // 11. service_status
   wrapTool(
     server,
     'service_status',
@@ -521,7 +658,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 11. docker_status
+  // 12. docker_status
   wrapTool(
     server,
     'docker_status',
@@ -544,7 +681,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 12. wsl_status
+  // 13. wsl_status
   wrapTool(
     server,
     'wsl_status',
@@ -559,7 +696,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 13. ui_window_list
+  // 14. ui_window_list
   wrapTool(
     server,
     'ui_window_list',
@@ -580,7 +717,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     }
   );
 
-  // 14. ui_screenshot
+  // 15. ui_screenshot
   wrapTool(
     server,
     'ui_screenshot',
@@ -619,7 +756,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 15. ui_action
+  // 16. ui_action
   wrapTool(
     server,
     'ui_action',
@@ -648,7 +785,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 16. core_status
+  // 17. core_status
   wrapTool(
     server,
     'core_status',
@@ -661,7 +798,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 17. ollama_status
+  // 18. ollama_status
   wrapTool(
     server,
     'ollama_status',
@@ -672,40 +809,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 18. paperclip_lab_preflight
-  wrapTool(
-    server,
-    'paperclip_lab_preflight',
-    'Kiểm tra điều kiện môi trường Paperclip Lab trên PC01 (Docker, container, port 3210 loopback, broker).',
-    {},
-    async () => {
-      return await executePcActionImpl({ action: 'paperclip_lab_preflight' });
-    }
-  );
-
-  // 19. paperclip_lab_health
-  wrapTool(
-    server,
-    'paperclip_lab_health',
-    'Kiểm tra sức khỏe dịch vụ Paperclip Lab trên PC01 (HTTP 200, PostgreSQL database sidecar, container).',
-    {},
-    async () => {
-      return await executePcActionImpl({ action: 'paperclip_lab_health' });
-    }
-  );
-
-  // 20. paperclip_lab_broker_install
-  wrapTool(
-    server,
-    'paperclip_lab_broker_install',
-    'Cài đặt và cấu hình lại Paperclip WSL Interactive Broker trên PC01.',
-    {},
-    async () => {
-      return await executePcActionImpl({ action: 'paperclip_lab_broker_install' });
-    }
-  );
-
-  // 21. log_read
+  // 19. log_read
   wrapTool(
     server,
     'log_read',
@@ -729,7 +833,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 22. test_run
+  // 20. test_run
   wrapTool(
     server,
     'test_run',
@@ -754,7 +858,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 23. evidence_record
+  // 21. evidence_record
   wrapTool(
     server,
     'evidence_record',
@@ -790,7 +894,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 24. rdc_pool_status
+  // 22. rdc_pool_status
   wrapTool(
     server,
     'rdc_pool_status',
@@ -810,7 +914,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 25. work_order_status
+  // 23. work_order_status
   wrapTool(
     server,
     'work_order_status',
@@ -829,29 +933,18 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
 export function createPcOperatorMcpHandler({
   executePcActionImpl = executePcAction,
-  mcpAuthKey = process.env.TIGERIQ_MCP_KEY,
+  existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
+  leaseDb,
+  leaseApi,
 } = {}) {
   const sseTransports = new Map();
 
-  function isAuthorized(req, url) {
-    if (!mcpAuthKey) return true; // Khi chưa đặt key, cho phép loopback/local
-    const authHeader = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
-    const queryToken = String(url.searchParams.get('token') || '').trim();
-    const provided = authHeader || queryToken;
-    if (!provided || provided.length !== mcpAuthKey.length) return false;
-    try {
-      return timingSafeEqual(Buffer.from(provided), Buffer.from(mcpAuthKey));
-    } catch {
-      return false;
-    }
-  }
-
-  function createServerInstance() {
+  function createServerInstance(allowMutation = false) {
     const server = new McpServer({
       name: 'TigerIQ PC Operator',
       version: '2.0.0',
     });
-    registerPcOperatorTools(server, executePcActionImpl);
+    registerPcOperatorTools(server, executePcActionImpl, { allowMutation, leaseDb, leaseApi });
     return server;
   }
 
@@ -871,20 +964,11 @@ export function createPcOperatorMcpHandler({
       return true;
     }
 
-    // Authentication check
-    if (!isAuthorized(req, url)) {
-      res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-        ok: false,
-        error: 'TIGERIQ_MCP_UNAUTHORIZED',
-      }));
-      return true;
-    }
-
     // Route 1: Classic SSE GET /mcp or /mcp/sse
     const accept = String(req.headers['accept'] || '');
     if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/sse') && accept.includes('text/event-stream')) {
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
-      const sseServer = createServerInstance();
+      const sseServer = createServerInstance(allowMcpMutation(req.headers, existingSecret));
       await sseServer.connect(sseTransport);
       sseTransports.set(sseTransport.sessionId, sseTransport);
       res.on('close', () => {
@@ -910,7 +994,7 @@ export function createPcOperatorMcpHandler({
       if (!accept.includes('text/event-stream')) {
         req.headers['accept'] = (accept ? accept + ', ' : '') + 'text/event-stream, application/json';
       }
-      const server = createServerInstance();
+      const server = createServerInstance(allowMcpMutation(req.headers, existingSecret));
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
