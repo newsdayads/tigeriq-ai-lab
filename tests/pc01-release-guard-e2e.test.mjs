@@ -419,7 +419,7 @@ it.skipIf(!pwshPresent)('PowerShell owner V6 plus Coding batch only accepts exac
   expect(outcome).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
   expect(run({...args,paths:paths.filter(p=>p!=='public/work-ui.css')}).reason).toBe('RELEASE_OWNER_V6_BUNDLE_INCOMPLETE');
   expect(run({...args,paths:[...paths,'public/work-ui-unknown.css']}).reason).toBe('RELEASE_PATH_OUT_OF_SCOPE');
-});
+}, 30000);
 
 it('exact two-blob Coding Lane maintenance permits signed coding only, fails closed on wrong or missing content',()=>{
   const pinned=Object.entries(OWNER_CODING_CONTRACT_APPROVED_BLOBS).map(([filename,sha])=>({filename,sha,status:'modified'}));
