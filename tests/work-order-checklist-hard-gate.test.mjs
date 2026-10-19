@@ -191,3 +191,19 @@ test('NV07 inline HTML wrapping or adjacent to receipt cannot certify S6',()=>{
  assert.equal(workOrderChecklistGate(card(real),{stepId:'S5c',requireAll:false,expectedEvidenceUrl:url}).ok,true);
  assert.equal(workOrderChecklistGate(card(real),{stepId:'S6',requireAll:false}).reason,'STEP_UNCHECKED_ON_GITHUB');
 });
+
+test('GH-2054 counter drift cannot validate a partial R02 checkbox',()=>{
+ const steps=['R01','R02','R03','R04','R05','R06','R07','R08','R09'];
+ const checked=new Set(['R01','R02','R04','R06','R08']);
+ const list=steps.map(id=>'- ['+(checked.has(id)?'x':' ')+'] '+id+' — Paperclip milestone'+
+  (checked.has(id)?' [Receipt]('+url+')':''));
+ const base=['PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST','PROGRESS_COMPLETED=3',
+  'PROGRESS_TOTAL=9','## STRUCTURED_PROGRESS_CHECKLIST',...list,'## ACCEPTANCE'].join('\n');
+ assert.equal(workOrderChecklistGate(card(base),{stepId:'R02',requireAll:false}).reason,
+  'CHECKLIST_PROGRESS_COUNTER_MISMATCH');
+ assert.equal(workOrderChecklistGate(card(base.replace('PROGRESS_COMPLETED=3','PROGRESS_COMPLETED=5')),
+  {stepId:'R02',requireAll:false}).ok,true);
+ assert.equal(workOrderChecklistGate(card(base.replace('PROGRESS_TOTAL=9','PROGRESS_TOTAL=8')),
+  {stepId:'R02',requireAll:false}).reason,'CHECKLIST_PROGRESS_COUNTER_MISMATCH');
+});
+
