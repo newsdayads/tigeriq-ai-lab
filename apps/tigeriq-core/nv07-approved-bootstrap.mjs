@@ -114,7 +114,7 @@ export async function runNv07ApprovedBootstrap(db,{queuedJobId=null}={}){
   const prior=await db.query("select seq,type from tigeriq_events where employee_id='NV07' and job_id=$1 and type in ('NV07_CANARY_RESERVED','NV07_CANARY_RECEIPT')",[job.jobId]);
   if(prior.rows?.length)return deny('NV07_JOB_ALREADY_RESERVED_NO_REPLAY');
   await db.query(
-   "insert into tigeriq_ai_resources(resource_id,employee_id,name,provider,model,account_binding,runtime_binding,cost_tier,enabled,credential_state,health_state,work_state,capabilities,rank) values($1,'NV07','Google Antigravity scoped bootstrap','antigravity','agy-cli','owner-wdragons12x','pc01','LOCAL',true,'WAIT_KEY','OFFLINE','OFFLINE',ARRAY['nv07_bootstrap'],999) on conflict(resource_id) do nothing",
+   "insert into tigeriq_ai_resources(resource_id,employee_id,name,provider,model,account_binding,runtime_binding,cost_tier,enabled,credential_state,health_state,work_state,capabilities,rank) values($1,'NV07','Google Antigravity scoped bootstrap','antigravity','agy-cli','owner-wdragons12x','pc01','LOCAL',true,'SESSION_UNVERIFIED','OFFLINE','OFFLINE',ARRAY['nv07_bootstrap'],999) on conflict(resource_id) do nothing",
    [NV07_BOOTSTRAP_RESOURCE_ID]);
   const slot=(await db.query('select * from tigeriq_ai_resources where resource_id=$1',[NV07_BOOTSTRAP_RESOURCE_ID])).rows?.[0];
   if(!slot||slot.employee_id!=='NV07'||slot.provider!=='antigravity'||slot.enabled!==true
