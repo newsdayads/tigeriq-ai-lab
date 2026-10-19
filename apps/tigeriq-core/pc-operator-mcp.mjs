@@ -99,11 +99,34 @@ function allowMcpMutation(headers = {}, secret = '') {
 
 function nativeOk(action, receipt) {
   if (receipt?.ok !== true || receipt?.data?.ok === false) return false;
-  if (action === 'paperclip_lab_preflight') return receipt.data?.docker?.ok === true;
+  if (action === 'paperclip_lab_preflight') {
+    // R01 is not a Docker availability check: require real live loopback,
+    // inspected pinned image, existing root, and successful read-only probes.
+    const data = receipt.data;
+    return data?.rootPresent === true
+      && data?.docker?.ok === true
+      && data?.container?.attempted === true
+      && data?.container?.present === true
+      && data?.container?.running === true
+      && data?.container?.imagePinMatch === true
+      && data?.container?.port3210LoopbackBinding === true
+      && data?.port3210?.reachable === true
+      && data?.pinned?.release === 'v2026.916.1'
+      && data?.pinned?.image === 'ghcr.io/paperclipai/paperclip:2026.916.1';
+  }
   if (action === 'paperclip_lab_health') {
-    return receipt.data?.result?.dockerVerified === true
-      && receipt.data?.result?.containerVerified === true
-      && receipt.data?.result?.databaseVerified === true;
+    // Runtime health alone cannot complete R02 without broker/heartbeat review.
+    // The actual native health shape has ok/container/database/http fields;
+    // partial DOCKER_UNAVAILABLE diagnostics cannot satisfy this predicate.
+    const data = receipt.data;
+    return data?.ok === true
+      && data?.container?.identityOk === true
+      && data?.container?.portBindingOk === true
+      && data?.database?.present === true
+      && data?.database?.running === true
+      && String(data?.database?.healthStatus || '').toLowerCase() === 'healthy'
+      && data?.http?.appOk === true
+      && data?.port?.reachable === true;
   }
   return receipt.data?.installed === true && receipt.data?.r07SourceVerified === true
     && typeof receipt.data?.dockerVersion === 'string' && receipt.data.dockerVersion.length > 0;
@@ -289,7 +312,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         try {
           const receipt = await executePcActionImpl({ action });
           const ok = nativeOk(action, receipt);
-          return mcpReply({ ...common, ok, completedStepId: ok ? targetStepId : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
+          return mcpReply({ ...common, ok, completedStepId: action === 'paperclip_lab_preflight' && ok ? 'R01' : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
         } catch (error) {
           return mcpReply({ ...common, ok: false, reason: 'PC_OPERATOR_READ_ERROR', error: String(error?.message || error) });
         }
@@ -346,7 +369,8 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
       return mcpReply({
         ...common,
         ok: accepted,
-        completedStepId: accepted ? targetStepId : null,
+        // R07 installation alone does not prove restart persistence and deduplication.
+        completedStepId: null,
         reason,
         leaseVerified: Boolean(lease?.lease_token),
         leaseReleased,
