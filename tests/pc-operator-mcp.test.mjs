@@ -118,7 +118,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
       expect(callBroker.status).toBe(200);
       const brokerText = await callBroker.text();
       expect(brokerText).toContain('paperclip_lab_broker_install');
-      expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
+      expect(brokerText).toContain('MCP_EXISTING_AUTH_REQUIRED');
+      expect(mockExecute).not.toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
     } finally {
       server.close();
     }
@@ -187,4 +188,68 @@ describe('TigerIQ PC Operator MCP Server', () => {
       gateway.close();
     }
   });
+  it('requires existing gateway bearer and a real shared lease before writing broker', async () => {
+    const secret = 'a'.repeat(32);
+    const execute = vi.fn().mockResolvedValue({ ok: true,
+      data: { installed: true, r07SourceVerified: true, dockerVersion: '27.0' } });
+    const leaseDb = { query: vi.fn() };
+    const leaseApi = {
+      acquire: vi.fn(async (_db, spec) => ({
+        resource_id: spec.resourceId, work_id: spec.workId, lease_token: 'private-token',
+        lease_until: new Date(Date.now() + 120000).toISOString(),
+      })),
+      heartbeat: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(true),
+    };
+    const handler = createPcOperatorMcpHandler({
+      executePcActionImpl: execute, existingSecret: secret, leaseDb, leaseApi,
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const call = (authorization) => fetch('http://127.0.0.1:' + port + '/mcp', {
+      method: 'POST', headers: { 'content-type': 'application/json',
+        ...(authorization ? { authorization } : {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
+        params: { name: 'paperclip_lab_broker_install', arguments: {} } }),
+    }).then(r => r.text());
+    try {
+      const denied = await call(null);
+      expect(denied).toContain('MCP_EXISTING_AUTH_REQUIRED');
+      expect(execute).not.toHaveBeenCalled();
+
+      const accepted = await call('Bearer ' + secret);
+      expect(accepted).toContain('"leaseVerified": true');
+      expect(accepted).toContain('"leaseReleased": true');
+      expect(accepted).toContain('"completedStepId": null');
+      expect(accepted).not.toContain('private-token');
+      expect(leaseApi.acquire).toHaveBeenCalledOnce();
+      expect(leaseApi.heartbeat).toHaveBeenCalled();
+      expect(leaseApi.release).toHaveBeenCalledOnce();
+      expect(execute).toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
+
+      leaseApi.acquire.mockResolvedValueOnce(null);
+      const busy = await call('Bearer ' + secret);
+      expect(busy).toContain('NV06_SHARED_LEASE_BUSY');
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('never accepts a missing database or fabricated lease', async () => {
+    const execute = vi.fn();
+    const server = { tool: vi.fn() };
+    const { registerPcOperatorTools } = await import('../apps/tigeriq-core/pc-operator-mcp.mjs');
+    registerPcOperatorTools(server, execute, { allowMutation: true, leaseDb: null });
+    const install = server.tool.mock.calls.find(([name]) => name === 'paperclip_lab_broker_install')[3];
+    const result = await install();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
 });
