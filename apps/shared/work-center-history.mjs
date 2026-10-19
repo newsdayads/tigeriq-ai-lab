@@ -19,7 +19,7 @@ function url(v){const t=String(v||'');return /^https:\/\/github\.com\/[a-zA-Z0-9
 export function structuredProgressConsistency(body,steps=[]){
  if(val(body,'PROGRESS_SOURCE')!=='STRUCTURED_PROGRESS_CHECKLIST')
   return {consistent:null,declaredCompletedSteps:null,declaredTotalSteps:null};
- const number=(key)=>{const value=val(body,key);const parsed=Number(value);return /^(0|[1-9]\\d*)$/.test(value)&&Number.isSafeInteger(parsed)?parsed:null;};
+ const number=(key)=>{const value=val(body,key);const parsed=Number(value);return /^(0|[1-9]\d*)$/.test(value)&&Number.isSafeInteger(parsed)?parsed:null;};
  const declaredCompletedSteps=number('PROGRESS_COMPLETED');
  const declaredTotalSteps=number('PROGRESS_TOTAL');
  const checked=steps.filter(step=>step.checked).length;
