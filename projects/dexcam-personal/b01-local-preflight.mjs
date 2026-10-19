@@ -52,7 +52,7 @@ export function inspectB01Json(raw) {
   };
 }
 
-async function readSmallLocalFile(filename) {
+export async function readSmallLocalFile(filename) {
   // Reject symlinks, FIFOs, sockets and devices before open: opening a FIFO can block forever.
   const before = await lstat(filename);
   if (!before.isFile()) return { error: 'input:NOT_A_REGULAR_FILE' };
