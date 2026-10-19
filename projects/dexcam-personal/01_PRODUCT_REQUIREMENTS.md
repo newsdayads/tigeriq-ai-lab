@@ -77,12 +77,14 @@
 | NFR-010 | Khả năng mở rộng | Không tạo dependency buộc kết nối máy chủ chỉ để thêm tính năng |
 
 ## 5. Không thuộc phạm vi phiên hiện tại
-- Không viết, build, cài đặt, phát hành, ký APK; không chạy thử bằng ADB trên xe.
+- **Cập nhật theo Work Order #4625 ngày 12/10/2026:** được phép phát triển **mã nguồn ứng dụng có điều kiện** sau G1/G2, quyền nguồn/kho và cổng kiểm chứng; chưa có chứng cứ đáp ứng các cổng này nên **chưa khởi động D01 hoặc build APK**. Không tự cài, ký, phát hành, sửa quyền, chạy ADB/PC01 hay thử trên xe khi chưa có quyền theo đúng hành động.
 - Không phá cơ chế cấp phép hoặc chỉnh sửa bản APK gốc.
 - Không dùng Firebase hay service quản trị/trả phí.
 - Không cam kết nhận CAN/OBD, đọc cần số qua dây đỏ từ phần mềm (đường kích hoạt thuộc phần cứng).
 - Không bảo đảm điều khiển được **mọi** ứng dụng Android khi hạn chế quyền/One UI không cho phép.
 - Không quyết định kho mã độc lập, công nghệ cuối hay lịch phát hành khi chưa được duyệt.
+
+**Đối chiếu C03 (18 FR + 10 NFR):** [Ma trận nguồn/kiểm thử và quyết định còn mở](C03_PREIMPLEMENTATION_REQUIREMENTS_SYNC_20261018.md) — chỉ đồng bộ yêu cầu, không chốt G1/G2 và không tự duyệt FR-NEW.
 
 ## 6. Các câu hỏi còn mở
 - USB có kết nối hệ thống liên tục và chỉ có khung hình khi vào R, hay descriptor USB cũng attach/detach theo R?

@@ -679,8 +679,15 @@ async function ensureConfig(pin = null) {
 
 
 async function readReleasePin() {
-  const safeReleaseFile = await assertSafeFileTarget(RELEASE_FILE);
-  const parsed = JSON.parse(await fs.readFile(safeReleaseFile, 'utf8'));
+  // R02 health must never materialize an absent Lab/config while reading a pin.
+  await ensureRootIntegrity({ create: false });
+  await paperclipReadOnlyExistingDirectory(CONFIG_DIR);
+  const safeReleaseFile = resolvePaperclipLabPath(RELEASE_FILE);
+  const stat = await fs.lstat(safeReleaseFile);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('TIGERIQ_PAPERCLIP_LAB_PIN_FILE_UNSAFE');
+  const realReleaseFile = normalizeWinPath(await fs.realpath(safeReleaseFile));
+  if (!pathInsideLab(realReleaseFile)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
+  const parsed = JSON.parse(await fs.readFile(realReleaseFile, 'utf8'));
   const pin = {
     release: String(parsed?.release || ''),
     sourceCommit: String(parsed?.sourceCommit || ''),
@@ -757,11 +764,39 @@ async function httpHealth(signal = null) {
 // R01 reports the bounded existing container state; this is not the R02
 // image-digest or health acceptance gate. Broker fallback would create request
 // files, so direct Docker/WSL are the only admissible preflight transports.
+// The requested compose file pins a localhost host port, but R01 must report
+// Docker's observed live binding separately. An absent or malformed inspect
+// mapping is UNKNOWN, not proof that the service is private.
+function paperclipObservedLoopbackPortBinding(inspect) {
+  const published = inspect?.NetworkSettings?.Ports;
+  if (!published || typeof published !== 'object' || Array.isArray(published)) return null;
+  let checked = 0;
+  let uncertain = false;
+  for (const [containerPort, bindings] of Object.entries(published)) {
+    if (bindings === null) continue; // Docker EXPOSE without host publishing.
+    if (!Array.isArray(bindings) || bindings.length === 0) {
+      uncertain = true;
+      continue;
+    }
+    for (const binding of bindings) {
+      if (!binding || typeof binding.HostIp !== 'string' || typeof binding.HostPort !== 'string') {
+        uncertain = true;
+        continue;
+      }
+      checked++;
+      if (containerPort !== '3100/tcp'
+        || binding.HostPort !== String(PAPERCLIP_LAB_PORT)
+        || !['127.0.0.1', '::1'].includes(binding.HostIp)) return false;
+    }
+  }
+  return checked > 0 && !uncertain ? true : null;
+}
+
 export async function paperclipReadOnlyContainerStatus(dockerKind, {
   signal = null,
   runReadOnlyCommand = runFixed,
 } = {}) {
-  const base = { attempted: false, present: null, running: null, imageRef: null, imageDigestVerified: false };
+  const base = { attempted: false, present: null, running: null, imageRef: null, imagePinMatch: null, port3210LoopbackBinding: null, imageDigestVerified: false };
   if (dockerKind !== DOCKER_TRANSPORT_WINDOWS && dockerKind !== DOCKER_TRANSPORT_WSL) {
     return { ...base, reason: 'DIRECT_DOCKER_TRANSPORT_UNAVAILABLE' };
   }
@@ -781,10 +816,20 @@ export async function paperclipReadOnlyContainerStatus(dockerKind, {
       || typeof parsed?.State?.Running !== 'boolean') {
       return { ...base, attempted: true, reason: 'CONTAINER_INSPECT_INVALID' };
     }
+    const imageRef = typeof parsed?.Config?.Image === 'string' ? parsed.Config.Image : null;
+    // R01 checks only the observed image reference against the pinned tag.
+    // A digest-only reference is UNKNOWN here; R02 verifies immutable digest.
+    const imagePinMatch = imageRef && !imageRef.includes('@sha256:')
+      ? imageRef === PAPERCLIP_LAB_IMAGE
+      : null;
     return {
       ...base, attempted: true, present: true,
       running: parsed.State.Running,
-      imageRef: typeof parsed?.Config?.Image === 'string' ? parsed.Config.Image : null,
+      imageRef,
+      imagePinMatch,
+      port3210LoopbackBinding: parsed.State.Running === true
+        ? paperclipObservedLoopbackPortBinding(parsed)
+        : null,
       reason: null,
     };
   } catch {
@@ -824,7 +869,8 @@ export async function paperclipReadOnlyPreflight({
   const container = rootPresent && docker.kind
     ? await inspectContainer(docker)
     : { attempted: false, present: null, running: null, imageRef: null,
-        imageDigestVerified: false, reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
+        imagePinMatch: null, port3210LoopbackBinding: null, imageDigestVerified: false,
+        reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     container,
@@ -1105,6 +1151,13 @@ export function parsePaperclipComposePsRows(value = '') {
   return rows;
 }
 
+// Docker Compose ps can return unrelated services. A healthy non-db row
+// must never be accepted as proof that the Postgres sidecar is present.
+export function paperclipComposeDbStatusRow(rows = []) {
+  if (!Array.isArray(rows)) return null;
+  return rows.find((item) => String(item?.Service || '').trim().toLowerCase() === 'db') || null;
+}
+
 async function inspectComposeService(dockerKind, service, signal = null, diagnostics = false) {
   if (service !== 'db') throw new Error('TIGERIQ_PAPERCLIP_LAB_DIAGNOSTIC_SERVICE_NOT_ALLOWED');
   const psResult = await runDocker(
@@ -1113,7 +1166,7 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
     { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
   ).catch(() => null);
   const rows = psResult?.exitCode === 0 ? parsePaperclipComposePsRows(psResult.stdout) : [];
-  const row = rows.find((item) => String(item?.Service || '').toLowerCase() === 'db') || rows[0] || null;
+  const row = paperclipComposeDbStatusRow(rows);
   if (!row) {
     return {
       present: false,
@@ -1173,7 +1226,9 @@ async function health(signal = null, transport = null, options = {}) {
   try { pin = await readReleasePin(); }
   catch { return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'PIN_NOT_READY' }; }
 
-  const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal);
+  // R02 is diagnostic/read-only: broker fallback writes request files. Only
+  // direct Docker/WSL are admissible without a separate mutation lease.
+  const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal, { allowBrokerProbe: false });
   if (!docker.kind) return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'DOCKER_UNAVAILABLE', docker };
   const [port, http, inspect, database] = await Promise.all([
     probePort(),
@@ -1335,7 +1390,19 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
       runtimeRevision: PAPERCLIP_LAB_RUNTIME_REVISION,
       root: PAPERCLIP_LAB_ROOT,
       port: PAPERCLIP_LAB_PORT,
-      loopbackOnly: true,
+      // For the read-only R01 receipt, a static Compose setting is never
+      // evidence that Docker's live host-port binding is restricted.
+      loopbackOnly: action === 'paperclip_lab_preflight'
+        ? data?.container?.port3210LoopbackBinding === true
+        : action === 'paperclip_lab_health'
+          ? data?.container?.running === true && data?.container?.portBindingOk === true
+          : true,
+      loopbackOnlyConfigured: true,
+      observedLoopbackBinding: action === 'paperclip_lab_preflight'
+        ? (data?.container?.port3210LoopbackBinding ?? null)
+        : action === 'paperclip_lab_health' && data?.container?.running === true
+          ? (data?.container?.portBindingOk ?? null)
+          : null,
       arbitraryShell: false,
       arbitraryPath: false,
       arbitraryPort: false,

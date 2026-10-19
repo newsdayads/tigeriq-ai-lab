@@ -58,9 +58,10 @@ function parseDexPublicApi(bytes) {
       b[7] !== 0 || u32(b, 32) !== b.length || u32(b, 36) !== 112 || u32(b, 40) !== EXPECTED_TAG)
     throw new Error('INVALID_DEX_HEADER');
   const ns = u32(b, 56), os = u32(b, 60), nt = u32(b, 64), ot = u32(b, 68);
+  const np = u32(b, 72), op = u32(b, 76);
   const nm = u32(b, 88), om = u32(b, 92), nc = u32(b, 96), oc = u32(b, 100);
   checkTable(b, ns, os, 4); checkTable(b, nt, ot, 4);
-  checkTable(b, nm, om, 8); checkTable(b, nc, oc, 32);
+  checkTable(b, np, op, 12); checkTable(b, nm, om, 8); checkTable(b, nc, oc, 32);
   // Resolve only strings needed by DEX type IDs and method names. These are
   // kept in memory; no vendor identifiers enter the output.
   const needed = new Set();
@@ -80,8 +81,8 @@ function parseDexPublicApi(bytes) {
   const counts = Object.fromEntries(Object.keys(groups).map(k => [k, 0]));
   const found = Object.fromEntries(Object.keys(probes).map(k => [k, false]));
   for (let i = 0; i < nm; i++) {
-    const cls = u16(b, om + i * 8);
-    if (cls >= nt) throw new Error('INVALID_DEX_INDEX');
+    const cls = u16(b, om + i * 8), proto = u16(b, om + i * 8 + 2);
+    if (cls >= nt || proto >= np) throw new Error('INVALID_DEX_INDEX');
     if (own.has(cls)) continue;
     const cname = types[cls];
     const method = strs.get(u32(b, om + i * 8 + 4));
@@ -118,6 +119,7 @@ function readDexMembersFromApk(input) {
   if (members > MAX_ZIP_MEMBERS || offset + size > eocd) throw new Error('INVALID_ZIP_CENTRAL_DIRECTORY');
   let p = offset;
   const dex = [];
+  const seenDexNames = new Set();
   for (let i = 0; i < members; i++) {
     if (u32(apk, p) !== 0x02014b50) throw new Error('INVALID_ZIP_MEMBER');
     const flags = u16(apk, p + 8), method = u16(apk, p + 10), expectedCrc = u32(apk, p + 16),
@@ -127,6 +129,8 @@ function readDexMembersFromApk(input) {
     const name = apk.subarray(p + 46, p + 46 + nameLen).toString('utf8');
     p += 46 + nameLen + extraLen + commentLen;
     if (!/^classes(?:[2-9]\d*)?\.dex$/.test(name)) continue;
+    if (seenDexNames.has(name)) throw new Error('DUPLICATE_DEX_ZIP_MEMBER');
+    seenDexNames.add(name);
     if (diskStart || (flags & 1) || ![0, 8].includes(method) || rawSize > MAX_DEX_BYTES || zipSize > MAX_APK_BYTES)
       throw new Error('UNSUPPORTED_DEX_ZIP_MEMBER');
     if (u32(apk, localOffset) !== 0x04034b50) throw new Error('INVALID_ZIP_LOCAL_HEADER');
@@ -145,6 +149,21 @@ function readDexMembersFromApk(input) {
       throw new Error('ZIP_MEMBER_NAME_MISMATCH');
     const start = localOffset + 30 + localNameLen + localExtraLen;
     assertRange(apk, start, zipSize);
+    if (flags & 0x0008) {
+      // GPBF bit 3 requires a data descriptor after the compressed payload.
+      // ZIP permits both the signed (16-byte) and unsigned (12-byte) forms.
+      // Never trust central-directory values alone when the descriptor differs.
+      const descriptorStart = start + zipSize;
+      const matchesDescriptor = at => at + 12 <= offset &&
+        u32(apk, at) === expectedCrc &&
+        u32(apk, at + 4) === zipSize &&
+        u32(apk, at + 8) === rawSize;
+      const unsignedValid = matchesDescriptor(descriptorStart);
+      const signedValid = descriptorStart + 16 <= offset &&
+        u32(apk, descriptorStart) === 0x08074b50 &&
+        matchesDescriptor(descriptorStart + 4);
+      if (!unsignedValid && !signedValid) throw new Error('DEX_ZIP_DESCRIPTOR_MISMATCH');
+    }
     const compressed = apk.subarray(start, start + zipSize);
     const b = method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: MAX_DEX_BYTES });
     if (b.length !== rawSize || crc32(b) !== expectedCrc) throw new Error('DEX_ZIP_CRC_OR_SIZE_MISMATCH');

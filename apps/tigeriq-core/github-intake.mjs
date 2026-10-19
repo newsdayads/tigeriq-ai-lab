@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
-import {workOrderChecklistGate} from './work-order-checklist-hard-gate.mjs';
+import {workOrderChecklistGate,workOrderChecklistSteps} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
 import { githubRequestJson } from './github-shared-client.mjs';
@@ -739,8 +739,97 @@ export function safeAutoWorkAdmission(issue){
   return {eligible:true,reason:'SAFE_P1_P5_POLICY',classification,resourceScope,requiresCodingHandoff};
 }
 
+// Bind a partial Work Order to the exact CURRENT step before dispatch.
+// This is NOT a completion receipt: the fresh GitHub checklist still must be
+// checked and linked to real execution evidence before the outcome can pass.
+export function githubCurrentStepId(body=''){
+  const active=currentAutoExecutionHeader(body);
+  const raw=bodyValue(active,'CURRENT_STEP');
+  const match=String(raw||'').trim().match(/^([A-Z][A-Za-z0-9_-]{1,15})(?=\s|$)/);
+  if(!match)return '';
+  const id=match[1].toUpperCase();
+  const {found,steps}=workOrderChecklistSteps(body);
+  if(!found||steps.filter(step=>step.id.toUpperCase()===id).length!==1)return '';
+  return id;
+}
+
+// Stage-only read admission: never turn a gated parent into a writable job.
+// Requires an explicit CURRENT owner-authorized, independent read-only step;
+// shares the existing GitHub scope lease and source revision, not a second queue.
+export function scopedReadOnlyStepIssue(issue){
+  if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const body=String(issue.body||''),current=currentAutoExecutionHeader(body);
+  const f=k=>bodyValue(current,k).trim(),u=k=>f(k).toUpperCase();
+  if(!SAFE_AUTO_WORK_PRIORITIES.has(u('PRIORITY'))||isOwnerOnlyP0(current,issue.title)
+    ||isManualOnlyAppChromeMaintenance(issue.title,body)
+    ||androidProductAutoExecutionExclusion(issue))return null;
+  if(f('OWNER_DIRECT')!=='true'||f('OWNER_HOLD')!=='false'
+    ||f('OWNER_CONTROLLED')==='true'||f('OWNER_GATE')==='true'
+    ||f('KEEP_OPEN_ON_STEP_COMPLETE')==='false'
+    ||hasExactFlag(current,'MANUAL_GATE')||hasExactFlag(current,'OWNER_REVIEW_REQUIRED')
+    ||hasExactFlag(current,'OWNER_ACCEPTANCE_REQUIRED'))return null;
+  if(issueLabelNames(issue).some(x=>x.toLowerCase()==='tigeriq:terminal-blocked'))return null;
+  if(u('STEP_AUTHORITY')!=='OWNER_READ_ONLY'||f('STEP_AUTO_DISPATCH')!=='true'
+    ||u('STEP_STATUS')!=='READY'||u('STEP_ROLE')!=='SOURCE_ANALYSIS'
+    ||u('STEP_WORKER')!=='NV08'||u('STEP_ACTION')!=='GITHUB_SOURCE_READ_ONLY'
+    ||f('STEP_INDEPENDENT_OF_BLOCKER')!=='true')return null;
+  const id=u('STEP_ID'),task=f('STEP_TASK');
+  if(!/^[A-Z][A-Z0-9_-]{1,15}$/.test(id)||task.length<18||task.length>350
+    ||/[<>{}]/.test(task)||task.includes(String.fromCharCode(96)))return null;
+  for(const key of ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE',
+    'NO_DESTRUCTIVE','NO_DIRECT_MAIN','NO_PRODUCTION_RELEASE']){
+    if(f(key)!=='true')return null;
+  }
+  if(['NO_PC01_SHELL','NO_BROWSER_AUTH','NO_CODE_CHANGE'].some(k=>f(k)==='false')
+    ||(f('MUTATION_OWNER')&&!SAFE_AUTO_RELEASED_OWNERS.has(u('MUTATION_OWNER')))
+    ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CLOSED|SUPERSEDED)/.test(u('CURRENT_STATE'))
+    ||f('SUPERSEDED_BY')||githubDependencyAdmissionBlocked(current))return null;
+  const scope=f('RESOURCE_SCOPE'),project=f('PROJECT_ID'),stream=f('WORKSTREAM_ID');
+  if(!scope||!project||!stream)return null;
+  // Checklist must be in CURRENT source, never in archived history.
+  const divider=body.search(/^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/m);
+  const marker=body.match(/^## STRUCTURED_PROGRESS_CHECKLIST\b[^\r\n]*$/m);
+  if(!marker||(divider>=0&&marker.index>divider))return null;
+  const tail=body.slice(marker.index),rest=tail.slice(marker[0].length);
+  const next=rest.search(/^##\s+\S/m);
+  const checklist=next<0?tail:tail.slice(0,marker[0].length+next);
+  const parsed=workOrderChecklistSteps(checklist);
+  if(!parsed.found||parsed.steps.length<2||parsed.steps.length>64)return null;
+  const matching=parsed.steps.filter(s=>s.id.toUpperCase()===id);
+  if(matching.length!==1||matching[0].checked)return null;
+  const packet=[
+    '## ACTIVE WORK ORDER — SCOPED READ-ONLY STEP',
+    'WORK_ORDER_LIFECYCLE=V2','PROJECT_ID='+project,'WORKSTREAM_ID='+stream,
+    'PRIORITY='+u('PRIORITY'),'OWNER_DIRECT=true','OWNER_POLICY=AUTO',
+    'OWNER_HOLD=false','OWNER_CONTROLLED=false','TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED','CAPABILITY=reasoning','EXECUTION_SURFACE=CORE_REASONING',
+    'ASSIGNED_EXECUTOR=NV08','MUTATION_OWNER=NONE','RESOURCE_SCOPE='+scope,
+    'CURRENT_STATE=READY_READ_ONLY_STEP','CURRENT_STEP='+id+' — '+task,
+    'LAST_COMPLETED_STEP=NOT_STARTED','NEXT_ACTION='+task,
+    'BLOCKER=NONE_FOR_THIS_READ_ONLY_STEP','STARTED_AT=NOT_STARTED',
+    'FINISHED_AT=NOT_FINISHED','ETA_STATUS=UNVERIFIED',
+    'KEEP_OPEN_ON_STEP_COMPLETE=true','NO_CODE_CHANGE=true','NO_RDC=true',
+    'NO_PC01_SHELL=true','NO_BROWSER_AUTH=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true','NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true',
+    'SOURCE_ISSUE_URL='+String(issue.html_url||''),
+    'PARENT_CURRENT_STATE='+u('CURRENT_STATE'),
+    'PARENT_BLOCKER='+f('BLOCKER').slice(0,250),'',
+    '## ACCEPTANCE',
+    'Read-only evidence for exactly '+id+' must be linked to its canonical GitHub checkbox. No code writes, credentials, PC01 or production. Do not finish the parent.',
+    'CANONICAL_STEP='+matching[0].line.slice(0,450),'',
+    '## STOP_CONDITIONS',
+    'Stop this phase for permission, payment, private data, security, capability or resource-scope gates. Never bypass the parent blocker.','',
+    checklist.trimEnd(),''
+  ].join('\n');
+  return {...issue,body:packet};
+}
+
 export function parseExecutableIssue(issue){
   if(!issue||issue.pull_request||issue.state!=='open')return null;
+  const originalIssue=issue;
+  const scopedStep=scopedReadOnlyStepIssue(issue);
+  if(scopedStep)issue=scopedStep;
   const body=String(issue.body||'');
   const currentBody=currentAutoExecutionHeader(body);
   const title=String(issue.title||'');
@@ -774,7 +863,7 @@ export function parseExecutableIssue(issue){
   const capability=classification.route==='OPENCLAW'?'pc_operator':requiresCodingHandoff?'reasoning':classification.capability;
   const resourceScope=bodyValue(currentBody,'RESOURCE_SCOPE');
   if(classification.route==='OPENCLAW'&&(!resourceScope||!currentPcOperatorInstruction(body)))return null;
-  const sourceRevision=githubIssueSourceRevision(issue);
+  const sourceRevision=githubIssueSourceRevision(originalIssue);
   const dispatchLane=classification.route==='OPENCLAW'?'PC_OPERATOR':requiresCodingHandoff?'CORE_REASONING':classification.route;
   const directAction=parsePcOperatorDirectAction(currentBody,backlogOwnerDirect(currentBody));
   if(directAction.present&&!directAction.valid)return null;
@@ -793,6 +882,7 @@ export function parseExecutableIssue(issue){
     commentCount:Math.max(0,Number(issue.comments||0)),labels:Array.isArray(issue.labels)?issue.labels:[],route:classification.route,publicEvidenceKeys:publicEvidenceRequest.requested,publicEvidenceDiagnostic:hasExactFlag(body,'PUBLIC_EVIDENCE_DIAGNOSTIC'),
     pcOperatorDirectAction:directAction.action||null,
     keepOpenOnStepComplete:hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff,
+    completedStepId:(hasExactFlag(body,'KEEP_OPEN_ON_STEP_COMPLETE')||requiresCodingHandoff)?githubCurrentStepId(body):'',
     // A real-product Work Order always awaits revision-bound live evidence.
     // Engineering products also require the existing independent review gate.
     liveAcceptanceRequired:liveProductDelivery||hasExactFlag(currentBody,'LIVE_ACCEPTANCE_REQUIRED'),
@@ -1351,6 +1441,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       pcOperatorDirectAction:spec.pcOperatorDirectAction||null,
       p1P5StandingReleaseAuthorized:Boolean(spec.pcOperatorDirectAction?.action==='tigeriq_live_3150_production_deploy'&&p1P5StandingReleaseAuthorized(spec.body)),
       keepOpenOnStepComplete:spec.keepOpenOnStepComplete===true,
+      completedStepId:spec.completedStepId||null,
       liveAcceptanceRequired:spec.liveAcceptanceRequired===true,
       finalReviewRequired:spec.finalReviewRequired===true,
       liveAcceptancePass:false,
@@ -1525,6 +1616,7 @@ async function coreFallbackReleaseEligible(pool,row){
 // Active objectives must not outlive a canonical hard denial. Do not retire on
 // transient WAIT/DEPENDENCY/RESOURCE states, which have their own rearm policy.
 export function activeGithubObjectiveSourceExclusion(issue){
+  if(scopedReadOnlyStepIssue(issue))return '';
   const body=String(issue?.body||'');
   const explicitExclusion=explicitAutoExecutionExclusion(body);
   if(explicitExclusion)return explicitExclusion;
