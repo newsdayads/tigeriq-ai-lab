@@ -1652,7 +1652,10 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     || bodyValue(body, 'NEXT')
     || bodyValue(body, 'NEXT_ACTION')
     || (classification.ownerGate ? 'Duyệt bản live' : null);
-  const executionPlan = classification.workKind === 'WORK' && checklist.total < 2
+  // Explicit P00–P10 execution roadmap remains visible even when the independent
+  // A01–F05 acceptance checklist already has 30 verified progress entries.
+  const hasCanonicalExecutionOrder = /^##\s+EXECUTION_ORDER\b/m.test(body);
+  const executionPlan = classification.workKind === 'WORK' && (checklist.total < 2 || hasCanonicalExecutionOrder)
     ? executionPlanForIssue(issue, nextStep || '')
     : { steps: [], source: null };
   const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
