@@ -174,6 +174,10 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(result.rootPresent).toBe(true);
     expect(result.disk).toEqual({ freeBytes: 8192, totalBytes: 32768 });
     expect(result.docker.error).toBe('BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT');
+    expect(result.container).toMatchObject({
+      attempted:false,present:null,running:null,reason:'DOCKER_UNVERIFIED_READ_ONLY',
+      imageDigestVerified:false,
+    });
     expect(result.docker.broker.ready).toBe(true);
     expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
     expect(state.lstatPaths).toContain(HEARTBEAT);

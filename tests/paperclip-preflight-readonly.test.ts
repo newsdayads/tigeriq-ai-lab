@@ -52,6 +52,42 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
     expect(result.docker.error).toBe('DOCKER_UNAVAILABLE');
     expect(result.port3210.reachable).toBe(false);
   });
+  it('R01 does not falsely label intentionally skipped broker probing as Docker down', async () => {
+    let brokerWrites = 0;
+    const result = await paperclipReadOnlyPreflight({
+      checkRoot: async () => {},
+      inspectDocker: async () => ({
+        kind: null, version: null,
+        error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
+        broker: { ready: true, version: '1.7-openai-device-auth' },
+      }),
+      inspectPort: async () => ({ host: '127.0.0.1', port: 3210, reachable: true, reason: 'connected' }),
+      inspectDisk: async () => ({ bavail: 1, bsize: 4096, blocks: 100 }),
+      inspectBroker: async () => { brokerWrites++; throw new Error('BROKER_WRITE_NOT_ALLOWED'); },
+      inspectContainer: async () => { throw new Error('CONTAINER_PROBE_NOT_ALLOWED'); },
+    });
+    expect(result.docker.error).toBe('BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT');
+    expect(result.container).toMatchObject({
+      attempted:false, present:null, running:null, imageDigestVerified:false,
+      reason:'DOCKER_UNVERIFIED_READ_ONLY',
+    });
+    expect(brokerWrites).toBe(0);
+    expect(result.port3210.reachable).toBe(true);
+  });
+  it('R01 retains distinct truly unavailable Docker and missing-root diagnostics', async () => {
+    const probes = {
+      inspectDocker: async () => ({kind:null,version:null,error:'DOCKER_UNAVAILABLE',broker:{ready:false}}),
+      inspectPort: async () => ({reachable:false,reason:'refused'}),
+      inspectDisk: async () => ({bavail:1,bsize:4096,blocks:100}),
+    };
+    const present = await paperclipReadOnlyPreflight({ ...probes, checkRoot:async()=>{} });
+    expect(present.container.reason).toBe('DOCKER_UNAVAILABLE');
+    const missing = await paperclipReadOnlyPreflight({ ...probes,
+      checkRoot:async()=>{ throw Object.assign(new Error('missing'),{code:'ENOENT'}); }
+    });
+    expect(missing.container.reason).toBe('LAB_ROOT_MISSING');
+  });
+
   it('collects present-root read-only probe results exactly once', async () => {
     let disks = 0;
     let brokers = 0;

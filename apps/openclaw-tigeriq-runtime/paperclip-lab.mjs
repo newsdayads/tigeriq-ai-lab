@@ -914,7 +914,9 @@ export async function paperclipReadOnlyPreflight({
     ? await inspectContainer(docker)
     : { attempted: false, present: null, running: null, imageRef: null,
         imagePinMatch: null, port3210LoopbackBinding: null, imageDigestVerified: false,
-        reason: rootPresent ? 'DOCKER_UNAVAILABLE' : 'LAB_ROOT_MISSING' };
+        reason: !rootPresent ? 'LAB_ROOT_MISSING'
+          : docker.error === 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT'
+            ? 'DOCKER_UNVERIFIED_READ_ONLY' : 'DOCKER_UNAVAILABLE' };
   return {
     docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
     container,
