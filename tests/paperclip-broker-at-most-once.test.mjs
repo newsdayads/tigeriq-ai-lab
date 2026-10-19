@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {test} from 'node:test';
+import {test} from 'vitest';
 import assert from 'node:assert/strict';
 
 // GH-2054 R07: offline contract test. This cannot attest a live broker restart.
