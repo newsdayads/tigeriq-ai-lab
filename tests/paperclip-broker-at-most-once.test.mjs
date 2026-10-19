@@ -54,3 +54,101 @@ test('R07 typed broker install verifies deployed source before and after the tas
   assert.ok(first>=0 && execute>first && second>execute && accepted>second);
   assert.match(fn,/TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_DRIFT/g);
 });
+
+
+// GH-2054 R07: unlike the source-text guards above, these tests execute the
+// exact claim function from the broker in isolated, fresh PowerShell processes.
+// No PC01, WSL, Docker, scheduled task, authentication or live Lab access.
+import {spawnSync} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
+import {mkdtempSync,mkdirSync,writeFileSync,existsSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+
+const pwshProbe=spawnSync('pwsh',['-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSVersion.Major'],{encoding:'utf8',timeout:10000});
+const pwshAvailable=pwshProbe.status===0;
+const realPwshTest=pwshAvailable||process.env.CI==='true'?test:test.skip;
+
+function newIsolatedPowerShellClaimFixture() {
+  const start=source.indexOf('function Reserve-BrokerRequestOnce(');
+  const end=source.indexOf('\nfunction Write-JsonAtomic(',start);
+  assert.ok(start>=0&&end>start,'R07 claim function boundaries must exist');
+  const dir=mkdtempSync(join(tmpdir(),'tigeriq-r07-claim-'));
+  mkdirSync(join(dir,'claims'));
+  mkdirSync(join(dir,'responses'));
+  const script=join(dir,'claim-only.ps1');
+  const code=[
+    "$ErrorActionPreference='Stop'",
+    "$Claims=Join-Path $env:TIGERIQ_R07_TEST_DIR 'claims'",
+    "$Responses=Join-Path $env:TIGERIQ_R07_TEST_DIR 'responses'",
+    source.slice(start,end),
+    'try {',
+    "  Reserve-BrokerRequestOnce $env:TIGERIQ_R07_TEST_ID 'version'",
+    "  Write-Output 'R07_CLAIMED'",
+    '  exit 0',
+    '} catch {',
+    "  if ($_.Exception.Message -eq 'TIGERIQ_PAPERCLIP_WSL_BROKER_DUPLICATE_OR_UNKNOWN') {",
+    "    Write-Output 'R07_DUPLICATE_BLOCKED'",
+    '    exit 23',
+    '  }',
+    '  throw',
+    '}',
+  ].join('\n');
+  writeFileSync(script,code,'utf8');
+  return {dir,script,id:randomUUID()};
+}
+
+function runIsolatedPowerShellClaim(fixture) {
+  assert.equal(pwshAvailable,true,'PowerShell must be installed for real R07 CI tests');
+  const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-File',fixture.script],{
+    encoding:'utf8',timeout:15000,
+    env:{...process.env,TIGERIQ_R07_TEST_DIR:fixture.dir,TIGERIQ_R07_TEST_ID:fixture.id},
+  });
+  assert.ifError(result.error);
+  return result;
+}
+
+realPwshTest('R07 PowerShell fresh-process claim survives restart and blocks duplicate side effect',()=>{
+  const fixture=newIsolatedPowerShellClaimFixture();
+  try {
+    const first=runIsolatedPowerShellClaim(fixture);
+    assert.equal(first.status,0,first.stderr);
+    assert.match(first.stdout,/R07_CLAIMED/);
+    const claim=join(fixture.dir,'claims','claim-'+fixture.id+'.json');
+    assert.equal(existsSync(claim),true);
+    const before=readFileSync(claim,'utf8');
+    assert.deepEqual(
+      (({schema,id,operation})=>({schema,id,operation}))(JSON.parse(before)),
+      {schema:'TIGERIQ_PAPERCLIP_WSL_CLAIM_V1',id:fixture.id,operation:'version'},
+    );
+    const restarted=runIsolatedPowerShellClaim(fixture);
+    assert.equal(restarted.status,23,restarted.stderr);
+    assert.match(restarted.stdout,/R07_DUPLICATE_BLOCKED/);
+    assert.equal(readFileSync(claim,'utf8'),before,'durable claim must be unchanged');
+  } finally {rmSync(fixture.dir,{recursive:true,force:true})}
+});
+
+realPwshTest('R07 PowerShell fresh-process fails closed on a pre-existing terminal response',()=>{
+  const fixture=newIsolatedPowerShellClaimFixture();
+  try {
+    const response=join(fixture.dir,'responses','response-'+fixture.id+'.json');
+    writeFileSync(response,'{"schema":"TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1"}','utf8');
+    const result=runIsolatedPowerShellClaim(fixture);
+    assert.equal(result.status,23,result.stderr);
+    assert.match(result.stdout,/R07_DUPLICATE_BLOCKED/);
+    assert.equal(existsSync(join(fixture.dir,'claims','claim-'+fixture.id+'.json')),false);
+    assert.equal(readFileSync(response,'utf8'),'{"schema":"TIGERIQ_PAPERCLIP_WSL_RESPONSE_V1"}');
+  } finally {rmSync(fixture.dir,{recursive:true,force:true})}
+});
+
+realPwshTest('R07 PowerShell fresh-process fails closed on an incomplete crash claim',()=>{
+  const fixture=newIsolatedPowerShellClaimFixture();
+  try {
+    const claim=join(fixture.dir,'claims','claim-'+fixture.id+'.json');
+    writeFileSync(claim,'{"schema":','utf8');
+    const result=runIsolatedPowerShellClaim(fixture);
+    assert.equal(result.status,23,result.stderr);
+    assert.match(result.stdout,/R07_DUPLICATE_BLOCKED/);
+    assert.equal(readFileSync(claim,'utf8'),'{"schema":');
+  } finally {rmSync(fixture.dir,{recursive:true,force:true})}
+});
