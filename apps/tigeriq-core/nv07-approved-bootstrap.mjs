@@ -15,6 +15,17 @@ const CLIENT=ROOT+String.raw`\code\nv07-protected-session-client.ps1`;
 const EXE=String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`;
 const FILE='docs/implementation/nv07-proposal.md';
 const deny=code=>({accepted:false,code,coreLeaseVerified:false,nv07Active:false});
+const NV07_V58_ACCEPTED_ADMIN_STATE='ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY';
+
+// This opens ONLY the previously authorized read-only, one-shot bootstrap canary.
+// A Registry acceptance is never a live heartbeat, a Core lease or P1-P5 routing.
+export function nv07ScopedCanaryRegistryAllowed(registry,command7){
+ if(registry?.employee_id!=='NV07'||registry?.name!=='Google Antigravity'||command7!=='NV07')return false;
+ const state=String(registry.admin_state||'').trim();
+ if(/RETIRED|DISABLED|OWNER_STOPPED/i.test(state))return false;
+ return /(?:^|[ /])PROVISIONING(?:[ /]|$)/.test(state)||state===NV07_V58_ACCEPTED_ADMIN_STATE;
+}
+
 const digest=s=>createHash('sha256').update(s).digest('hex');
 
 export function validNv07ProtectedApproval(a,{sourceSha,nowMs=Date.now()}={}){
@@ -105,9 +116,8 @@ export async function runNv07ApprovedBootstrap(db,{queuedJobId=null}={}){
   const issue=await fetchRegistryIssue();
   const parsed=parseRegistryBody(issue.body);
   const registry=parsed.workforce.find(x=>x.employee_id==='NV07');
-  if(issue.body?.match(/COMMAND_7=([A-Z0-9]+)/)?.[1]!=='NV07')return deny('NV07_COMMAND_MAPPING_UNVERIFIED');
-  if(registry?.name!=='Google Antigravity'||!/PROVISIONING/.test(registry.admin_state||''))
-   return deny('NV07_LIVE_REGISTRY_NOT_PROVISIONING');
+  if(!nv07ScopedCanaryRegistryAllowed(registry,issue.body?.match(/COMMAND_7=([A-Z0-9]+)/)?.[1]))
+   return deny('NV07_LIVE_REGISTRY_NOT_ELIGIBLE');
   job={employeeId:'NV07',executionHost:'PC01',repository:'newsdayads/tigeriq-ai-lab',priority:'P1',
    action:'READ_METADATA',resourceScope:NV07_CANARY_CORE_SCOPE,jobId:a.jobId,
    sourceSha:a.sourceSha,paths:[FILE]};
@@ -179,8 +189,7 @@ export async function queueNv07ApprovedBootstrap(db){
   if(!a)return deny('NV07_EXACT_OWNER_APPROVAL_MISSING');
   const issue=await fetchRegistryIssue();
   const registry=parseRegistryBody(issue.body).workforce.find(x=>x.employee_id==='NV07');
-  if(issue.body?.match(/COMMAND_7=([A-Z0-9]+)/)?.[1]!=='NV07'
-    ||registry?.name!=='Google Antigravity'||!/PROVISIONING/.test(registry.admin_state||''))
+  if(!nv07ScopedCanaryRegistryAllowed(registry,issue.body?.match(/COMMAND_7=([A-Z0-9]+)/)?.[1]))
    return deny('NV07_LIVE_QUEUE_REGISTRY_DENIED');
   const created=await db.query(
    "with queued as (insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts,employee_id,resource_id,provider) values($1,null,'NV07 Owner-approved read-only canary','READ_METADATA; no tools or source mutation','nv07_bootstrap','nv07_bootstrap','queued',1,'NV07',$2,'antigravity') on conflict(id) do nothing returning id), logged as (insert into tigeriq_events(type,job_id,employee_id,resource_id,task_kind,data) select 'NV07_CORE_BOOTSTRAP_QUEUED',id,'NV07',$2,'nv07_bootstrap',$3::jsonb from queued returning job_id) select job_id as id from logged",

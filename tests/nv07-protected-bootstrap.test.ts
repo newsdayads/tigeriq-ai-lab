@@ -8,7 +8,7 @@ vi.mock('../apps/tigeriq-core/workforce-registry.mjs',()=>({
  fetchRegistryIssue:registryIo.fetch,parseRegistryBody:registryIo.parse}));
 vi.mock('../apps/openclaw-tigeriq-runtime/nv07-protected-session.mjs',()=>({attestNv07ProtectedSession:native.attest}));
 import {validateNv07ProtectedInvocation} from '../apps/openclaw-tigeriq-runtime/nv07-protected-cli-helper.mjs';
-import {validNv07ProtectedApproval,runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from '../apps/tigeriq-core/nv07-approved-bootstrap.mjs';
+import {validNv07ProtectedApproval,nv07ScopedCanaryRegistryAllowed,runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from '../apps/tigeriq-core/nv07-approved-bootstrap.mjs';
 const NOW=Date.parse('2026-10-16T01:00:00Z'),SHA='a'.repeat(40);
 const scope='TIGERIQ_NV07_PC01_READ_ONLY_CANARY_4783';
 const rules=[
@@ -76,6 +76,19 @@ describe('protected Core one-shot boundary',()=>{
 });
 
 describe('canonical NV07 queue admission',()=>{
+ it('restricts V58 historical acceptance to the exact one-shot canary registry status',()=>{
+  const record=(admin_state:string)=>({employee_id:'NV07',name:'Google Antigravity',admin_state});
+  const accepted='ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY';
+  expect(nv07ScopedCanaryRegistryAllowed(record(accepted),'NV07')).toBe(true);
+  expect(nv07ScopedCanaryRegistryAllowed(record('ADMIN_ENABLED / PROVISIONING / RUNTIME_NOT_VERIFIED / P1_P5_PROPOSAL_ONLY / NOT_YET_ROUTABLE'),'NV07')).toBe(true);
+  for(const rejected of [
+   'ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / PC01_ANTIGRAVITY',
+   'ACTIVE_CORE_RESOURCE / ALL_SCOPES / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY',
+   'RETIRED / PROVISIONING','OWNER_STOPPED / PROVISIONING','DISABLED / PROVISIONING',
+  ])expect(nv07ScopedCanaryRegistryAllowed(record(rejected),'NV07')).toBe(false);
+  expect(nv07ScopedCanaryRegistryAllowed(record(accepted),'NV03')).toBe(false);
+  expect(nv07ScopedCanaryRegistryAllowed({...record(accepted),employee_id:'NV03'},'NV07')).toBe(false);
+ });
  const setup=()=>{
   vi.stubGlobal('process',{...process,platform:'win32'});
   native.attest.mockResolvedValue({attestationVerified:true,sourceSha:SHA} as never);
@@ -99,6 +112,18 @@ describe('canonical NV07 queue admission',()=>{
   expect(db.query.mock.calls[0][0]).toContain("'queued'");
   expect(db.query.mock.calls[0][1][0]).toBe(payload.job_id);
   expect(db.query.mock.calls[0][0]).toContain('NV07_CORE_BOOTSTRAP_QUEUED');
+  expect(db.query).toHaveBeenCalledTimes(1);
+ });
+ it('accepts only the protected one-shot queue with canonical V58 employee status',async()=>{
+  setup();
+  registryIo.parse.mockReturnValue({workforce:[{
+   employee_id:'NV07',name:'Google Antigravity',
+   admin_state:'ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY',
+  }]});
+  const db={query:vi.fn().mockResolvedValueOnce({rowCount:1,rows:[{id:payload.job_id}]})};
+  expect(await queueNv07ApprovedBootstrap(db)).toMatchObject({
+   accepted:true,code:'NV07_CANONICAL_QUEUE_ACCEPTED_NOT_EXECUTED',nv07Active:false,
+  });
   expect(db.query).toHaveBeenCalledTimes(1);
  });
  it('does not enqueue twice or route to another employee',async()=>{
