@@ -4,6 +4,7 @@ $LabRoot = 'D:\TigerIQ-Paperclip-Lab'
 $BrokerRoot = Join-Path $LabRoot 'broker'
 $Requests = Join-Path $BrokerRoot 'requests'
 $Responses = Join-Path $BrokerRoot 'responses'
+$Claims = Join-Path $BrokerRoot 'claims'
 $Heartbeat = Join-Path $BrokerRoot 'heartbeat.json'
 $Wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
 $Distro = 'Ubuntu'
@@ -20,10 +21,39 @@ $DeviceAuthStdout = $null
 $DeviceAuthStderr = $null
 $DeviceAuthSessionId = $null
 
-New-Item -ItemType Directory -Force -Path $Requests,$Responses | Out-Null
+New-Item -ItemType Directory -Force -Path $Requests,$Responses,$Claims | Out-Null
 $created = $false
 $mutex = New-Object System.Threading.Mutex($true, 'Local\TigerIQPaperclipWslBrokerV1', [ref]$created)
 if (-not $created) { exit 0 }
+
+# R07: a durable, exclusive tombstone before invoking ANY broker operation.
+# If the broker dies after a side effect, restart must not replay that UUID.
+# Keep claims forever until an independently authorized reconciliation/retention policy.
+function Reserve-BrokerRequestOnce([string]$RequestId,[string]$Operation) {
+  $claimPath=Join-Path $Claims ("claim-"+$RequestId+".json")
+  $responsePath=Join-Path $Responses ("response-"+$RequestId+".json")
+  if (Test-Path -LiteralPath $responsePath) { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_DUPLICATE_OR_UNKNOWN' }
+  $stream=$null
+  try {
+    $stream=[System.IO.FileStream]::new($claimPath,[System.IO.FileMode]::CreateNew,[System.IO.FileAccess]::Write,[System.IO.FileShare]::None)
+  } catch {
+    if (Test-Path -LiteralPath $claimPath) { throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_DUPLICATE_OR_UNKNOWN' }
+    throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_CLAIM_FAILED'
+  }
+  try {
+    $body=([pscustomobject]@{
+      schema='TIGERIQ_PAPERCLIP_WSL_CLAIM_V1'
+      id=$RequestId
+      operation=$Operation
+      claimedAt=(Get-Date).ToUniversalTime().ToString('o')
+    } | ConvertTo-Json -Compress)
+    $bytes=([System.Text.UTF8Encoding]::new($false)).GetBytes($body)
+    $stream.Write($bytes,0,$bytes.Length)
+    $stream.Flush($true)
+  } finally {
+    if ($null -ne $stream) { $stream.Dispose() }
+  }
+}
 
 function Write-JsonAtomic([string]$Path, $Value) {
   $tmp = "$Path.tmp-$PID"
@@ -269,6 +299,7 @@ try {
       try {
         $req = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
         Test-Request $req
+        Reserve-BrokerRequestOnce ([string]$req.id) ([string]$req.operation)
         if([string]$req.operation -eq 'openai_device_auth_start'){
           $safe=Invoke-OpenAiDeviceAuth ([string]$req.id) ([string]$req.sessionId)
           $resp=[pscustomobject]@{
@@ -304,7 +335,11 @@ try {
         }
       }
       if ($req -and [string]$req.id -match '^[0-9a-f-]{36}$') {
-        Write-JsonAtomic (Join-Path $Responses "response-$($req.id).json") $resp
+        $responsePath=Join-Path $Responses "response-$($req.id).json"
+        # Never clobber a previous terminal receipt for the same UUID.
+        if (-not (Test-Path -LiteralPath $responsePath -PathType Leaf)) {
+          Write-JsonAtomic $responsePath $resp
+        }
       }
       Remove-Item -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue
     }
