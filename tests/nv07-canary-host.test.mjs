@@ -46,6 +46,21 @@ describe('NV07 bootstrap canary: one-shot, read-only, never ACTIVE', () => {
       allowed: true, state: 'ONE_SHOT_READ_ONLY_CANARY_NOT_ROUTABLE',
     });
   });
+  it('accepts canonical V58 only for fresh one-shot read-only bootstrap, not generic ACTIVE',()=>{
+    const record=registry();
+    record.admin_state='ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY';
+    const a={registry:record,commands,session:session(),job:job(),approval:approval(),lease:lease(),nowMs:NOW};
+    expect(nv07BootstrapCanaryDecision(a)).toMatchObject({
+      allowed:true,state:'ONE_SHOT_READ_ONLY_CANARY_NOT_ROUTABLE',
+    });
+    for(const deniedState of [
+      'ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / PC01_ANTIGRAVITY',
+      'ACTIVE_CORE_RESOURCE / P0_ALLOWED / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY',
+      'OWNER_STOPPED / ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY',
+    ])expect(nv07BootstrapCanaryDecision({...a,registry:{...record,admin_state:deniedState}}).allowed).toBe(false);
+    expect(nv07BootstrapCanaryDecision({...a,job:{...a.job,action:'WRITE_SOURCE'}}).allowed).toBe(false);
+    expect(nv07BootstrapCanaryDecision({...a,lease:{...a.lease,state:'EXPIRED'}}).allowed).toBe(false);
+  });
   it.each([
     ['no owner proof', x => x.approval.verifiedByTrustedHost = false],
     ['wrong owner work', x => x.approval.workOrderId = 1111],
