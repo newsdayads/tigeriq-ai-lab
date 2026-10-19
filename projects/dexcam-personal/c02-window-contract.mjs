@@ -49,8 +49,11 @@ export function planWindowRequest({ display, preset, capability } = {}) {
 }
 
 export function checkAppliedBounds({ requested_bounds, observed_bounds, evidence_ref } = {}) {
+  const evidence = typeof evidence_ref === 'string' ? evidence_ref.trim() : '';
+  // A placeholder is not an OS readback reference. Provenance still requires
+  // independent adapter verification; this rejects clearly missing evidence.
   if (!validRect(requested_bounds) || !validRect(observed_bounds) ||
-      typeof evidence_ref !== 'string' || !evidence_ref.trim())
+      !evidence || /^(?:NOT[_ -]?MEASURED|UNVERIFIED|UNKNOWN|NOT[_ -]?AVAILABLE|TBD|NONE|N\/A)$/i.test(evidence))
     return {status:'NOT_MEASURED',delta:null};
   // Adapter must independently authenticate evidence provenance; comparison alone cannot.
   const delta=Object.fromEntries(['x','y','width','height'].map(k=>[k,observed_bounds[k]-requested_bounds[k]]));
