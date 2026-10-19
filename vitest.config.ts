@@ -56,6 +56,7 @@ export default defineConfig({
       'tests/core-vnext-checkpoint-store.test.mjs',
       'tests/core-4457-manager-pg-lock.test.mjs',
       'apps/tigeriq-core/github-intake.test.mjs',
+      'tests/work-order-checklist-hard-gate.test.mjs',
       'tests/nv07-native-session-broker.test.mjs',
     ],
     environment: 'node'
