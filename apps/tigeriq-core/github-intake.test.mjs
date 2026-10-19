@@ -4,8 +4,26 @@ import { androidProductAutoExecutionExclusion,contextIssueRefs,extractExplicitCo
 import { parseCodingIssue } from './github-coding-intake.mjs';
 import { appendPublicEvidenceToSummary,buildPublicEvidenceDiagnostic,extractPublicEvidence,formatPublicEvidenceBlock,formatPublicEvidenceDiagnosticBlock,parsePublicEvidenceKeys,sanitizePublicEvidenceValue } from './public-evidence.mjs';
 import { openClawTerminalDecision } from '../openclaw-tigeriq-runtime/dispatch.mjs';
+import { workOrderChecklistGate } from './work-order-checklist-hard-gate.mjs';
 
 describe('GitHub Core intake guardrails',()=>{
+  it('GH-2054 prevents accepted-step readback on inconsistent checklist counter',()=>{
+    const link='https://github.com/newsdayads/tigeriq-ai-lab/issues/2054#issuecomment-6259876031';
+    const ids=['R01','R02','R03','R04','R05','R06','R07','R08','R09'];
+    const checked=new Set(['R01','R02','R04','R06','R08']);
+    const steps=ids.map(id=>'- ['+(checked.has(id)?'x':' ')+'] '+id+
+      ' — milestone'+(checked.has(id)?' [Receipt]('+link+')':''));
+    const body=['PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST','PROGRESS_COMPLETED=3',
+      'PROGRESS_TOTAL=9','## STRUCTURED_PROGRESS_CHECKLIST',...steps,'## ACCEPTANCE'].join('\n');
+    const query=b=>workOrderChecklistGate({number:2054,state:'open',body:b},
+      {stepId:'R02',requireAll:false});
+    expect(query(body).reason).toBe('CHECKLIST_PROGRESS_COUNTER_MISMATCH');
+    expect(query(body.replace('PROGRESS_COMPLETED=3','PROGRESS_COMPLETED=5')).ok).toBe(true);
+    expect(query(body.replace('PROGRESS_TOTAL=9','PROGRESS_TOTAL=8')).reason)
+      .toBe('CHECKLIST_PROGRESS_COUNTER_MISMATCH');
+  });
+
+
 
   it('dedupes retry/rearm Work Orders by canonical scope family plus intent while preserving review independence',()=>{
     const baseIssue={number:4093,title:'[P2][CORE][AUDIT] NV12 backlog eligibility audit',capability:'reasoning',resourceScope:'PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_20261005',body:'CAPABILITY=reasoning\nRESOURCE_SCOPE=PARALLEL_CORE_BACKLOG_ELIGIBILITY_AUDIT_20261005'};
