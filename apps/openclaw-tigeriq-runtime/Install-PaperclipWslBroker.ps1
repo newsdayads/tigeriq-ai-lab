@@ -6,6 +6,7 @@ $BrokerRoot=Join-Path $LabRoot 'broker'
 $Broker=Join-Path $BrokerRoot 'paperclip-wsl-broker.ps1'
 $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
 $ExpectedBrokerVersion='1.7-openai-device-auth'
+$ExpectedBrokerSha256=(Get-FileHash -LiteralPath $Broker -Algorithm SHA256).Hash.ToLowerInvariant()
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }
@@ -42,6 +43,7 @@ for($i=0;$i -lt 80;$i++){
       $heartbeatAt=[DateTime]::Parse([string]$h.at).ToUniversalTime()
       if([string]$h.schema -eq 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1' -and
          [string]$h.version -eq $ExpectedBrokerVersion -and
+         [string]$h.sourceSha256 -ceq $ExpectedBrokerSha256 -and
          [string]$h.user -and
          [int]$h.pid -gt 0 -and
          [bool]$h.wslKeepaliveRunning -eq $true -and
