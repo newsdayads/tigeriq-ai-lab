@@ -3139,7 +3139,17 @@ const server=createServer(async(req,res)=>{
       const number=url.searchParams.get('number')||'';
       res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
       if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
-      try{const value=await workCenterHistory(Number(number));res.writeHead(200);return res.end(JSON.stringify(value))}
+      try{
+        const value=await workCenterHistory(Number(number));
+        // A healthy Core process is not proof that the imported history module was refreshed.
+        // Refuse a stale in-memory schema rather than presenting unverified checklist totals.
+        if(!value || !Object.prototype.hasOwnProperty.call(value,'progressCounterConsistent')
+          || !Object.prototype.hasOwnProperty.call(value,'checkedEvidenceSteps')
+          || !Object.prototype.hasOwnProperty.call(value,'declaredCompletedSteps')){
+          res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_SCHEMA_UNVERIFIED'}));
+        }
+        res.writeHead(200);return res.end(JSON.stringify(value));
+      }
       catch{res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_UNAVAILABLE'}))}
     }
     if(req.method==='GET'&&url.pathname==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,pid:process.pid,uptimeSec:Math.floor(process.uptime())}));}
