@@ -43,3 +43,24 @@ it('C02: restore requires verified independent R OFF or deliberate stationary ma
   expect(planLayoutRestore({snapshot_id:'pre-R',manual_close:true}).restore_permitted).toBe(false);
   expect(planLayoutRestore({snapshot_id:'pre-R',manual_close:true,stationary_confirmed:true}).basis).toBe('MANUAL_CLOSE_WHILE_STATIONARY');
 });
+
+it('C02: odd pixel widths and heights use quantized endpoint bounds safely',()=>{
+  const scenarios=[
+    {w:1919,h:1080,insets:{left:0,right:0,top:40,bottom:40},
+      r:{x:.5,y:0,width:.5,height:1},expected:{x:960,y:40,width:959,height:1000}},
+    {w:1921,h:1081,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:0,y:.5,width:1,height:.5},expected:{x:0,y:541,width:1921,height:540}},
+    {w:1919,h:1079,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:.5,y:.5,width:.5,height:.5},expected:{x:960,y:540,width:959,height:539}},
+    {w:1920,h:1080,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:.5,y:0,width:.5,height:1},expected:{x:960,y:0,width:960,height:1080}}
+  ];
+  for(const {w,h,insets,r,expected} of scenarios){
+    const actualDisplay={...display,width_px:w,height_px:h,insets};
+    const actualPreset={...preset,bounds_normalized:r};
+    expect(planWindowRequest({display:actualDisplay,preset:actualPreset,capability})).toMatchObject({
+      action:'REQUEST_L0_LAUNCH_BOUNDS',requested_bounds:expected,applied_bounds:null,
+      verification:'NOT_MEASURED',third_party_task_resize:'NOT_AUTHORIZED'
+    });
+  }
+});

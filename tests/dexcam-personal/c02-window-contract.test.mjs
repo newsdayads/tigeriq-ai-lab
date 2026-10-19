@@ -52,3 +52,27 @@ test('C02 manual close requires confirmed stationary state',()=>{
   assert.equal(planLayoutRestore({snapshot_id:'snap',manual_close:true,stationary_confirmed:true}).basis,'MANUAL_CLOSE_WHILE_STATIONARY');
   assert.equal(planLayoutRestore({reverse_state:'OFF'}).action,'NO_SNAPSHOT');
 });
+
+test('C02 normalizes both window endpoints for odd-sized displays without a false fallback',()=>{
+  const scenarios=[
+    {w:1919,h:1080,insets:{left:0,right:0,top:40,bottom:40},
+      r:{x:.5,y:0,width:.5,height:1},expected:{x:960,y:40,width:959,height:1000}},
+    {w:1921,h:1081,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:0,y:.5,width:1,height:.5},expected:{x:0,y:541,width:1921,height:540}},
+    {w:1919,h:1079,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:.5,y:.5,width:.5,height:.5},expected:{x:960,y:540,width:959,height:539}},
+    {w:1920,h:1080,insets:{left:0,right:0,top:0,bottom:0},
+      r:{x:.5,y:0,width:.5,height:1},expected:{x:960,y:0,width:960,height:1080}}
+  ];
+  for(const {w,h,insets,r,expected} of scenarios){
+    const actualDisplay={...display,width_px:w,height_px:h,insets};
+    const actualPreset={...preset,bounds_normalized:r};
+    const result=planWindowRequest({display:actualDisplay,preset:actualPreset,capability});
+    assert.equal(result.action,'REQUEST_L0_LAUNCH_BOUNDS',
+      "valid geometric preset must not be rejected solely because of odd pixel dimensions");
+    assert.deepEqual(result.requested_bounds,expected);
+    assert.equal(result.applied_bounds,null);
+    assert.equal(result.verification,'NOT_MEASURED');
+    assert.equal(result.third_party_task_resize,'NOT_AUTHORIZED');
+  }
+});
