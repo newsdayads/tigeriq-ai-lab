@@ -29,8 +29,13 @@ export function planWindowRequest({ display, preset, capability } = {}) {
   if (!r || !['x','y','width','height'].every(k => finite(r[k]) && r[k] >= 0 && r[k] <= 1) ||
       r.width === 0 || r.height === 0 || r.x+r.width > 1 || r.y+r.height > 1)
     return fallback('INVALID_NORMALIZED_BOUNDS');
-  const bounds = {x:usable.x+Math.round(r.x*usable.width), y:usable.y+Math.round(r.y*usable.height),
-    width:Math.round(r.width*usable.width), height:Math.round(r.height*usable.height)};
+  // Quantize both endpoints, not origin and length independently. The
+  // latter can round a half-screen twice past the right edge on odd pixels.
+  const left=usable.x+Math.round(r.x*usable.width);
+  const top=usable.y+Math.round(r.y*usable.height);
+  const right=usable.x+Math.round((r.x+r.width)*usable.width);
+  const bottom=usable.y+Math.round((r.y+r.height)*usable.height);
+  const bounds={x:left,y:top,width:right-left,height:bottom-top};
   if (!validRect(bounds) || bounds.x+bounds.width > display.width_px-i.right ||
       bounds.y+bounds.height > display.height_px-i.bottom)
     return fallback('INVALID_PIXEL_BOUNDS');
