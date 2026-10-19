@@ -2892,6 +2892,10 @@ async function managerTick() {
 }
 function publicStatus(r){
   if(!r.enabled) return 'DISABLED';
+  // Historical NV07 canary rows may still carry WAIT_KEY when opt-in is off.
+  // Antigravity uses a user-bound CLI session, never a standalone API key.
+  // Report the not-yet-verified runtime as OFFLINE; do not admit routing.
+  if(r.employee_id==='NV07'&&r.provider==='antigravity'&&r.credential_state==='WAIT_KEY')return 'OFFLINE';
   if(r.credential_state==='WAIT_KEY') return 'WAIT_KEY';
   if(r.current_job_id||r.work_state==='BUSY') return 'BUSY';
   if(r.health_state==='RATE_LIMITED') return 'RATE_LIMITED';
