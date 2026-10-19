@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest';
 // @ts-ignore source-only ESM contract; no native Android/USB side effects.
 import {inspectG1Cycles} from '../../projects/dexcam-personal/g1-cycle-admission.mjs';
-const cycle = i => ({
+const cycle = (i: number) => ({
   cycle_id:'cycle-'+i, usb_vid:0x1234, usb_pid:0xabcd, usb_interface_class:14,
   usb_present_before_R:'YES', usb_present_during_R:'YES', reverse_state:'OFF',
   R_on_evidence:'LOCAL_ONLY:on-'+i, R_off_evidence:'LOCAL_ONLY:off-'+i,
@@ -15,11 +15,11 @@ const sample = () => ({
   schema:'dexcam-g1-cycles-v1',capture_kind:'SYNTHETIC_FIXTURE',
   redaction_confirmed:true,cycles:Array.from({length:5},(_,i)=>cycle(i+1))
 });
-const invalid = (x,field) => {
+const invalid = (x: ReturnType<typeof sample>,field: string) => {
   const result=inspectG1Cycles(x);
   expect(result.status).toBe('INCOMPLETE');
   expect(result.g1_accepted).toBe(false);
-  expect(result.errors.some(e=>e.startsWith(field+':'))).toBe(true);
+  expect(result.errors.some((e: string)=>e.startsWith(field+':'))).toBe(true);
 };
 it('synthetic five-cycle record remains synthetic and never G1 accepted',()=>{
   const r=inspectG1Cycles(sample());
