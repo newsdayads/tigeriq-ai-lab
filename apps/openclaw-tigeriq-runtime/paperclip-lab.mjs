@@ -1220,6 +1220,28 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
   };
 }
 
+// Pure, fail-closed R02 diagnostic for a broker-only Docker host. It never
+// attests live image identity, Postgres sidecar state or loopback port binding.
+export function paperclipUnverifiedDockerHealth({ docker, port, http } = {}) {
+  return {
+    ok: false,
+    url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
+    reason: 'DOCKER_UNAVAILABLE',
+    docker,
+    port,
+    http,
+    result: {
+      portReachable: port?.reachable === true,
+      httpReachable: http?.reachable === true,
+      httpStatus: http?.status ?? null,
+      httpAppOk: http?.appOk === true,
+      dockerVerified: false,
+      containerVerified: false,
+      databaseVerified: false,
+    },
+  };
+}
+
 async function health(signal = null, transport = null, options = {}) {
   throwIfAborted(signal);
   let pin;
@@ -1229,7 +1251,14 @@ async function health(signal = null, transport = null, options = {}) {
   // R02 is diagnostic/read-only: broker fallback writes request files. Only
   // direct Docker/WSL are admissible without a separate mutation lease.
   const docker = transport ? { kind: transport, version: null, error: null } : await resolveDockerTransport(signal, { allowBrokerProbe: false });
-  if (!docker.kind) return { ok: false, url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`, reason: 'DOCKER_UNAVAILABLE', docker };
+  if (!docker.kind) {
+    // The Docker/WSL read-only transport may be unavailable even while the
+    // private Paperclip HTTP service is healthy (broker fallback needs a write).
+    // Probe only the fixed loopback port and return partial diagnostic evidence.
+    // Never promote HTTP-only evidence to container/database R02 acceptance.
+    const [port, http] = await Promise.all([probePort(), httpHealth(signal)]);
+    return paperclipUnverifiedDockerHealth({ docker, port, http });
+  }
   const [port, http, inspect, database] = await Promise.all([
     probePort(),
     httpHealth(signal),

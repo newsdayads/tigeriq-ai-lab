@@ -138,7 +138,7 @@ vi.mock('node:net', async (importOriginal) => {
 });
 
 // @ts-ignore — Existing native .mjs API intentionally has no TS declaration.
-import { paperclipReadOnlyPreflight, executePaperclipLabAction } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { paperclipReadOnlyPreflight, executePaperclipLabAction, paperclipUnverifiedDockerHealth } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 
 describe('Paperclip R01 production-default preflight call chain (isolated OS)', () => {
   it('returns missing-root without mkdir, spawn or broker-file writes', async () => {
@@ -327,6 +327,11 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     state.writeAttempts.length = 0;
     state.socketConnects = 0;
 
+    const fetchProbe = vi.fn(async (url: string) => {
+      expect(url).toBe('http://127.0.0.1:3210/api/health');
+      return { ok: true, status: 200, json: async () => ({ status: 'ok' }) };
+    });
+    vi.stubGlobal('fetch', fetchProbe);
     try {
       const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
       expect(result.data).toMatchObject({
@@ -337,14 +342,50 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
           error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
           broker: { ready: true },
         },
+        port: { reachable: false },
+        http: { reachable: true, status: 200, appOk: true },
+        result: {
+          portReachable: false, httpReachable: true, httpStatus: 200, httpAppOk: true,
+          dockerVerified: false, containerVerified: false, databaseVerified: false,
+        },
       });
       expect(result.evidence).toMatchObject({ loopbackOnly: false, observedLoopbackBinding: null });
+      expect(fetchProbe).toHaveBeenCalledOnce();
       expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
       expect(state.writeAttempts).toEqual([]);
-      expect(state.socketConnects).toBe(0);
+      expect(state.socketConnects).toBe(1);
     } finally {
+      vi.unstubAllGlobals();
       state.releaseReady = false;
     }
+  });
+
+  it('R02 broker-only helper never promotes HTTP-only health to container or database acceptance', () => {
+    const result = paperclipUnverifiedDockerHealth({
+      docker: { kind: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT' },
+      port: { reachable: true },
+      http: { reachable: true, status: 200, appOk: true },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('DOCKER_UNAVAILABLE');
+    expect(result.result).toMatchObject({
+      portReachable: true, httpReachable: true, httpStatus: 200, httpAppOk: true,
+      dockerVerified: false, containerVerified: false, databaseVerified: false,
+    });
+  });
+
+  it('R02 broker-only helper reports HTTP failure without inventing health', () => {
+    const result = paperclipUnverifiedDockerHealth({
+      docker: { kind: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT' },
+      port: { reachable: false },
+      http: { reachable: false, status: null, appOk: false },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatchObject({
+      portReachable: false, httpReachable: false, httpStatus: null, httpAppOk: false,
+      dockerVerified: false, containerVerified: false, databaseVerified: false,
+    });
+    expect(paperclipUnverifiedDockerHealth({}).ok).toBe(false);
   });
 
   it('rejects a typed R01 request with extra fields before any IO', async () => {
