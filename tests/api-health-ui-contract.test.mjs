@@ -239,4 +239,15 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
+  it('renders two distinct DeXCam lists and hides raw markdown and blocker codes',()=>{
+    expect(dashboard).toContain('id="workDetailExecutionSection"');
+    expect(dashboard).toContain('QUY TRÌNH THỰC THI · KHÔNG TÍNH %');
+    expect(dashboard).toContain('MỐC NGHIỆM THU');
+    expect(dashboard).toContain("row?.executionPlanSource==='GITHUB_EXECUTION_ORDER'");
+    expect(dashboard).toContain('function workDetailReadableBlocker(value)');
+    expect(dashboard).toContain('workDetailBlocker.textContent=workDetailReadableBlocker');
+    expect(dashboard).toContain('workDetailPlainText(value)');
+    expect(dashboard).toContain('class="work-detail-step-source"');
+  });
+
 });
