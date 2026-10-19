@@ -45,7 +45,7 @@ it('placeholders are not timestamp measurements',()=>{
   invalid(x,'cycles[0].R_off_timestamp');
 });
 it('USB interface class must be observed, not assumed by device class',()=>{
-  const x=sample();x.cycles[0].usb_interface_class='NOT_MEASURED';
+  const x=sample();Object.assign(x.cycles[0],{usb_interface_class:'NOT_MEASURED'});
   invalid(x,'cycles[0].usb_interface_class');
 });
 it('auto-open YES without visible live frame is not proven',()=>{
@@ -69,7 +69,7 @@ it('all error output uses stable field codes, never private evidence values',()=
   expect(JSON.stringify(result).includes('secret-token')).toBe(false);
 });
 it('reject missing privacy redaction and fake self-admission fields',()=>{
-  const x=sample();x.redaction_confirmed=false;x.g1_accepted=true;
+  const x=sample();x.redaction_confirmed=false;Object.assign(x,{g1_accepted:true});
   invalid(x,'redaction_confirmed');
   expect(inspectG1Cycles(x).g1_accepted).toBe(false);
 });
