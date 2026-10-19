@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { registerPcOperatorTools } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
 // GH-2054: contract-only mock harness; never talks to real PC01 or changes a lease.
-// R01 requires observed preflight coverage; R02/R07 remain incomplete until\n// separate heartbeat/restart/dedup acceptance. No real PC01 is touched.
+// R01 requires observed preflight coverage; R02/R07 remain incomplete until
+// separate heartbeat/restart/dedup acceptance. No real PC01 is touched.
 function getHandler(action, execute, options = {}) {
   const server = { tool: vi.fn() };
   registerPcOperatorTools(server, execute, options);
@@ -32,7 +33,12 @@ function acceptedLease() {
 
 describe('GH-2054: only accepted MCP native receipts complete a checklist step', () => {
   it('marks R01 only when native Docker preflight is accepted', async () => {
-    const execute = vi.fn().mockResolvedValue({ ok: true, data: {\n      rootPresent: true, docker: { ok: true },\n      container: { attempted: true, present: true, running: true, imagePinMatch: true, port3210LoopbackBinding: true },\n      port3210: { reachable: true },\n      pinned: { release: 'v2026.916.1', image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },\n    } });
+    const execute = vi.fn().mockResolvedValue({ ok: true, data: {
+      rootPresent: true, docker: { ok: true },
+      container: { attempted: true, present: true, running: true, imagePinMatch: true, port3210LoopbackBinding: true },
+      port3210: { reachable: true },
+      pinned: { release: 'v2026.916.1', image: 'ghcr.io/paperclipai/paperclip:2026.916.1' },
+    } });
     const response = parse(await getHandler('paperclip_lab_preflight', execute)());
     expect(response.ok).toBe(true);
     expect(response.targetStepId).toBe('R01');
@@ -51,7 +57,9 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
   it('checks R02 native health but does not yet complete the broker-heartbeat checklist', async () => {
     const execute = vi.fn().mockResolvedValue({
       ok: true,
-      data: { ok: true, port: { reachable: true }, http: { appOk: true },\n        container: { identityOk: true, portBindingOk: true },\n        database: { present: true, running: true, healthStatus: 'healthy' } }, 
+      data: { ok: true, port: { reachable: true }, http: { appOk: true },
+        container: { identityOk: true, portBindingOk: true },
+        database: { present: true, running: true, healthStatus: 'healthy' } }, 
     });
     const response = parse(await getHandler('paperclip_lab_health', execute)());
     expect(response.ok).toBe(true);
