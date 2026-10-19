@@ -165,10 +165,10 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
    const step='R'+String(i+1).padStart(2,'0');
    return '- ['+([1,2,4,6,8].includes(i+1)?'x':' ')+'] '+step+' — thử nghiệm'+
     ([1,2,4,6,8].includes(i+1)?' [Bằng chứng]('+url2054+'#issuecomment-'+(100+i)+')':'');
-  }).join('\\n');
+  }).join('\n');
   const body=validBody
-   .replace('DONE=true','DONE=false\\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\\nPROGRESS_VERIFIED=true\\nPROGRESS_COMPLETED=3\\nPROGRESS_TOTAL=9')
-   .replace(/- \\[x\\] M01[^\\n]*\\n- \\[x\\] M02[^\\n]*/,checklist);
+   .replace('DONE=true','DONE=false\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_VERIFIED=true\nPROGRESS_COMPLETED=3\nPROGRESS_TOTAL=9')
+   .replace(/- \[x\] M01[^\n]*\n- \[x\] M02[^\n]*/,checklist);
   const card=issue(body,{number:2054,state:'open',state_reason:null,closed_at:null});
   const proof=completionProof(card);
   const history=buildWorkHistory(card,[]);
@@ -185,7 +185,7 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
  });
  it('preserves valid checklist counts but rejects invalid or missing declared counters',()=>{
   const good=validBody.replace('DONE=true',
-   'DONE=true\\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\\nPROGRESS_VERIFIED=true\\nPROGRESS_COMPLETED=2\\nPROGRESS_TOTAL=2');
+   'DONE=true\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_VERIFIED=true\nPROGRESS_COMPLETED=2\nPROGRESS_TOTAL=2');
   expect(completionProof(issue(good))).toMatchObject({
    verified:true,verifiedSteps:2,checkedEvidenceSteps:2,consistent:true,
   });
