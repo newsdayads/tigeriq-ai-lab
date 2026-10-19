@@ -1458,6 +1458,10 @@ describe('P0 DeXCam execution order separate from acceptance progress', () => {
     expect(plan.steps[2]).toMatchObject({id:'P02',done:false,status:'EVIDENCE_ONLY'});
     expect(plan.steps[4].status).toBe('PENDING');
     expect(accepted).toMatchObject({done:13,total:30,verified:true});
+    const row=parseOpenWorkIssue(target);
+    expect(row).toMatchObject({progressDone:13,progressTotal:30,executionPlanSource:'GITHUB_EXECUTION_ORDER'});
+    expect(row.executionSteps).toHaveLength(11);
+    expect(row.progressSteps).toHaveLength(30);
   });
   it('keeps other Work Orders on their existing NEXT fallback',()=>{
     const plan=executionPlanForIssue(issue(21,'Other','CURRENT_STEP=R01\nNEXT_ACTION=R01 — Inspect source'));
