@@ -24,7 +24,7 @@ export function triageReaDacl(input) {
       typeof input.errorText !== 'string' || input.errorText.length < 6 ||
       input.errorText.length > 4096 ||
       (input.reaVersion !== undefined && (typeof input.reaVersion !== 'string' ||
-        !/^\\d+\\.\\d+\\.\\d+$/.test(input.reaVersion))) ||
+        !/^[0-9]+[.][0-9]+[.][0-9]+$/.test(input.reaVersion))) ||
       (input.processContext !== undefined && !contexts.has(input.processContext)) ||
       (input.observedAceCount !== undefined && input.observedAceCount !== null &&
         (!Number.isInteger(input.observedAceCount) || input.observedAceCount < 0 ||
