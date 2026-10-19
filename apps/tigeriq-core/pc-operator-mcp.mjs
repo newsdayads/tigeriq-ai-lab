@@ -119,16 +119,6 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   }
 }
 
-         leasePolicy: 'PC_OPERATOR_DIRECT_FENCE',
-              error: String(error?.message || error),
-            }, null, 2),
-          }],
-        };
-      }
-    }
-  );
-}
-
 export function createPcOperatorMcpHandler({ executePcActionImpl = executePcAction,
   existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY, leaseDb, leaseApi,
 } = {}) {
