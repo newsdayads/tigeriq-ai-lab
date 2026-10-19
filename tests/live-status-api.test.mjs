@@ -19,6 +19,7 @@ import {
   projectOwnerResultInbox,
   progressForIssue,
   checklistForIssue,
+  executionPlanForIssue,
   projectionTransportStale,
   verifiedPortfolioProgress,
   verifiedCompletionProgress,
@@ -1430,5 +1431,37 @@ describe('P0 UI session state survives Work Order evidence gate',()=>{
     const at=new Date().toISOString();
     const result=sanitizeRuntimePayload({ok:true,generatedAt:at,workers:[{employeeId:'NV09',kind:'api',state:'idle',heartbeatAt:at}]});
     expect(result.workers[0].uiSessionState).toBeNull();
+  });
+});
+
+describe('P0 DeXCam execution order separate from acceptance progress', () => {
+  const body=[
+    '# DeXCam',
+    'CURRENT_STEP=P01 — REA APK check failed',
+    'LAST_COMPLETED_STEP=P00 — Input verified; P02 — Offline source-only analysis',
+    'BLOCKER=P01_REA_JADX_WIN_NATIVE_DACL_ACCESS_DENIED_WIN32_5',
+    'PROGRESS_SOURCE=VERIFIED_CHECKLIST',
+    'PROGRESS_VERIFIED=true',
+    '## EXECUTION_ORDER — P00–P10',
+    ...Array.from({length:11},(_,i)=>[i+1+'.','P'+String(i).padStart(2,'0'),'— Bước',i].join(' ')),
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    ...Array.from({length:30},(_,i)=>'- ['+(i<13?'x':' ')+'] **STEP'+String(i).padStart(2,'0')+'** — Tiêu chí '+i)
+  ].join('\n');
+  it('projects 11 phases without treating source-only steps as delivered app',()=>{
+    const target=issue(4625,'DeXCam',body);
+    const plan=executionPlanForIssue(target);
+    const accepted=checklistForIssue(target);
+    expect(plan.source).toBe('GITHUB_EXECUTION_ORDER');
+    expect(plan.steps).toHaveLength(11);
+    expect(plan.steps[0]).toMatchObject({id:'P00',done:false,status:'EVIDENCE_ONLY'});
+    expect(plan.steps[1]).toMatchObject({id:'P01',done:false,status:'BLOCKED'});
+    expect(plan.steps[2]).toMatchObject({id:'P02',done:false,status:'EVIDENCE_ONLY'});
+    expect(plan.steps[4].status).toBe('PENDING');
+    expect(accepted).toMatchObject({done:13,total:30,verified:true});
+  });
+  it('keeps other Work Orders on their existing NEXT fallback',()=>{
+    const plan=executionPlanForIssue(issue(21,'Other','CURRENT_STEP=R01\nNEXT_ACTION=R01 — Inspect source'));
+    expect(plan.source).toBe('GITHUB_CURRENT_NEXT');
+    expect(plan.steps).toHaveLength(1);
   });
 });

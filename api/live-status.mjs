@@ -1367,6 +1367,27 @@ export function checklistForIssue(issue) {
 export function executionPlanForIssue(issue, currentNext = '') {
   const body = String(issue?.body || '');
   const lines = body.split(/\r?\n/);
+  // Roadmap phases describe work, not acceptance; never count these as checked milestones.
+  const orderAt = lines.findIndex(line => /^##\s+EXECUTION_ORDER\b/i.test(line));
+  if (orderAt >= 0) {
+    const endAt = lines.findIndex((line,i) => i > orderAt && /^##\s+\S/.test(line));
+    const section = lines.slice(orderAt + 1,endAt < 0 ? lines.length : endAt);
+    const current = bodyValue(body,'CURRENT_STEP');
+    const completed = bodyValue(body,'LAST_COMPLETED_STEP');
+    const blocker = bodyValue(body,'BLOCKER');
+    const steps = [], ids = new Set();
+    for (const line of section) {
+      const match = line.match(/^\s*\d+\.\s+(P(?:0\d|10))\s*[—–-]\s+(.+)$/);
+      if (!match || ids.has(match[1])) continue;
+      const id=match[1]; ids.add(id);
+      const isCurrent = new RegExp('^'+id+'\\b').test(current);
+      const hasEvidence = new RegExp('(?:^|[;\\s])'+id+'\\b').test(completed);
+      const status = isCurrent && blocker && !/^(?:none|không có)\b/i.test(blocker)
+        ? 'BLOCKED' : hasEvidence ? 'EVIDENCE_ONLY' : 'PENDING';
+      steps.push({ id,title:id+' — '+match[2].trim().slice(0,300),done:false,verified:false,status,evidenceUrl:null });
+    }
+    if (steps.length >= 2) return { steps,source:'GITHUB_EXECUTION_ORDER' };
+  }
   const firstHeading = lines.findIndex((line) => /^#{1,3}\s+\S/.test(line));
   const from = firstHeading < 0 ? 0 : firstHeading + 1;
   const nextHeading = lines.findIndex((line, index) => index >= from && /^#{1,3}\s+\S/.test(line));
