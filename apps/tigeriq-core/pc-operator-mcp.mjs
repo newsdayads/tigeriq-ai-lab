@@ -4,7 +4,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
-import { acquireSharedResourceLease, heartbeatSharedResourceLease, releaseSharedResourceLease } from './
+import { acquireSharedResourceLease, heartbeatSharedResourceLease, releaseSharedResourceLease } from './shared-resource-lease.mjs';
+
+export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
+  'paperclip_lab_preflight',
+  'paperclip_lab_health',
+  'paperclip_lab_broker_install',
+]);
+
 const LAB_SCOPE = 'TIGERIQ_PAPERCLIP_LAB_PC01_EXISTING_SANDBOX_20261018';
 const NV06_RESOURCE_ID = 'res:openclaw:operator-local:default:pc01';
 const leaseApiDefault = { acquire: acquireSharedResourceLease, heartbeat: heartbeatSharedResourceLease, release: releaseSharedResourceLease };
@@ -20,7 +27,7 @@ function existingCoreLeaseDb() {
 
 function allowMcpMutation(headers = {}, secret = '') {
   // This same existing secret protects the gateway's non-MCP endpoints.
-  const a = Buffer.from(String(headers.authorization || '').replace(/^Bearer\\s+/i, ''));
+  const a = Buffer.from(String(headers.authorization || '').replace(/^Bearer\s+/i, ''));
   const b = Buffer.from(String(secret || ''));
   return b.length >= 32 && a.length === b.length && timingSafeEqual(a, b);
 }
