@@ -3,11 +3,11 @@ import { expect, it } from 'vitest';
 // @ts-ignore Standalone ESM module without ambient TypeScript declarations.
 import { inspectApkPublicApi } from '../../projects/dexcam-personal/p02-apk-api-audit.mjs';
 
-// Immutable Git-blob digest, not an unverified "latest" sample. This fixture is
+// Pin the upstream commit AND immutable Git-blob digest; never use "latest". This fixture is
 // publicly hosted in androguard/androguard. NEVER use the private UltraCar APK
 // on a GitHub runner or attach APK/DEX bytes to the test output.
 const PUBLIC_SAMPLE_URL =
-  'https://raw.githubusercontent.com/androguard/androguard/master/tests/data/APK/TestActivity.apk';
+  'https://raw.githubusercontent.com/androguard/androguard/3ea3da38e74b4d74579463d0688ab513786c4750/tests/data/APK/TestActivity.apk';
 const PUBLIC_GIT_BLOB_SHA = 'b43a1d3da7b68c8a3aa94bed8534ea3bfce80e1b';
 const PUBLIC_APK_BYTES = 174896;
 
