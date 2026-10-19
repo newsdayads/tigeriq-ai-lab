@@ -57,6 +57,16 @@ test('C02 requires independent R OFF proof, not just OFF label',()=>{
   assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF'}).restore_permitted,false);
   assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF',reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference:'synthetic:r'}}).basis,'VERIFIED_R_OFF');
 });
+test('C02 blocks layout restore when R OFF evidence ref is a placeholder',()=>{
+  for(const reference of ['NOT_MEASURED',' not_measured ','UNVERIFIED','UNKNOWN','NOT_AVAILABLE','TBD','none','N/A']){
+    const result=planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF',
+      reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference}});
+    assert.deepEqual(result,{action:'HOLD_AND_SHOW_CAMERA_UNAVAILABLE',restore_permitted:false,basis:'NO_VERIFIED_R_OFF'});
+  }
+  assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state:'OFF',
+    reverse_off_evidence:{kind:'INDEPENDENT_R_OFF',reference:'synthetic:off'}}).basis,'VERIFIED_R_OFF');
+});
+
 test('C02 manual close requires confirmed stationary state',()=>{
   assert.equal(planLayoutRestore({snapshot_id:'snap',manual_close:true}).restore_permitted,false);
   assert.equal(planLayoutRestore({snapshot_id:'snap',manual_close:true,stationary_confirmed:true}).basis,'MANUAL_CLOSE_WHILE_STATIONARY');
