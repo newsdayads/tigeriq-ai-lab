@@ -127,3 +127,19 @@ it.skipIf(!hasMkfifo)('FIFO input is rejected without waiting on an unreadable p
     expect(JSON.parse(p.stdout).errors).toContain('input:NOT_A_REGULAR_FILE');
   } finally {rmSync(dir,{recursive:true,force:true})}
 });
+
+
+it('G1 CLI rejects an invalid R timestamp and only reports its field code',()=>{
+  const x=fixture();x.cycles[0].R_on_timestamp='not-a-timestamp';
+  const r=runFile(JSON.stringify(x));
+  expect(r.exit).toBe(1);
+  expect(r.output.errors).toContain('cycles[0].R_on_timestamp:MEASURED_TIMESTAMP_REQUIRED');
+  expect(r.stdout).not.toContain('not-a-timestamp');
+});
+it('G1 CLI rejects R OFF before R ON from the same clock',()=>{
+  const x=fixture();x.cycles[0].R_off_timestamp='4999';
+  const r=runFile(JSON.stringify(x));
+  expect(r.exit).toBe(1);
+  expect(r.output.errors).toContain('cycles[0].R_off_timestamp:R_OFF_BEFORE_R_ON');
+  expect(r.output.g1_accepted).toBe(false);
+});

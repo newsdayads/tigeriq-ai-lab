@@ -27,3 +27,11 @@ node projects/dexcam-personal/g1-local-preflight.mjs /duong-dan-rieng/nam-luot-r
 - `REAL_DEVICE_OBSERVATION` chỉ trả `CANDIDATE_NEEDS_DEVICE_REVIEW`. Muốn nghiệm thu G1 phải đối chiếu riêng 5 log/ảnh/descriptor thực tế, tín hiệu R độc lập và điều kiện an toàn; sau đó mới xét G2.
 - Unit regression: `npx vitest run tests/dexcam-personal/g1-local-preflight.test.ts`. Không được tự chạy trên PC01, RDC hoặc thiết bị xe khi cổng Work Order chưa cho phép. **Không đẩy file JSON thực lên GitHub/CI.**
 
+
+
+## Mốc thời gian hợp lệ và kiểm tra thứ tự R
+
+- Giá trị timestamp phải là chuỗi bộ đếm không âm, ví dụ `"5000"`, hoặc thời gian RFC 3339 có múi giờ, ví dụ `"2026-10-20T05:00:00+07:00"`. Ngày không tồn tại, offset sai hoặc nhãn văn bản tự do đều bị từ chối.
+- Khi hai mốc R ON/OFF cùng nhãn nguồn đồng hồ, yêu cầu cùng định dạng và R OFF không được xảy ra trước R ON. Khác nguồn đồng hồ thì **không so sánh** hai mốc hoặc suy ra độ trễ nếu chưa có đối chiếu offset và sai số.
+- Việc kiểm tra cú pháp và thứ tự không xác thực nguồn đồng hồ, nhật ký R/USB hay frame nhìn thấy. `g1_accepted=false` ở mọi trường hợp.
+
