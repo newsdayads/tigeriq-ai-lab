@@ -73,3 +73,42 @@ it('reject missing privacy redaction and fake self-admission fields',()=>{
   invalid(x,'redaction_confirmed');
   expect(inspectG1Cycles(x).g1_accepted).toBe(false);
 });
+
+
+it('G1 rejects arbitrary R timestamps, even when labeled as measured',()=>{
+  const x=sample();x.cycles[0].R_on_timestamp='completely-unmeasured';
+  invalid(x,'cycles[0].R_on_timestamp');
+});
+it('G1 rejects R OFF before R ON on the same monotonic clock',()=>{
+  const x=sample();x.cycles[0].R_off_timestamp='4999';
+  invalid(x,'cycles[0].R_off_timestamp');
+});
+it('G1 rejects imaginary first-visible-live-frame timestamps',()=>{
+  const x=sample();x.cycles[0].first_visible_live_frame_timestamp='yesterday';
+  invalid(x,'cycles[0].first_visible_live_frame_timestamp');
+});
+it('G1 accepts valid RFC3339 dates with an explicit offset as structural timestamps',()=>{
+  const x=sample();
+  x.cycles[0].R_on_timestamp='2026-10-20T05:00:00+07:00';
+  x.cycles[0].R_off_timestamp='2026-10-20T05:00:01+07:00';
+  expect(inspectG1Cycles(x)).toMatchObject({status:'SYNTHETIC_FIXTURE_ONLY',g1_accepted:false,errors:[]});
+  x.cycles[0].R_off_timestamp='2026-10-20T04:59:59+07:00';
+  invalid(x,'cycles[0].R_off_timestamp');
+});
+it('G1 rejects invalid calendar dates and offsets',()=>{
+  const x=sample();x.cycles[0].R_on_timestamp='2026-02-30T05:00:00+07:00';
+  invalid(x,'cycles[0].R_on_timestamp');
+  x.cycles[0].R_on_timestamp='2026-10-20T05:00:00+25:00';
+  invalid(x,'cycles[0].R_on_timestamp');
+});
+it('G1 does not compare events across unverified clock domains',()=>{
+  const x=sample();
+  x.cycles[0].R_on_clock_source='observer-timer-A';
+  x.cycles[0].R_off_clock_source='observer-timer-B';
+  x.cycles[0].R_off_timestamp='4999';
+  expect(inspectG1Cycles(x)).toMatchObject({status:'SYNTHETIC_FIXTURE_ONLY',g1_accepted:false,errors:[]});
+});
+it('G1 rejects mixed timestamp formats on the same declared clock',()=>{
+  const x=sample();x.cycles[0].R_on_timestamp='2026-10-20T05:00:00Z';
+  invalid(x,'cycles[0].R_off_timestamp');
+});
