@@ -128,6 +128,13 @@ it('P0 NV07 bootstrap slot is opt-in and cannot join regular routing',()=>{
   expect(source).toContain("...(NV07_BOOTSTRAP_RESOURCE_ENABLED?[nv07BootstrapResource]:[])");
   expect(source).toContain("capabilities:['nv07_bootstrap']");
   // Auth is a user-bound CLI session, never a fabricated API key or an ACTIVE lease.
+  // A legacy opt-out canary slot may remain in DB; public status must not claim an API key is missing.
+  const legacyDisplay = source.indexOf("if(r.employee_id==='NV07'&&r.provider==='antigravity'&&r.credential_state==='WAIT_KEY')return 'OFFLINE';");
+  const genericMissingKey = source.indexOf("if(r.credential_state==='WAIT_KEY') return 'WAIT_KEY';");
+  expect(legacyDisplay).toBeGreaterThan(0);
+  expect(genericMissingKey).toBeGreaterThan(legacyDisplay);
+  // This display fix cannot make NV07 routable or change capabilities.
+  expect(source).toContain("capabilities:['nv07_bootstrap']");
   expect(source).toContain("if(r.id==='NV07'){credential='SESSION_UNVERIFIED';health='OFFLINE';}");
   expect(source).not.toContain("if(r.id==='NV07'){credential='READY'");
   expect(source).not.toContain("if(r.id==='NV07'){credential='LOCAL';health='READY'");
