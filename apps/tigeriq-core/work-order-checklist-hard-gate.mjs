@@ -135,6 +135,24 @@ export function workOrderChecklistGate(issue,{stepId='',expectedEvidenceUrl='',r
  if(!found||steps.length<1)return {ok:false,reason:'CHECKLIST_MISSING',steps:steps.length};
  const ids=steps.map(x=>x.id.toUpperCase());
  if(new Set(ids).size!==ids.length)return {ok:false,reason:'DUPLICATE_STEP_ID'};
+ // V2 cards whose progress is defined by this canonical checklist must not
+ // accept a checked step while the owner's verified counter is inconsistent.
+ // A partial step is NOT an exception: count drift can hide an unaccepted step.
+ // Older cards without STRUCTURED_PROGRESS_CHECKLIST as progress source retain
+ // the existing checkbox-and-receipt readback contract.
+ const progressSource=issue.body.match(/^PROGRESS_SOURCE=([^\r\n]*)$/m)?.[1]?.trim();
+ if(progressSource==='STRUCTURED_PROGRESS_CHECKLIST'){
+  const rawCompleted=issue.body.match(/^PROGRESS_COMPLETED=([^\r\n]*)$/m)?.[1]?.trim();
+  const rawTotal=issue.body.match(/^PROGRESS_TOTAL=([^\r\n]*)$/m)?.[1]?.trim();
+  if(!/^\d+$/.test(rawCompleted||'')||!/^\d+$/.test(rawTotal||''))
+   return {ok:false,reason:'CHECKLIST_PROGRESS_COUNTER_MISSING'};
+  const completed=Number(rawCompleted),total=Number(rawTotal);
+  const checked=steps.filter(x=>x.checked).length;
+  if(!Number.isSafeInteger(completed)||!Number.isSafeInteger(total)||
+     completed!==checked||total!==steps.length)
+   return {ok:false,reason:'CHECKLIST_PROGRESS_COUNTER_MISMATCH',
+    statedCompleted:completed,checked,total,steps:steps.length};
+ }
  const requested=String(stepId||'').trim().toUpperCase();
  if(requested&&!ids.includes(requested))return {ok:false,reason:'STEP_NOT_FOUND',stepId:requested};
  const selected=requested?steps.filter(x=>x.id.toUpperCase()===requested):steps;
