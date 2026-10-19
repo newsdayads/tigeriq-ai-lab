@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { createPcOperatorMcpHandler } from './pc-operator-mcp.mjs';
 
 export const DISPLAY_PATHS = new Set([
   '/', '/work-ui.css', '/work-center-visual.css', '/work-center.js',
@@ -13,15 +14,20 @@ function authorized(provided, secret) {
   return b.length >= 32 && a.length === b.length && timingSafeEqual(a, b);
 }
 export function createHealthViewGateway({ secret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
-  core = 'http://127.0.0.1:8795', fetchImpl = fetch } = {}) {
+  core = 'http://127.0.0.1:8795', fetchImpl = fetch,
+  mcpHandler = createPcOperatorMcpHandler() } = {}) {
   if (!secret || String(secret).length < 32) throw Error('HEALTH_VIEW_KEY_REQUIRED');
   return createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    const url = new URL(req.url || '/', 'http://localhost');
+    if (url.pathname.startsWith('/mcp')) {
+      const handled = await mcpHandler(req, res, url);
+      if (handled) return;
+    }
     if (req.method !== 'GET') { res.writeHead(405, { Allow:'GET' }); res.end(); return; }
     if (!authorized(req.headers.authorization, secret)) { res.writeHead(401); res.end('unauthorized'); return; }
-    const url = new URL(req.url || '/', 'http://localhost');
     if (!DISPLAY_PATHS.has(url.pathname)) { res.writeHead(404); res.end('not_found'); return; }
     if (url.pathname === '/api/work-history' && !/^[1-9]\d{0,7}$/.test(url.searchParams.get('number') || '')) {
       res.writeHead(400); res.end('invalid_number'); return;
