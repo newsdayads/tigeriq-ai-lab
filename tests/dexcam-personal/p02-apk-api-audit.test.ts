@@ -88,3 +88,15 @@ it('rejects an out-of-range DEX method_id proto_idx instead of counting a public
 it('rejects a proto_ids table pointing beyond the DEX binary boundary', () => {
   expect(() => inspectApkPublicApi(makeZip('classes.dex',makeDex({ invalidProtoTable:true })))).toThrow('INVALID_BINARY_RANGE');
 });
+
+
+it('rejects unrecognized DEX magic versions instead of attributing forged Android API references', () => {
+  for (const version of ['abc', '036', '999']) {
+    const dex = makeDex(); dex.write('dex\n' + version + '\0', 0, 'ascii');
+    expect(() => inspectApkPublicApi(makeZip('classes.dex', dex))).toThrow('INVALID_DEX_HEADER');
+  }
+  for (const version of ['035', '037', '038', '039', '040']) {
+    const dex = makeDex(); dex.write('dex\n' + version + '\0', 0, 'ascii');
+    expect(inspectApkPublicApi(makeZip('classes.dex', dex)).method_ids_by_category.usb).toBe(1);
+  }
+});

@@ -16,6 +16,9 @@ const MAX_APK_BYTES = 128 * 1024 * 1024;
 const MAX_DEX_BYTES = 64 * 1024 * 1024;
 const MAX_ZIP_MEMBERS = 30000;
 const EXPECTED_TAG = 0x12345678;
+// Parse only the classic 0x70-byte DEX header family. Android 16's
+// experimental 041 container needs a separate 0x78-byte-header parser.
+const SUPPORTED_DEX_VERSIONS = new Set(['035', '037', '038', '039', '040']);
 const groups = Object.freeze({
   usb: ['Landroid/hardware/usb/'],
   camera: ['Landroid/hardware/Camera;', 'Landroid/hardware/camera2/'],
@@ -55,7 +58,8 @@ function checkTable(b, count, offset, width) {
 function parseDexPublicApi(bytes) {
   const b = Buffer.from(bytes);
   if (b.length < 112 || b.subarray(0, 4).toString('ascii') !== 'dex\n' ||
-      b[7] !== 0 || u32(b, 32) !== b.length || u32(b, 36) !== 112 || u32(b, 40) !== EXPECTED_TAG)
+      b[7] !== 0 || !SUPPORTED_DEX_VERSIONS.has(b.subarray(4, 7).toString('ascii')) ||
+      u32(b, 32) !== b.length || u32(b, 36) !== 112 || u32(b, 40) !== EXPECTED_TAG)
     throw new Error('INVALID_DEX_HEADER');
   const ns = u32(b, 56), os = u32(b, 60), nt = u32(b, 64), ot = u32(b, 68);
   const np = u32(b, 72), op = u32(b, 76);
