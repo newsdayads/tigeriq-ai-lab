@@ -1,0 +1,251 @@
+/** pstack verification pilot. Read-only isolated API Health; never Core/Production acceptance. */
+import {pathToFileURL} from 'node:url';
+import {mkdir,writeFile,rm,readdir,lstat as lstatAsync} from 'node:fs/promises';
+import {lstatSync,realpathSync} from 'node:fs';
+import {resolve,relative,dirname,sep,join} from 'node:path';
+
+export class VerificationBlocked extends Error{
+  constructor(code,detail=''){super(detail?code+': '+detail:code);this.name='VerificationBlocked';this.code=code}
+}
+export function sandboxBaseUrl(raw){
+  let url;
+  try{url=new URL(String(raw||''))}catch{throw new VerificationBlocked('SANDBOX_URL_INVALID')}
+  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||!url.port||url.username||url.password||url.pathname!=='/'||url.search||url.hash)
+    throw new VerificationBlocked('SANDBOX_URL_REQUIRES_LOOPBACK_ROOT');
+  // Never allow a standalone Doctor call to probe known live Core or bridge ports.
+  if(['3150','3210','8795','8796','8797','8801'].includes(url.port))throw new VerificationBlocked('SHARED_RUNTIME_PORT_FORBIDDEN');
+  return url.origin;
+}
+/**
+ * T04 gate: a calling, authorized native operator must independently read
+ * runtime process, database, bridge namespace and browser profile identities.
+ * A JSON file, loopback URL, CI test or Issue comment alone cannot certify these.
+ * This is a structural safety check, never product acceptance.
+ */
+export async function verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,now=Date.now()}={}){
+  const origin=sandboxBaseUrl(baseUrl);
+  if(typeof nativeIsolationInspector!=='function')
+    throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_REQUIRED');
+  let proof;
+  try{proof=await nativeIsolationInspector()}
+  catch{throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_UNAVAILABLE')}
+  if(!proof||proof.source!=='AUTHORIZED_NATIVE_OPERATOR_READBACK'||
+      typeof proof.evidenceRef!=='string'||!proof.evidenceRef.trim()||
+      !proof.core||!proof.bridge||!proof.host||!proof.browser)
+    throw new VerificationBlocked('SANDBOX_ISOLATION_NOT_VERIFIED');
+  const at=Date.parse(String(proof.observedAt||''));
+  if(!Number.isFinite(at)||!Number.isFinite(now)||Math.abs(at-now)>120000)
+    throw new VerificationBlocked('SANDBOX_NATIVE_READBACK_STALE');
+  const c=proof.core,b=proof.bridge,h=proof.host,p=proof.browser,port=Number(new URL(origin).port);
+  if(!Number.isSafeInteger(c.pid)||c.pid<1||!Number.isSafeInteger(b.pid)||b.pid<1||
+      !Number.isSafeInteger(c.port)||!Number.isSafeInteger(b.port)||
+      c.port!==port||!Number.isSafeInteger(h.corePort)||
+      typeof c.buildSha!=='string'||!/^[a-f0-9]{40}$/.test(c.buildSha)||
+      ![c.dbFingerprint,h.dbFingerprint,c.networkNamespace,h.networkNamespace,
+        b.networkNamespace,p.profileId,p.sharedProfileId].every(x=>typeof x==='string'&&x.trim().length>0))
+    throw new VerificationBlocked('SANDBOX_ISOLATION_NOT_VERIFIED');
+  if(c.port===h.corePort||['3150','3210','8795'].includes(String(c.port)))
+    throw new VerificationBlocked('SANDBOX_CORE_PORT_UNSAFE');
+  if(c.dbFingerprint===h.dbFingerprint)
+    throw new VerificationBlocked('SANDBOX_DATABASE_NOT_ISOLATED');
+  if(c.networkNamespace===h.networkNamespace)
+    throw new VerificationBlocked('SANDBOX_CORE_NOT_ISOLATED');
+  // Core's /api/health-live-work presently uses 127.0.0.1:8801/status.
+  // With no injectable bridge URL, Core and the bridge MUST be in the same
+  // isolated network namespace; distinct ports alone are not isolation.
+  if(b.port!==8801||b.networkNamespace!==c.networkNamespace||
+     b.networkNamespace===h.networkNamespace||b.pid===c.pid)
+    throw new VerificationBlocked('SANDBOX_BRIDGE_NOT_ISOLATED');
+  if(p.profileId===p.sharedProfileId)
+    throw new VerificationBlocked('SANDBOX_BROWSER_PROFILE_SHARED');
+  return {isolationSource:'OPERATOR_READBACK_STRUCTURALLY_CHECKED',
+    nativeReadbackEvidenceRef:proof.evidenceRef,instanceOrigin:origin,
+    sourceSha:c.buildSha,corePid:c.pid,runtimeAcceptanceVerified:false};
+}
+
+async function readJson(url,fetchImpl){
+  let response;
+  try{response=await fetchImpl(url,{method:'GET',redirect:'error',cache:'no-store',headers:{'Cache-Control':'no-store'},signal:AbortSignal.timeout(10000)})}
+  catch(error){throw new VerificationBlocked('SANDBOX_HTTP_UNREACHABLE',String(error?.message||error).slice(0,160))}
+  if(!response?.ok||!(response.headers?.get?.('content-type')||'').toLowerCase().includes('application/json'))
+    throw new VerificationBlocked('SANDBOX_HTTP_INVALID',url);
+  try{return await response.json()}catch{throw new VerificationBlocked('SANDBOX_JSON_INVALID',url)}
+}
+function requireCanonicalWorkSource(issueNumber,work){
+  // Only the canonical TigerIQ Issue may be used as verification provenance.
+  // A matching but untrusted UI link is not proof of the target Work Order.
+  if(work?.url!==`https://github.com/newsdayads/tigeriq-ai-lab/issues/${issueNumber}`)
+    throw new VerificationBlocked('WORK_SOURCE_URL_INVALID');
+}
+export async function doctorAndSelectWork({baseUrl,issueNumber,fetchImpl=fetch,now=Date.now(),maxAgeMs=120000,expectedCorePid}={}){
+  const origin=sandboxBaseUrl(baseUrl),number=Number(issueNumber);
+  if(!Number.isSafeInteger(number)||number<1)throw new VerificationBlocked('ISSUE_NUMBER_INVALID');
+  const status=await readJson(origin+'/api/status',fetchImpl);
+  if(status?.ok!==true||!status.core||typeof status.core!=='object')throw new VerificationBlocked('CORE_HEALTH_NOT_VERIFIED');
+  // Bind the native process attestation to the actual HTTP endpoint before reading work/UI.
+  if(expectedCorePid!==undefined&&(!Number.isSafeInteger(status.core.pid)||status.core.pid!==expectedCorePid))
+    throw new VerificationBlocked('SANDBOX_CORE_PID_MISMATCH');
+  const data=await readJson(origin+'/api/health-live-work',fetchImpl),projection=data?.projection;
+  if(data?.ok!==true||!projection||!Array.isArray(projection.openWork))throw new VerificationBlocked('WORK_PROJECTION_UNAVAILABLE');
+  const generated=Date.parse(String(projection.generatedAt||''));
+  if(!Number.isFinite(generated)||Math.abs(now-generated)>maxAgeMs||projection.stale===true||projection.workProjection?.stale===true)
+    throw new VerificationBlocked('WORK_PROJECTION_STALE');
+  const rows=projection.openWork.filter(row=>Number(row?.number)===number);
+  if(rows.length!==1||typeof rows[0]?.title!=='string'||!rows[0].title.trim())throw new VerificationBlocked('ISSUE_NOT_UNIQUELY_VISIBLE');
+  const work=rows[0];
+  requireCanonicalWorkSource(number,work);
+  return {
+    origin,issueNumber:number,api:{generatedAt:projection.generatedAt,health:'GET /api/status',work:'GET /api/health-live-work'},
+    work:{number,title:work.title,status:String(work.status||''),jobId:String(work.jobId||''),url:String(work.url||'')},
+    source:'READ_ONLY_HTTP_RESPONSE',proofScope:'SANDBOX_DIAGNOSTIC_NOT_LIVE_ACCEPTANCE'
+  };
+}
+export async function driveWorkCard({diagnostic,browserFactory,outputDir}={}){
+  if(!diagnostic?.origin||!Number.isSafeInteger(diagnostic?.issueNumber)||diagnostic.issueNumber<1||typeof browserFactory!=='function')
+    throw new VerificationBlocked('DRIVE_INPUT_INVALID');
+  // Recheck input before browser access. The doctor packet is not an authorization token.
+  const origin=sandboxBaseUrl(diagnostic.origin+'/');
+  requireCanonicalWorkSource(diagnostic.issueNumber,diagnostic.work);
+  // Public callers must not bypass runSandboxVerification's evidence path guard.
+  if(outputDir){
+    safeEvidenceDir(outputDir);
+    let current;
+    try{current=await readdir(outputDir)}
+    catch{throw new VerificationBlocked('EVIDENCE_DIR_NOT_READY')}
+    if(current.length!==0)throw new VerificationBlocked('EVIDENCE_DIR_NOT_EMPTY');
+  }
+  let browser;
+  try{
+    browser=await browserFactory();
+    const context=await browser.newContext({serviceWorkers:'block'});
+    if(typeof context.route!=='function')throw new VerificationBlocked('UI_NETWORK_GUARD_UNAVAILABLE');
+    if(typeof context.routeWebSocket!=='function')throw new VerificationBlocked('UI_WEBSOCKET_GUARD_UNAVAILABLE');
+    // A live receipt must include real Playwright tracing; deny navigation if unavailable.
+    if(outputDir&&(typeof context.tracing?.start!=='function'||typeof context.tracing?.stop!=='function'))
+      throw new VerificationBlocked('UI_TRACE_UNAVAILABLE');
+    let outsideRequest=false;
+    // Neither HTTP nor WebSocket interception establishes OS-level network isolation.
+    // Deny ALL WebSocket attempts (including loopback) before creating the page.
+    await context.routeWebSocket('**/*',async route=>{
+      outsideRequest=true;
+      await route.close();
+    });
+    await context.route('**/*',async route=>{
+      // The verifier is read-only: same-origin POST/PUT/PATCH/DELETE must
+      // never reach sandbox Core, even if the UI requests them internally.
+      let allowed=false;
+      try{
+        const request=route.request(),u=new URL(request.url());
+        const method=request.method();
+        allowed=u.protocol==='http:'&&u.origin===origin&&(method==='GET'||method==='HEAD');
+      }catch{allowed=false}
+      if(!allowed){outsideRequest=true;return route.abort('blockedbyclient')}
+      return route.continue();
+    });
+    if(outputDir)await context.tracing.start({screenshots:true,snapshots:true,sources:false});
+    const page=await context.newPage();
+    try{await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000})}
+    catch(error){
+      if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+      throw error;
+    }
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(typeof page.url!=='function'||page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
+    const row=page.locator('.work-row[data-work-number="'+diagnostic.issueNumber+'"]');
+    if(await row.count()!==1||!(await row.isVisible()))throw new VerificationBlocked('UI_WORK_CARD_NOT_VISIBLE');
+    const before=(await row.innerText()).slice(0,1200);
+    await row.click();
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
+    const backdrop=page.locator('#workDetailBackdrop');
+    if(!(await backdrop.count())||!(await backdrop.getAttribute('class')||'').includes('open'))
+      throw new VerificationBlocked('UI_WORK_DETAIL_NOT_OPEN');
+    const after=(await page.locator('#workDetailModal').innerText()).slice(0,1800);
+    const githubHref=await page.locator('#workDetailGithub').getAttribute('href').catch(()=>null);
+    if(githubHref!==diagnostic.work.url)throw new VerificationBlocked('UI_GITHUB_LINK_MISMATCH');
+    if(outsideRequest)throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    if(page.url()!==origin+'/')throw new VerificationBlocked('UI_NAVIGATION_OUT_OF_SCOPE');
+    let screenshot=null,trace=null;
+    if(outputDir){
+      // Revalidate after UI navigation before writing; never overwrite old receipts.
+      safeEvidenceDir(outputDir);
+      let current;
+      try{current=await readdir(outputDir)}
+      catch{throw new VerificationBlocked('EVIDENCE_DIR_NOT_READY')}
+      if(current.length!==0)throw new VerificationBlocked('EVIDENCE_DIR_NOT_EMPTY');
+      screenshot=resolve(outputDir,'core-ui-work-card.png');
+      trace=resolve(outputDir,'core-ui-work-card-trace.zip');
+      await page.screenshot({path:screenshot,animations:'disabled'});
+      if(outsideRequest||page.url()!==origin+'/')throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+      try{await context.tracing.stop({path:trace})}
+      catch{throw new VerificationBlocked('UI_TRACE_NOT_RECORDED')}
+      let shot,record;
+      try{[shot,record]=await Promise.all([lstatAsync(screenshot),lstatAsync(trace)])}
+      catch{throw new VerificationBlocked('UI_TRACE_NOT_RECORDED')}
+      if(!shot.isFile()||!record.isFile()||shot.size<1||record.size<1)
+        throw new VerificationBlocked('UI_TRACE_NOT_RECORDED');
+    }
+    if(outsideRequest||page.url()!==origin+'/')throw new VerificationBlocked('UI_NETWORK_OUT_OF_SCOPE');
+    return {action:'OPEN_WORK_CARD',before,after,githubHref:githubHref||null,screenshot,trace,driver:'BROWSER_INTERACTION_NO_INTERCEPTION_CONFIGURED'};
+  }finally{if(browser)await browser.close()}
+}
+export function safeEvidenceDir(raw,cwd=process.cwd()){
+  if(!raw||typeof raw!=='string')throw new VerificationBlocked('EVIDENCE_DIR_REQUIRED');
+  const base=resolve(cwd),allowed=resolve(base,'artifacts','pstack-verification');
+  const target=resolve(base,raw),rel=relative(allowed,target);
+  if(rel.startsWith('..')||rel==='..'||rel.startsWith('/')||rel==='')throw new VerificationBlocked('EVIDENCE_SCOPE_INVALID');
+  // Lexical containment cannot detect pre-existing symlinks/junctions.
+  try{if(realpathSync.native(base)!==base)throw new VerificationBlocked('EVIDENCE_SYMLINK_FORBIDDEN')}
+  catch(e){
+    if(e instanceof VerificationBlocked)throw e;
+    if(e?.code!=='ENOENT')throw new VerificationBlocked('EVIDENCE_BASE_UNVERIFIED');
+  }
+  let cursor=base;
+  for(const part of relative(base,target).split(sep)){
+    cursor=join(cursor,part);
+    try{
+      const stat=lstatSync(cursor);
+      if(stat.isSymbolicLink())throw new VerificationBlocked('EVIDENCE_SYMLINK_FORBIDDEN');
+      if(!stat.isDirectory()&&cursor!==target)throw new VerificationBlocked('EVIDENCE_PARENT_NOT_DIRECTORY');
+    }catch(e){
+      if(e instanceof VerificationBlocked)throw e;
+      if(e?.code!=='ENOENT')throw new VerificationBlocked('EVIDENCE_PATH_UNVERIFIED');
+    }
+  }
+  return target;
+}
+export async function runSandboxVerification({baseUrl,issueNumber,outputDir,fetchImpl=fetch,browserFactory,now=Date.now(),nativeIsolationInspector}={}){
+  // Hard gate before API, browser or evidence filesystem side-effects.
+  const isolation=await verifyRuntimeIsolation({baseUrl,nativeIsolationInspector,now});
+  const dir=safeEvidenceDir(outputDir);
+  const diagnostic=await doctorAndSelectWork({baseUrl,issueNumber,fetchImpl,now,expectedCorePid:isolation.corePid});
+  await mkdir(dirname(dir),{recursive:true,mode:0o700});
+  safeEvidenceDir(outputDir); // Recheck after creating the parent.
+  try{await mkdir(dir,{mode:0o700})}catch(error){throw new VerificationBlocked('EVIDENCE_DIR_NOT_NEW',String(error?.code||error))}
+  // Only this run owns the fresh directory, created after the pre-existing-dir guard.
+  // Keep successful receipts; clean partial screenshots or empty dirs on failure.
+  try{
+    safeEvidenceDir(outputDir);
+    const drive=await driveWorkCard({diagnostic,browserFactory,outputDir:dir});
+    safeEvidenceDir(outputDir);
+    const packet={version:1,product:'TigerIQ API Health Core UI',result:'SANDBOX_DIAGNOSTIC_PASS',acceptanceVerified:false,
+      sourceType:'SANDBOX_READ_ONLY_UI_AND_API',time:new Date(now).toISOString(),isolation,diagnostic,drive};
+    await writeFile(resolve(dir,'receipt.json'),JSON.stringify(packet,null,2)+'\n',{flag:'wx'});
+    return packet;
+  }catch(error){
+    // Refuse to follow changed/symlinked evidence paths even when cleaning up.
+    // Do not remove any pre-existing directory: mkdir above had to succeed.
+    try{safeEvidenceDir(outputDir);await rm(dir,{recursive:true,force:true})}catch{}
+    throw error;
+  }
+}
+async function main(){
+  const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined};
+  const baseUrl=option('--base-url'),issueNumber=option('--issue'),outputDir=option('--evidence-dir');
+  if(args.length!==6||!baseUrl||!issueNumber||!outputDir)throw new VerificationBlocked('USAGE','--base-url http://127.0.0.1:PORT/ --issue NUMBER --evidence-dir artifacts/pstack-verification/RUN');
+  const {chromium}=await import('@playwright/test');
+  const result=await runSandboxVerification({baseUrl,issueNumber,outputDir,browserFactory:()=>chromium.launch({headless:true,channel:'chrome'})});
+  process.stdout.write(JSON.stringify({result:result.result,issue:result.diagnostic.issueNumber,evidence:outputDir,acceptanceVerified:false})+'\n');
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)
+  main().catch(error=>{process.stderr.write(JSON.stringify({result:'BLOCKED',code:error.code||'VERIFIER_ERROR',detail:String(error.message||error).slice(0,240)})+'\n');process.exitCode=1});
