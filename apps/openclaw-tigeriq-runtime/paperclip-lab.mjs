@@ -316,6 +316,7 @@ async function brokerStatus() {
       user: ready ? String(heartbeat.user) : null,
       sessionId: ready ? Number(heartbeat.sessionId) : null,
       version: ready ? String(heartbeat.version) : null,
+      sourceSha256: ready ? String(heartbeat.sourceSha256 || '') : null,
       wslKeepaliveRunning: ready,
       wslKeepalivePid: ready ? Number(heartbeat.wslKeepalivePid) : null,
       ageMs: Number.isFinite(ageMs) ? ageMs : null,
@@ -362,6 +363,15 @@ export function paperclipBrokerR07GuardPresent(source) {
     && loop.indexOf('Invoke-FixedWslDocker', claimedAt) > claimedAt;
 }
 
+// Strict identity check: reject legacy heartbeats, malformed digests and
+// any source mismatch; version/heartbeat freshness alone cannot attest R07.
+export function paperclipBrokerLiveSourceMatches(status, brokerSource) {
+  if (typeof brokerSource !== 'string' || status?.ready !== true) return false;
+  const observed = status?.sourceSha256;
+  if (typeof observed !== 'string' || !/^[a-f0-9]{64}$/.test(observed)) return false;
+  return createHash('sha256').update(brokerSource, 'utf8').digest('hex') === observed;
+}
+
 async function installInteractiveWslBroker(signal = null) {
   throwIfAborted(signal);
   await ensureLayout();
@@ -400,6 +410,11 @@ async function installInteractiveWslBroker(signal = null) {
   }
   const status = await brokerStatus();
   if (!status.ready) throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_HEARTBEAT_TIMEOUT');
+  // Source bytes on disk are insufficient: the running broker must attest its
+  // startup script SHA so an old still-running process cannot pass R07 install.
+  if (!paperclipBrokerLiveSourceMatches(status, brokerSource)) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_RUNNING_SOURCE_MISMATCH');
+  }
   const probe = await runDockerViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal });
   if (probe.exitCode !== 0 || probe.timedOut || !probe.stdout.trim()) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_DOCKER_UNAVAILABLE');

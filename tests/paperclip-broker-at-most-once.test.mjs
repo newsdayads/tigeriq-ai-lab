@@ -152,3 +152,29 @@ realPwshTest('R07 PowerShell fresh-process fails closed on an incomplete crash c
     assert.equal(readFileSync(claim,'utf8'),'{"schema":');
   } finally {rmSync(fixture.dir,{recursive:true,force:true})}
 });
+
+// GH-2054 R07: fail closed when installer sees legacy/stale running broker.
+import {createHash} from 'node:crypto';
+import {paperclipBrokerLiveSourceMatches} from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+
+test('R07 running-broker SHA attestation rejects old process, missing hash, forged version-only health',()=>{
+  const good=createHash('sha256').update(source,'utf8').digest('hex');
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,sourceSha256:good},source),true);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,sourceSha256:'0'.repeat(64)},source),false);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,version:'1.7-openai-device-auth'},source),false);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:false,sourceSha256:good},source),false);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,sourceSha256:good.toUpperCase()},source),false);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,sourceSha256:good},source+'\n#drift'),false);
+  assert.equal(paperclipBrokerLiveSourceMatches({ready:true,sourceSha256:good},null),false);
+});
+
+test('R07 installer and heartbeat require the running script identity, not merely identical broker version',()=>{
+  const installer=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/Install-PaperclipWslBroker.ps1',import.meta.url),'utf8');
+  const lab=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',import.meta.url),'utf8');
+  assert.match(source,/\$BrokerSourceSha256\s*=\s*\(Get-FileHash -LiteralPath \$PSCommandPath -Algorithm SHA256\)\.Hash\.ToLowerInvariant\(\)/);
+  assert.match(source,/sourceSha256=\$BrokerSourceSha256/);
+  assert.match(installer,/\$ExpectedBrokerSha256=\(Get-FileHash -LiteralPath \$Broker -Algorithm SHA256\)\.Hash\.ToLowerInvariant\(\)/);
+  assert.match(installer,/\[string\]\$h\.sourceSha256 -ceq \$ExpectedBrokerSha256/);
+  assert.match(lab,/TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_RUNNING_SOURCE_MISMATCH/);
+  assert.ok(lab.indexOf('paperclipBrokerLiveSourceMatches(status, brokerSource)')<lab.indexOf("runDockerViaBroker(['version', '--format', '{{.Server.Version}}']"));
+});
