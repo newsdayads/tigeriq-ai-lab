@@ -289,7 +289,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         try {
           const receipt = await executePcActionImpl({ action });
           const ok = nativeOk(action, receipt);
-          return mcpReply({ ...common, ok, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
+          return mcpReply({ ...common, ok, completedStepId: ok ? targetStepId : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
         } catch (error) {
           return mcpReply({ ...common, ok: false, reason: 'PC_OPERATOR_READ_ERROR', error: String(error?.message || error) });
         }
@@ -342,9 +342,11 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
           if (!leaseReleased) reason = 'NV06_SHARED_LEASE_RELEASE_UNVERIFIED';
         }
       }
+      const accepted = !reason && leaseReleased && nativeOk(action, receipt);
       return mcpReply({
         ...common,
-        ok: !reason && leaseReleased && nativeOk(action, receipt),
+        ok: accepted,
+        completedStepId: accepted ? targetStepId : null,
         reason,
         leaseVerified: Boolean(lease?.lease_token),
         leaseReleased,
