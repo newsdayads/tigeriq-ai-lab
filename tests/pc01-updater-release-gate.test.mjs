@@ -154,3 +154,13 @@ it('GH-2054: importing shared work-history must count as Core restart impact',()
   expect(source).toContain('if($impact.core){$coreHealth=Restart-Core $oldPid');
   expect(source).toContain("throw 'CORE_HEALTH_OR_PID_FAILED'");
 });
+
+it('GH-2054: Core API rejects stale in-memory history contract rather than counting unchecked evidence',()=>{
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const route=core.slice(core.indexOf("url.pathname==='/api/work-history'"),core.indexOf("url.pathname==='/health'"));
+  expect(route).toContain("Object.prototype.hasOwnProperty.call(value,'progressCounterConsistent')");
+  expect(route).toContain("Object.prototype.hasOwnProperty.call(value,'checkedEvidenceSteps')");
+  expect(route).toContain("Object.prototype.hasOwnProperty.call(value,'declaredCompletedSteps')");
+  expect(route).toContain("res.writeHead(503);return res.end(JSON.stringify({ok:false,error:'WORK_HISTORY_SCHEMA_UNVERIFIED'}))");
+  expect(route).toContain("res.writeHead(200);return res.end(JSON.stringify(value))");
+});
