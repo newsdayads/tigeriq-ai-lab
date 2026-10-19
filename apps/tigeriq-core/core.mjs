@@ -630,9 +630,10 @@ async function refreshResources() {
     let credential = r.provider === 'ollama' ? 'LOCAL' : (!credentialPresent(r) ? 'WAIT_KEY' : (reqReady(r) ? 'READY' : 'BLOCKED'));
     let health = credential === 'WAIT_KEY' || credential === 'BLOCKED' ? 'OFFLINE' : 'READY';
     const old = (await pool.query('select health_state,work_state,last_seen_at,cooldown_until,current_job_id from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0];
-    // The Core lease is admitted independently; never mark NV07 routable from
-    // the gateway being online or from the mere presence of this resource row.
-    if(r.id==='NV07'){credential='WAIT_KEY';health='OFFLINE';}
+    // NV07 authenticates through a user-bound CLI session, not an API key.
+    // Only a fresh protected native receipt may establish runtime readiness.
+    // The bootstrap-only slot stays OFFLINE and cannot enter normal routing.
+    if(r.id==='NV07'){credential='SESSION_UNVERIFIED';health='OFFLINE';}
     else if (r.provider === 'openclaw') { const gateway=await probeOpenClawGateway(); credential='LOCAL'; health=gateway.ok?'ONLINE':'OFFLINE'; }
     else if (r.id === NV09_EMPLOYEE_ID) {
       credential='LOCAL';
