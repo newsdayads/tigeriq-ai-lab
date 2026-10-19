@@ -10,7 +10,11 @@ export function nv07BootstrapCanaryDecision({ registry, commands, session, job, 
   if (!registry || registry.employee_id !== 'NV07' || registry.name !== 'Google Antigravity')
     return blocked('NV07_CANARY_WRONG_EMPLOYEE');
   const state = String(registry.admin_state || '').toUpperCase();
-  if (/RETIRED|DISABLED|OWNER_STOPPED/.test(state) || !state.includes('PROVISIONING'))
+  const v58='ACTIVE_CORE_RESOURCE / P1_P5_PROPOSAL_ONLY / ACCEPTED_S6_S7_PASS / PC01_ANTIGRAVITY';
+  // V58 historical acceptance may admit this *one-shot* bootstrap only.
+  // It does not grant runtime heartbeat or ordinary P1-P5 dispatch.
+  if (/RETIRED|DISABLED|OWNER_STOPPED/.test(state) ||
+      (!state.includes('PROVISIONING') && state.trim()!==v58))
     return blocked('NV07_CANARY_NOT_PROVISIONING');
   if (commands?.['7'] !== 'NV07') return blocked('NV07_CANARY_COMMAND_UNVERIFIED');
   if (session?.attestationVerified !== true || session?.host !== 'PC01'
