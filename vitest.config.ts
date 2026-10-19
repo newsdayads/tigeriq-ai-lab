@@ -60,6 +60,7 @@ export default defineConfig({
       'apps/tigeriq-core/github-intake.test.mjs',
       'tests/nv07-native-session-broker.test.mjs',
       'tests/pc-operator-mcp.test.mjs',
+      'tests/pc-operator-mcp-nv06-negative-receipts.test.mjs',
     ],
     environment: 'node'
   }
