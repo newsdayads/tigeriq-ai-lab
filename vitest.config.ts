@@ -61,6 +61,7 @@ export default defineConfig({
       'tests/nv07-native-session-broker.test.mjs',
       'tests/pc-operator-mcp.test.mjs',
       'tests/pc-operator-mcp-nv06-negative-receipts.test.mjs',
+      'tests/pc-operator-mcp-paperclip-completed-step.test.mjs',
     ],
     environment: 'node'
   }
