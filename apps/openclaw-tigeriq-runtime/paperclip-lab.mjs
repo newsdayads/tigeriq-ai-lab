@@ -343,6 +343,25 @@ export function paperclipLabBrokerOperationForDockerArgs(args = []) {
   return allowed.find((item) => JSON.stringify(item.args) === actual)?.operation || null;
 }
 
+// GH-2054 R07: fail closed if the source lacks durable at-most-once dispatch.
+export function paperclipBrokerR07GuardPresent(source) {
+  if (typeof source !== 'string') return false;
+  const start = source.indexOf('    $items = @(Get-ChildItem');
+  const end = start >= 0 ? source.indexOf('    Start-Sleep -Milliseconds 200', start) : -1;
+  if (start < 0 || end <= start) return false;
+  const loop = source.slice(start, end);
+  const validatedAt = loop.indexOf('Test-Request $req');
+  const claimedAt = loop.indexOf('Reserve-BrokerRequestOnce ');
+  return source.includes("$Claims = Join-Path $BrokerRoot 'claims'")
+    && source.includes('function Reserve-BrokerRequestOnce(')
+    && source.includes('[System.IO.FileMode]::CreateNew')
+    && source.includes('.Flush($true)')
+    && validatedAt >= 0
+    && claimedAt > validatedAt
+    && loop.indexOf('Invoke-OpenAiDeviceAuth', claimedAt) > claimedAt
+    && loop.indexOf('Invoke-FixedWslDocker', claimedAt) > claimedAt;
+}
+
 async function installInteractiveWslBroker(signal = null) {
   throwIfAborted(signal);
   await ensureLayout();
@@ -357,6 +376,7 @@ async function installInteractiveWslBroker(signal = null) {
     || !brokerSource.includes("$LabRoot = 'D:\\TigerIQ-Paperclip-Lab'")
     || !brokerSource.includes("$KeepaliveExecutable = '/usr/bin/sleep'")
     || !brokerSource.includes("$KeepaliveArgument = 'infinity'")
+    || !paperclipBrokerR07GuardPresent(brokerSource)
     || !installerSource.includes("$TaskName='TigerIQ Paperclip WSL Broker'")
     || !installerSource.includes("$ExpectedBrokerVersion='1.7-openai-device-auth'")
     || !installerSource.includes("New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited")) {
@@ -366,6 +386,10 @@ async function installInteractiveWslBroker(signal = null) {
   const safeInstaller = await assertSafeFileTarget(BROKER_INSTALLER_FILE);
   await fs.writeFile(safeBroker, brokerSource, 'utf8');
   await fs.writeFile(safeInstaller, installerSource, 'utf8');
+  // The installer restarts the scheduled task. Verify the staged bytes first.
+  if (await fs.readFile(safeBroker, 'utf8') !== brokerSource) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_DRIFT');
+  }
   const result = await runFixed(
     'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
     ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',safeInstaller],
@@ -380,12 +404,17 @@ async function installInteractiveWslBroker(signal = null) {
   if (probe.exitCode !== 0 || probe.timedOut || !probe.stdout.trim()) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_DOCKER_UNAVAILABLE');
   }
+  // Fresh heartbeat alone cannot attest the newly installed broker source.
+  if (await fs.readFile(safeBroker, 'utf8') !== brokerSource) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_DRIFT');
+  }
   return {
     installed: true,
     task: 'TigerIQ Paperclip WSL Broker',
     user: status.user,
     sessionId: status.sessionId,
     brokerVersion: status.version,
+    r07SourceVerified: true,
     dockerVersion: probe.stdout.trim(),
   };
 }
