@@ -33,6 +33,16 @@ it('C02: no bounds readback means NOT_MEASURED, not PASS',()=>{
   expect(checkAppliedBounds({requested_bounds:b,observed_bounds:b}).status).toBe('NOT_MEASURED');
   expect(checkAppliedBounds({requested_bounds:b,observed_bounds:{...b,x:4},evidence_ref:'fixture:readback'}).status).toBe('BOUNDS_DIFFER_OBSERVED');
 });
+it('C02: placeholder readback references never authenticate applied bounds',()=>{
+  const bounds={x:10,y:20,width:300,height:200};
+  for(const evidence_ref of ['NOT_MEASURED','  not_measured  ','UNVERIFIED','UNKNOWN','NOT_AVAILABLE','TBD','none','N/A']){
+    expect(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds,evidence_ref}))
+      .toEqual({status:'NOT_MEASURED',delta:null});
+  }
+  expect(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds,evidence_ref:'fixture:readback'}).status)
+    .toBe('BOUNDS_MATCH_OBSERVED');
+});
+
 it('C02: loss of frame is not permission to restore while R is ON or UNKNOWN',()=>{
   for(const reverse_state of ['ON','UNKNOWN'])
     expect(planLayoutRestore({snapshot_id:'pre-R',reverse_state,live_frame:false}).restore_permitted).toBe(false);

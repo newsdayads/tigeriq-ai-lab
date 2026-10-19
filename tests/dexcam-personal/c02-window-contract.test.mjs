@@ -39,6 +39,16 @@ test('C02 does not claim bounds match without OS readback evidence',()=>{
   assert.deepEqual(checkAppliedBounds({requested_bounds:bounds,observed_bounds:{...bounds,x:4},evidence_ref:'synthetic:readback'}),
     {status:'BOUNDS_DIFFER_OBSERVED',delta:{x:2,y:0,width:0,height:0}});
 });
+test('C02 treats placeholder evidence refs as NOT_MEASURED, never a bounds match',()=>{
+  const bounds={x:10,y:20,width:300,height:200};
+  for(const evidence_ref of ['NOT_MEASURED','  not_measured  ','UNVERIFIED','UNKNOWN','NOT_AVAILABLE','TBD','none','N/A']){
+    assert.deepEqual(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds,evidence_ref}),
+      {status:'NOT_MEASURED',delta:null});
+  }
+  assert.equal(checkAppliedBounds({requested_bounds:bounds,observed_bounds:bounds,evidence_ref:'fixture:readback'}).status,
+    'BOUNDS_MATCH_OBSERVED');
+});
+
 test('C02 does not restore on stream or USB loss while R is ON/UNKNOWN',()=>{
   for(const reverse_state of ['ON','UNKNOWN'])
     assert.equal(planLayoutRestore({snapshot_id:'snap',reverse_state,live_frame:false}).restore_permitted,false);
