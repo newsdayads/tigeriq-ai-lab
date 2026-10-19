@@ -26,7 +26,7 @@ PRIVATE_ARTIFACTS_IN_GITHUB=FORBIDDEN | DRIVE_SYNC=NOT_REQUIRED
 
 ## 3. Quy trình thực hiện an toàn — có điều kiện quyền
 
-### D01 — Chẩn đoán *chỉ đọc* trên PC01, KHÔNG chạy lại APK
+### R-DACL-01 — Chẩn đoán *chỉ đọc* trên PC01, KHÔNG chạy lại APK
 - Chỉ thực hiện qua kênh PC01 được cấp phép rõ ràng cho **bước chẩn đoán này**. Lệnh `Full Auto` không tự xóa `NO_RDC`/`NO_PC01_SHELL` của Work Order, không hợp thức hóa thay đổi bảo mật. Đối chiếu quyền nguồn động, kênh và một người ghi trước khi gọi thiết bị.
 - Thu metadata tối thiểu từ tiến trình thực sự gọi REA: phiên bản REA/Node, kiến trúc, token SID, IsAppContainer, restricted SID count, integrity và đường dẫn native addon **đã che đường dẫn riêng tư**.
 - Đối chiếu hash/manifest native addon với gói phát hành chính xác phiên bản, không dùng tarball `latest` để kết luận về cài đặt hiện tại.
@@ -34,13 +34,13 @@ PRIVATE_ARTIFACTS_IN_GITHUB=FORBIDDEN | DRIVE_SYNC=NOT_REQUIRED
 - Nhật ký ra GitHub chỉ chứa kết quả rút gọn đã che dữ liệu, không chứa file APK, DEX, đường dẫn riêng tư, SID đầy đủ, khóa/credential hoặc dữ liệu độc quyền.
 - Nếu không có số đo trực tiếp, ghi `ROOT_CAUSE_HOST=UNVERIFIED`; không thử cùng cấu hình, không tăng checklist.
 
-### D02 — Đường sửa REA (ưu tiên lâu dài)
+### R-DACL-02 — Đường sửa REA (ưu tiên lâu dài)
 - Chuẩn bị báo cáo lỗi tách biệt đúng chữ ký DACL cho tác giả REA với bản tái hiện nguồn mở không tiết lộ máy riêng tư.
 - Chỉ đánh giá bản vá chính thức hoặc mã sửa có bảo toàn thuộc tính protected DACL/owner/least privilege, có chứng cứ Windows native thật và hash phiên bản.
 - Không tự xóa `AceCount` guard, bỏ qua kiểm tra native, bật Everyone/Authenticated Users, sửa ACL hệ thống, copy binary khác phiên bản, chạy elevated để lách lỗi.
 - Cài/đổi bản REA trên PC01 là một thao tác máy chủ riêng cần cổng quyền thực hiện/khôi phục và biên nhận, không tự có bởi tài liệu này.
 
-### D03 — Tiếp tục mục tiêu DeXCam độc lập (đường dự phòng)
+### R-DACL-03 — Tiếp tục mục tiêu DeXCam độc lập (đường dự phòng)
 - Để không giữ dự án phụ thuộc REA, chuẩn bị phân tích `Android SDK apkanalyzer` + `jadx` độc lập trong sandbox riêng tư với APK đã đối chiếu SHA, công cụ đã được thẩm định và phạm vi chỉ đọc.
 - Bắt đầu từ APK mẫu công khai có SHA cố định để xác minh bộ công cụ; chỉ tiếp nhận APK UltraCar riêng tư qua kênh cấp quyền với lưu trữ được bảo vệ. Không sao chép mã độc quyền, không can thiệp bảo vệ, không tải APK riêng tư lên CI/GitHub.
 - Thu manifest, permission USB, exported activities/services, tương tác USB Host/UVC, đối chiếu FR/NFR; mọi kết luận hành vi thiết bị giữ `UNVERIFIED` khi chỉ có phân tích tĩnh.
