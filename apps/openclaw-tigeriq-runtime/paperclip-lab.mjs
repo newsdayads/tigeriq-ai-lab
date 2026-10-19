@@ -1059,6 +1059,7 @@ export function paperclipHealthFailureClass(state = {}) {
   if (state?.ok === true) return 'OK';
   const reason = String(state?.reason || '').toUpperCase();
   if (reason === 'PIN_NOT_READY') return 'PIN_NOT_READY';
+  if (reason === 'DOCKER_UNVERIFIED_READ_ONLY') return 'DOCKER_UNVERIFIED_READ_ONLY';
   if (reason === 'DOCKER_UNAVAILABLE') return 'DOCKER_UNAVAILABLE';
   if (state?.database?.present !== true) return 'DATABASE_NOT_PRESENT';
   if (state?.database?.running !== true) {
@@ -1267,10 +1268,14 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
 // Pure, fail-closed R02 diagnostic for a broker-only Docker host. It never
 // attests live image identity, Postgres sidecar state or loopback port binding.
 export function paperclipUnverifiedDockerHealth({ docker, port, http } = {}) {
+  // A read-only broker probe being forbidden is lack of evidence, not proof
+  // Docker is down. Keep ok:false and all acceptance fields unverified.
+  const readOnlyBrokerGate = docker?.kind == null
+    && docker?.error === 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT';
   return {
     ok: false,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
-    reason: 'DOCKER_UNAVAILABLE',
+    reason: readOnlyBrokerGate ? 'DOCKER_UNVERIFIED_READ_ONLY' : 'DOCKER_UNAVAILABLE',
     docker,
     port,
     http,
