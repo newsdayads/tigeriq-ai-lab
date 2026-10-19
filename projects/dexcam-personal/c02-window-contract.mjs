@@ -6,6 +6,10 @@ const CONTRACT = 'dexcam-c02-window-contract-v1';
 const finite = x => typeof x === 'number' && Number.isFinite(x);
 const pixel = x => Number.isSafeInteger(x) && x >= 0;
 const validRect = r => r && ['x','y','width','height'].every(k => pixel(r[k])) && r.width > 0 && r.height > 0;
+// Refuse explicit missing-evidence markers on both the display readback and
+// independent R-OFF paths. Ref presence alone never authenticates provenance.
+const evidenceRef = value => typeof value === 'string' && !!value.trim() &&
+  !/^(?:NOT[_ -]?MEASURED|UNVERIFIED|UNKNOWN|NOT[_ -]?AVAILABLE|TBD|NONE|N\/A)$/i.test(value.trim());
 
 export function planWindowRequest({ display, preset, capability } = {}) {
   const fallback = (reason, requested_bounds = null) => ({
@@ -49,11 +53,10 @@ export function planWindowRequest({ display, preset, capability } = {}) {
 }
 
 export function checkAppliedBounds({ requested_bounds, observed_bounds, evidence_ref } = {}) {
-  const evidence = typeof evidence_ref === 'string' ? evidence_ref.trim() : '';
-  // A placeholder is not an OS readback reference. Provenance still requires
-  // independent adapter verification; this rejects clearly missing evidence.
+  // A reference is only a candidate for evidence; an external adapter must
+  // still authenticate its actual source before trusting an OS/R readback.
   if (!validRect(requested_bounds) || !validRect(observed_bounds) ||
-      !evidence || /^(?:NOT[_ -]?MEASURED|UNVERIFIED|UNKNOWN|NOT[_ -]?AVAILABLE|TBD|NONE|N\/A)$/i.test(evidence))
+      !evidenceRef(evidence_ref))
     return {status:'NOT_MEASURED',delta:null};
   // Adapter must independently authenticate evidence provenance; comparison alone cannot.
   const delta=Object.fromEntries(['x','y','width','height'].map(k=>[k,observed_bounds[k]-requested_bounds[k]]));
@@ -68,7 +71,7 @@ export function planLayoutRestore({snapshot_id,reverse_state='UNKNOWN',reverse_o
   if (manual_close===true && stationary_confirmed===true)
     return {action:'RESTORE_SNAPSHOT_REQUEST',restore_permitted:true,basis:'MANUAL_CLOSE_WHILE_STATIONARY'};
   const off=reverse_state==='OFF' && reverse_off_evidence?.kind==='INDEPENDENT_R_OFF' &&
-    typeof reverse_off_evidence?.reference==='string' && !!reverse_off_evidence.reference.trim();
+    evidenceRef(reverse_off_evidence?.reference);
   if(off) return {action:'RESTORE_SNAPSHOT_REQUEST',restore_permitted:true,basis:'VERIFIED_R_OFF'};
   return {action:hold,restore_permitted:false,basis:'NO_VERIFIED_R_OFF'};
 }
