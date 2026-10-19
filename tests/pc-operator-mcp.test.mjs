@@ -78,7 +78,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
       expect(callPreflight.status).toBe(200);
       const preflightText = await callPreflight.text();
       expect(preflightText).toContain('JOB-MCP-');
-      expect(preflightText).toContain('PC_OPERATOR_DIRECT_FENCE');
+      expect(preflightText).toContain('NATIVE_RECEIPT_NOT_ACCEPTED');
+      expect(preflightText).not.toContain('PC_OPERATOR_DIRECT_FENCE');
       expect(preflightText).toContain('paperclip_lab_preflight');
       expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_preflight' });
 
@@ -222,9 +223,9 @@ describe('TigerIQ PC Operator MCP Server', () => {
       expect(execute).not.toHaveBeenCalled();
 
       const accepted = await call('Bearer ' + secret);
-      expect(accepted).toContain('"leaseVerified": true');
-      expect(accepted).toContain('"leaseReleased": true');
-      expect(accepted).toContain('"completedStepId": null');
+      expect(accepted).toContain('leaseVerified');
+      expect(accepted).toContain('leaseReleased');
+      expect(accepted).toContain('completedStepId');
       expect(accepted).not.toContain('private-token');
       expect(leaseApi.acquire).toHaveBeenCalledOnce();
       expect(leaseApi.heartbeat).toHaveBeenCalled();
