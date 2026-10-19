@@ -12,6 +12,32 @@ const usbNumber = x => (Number.isInteger(x) && x >= 0 && x <= 65535) ||
   (typeof x === 'string' && /^0x[0-9a-f]{1,4}$/i.test(x));
 const usbClass = x => Number.isInteger(x) && x >= 0 && x <= 255;
 const yesNo = x => x === 'YES' || x === 'NO';
+/**
+ * A recorded time is either a finite, nonnegative counter value or an
+ * RFC3339 instant with timezone. A label alone is not a measurement.
+ * No cross-clock latency or synchronization is inferred here.
+ */
+const timestamp = x => {
+  if (typeof x !== 'string' || x.length > 80 || placeholder(x)) return null;
+  if (/^\d{1,16}(?:\.\d{1,3})?$/.test(x)) {
+    const n = Number(x);
+    return Number.isFinite(n) && n <= Number.MAX_SAFE_INTEGER ? {kind:'counter',value:n} : null;
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(x);
+  if (!m) return null;
+  const [year,month,day,hour,minute,second] = m.slice(1,7).map(Number);
+  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour > 23 || minute > 59 || second > 59) return null;
+  const date = new Date(Date.UTC(year,month-1,day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month-1 ||
+      date.getUTCDate() !== day) return null;
+  if (m[7] !== 'Z') {
+    const oh = Number(m[7].slice(1,3)), om = Number(m[7].slice(4,6));
+    if (oh > 14 || om > 59 || (oh === 14 && om !== 0)) return null;
+  }
+  const n = Date.parse(x);
+  return Number.isFinite(n) ? {kind:'rfc3339',value:n} : null;
+};
 
 /** Validate a locally captured G1 observation candidate without approving it. */
 export function inspectG1Cycles(input) {
@@ -47,16 +73,24 @@ export function inspectG1Cycles(input) {
       if (!ptr(row[key])) error(at+'.'+key,'LOCAL_ONLY_POINTER_REQUIRED');
     if (ptr(row.R_on_evidence) && row.R_on_evidence === row.R_off_evidence)
       error(at+'.R_off_evidence','SAME_POINTER_AS_R_ON');
-    for (const key of ['R_on_timestamp','R_off_timestamp','R_on_clock_source','R_off_clock_source','clock_source'])
+    for (const key of ['R_on_clock_source','R_off_clock_source','clock_source'])
       if (!textValue(row[key])) error(at+'.'+key,'MEASURED_VALUE_REQUIRED');
+    const on = timestamp(row.R_on_timestamp), off = timestamp(row.R_off_timestamp);
+    if (!on) error(at+'.R_on_timestamp','MEASURED_TIMESTAMP_REQUIRED');
+    if (!off) error(at+'.R_off_timestamp','MEASURED_TIMESTAMP_REQUIRED');
+    if (on && off && textValue(row.R_on_clock_source) && textValue(row.R_off_clock_source) &&
+        row.R_on_clock_source === row.R_off_clock_source) {
+      if (on.kind !== off.kind) error(at+'.R_off_timestamp','CLOCK_FORMAT_MISMATCH');
+      else if (off.value < on.value) error(at+'.R_off_timestamp','R_OFF_BEFORE_R_ON');
+    }
     if (!yesNo(row.auto_open_success)) error(at+'.auto_open_success','OBSERVED_YES_OR_NO_REQUIRED');
     if (!['YES','NO','NOT_TESTED'].includes(row.manual_open_success))
       error(at+'.manual_open_success','OBSERVED_OR_NOT_TESTED_REQUIRED');
     if (row.auto_open_success === 'YES') {
       if (row.usb_present_during_R !== 'YES')
         error(at+'.auto_open_success','USB_PRESENT_DURING_R_NOT_VERIFIED');
-      if (!textValue(row.first_visible_live_frame_timestamp))
-        error(at+'.first_visible_live_frame_timestamp','LIVE_FRAME_VISIBILITY_NOT_VERIFIED');
+      if (!timestamp(row.first_visible_live_frame_timestamp))
+        error(at+'.first_visible_live_frame_timestamp','LIVE_FRAME_TIMESTAMP_REQUIRED');
     }
     if (row.auto_open_success === 'NO' && row.manual_open_success === 'NOT_TESTED')
       error(at+'.manual_open_success','COMPARE_MANUAL_OPEN_AFTER_NATURAL_FAILURE');
