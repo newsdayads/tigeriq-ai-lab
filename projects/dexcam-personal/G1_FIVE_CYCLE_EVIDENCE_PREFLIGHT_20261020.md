@@ -11,3 +11,19 @@
 - Kiểm thử nguồn (không phải xe thật): `npx vitest run tests/dexcam-personal/g1-cycle-admission.test.ts`. G1/G2/D01 và P01 REA vẫn chưa đạt. Nguồn điều hành và checklist: Issue #4625, 13/30 không đổi.
 
 **Khi có quyền thu thật:** quan sát 5 chu kỳ xe dừng an toàn theo [03_CAMERA_DIAGNOSTICS.md](03_CAMERA_DIAGNOSTICS.md), không sửa dây điện, không thay quyền camera, không cài APK, không dùng RDC/PC01; kiểm tra dữ liệu offline tại môi trường được cho phép, sau đó rà provenance và mới đề xuất nghiệm thu.
+
+
+## Lệnh tiền kiểm JSON tại máy được phép
+
+Sau khi đã có **5 lượt quan sát thực**, được thu thập khi xe đỗ an toàn và có quyền trên máy sử dụng, lưu dữ liệu thành JSON cục bộ theo các trường trong `g1-cycle-admission.mjs`. Chạy ngoại tuyến:
+
+```bash
+node projects/dexcam-personal/g1-local-preflight.mjs /duong-dan-rieng/nam-luot-r.json
+```
+
+- Công cụ **chỉ đọc** một tệp JSON thường tối đa 64 KiB, dùng lại bộ đọc an toàn của B01, từ chối symlink trên POSIX, ống FIFO/thư mục và tệp quá lớn. Kiểm tra metadata và file handle nhưng không bảo đảm loại bỏ mọi cuộc đua tên đường dẫn trên Windows.
+- Chỉ xuất `status`, `g1_accepted:false`, danh sách **mã lỗi trường đã lọc**, `next`. Không xuất nội dung JSON, tên/đường dẫn tệp, pointer log hoặc số liệu riêng tư.
+- Exit `0` chỉ nghĩa là **đủ cấu trúc để xem xét** (kể cả bản giả lập), **không phải** năm lượt đã thực hiện hoặc G1 được nghiệm thu; exit `1` là thiếu/sai dữ liệu, exit `2` là cú pháp lệnh không hợp lệ.
+- `REAL_DEVICE_OBSERVATION` chỉ trả `CANDIDATE_NEEDS_DEVICE_REVIEW`. Muốn nghiệm thu G1 phải đối chiếu riêng 5 log/ảnh/descriptor thực tế, tín hiệu R độc lập và điều kiện an toàn; sau đó mới xét G2.
+- Unit regression: `npx vitest run tests/dexcam-personal/g1-local-preflight.test.ts`. Không được tự chạy trên PC01, RDC hoặc thiết bị xe khi cổng Work Order chưa cho phép. **Không đẩy file JSON thực lên GitHub/CI.**
+
