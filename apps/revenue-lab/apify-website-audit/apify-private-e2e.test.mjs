@@ -85,12 +85,53 @@ test('success path uses finalized build/run usage after settle refetch', async (
   assert.equal(calls.filter(call => call.options.method === 'POST').length, 2);
   const actorRunPost = calls.find(call => call.url.includes('/actors/actor123/runs?'));
   assert.ok(actorRunPost, 'must submit a run request with a bounded cost envelope');
-  assert.equal(new URL(actorRunPost.url).searchParams.get('maxTotalChargeUsd'), '0.05');
+  assert.equal(new URL(actorRunPost.url).searchParams.get('maxTotalChargeUsd'), '0.048');
+  // Build charge 0.002 + max run charge 0.048 <= Owner's total 0.05 budget.
   assert.equal(new URL(actorRunPost.url).searchParams.get('build'), '0.1.7');
   assert.notEqual(new URL(actorRunPost.url).searchParams.get('build'), env.APIFY_BUILD_TAG);
   for (const call of calls) {
     assert.ok(!call.url.includes(env.APIFY_TOKEN));
     assert.equal(call.options.headers.authorization, 'Bearer ' + env.APIFY_TOKEN);
+  }
+});
+
+test('R07 finalized build charge is deducted from private run maximum (round down)', async () => {
+  const base = successFetch();
+  const fetchFn = (url, options) => String(url).endsWith('/actor-builds/build1')
+    ? Promise.resolve(response(200, { data: {
+        id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7',
+        stats: { computeUnits: 0.01 }, usageTotalUsd: 0.0024,
+      } }))
+    : base.fetchFn(url, options);
+  await runPrivateApifyE2E({ env, fetchFn, sleepFn: noSleep });
+  const runPost = base.calls.find(call => call.url.includes('/actors/actor123/runs?'));
+  assert.ok(runPost);
+  assert.equal(new URL(runPost.url).searchParams.get('maxTotalChargeUsd'), '0.047');
+  assert.ok(0.0024 + 0.047 <= Number(env.APIFY_E2E_MAX_TOTAL_CHARGE_USD));
+});
+
+test('R07 exhausts build-adjusted budget before any charged run POST', async () => {
+  for (const buildCharge of [0.05, 0.051, 0.0495]) {
+    const base = successFetch();
+    const seen = [];
+    const fetchFn = (url, options) => {
+      seen.push({url: String(url), method: options.method});
+      if (String(url).endsWith('/actor-builds/build1')) {
+        return Promise.resolve(response(200, { data: {
+          id: 'build1', status: 'SUCCEEDED', buildNumber: '0.1.7',
+          stats: { computeUnits: 0.01 }, usageTotalUsd: buildCharge,
+        } }));
+      }
+      return base.fetchFn(url, options);
+    };
+    await assert.rejects(
+      () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+      error => error instanceof ApifyE2EError &&
+        error.code === 'TOTAL_COST_ENVELOPE_EXHAUSTED',
+      'charge=' + buildCharge,
+    );
+    assert.equal(seen.filter(x => x.method === 'POST').length, 1);
+    assert.equal(seen.some(x => x.url.includes('/runs?')), false);
   }
 });
 
