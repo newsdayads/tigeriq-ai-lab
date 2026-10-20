@@ -252,7 +252,7 @@ async function requestOnce(url, options) {
   });
 }
 
-async function fetchBounded(startUrl, options) {
+async function fetchBounded(startUrl, options, allowedOrigin = null) {
   let current = parseTarget(startUrl).toString();
   for (let redirectCount = 0; redirectCount <= options.maxRedirects; redirectCount++) {
     const result = await requestOnce(current, options);
@@ -260,7 +260,11 @@ async function fetchBounded(startUrl, options) {
     if (redirectCount === options.maxRedirects) {
       throw new AuditError('TOO_MANY_REDIRECTS', 'Redirect limit exceeded.', { maxRedirects: options.maxRedirects });
     }
-    current = parseTarget(result.redirect).toString();
+    const next = parseTarget(result.redirect);
+    if (allowedOrigin !== null && next.origin !== allowedOrigin) {
+      throw new AuditError('CROSS_ORIGIN_REDIRECT', 'Redirect leaves the verified site origin.');
+    }
+    current = next.toString();
   }
   throw new AuditError('TOO_MANY_REDIRECTS', 'Redirect limit exceeded.');
 }
@@ -403,7 +407,7 @@ export async function auditWebsite(inputUrl, options = {}) {
     if (visited.size > 1 && requestDelayMs) await sleep(requestDelayMs);
 
     try {
-      const response = await fetchBounded(current, requestOptions);
+      const response = await fetchBounded(current, requestOptions, crawlOrigin);
       if (crawlOrigin === null) crawlOrigin = new URL(response.finalUrl).origin;
       const documentHtml = stripInertHtml(response.body);
       const seo = extractSeo(documentHtml);
