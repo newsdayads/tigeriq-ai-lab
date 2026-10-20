@@ -303,7 +303,9 @@ function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   const seen = new Set();
   // Require the exact href attribute; HTML also permits unquoted attribute
   // values. An attribute such as data-href must not trigger a crawl.
-  for (const tag of html.match(/<a\b[^>]*>/gi) || []) {
+  // Quoted attribute values can contain literal '>' without closing <a>.
+  // Match the complete opening tag before extracting an exact href attribute.
+  for (const tag of html.match(/<a\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
     let href = null;
     for (const [, name, doubleQuoted, singleQuoted, unquoted] of
       tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
