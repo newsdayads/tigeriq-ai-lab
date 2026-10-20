@@ -61,6 +61,14 @@ not a publicly accessible hosted product, and not an authenticated/private
 Apify run or platform invoice. The public HTTP path uses no paid API and
 does not prove that Apify compute units cost zero. R04/R05 remain gated.
 
+## Tải bản sản phẩm chạy được (Portable ZIP, không cần `npm install`)
+
+1. Mở [GitHub Actions — Revenue Audit Portable Package](https://github.com/newsdayads/tigeriq-ai-lab/actions/workflows/revenue-audit-portable.yml), chọn lần **thành công trên `main`** rồi tải artifact `TigerIQ-Website-Audit-Portable-<source-sha>` trong mục **Artifacts**.
+2. Giải nén artifact của GitHub để lấy `TigerIQ-Website-Audit-Portable.zip`, sau đó giải nén lần nữa để có thư mục `TigerIQ-Website-Audit`.
+3. Máy có **Node.js 20+**: Windows mở `run-audit-windows.cmd`; macOS/Linux chạy `sh run-audit-mac-linux.sh` trong thư mục vừa giải nén. Mở `http://127.0.0.1:4179/`, nhập website công khai, kiểm tra tối đa 3 trang và chọn **Tải báo cáo Markdown**.
+
+Gói chỉ chứa 5 tệp nguồn/chạy, `README-LOCAL.txt` và `SHA256SUMS.txt`; không cần tài khoản Apify, không lưu URL hoặc báo cáo trên server. Artifact giữ 30 ngày. Quy trình CI giải nén gói thực, đối chiếu SHA-256, kiểm tra chặn POST khác nguồn và gửi **POST hợp lệ tới API trong chính bản giải nén**; kết quả phải là báo cáo Markdown dựa trên HTTP thật từ một trang thử nghiệm loopback được gắn DNS chỉ trong CI. Đây là kiểm thử bản phân phối, **không phải** bằng chứng chạy Apify riêng tư, hóa đơn, public hosting hoặc bán hàng.
+
 ## Tải báo cáo và khởi chạy tại máy (không cần Apify)
 
 - Windows: trong thư mục này, chạy `run-audit-windows.cmd`.
