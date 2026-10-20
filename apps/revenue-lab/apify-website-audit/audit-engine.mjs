@@ -266,7 +266,9 @@ function extractSeo(html) {
   // Extract exact attribute names from <meta>, not substrings such as
   // data-name. HTML permits unquoted attribute values and either order.
   let metaDescription = null;
-  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+  // A literal '>' inside an HTML-quoted attribute is not the tag terminator.
+  // Keep malformed/unclosed quotes fail-closed instead of inventing metadata.
+  for (const tag of html.match(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
     const attributes = Object.create(null);
     for (const [, key, doubleQuoted, singleQuoted, unquoted] of
       tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
