@@ -54,6 +54,10 @@ export function inspectG1Cycles(input) {
   if (!Array.isArray(cycles) || cycles.length < 5 || cycles.length > 100)
     error('cycles','FIVE_TO_100_RECORDS_REQUIRED');
   const seen = new Set();
+  // Distinct cycles must reference distinct R transition observations.
+  // One aggregate private log may cover multiple cycles; only event refs
+  // require per-cycle uniqueness. This is structural, never provenance proof.
+  const seenTransitions = new Map();
   if (Array.isArray(cycles) && cycles.length <= 100) for (let i = 0; i < cycles.length; i++) {
     const row = cycles[i], at = 'cycles[' + i + ']';
     if (!plain(row)) { error(at,'OBJECT_REQUIRED'); continue; }
@@ -73,6 +77,14 @@ export function inspectG1Cycles(input) {
       if (!ptr(row[key])) error(at+'.'+key,'LOCAL_ONLY_POINTER_REQUIRED');
     if (ptr(row.R_on_evidence) && row.R_on_evidence === row.R_off_evidence)
       error(at+'.R_off_evidence','SAME_POINTER_AS_R_ON');
+    for (const key of ['R_on_evidence','R_off_evidence']) {
+      const ref = row[key];
+      if (!ptr(ref)) continue;
+      const previousCycle = seenTransitions.get(ref);
+      if (previousCycle !== undefined && previousCycle !== i)
+        error(at+'.'+key,'REUSED_ACROSS_CYCLES');
+      else if (previousCycle === undefined) seenTransitions.set(ref,i);
+    }
     for (const key of ['R_on_clock_source','R_off_clock_source','clock_source'])
       if (!textValue(row[key])) error(at+'.'+key,'MEASURED_VALUE_REQUIRED');
     const on = timestamp(row.R_on_timestamp), off = timestamp(row.R_off_timestamp);
