@@ -262,7 +262,7 @@ function stripInertHtml(html) {
 }
 
 function extractSeo(html) {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   // Extract exact attribute names from <meta>, not substrings such as
   // data-name. HTML permits unquoted attribute values and either order.
   let metaDescription = null;
@@ -281,7 +281,7 @@ function extractSeo(html) {
       break;
     }
   }
-  const h1Matches = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)];
+  const h1Matches = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)];
   const visible = cleanText(
     html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')

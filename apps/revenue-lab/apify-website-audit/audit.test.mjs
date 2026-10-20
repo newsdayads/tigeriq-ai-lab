@@ -47,6 +47,14 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    if (req.url === '/tag-prefix-only') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><titlex>Fake title</title></head><body><h1fake>Fake heading</h1></body></html>');
+    }
+    if (req.url === '/tag-prefix-mixed') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><titlex>Fake title</title><title>Real title</title></head><body><h1fake>Fake heading</h1><h1 class="real">Real heading</h1></body></html>');
+    }
     if (req.url === '/meta-unquoted-name') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Unquoted Name</title><meta name=description content="Quoted content valid"></head><body><h1>Audit</h1></body></html>');
@@ -156,6 +164,20 @@ test('same-origin crawler ignores data-href decoys and external destinations', a
   assert.equal(result.status, 'success');
   assert.equal(result.metrics.pagesAudited, 1);
   assert.equal(result.metrics.errorCount, 0);
+});
+
+test('SEO extraction ignores tag-name prefix decoys but accepts real title and H1', async () => {
+  const decoys = await auditWebsite(`${baseUrl}/tag-prefix-only`, { resolveTargetFn: localResolver });
+  assert.equal(decoys.pages[0].seo.title, null);
+  assert.equal(decoys.pages[0].seo.h1Count, 0);
+  assert.ok(decoys.pages[0].findings.some(finding => finding.code === 'MISSING_TITLE'));
+  assert.ok(decoys.pages[0].findings.some(finding => finding.code === 'MISSING_H1'));
+
+  const mixed = await auditWebsite(`${baseUrl}/tag-prefix-mixed`, { resolveTargetFn: localResolver });
+  assert.equal(mixed.pages[0].seo.title, 'Real title');
+  assert.equal(mixed.pages[0].seo.h1Count, 1);
+  assert.deepEqual(mixed.pages[0].seo.h1, ['Real heading']);
+  assert.ok(!mixed.pages[0].findings.some(finding => finding.code === 'MULTIPLE_H1'));
 });
 
 test('SEO extraction accepts valid unquoted HTML meta description attributes', async () => {
