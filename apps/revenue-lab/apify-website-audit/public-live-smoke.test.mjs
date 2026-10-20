@@ -1,3 +1,5 @@
+// GH-2293: run partial-result regressions in required Revenue CI job.
+import './website-ui-partial.test.mjs';
 // Include browser-download regressions in the required Revenue Actor CI test job.
 import './website-ui-export.test.mjs';
 import test from 'node:test';
