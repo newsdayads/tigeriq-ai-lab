@@ -87,8 +87,10 @@ export async function locateOwnerCanaryRun({ env = process.env, fetchFn = global
   if (!candidates.length) fail('OCT08_CANARY_NOT_FOUND');
   if (candidates.length !== 1) fail('OCT08_CANARY_AMBIGUOUS');
   const run = candidates[0];
+  if (typeof run.buildId !== 'string' || !OPAQUE.test(run.buildId))
+    fail('RUN_BUILD_ID_UNVERIFIED');
   // Opaque IDs remain process-local; never persist or post them in public issues.
-  return { actorId: actor.id, runId: run.id, source: 'AUTHENTICATED_BOUNDED_APIFY_RUN_LIST',
+  return { actorId: actor.id, runId: run.id, buildId: run.buildId, source: 'AUTHENTICATED_BOUNDED_APIFY_RUN_LIST',
     targetDay: DAY, expectedBuild: BUILD, requests: 2 };
 }
 
@@ -99,7 +101,7 @@ export async function inspectDiscoveredOwnerCanary({ env = process.env,
   // Never treat list metadata alone as authenticated evidence or final invoice.
   const evidence = await inspectHistoricalRun({
     env: { ...env, APIFY_ACTOR_ID: found.actorId, APIFY_RUN_ID: found.runId },
-    fetchFn, now,
+    fetchFn, now, expectedBuildId: found.buildId,
   });
   return { ...evidence,
     discovery: { source: found.source, boundedDate: DAY, candidates: 1,
