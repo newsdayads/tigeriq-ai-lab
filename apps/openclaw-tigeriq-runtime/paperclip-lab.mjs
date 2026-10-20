@@ -1392,12 +1392,24 @@ async function health(signal = null, transport = null, options = {}) {
   const databaseReady = databaseState.present === true
     && databaseState.running === true
     && String(databaseState.healthStatus || '').toLowerCase() === 'healthy';
+  // R02 also needs the existing validated broker heartbeat. This is a
+  // contained, symlink-checked file read; it never creates a request or
+  // response and must not substitute for Docker/DB identity verification.
+  const brokerHeartbeat = await brokerStatus();
+  const broker = {
+    ready: brokerHeartbeat.ready === true,
+    version: brokerHeartbeat.ready === true ? brokerHeartbeat.version : null,
+    sessionId: brokerHeartbeat.ready === true ? brokerHeartbeat.sessionId : null,
+    ageMs: Number.isFinite(brokerHeartbeat.ageMs) ? brokerHeartbeat.ageMs : null,
+    wslKeepaliveRunning: brokerHeartbeat.wslKeepaliveRunning === true,
+  };
   const state = {
     ok: databaseReady && port.reachable && http.appOk === true && identityOk,
     url: `http://127.0.0.1:${PAPERCLIP_LAB_PORT}`,
     port,
     http,
     database: databaseState,
+    broker,
     container: {
       running: info?.State?.Running === true,
       identityOk,
@@ -1412,6 +1424,7 @@ async function health(signal = null, transport = null, options = {}) {
   };
   state.result = {
     healthFailureClass: paperclipHealthFailureClass(state),
+    broker,
     portReachable: state.port?.reachable === true,
     httpReachable: state.http?.reachable === true,
     httpStatus: state.http?.status ?? null,
