@@ -1,3 +1,5 @@
+// Include browser-download regressions in the required Revenue Actor CI test job.
+import './website-ui-export.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectPublicHttpEvidence, PUBLIC_SMOKE_OPTIONS, PUBLIC_SMOKE_TARGET } from './public-live-smoke.mjs';

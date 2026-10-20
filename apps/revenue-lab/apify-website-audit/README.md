@@ -41,6 +41,14 @@ not a publicly accessible hosted product, and not an authenticated/private
 Apify run or platform invoice. The public HTTP path uses no paid API and
 does not prove that Apify compute units cost zero. R04/R05 remain gated.
 
+## Tải báo cáo và khởi chạy tại máy (không cần Apify)
+
+- Windows: trong thư mục này, chạy `run-audit-windows.cmd`.
+- macOS/Linux: chạy `sh run-audit-mac-linux.sh`.
+- Yêu cầu Node.js 20+; giao diện và bộ phân tích HTML dùng thư viện Node.js có sẵn, không cần tài khoản Apify hay gọi API trả phí. Mở `http://127.0.0.1:4179/` sau khi khởi chạy.
+- Sau khi kiểm tra thành công, chọn **Tải báo cáo Markdown** để lưu kết quả ở trình duyệt. Báo cáo cũ bị vô hiệu hóa ngay khi gửi kiểm tra tiếp theo hoặc khi yêu cầu bị lỗi; không lưu báo cáo phía máy chủ.
+- Lệnh `npm test` bao gồm kiểm thử nút xuất báo cáo, xóa liên kết xuất cũ và cổng chống yêu cầu chéo nguồn. Việc chạy local không phải nghiệm thu private Apify, chi phí hoặc phát hành Production.
+
 ## Browser preview on the owner's own machine
 
 Run `npm run audit:ui` from this app folder, then open
