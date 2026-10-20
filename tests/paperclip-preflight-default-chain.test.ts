@@ -319,6 +319,43 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(state.socketConnects).toBe(0);
   });
 
+  it('R02 direct Docker inspect, compose ps and diagnostic logs remain read-only', async () => {
+    state.rootExists = true;
+    state.rootSymlink = false;
+    state.releaseReady = true;
+    state.directDockerReady = true;
+    state.brokerReady = false;
+    state.inspectBindings = null;
+    state.inspectArgs.length = 0;
+    state.lstatPaths.length = 0;
+    state.spawned.length = 0;
+    state.writeAttempts.length = 0;
+    state.socketConnects = 0;
+
+    // A degraded HTTP response forces both container and database diagnostics.
+    // The sealed filesystem rejects mkdir/writeFile/rename/rm/unlink.
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 503, json: async () => ({ status: 'degraded' }),
+    })));
+    try {
+      const result = await executePaperclipLabAction({ action: 'paperclip_lab_health' });
+      expect(result.data.ok).toBe(false);
+      expect(state.inspectArgs).toContainEqual([
+        'inspect', 'tigeriq-paperclip-lab', '--format', '{{json .}}',
+      ]);
+      expect(state.spawned.filter((exe) => exe === 'docker.exe').length).toBeGreaterThanOrEqual(4);
+      expect(state.lstatPaths).toContain(CONFIG);
+      expect(state.writeAttempts).toEqual([]);
+      // No synthetic Docker/DB success is accepted as real R02 evidence.
+      expect(result.data.result.healthFailureClass).not.toBe('OK');
+    } finally {
+      vi.unstubAllGlobals();
+      state.releaseReady = false;
+      state.directDockerReady = false;
+      state.inspectBindings = null;
+    }
+  });
+
   it('R02 rejects broker fallback without writing a broker request when only broker is ready', async () => {
     state.rootExists = true;
     state.rootSymlink = false;
