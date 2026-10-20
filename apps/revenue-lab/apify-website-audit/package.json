@@ -6,6 +6,7 @@
   "main": "actor.mjs",
   "scripts": {
     "start": "node actor.mjs",
+    "audit:report": "node website-report.mjs",
     "test": "node --test audit.test.mjs r10-economics.test.mjs actor-input.test.mjs",
     "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
     "validate:actor": "node validate-package.mjs",
