@@ -1,6 +1,6 @@
 import { Actor } from 'apify';
-import { auditWebsite, AuditError } from './audit-engine.mjs';
-import { requireActorAuditUrl, auditStartLogMessage } from './actor-input.mjs';
+import { auditWebsite } from './audit-engine.mjs';
+import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
 
 async function main() {
   await Actor.init();
@@ -16,8 +16,8 @@ async function main() {
     await Actor.setValue('OUTPUT', auditResult);
     console.log('Audit completed successfully.');
   } catch (error) {
-    const code = error instanceof AuditError ? error.code : 'AUDIT_FAILURE';
-    console.error(`Audit failed [${code}]: ${error.message}`);
+    const code = auditFailureCode(error);
+    console.error(auditFailureLogMessage(error));
     await Actor.setValue('OUTPUT', {
       schemaVersion: '1.0',
       status: 'failed',
