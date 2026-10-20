@@ -74,8 +74,27 @@ jobs:
           sha256sum -c SHA256SUMS.txt
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
+          import http from 'node:http';
           import { startWebsiteAuditUi } from './website-ui.mjs';
-          const { server, origin } = await startWebsiteAuditUi({ port: 0 });
+          import { auditWebsite } from './audit-engine.mjs';
+          // Exercise the actual extracted ZIP through real HTTP on two local
+          // sockets. The DNS override exists only in CI; never in shipped UI.
+          const fixture = http.createServer((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end('<html><head><title>Portable Product Verified</title></head><body><h1>Portable</h1></body></html>');
+          });
+          await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+          const fixtureUrl = 'http://audit.test:' + fixture.address().port + '/';
+          const { server, origin } = await startWebsiteAuditUi({
+            port: 0,
+            auditFn: (url, options) => auditWebsite(url, {
+              ...options,
+              resolveTargetFn: async target => {
+                assert.equal(target.hostname, 'audit.test');
+                return { address: '127.0.0.1', family: 4 };
+              },
+            }),
+          });
           try {
             assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
             const health = await fetch(origin + '/health');
@@ -93,10 +112,29 @@ jobs:
             });
             assert.equal(foreign.status, 403);
             assert.equal((await foreign.json()).code, 'SAME_ORIGIN_JSON_REQUIRED');
+            const audit = await fetch(origin + '/api/audit', {
+              method: 'POST',
+              headers: { Origin: origin, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: fixtureUrl, maxPages: 1 }),
+            });
+            assert.equal(audit.status, 200);
+            const product = await audit.json();
+            assert.equal(product.status, 'success');
+            assert.equal(product.format, 'markdown');
+            assert.equal(product.apifyActorRan, false);
+            assert.equal(product.platformBillingVerified, false);
+            assert.match(product.markdown, /Audit: success/);
+            assert.match(product.markdown, /Pages audited: 1/);
+            assert.match(product.markdown, /Title: Portable Product Verified/);
+            assert.match(product.markdown, /MISSING_META_DESCRIPTION/);
+            assert.match(product.markdown, /Apify platform cost: NOT VERIFIED/);
+            console.log('TIGERIQ_PORTABLE_DISTRIBUTION_POST_HTML_REPORT=PASS');
             console.log('TIGERIQ_PORTABLE_EXTRACTED_RUNTIME=PASS');
           } finally {
             server.closeAllConnections();
             await new Promise(resolve => server.close(resolve));
+            fixture.closeAllConnections();
+            await new Promise(resolve => fixture.close(resolve));
           }
           NODE
       - name: Publish portable ZIP as a GitHub Actions artifact
