@@ -74,6 +74,40 @@ it('auto-open YES without visible live frame is not proven',()=>{
   const x=sample();x.cycles[0].first_visible_live_frame_timestamp='NOT_MEASURED';
   invalid(x,'cycles[0].first_visible_live_frame_timestamp');
 });
+it('G1 rejects first live frame before independently observed R ON on a shared clock',()=>{
+  const x=sample();
+  x.cycles[0].clock_source=x.cycles[0].R_on_clock_source;
+  x.cycles[0].first_visible_live_frame_timestamp='4999';
+  const r=inspectG1Cycles(x);
+  expect(r.errors).toContain('cycles[0].first_visible_live_frame_timestamp:FRAME_BEFORE_R_ON');
+  expect(r.status).toBe('INCOMPLETE');
+  expect(r.g1_accepted).toBe(false);
+});
+it('G1 rejects first live frame after independently observed R OFF on a shared clock',()=>{
+  const x=sample();
+  x.cycles[0].clock_source=x.cycles[0].R_off_clock_source;
+  x.cycles[0].first_visible_live_frame_timestamp='6001';
+  const r=inspectG1Cycles(x);
+  expect(r.errors).toContain('cycles[0].first_visible_live_frame_timestamp:FRAME_AFTER_R_OFF');
+  expect(r.status).toBe('INCOMPLETE');
+});
+it('G1 rejects a frame clock format incompatible with the same clock domain',()=>{
+  const x=sample();
+  x.cycles[0].clock_source=x.cycles[0].R_on_clock_source;
+  x.cycles[0].first_visible_live_frame_timestamp='2026-10-20T06:10:00Z';
+  expect(inspectG1Cycles(x).errors).toContain('cycles[0].first_visible_live_frame_timestamp:CLOCK_FORMAT_MISMATCH');
+});
+it('G1 never infers order across different frame and R clock sources',()=>{
+  const x=sample();
+  x.cycles[0].clock_source='android-elapsedRealtime';
+  x.cycles[0].R_on_clock_source='vehicle-external-observer';
+  x.cycles[0].R_off_clock_source='vehicle-external-observer';
+  x.cycles[0].first_visible_live_frame_timestamp='4999';
+  expect(inspectG1Cycles(x)).toMatchObject({status:'SYNTHETIC_FIXTURE_ONLY',g1_accepted:false,errors:[]});
+  x.cycles[0].clock_source='vehicle-external-observer';
+  x.cycles[0].first_visible_live_frame_timestamp='5500';
+  expect(inspectG1Cycles(x)).toMatchObject({status:'SYNTHETIC_FIXTURE_ONLY',g1_accepted:false,errors:[]});
+});
 it('natural auto-open failure requires same-cycle manual comparison',()=>{
   const x=sample();x.cycles[0].auto_open_success='NO';
   invalid(x,'cycles[0].manual_open_success');
