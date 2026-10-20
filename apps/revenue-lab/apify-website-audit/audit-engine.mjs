@@ -387,6 +387,10 @@ export async function auditWebsite(inputUrl, options = {}) {
   };
 
   const queue = [root.toString()];
+  // The initial URL may redirect to its canonical www/HTTPS origin. Bind
+  // same-origin discovery to the first verified final response, not the
+  // pre-redirect input. Later page redirects must not widen this scope.
+  let crawlOrigin = null;
   const visited = new Set();
   const pages = [];
   const errors = [];
@@ -400,6 +404,7 @@ export async function auditWebsite(inputUrl, options = {}) {
 
     try {
       const response = await fetchBounded(current, requestOptions);
+      if (crawlOrigin === null) crawlOrigin = new URL(response.finalUrl).origin;
       const documentHtml = stripInertHtml(response.body);
       const seo = extractSeo(documentHtml);
       totalBytes += response.bytes;
@@ -413,7 +418,7 @@ export async function auditWebsite(inputUrl, options = {}) {
         seo,
         findings: actionableSeoFindings(seo),
       });
-      for (const link of extractSameOriginLinks(documentHtml, response.finalUrl, root.origin)) {
+      for (const link of extractSameOriginLinks(documentHtml, response.finalUrl, crawlOrigin)) {
         if (!visited.has(link) && !queue.includes(link) && queue.length + pages.length + errors.length < maxPages) queue.push(link);
       }
     } catch (error) {
