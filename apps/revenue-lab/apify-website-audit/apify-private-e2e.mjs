@@ -44,9 +44,9 @@ function envConfig(env = process.env) {
   }
 
   // waitForFinish only bounds the HTTP wait; it is not a spending limit.
-  // This is an additional source fail-closed prerequisite, NOT a grant to
-  // start paid work: platform/Owner cost approval must still be checked.
-  // The run limit does not cap the separate build or account-level charges.
+  // This is a fail-closed prerequisite, NOT a grant to start paid work.
+  // The run's charge limit is reduced by the finalized build charge below;
+  // it still cannot cap the separate build or other account-level charges.
   const budgetText = String(env.APIFY_E2E_MAX_TOTAL_CHARGE_USD ?? '').trim();
   const maxTotalChargeUsd = Number(budgetText);
   if (!/^(?:0|1)(?:\.\d{1,3})?$/.test(budgetText) ||
@@ -184,6 +184,19 @@ function usageCost(item, kind) {
   return value;
 }
 
+// The Actor build can incur a separate charge before a run is started.
+// Reserve that verified build charge from the Owner's TOTAL envelope. Apify's
+// per-run ceiling cannot retroactively cap a build, so fail closed whenever
+// no positive 0.001-USD run budget remains. Round DOWN, never up.
+function remainingRunChargeUsd(totalEnvelopeUsd, finalizedBuildCostUsd) {
+  const remainingMillis = Math.floor((totalEnvelopeUsd - finalizedBuildCostUsd) * 1000);
+  if (!Number.isSafeInteger(remainingMillis) || remainingMillis <= 0) {
+    throw new ApifyE2EError('TOTAL_COST_ENVELOPE_EXHAUSTED',
+      'Finalized build usage leaves no bounded budget for a private Actor run.');
+  }
+  return (remainingMillis / 1000).toFixed(3);
+}
+
 function computeUnits(item, kind) {
   const stats = item?.stats?.computeUnits;
   const usage = item?.usage?.ACTOR_COMPUTE_UNITS;
@@ -241,6 +254,7 @@ export async function runPrivateApifyE2E({
   }
   const buildCost = usageCost(finalizedBuild, 'build');
   const buildComputeUnits = computeUnits(finalizedBuild, 'build');
+  const runChargeUsd = remainingRunChargeUsd(config.maxTotalChargeUsd, buildCost);
 
   // Apify run 'build' accepts a tag OR immutable build number; never use a
   // mutable tag after creating the build. A post-POST buildId check alone is
@@ -261,7 +275,7 @@ export async function runPrivateApifyE2E({
     waitForFinish: '60',
     timeout: '60',
     memory: '256',
-    maxTotalChargeUsd: String(config.maxTotalChargeUsd),
+    maxTotalChargeUsd: runChargeUsd,
     restartOnError: 'false',
     forcePermissionLevel: 'LIMITED_PERMISSIONS',
   });

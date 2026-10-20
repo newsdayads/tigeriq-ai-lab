@@ -89,6 +89,8 @@ jobs:
         run: node --test apps/revenue-lab/apify-website-audit/actor-input.test.mjs
       - name: Validate live HTTP evidence shape without external requests
         run: node --test apps/revenue-lab/apify-website-audit/public-live-smoke.test.mjs
+      - name: Verify private Apify E2E cost guard offline (no Apify credentials)
+        run: node --test apps/revenue-lab/apify-website-audit/apify-private-e2e.test.mjs
       - name: Audit public example.com via real HTTPS (no Apify and no paid API)
         env:
           TIGERIQ_VERIFIED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
