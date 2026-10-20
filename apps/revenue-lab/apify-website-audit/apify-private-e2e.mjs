@@ -197,6 +197,19 @@ function remainingRunChargeUsd(totalEnvelopeUsd, finalizedBuildCostUsd) {
   return (remainingMillis / 1000).toFixed(3);
 }
 
+// A platform run cap is a pre-run request, not proof of what Apify finally
+// charged. Fail closed on authenticated finalized overages; do not serialize
+// misleading successful cost evidence. This detects, but cannot undo, charges.
+function assertFinalUsageWithinBudget(buildUsd, runUsd, runLimitUsd, totalLimitUsd) {
+  // Allow only binary floating-point representation noise, not a charge step.
+  const floatSlack = Number.EPSILON * 4;
+  if (runUsd > Number(runLimitUsd) + floatSlack ||
+      buildUsd + runUsd > totalLimitUsd + floatSlack) {
+    throw new ApifyE2EError('FINAL_USAGE_EXCEEDS_COST_ENVELOPE',
+      'Final authenticated Apify usage exceeds the configured cost envelope.');
+  }
+}
+
 function computeUnits(item, kind) {
   const stats = item?.stats?.computeUnits;
   const usage = item?.usage?.ACTOR_COMPUTE_UNITS;
@@ -317,6 +330,7 @@ export async function runPrivateApifyE2E({
   }
   const runCost = usageCost(finalizedRun, 'run');
   const runComputeUnits = computeUnits(finalizedRun, 'run');
+  assertFinalUsageWithinBudget(buildCost, runCost, runChargeUsd, config.maxTotalChargeUsd);
 
   const output = await requestJson(
     fetchFn,
