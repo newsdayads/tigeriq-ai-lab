@@ -204,6 +204,63 @@ test('initial redirect selects canonical origin for subsequent same-origin links
   assert.equal(result.requestedUrl, `${baseUrl}/canonical-redirect`);
 });
 
+test('later page redirects cannot fetch a different origin while same-origin redirects still work', async () => {
+  let foreignGets = 0;
+  const auditServer = http.createServer((req, res) => {
+    const html = value => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(value);
+    };
+    if (req.url === '/outside-root') {
+      return html('<title>Root</title><h1>Root</h1><a href="/next-outside">Next</a>');
+    }
+    if (req.url === '/safe-root') {
+      return html('<title>Root</title><h1>Root</h1><a href="/next-safe">Next</a>');
+    }
+    if (req.url === '/next-outside') {
+      res.writeHead(302, { location: `http://foreign.audit.test:${auditServer.address().port}/foreign-page` });
+      return res.end();
+    }
+    if (req.url === '/foreign-page') {
+      foreignGets++;
+      return html('<title>Foreign Page</title><h1>Wrong domain</h1>');
+    }
+    if (req.url === '/next-safe') {
+      res.writeHead(302, { location: '/safe-page' });
+      return res.end();
+    }
+    if (req.url === '/safe-page') {
+      return html('<title>Allowed Page</title><h1>Expected domain</h1>');
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise(resolve => auditServer.listen(0, '127.0.0.1', resolve));
+  try {
+    const origin = `http://canonical.audit.test:${auditServer.address().port}`;
+    const guarded = await auditWebsite(origin + '/outside-root', {
+      maxPages: 2,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(guarded.status, 'partial');
+    assert.equal(guarded.metrics.pagesAudited, 1);
+    assert.deepEqual(guarded.errors.map(error => error.code), ['CROSS_ORIGIN_REDIRECT']);
+    assert.equal(foreignGets, 0, 'cross-origin redirect must be rejected before any foreign GET');
+
+    const allowed = await auditWebsite(origin + '/safe-root', {
+      maxPages: 2,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(allowed.status, 'success');
+    assert.equal(allowed.metrics.pagesAudited, 2);
+    assert.equal(allowed.pages[1].seo.title, 'Allowed Page');
+    assert.equal(allowed.pages[1].redirectCount, 1);
+  } finally {
+    auditServer.closeAllConnections();
+    await new Promise(resolve => auditServer.close(resolve));
+  }
+});
+
 test('same-origin crawler follows href after a greater-than in quoted anchor attributes', async () => {
   for (const path of ['/links-gt-double', '/links-gt-single']) {
     const result = await auditWebsite(`${baseUrl}${path}`, {
