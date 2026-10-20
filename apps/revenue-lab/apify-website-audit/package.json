@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node actor.mjs",
     "audit:report": "node website-report.mjs",
-    "test": "node --test website-ui-export.test.mjs audit.test.mjs r10-economics.test.mjs actor-input.test.mjs",
+    "test": "node --test website-ui-partial.test.mjs website-ui-export.test.mjs audit.test.mjs r10-economics.test.mjs actor-input.test.mjs",
     "benchmark": "node --test --test-name-pattern=benchmark audit.test.mjs",
     "validate:actor": "node validate-package.mjs",
     "test:apify-e2e": "node --test apify-private-e2e.test.mjs",

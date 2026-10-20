@@ -54,7 +54,11 @@ does not prove that Apify compute units cost zero. R04/R05 remain gated.
 Run `npm run audit:ui` from this app folder, then open
 `http://127.0.0.1:4179/` in a browser. Enter a public HTTP/HTTPS URL,
 select a 1–3-page bound, and receive a real actionable SEO Markdown
-report. The backend makes actual HTTP requests through the same bounded
+report. When a follow-up page fails, the local API returns `status=partial`
+instead of mislabeling it as full success; the browser still shows and
+exports findings from successfully checked pages with a clear warning.
+The report gives a bounded skipped-page count, never failing URLs or
+upstream diagnostics. The backend makes actual HTTP requests through the same bounded
 audit engine as the CLI; the HTML only displays the result as plain text.
 
 Security: server always listens on `127.0.0.1` (never `0.0.0.0`),

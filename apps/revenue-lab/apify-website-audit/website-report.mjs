@@ -46,6 +46,14 @@ export function renderWebsiteAuditMarkdown(result) {
     'Audit: ' + result.status,
     'Pages audited: ' + result.pages.length,
   ];
+  if (result.status === 'partial') {
+    // Show a bounded skipped-page count, never the failing URL or upstream error.
+    const skipped = result.metrics?.errorCount;
+    if (!Number.isInteger(skipped) || skipped < 1 || skipped > 10) {
+      throw Error('REPORT_PARTIAL_COUNT_INVALID');
+    }
+    lines.push('Pages skipped due to errors: ' + skipped);
+  }
   for (const [index, page] of result.pages.entries()) {
     if (!Number.isInteger(page.statusCode) || page.statusCode < 200 || page.statusCode >= 300 ||
         !Array.isArray(page.findings) || page.findings.length > 4 || typeof page.url !== 'string') {
