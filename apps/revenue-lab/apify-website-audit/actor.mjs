@@ -1,5 +1,5 @@
 import { Actor } from 'apify';
-import { auditWebsite, AuditError } from './audit-engine.mjs';
+import { auditWebsite } from './audit-engine.mjs';
 import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
 
 async function main() {
