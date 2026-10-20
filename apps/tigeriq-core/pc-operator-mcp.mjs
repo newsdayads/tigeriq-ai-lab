@@ -134,6 +134,7 @@ function nativeOk(action, receipt) {
       && Number.isInteger(data?.broker?.sessionId)
       && data.broker.sessionId > 0
       && data?.broker?.wslKeepaliveRunning === true
+      && data?.broker?.sourceVerified === true
       && Number.isFinite(data?.broker?.ageMs)
       && data.broker.ageMs >= 0
       && data.broker.ageMs <= 15000;

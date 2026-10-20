@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { registerPcOperatorTools } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
 // GH-2054: contract-only mock harness; never talks to real PC01 or changes a lease.
@@ -67,6 +68,36 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
     expect(response.completedStepId).toBeNull();
   });
 
+  it('requires actual source hash verification in the native R02 health path', () => {
+    const source = readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs', import.meta.url), 'utf8');
+    const start = source.indexOf('async function health(');
+    const end = source.indexOf('\nasync function ', start + 1);
+    const healthSource = source.slice(start, end < 0 ? undefined : end);
+    expect(healthSource).toContain('paperclipBrokerLiveSourceMatches(brokerHeartbeat, source)');
+    expect(healthSource).toContain('sourceVerified: brokerSourceVerified');
+  });
+
+  it.each([
+    ['missing attestation', undefined],
+    ['unverified running source', false],
+  ])('rejects R02 with healthy Docker/DB/HTTP but %s', async (_why, sourceVerified) => {
+    const execute = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        ok: true,
+        port: { reachable: true },
+        http: { appOk: true },
+        container: { identityOk: true, portBindingOk: true },
+        database: { present: true, running: true, healthStatus: 'healthy' },
+        broker: { ready: true, version: '1.7-openai-device-auth', sessionId: 1,
+          ageMs: 500, wslKeepaliveRunning: true, ...(sourceVerified === undefined ? {} : { sourceVerified }) },
+      },
+    });
+    const response = parse(await getHandler('paperclip_lab_health', execute)());
+    expect(response.ok).toBe(false);
+    expect(response.completedStepId).toBeNull();
+  });
+
   it('completes R02 only after a real, fresh broker heartbeat accompanies native container, database and HTTP acceptance', async () => {
     const execute = vi.fn().mockResolvedValue({
       ok: true,
@@ -82,6 +113,7 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
           sessionId: 1,
           ageMs: 1200,
           wslKeepaliveRunning: true,
+          sourceVerified: true,
         },
       },
     });

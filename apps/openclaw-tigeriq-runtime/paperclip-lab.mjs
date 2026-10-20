@@ -1396,7 +1396,14 @@ async function health(signal = null, transport = null, options = {}) {
   // contained, symlink-checked file read; it never creates a request or
   // response and must not substitute for Docker/DB identity verification.
   const brokerHeartbeat = await brokerStatus();
+  // R02 must attest the running broker's startup source, not just a fresh
+  // legacy heartbeat. Reading the packaged source is read-only and fail-closed.
+  const brokerSourceVerified = brokerHeartbeat.ready === true
+    && await fs.readFile(BROKER_SOURCE_SCRIPT, 'utf8')
+      .then((source) => paperclipBrokerLiveSourceMatches(brokerHeartbeat, source))
+      .catch(() => false);
   const broker = {
+    sourceVerified: brokerSourceVerified,
     ready: brokerHeartbeat.ready === true,
     version: brokerHeartbeat.ready === true ? brokerHeartbeat.version : null,
     sessionId: brokerHeartbeat.ready === true ? brokerHeartbeat.sessionId : null,
