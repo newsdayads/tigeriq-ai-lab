@@ -121,6 +121,9 @@ function validateRun(run, config, nowMs) {
 export async function inspectHistoricalRun({
   env = process.env, fetchFn = globalThis.fetch, now = () => new Date(),
   expectedBuildId = undefined,
+  // R04 can verify an existing run/output even if Apify hides the nullable
+  // usageTotalUsd field. This flag NEVER verifies billing or a final invoice.
+  allowMissingUsageForIdentity = false,
 } = {}) {
   const cfg = historicalRunConfig(env);
   if (typeof fetchFn !== 'function') reject('FETCH_UNAVAILABLE');
@@ -149,8 +152,14 @@ export async function inspectHistoricalRun({
   // usage or compute totals have settled (nor a final platform invoice).
   const validUsd = value => typeof value === 'number' &&
     Number.isFinite(value) && value >= 0;
-  if (!validUsd(first.usageTotalUsd) || !validUsd(final.usageTotalUsd))
-    reject('APIFY_USAGE_UNVERIFIED');
+  const missingUsdBoth = first.usageTotalUsd == null && final.usageTotalUsd == null;
+  if (!validUsd(first.usageTotalUsd) || !validUsd(final.usageTotalUsd)) {
+    // Omitted/null is explicitly permitted by Apify for this run field.
+    // Permit it only in R04 identity mode, and only when both reads agree.
+    // An invalid, negative or mismatched value remains a hard error.
+    if (!(allowMissingUsageForIdentity && missingUsdBoth))
+      reject('APIFY_USAGE_UNVERIFIED');
+  }
   const firstUnits = getUnits(first), finalUnits = getUnits(final);
   if (first.usageTotalUsd !== final.usageTotalUsd || firstUnits !== finalUnits)
     reject('RUN_USAGE_RECHECK_DRIFT');
@@ -184,9 +193,11 @@ export async function inspectHistoricalRun({
     run: { id: cfg.runId, actId: final.actId, status: final.status,
       startedAt: final.startedAt, finishedAt: final.finishedAt,
       buildNumber: final.buildNumber,
-      computeUnits: getUnits(final), usageTotalUsd: final.usageTotalUsd },
+      computeUnits: getUnits(final), usageTotalUsd: missingUsdBoth ? null : final.usageTotalUsd },
     output: { schemaVersion: output.schemaVersion, status: output.status },
-    cost: { source: 'APIFY_API_INFORMATIONAL_NOT_FINAL_INVOICE',
+    cost: { source: missingUsdBoth
+      ? 'APIFY_API_USAGE_MISSING_NOT_FINAL_INVOICE'
+      : 'APIFY_API_INFORMATIONAL_NOT_FINAL_INVOICE',
       ownerBillingConfirmed: false, zeroCostClaim: false, revenueVerified: false },
     action: { readOnly: true, requests: 4, postRequests: 0,
       newBuilds: 0, newRuns: 0, actorMutation: false },

@@ -113,6 +113,28 @@ test('R04 full locator runs the already-merged exact-ID, output and cost guards:
  for(const {url,opts} of m.calls){assert.equal(opts.method,'GET');assert.equal(opts.redirect,'error');assert.doesNotMatch(url,/run-sync|\/builds|token=/)}
  assert.doesNotMatch(JSON.stringify(e),/SYNTHETIC_SECRET_NO_LOG|example\.com/);
 });
+test('R04 accepts Apify nullable usage cost for run identity, but never verifies R05',async()=>{
+ const m=mock({run:{...row(),usageTotalUsd:null}});
+ const e=await inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')});
+ assert.equal(e.acceptance.historicalRunMatched,true);
+ assert.equal(e.run.status,'SUCCEEDED');
+ assert.equal(e.output.schemaVersion,'1.0');
+ assert.equal(e.run.computeUnits,0.002);
+ assert.equal(e.run.usageTotalUsd,null);
+ assert.equal(e.cost.source,'APIFY_API_USAGE_MISSING_NOT_FINAL_INVOICE');
+ assert.equal(e.cost.ownerBillingConfirmed,false);
+ assert.equal(e.cost.zeroCostClaim,false);
+ assert.equal(e.acceptance.platformFinalInvoiceVerified,false);
+ assert.equal(m.calls.length,6);
+ assert.ok(m.calls.every(call=>call.opts.method==='GET'));
+});
+test('R04 nullable usage exception never accepts invalid negative cost',async()=>{
+ const m=mock({run:{...row(),usageTotalUsd:-1}});
+ await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),
+  e=>e.code==='APIFY_USAGE_UNVERIFIED');
+ assert.equal(m.calls.length,4);
+});
+
 test('R04 locator detail must preserve exact candidate build ID even with identical build number',async()=>{
  const m=mock({run:{...row(),buildId:'BUILDDETAIL999'}});
  await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),
