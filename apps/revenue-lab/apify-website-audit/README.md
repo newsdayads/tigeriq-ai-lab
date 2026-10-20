@@ -10,6 +10,7 @@ Standalone zero-cost-first website audit Actor, isolated from TigerIQ Core and A
 - Redirects are manually bounded and every redirect target is revalidated.
 - Response size, request timeout, and inter-request delay are bounded.
 - Stable JSON schema with explicit error codes.
+- Actionable SEO findings per audited page (missing title, missing meta description, missing or multiple H1) with severity, remediation and aggregate totals. These are observed HTML findings, not Google ranking, Lighthouse or performance scores.
 - No paid external API calls.
 
 ## Input
