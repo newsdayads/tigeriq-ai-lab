@@ -47,6 +47,12 @@ before(async () => {
       res.writeHead(404, { 'content-type': 'text/html' });
       return res.end('<h1>Missing</h1>');
     }
+    if (req.url === '/invalid-redirect-302' || req.url === '/invalid-redirect-307') {
+      res.writeHead(req.url.endsWith('302') ? 302 : 307, {
+        location: 'http://[invalid',
+      });
+      return res.end();
+    }
     if (req.url === '/r1') {
       res.writeHead(302, { location: '/r2' });
       return res.end();
@@ -469,6 +475,16 @@ test('preserves HTTP 404/500 errors even for non-HTML error bodies', async () =>
     () => auditWebsite(`${baseUrl}/json`, { resolveTargetFn: localResolver }),
     err => err instanceof AuditError && err.code === 'UNSUPPORTED_CONTENT_TYPE'
   );
+});
+
+test('rejects invalid Location on HTTP redirects with a stable error instead of an uncaught exception', async () => {
+  for (const path of ['/invalid-redirect-302', '/invalid-redirect-307']) {
+    await assert.rejects(
+      () => auditWebsite(`${baseUrl}${path}`, { resolveTargetFn: localResolver }),
+      err => err instanceof AuditError && err.code === 'INVALID_REDIRECT',
+      path,
+    );
+  }
 });
 
 test('caps redirects and revalidates each hop', async () => {
