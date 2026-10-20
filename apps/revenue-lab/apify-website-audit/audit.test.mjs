@@ -27,6 +27,18 @@ before(async () => {
       res.writeHead(500, { 'content-type': 'text/plain' });
       return res.end('server error');
     }
+    const contentTypeFixtures = {
+      '/mime-fake-suffix': 'text/html+json',
+      '/mime-fake-xml-suffix': 'application/xhtml+xmlp',
+      '/mime-fake-parameter': 'application/json; profile="text/html"',
+      '/mime-fake-unrelated': 'application/not-text/html',
+      '/mime-valid-html': 'TeXt/HtMl; charset=UTF-8',
+      '/mime-valid-xhtml': 'application/xhtml+xml; charset=utf-8',
+    };
+    if (Object.hasOwn(contentTypeFixtures, req.url)) {
+      res.writeHead(200, { 'content-type': contentTypeFixtures[req.url] });
+      return res.end('<html><head><title>MIME fixture</title></head><body><h1>MIME</h1></body></html>');
+    }
     if (req.url === '/json') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end('{"ok":true}');
@@ -417,6 +429,22 @@ test('enforces timeout', async () => {
     () => auditWebsite(`${baseUrl}/slow`, { timeoutMs: 250, resolveTargetFn: localResolver }),
     err => err instanceof AuditError && err.code === 'TIMEOUT'
   );
+});
+
+test('accepts exact HTML MIME types and rejects misleading substrings, suffixes, and parameters', async () => {
+  for (const path of ['/mime-fake-suffix', '/mime-fake-xml-suffix', '/mime-fake-parameter', '/mime-fake-unrelated']) {
+    await assert.rejects(
+      () => auditWebsite(`${baseUrl}${path}`, { resolveTargetFn: localResolver }),
+      err => err instanceof AuditError && err.code === 'UNSUPPORTED_CONTENT_TYPE',
+      path,
+    );
+  }
+  for (const path of ['/mime-valid-html', '/mime-valid-xhtml']) {
+    const result = await auditWebsite(`${baseUrl}${path}`, { resolveTargetFn: localResolver });
+    assert.equal(result.status, 'success', path);
+    assert.equal(result.metrics.pagesAudited, 1, path);
+    assert.equal(result.pages[0].seo.title, 'MIME fixture', path);
+  }
 });
 
 test('rejects non HTML and non-2xx responses with stable codes', async () => {
