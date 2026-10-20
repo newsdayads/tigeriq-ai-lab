@@ -184,3 +184,26 @@ describe('TigerIQ Core Health Work Order steps restoration', () => {
     expect(metadata.visible).toBe(false);
   });
 });
+
+describe('Owner API Health Work Order current state stays visible before long acceptance checklist', () => {
+  const source = fs.readFileSync(new URL('../apps/tigeriq-core/dashboard.html', import.meta.url), 'utf8');
+  const from = source.indexOf('<div class="work-detail-body">');
+  const to = source.indexOf('</div><div class="work-detail-actions">', from);
+  const modal = source.slice(from, to);
+
+  it('shows last update, real current state, next action and blocker above unchecked steps', () => {
+    expect(from).toBeGreaterThan(0);
+    const steps = modal.indexOf('id="workDetailStepsSection"');
+    expect(steps).toBeGreaterThan(0);
+    for (const id of ['workDetailUpdated', 'workDetailCurrent', 'workDetailNext', 'workDetailBlocker']) {
+      const pos = modal.indexOf('id="' + id + '"');
+      expect(pos, id + ' must be visible near top').toBeGreaterThan(0);
+      expect(pos, id + ' must precede acceptance list').toBeLessThan(steps);
+      expect(modal.split('id="' + id + '"')).toHaveLength(2);
+    }
+    expect(source).toContain('workDetailCurrent.textContent=');
+    expect(source).toContain('workDetailBlocker.textContent=workDetailReadableBlocker(woBlocker(row))');
+    expect(source).toContain("workDetailUpdated.textContent=row.updatedAt?");
+    expect(modal.indexOf('id="workDetailProgress"')).toBeLessThan(steps);
+  });
+});
