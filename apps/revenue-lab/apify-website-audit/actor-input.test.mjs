@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
 import { auditWebsite, AuditError, actionableSeoFindings } from './audit-engine.mjs';
 
@@ -62,4 +63,29 @@ test('actionable SEO rules are bounded, transparent and do not invent ranking sc
   assert.deepEqual(actionableSeoFindings({
     title: 'Audit Title', metaDescription: 'Meta Description', h1Count: 1,
   }), []);
+});
+
+test('required CI gate verifies full crawl-to-actionable-report integration against actual HTTP HTML', async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html><title>Good title</title><h1>Useful heading</h1></html>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const target = `http://audit.test:${server.address().port}/`;
+    const report = await auditWebsite(target, {
+      maxPages: 1,
+      resolveTargetFn: async () => ({ address: '127.0.0.1', family: 4 }),
+    });
+    assert.equal(report.status, 'success');
+    assert.equal(report.metrics.pagesAudited, 1);
+    assert.deepEqual(report.pages[0].findings.map(x => x.code),
+      ['MISSING_META_DESCRIPTION']);
+    assert.deepEqual(report.findingsSummary, {
+      total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1,
+    });
+    assert.equal(report.metrics.platformCostUSD, null);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
