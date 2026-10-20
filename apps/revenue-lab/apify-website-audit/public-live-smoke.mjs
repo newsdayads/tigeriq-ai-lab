@@ -3,6 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { auditWebsite } from './audit-engine.mjs';
+import { renderWebsiteAuditMarkdown } from './website-report.mjs';
 
 export const PUBLIC_SMOKE_TARGET = 'https://example.com/';
 export const PUBLIC_SMOKE_OPTIONS = Object.freeze({
@@ -35,6 +36,7 @@ export async function collectPublicHttpEvidence({ auditFn = auditWebsite } = {})
       (final.hostname !== 'example.com' && final.hostname !== 'www.example.com')) {
     throw Error('PUBLIC_HTTP_TARGET_ORIGIN_MISMATCH');
   }
+  const reportMarkdown = renderWebsiteAuditMarkdown(result);
   return Object.freeze({
     evidenceSchema: 'TIGERIQ_REVENUE_PUBLIC_HTTP_LIVE_V1',
     evidenceClass: 'REAL_EXTERNAL_PUBLIC_HTTP_NOT_APIFY',
@@ -46,6 +48,9 @@ export async function collectPublicHttpEvidence({ auditFn = auditWebsite } = {})
     pagesAudited: result.metrics.pagesAudited,
     responseBytes: page.bytes,
     titlePresent: Boolean(page?.seo?.title),
+    productReportFormat: 'TIGERIQ_SEO_MARKDOWN_V1',
+    actionableFindings: result.findingsSummary,
+    productReportMarkdown: reportMarkdown,
     htmlDerived: true,
     externalPaidApiCostUsd: result.metrics.externalApiCostUSD,
     apifyActorRan: false,
